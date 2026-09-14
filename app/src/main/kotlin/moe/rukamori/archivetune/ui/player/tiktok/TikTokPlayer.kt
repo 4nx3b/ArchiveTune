@@ -116,7 +116,6 @@ fun TikTokPlayerContent(
     state: BottomSheetState,
     menuState: MenuState,
     bottomSheetPageState: BottomSheetPageState,
-    lyricsVisible: Boolean,
     lyricsSyncOffset: Int = 0,
     onLyricsSyncOffsetChange: (Int) -> Unit = {},
 
@@ -269,13 +268,13 @@ fun TikTokPlayerContent(
         videoState != null && !videoState.hasPlaybackFailed && !lyricsOpen
     var immersive by rememberSaveable { mutableStateOf(false) }
 
-    BackHandler(enabled = lyricsOpen && !lyricsVisible) { lyricsOpen = false }
-    BackHandler(enabled = immersive && !lyricsVisible) { immersive = false }
+    BackHandler(enabled = lyricsOpen) { lyricsOpen = false }
+    BackHandler(enabled = immersive) { immersive = false }
 
-    BackHandler(enabled = queueOpen && !lyricsVisible) { queueOpen = false }
+    BackHandler(enabled = queueOpen) { queueOpen = false }
 
-    LaunchedEffect(state.isExpanded, lyricsVisible) {
-        if (!state.isExpanded || lyricsVisible) {
+    LaunchedEffect(state.isExpanded) {
+        if (!state.isExpanded) {
             if (immersive) immersive = false
             if (lyricsOpen) lyricsOpen = false
             if (queueOpen) queueOpen = false

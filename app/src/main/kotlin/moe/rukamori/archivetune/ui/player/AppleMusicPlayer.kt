@@ -275,7 +275,6 @@ fun AppleMusicPlayerContent(
     currentFormat: FormatEntity?,
     contentBottomPadding: Dp,
     onQueueClick: () -> Unit,
-    onLyricsClick: () -> Unit,
     onSliderValueChange: (Long) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
     lyricsSyncOffset: Int = 0,
@@ -779,22 +778,75 @@ fun AppleMusicPlayerContent(
                             }
                         },
             ) {
-                AppleMusicSharpArtwork(
-                    artworkRequest = artworkRequest,
-                    artworkUrl = artworkUrl,
-                    canvasPrimaryUrl = canvasPrimaryUrl,
-                    canvasFallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying,
-                    fadeBottom = false,
-                    videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
-                    isMusicVideo = mediaMetadata.isMusicVideo,
-                    landscape = true,
-                    artworkCornerRadiusDp = artworkCornerRadiusDp,
+                Box(
                     modifier =
                         Modifier
                             .weight(1f)
                             .fillMaxHeight(),
-                )
+                ) {
+                    AppleMusicSharpArtwork(
+                        artworkRequest = artworkRequest,
+                        artworkUrl = artworkUrl,
+                        canvasPrimaryUrl = canvasPrimaryUrl,
+                        canvasFallbackUrl = canvasFallbackUrl,
+                        isPlaying = isPlaying,
+                        fadeBottom = false,
+                        videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
+                        isMusicVideo = mediaMetadata.isMusicVideo,
+                        landscape = true,
+                        artworkCornerRadiusDp = artworkCornerRadiusDp,
+                        modifier =
+                            Modifier
+                                .fillMaxSize(),
+                    )
+
+                    AnimatedVisibility(
+                        visible = lyricsOpen,
+                        enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
+                        exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
+                        modifier = Modifier.matchParentSize(),
+                    ) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = AppleMusicContentPadding - 16.dp),
+                        ) {
+                            if (lyricsContentReady) {
+                                when (lyricsMode) {
+                                    LyricsMode.V2 ->
+                                        LyricsV2(
+                                            sliderPositionProvider = lyricsPosProvider,
+                                            lyricsSyncOffset = lyricsSyncOffset,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+
+                                    LyricsMode.ENHANCED ->
+                                        LyricsEnhanced(
+                                            sliderPositionProvider = lyricsPosProvider,
+                                            lyricsSyncOffset = lyricsSyncOffset,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+
+                                    LyricsMode.SPOTIFY ->
+                                        LyricsV2(
+                                            sliderPositionProvider = lyricsPosProvider,
+                                            lyricsSyncOffset = lyricsSyncOffset,
+                                            spotifyStyle = true,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+
+                                    LyricsMode.SIMPMUSIC ->
+                                        SimpMusicLyrics(
+                                            sliderPositionProvider = lyricsPosProvider,
+                                            lyricsSyncOffset = lyricsSyncOffset,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                }
+                            }
+                        }
+                    }
+                }
                 AnimatedVisibility(
 
                     visible =
@@ -823,7 +875,7 @@ fun AppleMusicPlayerContent(
                         onMoreClick = onMoreClick,
                         onOutputClick = onOutputClick,
                         onQueueClick = onQueueClick,
-                        onLyricsClick = onLyricsClick,
+                        onLyricsClick = toggleLyrics,
                         onSliderValueChange = onControlsSliderValueChange,
                         onSliderValueChangeFinished = onControlsSliderValueChangeFinished,
                         currentFormat = currentFormat,

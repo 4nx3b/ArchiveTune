@@ -1876,6 +1876,10 @@ fun V9PlayerContent(
     onCollapseClick: () -> Unit,
     onQueueClick: () -> Unit,
     onLyricsClick: () -> Unit,
+    lyricsOpen: Boolean,
+    onCloseLyrics: () -> Unit,
+    lyricsSyncOffset: Int,
+    onLyricsSyncOffsetChange: (Int) -> Unit,
     onSliderValueChange: (Long) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1936,6 +1940,7 @@ fun V9PlayerContent(
 
     if (landscape) {
         V9LandscapeContent(
+            mediaMetadata = mediaMetadata,
             title = mediaMetadata.title,
             explicit = mediaMetadata.explicit,
             artists = mediaMetadata.artists,
@@ -1957,6 +1962,10 @@ fun V9PlayerContent(
             onCollapseClick = onCollapseClick,
             onQueueClick = onQueueClick,
             onLyricsClick = onLyricsClick,
+            lyricsOpen = lyricsOpen,
+            onCloseLyrics = onCloseLyrics,
+            lyricsSyncOffset = lyricsSyncOffset,
+            onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
             onTitleClick = onTitleClick,
             onArtistClick = onArtistClick,
             onPreviousClick = playerConnection::seekToPrevious,
@@ -1973,6 +1982,7 @@ fun V9PlayerContent(
         )
     } else {
         V9PortraitContent(
+            mediaMetadata = mediaMetadata,
             title = mediaMetadata.title,
             explicit = mediaMetadata.explicit,
             artists = mediaMetadata.artists,
@@ -1994,6 +2004,10 @@ fun V9PlayerContent(
             onCollapseClick = onCollapseClick,
             onQueueClick = onQueueClick,
             onLyricsClick = onLyricsClick,
+            lyricsOpen = lyricsOpen,
+            onCloseLyrics = onCloseLyrics,
+            lyricsSyncOffset = lyricsSyncOffset,
+            onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
             onTitleClick = onTitleClick,
             onArtistClick = onArtistClick,
             onPreviousClick = playerConnection::seekToPrevious,
@@ -2011,6 +2025,7 @@ fun V9PlayerContent(
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun V9PortraitContent(
+    mediaMetadata: MediaMetadata,
     title: String,
     explicit: Boolean,
     artists: List<MediaMetadata.Artist>,
@@ -2032,6 +2047,10 @@ private fun V9PortraitContent(
     onCollapseClick: () -> Unit,
     onQueueClick: () -> Unit,
     onLyricsClick: () -> Unit,
+    lyricsOpen: Boolean,
+    onCloseLyrics: () -> Unit,
+    lyricsSyncOffset: Int,
+    onLyricsSyncOffsetChange: (Int) -> Unit,
     onPreviousClick: () -> Unit,
     onPlayPauseClick: () -> Unit,
     onNextClick: () -> Unit,
@@ -2081,14 +2100,35 @@ private fun V9PortraitContent(
                     .fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-                V9Artwork(
-                    artworkUrl = artworkUrl,
-                    canvasSource = canvasSource,
-                    canvasPrimaryUrl = canvasPrimaryUrl,
-                    canvasFallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying,
-                    placeholderColor = textBackgroundColor.copy(alpha = 0.08f),
-                    modifier = Modifier.aspectRatio(1f)
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = !lyricsOpen,
+                    enter = androidx.compose.animation.fadeIn(
+                        androidx.compose.animation.core.tween(300)
+                    ),
+                    exit = androidx.compose.animation.fadeOut(
+                        androidx.compose.animation.core.tween(200)
+                    ),
+                ) {
+                    V9Artwork(
+                        artworkUrl = artworkUrl,
+                        canvasSource = canvasSource,
+                        canvasPrimaryUrl = canvasPrimaryUrl,
+                        canvasFallbackUrl = canvasFallbackUrl,
+                        isPlaying = isPlaying,
+                        placeholderColor = textBackgroundColor.copy(alpha = 0.08f),
+                        modifier = Modifier.aspectRatio(1f)
+                    )
+                }
+
+                NumberedPlayerInlineLyrics(
+                    visible = lyricsOpen,
+                    onClose = onCloseLyrics,
+                    sliderPositionProvider = { sliderPosition },
+                    lyricsSyncOffset = lyricsSyncOffset,
+                    onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                    mediaMetadata = mediaMetadata,
+                    textColor = textBackgroundColor,
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
 
@@ -2227,6 +2267,7 @@ private fun V9PortraitContent(
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun V9LandscapeContent(
+    mediaMetadata: MediaMetadata,
     title: String,
     explicit: Boolean,
     artists: List<MediaMetadata.Artist>,
@@ -2248,6 +2289,10 @@ private fun V9LandscapeContent(
     onCollapseClick: () -> Unit,
     onQueueClick: () -> Unit,
     onLyricsClick: () -> Unit,
+    lyricsOpen: Boolean,
+    onCloseLyrics: () -> Unit,
+    lyricsSyncOffset: Int,
+    onLyricsSyncOffsetChange: (Int) -> Unit,
     onPreviousClick: () -> Unit,
     onPlayPauseClick: () -> Unit,
     onNextClick: () -> Unit,
@@ -2276,15 +2321,40 @@ private fun V9LandscapeContent(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(26.dp),
         ) {
-            V9Artwork(
-                artworkUrl = artworkUrl,
-                canvasSource = canvasSource,
-                canvasPrimaryUrl = canvasPrimaryUrl,
-                canvasFallbackUrl = canvasFallbackUrl,
-                isPlaying = isPlaying,
-                size = artworkSize,
-                placeholderColor = textBackgroundColor.copy(alpha = 0.08f),
-            )
+            Box(
+                modifier = Modifier.width(artworkSize),
+            ) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = !lyricsOpen,
+                    enter = androidx.compose.animation.fadeIn(
+                        androidx.compose.animation.core.tween(300)
+                    ),
+                    exit = androidx.compose.animation.fadeOut(
+                        androidx.compose.animation.core.tween(200)
+                    ),
+                ) {
+                    V9Artwork(
+                        artworkUrl = artworkUrl,
+                        canvasSource = canvasSource,
+                        canvasPrimaryUrl = canvasPrimaryUrl,
+                        canvasFallbackUrl = canvasFallbackUrl,
+                        isPlaying = isPlaying,
+                        size = artworkSize,
+                        placeholderColor = textBackgroundColor.copy(alpha = 0.08f),
+                    )
+                }
+
+                NumberedPlayerInlineLyrics(
+                    visible = lyricsOpen,
+                    onClose = onCloseLyrics,
+                    sliderPositionProvider = { sliderPosition },
+                    lyricsSyncOffset = lyricsSyncOffset,
+                    onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                    mediaMetadata = mediaMetadata,
+                    textColor = textBackgroundColor,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
 
             Column(
                 modifier =
@@ -3218,6 +3288,10 @@ fun V10PlayerContent(
     onCollapseClick: () -> Unit,
     onQueueClick: () -> Unit,
     onLyricsClick: () -> Unit,
+    lyricsOpen: Boolean,
+    onCloseLyrics: () -> Unit,
+    lyricsSyncOffset: Int,
+    onLyricsSyncOffsetChange: (Int) -> Unit,
     onSliderValueChange: (Long) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
     onSleepTimerClick: () -> Unit,
@@ -3344,17 +3418,38 @@ fun V10PlayerContent(
                 .weight(1.0f),
             contentAlignment = Alignment.Center
         ) {
-            EditorialDieCutArt(
-                artworkUrl = artworkUrl,
-                mediaMetadataId = mediaMetadata.id,
-                isPlaying = isPlaying,
-                onTap = onPlayPauseClick,
-                accent = accent,
-                field = field,
-                canSkipPrevious = canSkipPrevious,
-                canSkipNext = canSkipNext,
-                onSkipPrevious = { playerConnection.player.seekToPrevious() },
-                onSkipNext = { playerConnection.player.seekToNext() }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !lyricsOpen,
+                enter = androidx.compose.animation.fadeIn(
+                    androidx.compose.animation.core.tween(300)
+                ),
+                exit = androidx.compose.animation.fadeOut(
+                    androidx.compose.animation.core.tween(200)
+                ),
+            ) {
+                EditorialDieCutArt(
+                    artworkUrl = artworkUrl,
+                    mediaMetadataId = mediaMetadata.id,
+                    isPlaying = isPlaying,
+                    onTap = onPlayPauseClick,
+                    accent = accent,
+                    field = field,
+                    canSkipPrevious = canSkipPrevious,
+                    canSkipNext = canSkipNext,
+                    onSkipPrevious = { playerConnection.player.seekToPrevious() },
+                    onSkipNext = { playerConnection.player.seekToNext() }
+                )
+            }
+
+            NumberedPlayerInlineLyrics(
+                visible = lyricsOpen,
+                onClose = onCloseLyrics,
+                sliderPositionProvider = { sliderPosition },
+                lyricsSyncOffset = lyricsSyncOffset,
+                onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                mediaMetadata = mediaMetadata,
+                textColor = accent,
+                modifier = Modifier.fillMaxSize(),
             )
         }
 
