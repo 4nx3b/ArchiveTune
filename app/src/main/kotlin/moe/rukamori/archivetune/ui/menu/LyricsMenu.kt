@@ -29,6 +29,9 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -38,6 +41,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -62,6 +66,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -91,6 +96,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -743,7 +749,7 @@ fun LyricsMenu(
                 start = 0.dp,
                 top = 0.dp,
                 end = 0.dp,
-                bottom = 12.dp,
+                bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
             ),
     ) {
         item {
@@ -773,6 +779,13 @@ fun LyricsMenu(
                         isDestructive = false,
                         enabled = isTranslateEnabled,
                         onClick = { showTranslateDialog = true },
+                    ),
+                    AppleMusicLyricsMenuItem(
+                        label = stringResource(R.string.lyrics_sync_offset),
+                        iconRes = R.drawable.speed,
+                        isDestructive = false,
+                        enabled = true,
+                        onClick = { showLyricsSyncOffsetDialog = true },
                     ),
                     AppleMusicLyricsMenuItem(
                         label = stringResource(R.string.ai_romanize_now),
@@ -849,7 +862,7 @@ fun LyricsMenu(
                     }
                 }
             } else {
-                MenuSurfaceSection {
+                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                     NewActionGrid(
                         actions =
                             menuItems.map { item ->
@@ -1948,6 +1961,66 @@ fun AnchoredLyricsOverflowMenu(
                 },
                 viewModel = viewModel,
                 transparentSurface = true,
+            )
+        }
+    }
+}
+
+/**
+ * The lyrics overflow menu for the numbered players' inline lyrics (Cinematic, Little, Immersive,
+ * Material Extended, Editorial) and the Apple Music player's landscape pane: upstream main's
+ * exact presentation — a standard Material 3 [ModalBottomSheet] in the theme surface color with
+ * the pill drag handle, wrapping [LyricsMenu]'s MenuSurfaceSection + NewActionGrid content.
+ * Copied from rukamori/ArchiveTune main (BottomSheetMenu + LyricsMenu); the anchored dark
+ * popup it replaces read as an opaque square-cornered box with a black scrim over the lyrics.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LyricsOverflowSheet(
+    visible: Boolean,
+    lyricsProvider: () -> LyricsEntity?,
+    mediaMetadataProvider: () -> MediaMetadata,
+    lyricsSyncOffset: Int,
+    onLyricsSyncOffsetChange: (Int) -> Unit,
+    onDismiss: () -> Unit,
+    viewModel: LyricsMenuViewModel = hiltViewModel(),
+) {
+    val focusManager = LocalFocusManager.current
+
+    if (!visible) return
+
+    ModalBottomSheet(
+        onDismissRequest = {
+            focusManager.clearFocus()
+            onDismiss()
+        },
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        dragHandle = {
+            Box(
+                modifier =
+                    Modifier
+                        .padding(vertical = 12.dp)
+                        .size(width = 40.dp, height = 4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)),
+            )
+        },
+        modifier = Modifier.fillMaxHeight(),
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+        ) {
+            LyricsMenu(
+                lyricsProvider = lyricsProvider,
+                mediaMetadataProvider = mediaMetadataProvider,
+                lyricsSyncOffset = lyricsSyncOffset,
+                onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                onDismiss = onDismiss,
+                viewModel = viewModel,
             )
         }
     }
