@@ -835,13 +835,6 @@ fun AppleMusicPlayerContent(
                                             spotifyStyle = true,
                                             modifier = Modifier.fillMaxSize(),
                                         )
-
-                                    LyricsMode.SIMPMUSIC ->
-                                        SimpMusicLyrics(
-                                            sliderPositionProvider = lyricsPosProvider,
-                                            lyricsSyncOffset = lyricsSyncOffset,
-                                            modifier = Modifier.fillMaxSize(),
-                                        )
                                 }
                             }
                         }
