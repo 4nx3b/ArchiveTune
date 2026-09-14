@@ -44,7 +44,6 @@ import moe.rukamori.archivetune.playback.LocalPlayerConnection
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
-import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicLyrics
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 
 val LocalLyricsScrollListener = compositionLocalOf<(Boolean) -> Unit> { {} }
@@ -100,14 +99,6 @@ fun NumberedPlayerInlineLyrics(
                         lyricsSyncOffset = lyricsSyncOffset,
                         textColorOverride = textColor,
                         spotifyStyle = true,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-
-                LyricsMode.SIMPMUSIC ->
-                    SimpMusicLyrics(
-                        sliderPositionProvider = sliderPositionProvider,
-                        lyricsSyncOffset = lyricsSyncOffset,
-                        textColorOverride = textColor,
                         modifier = Modifier.fillMaxSize(),
                     )
             }
