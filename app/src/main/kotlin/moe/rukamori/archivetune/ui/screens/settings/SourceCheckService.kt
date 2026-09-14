@@ -155,16 +155,11 @@ object SourceCheckService {
     }
 
     private suspend fun checkQobuzBackup(context: Context): SourceCheckResult {
-        // Read the user's mirror list straight from preferences so the check
-        // reflects what playback will use even before the first resolve.
         runCatching {
             val stored = context.dataStore.data.first()[QobuzBackupEndpointsKey].orEmpty()
             QobuzBackupProvider.configuredEndpoints =
                 stored.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
         }
-        // The resolver walks an endpoint chain (user-configured mirrors first,
-        // the shipped default last). Probe each one so the report says WHICH
-        // endpoint is down instead of a generic "backup not working".
         val endpoints = QobuzBackupProvider.endpointList()
         val reports = mutableListOf<String>()
         var anyHealthy = false

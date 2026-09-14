@@ -800,7 +800,7 @@ fun AppleMusicPlayerContent(
                                 .fillMaxSize(),
                     )
 
-                    AnimatedVisibility(
+                    androidx.compose.animation.AnimatedVisibility(
                         visible = lyricsOpen,
                         enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
                         exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
