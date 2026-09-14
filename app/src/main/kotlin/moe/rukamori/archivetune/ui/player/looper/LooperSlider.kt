@@ -117,21 +117,18 @@ internal fun LooperExpressiveSlider(
                             fun fractionAt(x: Float): Float =
                                 if (trackWidthPx <= 0f) 0f else
                                     (x / trackWidthPx).coerceIn(0f, 1f)
-                            onSeek((fractionAt(down.position.x) * safeDuration).toLong())
+                            var lastX = down.position.x
+                            onSeek((fractionAt(lastX) * safeDuration).toLong())
                             while (true) {
                                 val event = awaitPointerEvent()
                                 val change =
                                     event.changes.firstOrNull { it.id == down.id } ?: break
+                                lastX = change.position.x
                                 if (!change.pressed) break
                                 change.consume()
-                                onSeek((fractionAt(change.position.x) * safeDuration).toLong())
+                                onSeek((fractionAt(lastX) * safeDuration).toLong())
                             }
-                            onSeekFinished(
-                                (fractionAt(
-                                    event.changes.firstOrNull { it.id == down.id }?.position?.x
-                                        ?: down.position.x,
-                                ) * safeDuration).toLong(),
-                            )
+                            onSeekFinished((fractionAt(lastX) * safeDuration).toLong())
                         }
                     },
         ) {
