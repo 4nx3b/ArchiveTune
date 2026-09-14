@@ -86,6 +86,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.DefaultSearchSourceKey
+import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.SearchProvider
 import moe.rukamori.archivetune.constants.SearchSource
 import moe.rukamori.archivetune.db.entities.SearchHistory
@@ -162,6 +163,7 @@ fun SearchScreen(
     }
 
     val searchHazeState = LocalSearchHazeState.current
+    val (disableBlur) = rememberPreference(DisableBlurKey, false)
     Box(
         modifier =
             Modifier
@@ -175,7 +177,9 @@ fun SearchScreen(
                     },
                 ),
     ) {
-        HomeAtmosphereBackground()
+        if (!disableBlur) {
+            HomeAtmosphereBackground()
+        }
 
         LazyColumn(
             state = lazyListState,

@@ -865,10 +865,28 @@ enum class PlayerDesignStyle {
     APPLE_MUSIC,
     V10,
 
+    /**
+     * Self-contained styles: their layout, controls, lyrics surface and backdrop live in their
+     * own package and share nothing with the numbered styles above.
+     *
+     * [BITCHORD] is the BitChord "Now Playing" screen — a mesh-gradient field with the artwork
+     * dissolving into it. [TIKTOK] is a full-screen vertical feed where each queue entry is one
+     * page: swipe up for the next song, down for the previous. [SIMPMUSIC] is SimpMusic's
+     * default now-playing screen — a diagonal palette wash with the sleeve on a queue-backed
+     * pager. [SPATIALFLOW] is the SpatialFlow player (github.com/MythicalSHUB/SpatialFlow,
+     * GPL-3.0) — artwork pager, pill-chip control row, wavy seek bar, M3 Expressive transport,
+     * embedded sliding queue drawer, circular-reveal lyrics overlay and music haptics.
+     * [LOOPER] is the Looper player (github.com/SthrNilshaaa/looper, GPL-3.0) — Jost
+     * typography, the squiggly expressive seek bar, asymmetric 80dp transport pills, the
+     * blurred-sleeve backdrop under a fixed scrim, and the Apple-Music-exact canvas twin
+     * behind the controls. All are views over the app's one playback engine and queue, not
+     * players of their own.
+     */
     BITCHORD,
     TIKTOK,
     SIMPMUSIC,
     SPATIALFLOW,
+    LOOPER,
 }
 
 enum class PlayerBackgroundStyle {
