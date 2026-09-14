@@ -1529,8 +1529,6 @@ fun BottomSheetPlayer(
                 playerConnection = playerConnection,
                 navController = navController,
                 state = state,
-                menuState = menuState,
-                bottomSheetPageState = bottomSheetPageState,
                 context = context,
                 onSliderValueChange = onSliderValueChange,
                 onSliderValueChangeFinished = onSliderValueChangeFinished,
@@ -1844,8 +1842,6 @@ fun BottomSheetPlayer(
                                     playerConnection = playerConnection,
                                     navController = navController,
                                     state = state,
-                                    menuState = menuState,
-                                    bottomSheetPageState = bottomSheetPageState,
                                     onSliderValueChange = onSliderValueChange,
                                     onSliderValueChangeFinished = onSliderValueChangeFinished,
                                     onVolumeChange = onPlayerVolumeChange,
@@ -2110,6 +2106,7 @@ fun BottomSheetPlayer(
                                     lyricsSyncOffset = lyricsSyncOffset,
                                     onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                                     mediaMetadata = metadata,
+                                    textColor = TextBackgroundColor,
                                     modifier =
                                         Modifier
                                             .fillMaxSize()
@@ -2398,8 +2395,6 @@ fun BottomSheetPlayer(
                                     playerConnection = playerConnection,
                                     navController = navController,
                                     state = state,
-                                    menuState = menuState,
-                                    bottomSheetPageState = bottomSheetPageState,
                                     onSliderValueChange = onSliderValueChange,
                                     onSliderValueChangeFinished = onSliderValueChangeFinished,
                                     onVolumeChange = onPlayerVolumeChange,
@@ -2668,6 +2663,7 @@ fun BottomSheetPlayer(
                                     lyricsSyncOffset = lyricsSyncOffset,
                                     onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                                     mediaMetadata = metadata,
+                                    textColor = TextBackgroundColor,
                                     modifier =
                                         Modifier
                                             .fillMaxSize()

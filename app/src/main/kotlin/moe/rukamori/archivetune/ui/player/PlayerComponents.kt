@@ -122,16 +122,13 @@ import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.extensions.toggleRepeatMode
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
-import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
-import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.component.PlayerSliderTrack
 import moe.rukamori.archivetune.ui.component.ResizableIconButton
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.player.PlayerFadeConfig
 import moe.rukamori.archivetune.ui.theme.PlayerBackgroundColorUtils
 import moe.rukamori.archivetune.ui.theme.PlayerSliderColors
-import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.fadingEdge
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.utils.makeTimeString
@@ -353,10 +350,6 @@ fun PlayerTopActions(
     iconButtonColor: Color,
     textBackgroundColor: Color,
     playerConnection: PlayerConnection,
-    navController: NavController,
-    menuState: MenuState,
-    state: BottomSheetState,
-    bottomSheetPageState: BottomSheetPageState,
     context: Context,
     currentSongLiked: Boolean,
 ) {
@@ -491,41 +484,6 @@ fun PlayerTopActions(
                                 } else {
                                     textBackgroundColor
                                 },
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
-                }
-
-                Surface(
-                    onClick = {
-                        menuState.show {
-                            PlayerMenu(
-                                mediaMetadata = mediaMetadata,
-                                navController = navController,
-                                playerBottomSheetState = state,
-                                onShowDetailsDialog = {
-                                    mediaMetadata.id.let {
-                                        bottomSheetPageState.show {
-                                            ShowMediaInfo(it)
-                                        }
-                                    }
-                                },
-                                onDismiss = menuState::dismiss,
-                            )
-                        }
-                    },
-                    shape = RoundedCornerShape(14.dp),
-                    color = textBackgroundColor.copy(alpha = 0.12f),
-                    modifier =
-                        Modifier
-                            .height(44.dp)
-                            .width(44.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Icon(
-                            painter = painterResource(R.drawable.player_more_horiz),
-                            contentDescription = null,
-                            tint = textBackgroundColor,
                             modifier = Modifier.size(22.dp),
                         )
                     }
@@ -1147,8 +1105,6 @@ fun PlayerControlsContent(
     playerConnection: PlayerConnection,
     navController: NavController,
     state: BottomSheetState,
-    menuState: MenuState,
-    bottomSheetPageState: BottomSheetPageState,
     context: Context,
     onSliderValueChange: (Long) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
@@ -1189,10 +1145,6 @@ fun PlayerControlsContent(
             iconButtonColor = iconButtonColor,
             textBackgroundColor = textBackgroundColor,
             playerConnection = playerConnection,
-            navController = navController,
-            menuState = menuState,
-            state = state,
-            bottomSheetPageState = bottomSheetPageState,
             context = context,
             currentSongLiked = currentSongLiked,
         )
@@ -1299,8 +1251,6 @@ fun V8PlayerControlsContent(
     playerConnection: PlayerConnection,
     navController: NavController,
     state: BottomSheetState,
-    menuState: MenuState,
-    bottomSheetPageState: BottomSheetPageState,
     onSliderValueChange: (Long) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
     onVolumeChange: (Float) -> Unit,
@@ -1309,24 +1259,6 @@ fun V8PlayerControlsContent(
 ) {
     val foreground = Color.White
     val secondaryForeground = foreground.copy(alpha = 0.72f)
-    val onMenuClick =
-        remember(mediaMetadata, navController, state, menuState, bottomSheetPageState) {
-            {
-                menuState.show {
-                    PlayerMenu(
-                        mediaMetadata = mediaMetadata,
-                        navController = navController,
-                        playerBottomSheetState = state,
-                        onShowDetailsDialog = {
-                            bottomSheetPageState.show {
-                                ShowMediaInfo(mediaMetadata.id)
-                            }
-                        },
-                        onDismiss = menuState::dismiss,
-                    )
-                }
-            }
-        }
     val titleActions = rememberPlayerTitleActions(mediaMetadata, navController, state)
     val onTitleClick = titleActions.onTitleClick
     val onArtistClick = titleActions.onArtistClick
@@ -1398,7 +1330,6 @@ fun V8PlayerControlsContent(
                 artists = mediaMetadata.artists,
                 liked = currentSongLiked,
                 foreground = foreground,
-                onMenuClick = onMenuClick,
                 onToggleLike = onToggleLike,
                 onTitleClick = onTitleClick,
                 onArtistClick = onArtistClick,
@@ -1451,7 +1382,6 @@ private fun V8MetadataActions(
     artists: List<MediaMetadata.Artist>,
     liked: Boolean,
     foreground: Color,
-    onMenuClick: () -> Unit,
     onToggleLike: () -> Unit,
     onTitleClick: () -> Unit,
     onArtistClick: (artistId: String) -> Unit,
@@ -1501,14 +1431,6 @@ private fun V8MetadataActions(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            V8ActionButton(
-                iconRes = R.drawable.player_more_vert,
-                contentDescription = stringResource(R.string.more_options),
-                foreground = foreground,
-                containerColor = foreground.copy(alpha = 0.16f),
-                iconSize = 24.dp,
-                onClick = onMenuClick,
-            )
             V8ActionButton(
                 iconRes = if (liked) R.drawable.player_favorite else R.drawable.player_favorite_border,
                 contentDescription = stringResource(R.string.action_like),

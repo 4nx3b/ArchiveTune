@@ -35,8 +35,12 @@ styles, a Liquid Glass redesign, AI-powered lyrics, and hundreds of fixes.
 - New icons for the whole app
 - Lyrics text customisation and vinyl mode with preview for lyrics/song share
 - New Apple Music-style popup in the Apple Music lyrics style
-- Lyrics overflow popup matches the main branch exactly, scales in from the
-  anchor icon, and uses a neutral scrim while open
+- Lyrics overflow menu for the inline lyrics (Cinematic, Little, Immersive, Material
+  Extended, Editorial) is main branch's exact bottom-sheet implementation: a
+  standard Material 3 sheet in the theme surface with the pill drag handle and the
+  action-grid section (Edit / Refetch / Translate / Lyrics sync offset / Search
+  plus AI romanise and undo-translation), replacing the anchored opaque popup
+  and its black scrim over the lyrics
 - Menu row dividers span the full row at a consistent hairline weight (the old
   one-sided inset dimmed only the centre of the row)
 - App icon packs — applying an icon now switches the real launcher icon on the
@@ -153,6 +157,13 @@ styles, a Liquid Glass redesign, AI-powered lyrics, and hundreds of fixes.
   backdrop in both dark and light mode — the lyrics sheet always renders the
   blurred artwork under the dark scrim, so light mode no longer paints dark
   lyrics text on it
+- Cinematic player light mode: the inline lyrics text now follows the player's
+  own text colour (dark ink on the light theme surface, white over artwork
+  backgrounds) instead of constant white that vanished against the light
+  background
+- Cinematic and Immersive players: the overflow (three-dot) icon next to the
+  now-playing title is removed — the row keeps share and like; the full song
+  menu stays reachable from the queue
 - Default and SpatialFlow players: the three-dot song overflow menu sits next
   to the "Now Playing" header, top right, opening the full song menu
 - BitChord canvas actually plays now (the canvas resolver used to clear the
