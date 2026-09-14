@@ -1413,7 +1413,14 @@ class MainActivity : ComponentActivity() {
 
                     var glassPrewarmActive by remember { mutableStateOf(false) }
                     LaunchedEffect(Unit) {
-                        delay(2000)
+                        // Deferred past the cold-open window: the prewarm
+                        // compiles the AGSL vibrancy shader + blur RenderEffect
+                        // by drawing a backdrop for 450ms, which used to fire
+                        // two seconds in — exactly while the first home feed
+                        // was still rendering, janking the app's very first
+                        // interactions. 4.5s still warms the pipeline long
+                        // before a menu is ever opened.
+                        delay(4500)
                         glassPrewarmActive = true
                         delay(450)
                         glassPrewarmActive = false

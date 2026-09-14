@@ -23,6 +23,9 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -236,6 +239,7 @@ import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicPlayerContent
 import moe.rukamori.archivetune.ui.player.spatialflow.SpatialFlowPlayerContent
+import moe.rukamori.archivetune.ui.player.looper.LooperPlayerContent
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -420,7 +424,8 @@ fun BottomSheetPlayer(
             playerDesignStyle == PlayerDesignStyle.BITCHORD ||
             playerDesignStyle == PlayerDesignStyle.TIKTOK ||
             playerDesignStyle == PlayerDesignStyle.SIMPMUSIC ||
-            playerDesignStyle == PlayerDesignStyle.SPATIALFLOW
+            playerDesignStyle == PlayerDesignStyle.SPATIALFLOW ||
+            playerDesignStyle == PlayerDesignStyle.LOOPER
     val playerBackground =
         if (playerUsesFixedBackground) PlayerBackgroundStyle.DEFAULT else storedPlayerBackground
 
@@ -895,7 +900,30 @@ fun BottomSheetPlayer(
         val startTime = SystemClock.elapsedRealtime()
         if (playbackState == STATE_READY) {
             while (isActive) {
-                delay(if (aodModeEnabled) 500L else 100L)
+                // Cadence by surface. The expanded player (and its sliders and
+                // lyrics) needs the 100ms tick; the collapsed mini player only
+                // draws a thin progress bar, so a coarse 500ms tick carries it
+                // while cutting the whole keep-alive player subtree's
+                // recomposition rate by 5x — that subtree stays composed
+                // behind the mini player, and its 10Hz ticks were the dominant
+                // cost of returning to the app and of the mini-player's idle
+                // battery drain. While the sheet is mid-flight between the
+                // mini player and the full player, ticks pause entirely so the
+                // open/close animation frames never compete with a full-player
+                // recomposition.
+                val settledCollapsed = state.isCollapsed
+                val settledExpanded = state.isExpanded
+                if (!settledCollapsed && !settledExpanded) {
+                    delay(50L)
+                    continue
+                }
+                delay(
+                    when {
+                        aodModeEnabled -> 500L
+                        settledCollapsed -> 500L
+                        else -> 100L
+                    },
+                )
                 val isTransitioning = playerConnection.player.currentMediaItem?.mediaId != mediaMetadata?.id
                 val currentPlayerPosition = playerConnection.player.currentPosition
                 val currentPlayerDuration = playerConnection.player.duration
@@ -956,7 +984,8 @@ fun BottomSheetPlayer(
             playerDesignStyle == PlayerDesignStyle.BITCHORD ||
             playerDesignStyle == PlayerDesignStyle.TIKTOK ||
             playerDesignStyle == PlayerDesignStyle.SIMPMUSIC ||
-            playerDesignStyle == PlayerDesignStyle.SPATIALFLOW
+            playerDesignStyle == PlayerDesignStyle.SPATIALFLOW ||
+            playerDesignStyle == PlayerDesignStyle.LOOPER
         ) {
             0.dp
         } else if (playerDesignStyle == PlayerDesignStyle.V9) {
@@ -1106,6 +1135,7 @@ fun BottomSheetPlayer(
 
     CompositionLocalProvider(
         LocalVideoArtworkState provides videoState,
+        LocalVideoPlaybackFailed provides videoPlaybackFailed,
         LocalVideoPreferredHeight provides videoPreferredHeight,
         LocalVideoOnPreferredHeightChange provides { videoPreferredHeight = it },
         LocalVideoAvailableHeights provides videoAvailableHeights,
@@ -1367,7 +1397,8 @@ fun BottomSheetPlayer(
                     playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
                         playerDesignStyle == PlayerDesignStyle.V9 ||
                         playerDesignStyle == PlayerDesignStyle.SPATIALFLOW ||
-                        playerDesignStyle == PlayerDesignStyle.BITCHORD
+                        playerDesignStyle == PlayerDesignStyle.BITCHORD ||
+                        playerDesignStyle == PlayerDesignStyle.LOOPER
                 ) &&
                 !aodModeEnabled &&
                 !trackIsMusicVideo
@@ -1565,7 +1596,8 @@ fun BottomSheetPlayer(
             playerDesignStyle != PlayerDesignStyle.BITCHORD &&
             playerDesignStyle != PlayerDesignStyle.TIKTOK &&
             playerDesignStyle != PlayerDesignStyle.SIMPMUSIC &&
-            playerDesignStyle != PlayerDesignStyle.SPATIALFLOW
+            playerDesignStyle != PlayerDesignStyle.SPATIALFLOW &&
+            playerDesignStyle != PlayerDesignStyle.LOOPER
         ) {
             PlayerBackground(
                 playerBackground = playerBackground,
@@ -1714,26 +1746,6 @@ fun BottomSheetPlayer(
                                 )
                             }
                         }
-
-                        enrichedMetadata?.let { metadata ->
-                            NumberedPlayerInlineLyrics(
-                                visible = isInlineLyricsOpen,
-                                onClose = { isInlineLyricsOpen = false },
-                                sliderPositionProvider = { sliderPosition },
-                                lyricsSyncOffset = lyricsSyncOffset,
-                                onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
-                                mediaMetadata = metadata,
-                                textColor = littleTextColor,
-                                modifier =
-                                    Modifier
-                                        .fillMaxSize()
-                                        .background(littleBackground)
-                                        .windowInsetsPadding(
-                                            WindowInsets(top = LocalStableSystemBarsTopPadding.current)
-                                                .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
-                                        ),
-                            )
-                        }
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.V7) {
                     Box(
@@ -1807,22 +1819,6 @@ fun BottomSheetPlayer(
                                         WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         ) {
-                            enrichedMetadata?.let { metadata ->
-                                NumberedPlayerInlineLyrics(
-                                    visible = isInlineLyricsOpen,
-                                    onClose = { isInlineLyricsOpen = false },
-                                    sliderPositionProvider = { sliderPosition },
-                                    lyricsSyncOffset = lyricsSyncOffset,
-                                    onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
-                                    mediaMetadata = metadata,
-                                    modifier =
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .weight(1f)
-                                            .padding(horizontal = 16.dp),
-                                )
-                            }
-
                             enrichedMetadata?.let { metadata ->
                                 V8PlayerControlsContent(
                                     mediaMetadata = metadata,
@@ -1991,6 +1987,40 @@ fun BottomSheetPlayer(
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
+} else if (playerDesignStyle == PlayerDesignStyle.LOOPER) {
+
+                    enrichedMetadata?.let { metadata ->
+                        LooperPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            sliderPosition = sliderPosition,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            canvasPrimaryUrl = artworkCanvas?.animated,
+                            canvasFallbackUrl = artworkCanvas?.videoUrl,
+                            onSeek = onSliderValueChange,
+                            onSeekFinished = onSliderValueChangeFinished,
+                            onLyricsClick = { isInlineLyricsOpen = !isInlineLyricsOpen },
+                            onQueueClick = openQueue,
+                            lyricsVisible = isInlineLyricsOpen,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+
+                                    .windowInsetsPadding(
+                                        WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
+                                    ).nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
 } else if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
 
                     enrichedMetadata?.let { metadata ->
@@ -2095,22 +2125,6 @@ fun BottomSheetPlayer(
                                             }
                                         }
                                     },
-                                )
-                            }
-
-                            enrichedMetadata?.let { metadata ->
-                                NumberedPlayerInlineLyrics(
-                                    visible = isInlineLyricsOpen,
-                                    onClose = { isInlineLyricsOpen = false },
-                                    sliderPositionProvider = { sliderPosition },
-                                    lyricsSyncOffset = lyricsSyncOffset,
-                                    onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
-                                    mediaMetadata = metadata,
-                                    textColor = TextBackgroundColor,
-                                    modifier =
-                                        Modifier
-                                            .fillMaxSize()
-                                            .padding(vertical = 8.dp),
                                 )
                             }
                         }
@@ -2269,26 +2283,6 @@ fun BottomSheetPlayer(
                                 }
                             }
                         }
-
-                        enrichedMetadata?.let { metadata ->
-                            NumberedPlayerInlineLyrics(
-                                visible = isInlineLyricsOpen,
-                                onClose = { isInlineLyricsOpen = false },
-                                sliderPositionProvider = { sliderPosition },
-                                lyricsSyncOffset = lyricsSyncOffset,
-                                onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
-                                mediaMetadata = metadata,
-                                textColor = littleTextColor,
-                                modifier =
-                                    Modifier
-                                        .fillMaxSize()
-                                        .background(littleBackground)
-                                        .windowInsetsPadding(
-                                            WindowInsets(top = LocalStableSystemBarsTopPadding.current)
-                                                .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
-                                        ),
-                            )
-                        }
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.V7) {
                     Box(
@@ -2360,22 +2354,6 @@ fun BottomSheetPlayer(
                                     .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
                         ) {
-                            enrichedMetadata?.let { metadata ->
-                                NumberedPlayerInlineLyrics(
-                                    visible = isInlineLyricsOpen,
-                                    onClose = { isInlineLyricsOpen = false },
-                                    sliderPositionProvider = { sliderPosition },
-                                    lyricsSyncOffset = lyricsSyncOffset,
-                                    onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
-                                    mediaMetadata = metadata,
-                                    modifier =
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .weight(1f)
-                                            .padding(horizontal = 16.dp),
-                                )
-                            }
-
                             enrichedMetadata?.let { metadata ->
                                 V8PlayerControlsContent(
                                     mediaMetadata = metadata,
@@ -2542,6 +2520,40 @@ fun BottomSheetPlayer(
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
+} else if (playerDesignStyle == PlayerDesignStyle.LOOPER) {
+
+                    enrichedMetadata?.let { metadata ->
+                        LooperPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            sliderPosition = sliderPosition,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            canvasPrimaryUrl = artworkCanvas?.animated,
+                            canvasFallbackUrl = artworkCanvas?.videoUrl,
+                            onSeek = onSliderValueChange,
+                            onSeekFinished = onSliderValueChangeFinished,
+                            onLyricsClick = { isInlineLyricsOpen = !isInlineLyricsOpen },
+                            onQueueClick = openQueue,
+                            lyricsVisible = isInlineLyricsOpen,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+
+                                    .windowInsetsPadding(
+                                        WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
+                                    ).nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
 } else if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
 
                     enrichedMetadata?.let { metadata ->
@@ -2654,22 +2666,6 @@ fun BottomSheetPlayer(
                                     },
                                 )
                             }
-
-                            enrichedMetadata?.let { metadata ->
-                                NumberedPlayerInlineLyrics(
-                                    visible = isInlineLyricsOpen,
-                                    onClose = { isInlineLyricsOpen = false },
-                                    sliderPositionProvider = { sliderPosition },
-                                    lyricsSyncOffset = lyricsSyncOffset,
-                                    onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
-                                    mediaMetadata = metadata,
-                                    textColor = TextBackgroundColor,
-                                    modifier =
-                                        Modifier
-                                            .fillMaxSize()
-                                            .padding(vertical = 8.dp),
-                                )
-                            }
                         }
 
                         enrichedMetadata?.let {
@@ -2729,6 +2725,7 @@ fun BottomSheetPlayer(
                 playerDesignStyle == PlayerDesignStyle.TIKTOK ||
                 playerDesignStyle == PlayerDesignStyle.SIMPMUSIC ||
                 playerDesignStyle == PlayerDesignStyle.SPATIALFLOW ||
+                playerDesignStyle == PlayerDesignStyle.LOOPER ||
                 useBlackBackground
             ) {
                 Color.White
@@ -2787,6 +2784,22 @@ fun BottomSheetPlayer(
                     }
                 },
                 pureBlack = pureBlack,
+            )
+        }
+
+        mediaMetadata?.let { metadata ->
+            MikoLyricsTransition(
+                visible = isInlineLyricsOpen,
+
+                backHandlerEnabled =
+                    isInlineLyricsOpen &&
+                        state.isExpandedOrExpanding,
+                mediaMetadata = metadata,
+                navController = navController,
+                lyricsSyncOffset = lyricsSyncOffset,
+                onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
+                onDismiss = { isInlineLyricsOpen = false },
+                onQueueClick = openQueue,
             )
         }
 
@@ -2905,6 +2918,86 @@ fun BottomSheetPlayer(
     }
 }
 
+@Composable
+private fun MikoLyricsTransition(
+    visible: Boolean,
+    backHandlerEnabled: Boolean,
+    mediaMetadata: MediaMetadata,
+    navController: NavController,
+    lyricsSyncOffset: Int,
+    onLyricsSyncOffsetChange: (Int) -> Unit,
+    onDismiss: () -> Unit,
+    onQueueClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val animationsDisabled = LocalAnimationsDisabled.current
+    val progress = remember { Animatable(initialValue = 0f) }
+    LaunchedEffect(visible, animationsDisabled) {
+        if (animationsDisabled) {
+            progress.snapTo(if (visible) 1f else 0f)
+        } else {
+            progress.animateTo(
+                targetValue = if (visible) 1f else 0f,
+                animationSpec =
+                    if (visible) {
+
+                        tween(
+                            durationMillis = 900,
+                            easing = FastOutSlowInEasing,
+                        )
+                    } else {
+
+                        spring(
+                            dampingRatio = 1f,
+                            stiffness = 80f,
+                            visibilityThreshold = 0.001f,
+                        )
+                    },
+            )
+        }
+    }
+    val progressState = progress.asState()
+    val showContent by remember(visible) {
+        derivedStateOf { visible || progressState.value > 0f }
+    }
+
+    if (showContent) {
+        // A whole-page lyrics overlay, always full screen: no rounded "sheet"
+        // corners and no dim scrim behind it — the lyrics page covers the
+        // player (controls included) edge to edge instead of reading as a box
+        // floating over it.
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val p = progressState.value.coerceIn(0f, 1f)
+
+                        translationY = size.height * (1f - p)
+                    }.background(MaterialTheme.colorScheme.surface),
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+
+                                alpha = (progressState.value * 1.35f).coerceIn(0f, 1f)
+                            },
+                ) {
+                    LyricsScreen(
+                        mediaMetadata = mediaMetadata,
+                        onBackClick = onDismiss,
+                        navController = navController,
+                        lyricsSyncOffset = lyricsSyncOffset,
+                        onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                        onQueueClick = onQueueClick,
+                        backHandlerEnabled = backHandlerEnabled,
+                    )
+                }
+            }
+    }
+}
 @Composable
 private fun BackdropBlurApi30(
     model: String?,

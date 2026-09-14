@@ -89,6 +89,13 @@ import androidx.media3.exoplayer.offline.Download
 import androidx.media3.ui.AspectRatioFrameLayout
 import kotlinx.coroutines.delay
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
+import moe.rukamori.archivetune.ui.player.LocalVideoSelectedHeight
+import moe.rukamori.archivetune.ui.player.LocalVideoAvailableHeights
+import moe.rukamori.archivetune.ui.player.LocalVideoOnPreferredHeightChange
+import moe.rukamori.archivetune.ui.player.LocalVideoPreferredHeight
+import moe.rukamori.archivetune.ui.player.LocalVideoPlaybackFailed
+import moe.rukamori.archivetune.ui.player.LocalVideoArtworkState
+import moe.rukamori.archivetune.ui.player.InlineVideoPlayer
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.media3.exoplayer.source.ShuffleOrder
@@ -166,6 +173,18 @@ fun SpatialFlowPlayerContent(
 
     val isDark = appIsDark
     val canvasAvailable = !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
+
+    // YouTube music-video playback: the video artwork replaces the artwork
+    // pager the same way V7 does it — full InlineVideoPlayer with the quality
+    // pill, falling back to the sleeve when it fails or while lyrics are open.
+    val videoState = LocalVideoArtworkState.current
+    val videoPlaybackFailed = LocalVideoPlaybackFailed.current
+    val videoShowing =
+        videoState != null &&
+            mediaMetadata.isMusicVideo &&
+            !mediaMetadata.id.isLocalMediaId() &&
+            !lyricsModeEnabled &&
+            !videoPlaybackFailed
     val surfaceIsDark = isDark || canvasAvailable
     val contentColor = if (surfaceIsDark) Color.White else Color(0xFF1C1B1F)
     val contentSecondary = if (surfaceIsDark) Color.White.copy(alpha = 0.6f) else Color(0xFF1C1B1F).copy(alpha = 0.6f)
@@ -486,7 +505,26 @@ fun SpatialFlowPlayerContent(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                if (!canvasAvailable) {
+                if (videoShowing && videoState != null) {
+                    InlineVideoPlayer(
+                        state = videoState,
+                        preferredHeight = LocalVideoPreferredHeight.current,
+                        onPreferredHeightChange = LocalVideoOnPreferredHeightChange.current,
+                        availableHeights = LocalVideoAvailableHeights.current,
+                        selectedHeight = LocalVideoSelectedHeight.current,
+                        controlsOnTap = true,
+                        modifier =
+                            Modifier
+                                .size(albumArtSize)
+                                .clip(RoundedCornerShape(16.dp)),
+                    )
+
+                    // Breathing room between the artwork and the title stack:
+                    // the artwork sits a bit higher while the bottom controls
+                    // stay pinned exactly where they sit while the canvas
+                    // plays (the weighted spacer above absorbs the shift).
+                    Spacer(modifier = Modifier.height(36.dp))
+                } else if (!canvasAvailable) {
                     SpatialFlowArtworkPager(
                         mediaMetadata = mediaMetadata,
                         queueWindows = queueWindows,

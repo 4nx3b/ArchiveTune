@@ -59,6 +59,7 @@ import kotlinx.coroutines.CoroutineScope
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.HomeCatalogueSwitchKey
 import moe.rukamori.archivetune.constants.QuickPicks
 import moe.rukamori.archivetune.home.HomeAction
@@ -151,6 +152,7 @@ fun HomeScreen(
     }
 
     val homeHazeState = LocalHomeHazeState.current
+    val (disableBlur) = rememberPreference(DisableBlurKey, false)
     Box(
         modifier =
             Modifier
@@ -165,7 +167,9 @@ fun HomeScreen(
                 ),
     ) {
 
-        HomeAtmosphereBackground()
+        if (!disableBlur) {
+            HomeAtmosphereBackground()
+        }
         when (val state = screenState) {
             HomeScreenState.Loading -> {
 

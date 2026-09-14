@@ -570,6 +570,10 @@ fun Queue(
                 PlayerDesignStyle.SPATIALFLOW -> {
 
                 }
+
+                PlayerDesignStyle.LOOPER -> {
+
+                }
             }
 
             if (showSleepTimerDialog) {

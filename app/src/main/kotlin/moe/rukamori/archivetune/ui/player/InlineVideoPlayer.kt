@@ -130,6 +130,13 @@ val LocalVideoFullscreenState = compositionLocalOf {
 
 val LocalVideoArtworkState = compositionLocalOf<VideoArtworkState?> { null }
 
+/**
+ * Whether the current video artwork failed to initialise — the player styles
+ * that render InlineVideoPlayer read this to fall back to the artwork stack
+ * (the self-contained styles can't see Player()'s local failure state).
+ */
+val LocalVideoPlaybackFailed = compositionLocalOf { false }
+
 val LocalVideoPreferredHeight = compositionLocalOf<Int?> { null }
 
 val LocalVideoOnPreferredHeightChange = compositionLocalOf<(Int?) -> Unit> { {} }

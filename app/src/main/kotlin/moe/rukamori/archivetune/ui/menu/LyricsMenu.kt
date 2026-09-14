@@ -1490,6 +1490,13 @@ private fun uniqueTranslationSeparator(segments: List<AiLyricsSegment>): String 
 private const val MaxTranslatorItemsPerBatch = 50
 private const val MaxTranslatorCharsPerBatch = 4000
 
+/**
+ * The lyrics overflow popup's fill when liquid glass is off (or unavailable): the app's
+ * dark ink, fully opaque — the menu must never show blur or content behind it without
+ * the glass preference on.
+ */
+private val UnglassedLyricsPopupColor = Color(0xFF1C1C1E)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchLyricsInputDialog(
@@ -1864,7 +1871,6 @@ fun AnchoredLyricsOverflowMenu(
     }
 
     val scrimColor = MaterialTheme.colorScheme.scrim
-    val popupColor = MaterialTheme.colorScheme.surfaceContainerHigh
 
     Box(
         modifier =
@@ -1934,11 +1940,32 @@ fun AnchoredLyricsOverflowMenu(
                     }
 
                     .then(
-                        frostedBlurModifier
-                            ?: Modifier.drawBehind {
-                                val a = alphaAnim.value.coerceIn(0f, 1f)
-                                drawRect(color = popupColor, alpha = a)
-                            },
+                        // Liquid glass ON: the frosted backdrop IS the surface, but it
+                        // must read as dark charcoal glass, never milk: the popup most
+                        // often opens over the lyrics, and a 32dp blur of big white
+                        // lyric text washes the sample bright. A 0.72 black scrim over
+                        // the glass keeps the blur + vibrancy structure visible while
+                        // holding the popup at a deep tint no matter what is behind it.
+                        // Liquid glass OFF (backdrop == null): fully opaque #1C1C1E —
+                        // the app's dark ink, the one fill that keeps the white menu
+                        // rows legible in both themes — so not a hint of blur shows
+                        // through with the toggle off.
+                        if (frostedBlurModifier != null) {
+                            frostedBlurModifier
+                                .then(
+                                    Modifier.background(
+                                        Color.Black.copy(
+                                            alpha = 0.72f * alphaAnim.value.coerceIn(0f, 1f),
+                                        ),
+                                    ),
+                                )
+                        } else {
+                            Modifier.background(
+                                UnglassedLyricsPopupColor.copy(
+                                    alpha = alphaAnim.value.coerceIn(0f, 1f),
+                                ),
+                            )
+                        },
                     )
 
                     .clip(RoundedCornerShape(16.dp))

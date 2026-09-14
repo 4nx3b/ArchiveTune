@@ -499,6 +499,7 @@ fun PlayerTopActions(
         PlayerDesignStyle.TIKTOK,
         PlayerDesignStyle.SIMPMUSIC,
         PlayerDesignStyle.SPATIALFLOW,
+        PlayerDesignStyle.LOOPER,
         -> {
             Unit
         }
@@ -1078,6 +1079,7 @@ fun PlayerPlaybackControls(
         PlayerDesignStyle.TIKTOK,
         PlayerDesignStyle.SIMPMUSIC,
         PlayerDesignStyle.SPATIALFLOW,
+        PlayerDesignStyle.LOOPER,
         -> {
             Unit
         }
