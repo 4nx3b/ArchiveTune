@@ -533,7 +533,6 @@ class App :
                 .maxSizeBytes(imageCacheConfig.maxSizeBytes)
                 .build()
 
-
         val imageHttpClient =
             OkHttpClient
                 .Builder()

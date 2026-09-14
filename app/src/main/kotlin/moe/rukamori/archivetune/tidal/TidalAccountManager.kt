@@ -1,13 +1,3 @@
-/**
- * ArchiveTune (2026)
- * © Rukamori — github.com/rukamori
- * GPL-3.0 License | Contributors: see git history
- *
- * Tidal account login via the OAuth 2.0 Authorization Code + PKCE flow (with a Bearer-capture
- * fallback), plus subscription (HiFi/Premium) detection and account-based stream resolution.
- * Signing in unlocks the account playback path; the legacy device-code grant has been removed in
- * favour of the in-app WebView login (see [buildPkceChallenge]/[exchangePkceCode]).
- */
 
 package moe.rukamori.archivetune.tidal
 
