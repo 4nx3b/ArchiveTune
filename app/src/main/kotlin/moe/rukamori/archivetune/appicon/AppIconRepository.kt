@@ -257,7 +257,6 @@ class AppIconRepository
 
         private fun AppIcon.componentName(): ComponentName = ComponentName(context.packageName, aliasClassName)
 
-
         private fun findSelectedRuntimeIcon(icons: List<AppIcon>): AppIcon {
             val prefId = runtimeSelectionPrefs().getString(KEY_RUNTIME_SELECTED, null)
             return icons.firstOrNull { it.id == prefId && it.componentExists() }

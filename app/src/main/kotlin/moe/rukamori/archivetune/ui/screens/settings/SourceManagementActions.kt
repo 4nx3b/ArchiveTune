@@ -1,10 +1,3 @@
-/*
- * ArchiveTune (2026)
- * © Rukamori — github.com/rukamori
- * GPL-3.0 License | Contributors: see git history
- *
- * Small shared helpers reused by both the Tidal and Qobuz instance managers.
- */
 
 package moe.rukamori.archivetune.ui.screens.settings
 

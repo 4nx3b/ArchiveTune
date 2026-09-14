@@ -63,7 +63,6 @@ internal object TdEngine {
     val isRunning: Boolean
         get() = flow != null
 
-
     private fun crashNoteFile(context: Context): File =
         File(File(context.applicationContext.filesDir, "tdlib-native"), "last-crash.txt")
 

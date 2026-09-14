@@ -7,7 +7,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-
 package moe.rukamori.archivetune.playback
 
 import android.annotation.SuppressLint
@@ -760,7 +759,6 @@ class SpatialFlowHapticEngine(context: Context) {
         private const val TRANSIENT_LOCKOUT_MS = 120L
     }
 }
-
 
 object MusicHapticsSettings {
     private const val PREFS_NAME = "AppSettings"
