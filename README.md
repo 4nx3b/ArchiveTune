@@ -287,6 +287,7 @@ ArchiveTune is made possible by the work of many open-source projects and commun
 - **Muzo** by [Shashwat-CODING](https://github.com/Shashwat-CODING/Muzo) for the fonts API, Spotify Canvas, and Qobuz backup, as well as design inspiration.
 - **BitChord** by [kushagrasinghx](https://github.com/kushagrasinghx/BitChord) for the player style.
 - [BetterLyrics](https://better-lyrics.boidu.dev/) for word-by-word lyrics, unison and artwork provider support.
+- **LastWave** by [Clash-Projects](https://github.com/Clash-Projects/LastWave-native) for the Last.fm stats design.
 - [Material Color Utilities](https://github.com/material-foundation/material-color-utilities)
 - [Read You](https://github.com/Ashinch/ReadYou) and [Seal](https://github.com/JunkFood02/Seal) for UI component inspiration.
 - Translators, beta testers, contributors, and community members who continue to support the project.
