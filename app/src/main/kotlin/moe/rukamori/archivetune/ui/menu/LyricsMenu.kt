@@ -83,6 +83,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -838,7 +839,7 @@ fun LyricsMenu(
 
                             if (index < menuItems.size - 1) {
                                 HorizontalDivider(
-                                    color = Color.White.copy(alpha = 0.12f),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                                     thickness = 0.5.dp,
                                     modifier = Modifier.padding(horizontal = 16.dp),
                                 )
@@ -1708,15 +1709,15 @@ private fun AppleMusicLyricsMenuRow(
 
     val headlineColor =
         if (item.isDestructive) {
-            Color(0xFFFF453A)
+            MaterialTheme.colorScheme.error
         } else {
-            Color.White
+            MaterialTheme.colorScheme.onSurface
         }
     val iconColor =
         if (item.isDestructive) {
-            Color(0xFFFF453A)
+            MaterialTheme.colorScheme.error
         } else {
-            Color.White
+            MaterialTheme.colorScheme.onSurfaceVariant
         }
     val headlineWeight = if (item.isDestructive) FontWeight.SemiBold else FontWeight.Medium
 
@@ -1762,10 +1763,7 @@ fun AnchoredLyricsOverflowMenu(
     onDismiss: () -> Unit,
     viewModel: LyricsMenuViewModel = hiltViewModel(),
     backdrop: PlatformBackdrop? = null,
-
-    scrimColor: Color = Color.Black.copy(alpha = 0.45f),
 ) {
-
     var dismissed by remember { mutableStateOf(false) }
 
     val density = LocalDensity.current
@@ -1822,9 +1820,6 @@ fun AnchoredLyricsOverflowMenu(
         onDismiss()
     }
 
-    val scale = scaleAnim.value
-    val alpha = alphaAnim.value
-
     var anchorSpaceHeightPx by remember { mutableIntStateOf(0) }
     var popupHeightPx by remember { mutableIntStateOf(0) }
     val verticalOffsetPx = with(density) { 4.dp.toPx() }.toInt()
@@ -1855,12 +1850,20 @@ fun AnchoredLyricsOverflowMenu(
         }
     }
 
+    val scrimColor = MaterialTheme.colorScheme.scrim
+    val popupColor = MaterialTheme.colorScheme.surfaceContainerHigh
+
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
                 .onSizeChanged { anchorSpaceHeightPx = it.height }
-                .background(scrimColor.copy(alpha = scrimColor.alpha * alpha))
+                .drawBehind {
+                    val a = alphaAnim.value.coerceIn(0f, 1f)
+                    if (a > 0f) {
+                        drawRect(color = scrimColor, alpha = 0.32f * a)
+                    }
+                }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -1896,9 +1899,9 @@ fun AnchoredLyricsOverflowMenu(
                     .heightIn(max = 520.dp)
                     .onSizeChanged { popupHeightPx = it.height }
                     .graphicsLayer {
-                        this.alpha = alpha
-                        this.scaleX = scale
-                        this.scaleY = scale
+                        this.alpha = alphaAnim.value
+                        this.scaleX = scaleAnim.value
+                        this.scaleY = scaleAnim.value
 
                         val popupWidthPx = 220.dp.toPx()
                         val horizontalMarginPx = 16.dp.toPx()
@@ -1919,10 +1922,12 @@ fun AnchoredLyricsOverflowMenu(
 
                     .then(
                         frostedBlurModifier
-                            ?: Modifier.background(Color.Black.copy(alpha = 0.65f * alpha)),
+                            ?: Modifier.drawBehind {
+                                val a = alphaAnim.value.coerceIn(0f, 1f)
+                                drawRect(color = popupColor, alpha = a)
+                            },
                     )
 
-                    .background(Color.Black.copy(alpha = 0.55f))
                     .clip(RoundedCornerShape(16.dp))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },

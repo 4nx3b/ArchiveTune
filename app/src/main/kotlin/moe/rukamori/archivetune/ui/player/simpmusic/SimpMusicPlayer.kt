@@ -167,7 +167,6 @@ fun SimpMusicPlayerContent(
     currentFormat: FormatEntity?,
     onSeek: (Long) -> Unit,
     onSeekFinished: () -> Unit,
-    onShowLyrics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
