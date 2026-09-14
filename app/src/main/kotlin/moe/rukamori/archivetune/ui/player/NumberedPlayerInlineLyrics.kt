@@ -40,7 +40,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.models.MediaMetadata
-import moe.rukamori.archivetune.playback.LocalPlayerConnection
+import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
@@ -69,7 +69,7 @@ fun NumberedPlayerInlineLyrics(
         if (!visible) showOverflowMenu = false
     }
 
-    AnimatedVisibility(
+    androidx.compose.animation.AnimatedVisibility(
         visible = visible,
         enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
         exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),

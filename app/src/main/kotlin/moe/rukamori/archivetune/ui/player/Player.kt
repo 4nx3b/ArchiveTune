@@ -2073,7 +2073,7 @@ fun BottomSheetPlayer(
                         ) {
                             val screenWidth = LocalConfiguration.current.screenWidthDp
                             val thumbnailSize = (screenWidth * 0.4).dp
-                            AnimatedVisibility(
+                            androidx.compose.animation.AnimatedVisibility(
                                 visible = !isInlineLyricsOpen,
                                 enter = fadeIn(tween(300, easing = FastOutSlowInEasing)),
                                 exit = fadeOut(tween(200, easing = FastOutSlowInEasing)),
@@ -2631,7 +2631,7 @@ fun BottomSheetPlayer(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier.weight(1f),
                         ) {
-                            AnimatedVisibility(
+                            androidx.compose.animation.AnimatedVisibility(
                                 visible = !isInlineLyricsOpen,
                                 enter = fadeIn(tween(300, easing = FastOutSlowInEasing)),
                                 exit = fadeOut(tween(200, easing = FastOutSlowInEasing)),
