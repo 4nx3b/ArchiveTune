@@ -8,76 +8,97 @@
 @file:OptIn(
     androidx.compose.material3.ExperimentalMaterial3Api::class,
     androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
 )
 
 package moe.rukamori.archivetune.ui.menu
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SegmentedListItem
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.WavyProgressIndicatorDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -89,18 +110,19 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.equalizer.EqualizerControlMode
-import moe.rukamori.archivetune.equalizer.EqualizerTone
-import moe.rukamori.archivetune.viewmodels.EqualizerBandUiModel
+import moe.rukamori.archivetune.constants.AudioPlaybackSpeedKey
+import moe.rukamori.archivetune.constants.AudioPlaybackSpeedPitchMatchKey
+import moe.rukamori.archivetune.playback.EqReverbPreset
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.EqualizerEffect
 import moe.rukamori.archivetune.viewmodels.EqualizerProfileUiModel
 import moe.rukamori.archivetune.viewmodels.EqualizerScreenState
-import moe.rukamori.archivetune.viewmodels.EqualizerToneUiModel
 import moe.rukamori.archivetune.viewmodels.EqualizerUiModel
 import moe.rukamori.archivetune.viewmodels.EqualizerViewModel
-import kotlin.math.roundToInt
-import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
-import androidx.compose.runtime.getValue
+import kotlinx.coroutines.delay
+import kotlin.math.abs
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun EqualizerDialog(
@@ -151,34 +173,7 @@ fun EqualizerDialog(
             snackbarHostState = snackbarHostState,
             onDismiss = onDismiss,
             onOpenSystemEqualizer = openSystemEqualizer,
-            onEnabledChange = viewModel::setEnabled,
-            onModeChange = viewModel::setControlMode,
-            onPresetClick = viewModel::applyPreset,
-            onToneValueChange = viewModel::updateToneDraft,
-            onToneValueChangeFinished = viewModel::commitTone,
-            onBandValueChange = viewModel::updateBandDraft,
-            onBandValueChangeFinished = viewModel::commitBands,
-            onResetBands = viewModel::resetBands,
-            onOutputGainEnabledChange = viewModel::setOutputGainEnabled,
-            onOutputGainValueChange = viewModel::updateOutputGainDraft,
-            onOutputGainValueChangeFinished = viewModel::commitOutputGain,
-            onBassBoostEnabledChange = viewModel::setBassBoostEnabled,
-            onBassBoostValueChange = viewModel::updateBassBoostDraft,
-            onBassBoostValueChangeFinished = viewModel::commitBassBoost,
-            onVirtualizerEnabledChange = viewModel::setVirtualizerEnabled,
-            onVirtualizerValueChange = viewModel::updateVirtualizerDraft,
-            onVirtualizerValueChangeFinished = viewModel::commitVirtualizer,
-            onAutoHeadroomEnabledChange = viewModel::setAutoHeadroomEnabled,
-            onShowSaveProfile = viewModel::showSaveProfileDialog,
-            onProfileNameChange = viewModel::updateProfileName,
-            onSaveProfile = viewModel::saveProfile,
-            onDismissSaveProfile = viewModel::dismissSaveProfileDialog,
-            onShowManageProfiles = viewModel::showManageProfiles,
-            onDismissManageProfiles = viewModel::dismissManageProfiles,
-            onApplyProfile = viewModel::applyProfile,
-            onDeleteProfile = viewModel::deleteProfile,
-            onImportProfiles = viewModel::requestImport,
-            onExportProfile = viewModel::requestExport,
+            viewModel = viewModel,
         )
     }
 }
@@ -189,478 +184,591 @@ private fun EqualizerScreen(
     snackbarHostState: SnackbarHostState,
     onDismiss: () -> Unit,
     onOpenSystemEqualizer: () -> Unit,
-    onEnabledChange: (Boolean) -> Unit,
-    onModeChange: (EqualizerControlMode) -> Unit,
-    onPresetClick: (String) -> Unit,
-    onToneValueChange: (EqualizerTone, Int) -> Unit,
-    onToneValueChangeFinished: (EqualizerTone) -> Unit,
-    onBandValueChange: (Int, Int) -> Unit,
-    onBandValueChangeFinished: () -> Unit,
-    onResetBands: () -> Unit,
-    onOutputGainEnabledChange: (Boolean) -> Unit,
-    onOutputGainValueChange: (Int) -> Unit,
-    onOutputGainValueChangeFinished: () -> Unit,
-    onBassBoostEnabledChange: (Boolean) -> Unit,
-    onBassBoostValueChange: (Int) -> Unit,
-    onBassBoostValueChangeFinished: () -> Unit,
-    onVirtualizerEnabledChange: (Boolean) -> Unit,
-    onVirtualizerValueChange: (Int) -> Unit,
-    onVirtualizerValueChangeFinished: () -> Unit,
-    onAutoHeadroomEnabledChange: (Boolean) -> Unit,
-    onShowSaveProfile: () -> Unit,
-    onProfileNameChange: (String) -> Unit,
-    onSaveProfile: () -> Unit,
-    onDismissSaveProfile: () -> Unit,
-    onShowManageProfiles: () -> Unit,
-    onDismissManageProfiles: () -> Unit,
-    onApplyProfile: (String) -> Unit,
-    onDeleteProfile: (String) -> Unit,
-    onImportProfiles: () -> Unit,
-    onExportProfile: (String) -> Unit,
+    viewModel: EqualizerViewModel,
 ) {
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    Scaffold(
-        modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            LargeFlexibleTopAppBar(
-                title = { Text(text = stringResource(R.string.equalizer)) },
-                subtitle = { Text(text = stringResource(R.string.eq_screen_subtitle)) },
-                navigationIcon = {
-                    IconButton(onClick = onDismiss) {
-                        Icon(painter = painterResource(R.drawable.close), contentDescription = null)
-                    }
-                },
-                colors =
-                    TopAppBarDefaults.largeTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    ),
-                scrollBehavior = scrollBehavior,
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        contentWindowInsets = WindowInsets.navigationBars,
-    ) { contentPadding ->
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.surface),
+    ) {
         when (state) {
-            EqualizerScreenState.Loading -> {
-                EqualizerLoading(contentPadding)
-            }
+            EqualizerScreenState.Loading -> EqualizerLoading()
 
-            EqualizerScreenState.Empty -> {
-                EqualizerUnavailable(contentPadding, onOpenSystemEqualizer)
-            }
+            EqualizerScreenState.Empty -> EqualizerUnavailable(onOpenSystemEqualizer)
 
-            is EqualizerScreenState.Error -> {
-                EqualizerError(contentPadding, state.messageResId, onOpenSystemEqualizer)
-            }
+            is EqualizerScreenState.Error -> EqualizerError(state.messageResId, onOpenSystemEqualizer)
 
             is EqualizerScreenState.Success -> {
-                EqualizerContent(
+                AudioEffectsContent(
                     model = state.model,
-                    contentPadding = contentPadding,
-                    onOpenSystemEqualizer = onOpenSystemEqualizer,
-                    onEnabledChange = onEnabledChange,
-                    onModeChange = onModeChange,
-                    onPresetClick = onPresetClick,
-                    onToneValueChange = onToneValueChange,
-                    onToneValueChangeFinished = onToneValueChangeFinished,
-                    onBandValueChange = onBandValueChange,
-                    onBandValueChangeFinished = onBandValueChangeFinished,
-                    onResetBands = onResetBands,
-                    onOutputGainEnabledChange = onOutputGainEnabledChange,
-                    onOutputGainValueChange = onOutputGainValueChange,
-                    onOutputGainValueChangeFinished = onOutputGainValueChangeFinished,
-                    onBassBoostEnabledChange = onBassBoostEnabledChange,
-                    onBassBoostValueChange = onBassBoostValueChange,
-                    onBassBoostValueChangeFinished = onBassBoostValueChangeFinished,
-                    onVirtualizerEnabledChange = onVirtualizerEnabledChange,
-                    onVirtualizerValueChange = onVirtualizerValueChange,
-                    onVirtualizerValueChangeFinished = onVirtualizerValueChangeFinished,
-                    onAutoHeadroomEnabledChange = onAutoHeadroomEnabledChange,
-                    onShowSaveProfile = onShowSaveProfile,
-                    onShowManageProfiles = onShowManageProfiles,
-                    onImportProfiles = onImportProfiles,
+                    onDismiss = onDismiss,
+                    viewModel = viewModel,
                 )
             }
         }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 
     val model = (state as? EqualizerScreenState.Success)?.model
     if (model?.saveProfileDialog?.visible == true) {
         SaveProfileDialog(
             name = model.saveProfileDialog.name,
-            onNameChange = onProfileNameChange,
-            onSave = onSaveProfile,
-            onDismiss = onDismissSaveProfile,
+            onNameChange = viewModel::updateProfileName,
+            onSave = viewModel::saveProfile,
+            onDismiss = viewModel::dismissSaveProfileDialog,
         )
     }
     if (model?.manageProfilesVisible == true) {
         ManageProfilesDialog(
             profiles = model.profiles,
-            onApply = onApplyProfile,
-            onDelete = onDeleteProfile,
-            onExport = onExportProfile,
-            onDismiss = onDismissManageProfiles,
+            onApply = viewModel::applyProfile,
+            onDelete = viewModel::deleteProfile,
+            onExport = viewModel::requestExport,
+            onDismiss = viewModel::dismissManageProfiles,
+        )
+    }
+}
+
+/**
+ * The SpatialFlow-style audio effects screen: two segmented feature cards
+ * (8D + Reverb + Bass + Equalizer, then Loudness + Balance + Speed +
+ * Virtualizer), expressive switches with checkmark thumbs, springs on every
+ * slider, and a pulsing wavy progress card while the 8D effect settles.
+ * Every effect is independent - the equalizer switch governs only the
+ * frequency bands.
+ */
+@Composable
+private fun AudioEffectsContent(
+    model: EqualizerUiModel,
+    onDismiss: () -> Unit,
+    viewModel: EqualizerViewModel,
+) {
+    val scrollState = rememberScrollState()
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+    // Playback speed + pitch matching live in the player preferences; the
+    // MusicService applies them to the (primary and crossfade) players.
+    val (playbackSpeed, onPlaybackSpeedChange) = rememberPreference(AudioPlaybackSpeedKey, defaultValue = 1.0f)
+    val (isPitchMatched, onPitchMatchedChange) = rememberPreference(AudioPlaybackSpeedPitchMatchKey, defaultValue = false)
+    var isSpeedSwitchOn by remember { mutableStateOf(playbackSpeed != 1.0f) }
+
+    // Stereo balance keeps the reference behaviour: the section switch is a
+    // session-local affordance (off resets the position to the centre).
+    var isBalanceSwitchOn by remember { mutableStateOf(model.balance != 0f) }
+
+    // Processing flourish: the reference shows the wavy card while it renders
+    // 8D offline and keeps it 1.2s past 100%. Ours is real time, so the card
+    // appears for 1.2s right after the user flips 8D on.
+    var showProcessingCard by remember { mutableStateOf(false) }
+    var observed8DEnabled by remember { mutableStateOf(model.eightDEnabled) }
+    LaunchedEffect(model.eightDEnabled) {
+        val changed = model.eightDEnabled != observed8DEnabled
+        observed8DEnabled = model.eightDEnabled
+        if (changed && model.eightDEnabled) {
+            showProcessingCard = true
+            delay(1200.milliseconds)
+            showProcessingCard = false
+        } else {
+            showProcessingCard = false
+        }
+    }
+
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.surface)
+                .statusBarsPadding()
+                .verticalScroll(scrollState)
+                .padding(horizontal = 24.dp)
+                .padding(top = 8.dp, bottom = 120.dp),
+    ) {
+        // Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.eq_audio_effects),
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .padding(top = 8.dp),
+            )
+            IconButton(onClick = viewModel::showSaveProfileDialog) {
+                Icon(
+                    painter = painterResource(R.drawable.add),
+                    contentDescription = stringResource(R.string.eq_save_profile),
+                )
+            }
+            IconButton(onClick = viewModel::showManageProfiles, enabled = model.profiles.size > 0) {
+                Icon(
+                    painter = painterResource(R.drawable.tune),
+                    contentDescription = stringResource(R.string.eq_manage),
+                )
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    painter = painterResource(R.drawable.close),
+                    contentDescription = stringResource(R.string.eq_close),
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = showProcessingCard,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
+            ProcessingCard(progress = 100)
+        }
+
+        val columns = if (isLandscape) 2 else 1
+
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            maxItemsInEachRow = columns,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                // GROUP 1: (8D + Reverb + Bass + EQ)
+                SegmentedFeatureCard(
+                    items =
+                        listOf(
+                            {
+                                SwitchSection(
+                                    title = stringResource(R.string.eq_8d),
+                                    desc = stringResource(R.string.eq_8d_description),
+                                    checked = model.eightDEnabled,
+                                    onToggle = viewModel::set8DEnabled,
+                                    infoTooltip = stringResource(R.string.eq_8d_info),
+                                )
+                            },
+                            {
+                                ReverbSection(
+                                    enabled = model.reverbEnabled,
+                                    onToggle = viewModel::setReverbEnabled,
+                                    presetValue = model.reverbPreset.storageValue.toFloat(),
+                                    onPresetChange = { index ->
+                                        viewModel.setReverbPreset(EqReverbPreset.fromStorage(index.toInt()))
+                                    },
+                                )
+                            },
+                            {
+                                LabelSliderSection(
+                                    title = stringResource(R.string.eq_bass_boost),
+                                    label = stringResource(R.string.eq_bass_level),
+                                    value = model.bassBoostStrength / BASS_STRENGTH_PER_DB,
+                                    range = 0f..BASS_MAX_DB,
+                                    checked = model.bassBoostEnabled,
+                                    onToggle = viewModel::setBassBoostEnabled,
+                                    onValueChange = { db ->
+                                        val strength = (db * BASS_STRENGTH_PER_DB).toInt().coerceIn(0, 1000)
+                                        viewModel.updateBassBoostDraft(strength)
+                                        viewModel.commitBassBoost()
+                                    },
+                                    suffix = stringResource(R.string.eq_unit_db),
+                                )
+                            },
+                            {
+                                EqualizerSection(
+                                    enabled = model.enabled,
+                                    onToggle = viewModel::setEnabled,
+                                    bands = model.fixedBandsMb.map { it / 100f },
+                                    onBandChange = { index, db ->
+                                        viewModel.updateFixedBandDraft(index, (db * 100).toInt())
+                                        viewModel.commitFixedBands()
+                                    },
+                                    presets = model.presets,
+                                    onPresetClick = viewModel::applyPreset,
+                                )
+                            },
+                        ),
+                )
+            }
+
+            Box(modifier = Modifier.weight(1f)) {
+                // GROUP 2: (Loudness + Balance + Speed + Virtualizer)
+                SegmentedFeatureCard(
+                    items =
+                        listOf(
+                            {
+                                LabelSliderSection(
+                                    title = stringResource(R.string.eq_loudness),
+                                    label = stringResource(R.string.eq_gain),
+                                    value = (model.outputGainMb.coerceIn(0, 1200)) / 100f,
+                                    range = 0f..LOUDNESS_MAX_DB,
+                                    checked = model.outputGainEnabled,
+                                    onToggle = viewModel::setOutputGainEnabled,
+                                    onValueChange = { db ->
+                                        val mb = (db * 100).toInt().coerceIn(0, 1200)
+                                        viewModel.updateOutputGainDraft(mb)
+                                        viewModel.commitOutputGain()
+                                    },
+                                    prefix = "+",
+                                    suffix = stringResource(R.string.eq_unit_db),
+                                )
+                            },
+                            {
+                                BalanceSection(
+                                    enabled = isBalanceSwitchOn,
+                                    onToggle = { on ->
+                                        isBalanceSwitchOn = on
+                                        if (!on) {
+                                            viewModel.updateBalanceDraft(0f)
+                                            viewModel.commitBalance()
+                                        }
+                                    },
+                                    value = model.balance * BALANCE_RANGE,
+                                    onChange = { position ->
+                                        viewModel.updateBalanceDraft(position / BALANCE_RANGE)
+                                        viewModel.commitBalance()
+                                    },
+                                )
+                            },
+                            {
+                                SpeedSection(
+                                    enabled = isSpeedSwitchOn,
+                                    onToggle = { on ->
+                                        isSpeedSwitchOn = on
+                                        onPlaybackSpeedChange(if (on) playbackSpeed.coerceIn(0.5f, 2.0f) else 1.0f)
+                                    },
+                                    value = playbackSpeed,
+                                    onChange = onPlaybackSpeedChange,
+                                    isPitchMatched = isPitchMatched,
+                                    onPitchMatchToggle = { onPitchMatchedChange(!isPitchMatched) },
+                                )
+                            },
+                            {
+                                LabelSliderSection(
+                                    title = stringResource(R.string.eq_virtualizer),
+                                    label = stringResource(R.string.eq_strength),
+                                    value = model.virtualizerStrength / 10f,
+                                    range = 0f..100f,
+                                    checked = model.virtualizerEnabled,
+                                    onToggle = viewModel::setVirtualizerEnabled,
+                                    onValueChange = { percent ->
+                                        val strength = (percent * 10).toInt().coerceIn(0, 1000)
+                                        viewModel.updateVirtualizerDraft(strength)
+                                        viewModel.commitVirtualizer()
+                                    },
+                                    suffix = stringResource(R.string.eq_unit_percent),
+                                )
+                            },
+                        ),
+                )
+            }
+        }
+    }
+}
+
+// --- SUB-COMPOSABLES ---
+
+@Composable
+private fun ProcessingCard(progress: Int) {
+    val infiniteTransition = rememberInfiniteTransition(label = "processing")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.2f,
+        targetValue = 1f,
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(1000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+        label = "pulse",
+    )
+
+    // Smoothly animate the progress to avoid "jumping"
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress / 100f,
+        animationSpec = WavyProgressIndicatorDefaults.ProgressAnimationSpec,
+        label = "smooth_progress",
+    )
+
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = stringResource(R.string.eq_processing_8d, progress),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.alpha(pulseAlpha),
+            )
+            Spacer(modifier = Modifier.height(16.dp)) // More space for taller wave
+
+            // Custom thick stroke for a bolder "Expressive" feel
+            val density = LocalDensity.current
+            val thickStroke =
+                remember(density) {
+                    Stroke(
+                        width = with(density) { 6.dp.toPx() },
+                        cap = StrokeCap.Round,
+                    )
+                }
+
+            LinearWavyProgressIndicator(
+                progress = { animatedProgress },
+                modifier = Modifier.fillMaxWidth().height(12.dp),
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f),
+                stroke = thickStroke,
+                trackStroke = thickStroke,
+                wavelength = WavyProgressIndicatorDefaults.LinearDeterminateWavelength,
+                amplitude = { p -> WavyProgressIndicatorDefaults.indicatorAmplitude(p) * 2.5f },
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun SegmentedFeatureCard(
+    items: List<@Composable () -> Unit>,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
+    ) {
+        items.forEachIndexed { index, item ->
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = getEffectsSegmentedShape(index = index, count = items.size),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                item()
+            }
+        }
+    }
+}
+
+private fun getEffectsSegmentedShape(index: Int, count: Int): androidx.compose.ui.graphics.Shape {
+    val outer = 28.dp
+    val inner = 4.dp
+    return when {
+        count <= 1 -> RoundedCornerShape(outer)
+        index == 0 -> RoundedCornerShape(topStart = outer, topEnd = outer, bottomStart = inner, bottomEnd = inner)
+        index == count - 1 -> RoundedCornerShape(topStart = inner, topEnd = inner, bottomStart = outer, bottomEnd = outer)
+        else -> RoundedCornerShape(inner)
+    }
+}
+
+private const val BASS_STRENGTH_PER_DB = 1000f / 15f
+private const val BASS_MAX_DB = 15f
+private const val LOUDNESS_MAX_DB = 12f
+private const val BALANCE_RANGE = 50f
+
+/**
+ * Custom Switch with "Checked" icon (Checkmark) that is always white,
+ * exactly like the reference implementation.
+ */
+@Composable
+private fun ExpressiveSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        thumbContent =
+            if (checked) {
+                {
+                    Icon(
+                        painter = painterResource(R.drawable.check),
+                        contentDescription = null,
+                        modifier = Modifier.size(SwitchDefaults.IconSize),
+                        tint = Color.White, // Always white in both dark/light
+                    )
+                }
+            } else {
+                null
+            },
+    )
+}
+
+@Composable
+private fun SwitchSection(
+    title: String,
+    desc: String,
+    checked: Boolean,
+    onToggle: (Boolean) -> Unit,
+    infoTooltip: String? = null,
+) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    SectionContainer {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(text = title, style = MaterialTheme.typography.titleLarge)
+                if (infoTooltip != null) {
+                    IconButton(
+                        onClick = { showDialog = true },
+                        modifier = Modifier.padding(start = 8.dp).size(28.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.info),
+                            contentDescription = stringResource(R.string.eq_information),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
+            ExpressiveSwitch(checked = checked, onCheckedChange = onToggle)
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(text = desc, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+
+    if (showDialog && infoTooltip != null) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text(stringResource(R.string.eq_information)) },
+            text = { Text(infoTooltip) },
+            confirmButton = {
+                TextButton(onClick = { showDialog = false }) {
+                    Text(stringResource(R.string.got_it))
+                }
+            },
+            icon = {
+                Icon(
+                    painter = painterResource(R.drawable.info),
+                    contentDescription = null,
+                )
+            },
         )
     }
 }
 
 @Composable
-private fun EqualizerContent(
-    model: EqualizerUiModel,
-    contentPadding: PaddingValues,
-    onOpenSystemEqualizer: () -> Unit,
-    onEnabledChange: (Boolean) -> Unit,
-    onModeChange: (EqualizerControlMode) -> Unit,
-    onPresetClick: (String) -> Unit,
-    onToneValueChange: (EqualizerTone, Int) -> Unit,
-    onToneValueChangeFinished: (EqualizerTone) -> Unit,
-    onBandValueChange: (Int, Int) -> Unit,
-    onBandValueChangeFinished: () -> Unit,
-    onResetBands: () -> Unit,
-    onOutputGainEnabledChange: (Boolean) -> Unit,
-    onOutputGainValueChange: (Int) -> Unit,
-    onOutputGainValueChangeFinished: () -> Unit,
-    onBassBoostEnabledChange: (Boolean) -> Unit,
-    onBassBoostValueChange: (Int) -> Unit,
-    onBassBoostValueChangeFinished: () -> Unit,
-    onVirtualizerEnabledChange: (Boolean) -> Unit,
-    onVirtualizerValueChange: (Int) -> Unit,
-    onVirtualizerValueChangeFinished: () -> Unit,
-    onAutoHeadroomEnabledChange: (Boolean) -> Unit,
-    onShowSaveProfile: () -> Unit,
-    onShowManageProfiles: () -> Unit,
-    onImportProfiles: () -> Unit,
+private fun LabelSliderSection(
+    title: String,
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    checked: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onValueChange: (Float) -> Unit,
+    prefix: String = "",
+    suffix: String = " dB",
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding =
-            PaddingValues(
-                start = 16.dp,
-                top = contentPadding.calculateTopPadding() + 12.dp,
-                end = 16.dp,
-                bottom = contentPadding.calculateBottomPadding() + 28.dp,
-            ),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        item(key = "hero", contentType = "hero") {
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                EqualizerHero(model.enabled, Modifier.widthIn(max = 840.dp), onEnabledChange, onOpenSystemEqualizer)
-            }
+    SectionContainer {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            ExpressiveSwitch(checked = checked, onCheckedChange = onToggle)
         }
-        item(key = "mode", contentType = "mode") {
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                ModeSelector(model.controlMode, Modifier.widthIn(max = 840.dp), onModeChange)
-            }
-        }
-        item(key = "controls", contentType = model.controlMode.storageValue) {
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                AnimatedContent(
-                    targetState = model.controlMode,
-                    transitionSpec = {
-                        (fadeIn(spring()) togetherWith fadeOut(spring())).using(SizeTransform(clip = false))
-                    },
-                    label = "equalizerMode",
-                    modifier = Modifier.widthIn(max = 840.dp),
-                ) { mode ->
-                    when (mode) {
-                        EqualizerControlMode.BASIC -> {
-                            BasicControls(
-                                model = model,
-                                onPresetClick = onPresetClick,
-                                onToneValueChange = onToneValueChange,
-                                onToneValueChangeFinished = onToneValueChangeFinished,
-                            )
-                        }
-
-                        EqualizerControlMode.ADVANCED -> {
-                            AdvancedControls(
-                                model = model,
-                                onPresetClick = onPresetClick,
-                                onBandValueChange = onBandValueChange,
-                                onBandValueChangeFinished = onBandValueChangeFinished,
-                                onResetBands = onResetBands,
-                                onOutputGainEnabledChange = onOutputGainEnabledChange,
-                                onOutputGainValueChange = onOutputGainValueChange,
-                                onOutputGainValueChangeFinished = onOutputGainValueChangeFinished,
-                                onBassBoostEnabledChange = onBassBoostEnabledChange,
-                                onBassBoostValueChange = onBassBoostValueChange,
-                                onBassBoostValueChangeFinished = onBassBoostValueChangeFinished,
-                                onVirtualizerEnabledChange = onVirtualizerEnabledChange,
-                                onVirtualizerValueChange = onVirtualizerValueChange,
-                                onVirtualizerValueChangeFinished = onVirtualizerValueChangeFinished,
-                                onAutoHeadroomEnabledChange = onAutoHeadroomEnabledChange,
-                                onShowSaveProfile = onShowSaveProfile,
-                                onShowManageProfiles = onShowManageProfiles,
-                                onImportProfiles = onImportProfiles,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EqualizerHero(
-    enabled: Boolean,
-    modifier: Modifier = Modifier,
-    onEnabledChange: (Boolean) -> Unit,
-    onOpenSystemEqualizer: () -> Unit,
-) {
-    val containerColor =
-        if (enabled) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        }
-    val contentColor =
-        if (enabled) {
-            MaterialTheme.colorScheme.onPrimaryContainer
-        } else {
-            MaterialTheme.colorScheme.onSurface
-        }
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.extraLarge,
-        colors =
-            CardDefaults.cardColors(
-                containerColor = containerColor,
-                contentColor = contentColor,
-            ),
-    ) {
-        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f)) {
-                    Icon(
-                        painter = painterResource(R.drawable.graphic_eq),
-                        contentDescription = null,
-                        modifier = Modifier.padding(12.dp).size(28.dp),
-                    )
-                }
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = stringResource(if (enabled) R.string.eq_sound_shaping_on else R.string.eq_sound_shaping_off),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = stringResource(R.string.eq_enable_description),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = contentColor,
-                    )
-                }
-                Switch(checked = enabled, onCheckedChange = onEnabledChange)
-            }
-            FilledTonalButton(onClick = onOpenSystemEqualizer, modifier = Modifier.fillMaxWidth(), shapes = ButtonDefaults.shapes()) {
-                Icon(painter = painterResource(R.drawable.tune), contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(text = stringResource(R.string.eq_open_system_equalizer))
-            }
-        }
-    }
-}
-
-@Composable
-private fun ModeSelector(
-    selectedMode: EqualizerControlMode,
-    modifier: Modifier = Modifier,
-    onModeChange: (EqualizerControlMode) -> Unit,
-) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
-        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text(
-                text = stringResource(R.string.eq_control_mode),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                EqualizerControlMode.entries.forEachIndexed { index, mode ->
-                    SegmentedButton(
-                        selected = selectedMode == mode,
-                        onClick = { onModeChange(mode) },
-                        shape = SegmentedButtonDefaults.itemShape(index, EqualizerControlMode.entries.size),
-                        icon = {},
-                    ) {
-                        Text(text = stringResource(if (mode == EqualizerControlMode.BASIC) R.string.eq_basic else R.string.eq_advanced))
-                    }
-                }
-            }
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
             Text(
                 text =
-                    stringResource(
-                        if (selectedMode ==
-                            EqualizerControlMode.BASIC
-                        ) {
-                            R.string.eq_basic_description
-                        } else {
-                            R.string.eq_advanced_description
-                        },
-                    ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    (if (value > 0 && prefix == "+") "+" else "") +
+                        value.toInt() + suffix,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
             )
         }
+        Spacer(modifier = Modifier.height(12.dp))
+        ResponsiveSlider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = range,
+            enabled = checked,
+        )
     }
 }
 
 @Composable
-private fun BasicControls(
-    model: EqualizerUiModel,
+private fun EqualizerSection(
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+    bands: List<Float>,
+    onBandChange: (Int, Float) -> Unit,
+    presets: moe.rukamori.archivetune.viewmodels.EqualizerPresetUiModels,
     onPresetClick: (String) -> Unit,
-    onToneValueChange: (EqualizerTone, Int) -> Unit,
-    onToneValueChangeFinished: (EqualizerTone) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        PresetSection(model, onPresetClick)
-        EqualizerSection(title = stringResource(R.string.eq_tone), subtitle = stringResource(R.string.eq_tone_description)) {
-            repeat(model.tones.size) { index ->
-                val tone = model.tones[index]
-                ToneSlider(
-                    model = tone,
-                    enabled = model.enabled,
-                    minimumValueMb = model.minimumBandLevelMb,
-                    maximumValueMb = model.maximumBandLevelMb,
-                    onValueChange = onToneValueChange,
-                    onValueChangeFinished = onToneValueChangeFinished,
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val eqHeight = if (isLandscape) 180.dp else 240.dp
+    val sliderWidth = if (isLandscape) 160.dp else 200.dp
+
+    SectionContainer {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = stringResource(R.string.eq_5band_equalizer), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            ExpressiveSwitch(checked = enabled, onCheckedChange = onToggle)
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            listOf("60Hz", "230Hz", "910Hz", "3.6kHz", "14kHz").forEach {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
                 )
-                if (index != model.tones.size - 1) HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             }
         }
-    }
-}
-
-@Composable
-private fun AdvancedControls(
-    model: EqualizerUiModel,
-    onPresetClick: (String) -> Unit,
-    onBandValueChange: (Int, Int) -> Unit,
-    onBandValueChangeFinished: () -> Unit,
-    onResetBands: () -> Unit,
-    onOutputGainEnabledChange: (Boolean) -> Unit,
-    onOutputGainValueChange: (Int) -> Unit,
-    onOutputGainValueChangeFinished: () -> Unit,
-    onBassBoostEnabledChange: (Boolean) -> Unit,
-    onBassBoostValueChange: (Int) -> Unit,
-    onBassBoostValueChangeFinished: () -> Unit,
-    onVirtualizerEnabledChange: (Boolean) -> Unit,
-    onVirtualizerValueChange: (Int) -> Unit,
-    onVirtualizerValueChangeFinished: () -> Unit,
-    onAutoHeadroomEnabledChange: (Boolean) -> Unit,
-    onShowSaveProfile: () -> Unit,
-    onShowManageProfiles: () -> Unit,
-    onImportProfiles: () -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        PresetSection(model, onPresetClick)
-        EqualizerSection(
-            title = stringResource(R.string.eq_bands),
-            subtitle = stringResource(R.string.eq_bands_description),
-            action = {
-                TextButton(onClick = onResetBands, enabled = model.enabled, shapes = ButtonDefaults.shapes()) {
-                    Text(text = stringResource(R.string.reset))
-                }
-            },
+        Spacer(modifier = Modifier.height(if (isLandscape) 16.dp else 32.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().height(eqHeight),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            repeat(model.bands.size) { index ->
-                BandSlider(
-                    model = model.bands[index],
-                    enabled = model.enabled,
-                    minimumValueMb = model.minimumBandLevelMb,
-                    maximumValueMb = model.maximumBandLevelMb,
-                    onValueChange = onBandValueChange,
-                    onValueChangeFinished = onBandValueChangeFinished,
+            bands.forEachIndexed { index, value ->
+                Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    ResponsiveSlider(
+                        value = value,
+                        onValueChange = { onBandChange(index, it) },
+                        valueRange = -12f..12f,
+                        enabled = enabled,
+                        modifier =
+                            Modifier
+                                .graphicsLayer { rotationZ = 270f; transformOrigin = TransformOrigin.Center }
+                                .requiredWidth(sliderWidth),
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(if (isLandscape) 16.dp else 24.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            bands.forEach {
+                Text(
+                    text = stringResource(R.string.eq_band_db, it.toInt()),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
                 )
-                if (index != model.bands.size - 1) HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             }
         }
-        EqualizerSection(title = stringResource(R.string.eq_signal), subtitle = stringResource(R.string.eq_signal_description)) {
-            ToggleSlider(
-                title = stringResource(R.string.eq_output_gain),
-                description = stringResource(R.string.eq_output_gain_description),
-                enabled = model.outputGainEnabled,
-                controlsEnabled = model.enabled && !model.autoHeadroomEnabled,
-                value = model.outputGainMb,
-                valueRange = -1500..1500,
-                valueLabel = formatDecibels(model.outputGainMb),
-                onEnabledChange = onOutputGainEnabledChange,
-                onValueChange = onOutputGainValueChange,
-                onValueChangeFinished = onOutputGainValueChangeFinished,
-            )
-            Spacer(Modifier.height(12.dp))
-            SettingsToggle(
-                title = stringResource(R.string.eq_auto_headroom),
-                description = stringResource(R.string.eq_auto_headroom_description),
-                checked = model.autoHeadroomEnabled,
-                enabled = model.enabled,
-                onCheckedChange = onAutoHeadroomEnabledChange,
-            )
-        }
-        EqualizerSection(title = stringResource(R.string.eq_effects), subtitle = stringResource(R.string.eq_effects_description)) {
-            ToggleSlider(
-                title = stringResource(R.string.eq_bass_boost),
-                description = stringResource(R.string.eq_bass_boost_description),
-                enabled = model.bassBoostEnabled,
-                controlsEnabled = model.enabled,
-                value = model.bassBoostStrength,
-                valueRange = 0..1000,
-                valueLabel = stringResource(R.string.eq_percent, model.bassBoostStrength / 10),
-                onEnabledChange = onBassBoostEnabledChange,
-                onValueChange = onBassBoostValueChange,
-                onValueChangeFinished = onBassBoostValueChangeFinished,
-            )
-            Spacer(Modifier.height(12.dp))
-            ToggleSlider(
-                title = stringResource(R.string.eq_virtualizer),
-                description = stringResource(R.string.eq_virtualizer_description),
-                enabled = model.virtualizerEnabled,
-                controlsEnabled = model.enabled,
-                value = model.virtualizerStrength,
-                valueRange = 0..1000,
-                valueLabel = stringResource(R.string.eq_percent, model.virtualizerStrength / 10),
-                onEnabledChange = onVirtualizerEnabledChange,
-                onValueChange = onVirtualizerValueChange,
-                onValueChangeFinished = onVirtualizerValueChangeFinished,
-            )
-        }
-        EqualizerSection(title = stringResource(R.string.eq_profiles), subtitle = stringResource(R.string.eq_profiles_description)) {
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(onClick = onShowSaveProfile, enabled = model.enabled, shapes = ButtonDefaults.shapes()) {
-                    Icon(painter = painterResource(R.drawable.add), contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(text = stringResource(R.string.eq_save_profile))
-                }
-                OutlinedButton(onClick = onShowManageProfiles, enabled = model.profiles.size > 0, shapes = ButtonDefaults.shapes()) {
-                    Text(text = stringResource(R.string.eq_manage))
-                }
-                OutlinedButton(onClick = onImportProfiles, shapes = ButtonDefaults.shapes()) {
-                    Text(text = stringResource(R.string.eq_import))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PresetSection(
-    model: EqualizerUiModel,
-    onPresetClick: (String) -> Unit,
-) {
-    EqualizerSection(title = stringResource(R.string.eq_presets), subtitle = stringResource(R.string.eq_presets_description)) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(count = model.presets.size, key = { model.presets[it].id }, contentType = { "preset" }) { index ->
-                val preset = model.presets[index]
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            repeat(presets.size) { index ->
+                val preset = presets[index]
                 FilterChip(
                     selected = preset.isSelected,
                     onClick = { onPresetClick(preset.id) },
-                    enabled = model.enabled,
+                    enabled = enabled,
                     label = {
                         Text(
                             text =
@@ -679,162 +787,240 @@ private fun PresetSection(
 }
 
 @Composable
-private fun EqualizerSection(
-    title: String,
-    subtitle: String,
-    modifier: Modifier = Modifier,
-    action: (@Composable () -> Unit)? = null,
-    content: @Composable () -> Unit,
-) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.extraLarge,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Row(verticalAlignment = Alignment.Top) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(text = title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                    Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                action?.invoke()
-            }
-            Spacer(Modifier.height(18.dp))
-            content()
-        }
-    }
-}
-
-@Composable
-private fun ToneSlider(
-    model: EqualizerToneUiModel,
+private fun BalanceSection(
     enabled: Boolean,
-    minimumValueMb: Int,
-    maximumValueMb: Int,
-    onValueChange: (EqualizerTone, Int) -> Unit,
-    onValueChangeFinished: (EqualizerTone) -> Unit,
+    onToggle: (Boolean) -> Unit,
+    value: Float,
+    onChange: (Float) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    SectionContainer {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = stringResource(R.string.eq_balance), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            ExpressiveSwitch(checked = enabled, onCheckedChange = onToggle)
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = stringResource(R.string.eq_position), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
             Text(
                 text =
-                    stringResource(
-                        when (model.tone) {
-                            EqualizerTone.BASS -> R.string.eq_bass
-                            EqualizerTone.MIDRANGE -> R.string.eq_midrange
-                            EqualizerTone.TREBLE -> R.string.eq_treble
-                        },
-                    ),
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f),
+                    when {
+                        value.toInt() == 0 -> stringResource(R.string.eq_balance_center)
+                        value.toInt() < 0 -> stringResource(R.string.eq_balance_l, abs(value.toInt()))
+                        else -> stringResource(R.string.eq_balance_r, value.toInt())
+                    },
+                style = MaterialTheme.typography.labelLarge,
+                color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
             )
-            ValuePill(formatDecibels(model.levelMb))
         }
-        Slider(
-            value = model.levelMb.toFloat(),
-            onValueChange = { onValueChange(model.tone, it.roundToInt()) },
-            onValueChangeFinished = { onValueChangeFinished(model.tone) },
+        Spacer(modifier = Modifier.height(16.dp))
+        ResponsiveSlider(
+            value = value,
+            onValueChange = onChange,
+            valueRange = -BALANCE_RANGE..BALANCE_RANGE,
             enabled = enabled,
-            valueRange = minimumValueMb.toFloat()..maximumValueMb.toFloat(),
         )
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(text = stringResource(R.string.eq_left), style = MaterialTheme.typography.labelSmall)
+            Text(text = stringResource(R.string.eq_balance_center), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            Text(text = stringResource(R.string.eq_right), style = MaterialTheme.typography.labelSmall)
+        }
     }
 }
 
 @Composable
-private fun BandSlider(
-    model: EqualizerBandUiModel,
+private fun SpeedSection(
     enabled: Boolean,
-    minimumValueMb: Int,
-    maximumValueMb: Int,
-    onValueChange: (Int, Int) -> Unit,
-    onValueChangeFinished: () -> Unit,
+    onToggle: (Boolean) -> Unit,
+    value: Float,
+    onChange: (Float) -> Unit,
+    isPitchMatched: Boolean,
+    onPitchMatchToggle: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    SectionContainer {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = formatFrequency(model.centerFrequencyHz),
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.weight(1f),
-            )
-            ValuePill(formatDecibels(model.levelMb))
+            Text(text = stringResource(R.string.eq_speed), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            ExpressiveSwitch(checked = enabled, onCheckedChange = onToggle)
         }
-        Slider(
-            value = model.levelMb.toFloat(),
-            onValueChange = { onValueChange(model.index, it.roundToInt()) },
-            onValueChangeFinished = onValueChangeFinished,
-            enabled = enabled,
-            valueRange = minimumValueMb.toFloat()..maximumValueMb.toFloat(),
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text =
+                if (isPitchMatched) {
+                    stringResource(R.string.eq_speed_pitch_matched)
+                } else {
+                    stringResource(R.string.eq_speed_vinyl)
+                },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-    }
-}
+        Spacer(modifier = Modifier.height(16.dp))
 
-@Composable
-private fun ToggleSlider(
-    title: String,
-    description: String,
-    enabled: Boolean,
-    controlsEnabled: Boolean,
-    value: Int,
-    valueRange: IntRange,
-    valueLabel: String,
-    onEnabledChange: (Boolean) -> Unit,
-    onValueChange: (Int) -> Unit,
-    onValueChangeFinished: () -> Unit,
-) {
-    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = title, style = MaterialTheme.typography.titleMedium)
-                    Text(text = description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Switch(checked = enabled, onCheckedChange = onEnabledChange, enabled = controlsEnabled)
+        // Match Pitch Button - Compact and Centered
+        Box(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
+            TextButton(
+                onClick = onPitchMatchToggle,
+                enabled = enabled,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), // Smaller padding
+                shapes = ButtonDefaults.shapes(),
+                modifier = Modifier.height(32.dp), // Smaller height
+            ) {
+                Text(text = stringResource(R.string.eq_match_pitch), style = MaterialTheme.typography.labelMedium)
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Slider(
-                    value = value.toFloat(),
-                    onValueChange = { onValueChange(it.roundToInt()) },
-                    onValueChangeFinished = onValueChangeFinished,
-                    enabled = controlsEnabled && enabled,
-                    valueRange = valueRange.first.toFloat()..valueRange.last.toFloat(),
-                    modifier = Modifier.weight(1f),
-                )
-                ValuePill(valueLabel)
-            }
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = stringResource(R.string.eq_speed_label), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text(
+                text = stringResource(R.string.eq_speed_value, value),
+                style = MaterialTheme.typography.labelLarge,
+                color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        ResponsiveSlider(
+            value = value,
+            onValueChange = onChange,
+            valueRange = 0.5f..2.0f,
+            enabled = enabled,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(text = "0.5x", style = MaterialTheme.typography.labelSmall)
+            Text(text = stringResource(R.string.eq_speed_normal), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            Text(text = "2.0x", style = MaterialTheme.typography.labelSmall)
         }
     }
 }
 
 @Composable
-private fun SettingsToggle(
-    title: String,
-    description: String,
-    checked: Boolean,
+private fun ReverbSection(
     enabled: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
+    onToggle: (Boolean) -> Unit,
+    presetValue: Float,
+    onPresetChange: (Float) -> Unit,
 ) {
-    SegmentedListItem(
-        onClick = { onCheckedChange(!checked) },
+    SectionContainer {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = stringResource(R.string.eq_reverb), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            ExpressiveSwitch(checked = enabled, onCheckedChange = onToggle)
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        val presets =
+            listOf(
+                stringResource(R.string.eq_reverb_preset_none),
+                stringResource(R.string.eq_reverb_preset_small_room),
+                stringResource(R.string.eq_reverb_preset_medium_room),
+                stringResource(R.string.eq_reverb_preset_large_room),
+                stringResource(R.string.eq_reverb_preset_medium_hall),
+                stringResource(R.string.eq_reverb_preset_large_hall),
+                stringResource(R.string.eq_reverb_preset_plate),
+            )
+        val index = presetValue.toInt().coerceIn(0, 6)
+
+        var expanded by remember { mutableStateOf(false) }
+
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { if (enabled) expanded = !expanded },
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        ) {
+            OutlinedTextField(
+                value = presets[index],
+                onValueChange = {},
+                readOnly = true,
+                label = { Text(stringResource(R.string.eq_preset)) },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                enabled = enabled,
+            )
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                presets.forEachIndexed { i, presetName ->
+                    DropdownMenuItem(
+                        text = { Text(presetName) },
+                        onClick = {
+                            onPresetChange(i.toFloat())
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Optimized Responsive Slider that eliminates recomposition lag by managing
+ * local drag state, while maintaining "Expressive" animations for value jumps.
+ */
+@Composable
+private fun ResponsiveSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    var isDragging by remember { mutableStateOf(false) }
+    var localValue by remember(value) { mutableFloatStateOf(value.coerceIn(valueRange)) }
+
+    // Sync local value with external updates when not dragging
+    LaunchedEffect(value) {
+        if (!isDragging) {
+            localValue = value.coerceIn(valueRange)
+        }
+    }
+
+    // Only animate when the value changes externally (not during active dragging)
+    val animatedValue by animateFloatAsState(
+        targetValue = localValue,
+        animationSpec =
+            if (isDragging) {
+                snap()
+            } else {
+                spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessLow,
+                )
+            },
+        label = "expressive_slider",
+    )
+
+    Slider(
+        value = animatedValue,
+        onValueChange = {
+            isDragging = true
+            localValue = it
+        },
+        onValueChangeFinished = {
+            isDragging = false
+            onValueChange(localValue)
+        },
+        valueRange = valueRange,
         enabled = enabled,
-        shapes = ListItemDefaults.shapes(shape = MaterialTheme.shapes.large),
-        colors = ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        trailingContent = { Switch(checked = checked, onCheckedChange = null, enabled = enabled) },
-        supportingContent = { Text(text = description) },
-        content = { Text(text = title) },
+        modifier = modifier,
     )
 }
 
 @Composable
-private fun ValuePill(value: String) {
-    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
-        Text(
-            text = value,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-        )
-    }
+private fun SectionContainer(content: @Composable ColumnScope.() -> Unit) {
+    val configuration = LocalConfiguration.current
+    val verticalPadding =
+        if (configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 16.dp else 28.dp
+
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 28.dp, vertical = verticalPadding),
+        content = content,
+    )
 }
+
+// --- PROFILE DIALOGS ---
 
 @Composable
 private fun SaveProfileDialog(
@@ -875,15 +1061,19 @@ private fun ManageProfilesDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = stringResource(R.string.eq_profiles)) },
         text = {
-            LazyColumn(modifier = Modifier.fillMaxWidth().height(360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().height(360.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 items(count = profiles.size, key = { profiles[it].id }, contentType = { "profile" }) { index ->
                     ProfileRow(profiles[index], onApply, onDelete, onExport)
                 }
             }
         },
         confirmButton = {
- KeepStatusBarHiddenInDialog()
- TextButton(onClick = onDismiss) { Text(text = stringResource(R.string.eq_close)) } },
+            KeepStatusBarHiddenInDialog()
+            TextButton(onClick = onDismiss) { Text(text = stringResource(R.string.eq_close)) }
+        },
     )
 }
 
@@ -894,51 +1084,58 @@ private fun ProfileRow(
     onDelete: (String) -> Unit,
     onExport: (String) -> Unit,
 ) {
-    SegmentedListItem(
-        onClick = { onApply(profile.id) },
-        shapes = ListItemDefaults.shapes(shape = MaterialTheme.shapes.large),
-        colors = ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        leadingContent = {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Icon(
                 painter = painterResource(if (profile.isSelected) R.drawable.check else R.drawable.equalizer),
                 contentDescription = null,
+                modifier = Modifier.size(24.dp),
             )
-        },
-        trailingContent = {
-            Row {
-                IconButton(onClick = { onExport(profile.id) }) {
-                    Icon(painter = painterResource(R.drawable.share), contentDescription = stringResource(R.string.export))
-                }
-                IconButton(onClick = { onDelete(profile.id) }) {
-                    Icon(painter = painterResource(R.drawable.delete), contentDescription = stringResource(R.string.delete))
-                }
+            Column(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    text = profile.name.ifBlank { stringResource(R.string.eq_imported_profile) },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = stringResource(R.string.eq_custom_profile),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-        },
-        supportingContent = { Text(text = stringResource(R.string.eq_custom_profile)) },
-        content = {
-            Text(
-                text = profile.name.ifBlank { stringResource(R.string.eq_imported_profile) },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-    )
+            IconButton(onClick = { onExport(profile.id) }) {
+                Icon(painter = painterResource(R.drawable.share), contentDescription = stringResource(R.string.export))
+            }
+            IconButton(onClick = { onDelete(profile.id) }) {
+                Icon(painter = painterResource(R.drawable.delete), contentDescription = stringResource(R.string.delete))
+            }
+        }
+    }
 }
 
+// --- FALLBACK STATES ---
+
 @Composable
-private fun EqualizerLoading(contentPadding: PaddingValues) {
-    Box(modifier = Modifier.fillMaxSize().padding(contentPadding), contentAlignment = Alignment.Center) {
+private fun EqualizerLoading() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         LoadingIndicator(modifier = Modifier.size(48.dp))
     }
 }
 
 @Composable
-private fun EqualizerUnavailable(
-    contentPadding: PaddingValues,
-    onOpenSystemEqualizer: () -> Unit,
-) {
+private fun EqualizerUnavailable(onOpenSystemEqualizer: () -> Unit) {
     EqualizerMessage(
-        contentPadding = contentPadding,
         message = stringResource(R.string.eq_waiting_for_audio_session),
         onOpenSystemEqualizer = onOpenSystemEqualizer,
     )
@@ -946,21 +1143,22 @@ private fun EqualizerUnavailable(
 
 @Composable
 private fun EqualizerError(
-    contentPadding: PaddingValues,
     messageResId: Int,
     onOpenSystemEqualizer: () -> Unit,
 ) {
-    EqualizerMessage(contentPadding, stringResource(messageResId), onOpenSystemEqualizer)
+    EqualizerMessage(stringResource(messageResId), onOpenSystemEqualizer)
 }
 
 @Composable
 private fun EqualizerMessage(
-    contentPadding: PaddingValues,
     message: String,
     onOpenSystemEqualizer: () -> Unit,
 ) {
-    Box(modifier = Modifier.fillMaxSize().padding(contentPadding).padding(24.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
             Icon(painter = painterResource(R.drawable.graphic_eq), contentDescription = null, modifier = Modifier.size(48.dp))
             Text(text = message, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
             FilledTonalButton(onClick = onOpenSystemEqualizer, shapes = ButtonDefaults.shapes()) {
@@ -969,14 +1167,3 @@ private fun EqualizerMessage(
         }
     }
 }
-
-@Composable
-private fun formatDecibels(valueMb: Int): String = stringResource(R.string.eq_decibels, valueMb / 100f)
-
-@Composable
-private fun formatFrequency(frequencyHz: Int): String =
-    if (frequencyHz >= 1000) {
-        stringResource(R.string.eq_frequency_kilohertz, frequencyHz / 1000f)
-    } else {
-        stringResource(R.string.eq_frequency_hertz, frequencyHz)
-    }

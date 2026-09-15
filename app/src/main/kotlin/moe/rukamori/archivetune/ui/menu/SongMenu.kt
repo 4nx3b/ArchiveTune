@@ -32,12 +32,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -76,15 +78,11 @@ import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalSyncUtils
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
-import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
 import moe.rukamori.archivetune.constants.ListThumbnailSize
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
-import moe.rukamori.archivetune.constants.SpotifyCanvasKey
-import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.db.entities.Event
 import moe.rukamori.archivetune.db.entities.fileExtension
@@ -95,8 +93,6 @@ import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.models.toMediaMetadata
-import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
-import moe.rukamori.archivetune.ui.player.fetchCanvasArtworkForPlayback
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.telegram.isTelegramMediaId
@@ -122,11 +118,6 @@ import moe.rukamori.archivetune.utils.toggleSpeedDialPin
 import moe.rukamori.archivetune.viewmodels.CachePlaylistViewModel
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-
-private data class CanvasSourceOption(
-    val label: String,
-    val artwork: CanvasArtwork,
-)
 
 @Composable
 fun SongMenu(
@@ -192,10 +183,7 @@ fun SongMenu(
     val (externalDownloaderEnabled) = rememberPreference(ExternalDownloaderEnabledKey, defaultValue = false)
     val (externalDownloaderPackage) = rememberPreference(ExternalDownloaderPackageKey, defaultValue = "")
     val (speedDialSongIds, onSpeedDialSongIdsChange) = rememberPreference(SpeedDialSongIdsKey, "")
-    val (spotifyCanvasEnabled) = rememberPreference(SpotifyCanvasKey, false)
 
-    val (spotifySpDc) = rememberPreference(SpotifySpDcKey, defaultValue = "")
-    val spotifyCanvasAvailable = spotifyCanvasEnabled || spotifySpDc.isNotBlank()
     val speedDialPins = remember(speedDialSongIds) { parseSpeedDialPins(speedDialSongIds) }
     val songPin = remember(song.id) { SpeedDialPin(type = SpeedDialPinType.SONG, id = song.id) }
     val isInSpeedDial =
@@ -321,100 +309,6 @@ fun SongMenu(
     var showErrorPlaylistAddDialog by rememberSaveable {
         mutableStateOf(false)
     }
-    var showCanvasSourceDialog by rememberSaveable { mutableStateOf(false) }
-    var canvasSources by remember(song.id) { mutableStateOf<List<CanvasSourceOption>>(emptyList()) }
-    var canvasSourcesLoading by remember(song.id) { mutableStateOf(false) }
-    var canvasSaving by remember(song.id) { mutableStateOf(false) }
-
-    fun loadCanvasSources() {
-        if (canvasSourcesLoading || canvasSaving) return
-        canvasSourcesLoading = true
-        coroutineScope.launch {
-            val sources = withContext(Dispatchers.IO) {
-                val byUrl = linkedMapOf<String, CanvasSourceOption>()
-                val title = song.song.title
-                val artist = song.artists.firstOrNull()?.name.orEmpty()
-                val storefront = java.util.Locale.getDefault().country.lowercase().ifBlank { "us" }
-                fetchCanvasArtworkForPlayback(
-                    songTitleRaw = title,
-                    artistNameRaw = artist,
-                    storefront = storefront,
-                    requireVertical = false,
-                    forceRefresh = true,
-                    strictIdentity = !song.song.isLocal,
-                    albumTitle = song.song.albumName,
-                )?.let { artwork ->
-                    artwork.preferredAnimationUrl?.takeIf { it.isNotBlank() }?.let { url ->
-                        byUrl[url] = CanvasSourceOption("ArchiveTune / Apple Music", artwork)
-                    }
-                }
-                if (spotifyCanvasAvailable && !song.song.isLocal) {
-                    runCatching {
-                        SpotifyCanvasProvider.getByVideoId(
-                            videoId = song.id,
-                            songTitle = title,
-                            artistName = artist,
-                        )
-                    }
-                        .getOrNull()
-                        ?.let { artwork ->
-                            artwork.preferredAnimationUrl?.takeIf { it.isNotBlank() }?.let { url ->
-                                byUrl.putIfAbsent(url, CanvasSourceOption("Spotify", artwork))
-                            }
-                        }
-                }
-                byUrl.values.toList()
-            }
-            canvasSources = sources
-            canvasSourcesLoading = false
-            if (sources.isEmpty()) {
-                Toast.makeText(context, context.getString(R.string.canvas_unavailable), Toast.LENGTH_SHORT).show()
-            } else {
-                showCanvasSourceDialog = true
-            }
-        }
-    }
-
-    fun saveCanvasSource(source: CanvasSourceOption) {
-        showCanvasSourceDialog = false
-        canvasSaving = true
-        coroutineScope.launch {
-            val saved = withContext(Dispatchers.IO) {
-                CanvasArtworkPlaybackCache.save(song.id, source.artwork)
-            }
-            canvasSaving = false
-            Toast.makeText(
-                context,
-                context.getString(if (saved) R.string.canvas_saved else R.string.canvas_save_failed),
-                Toast.LENGTH_SHORT,
-            ).show()
-        }
-    }
-
-    if (showCanvasSourceDialog) {
-        ListDialog(onDismiss = { showCanvasSourceDialog = false }) {
-            item {
-                ListItem(
-                    headlineContent = { Text(text = stringResource(R.string.canvas_source_title)) },
-                    leadingContent = {
-                        Icon(painter = painterResource(R.drawable.image), contentDescription = null)
-                    },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                )
-            }
-            items(canvasSources, key = { it.label }) { source ->
-                ListItem(
-                    headlineContent = { Text(text = source.label) },
-                    leadingContent = {
-                        Icon(painter = painterResource(R.drawable.download), contentDescription = null)
-                    },
-                    modifier = Modifier.fillMaxWidth().clickable { saveCanvasSource(source) },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                )
-            }
-        }
-    }
-
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
         onGetSong = {
@@ -1337,37 +1231,9 @@ fun SongMenu(
             MenuSectionDivider()
         }
 
-        item {
+        if (!song.song.isLocal) item {
             MenuSurfaceSection {
                 Column {
-                    ListItem(
-                        headlineContent = {
-                            Text(
-                                text = stringResource(
-                                    if (canvasSaving) R.string.canvas_saving else R.string.save_canvas,
-                                ),
-                            )
-                        },
-                        leadingContent = {
-                            if (canvasSaving) {
-                                CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
-                            } else {
-                                Icon(
-                                    painter = painterResource(R.drawable.image),
-                                    contentDescription = null,
-                                )
-                            }
-                        },
-                        modifier = Modifier.clickable { loadCanvasSources() },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    )
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant,
-                        thickness = 0.5.dp,
-                    )
-
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.download_cover)) },
                         leadingContent = {

@@ -232,7 +232,18 @@ object CanvasArtworkPlaybackCache {
                         preferCachedOnly = false,
                     )
                 }
-            val artworkToCache = current ?: artwork
+            // A freshly resolved canvas from the TOP-priority provider replaces
+            // an existing entry from the other provider — the old `current ?:
+            // artwork` keep-first rule is exactly how a lower-priority Spotify
+            // canvas stayed sticky after the user reordered priorities.
+            val artworkToCache =
+                when {
+                    current == null -> artwork
+                    current.inferredProvider() == artwork.inferredProvider() -> current
+                    CanvasProviderPriority.providerRank(artwork.inferredProvider()) <
+                        CanvasProviderPriority.providerRank(current.inferredProvider()) -> artwork
+                    else -> current
+                }
             cacheArtworkInBackground(
                 directory = directory,
                 mediaId = mediaId,

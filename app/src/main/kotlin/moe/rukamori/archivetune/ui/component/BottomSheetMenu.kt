@@ -55,7 +55,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.effects.lens
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -145,9 +146,18 @@ fun BottomSheetMenu(
                 Modifier.drawBackdrop(
                     backdrop = liquidGlassBackdrop,
                     effects = {
-                        vibrancy()
+                        // SpatialFlow-style vivid bleed (1.7x saturation) plus a
+                        // liquid edge refraction; the blur radius cut 32dp -> 20dp
+                        // pays for the lens pass, so the net GPU cost drops while
+                        // the surface reads MORE liquid than the old flat frost.
+                        colorControls(saturation = 1.7f)
 
-                        blur(32f.dp.toPx())
+                        blur(20f.dp.toPx())
+
+                        lens(
+                            refractionHeight = 16f.dp.toPx(),
+                            refractionAmount = 40f.dp.toPx(),
+                        )
                     },
                     onDrawBackdrop = { drawBackdrop ->
                         drawBackdrop()

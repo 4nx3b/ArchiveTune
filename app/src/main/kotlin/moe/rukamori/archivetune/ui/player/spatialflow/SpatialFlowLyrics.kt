@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -337,6 +338,7 @@ internal fun SpatialFlowLyricsOverlay(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
 
+                // Overflow (lyrics menu) lives on the leading side.
                 IconButton(
                     onClick = { showLyricsMenu = true },
                     modifier =
@@ -409,13 +411,23 @@ internal fun SpatialFlowLyricsOverlay(
                     )
                 }
 
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        painter = painterResource(R.drawable.close),
-                        contentDescription = "Close Lyrics",
-                        tint = contentColor.copy(alpha = 0.8f),
-                        modifier = Modifier.size(24.dp),
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            painter = painterResource(R.drawable.close),
+                            contentDescription = "Close Lyrics",
+                            tint = contentColor.copy(alpha = 0.8f),
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+
+                    // 48dp slot reserved for the artwork thumbnail that morphs into
+                    // the top-right corner while the lyrics are open (the flying
+                    // shared-element layer composed in SpatialFlowPlayer sits here).
+                    Spacer(modifier = Modifier.size(48.dp))
                 }
             }
 

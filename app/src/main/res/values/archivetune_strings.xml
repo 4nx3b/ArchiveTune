@@ -353,6 +353,7 @@
     <string name="simpmusic_move_down">Move down</string>
     <string name="player_design_simpmusic">SimpMusic</string>
     <string name="player_design_spatialflow">SpatialFlow</string>
+    <string name="player_design_looper">Looper</string>
     <string name="rich_synced">Rich Synced</string>
     <string name="line_synced">Line Synced</string>
     <string name="unsynced">Unsynced</string>
@@ -577,6 +578,10 @@
     <string name="auth_webview_tidal_subtitle">Sign in to Tidal below. ArchiveTune saves the session automatically.</string>
     <string name="auth_webview_qobuz_subtitle">Sign in to Qobuz below. Your credentials are captured automatically.</string>
     <string name="auth_webview_deezer_subtitle">Sign in to Deezer below. The session cookie is saved automatically.</string>
+    <string name="deezer_manual_arl">Sign in manually with ARL cookie</string>
+    <string name="deezer_manual_arl_hint">Deezer unavailable in your region? Sign in from any browser (a VPN works), copy the arl cookie value and paste it here.</string>
+    <string name="deezer_manual_arl_apply">Verify and sign in</string>
+    <string name="deezer_arl_invalid">That ARL didn\'t work — copy the full arl cookie value and try again.</string>
     <string name="auth_webview_lastfm_subtitle">Tap \"Yes, allow access\" on Last.fm. ArchiveTune captures the session automatically.</string>
     <string name="lastfm_login">Connect with Last.fm</string>
     <string name="lastfm_login_success">Signed in to Last.fm</string>
@@ -852,4 +857,75 @@
     <string name="yt_oauth_failed_denied">Sign-in was denied. Approve the code on the Google page to continue.</string>
     <string name="yt_oauth_failed_other">Sign-in failed (%1$s).</string>
     <string name="yt_oauth_scope_note">This signs playback in only. Library, playlists and browse still use the browser login.</string>
+    <string name="android_auto">Android Auto</string>
+    <string name="android_auto_settings_subtitle">Driving playback, browsing and data</string>
+    <string name="android_auto_connection">Connection</string>
+    <string name="android_auto_disconnected">Not connected</string>
+    <string name="android_auto_projection">Connected to Android Auto</string>
+    <string name="android_auto_native">Running on Android Automotive</string>
+    <string name="android_auto_content">Content</string>
+    <string name="android_auto_online_recommendations">Online recommendations</string>
+    <string name="android_auto_online_recommendations_desc">Show suggested songs, mixes and radio while driving</string>
+    <string name="android_auto_online_voice_search">Online voice search</string>
+    <string name="android_auto_online_voice_search_desc">Include online results when you ask for music</string>
+    <string name="android_auto_local_songs">Device songs</string>
+    <string name="android_auto_local_songs_desc">Include audio stored on this device</string>
+    <string name="android_auto_audio_permission_missing">Audio permission is required to browse device songs</string>
+    <string name="android_auto_data">Mobile data</string>
+    <string name="android_auto_metered_playback">Stream on metered networks</string>
+    <string name="android_auto_metered_playback_desc">Allow online playback over mobile or metered data</string>
+    <string name="android_auto_metered_artwork">Load artwork on metered networks</string>
+    <string name="android_auto_metered_artwork_desc">Artwork may use additional mobile data</string>
+    <string name="android_auto_controls">Playback controls</string>
+    <string name="android_auto_primary_action">Primary action</string>
+    <string name="android_auto_secondary_action">Secondary action</string>
+    <string name="android_auto_action_like">Like</string>
+    <string name="android_auto_action_radio">Start radio</string>
+    <string name="android_auto_action_shuffle">Shuffle</string>
+    <string name="android_auto_action_repeat">Repeat</string>
+    <string name="android_auto_action_none">None</string>
+    <string name="android_auto_app_permissions">App permissions</string>
+    <string name="android_auto_settings_load_failed">Could not load Android Auto settings</string>
+    <string name="android_auto_settings_update_failed">Could not update Android Auto settings</string>
+    <string name="android_auto_for_you">For You</string>
+    <string name="android_auto_library">Library</string>
+
+    <!-- Amazon Music source label (PlayerMenu / PlaybackSourceSections / download + search pickers) -->
+    <string name="source_amazon">Amazon Music</string>
+
+    <!-- Amazon Music sign-in (WebView) + settings. Shaped like Deezer's: account-based, no
+         self-hosted proxy tier. Playback itself is not shipped — Amazon serves CENC-protected
+         streams and this fork deliberately does not ship the decryption step, so signing in only
+         gets metadata and catalogue browsing; amazon_playback_notice_* says so on the screen. -->
+    <string name="amazon_login">Sign in to Amazon Music</string>
+    <string name="amazon_login_description">Use your own Amazon Music account for metadata and catalogue lookups</string>
+    <string name="amazon_login_success">Signed in to Amazon Music</string>
+    <string name="amazon_login_invalid_session">Not signed in yet — finish signing in on this page.</string>
+    <string name="auth_webview_amazon_subtitle">Sign in to Amazon Music below. The session is saved automatically once you\'re signed in.</string>
+    <string name="amazon_account_name_generic">Amazon Music account</string>
+    <string name="amazon_sign_out">Sign out of Amazon Music</string>
+    <string name="amazon_signed_in_as">Signed in as %1$s</string>
+    <string name="amazon_signed_out">Signed out of Amazon Music</string>
+    <string name="amazon_playback_notice_title">Playback isn\'t available yet</string>
+    <string name="amazon_playback_notice_description">Amazon Music serves DRM-protected (CENC) streams, and this fork deliberately does not ship the decryption step that would need. Signing in only gets you metadata and catalogue browsing — songs will not play from this source.</string>
+    <string name="amazon_settings_playback_group">Playback preferences</string>
+    <string name="amazon_premium_toggle">Lossless-capable plan</string>
+    <string name="amazon_premium_toggle_description">Turn on if your account has an Unlimited HD or Ultra HD plan. There is no way for the app to check this on its own, so it\'s reported by you; it only orders resolution attempts once playback support exists.</string>
+    <string name="amazon_audio_quality">Preferred audio quality</string>
+    <string name="amazon_quality_ultra_hd">Ultra HD (24-bit)</string>
+    <string name="amazon_quality_hd">HD (16-bit lossless)</string>
+    <string name="amazon_quality_standard">Standard</string>
+    <string name="amazon_instances">Metadata instances</string>
+    <string name="amazon_instances_hint">One URL per line</string>
+    <string name="amazon_instances_empty">None configured — metadata resolves through your signed-in account only</string>
+    <string name="amazon_instances_count">%1$d instance(s) configured</string>
+
+    <!-- Amazon Music section inside Player & Audio's source list (our fork's toggle row;
+         canary had no in-page toggle, so these two strings are this fork's extension). -->
+    <string name="amazon_enable">Enable Amazon Music source</string>
+    <string name="amazon_enable_description">Orderable in the source priority picker; stream resolution is not available yet — see Integration → Amazon Music</string>
+
+    <!-- Amazon Music catalog search (search-from popup + results screen; anonymous, no sign-in). -->
+    <string name="search_amazon">Search Amazon Music</string>
+    <string name="amazon_track_unavailable">Amazon Music track could not be mapped to a playable source.</string>
 </resources>

@@ -144,10 +144,13 @@ import dev.chrisbanes.haze.HazeState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -308,7 +311,7 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.effects.colorControls
 import moe.rukamori.archivetune.ui.component.ProfileMenuDialog
 import moe.rukamori.archivetune.ui.component.ProfileMenuItem
 import moe.rukamori.archivetune.ui.component.AutoResizeText
@@ -344,6 +347,7 @@ import moe.rukamori.archivetune.ui.screens.settings.NavigationTab
 import moe.rukamori.archivetune.ui.theme.ArchiveTuneTheme
 import moe.rukamori.archivetune.ui.theme.ColorSaver
 import moe.rukamori.archivetune.ui.theme.DefaultThemeColor
+import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.extractThemeColor
 import moe.rukamori.archivetune.ui.theme.extractWallpaperThemeColor
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
@@ -423,10 +427,8 @@ class MainActivity : ComponentActivity() {
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
-                pendingAodModeJob?.cancel()
-                pendingAodModeJob = null
-                playerConnection?.dispose()
-                playerConnection = null
+                isMusicServiceBound = false
+                disposePlayerConnection()
             }
         }
 
@@ -534,6 +536,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Drops the current [PlayerConnection]. Safe to call repeatedly.
+     *
+     * unbindService() does NOT trigger onServiceDisconnected — Android only
+     * delivers that callback on a service crash — so every clean unbind path
+     * must dispose here, or the connection stays registered as a listener on
+     * the service's long-lived player and pins this Activity (plus its whole
+     * Compose tree) until the service itself dies. One leaked connection
+     * accumulates per background/foreground cycle without this.
+     */
+    private fun disposePlayerConnection() {
+        pendingAodModeJob?.cancel()
+        pendingAodModeJob = null
+        playerConnection?.dispose()
+        playerConnection = null
+    }
+
     private fun safeUnbindMusicService() {
         if (!isMusicServiceBound) return
         try {
@@ -544,6 +563,7 @@ class MainActivity : ComponentActivity() {
         } finally {
             isMusicServiceBound = false
         }
+        disposePlayerConnection()
     }
 
     override fun onStop() {
@@ -568,10 +588,9 @@ class MainActivity : ComponentActivity() {
             safeUnbindMusicService()
             stopService(Intent(this, MusicService::class.java))
         }
-        pendingAodModeJob?.cancel()
-        pendingAodModeJob = null
-        playerConnection?.dispose()
-        playerConnection = null
+        // onStop's unbind already disposed; safety net for any path that
+        // reaches destruction with a live connection.
+        disposePlayerConnection()
         safeUnbindMusicService()
     }
 
@@ -999,6 +1018,14 @@ class MainActivity : ComponentActivity() {
                                             .Builder(this@MainActivity)
                                             .data(song.thumbnailUrl)
                                             .allowHardware(false)
+                                            // Dominant-color extraction needs a
+                                            // thumbnail, not the full-res image —
+                                            // without this every track change
+                                            // decodes a multi-MB software bitmap.
+                                            .size(
+                                                PlayerColorExtractor.Config.IMAGE_SIZE,
+                                                PlayerColorExtractor.Config.IMAGE_SIZE,
+                                            )
                                             .build(),
                                     )
                                 val extractedColor =
@@ -1354,6 +1381,42 @@ class MainActivity : ComponentActivity() {
                                 !active
                         }
 
+                    // SpatialFlow-style scroll-driven navbar behaviour: scrolling
+                    // down the page hides the bar completely and the mini player
+                    // smoothly takes over the freed space; scrolling back up
+                    // smoothly restores it. Reset whenever the destination
+                    // changes so a freshly opened tab always starts with the
+                    // bar visible.
+                    var isNavBarHiddenByScroll by remember { mutableStateOf(false) }
+                    LaunchedEffect(navBackStackEntry?.destination?.route) {
+                        isNavBarHiddenByScroll = false
+                    }
+                    val navBarScrollDensity = LocalDensity.current
+                    val navBarHideScrollThresholdPx = with(navBarScrollDensity) { 14.dp.toPx() }
+                    val navBarScrollHideConnection =
+                        remember(navBarHideScrollThresholdPx) {
+                            object : NestedScrollConnection {
+                                override fun onPostScroll(
+                                    consumed: Offset,
+                                    available: Offset,
+                                    source: NestedScrollSource,
+                                ): Offset {
+                                    // Only real user gestures (drag or fling) drive the
+                                    // hide/show; programmatic scrolls (scroll-position
+                                    // restore on playlists, settings auto-scroll) must
+                                    // not touch the bar.
+                                    if (source == NestedScrollSource.UserInput) {
+                                        if (consumed.y < -navBarHideScrollThresholdPx) {
+                                            isNavBarHiddenByScroll = true
+                                        } else if (consumed.y > navBarHideScrollThresholdPx) {
+                                            isNavBarHiddenByScroll = false
+                                        }
+                                    }
+                                    return Offset.Zero
+                                }
+                            }
+                        }
+
                     fun getBottomNavPadding(): Dp =
                         if (shouldShowNavigationBar && !useRail) {
                             NavigationBarHeight
@@ -1413,7 +1476,14 @@ class MainActivity : ComponentActivity() {
 
                     var glassPrewarmActive by remember { mutableStateOf(false) }
                     LaunchedEffect(Unit) {
-                        delay(2000)
+                        // Deferred past the cold-open window: the prewarm
+                        // compiles the AGSL vibrancy shader + blur RenderEffect
+                        // by drawing a backdrop for 450ms, which used to fire
+                        // two seconds in — exactly while the first home feed
+                        // was still rendering, janking the app's very first
+                        // interactions. 4.5s still warms the pipeline long
+                        // before a menu is ever opened.
+                        delay(4500)
                         glassPrewarmActive = true
                         delay(450)
                         glassPrewarmActive = false
@@ -1426,7 +1496,8 @@ class MainActivity : ComponentActivity() {
                     }
 
                     val bottomNavigationBarHeight by animateDpAsState(
-                        targetValue = if (shouldShowNavigationBar && !useRail) navVisibleHeight else 0.dp,
+                        targetValue =
+                            if (shouldShowNavigationBar && !useRail && !isNavBarHiddenByScroll) navVisibleHeight else 0.dp,
                         animationSpec = if (disableAnimations) snap() else NavigationBarAnimationSpec,
                         label = "",
                     )
@@ -1487,8 +1558,9 @@ class MainActivity : ComponentActivity() {
 
                     val aodAutoTimerSeconds by rememberPreference(AodAutoTimerSecondsKey, defaultValue = 0)
                     val aodAutoOnScreenDim by rememberPreference(AodAutoOnScreenDimKey, defaultValue = false)
-                    val isPlayingNow by (playerConnection?.isPlaying ?: MutableStateFlow(false))
-                        .collectAsStateWithLifecycle()
+                    val isPlayingNow by remember(playerConnection) {
+                        playerConnection?.isPlaying ?: MutableStateFlow(false)
+                    }.collectAsStateWithLifecycle()
                     LaunchedEffect(
                         aodAutoTimerSeconds,
                         isPlayingNow,
@@ -2110,7 +2182,16 @@ class MainActivity : ComponentActivity() {
                                     val railContainerColor =
                                         when {
                                             canRailLiquidGlass -> Color.Transparent
-                                            canRailBlur && navigationBarTintFrostedBlur -> Color.Black.copy(alpha = 0.55f)
+                                            canRailBlur && navigationBarTintFrostedBlur ->
+                                                if (pureBlack) {
+                                                    lerp(Color.Black, MaterialTheme.colorScheme.primary, 0.25f)
+                                                } else {
+                                                    lerp(
+                                                        MaterialTheme.colorScheme.surfaceContainer,
+                                                        MaterialTheme.colorScheme.primary,
+                                                        0.25f,
+                                                    )
+                                                }
                                             canRailBlur ->
                                                 if (pureBlack) Color.Black.copy(alpha = 0.45f)
                                                 else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.85f)
@@ -2120,7 +2201,8 @@ class MainActivity : ComponentActivity() {
                                     val railContentColor =
                                         when {
                                             canRailLiquidGlass -> Color.White
-                                            navigationBarTintFrostedBlur && canRailBlur -> Color.White
+                                            navigationBarTintFrostedBlur && canRailBlur ->
+                                                if (useDarkTheme) Color.White else MaterialTheme.colorScheme.onSurface
                                             pureBlack -> Color.White
                                             else -> MaterialTheme.colorScheme.onSurfaceVariant
                                         }
@@ -2134,7 +2216,7 @@ class MainActivity : ComponentActivity() {
                                     ) {
                                         if (canRailBlur && navBarFrostedBackdrop != null) {
                                             val overlayAlpha =
-                                                if (navigationBarTintFrostedBlur) 0.45f else 0.30f
+                                                if (navigationBarTintFrostedBlur) 0.32f else 0.30f
                                             Box(
                                                 modifier =
                                                     Modifier
@@ -2206,7 +2288,10 @@ class MainActivity : ComponentActivity() {
                                                         .drawBackdrop(
                                                             backdrop = liquidGlassBackdrop,
                                                             effects = {
-                                                                vibrancy()
+                                                                // Vividness boost; no lens here on purpose - the
+                                                                // rail's rectangle shape has no corner radii for
+                                                                // the refraction SDF.
+                                                                colorControls(saturation = 1.7f)
                                                                 blur(4f.dp.toPx())
                                                             },
                                                             onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
@@ -2618,6 +2703,8 @@ class MainActivity : ComponentActivity() {
                                                                 SearchSource.ONLINE ->
                                                                     if (searchProvider == SearchProvider.SPOTIFY) {
                                                                         R.string.search_source_spotify
+                                                                    } else if (searchProvider == SearchProvider.AMAZON) {
+                                                                        R.string.source_amazon
                                                                     } else {
                                                                         R.string.search_yt_music
                                                                     }
@@ -2829,6 +2916,31 @@ class MainActivity : ComponentActivity() {
                                                 pureBlack = pureBlack,
                                                 isMiniPlayerPairedWithNavigation = areBottomBarsPaired,
                                                 onLyricsVisibilityChange = { isPlayerLyricsFullScreen = it },
+                                                navbarHiddenOffset = {
+                                                    // When the navigation bar slides away (route change or
+                                                    // scroll-to-hide), the collapsed mini player takes over the
+                                                    // freed space: it drifts down by exactly the bar's footprint
+                                                    // (bar height + its padding), keeping the system gesture
+                                                    // inset clear. Scaled by (1 - sheet progress) inside
+                                                    // BottomSheet so the expanded player is unaffected.
+                                                    // Only on routes whose collapsed bound still contains the
+                                                    // bar footprint — routes that hide the bar outright
+                                                    // (settings, playlists, active search) already exclude it
+                                                    // from the bound, so drifting again would shove the mini
+                                                    // player right off the screen.
+                                                    if (shouldShowNavigationBar && !useRail) {
+                                                        val hideFraction =
+                                                            1f - (
+                                                                bottomNavigationBarHeight.coerceAtMost(navVisibleHeight) /
+                                                                    navVisibleHeight
+                                                            )
+                                                        with(navBarScrollDensity) {
+                                                            (floatingBarsBottomPadding + navVisibleHeight).toPx() * hideFraction
+                                                        }
+                                                    } else {
+                                                        0f
+                                                    }
+                                                },
                                             )
                                         }
 
@@ -3038,6 +3150,8 @@ class MainActivity : ComponentActivity() {
                                                 },
                                             ).nestedScroll(
                                                 topAppBarScrollBehavior.nestedScrollConnection,
+                                            ).nestedScroll(
+                                                navBarScrollHideConnection,
                                             ),
                                 ) {
                                     navigationBuilder(

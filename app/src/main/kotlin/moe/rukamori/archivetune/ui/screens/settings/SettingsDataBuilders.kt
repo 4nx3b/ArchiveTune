@@ -326,7 +326,7 @@ fun buildSettingsGroups(
                 SettingsChild("Deezer audio quality", "deezer_audio_quality", listOf("deezer quality", "deezer audio quality", "deezer flac")),
                 SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("jiosaavn", "jio saavn", "saavn", "enable jiosaavn", "indian music")),
                 SettingsChild("JioSaavn audio quality", "jiosaavn_audio_quality", listOf("jiosaavn quality", "saavn quality", "jiosaavn audio quality")),
-                SettingsChild("yt-dlp runtime", "ytdlp", listOf("yt-dlp", "ytdlp", "youtube-dl", "extractor", "downloader runtime", "yt dlp version")),
+                SettingsChild("Enable Amazon Music source", "amazon_enable", listOf("amazon", "amazon music", "enable amazon", "amazon source", "amazon hd")),
             ),
         )
 
@@ -344,6 +344,24 @@ fun buildSettingsGroups(
                 SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("enable jiosaavn", "jiosaavn source", "turn on jiosaavn")),
                 SettingsChild("JioSaavn audio quality", "jiosaavn_audio_quality", listOf("jiosaavn quality", "saavn audio quality", "jiosaavn bitrate")),
                 SettingsChild("JioSaavn credit", "jiosaavn_credit", listOf("jiosaavn credit", "vivimusic", "jiosaavn about")),
+            ),
+        )
+
+    // Sources → Amazon Music sub-page.
+    val amazon =
+        SettingsItem(
+            key = "amazon",
+            icon = painterResource(R.drawable.login),
+            title = "Amazon Music",
+            subtitle = "Amazon Music account (metadata only)",
+            accentColor = MaterialTheme.colorScheme.tertiary,
+            keywords = listOf("amazon", "amazon music", "amazon login", "amazon hd", "amazon ultra hd"),
+            onClick = { navController.navigate("settings/amazon") },
+            hidden = true,
+            children = listOf(
+                SettingsChild("Sign in to Amazon Music", "amazon_login", listOf("amazon login", "amazon sign in", "connect amazon")),
+                SettingsChild("Sign out of Amazon Music", "amazon_sign_out", listOf("amazon logout", "amazon sign out", "disconnect amazon")),
+                SettingsChild("Amazon audio quality", "amazon_audio_quality", listOf("amazon quality", "amazon hd", "amazon ultra hd")),
             ),
         )
 
@@ -539,6 +557,25 @@ fun buildSettingsGroups(
                 SettingsChild("Low data mode", "low_data_mode", listOf("low data", "data saver", "save data", "metered", "data mode")) { SearchResultSwitch(LowDataModeKey, true) },
                 SettingsChild("Force high refresh rate", "force_high_refresh_rate", listOf("refresh rate", "high refresh", "120hz", "90hz", "smooth")) { SearchResultSwitch(ForceHighRefreshRateKey, false) },
                 SettingsChild("Open supported links by default", "open_supported_links", listOf("open links", "supported links", "default links", "deep link", "default browser app")),
+            ),
+        )
+    val androidAuto =
+        SettingsItem(
+            key = "android_auto",
+            icon = painterResource(R.drawable.directions_car),
+            title = stringResource(R.string.android_auto),
+            subtitle = stringResource(R.string.android_auto_settings_subtitle),
+            accentColor = MaterialTheme.colorScheme.primary,
+            keywords = listOf("android auto", "androidauto", "car", "automotive", "driving", "aaosp", "vehicle", "head unit"),
+            onClick = { navController.navigate("settings/android_auto") },
+            children = listOf(
+                SettingsChild("Android Auto online recommendations", "android_auto_online_recommendations"),
+                SettingsChild("Android Auto online voice search", "android_auto_online_voice_search"),
+                SettingsChild("Android Auto device songs", "android_auto_local_songs"),
+                SettingsChild("Android Auto metered playback", "android_auto_metered_playback"),
+                SettingsChild("Android Auto metered artwork", "android_auto_metered_artwork"),
+                SettingsChild("Android Auto primary action", "android_auto_primary_action"),
+                SettingsChild("Android Auto secondary action", "android_auto_secondary_action"),
             ),
         )
     val integration =
@@ -982,6 +1019,7 @@ fun buildSettingsGroups(
                     playback,
                     sources,
                     jioSaavn,
+                    amazon,
                     deezer,
                     lyrics,
                     lyricsProviders,
@@ -996,6 +1034,7 @@ fun buildSettingsGroups(
 
             items =
                 listOf(
+                    androidAuto,
                     integration,
                     aiIntegration,
                     discordExperimental,

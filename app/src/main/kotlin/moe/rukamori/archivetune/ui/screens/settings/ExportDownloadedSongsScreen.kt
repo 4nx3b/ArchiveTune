@@ -110,6 +110,7 @@ private fun sourceLabelResFor(cacheKey: String): Int =
         DownloadSource.QOBUZ -> R.string.download_source_qobuz
         DownloadSource.TIDAL -> R.string.download_source_tidal
         DownloadSource.APPLE -> R.string.download_source_apple_music
+        DownloadSource.AMAZON -> R.string.source_amazon
         DownloadSource.DEEZER -> R.string.download_source_deezer
         DownloadSource.JIOSAAVN -> R.string.download_source_jiosaavn
         DownloadSource.QOBUZ_BACKUP -> R.string.download_source_qobuz_backup
