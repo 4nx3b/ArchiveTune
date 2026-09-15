@@ -4049,7 +4049,7 @@ class MusicService :
                         .setDisplayName(getString(R.string.start_radio))
                         .setIconResId(R.drawable.radio)
                         .setSessionCommand(CommandToggleStartRadio)
-                        .setEnabled(currentSong.value != null && currentMediaMetadata.value?.isPodcast != true)
+                        .setEnabled(currentSong.value != null)
                         .build()
                     AndroidAutoCustomAction.SHUFFLE -> CommandButton.Builder()
                         .setDisplayName(
