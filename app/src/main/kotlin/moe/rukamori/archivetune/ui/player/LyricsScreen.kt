@@ -86,9 +86,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -143,14 +140,11 @@ import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.PlayerSliderTrack
-import moe.rukamori.archivetune.ui.component.PlatformBackdrop
-import moe.rukamori.archivetune.ui.component.layerBackdrop
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
-import moe.rukamori.archivetune.ui.component.rememberLiquidGlassEnabled
-import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
+import moe.rukamori.archivetune.ui.menu.LyricsMenu
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
@@ -198,6 +192,7 @@ fun LyricsScreen(
     val playerConnection = LocalPlayerConnection.current ?: return
     val player = playerConnection.player
     val context = LocalContext.current
+    val menuState = LocalMenuState.current
     val database = LocalDatabase.current
     val view = LocalView.current
 
@@ -449,21 +444,16 @@ fun LyricsScreen(
         }
     }
 
-    var showAnchoredLyricsMenu by remember { mutableStateOf(false) }
-    var lyricsMenuAnchor by remember { mutableStateOf(Rect.Zero) }
-
-    // The lyrics overflow popup only gets a live liquid-glass backdrop while the
-    // liquid glass preference is on (Android 12+); with it off the popup renders
-    // the fully opaque ink so no glass remains with the toggle off.
-    val popupBackdrop: PlatformBackdrop? =
-        if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            rememberBackdrop(Color.Transparent)
-        } else {
-            null
-        }
-
     val showLyricsMenu = {
-        showAnchoredLyricsMenu = true
+        menuState.show {
+            LyricsMenu(
+                lyricsProvider = { currentLyrics },
+                mediaMetadataProvider = { mediaMetadata },
+                lyricsSyncOffset = lyricsSyncOffset,
+                onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                onDismiss = menuState::dismiss,
+            )
+        }
     }
 
     val currentFormat by playerConnection.currentFormat.collectAsStateWithLifecycle(initialValue = null)
@@ -532,35 +522,17 @@ fun LyricsScreen(
                     }
                 },
     ) {
-        // The liquid-glass popup samples the BACKGROUND only — the backdrop
-        // layers without the (bright white) lyric text. A popup whose frost
-        // sampled the lyrics themselves washed milky-white, because a 32dp
-        // blur of big white text is a white panel. The recording layer wraps
-        // just the background stack, so the frost always samples the dark art.
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .let { base ->
-                        if (popupBackdrop != null && showAnchoredLyricsMenu) {
-                            base.layerBackdrop(popupBackdrop)
-                        } else {
-                            base
-                        }
-                    },
-        ) {
-            LyricsScreenBackground(
-                style = lyricsBackground,
-                mediaMetadata = mediaMetadata,
-                gradientColors = gradientColors,
-                disableBlur = disableBlur,
-                blurRadius = blurRadius,
-                playerCustomImageUri = playerCustomImageUri,
-                playerCustomBlur = playerCustomBlur,
-                playerCustomContrast = playerCustomContrast,
-                playerCustomBrightness = playerCustomBrightness,
-            )
-        }
+        LyricsScreenBackground(
+            style = lyricsBackground,
+            mediaMetadata = mediaMetadata,
+            gradientColors = gradientColors,
+            disableBlur = disableBlur,
+            blurRadius = blurRadius,
+            playerCustomImageUri = playerCustomImageUri,
+            playerCustomBlur = playerCustomBlur,
+            playerCustomContrast = playerCustomContrast,
+            playerCustomBrightness = playerCustomBrightness,
+        )
 
         Box(
             modifier =
@@ -583,7 +555,6 @@ fun LyricsScreen(
                     mediaMetadata = mediaMetadata,
                     foregroundColor = foregroundColor,
                     onMoreClick = showLyricsMenu,
-                    onMorePositioned = { lyricsMenuAnchor = it },
                     onDismissClick = onBackClick,
                     isLiked = currentSongLiked,
                     onToggleLike = playerConnection::toggleLike,
@@ -652,7 +623,6 @@ fun LyricsScreen(
                                     lyricsProviderName = currentLyrics?.providerName.orEmpty(),
                                     hasLyrics = currentLyrics != null,
                                     onOverflowClick = showLyricsMenu,
-                                    onOverflowPositioned = { lyricsMenuAnchor = it },
                                     onCloseClick = onBackClick,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
@@ -713,7 +683,6 @@ fun LyricsScreen(
                         lyricsProviderName = currentLyrics?.providerName.orEmpty(),
                         hasLyrics = currentLyrics != null,
                         onOverflowClick = showLyricsMenu,
-                        onOverflowPositioned = { lyricsMenuAnchor = it },
                         onCloseClick = onBackClick,
                         modifier =
                             Modifier
@@ -723,18 +692,6 @@ fun LyricsScreen(
                 }
             }
             }
-        }
-
-        if (showAnchoredLyricsMenu) {
-            AnchoredLyricsOverflowMenu(
-                iconBoundsInRoot = lyricsMenuAnchor,
-                lyricsProvider = { currentLyrics },
-                mediaMetadataProvider = { mediaMetadata },
-                lyricsSyncOffset = lyricsSyncOffset,
-                onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                onDismiss = { showAnchoredLyricsMenu = false },
-                backdrop = popupBackdrop,
-            )
         }
     }
 }
@@ -1118,7 +1075,6 @@ private fun AppleMusicTrackHeader(
     modifier: Modifier = Modifier,
     isLiked: Boolean = false,
     onToggleLike: () -> Unit = {},
-    onMorePositioned: (Rect) -> Unit = {},
 ) {
     val artistText =
         remember(mediaMetadata.id, mediaMetadata.artists) {
@@ -1197,27 +1153,12 @@ private fun AppleMusicTrackHeader(
 
         Spacer(modifier = Modifier.width(4.dp))
 
-        Box(
-            modifier =
-                Modifier.onGloballyPositioned { coords ->
-                    onMorePositioned(
-                        Rect(
-                            offset = coords.positionInRoot(),
-                            size = androidx.compose.ui.geometry.Size(
-                                width = coords.size.width.toFloat(),
-                                height = coords.size.height.toFloat(),
-                            ),
-                        ),
-                    )
-                },
-        ) {
-            AppleMusicHeaderIconButton(
-                iconRes = R.drawable.player_more_horiz,
-                contentDescription = stringResource(R.string.more_options),
-                foregroundColor = foregroundColor,
-                onClick = onMoreClick,
-            )
-        }
+        AppleMusicHeaderIconButton(
+            iconRes = R.drawable.player_more_horiz,
+            contentDescription = stringResource(R.string.more_options),
+            foregroundColor = foregroundColor,
+            onClick = onMoreClick,
+        )
     }
 }
 
@@ -1301,7 +1242,6 @@ private fun AppleMusicControls(
     onOverflowClick: () -> Unit,
     onCloseClick: () -> Unit,
     modifier: Modifier = Modifier,
-    onOverflowPositioned: (Rect) -> Unit = {},
 ) {
     val position = positionProvider()
     val duration = durationProvider()
@@ -1464,17 +1404,7 @@ private fun AppleMusicControls(
                     Box(
                         modifier =
                             Modifier
-                                .onGloballyPositioned { coords ->
-                                    onOverflowPositioned(
-                                        Rect(
-                                            offset = coords.positionInRoot(),
-                                            size = androidx.compose.ui.geometry.Size(
-                                                width = coords.size.width.toFloat(),
-                                                height = coords.size.height.toFloat(),
-                                            ),
-                                        ),
-                                    )
-                                }.clip(RoundedCornerShape(percent = 50))
+                                .clip(RoundedCornerShape(percent = 50))
                                 .background(foregroundColor.copy(alpha = 0.10f))
                                 .clickable(onClick = onOverflowClick)
                                 .padding(horizontal = 18.dp, vertical = 8.dp),

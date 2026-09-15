@@ -29,9 +29,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -41,7 +38,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -66,7 +62,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -88,7 +83,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -96,7 +90,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -749,7 +742,7 @@ fun LyricsMenu(
                 start = 0.dp,
                 top = 0.dp,
                 end = 0.dp,
-                bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
+                bottom = 12.dp,
             ),
     ) {
         item {
@@ -852,7 +845,7 @@ fun LyricsMenu(
 
                             if (index < menuItems.size - 1) {
                                 HorizontalDivider(
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                    color = Color.White.copy(alpha = 0.12f),
                                     thickness = 0.5.dp,
                                     modifier = Modifier.padding(horizontal = 16.dp),
                                 )
@@ -862,7 +855,7 @@ fun LyricsMenu(
                     }
                 }
             } else {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     NewActionGrid(
                         actions =
                             menuItems.map { item ->
@@ -1490,13 +1483,6 @@ private fun uniqueTranslationSeparator(segments: List<AiLyricsSegment>): String 
 private const val MaxTranslatorItemsPerBatch = 50
 private const val MaxTranslatorCharsPerBatch = 4000
 
-/**
- * The lyrics overflow popup's fill when liquid glass is off (or unavailable): the app's
- * dark ink, fully opaque — the menu must never show blur or content behind it without
- * the glass preference on.
- */
-private val UnglassedLyricsPopupColor = Color(0xFF1C1C1E)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchLyricsInputDialog(
@@ -1729,15 +1715,15 @@ private fun AppleMusicLyricsMenuRow(
 
     val headlineColor =
         if (item.isDestructive) {
-            MaterialTheme.colorScheme.error
+            Color(0xFFFF453A)
         } else {
-            MaterialTheme.colorScheme.onSurface
+            Color.White
         }
     val iconColor =
         if (item.isDestructive) {
-            MaterialTheme.colorScheme.error
+            Color(0xFFFF453A)
         } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
+            Color.White
         }
     val headlineWeight = if (item.isDestructive) FontWeight.SemiBold else FontWeight.Medium
 
@@ -1783,6 +1769,8 @@ fun AnchoredLyricsOverflowMenu(
     onDismiss: () -> Unit,
     viewModel: LyricsMenuViewModel = hiltViewModel(),
     backdrop: PlatformBackdrop? = null,
+
+    scrimColor: Color = Color.Black.copy(alpha = 0.45f),
 ) {
     var dismissed by remember { mutableStateOf(false) }
 
@@ -1840,6 +1828,9 @@ fun AnchoredLyricsOverflowMenu(
         onDismiss()
     }
 
+    val scale = scaleAnim.value
+    val alpha = alphaAnim.value
+
     var anchorSpaceHeightPx by remember { mutableIntStateOf(0) }
     var popupHeightPx by remember { mutableIntStateOf(0) }
     val verticalOffsetPx = with(density) { 4.dp.toPx() }.toInt()
@@ -1870,19 +1861,12 @@ fun AnchoredLyricsOverflowMenu(
         }
     }
 
-    val scrimColor = MaterialTheme.colorScheme.scrim
-
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
                 .onSizeChanged { anchorSpaceHeightPx = it.height }
-                .drawBehind {
-                    val a = alphaAnim.value.coerceIn(0f, 1f)
-                    if (a > 0f) {
-                        drawRect(color = scrimColor, alpha = 0.32f * a)
-                    }
-                }
+                .background(scrimColor.copy(alpha = scrimColor.alpha * alpha))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -1918,9 +1902,9 @@ fun AnchoredLyricsOverflowMenu(
                     .heightIn(max = 520.dp)
                     .onSizeChanged { popupHeightPx = it.height }
                     .graphicsLayer {
-                        this.alpha = alphaAnim.value
-                        this.scaleX = scaleAnim.value
-                        this.scaleY = scaleAnim.value
+                        this.alpha = alpha
+                        this.scaleX = scale
+                        this.scaleY = scale
 
                         val popupWidthPx = 220.dp.toPx()
                         val horizontalMarginPx = 16.dp.toPx()
@@ -1940,34 +1924,11 @@ fun AnchoredLyricsOverflowMenu(
                     }
 
                     .then(
-                        // Liquid glass ON: the frosted backdrop IS the surface, but it
-                        // must read as dark charcoal glass, never milk: the popup most
-                        // often opens over the lyrics, and a 32dp blur of big white
-                        // lyric text washes the sample bright. A 0.72 black scrim over
-                        // the glass keeps the blur + vibrancy structure visible while
-                        // holding the popup at a deep tint no matter what is behind it.
-                        // Liquid glass OFF (backdrop == null): fully opaque #1C1C1E —
-                        // the app's dark ink, the one fill that keeps the white menu
-                        // rows legible in both themes — so not a hint of blur shows
-                        // through with the toggle off.
-                        if (frostedBlurModifier != null) {
-                            frostedBlurModifier
-                                .then(
-                                    Modifier.background(
-                                        Color.Black.copy(
-                                            alpha = 0.72f * alphaAnim.value.coerceIn(0f, 1f),
-                                        ),
-                                    ),
-                                )
-                        } else {
-                            Modifier.background(
-                                UnglassedLyricsPopupColor.copy(
-                                    alpha = alphaAnim.value.coerceIn(0f, 1f),
-                                ),
-                            )
-                        },
+                        frostedBlurModifier
+                            ?: Modifier.background(Color.Black.copy(alpha = 0.65f * alpha)),
                     )
 
+                    .background(Color.Black.copy(alpha = 0.55f))
                     .clip(RoundedCornerShape(16.dp))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -1993,62 +1954,3 @@ fun AnchoredLyricsOverflowMenu(
     }
 }
 
-/**
- * The lyrics overflow menu for the numbered players' inline lyrics (Cinematic, Little, Immersive,
- * Material Extended, Editorial) and the Apple Music player's landscape pane: upstream main's
- * exact presentation — a standard Material 3 [ModalBottomSheet] in the theme surface color with
- * the pill drag handle, wrapping [LyricsMenu]'s MenuSurfaceSection + NewActionGrid content.
- * Copied from rukamori/ArchiveTune main (BottomSheetMenu + LyricsMenu); the anchored dark
- * popup it replaces read as an opaque square-cornered box with a black scrim over the lyrics.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun LyricsOverflowSheet(
-    visible: Boolean,
-    lyricsProvider: () -> LyricsEntity?,
-    mediaMetadataProvider: () -> MediaMetadata,
-    lyricsSyncOffset: Int,
-    onLyricsSyncOffsetChange: (Int) -> Unit,
-    onDismiss: () -> Unit,
-    viewModel: LyricsMenuViewModel = hiltViewModel(),
-) {
-    val focusManager = LocalFocusManager.current
-
-    if (!visible) return
-
-    ModalBottomSheet(
-        onDismissRequest = {
-            focusManager.clearFocus()
-            onDismiss()
-        },
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        dragHandle = {
-            Box(
-                modifier =
-                    Modifier
-                        .padding(vertical = 12.dp)
-                        .size(width = 40.dp, height = 4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)),
-            )
-        },
-        modifier = Modifier.fillMaxHeight(),
-    ) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-        ) {
-            LyricsMenu(
-                lyricsProvider = lyricsProvider,
-                mediaMetadataProvider = mediaMetadataProvider,
-                lyricsSyncOffset = lyricsSyncOffset,
-                onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                onDismiss = onDismiss,
-                viewModel = viewModel,
-            )
-        }
-    }
-}

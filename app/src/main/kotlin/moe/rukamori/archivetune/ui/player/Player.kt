@@ -1814,7 +1814,7 @@ fun BottomSheetPlayer(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier =
                                 Modifier
-                                    .fillMaxSize()
+                                    .align(Alignment.BottomCenter)
                                     .padding(bottom = queueSheetState.collapsedBound)
                                     .windowInsetsPadding(
                                         WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
@@ -2350,7 +2350,7 @@ fun BottomSheetPlayer(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier =
                                 Modifier
-                                    .fillMaxSize()
+                                    .align(Alignment.BottomCenter)
                                     .padding(bottom = queueSheetState.collapsedBound)
                                     .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
@@ -2943,7 +2943,7 @@ private fun MikoLyricsTransition(
                     if (visible) {
 
                         tween(
-                            durationMillis = 900,
+                            durationMillis = 650,
                             easing = FastOutSlowInEasing,
                         )
                     } else {
@@ -2964,9 +2964,9 @@ private fun MikoLyricsTransition(
 
     if (showContent) {
         // A whole-page lyrics overlay, always full screen: no rounded "sheet"
-        // corners and no dim scrim behind it — the lyrics page covers the
-        // player (controls included) edge to edge instead of reading as a box
-        // floating over it.
+        // corners, no dim scrim and no slide-up-from-the-bottom-edge motion —
+        // the page materialises in place over the player (controls included),
+        // the way the Apple Music player morphs its cover into the lyrics.
         Box(
             modifier =
                 Modifier
@@ -2974,28 +2974,20 @@ private fun MikoLyricsTransition(
                     .graphicsLayer {
                         val p = progressState.value.coerceIn(0f, 1f)
 
-                        translationY = size.height * (1f - p)
+                        alpha = p
+                        scaleX = 0.92f + 0.08f * p
+                        scaleY = 0.92f + 0.08f * p
                     }.background(MaterialTheme.colorScheme.surface),
             ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-
-                                alpha = (progressState.value * 1.35f).coerceIn(0f, 1f)
-                            },
-                ) {
-                    LyricsScreen(
-                        mediaMetadata = mediaMetadata,
-                        onBackClick = onDismiss,
-                        navController = navController,
-                        lyricsSyncOffset = lyricsSyncOffset,
-                        onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                        onQueueClick = onQueueClick,
-                        backHandlerEnabled = backHandlerEnabled,
-                    )
-                }
+                LyricsScreen(
+                    mediaMetadata = mediaMetadata,
+                    onBackClick = onDismiss,
+                    navController = navController,
+                    lyricsSyncOffset = lyricsSyncOffset,
+                    onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                    onQueueClick = onQueueClick,
+                    backHandlerEnabled = backHandlerEnabled,
+                )
             }
     }
 }
