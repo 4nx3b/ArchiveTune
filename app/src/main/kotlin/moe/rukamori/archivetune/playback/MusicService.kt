@@ -331,6 +331,7 @@ import moe.rukamori.archivetune.together.TogetherPlaybackSync
 import moe.rukamori.archivetune.together.toPublicTrackInfo
 import moe.rukamori.archivetune.together.toTogetherRoomState
 import moe.rukamori.archivetune.together.toTogetherTrack
+import moe.rukamori.archivetune.ui.player.CanvasProviderPriority
 import moe.rukamori.archivetune.ui.screens.settings.DiscordPresenceManager
 import moe.rukamori.archivetune.ui.screens.settings.ListenBrainzManager
 import moe.rukamori.archivetune.moriextractor.ArchiveTuneExtractorException
@@ -1293,6 +1294,10 @@ class MusicService :
             .collect(scope) { settings ->
                 val changed = artworkSettingsFlow.value != settings
                 artworkSettingsFlow.value = settings
+                // Feed the canvas video pipeline's provider ranking too — the
+                // video resolver reads it to decide whether ArchiveTune canvas
+                // or Spotify canvas resolves first.
+                CanvasProviderPriority.updateFrom(settings.providerOrder)
                 if (changed) {
 
                     artworkResolver.invalidate()
