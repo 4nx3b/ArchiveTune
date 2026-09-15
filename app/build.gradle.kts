@@ -227,6 +227,11 @@ android {
             dimension = "device"
             buildConfigField("String", "DEVICE", "\"tv\"")
         }
+        create("automotive") {
+            dimension = "device"
+            minSdk = 28
+            buildConfigField("String", "DEVICE", "\"automotive\"")
+        }
         create("universal") {
             dimension = "abi"
 
@@ -434,6 +439,7 @@ dependencies {
     implementation(libs.media3)
     implementation("androidx.media3:media3-exoplayer-hls:${libs.versions.media3.get()}")
     implementation(libs.media3.session)
+    implementation(libs.car.app)
     implementation(libs.media3.okhttp)
     implementation("androidx.media3:media3-ui:${libs.versions.media3.get()}")
     implementation("androidx.media3:media3-ui-compose:${libs.versions.media3.get()}")
@@ -510,6 +516,7 @@ dependencies {
 
 androidComponents {
     onVariants(selector().all()) { variant ->
+        if ("automotive" in variant.name) return@onVariants
         val capitalizedVariantName =
             variant.name.replaceFirstChar { character ->
                 if (character.isLowerCase()) character.titlecase() else character.toString()

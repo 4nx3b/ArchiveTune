@@ -464,33 +464,38 @@ class App :
                 }
         }
 
-        try {
-            Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-                try {
-                    val sw = StringWriter()
-                    val pw = PrintWriter(sw)
-                    throwable.printStackTrace(pw)
-                    val stack = sw.toString()
-
-                    val intent =
-                        Intent(this@App, DebugActivity::class.java).apply {
-                            putExtra(DebugActivity.EXTRA_STACK_TRACE, stack)
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                        }
-                    startActivity(intent)
+        // The automotive build has no DebugActivity to forward crashes to —
+        // killing the process from a car head unit without any UI would loop
+        // forever, so the crash reporter only arms on phone/TV builds.
+        if (BuildConfig.DEVICE != "automotive") {
+            try {
+                Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
                     try {
-                        Thread.sleep(100)
-                    } catch (_: InterruptedException) {
+                        val sw = StringWriter()
+                        val pw = PrintWriter(sw)
+                        throwable.printStackTrace(pw)
+                        val stack = sw.toString()
+
+                        val intent =
+                            Intent(this@App, DebugActivity::class.java).apply {
+                                putExtra(DebugActivity.EXTRA_STACK_TRACE, stack)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                            }
+                        startActivity(intent)
+                        try {
+                            Thread.sleep(100)
+                        } catch (_: InterruptedException) {
+                        }
+                    } catch (e: Exception) {
+                        reportException(e)
+                    } finally {
+                        android.os.Process.killProcess(android.os.Process.myPid())
+                        exitProcess(2)
                     }
-                } catch (e: Exception) {
-                    reportException(e)
-                } finally {
-                    android.os.Process.killProcess(android.os.Process.myPid())
-                    exitProcess(2)
                 }
+            } catch (e: Exception) {
+                reportException(e)
             }
-        } catch (e: Exception) {
-            reportException(e)
         }
         applicationScope.launch(Dispatchers.IO) {
             startupReadiness.awaitReady()
