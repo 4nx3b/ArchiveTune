@@ -2544,3 +2544,44 @@ Stage Summary:
 - CI on 658b1a48b: Build Pull Request, Build APKs and Nightly (all 8
   release/R8 matrix jobs) green; PR #222 (dev -> main) head green.
 
+
+---
+Task ID: 48
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Two user-reported regressions - (1) every playback failing with
+"The source buffer is this buffer" (code 1004), (2) the Canvas picker in the
+wrong menu (song-row menu) while the full-screen player still shows
+"Save canvas".
+
+Work Log:
+- Playback crash: traced through media3 1.10.1 sources
+  (BaseAudioProcessor/AudioProcessingPipeline/DefaultAudioSink).
+  StereoPanAudioProcessor.queueInput violated two contract rules that the
+  fork's own HapticsPcmProcessor follows: (a) an EMPTY input must be a no-op
+  - AudioProcessingPipeline feeds the SHARED AudioProcessor.EMPTY_BUFFER
+  downstream when the upstream processor is drained, and
+  replaceOutputBuffer(0) returns that same shared buffer, so the passthrough
+  did EMPTY_BUFFER.put(EMPTY_BUFFER) -> IllegalArgumentException before any
+  size check; (b) the replaced output buffer must be flip()ed before
+  getOutput() can read it. Both fixed (d8802aed9); the DSP path now also
+  consumes the whole input buffer.
+- Same commit: the processor instance was shared between the primary and the
+  crossfade secondary player's sinks (createRenderersFactory used by both
+  ExoPlayer builds) - two playback threads racing on one BaseAudioProcessor.
+  The secondary player now creates and releases its own instance;
+  applyEqSettingsToEffects broadcasts to listOfNotNull(primary, secondary)
+  via the new applyStereoPanSettingsTo helper, and the secondary instance is
+  initialised from desiredEqSettings.value at creation.
+- Menu move (5b2e967ce): the "Canvas" source picker (availability probe +
+  4s-bounded provider probe, Apple Music/Spotify source list, per-source
+  offline save, tap-to-play) moved from SongMenu into the full-screen
+  PlayerMenu's overflow, replacing the "Save canvas" row (same gate family:
+  non-local, not queue-trigger, not low-data, not V5; V7 asks providers for
+  vertical canvases). SongMenu keeps "Download cover" only. SaveCanvasDialog
+  + CanvasSaver became dead and were deleted; probe re-checks the cache
+  after a canvas refetch completes.
+
+Stage Summary:
+- d8802aed9 + 5b2e967ce pushed to dev; Build Pull Request (compile+test+lint)
+  green on 5b2e967ce; Build APKs / Nightly monitored to completion in the
+  session worklog.
