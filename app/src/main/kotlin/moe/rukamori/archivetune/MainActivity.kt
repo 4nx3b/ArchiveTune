@@ -347,6 +347,7 @@ import moe.rukamori.archivetune.ui.screens.settings.NavigationTab
 import moe.rukamori.archivetune.ui.theme.ArchiveTuneTheme
 import moe.rukamori.archivetune.ui.theme.ColorSaver
 import moe.rukamori.archivetune.ui.theme.DefaultThemeColor
+import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.extractThemeColor
 import moe.rukamori.archivetune.ui.theme.extractWallpaperThemeColor
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
@@ -426,10 +427,8 @@ class MainActivity : ComponentActivity() {
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
-                pendingAodModeJob?.cancel()
-                pendingAodModeJob = null
-                playerConnection?.dispose()
-                playerConnection = null
+                isMusicServiceBound = false
+                disposePlayerConnection()
             }
         }
 
@@ -537,6 +536,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Drops the current [PlayerConnection]. Safe to call repeatedly.
+     *
+     * unbindService() does NOT trigger onServiceDisconnected — Android only
+     * delivers that callback on a service crash — so every clean unbind path
+     * must dispose here, or the connection stays registered as a listener on
+     * the service's long-lived player and pins this Activity (plus its whole
+     * Compose tree) until the service itself dies. One leaked connection
+     * accumulates per background/foreground cycle without this.
+     */
+    private fun disposePlayerConnection() {
+        pendingAodModeJob?.cancel()
+        pendingAodModeJob = null
+        playerConnection?.dispose()
+        playerConnection = null
+    }
+
     private fun safeUnbindMusicService() {
         if (!isMusicServiceBound) return
         try {
@@ -547,6 +563,7 @@ class MainActivity : ComponentActivity() {
         } finally {
             isMusicServiceBound = false
         }
+        disposePlayerConnection()
     }
 
     override fun onStop() {
@@ -571,10 +588,9 @@ class MainActivity : ComponentActivity() {
             safeUnbindMusicService()
             stopService(Intent(this, MusicService::class.java))
         }
-        pendingAodModeJob?.cancel()
-        pendingAodModeJob = null
-        playerConnection?.dispose()
-        playerConnection = null
+        // onStop's unbind already disposed; safety net for any path that
+        // reaches destruction with a live connection.
+        disposePlayerConnection()
         safeUnbindMusicService()
     }
 
@@ -1002,6 +1018,14 @@ class MainActivity : ComponentActivity() {
                                             .Builder(this@MainActivity)
                                             .data(song.thumbnailUrl)
                                             .allowHardware(false)
+                                            // Dominant-color extraction needs a
+                                            // thumbnail, not the full-res image —
+                                            // without this every track change
+                                            // decodes a multi-MB software bitmap.
+                                            .size(
+                                                PlayerColorExtractor.Config.IMAGE_SIZE,
+                                                PlayerColorExtractor.Config.IMAGE_SIZE,
+                                            )
                                             .build(),
                                     )
                                 val extractedColor =
@@ -1534,8 +1558,9 @@ class MainActivity : ComponentActivity() {
 
                     val aodAutoTimerSeconds by rememberPreference(AodAutoTimerSecondsKey, defaultValue = 0)
                     val aodAutoOnScreenDim by rememberPreference(AodAutoOnScreenDimKey, defaultValue = false)
-                    val isPlayingNow by (playerConnection?.isPlaying ?: MutableStateFlow(false))
-                        .collectAsStateWithLifecycle()
+                    val isPlayingNow by remember(playerConnection) {
+                        playerConnection?.isPlaying ?: MutableStateFlow(false)
+                    }.collectAsStateWithLifecycle()
                     LaunchedEffect(
                         aodAutoTimerSeconds,
                         isPlayingNow,
