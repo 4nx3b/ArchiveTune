@@ -25,6 +25,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.TimeoutException
 import kotlinx.coroutines.supervisorScope
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.aicontentfilter.FilterAiContentUseCase
@@ -1029,7 +1030,7 @@ class HomeViewModel
                 val startedAt = refreshStartedAtMs.get()
                 val stuck = startedAt != 0L && System.currentTimeMillis() - startedAt > REFRESH_STUCK_WATCHDOG_MS
                 if (!stuck) return
-                isRefreshing.set(false)
+                isRefreshing.value = false
                 if (!isRefreshing.compareAndSet(false, true)) return
             }
             refreshStartedAtMs.set(System.currentTimeMillis())
