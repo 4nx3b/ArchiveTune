@@ -2691,3 +2691,21 @@ Stage Summary:
 - dev at 2b66620f3: 1 commit, 3 files (+143/-47), no visual change, nothing pushed.
 - Effect: a position tick now invalidates the scrub-slider draw, the two timestamp labels, the back glyph's lit state and the lyric strip instead of the entire BitChordPlayerContent; the seek-settle coroutine no longer restarts 10x/sec.
 - CI compile risk: low - the ported shapes are canary's own, all symbols verified in-repo, smart-cast of `lyrics` unchanged from the pre-port call; no gradle locally, first CI round pending (no push performed per instructions).
+
+---
+Task ID: 50
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 4-item batch - spatialflow lyrics menu position, SpatialFlow equalizer redesign + independent effects, mini player auto-hide fix, canary optimization ports + Amazon Music integration.
+
+Work Log:
+- de9d0e98b (tasks 1+3): lyrics overflow moved to the leading side, artwork shared-element parks top-right (22dp from the right edge, TransformOrigin(1f,0f)); mini-player auto-hide on non-tab pages was double compensation - navbarHiddenOffset now gates on shouldShowNavigationBar && !useRail, and the scroll-hide connection only reacts to NestedScrollSource.UserInput (programmatic scrolls can't hide the bar).
+- a7647c92d (task 2): EqualizerDialog rewritten as SpatialFlow's EffectsScreen - segmented feature cards, ExpressiveSwitch, ResponsiveSlider springs, ExposedDropdown reverb presets, vertical rotated 5-band grid resampled to device bands, ProcessingCard pulse, profile header icons. All effects independent of the band-equalizer master switch (MusicService AND-gates dropped, StereoPanAudioProcessor masterEnabled removed). Playback Speed + Match Pitch added via new audioPlaybackSpeed/audioPlaybackSpeedPitchMatch prefs.
+- 3eccb7458: canary memory + dead-GPU fixes (4 resolution-cache clears on full stop; dead queue Haze layer deleted).
+- d6e1cecbc/a5b378553 + 04fdc880b/a5f5decc0/ffec0ee3f/d87a8e3b4/2f573c9a5 (task 4a): ShowCodecOnPlayerKey constant, sortedByCollated helper (all 6 DAO collator sites), Tidal regex hoisting, MediaInfoLoader dedup, image-cache invariant doc, seek re-buffer volume restore, lifecycle leak repairs. 2b66620f3: BitChord position-tick perf (positionProvider + leaf composables + draw-scope slider + snapshotFlow settle).
+- 2d2bb8eab/ffb029ae0/ab214acae (task 4b): Amazon Music ported from canary + extended - account/pool/settings plumbing, download priority picker (user requirement, deliberate divergence from canary), playback source priority, search-from popup entry with a live-verified anonymous catalog search client (config.json device token + searchCatalogTracks envelope; results map to AppleMusicSearchItem.Track so taps resolve via text search).
+- dcdeaa349: CI repair round - MusicService speed-key imports + ExposedDropdownMenu scope-member resolution.
+- Deliberately not ported: canary dead-code audit sweeps (fork diverged 600-1300 lines in those files; risk > cleanup value), ff1fa8ad9 (core submodule dependency), hasCustomBackdrop (our enum is plain).
+
+Stage Summary:
+- CI triple-green on dcdeaa349 (Build Pull Request incl. tests+lint, Build APKs, Nightly all-8 release/R8 matrix).
+- dev head dcdeaa349 pushed; batch totals ~12 commits, 46+ files, +3300/-1150.
