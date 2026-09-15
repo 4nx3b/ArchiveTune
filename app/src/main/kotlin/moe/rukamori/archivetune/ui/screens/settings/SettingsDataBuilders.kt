@@ -541,6 +541,25 @@ fun buildSettingsGroups(
                 SettingsChild("Open supported links by default", "open_supported_links", listOf("open links", "supported links", "default links", "deep link", "default browser app")),
             ),
         )
+    val androidAuto =
+        SettingsItem(
+            key = "android_auto",
+            icon = painterResource(R.drawable.directions_car),
+            title = stringResource(R.string.android_auto),
+            subtitle = stringResource(R.string.android_auto_settings_subtitle),
+            accentColor = MaterialTheme.colorScheme.primary,
+            keywords = listOf("android auto", "androidauto", "car", "automotive", "driving", "aaosp", "vehicle", "head unit"),
+            onClick = { navController.navigate("settings/android_auto") },
+            children = listOf(
+                SettingsChild("Android Auto online recommendations", "android_auto_online_recommendations"),
+                SettingsChild("Android Auto online voice search", "android_auto_online_voice_search"),
+                SettingsChild("Android Auto device songs", "android_auto_local_songs"),
+                SettingsChild("Android Auto metered playback", "android_auto_metered_playback"),
+                SettingsChild("Android Auto metered artwork", "android_auto_metered_artwork"),
+                SettingsChild("Android Auto primary action", "android_auto_primary_action"),
+                SettingsChild("Android Auto secondary action", "android_auto_secondary_action"),
+            ),
+        )
     val integration =
         SettingsItem(
             key = "integration",
@@ -996,6 +1015,7 @@ fun buildSettingsGroups(
 
             items =
                 listOf(
+                    androidAuto,
                     integration,
                     aiIntegration,
                     discordExperimental,
