@@ -2937,23 +2937,17 @@ private fun MikoLyricsTransition(
         if (animationsDisabled) {
             progress.snapTo(if (visible) 1f else 0f)
         } else {
+            // BitChord sleeve-collapse cadence: the same 420ms FastOutSlowInEasing
+            // tween BitChordPlayer.kt drives its lyrics panel with, applied to the
+            // full-screen lyrics page hosted by the numbered styles (Cinematic,
+            // Little, Immersive, Material Extended, Editorial) and TikTok. The old
+            // 900ms slide-up-with-corner-morph ("morphe") is gone: the panel now
+            // fades in over the tail of the collapse — alpha ramps from 45% of the
+            // way in — while settling from 26dp below, exactly like BitChord's
+            // lyrics panel graphicsLayer.
             progress.animateTo(
                 targetValue = if (visible) 1f else 0f,
-                animationSpec =
-                    if (visible) {
-
-                        tween(
-                            durationMillis = 650,
-                            easing = FastOutSlowInEasing,
-                        )
-                    } else {
-
-                        spring(
-                            dampingRatio = 1f,
-                            stiffness = 80f,
-                            visibilityThreshold = 0.001f,
-                        )
-                    },
+                animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
             )
         }
     }
@@ -2974,11 +2968,18 @@ private fun MikoLyricsTransition(
                     .graphicsLayer {
                         val p = progressState.value.coerceIn(0f, 1f)
 
-                        alpha = p
+                        // BitChord lyrics-panel ramp: the page materialises over
+                        // the tail of the sleeve collapse (45% in) and settles
+                        // from 26dp below — the panel fades in over the player
+                        // behind it, exactly like BitChord's panel over its mesh
+                        // gradient, with the 0.92 -> 1 scale echoing the artwork
+                        // shrinking into the page.
+                        alpha = ((p - 0.45f) / 0.55f).coerceIn(0f, 1f)
+                        translationY = (1f - p) * 26.dp.toPx()
                         scaleX = 0.92f + 0.08f * p
                         scaleY = 0.92f + 0.08f * p
                     }.background(MaterialTheme.colorScheme.surface),
-            ) {
+        ) {
                 LyricsScreen(
                     mediaMetadata = mediaMetadata,
                     onBackClick = onDismiss,
