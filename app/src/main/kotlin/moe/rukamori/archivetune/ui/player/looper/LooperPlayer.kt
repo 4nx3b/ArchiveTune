@@ -76,15 +76,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -121,28 +116,6 @@ import moe.rukamori.archivetune.ui.player.LocalVideoSelectedHeight
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.makeTimeString
-
-/** Canvas backdrop render: 1/6 footprint with a proportionally divided blur. */
-private const val LooperCanvasBackdropUpscale = 6f
-private const val LooperCanvasBackdropOverscan = 1.10f
-private val LooperCanvasBackdropBlurRadius = 72.dp
-private const val LooperCanvasBackdropMaxVideoEdgePx = 480
-
-/** Apple Music's scrim over the canvas stack. */
-internal val LooperCanvasScrimBrush =
-    Brush.verticalGradient(
-        0f to Color.Black.copy(alpha = 0.25f),
-        0.5f to Color.Black.copy(alpha = 0.40f),
-        1f to Color.Black.copy(alpha = 0.65f),
-    )
-
-private const val LooperSharpStageFadeStart = 0.62f
-
-private val LooperSharpStageFadeBrush =
-    Brush.verticalGradient(
-        LooperSharpStageFadeStart to Color.Black,
-        1f to Color.Transparent,
-    )
 
 /** Looper's fixed scrim over the blurred artwork (musicDarkness). */
 private const val LooperMusicDarkness = 0.62f
@@ -202,21 +175,6 @@ fun LooperPlayerContent(
             canvasSurfacesForLyrics = true
         }
     }
-    val lyricsBackdropProgress by animateFloatAsState(
-        targetValue = if (lyricsVisible) 1f else 0f,
-        animationSpec = tween(durationMillis = 650),
-        label = "LooperLyricsCanvasFade",
-    )
-
-    // The sharp stage is bounded at the song-title row, like Apple Music's.
-    var playerRootTopY by remember { mutableStateOf(0f) }
-    var titleTopInRootY by remember { mutableStateOf<Float?>(null) }
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val sharpStageHeight: Dp =
-        titleTopInRootY?.let { top ->
-            with(density) { (top - playerRootTopY).coerceAtLeast(0f).toDp() }
-        } ?: (configuration.screenHeightDp.dp * 0.55f)
-
     val videoState = LocalVideoArtworkState.current
     val videoPlaybackFailed = LocalVideoPlaybackFailed.current
     val videoShowing =
@@ -230,8 +188,7 @@ fun LooperPlayerContent(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(Color(0xFF141414))
-                .onGloballyPositioned { playerRootTopY = it.positionInRoot().y },
+                .background(Color(0xFF141414)),
     ) {
         // Blurred artwork backdrop: sigma 18, 1.08 overscan, under the fixed
         // 0.62 black scrim — Looper's BlurredBackgroundArt + musicDarkness.
@@ -266,79 +223,6 @@ fun LooperPlayerContent(
                         .fillMaxSize()
                         .background(Color.Black.copy(alpha = LooperMusicDarkness)),
             )
-        }
-
-        if (canvasAvailable) {
-            // The duplicate canvas behind the bottom controls: a 1/6-footprint
-            // render with the blur folded inside the scaling layer.
-            val stageFraction =
-                (sharpStageHeight / configuration.screenHeightDp.dp).coerceIn(0.1f, 1f)
-            val frostFraction = (1f - LooperSharpStageFadeStart * stageFraction).coerceIn(0.2f, 1f)
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .fillMaxHeight(frostFraction)
-                        .graphicsLayer { alpha = 1f - lyricsBackdropProgress },
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .graphicsLayer {
-                                val scale = LooperCanvasBackdropOverscan * LooperCanvasBackdropUpscale
-                                scaleX = scale
-                                scaleY = scale
-                            },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CanvasArtworkPlayer(
-                        primaryUrl = canvasPrimaryUrl,
-                        fallbackUrl = canvasFallbackUrl,
-                        isPlaying = isPlaying && canvasPlayingForLyrics,
-                        visible = canvasSurfacesForLyrics,
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                        maxVideoEdgePx = LooperCanvasBackdropMaxVideoEdgePx,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth(1f / LooperCanvasBackdropUpscale)
-                                .fillMaxHeight(1f / LooperCanvasBackdropUpscale)
-                                .blur(LooperCanvasBackdropBlurRadius / LooperCanvasBackdropUpscale),
-                    )
-                }
-            }
-
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .background(LooperCanvasScrimBrush),
-            )
-
-            // The sharp stage, fading out toward the frosted continuation.
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(sharpStageHeight)
-                        .graphicsLayer {
-                            compositingStrategy = CompositingStrategy.Offscreen
-                            alpha = 1f - lyricsBackdropProgress
-                        }.drawWithContent {
-                            drawContent()
-                            drawRect(brush = LooperSharpStageFadeBrush, blendMode = BlendMode.DstIn)
-                        },
-            ) {
-                CanvasArtworkPlayer(
-                    primaryUrl = canvasPrimaryUrl,
-                    fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying && canvasPlayingForLyrics,
-                    visible = canvasSurfacesForLyrics,
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                    modifier = Modifier.matchParentSize(),
-                )
-            }
         }
 
         MaterialTheme(typography = LooperTypography) {
@@ -465,6 +349,10 @@ fun LooperPlayerContent(
                         LooperArtwork(
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
+                            canvasPrimaryUrl = canvasPrimaryUrl,
+                            canvasFallbackUrl = canvasFallbackUrl,
+                            canvasPlaying = isPlaying && canvasPlayingForLyrics,
+                            canvasVisible = canvasSurfacesForLyrics,
                             onLyricsClick = onLyricsClick,
                             onSkipNext = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -490,8 +378,7 @@ fun LooperPlayerContent(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .onGloballyPositioned { titleTopInRootY = it.positionInRoot().y },
+                            .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
@@ -746,6 +633,10 @@ fun LooperPlayerContent(
 private fun LooperArtwork(
     mediaMetadata: MediaMetadata,
     isPlaying: Boolean,
+    canvasPrimaryUrl: String?,
+    canvasFallbackUrl: String?,
+    canvasPlaying: Boolean,
+    canvasVisible: Boolean,
     onLyricsClick: () -> Unit,
     onSkipNext: () -> Unit,
     onSkipPrevious: () -> Unit,
@@ -788,28 +679,56 @@ private fun LooperArtwork(
                     )
                 },
     ) {
-        AsyncImage(
-            model =
-                ImageRequest
-                    .Builder(LocalContext.current)
-                    .data(mediaMetadata.thumbnailUrl)
-                    .crossfade(320)
-                    .build(),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .let { base ->
-                        // targetPadding 2.0 while paused — the sleeve breathes.
-                        if (isPlaying) base else base.padding(2.dp)
-                    }.clip(RoundedCornerShape(12.dp))
-                    .border(
-                        width = 0.8.dp,
-                        color = Color.White.copy(alpha = 0.04f),
-                        shape = RoundedCornerShape(12.dp),
-                    ),
+        // Canvas plays INSIDE the fixed-radius sleeve (the same slot the static
+        // artwork occupies), not as a full-screen background behind the player.
+        // The still image hands over to the looping video only once the canvas
+        // is actually playing, so the sleeve never sits empty while it buffers.
+        var canvasShowing by remember(canvasPrimaryUrl, canvasFallbackUrl) { mutableStateOf(false) }
+        if (canvasPrimaryUrl != null || canvasFallbackUrl != null) {
+            CanvasArtworkPlayer(
+                primaryUrl = canvasPrimaryUrl,
+                fallbackUrl = canvasFallbackUrl,
+                isPlaying = canvasPlaying,
+                visible = canvasVisible,
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                onPlaybackAvailabilityChange = { canvasShowing = it },
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(12.dp)),
+            )
+        }
+
+        val staticArtworkAlpha by animateFloatAsState(
+            targetValue = if (canvasShowing) 0f else 1f,
+            animationSpec = tween(300),
+            label = "looperStaticArtworkAlpha",
         )
+        if (staticArtworkAlpha > 0f) {
+            AsyncImage(
+                model =
+                    ImageRequest
+                        .Builder(LocalContext.current)
+                        .data(mediaMetadata.thumbnailUrl)
+                        .crossfade(320)
+                        .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = staticArtworkAlpha }
+                        .let { base ->
+                            // targetPadding 2.0 while paused — the sleeve breathes.
+                            if (isPlaying) base else base.padding(2.dp)
+                        }.clip(RoundedCornerShape(12.dp))
+                        .border(
+                            width = 0.8.dp,
+                            color = Color.White.copy(alpha = 0.04f),
+                            shape = RoundedCornerShape(12.dp),
+                        ),
+            )
+        }
     }
 }
 
