@@ -533,8 +533,11 @@ fun NavGraphBuilder.navigationBuilder(
     composable("settings/storage/export_songs") {
         ExportDownloadedSongsScreen(navController)
     }
-    composable("settings/android_auto") {
-        AndroidAutoSettings(navController)
+    composable(
+        route = "settings/android_auto?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        AndroidAutoSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable(
         route = "settings/downloads?scrollTo={scrollTo}",
