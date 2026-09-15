@@ -2461,3 +2461,19 @@ Stage Summary:
   in place (never a sheet); lyrics menu = the v15.0 floating card on the
   lyrics page and the v15.0 dark anchored popup on the styles that keep it
   (Apple Music, SpatialFlow, TikTok, SimpMusic).
+
+---
+Task ID: 42 (CI follow-up)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Verify the e5d4e508a / 20802399c CI round after the rate-limit window.
+
+Work Log:
+- Re-checked via the public actions page once the anonymous API quota reset:
+  Build APKs (#955, "fix(lyrics+immersive)…"), Nightly (canary) and the
+  Build Pull Request run for PR "dev -> main" — every run of both commits
+  reports completed successfully; no repair round needed.
+
+Stage Summary:
+- dev green at 20802399c (code commit e5d4e508a + docs). Tasks 1–2 of the
+  user's latest batch done: lyrics = in-place full-page Apple Music lyrics
+  with the v15.0 floating menu, V7 controls bottom-anchored again.
