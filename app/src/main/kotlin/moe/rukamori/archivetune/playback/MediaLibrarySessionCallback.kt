@@ -2438,13 +2438,26 @@ class MediaLibrarySessionCallback
         private fun List<Song>.toMediaItemsWithStartPosition(
             selectedSongId: String?,
             startPositionMs: Long,
-        ) = MediaSession.MediaItemsWithStartPosition(
-            map { it.toMediaItem() },
-            selectedSongId?.let { id ->
-                indexOfFirst { it.id == id }.takeIf { it != -1 }
-            } ?: 0,
-            startPositionMs,
-        )
+        ): MediaSession.MediaItemsWithStartPosition {
+            val selected = selectedSongId?.let { id -> indexOfFirst { it.id == id } }?.takeIf { it != -1 }
+            if (selected != null || selectedSongId.isNullOrBlank()) {
+                return MediaSession.MediaItemsWithStartPosition(
+                    map { it.toMediaItem() },
+                    selected ?: 0,
+                    startPositionMs,
+                )
+            }
+            // The selected song dropped out of the (re-shuffled / re-filtered)
+            // section list — starting at index 0 would play a DIFFERENT song than
+            // the one picked. Fall back to the cached search item for that id so
+            // the picked song still plays, with the section as a one-song queue.
+            val cachedItem = onlineSearchItemCache[selectedSongId]
+            return if (cachedItem != null) {
+                MediaSession.MediaItemsWithStartPosition(listOf(cachedItem), 0, startPositionMs)
+            } else {
+                MediaSession.MediaItemsWithStartPosition(map { it.toMediaItem() }, 0, startPositionMs)
+            }
+        }
 
         private fun downloadedSongs(): Flow<List<Song>> {
             val updateTimeBySongId =

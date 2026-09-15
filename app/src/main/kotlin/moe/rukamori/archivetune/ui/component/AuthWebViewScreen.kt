@@ -62,6 +62,7 @@ fun AuthWebViewScreen(
     subtitle: String,
     modifier: Modifier = Modifier,
     onRelease: ((WebView) -> Unit)? = null,
+    footer: (@Composable () -> Unit)? = null,
     factory: (Context) -> WebView,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -107,6 +108,8 @@ fun AuthWebViewScreen(
                     if (webView === released) webView = null
                 },
             )
+
+            footer?.invoke()
         }
     }
 
