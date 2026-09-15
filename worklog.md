@@ -2477,3 +2477,70 @@ Stage Summary:
 - dev green at 20802399c (code commit e5d4e508a + docs). Tasks 1–2 of the
   user's latest batch done: lyrics = in-place full-page Apple Music lyrics
   with the v15.0 floating menu, V7 controls bottom-anchored again.
+
+---
+Task ID: 46
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Resume and complete the 17-item batch (player styles, canvas,
+Android Auto, providers, settings search, navbar tint + scroll-to-hide,
+SpatialFlow audio effects/animations, liquid glass, jank) — 16 commits,
+49 files, +3365/-480.
+
+Work Log:
+- Session recovery: tasks 1-4, 6, 12, 13, 15, 17 were already on dev
+  (85447ef89..14b4845bd); tasks 11+16 (lyrics provider-test retry,
+  home-refresh watchdog + auto-reload serialization) committed as
+  e880d6add.
+- 0842445d4: repaired the 5 commits the previous session pushed without
+  a CI round — 9 Kotlin errors (isPodcast missing from fork's
+  MediaMetadata, missing LaunchedEffect/Modifier imports, a
+  MutableStateFlow.set() call, TimeoutException import,
+  HomeViewModel collectLatest misuse).
+- 607c589d1 (task 14): settings search — dead "yt-dlp runtime" child and
+  its route mapping removed (tap used to crash); ALL 391 child search
+  routes cross-checked against NavigationBuilder destinations with
+  scripts/check_settings_routes.py; the Android Auto group now maps to
+  settings/android_auto?scrollTo= and AndroidAutoSettings got
+  PreferencePositions auto-scroll + row highlight.
+- 940473914 (task 10): "Tint frosted" navbar style was translucent black
+  in both themes — now opaque accent-tinted (surfaceContainer -> primary
+  25% blend), icon colours follow the APP theme (colorScheme luminance,
+  not isSystemInDarkTheme), frosted overlay 0.45 -> 0.32; tablet rail
+  same treatment.
+- 8a9a7b323 + 94cc3d082 (task 7a): SpatialFlow's audio effects ported
+  into the equalizer — EnvironmentalReverb with SpatialFlow's exact
+  7-preset parameter map, stereo balance, and 8D audio as a REAL-TIME
+  StereoPanAudioProcessor in the media3 chain (apulsator width .75 sine
+  + aecho 0.6:0.4:30|60:0.2|0.15 + alimiter .97 params; no FFmpeg, no
+  intermediate files, works on streams, reacts to the speed slider).
+  Full prefs/repo/usecase/VM plumbing + "Spatial effects" UI section +
+  profile support. media3 1.10.1 AudioProcessor.AudioFormat fix followed.
+- 76cd0ae6d (task 7b): scroll-to-hide bottom navbar via
+  NestedScrollConnection on the scaffold content (>14dp thresholds);
+  bottomNavigationBarHeight target includes the hidden state,
+  destination changes reset it; BottomSheet's navbarHiddenOffset
+  provider lets the collapsed mini player drift down into the freed bar
+  space, scaled by (1 - sheet progress).
+- 2fe22a674 (task 9): SpatialFlow lyrics artwork shared-element — album
+  art morphs into a 44dp app-bar thumbnail (spring .86/420) during the
+  circular lyrics reveal for non-canvas songs; lyrics overlay header
+  reserves the 48dp slot, more-vert moved right.
+- 9a79fb858 (task 8, visual-only): colorControls(saturation 1.7f)
+  replaces vibrancy() everywhere; lens refraction strengthened (24->28dp
+  band, /4 -> /3.2 amount, depthEffect on) on Modifier.liquidGlass +
+  navbar pill; flat 32dp frosts (BottomSheetMenu/LyricsMenu) got lens +
+  blur cut 32 -> 20dp (net GPU saving); rail stays lens-less
+  (RectangleShape has no radii — lens throws).
+- f9a535399 (task 5): canvas artwork video now pauses at sheet progress
+  0.5 (top of the content fade) instead of at full collapse — decode +
+  compositing gone from the entire second half of collapse/expand.
+- 658b1a48b: changelogs.md 15.1 addendum for the batch (spatial audio
+  effects, navbar behaviour, glass vividness, jank + provider fixes).
+
+Stage Summary:
+- 16 of 17 tasks done; task 5's first-launch half is covered by the
+  previously-merged settled-glass defers + canvas gate — anything more
+  needs on-device profiling.
+- CI on 658b1a48b: Build Pull Request, Build APKs and Nightly (all 8
+  release/R8 matrix jobs) green; PR #222 (dev -> main) head green.
+
