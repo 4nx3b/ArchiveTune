@@ -1145,7 +1145,13 @@ fun BottomSheetPlayer(
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
     val playerSheetCanvasVisible by remember(state) {
-        derivedStateOf { state.value > state.collapsedBound }
+        // Early canvas gate: the sheet's expanded content starts fading at
+        // progress 0.5 and is fully gone by 0.25, so pausing the (muted, purely
+        // visual) canvas artwork loop at the TOP of the fade removes the video
+        // decode + surface compositing cost from the entire second half of the
+        // collapse/expand animation - the biggest contributor to the
+        // 'minimising the player janks while a canvas plays' report.
+        derivedStateOf { state.progress > 0.5f }
     }
     CompositionLocalProvider(LocalPlayerSheetVisible provides playerSheetCanvasVisible) {
     BottomSheet(
