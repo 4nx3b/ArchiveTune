@@ -850,7 +850,13 @@ class MusicService :
     private var virtualizer: Virtualizer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
     private var environmentalReverb: EnvironmentalReverb? = null
-    private val stereoPanProcessor = StereoPanAudioProcessor()
+    // One processor per audio sink: the primary and the crossfade secondary
+    // player each drive their own instance from their own playback thread -
+    // sharing one would race on the BaseAudioProcessor buffer state.
+    private val primaryStereoPanProcessor = StereoPanAudioProcessor()
+
+    @Volatile
+    private var secondaryStereoPanProcessor: StereoPanAudioProcessor? = null
     private val audioEffectPlayerListener =
         object : Player.Listener {
             override fun onEvents(
@@ -1243,7 +1249,7 @@ class MusicService :
             ExoPlayer
                 .Builder(this)
                 .setMediaSourceFactory(createMediaSourceFactory())
-                .setRenderersFactory(createRenderersFactory())
+                .setRenderersFactory(createRenderersFactory(primaryStereoPanProcessor))
                 .setLoadControl(createPrimaryLoadControl())
                 .setTrackSelector(DefaultTrackSelector(this, SafeTrackSelectionFactory()))
                 .setHandleAudioBecomingNoisy(true)
@@ -2913,11 +2919,16 @@ class MusicService :
         }.getOrNull()
     }
 
-    private fun createSecondaryCrossfadePlayer(): ExoPlayer =
-        ExoPlayer
+    private fun createSecondaryCrossfadePlayer(): ExoPlayer {
+        // Dedicated stereo-pan instance for the secondary sink; it receives the
+        // same settings broadcasts and dies with the player it belongs to.
+        val secondaryStereoPan = StereoPanAudioProcessor()
+        applyStereoPanSettingsTo(secondaryStereoPan, desiredEqSettings.value)
+        secondaryStereoPanProcessor = secondaryStereoPan
+        return ExoPlayer
             .Builder(this)
             .setMediaSourceFactory(createMediaSourceFactory())
-            .setRenderersFactory(createRenderersFactory())
+            .setRenderersFactory(createRenderersFactory(secondaryStereoPan))
             .setLoadControl(createCrossfadeLoadControl())
             .setTrackSelector(DefaultTrackSelector(this, SafeTrackSelectionFactory()))
             .setHandleAudioBecomingNoisy(true)
@@ -2932,6 +2943,7 @@ class MusicService :
                 setOffloadEnabled(false)
                 skipSilenceEnabled = localPlayer.skipSilenceEnabled
             }
+    }
 
     private fun startCrossfade(
         target: CrossfadeTarget,
@@ -3307,6 +3319,7 @@ class MusicService :
         val playerToRelease = secondaryCrossfadePlayer ?: return
         secondaryCrossfadePlayer = null
         secondaryCrossfadeTarget = null
+        secondaryStereoPanProcessor = null
         runCatching { playerToRelease.removeListener(secondaryCrossfadeListener) }
         runCatching { playerToRelease.stop() }
         runCatching { playerToRelease.clearMediaItems() }
@@ -6984,6 +6997,18 @@ class MusicService :
                 Timber.tag(TAG).w(error, "%s initialization failed for audio session %d", name, sessionId)
             }.getOrNull()
 
+    private fun applyStereoPanSettingsTo(
+        processor: StereoPanAudioProcessor,
+        settings: EqSettings,
+    ) {
+        processor.setMasterEnabled(settings.enabled)
+        processor.setBalance(settings.balance)
+        processor.setRotation(
+            enabled = settings.eightDEnabled,
+            speedHz = settings.eightDSpeedHz,
+        )
+    }
+
     private fun applyEqSettingsToEffects(settings: EqSettings) {
         val eq = equalizer ?: return
         val caps = eqCapabilities.value
@@ -7029,12 +7054,9 @@ class MusicService :
             runCatching { reverb.enabled = settings.enabled && settings.reverbEnabled }
         }
 
-        stereoPanProcessor.setMasterEnabled(settings.enabled)
-        stereoPanProcessor.setBalance(settings.balance)
-        stereoPanProcessor.setRotation(
-            enabled = settings.eightDEnabled,
-            speedHz = settings.eightDSpeedHz,
-        )
+        listOfNotNull(primaryStereoPanProcessor, secondaryStereoPanProcessor).forEach { stereoPan ->
+            applyStereoPanSettingsTo(stereoPan, settings)
+        }
     }
 
     private fun applyReverbPreset(
@@ -10959,7 +10981,7 @@ class MusicService :
             ).setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-    private fun createRenderersFactory() =
+    private fun createRenderersFactory(stereoPanProcessor: StereoPanAudioProcessor) =
         object : DefaultRenderersFactory(this) {
             init {
 

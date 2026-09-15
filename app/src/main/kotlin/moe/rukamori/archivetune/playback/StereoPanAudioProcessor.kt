@@ -31,7 +31,9 @@ import kotlin.math.sin
  * Thread-safety: configuration setters are called from the service scope while
  * [queueInput] runs on the playback thread - all mutable config is @Volatile
  * and individually consistent (a torn read only bends one buffer's gains by a
- * few percent, which is inaudible for a psychacooustic effect).
+ * few percent, which is inaudible for a psychacooustic effect). Each player
+ * (primary + crossfade secondary) must use its OWN instance: BaseAudioProcessor
+ * buffer state is not synchronised across playback threads.
  */
 class StereoPanAudioProcessor : BaseAudioProcessor() {
     @Volatile
@@ -78,27 +80,29 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
         }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
-        val format = inputAudioFormat
-        if (format.encoding != C.ENCODING_PCM_16BIT || format.channelCount != STEREO_CHANNEL_COUNT) {
-            return
-        }
+        // The pipeline queues the SHARED AudioProcessor.EMPTY_BUFFER when the
+        // upstream processor is drained. put()ing a buffer into itself throws
+        // ("The source buffer is this buffer"), and rewriting the pending
+        // output with an empty buffer would drop audio - so an empty input is
+        // a strict no-op.
+        if (!inputBuffer.hasRemaining()) return
 
+        val format = inputAudioFormat
         val balanceNow = balance
         val rotationOn = rotationEnabled && masterEnabled
         val balanceOn = masterEnabled && abs(balanceNow) > BALANCE_EPSILON
-        if (!rotationOn && !balanceOn) {
+        if (
+            format.encoding != C.ENCODING_PCM_16BIT ||
+            format.channelCount != STEREO_CHANNEL_COUNT ||
+            format.sampleRate <= 0 ||
+            (!rotationOn && !balanceOn)
+        ) {
             // Fast path: nothing to do - copy the payload unchanged.
-            val remaining = inputBuffer.remaining()
-            replaceOutputBuffer(remaining).put(inputBuffer)
+            replaceOutputBuffer(inputBuffer.remaining()).put(inputBuffer).flip()
             return
         }
 
         val sampleRate = format.sampleRate
-        if (sampleRate <= 0) {
-            val remaining = inputBuffer.remaining()
-            replaceOutputBuffer(remaining).put(inputBuffer)
-            return
-        }
 
         val history = ensureEchoHistory(sampleRate)
         val frameCount = inputBuffer.remaining() / (BYTES_PER_SAMPLE * STEREO_CHANNEL_COUNT)
@@ -177,6 +181,11 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
 
         phase = localPhase % (2.0 * PI)
         echoWriteIndex = writeIndex
+        // The sample loop consumes 4 bytes per frame; swallow a trailing odd
+        // pair so the caller sees the buffer fully consumed, then publish the
+        // output for getOutput() (position=0, limit=bytes written).
+        inputBuffer.position(inputBuffer.limit())
+        output.flip()
     }
 
     override fun onFlush() {
