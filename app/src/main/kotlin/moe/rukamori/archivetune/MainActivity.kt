@@ -311,7 +311,7 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.effects.colorControls
 import moe.rukamori.archivetune.ui.component.ProfileMenuDialog
 import moe.rukamori.archivetune.ui.component.ProfileMenuItem
 import moe.rukamori.archivetune.ui.component.AutoResizeText
@@ -2257,7 +2257,10 @@ class MainActivity : ComponentActivity() {
                                                         .drawBackdrop(
                                                             backdrop = liquidGlassBackdrop,
                                                             effects = {
-                                                                vibrancy()
+                                                                // Vividness boost; no lens here on purpose - the
+                                                                // rail's rectangle shape has no corner radii for
+                                                                // the refraction SDF.
+                                                                colorControls(saturation = 1.7f)
                                                                 blur(4f.dp.toPx())
                                                             },
                                                             onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
