@@ -2585,3 +2585,73 @@ Stage Summary:
 - d8802aed9 + 5b2e967ce pushed to dev; Build Pull Request (compile+test+lint)
   green on 5b2e967ce; Build APKs / Nightly monitored to completion in the
   session worklog.
+
+---
+Task ID: 4a
+Agent: Super Z (sub agent, canary port batch)
+Task: Port 5 optimization commits from the independent fork canary/canary
+(vossgraves/ArchiveTune) into dev, one commit at a time, adapted to our
+diverged code; behavior-preserving only, no visual changes; local commits
+only (no push).
+
+Work Log:
+- 04fdc880b <- canary 7a45f7dc1 (perf/tidal regex hoisting): hoisted all 20
+  fixed-pattern inline Regex constructions in TidalAudioProvider.kt to
+  file-level vals (canary's names); contentArtworkScore now takes wanted*
+  params so selectArtworkCandidates computes them once per search; also
+  ported the commit's dedup hunks that had verbatim context here -
+  inspectLocalPlaybackFile reuses inspectPlaybackHeader, manifestDeclaresFlac
+  alias folded into manifestLooksFlac, local durationMatches duplicate
+  replaced by the shared TrackMatching.durationMatches. The 3 dynamic
+  per-attr XML regexes stay inline, as in canary.
+- a5f5decc0 <- canary 231efde5e (one media-info fetch): new
+  ui/utils/MediaInfoLoader.kt ported as-is (rememberMediaInfo keeps
+  SimpMusic's YouTube-id-shape gate and shares it with the sheet - the sheet
+  loses its blind round trip on non-YouTube ids); SimpMusicPlayer +
+  ShowMediaInfo rewired to the shared loader; dropped the now-unused
+  YouTube/LaunchedEffect imports canary had left behind.
+- ffec0ee3f <- canary 1d6fbcae1 (image cache setting): functional hunks
+  skipped as already present under different names - our DataStore.get
+  operator falls back to a bounded 1.5s blocking read of the store itself
+  while PreferenceStore's first snapshot is in flight, and
+  initialSnapshot/awaitSnapshot exist since b570febe5, so the cold-start
+  MaxImageCacheSizeKey read already resolves the persisted value. Commit
+  records the port by documenting the invariant at the newImageLoader read
+  site (comment only, zero behavior change).
+- d87a8e3b4 <- canary 94a7b5946 (seek re-buffer volume):
+  pendingSeekVolumeReassert + seekVolumeReassertJob fields, STATE_READY
+  "seek_ready" reassert next to the existing source_switch_ready hook,
+  scheduleSeekVolumeReassert() 300ms fast path for in-buffer seeks,
+  SEEK_VOLUME_REASSERT_MS constant. All landmarks matched; only the
+  comment's "(below)" became "(above)" because our STATE_READY hook
+  precedes onPositionDiscontinuity.
+- 2f573c9a5 <- canary fd89a69fa (lifecycle leaks): dropped
+  MusicService.onCreate's never-released self-referential MediaController
+  (+ its 4 imports) that set hasBoundClients forever and blocked idle-stop;
+  onDestroy's stopTogetherInternal now launched NonCancellable; direct
+  DiscordPresenceManager.stop() net before scopeJob.cancel; MainActivity
+  disposePlayerConnection() extracted and now called from
+  safeUnbindMusicService (unbindService never delivers
+  onServiceDisconnected, so every clean unbind previously left the stopped
+  Activity pinned on the service player's listener list until rebind);
+  theme-color extraction downsampled to PlayerColorExtractor.Config.
+  IMAGE_SIZE (in-repo prior art in Items.kt); isPlayingNow fallback flow
+  remembered instead of re-allocated per recomposition. Our onDestroy keeps
+  its trailing safeUnbindMusicService() (canary dropped theirs; ours must
+  unbind even without StopMusicOnTaskClear, else the ServiceConnection
+  registration leaks).
+- Verification without gradle (no local SDK): per-hunk context diffing
+  against our files, import resolution, member-name existence checks
+  (TrackMatching.durationMatches, PlayerColorExtractor.Config.IMAGE_SIZE,
+  DiscordPresenceManager.stop(), inspectPlaybackHeader), state-machine
+  brace/paren balance identical before/after for all 7 touched files, no
+  leftover references to deleted symbols. Nothing pushed to any remote.
+
+Stage Summary:
+- dev at 2f573c9a5: 5 ported commits (04fdc880b, a5f5decc0, ffec0ee3f,
+  d87a8e3b4, 2f573c9a5), 7 files, +221/-116, no visual changes.
+- CI compile risk: low - every new API shape reuses in-repo prior art;
+  innertube symbols resolve via the core submodule exactly as the
+  pre-existing code did.
+- Not done: CI monitoring round for these commits (no push performed per
+  instructions).
