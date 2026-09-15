@@ -35,11 +35,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.hazeEffect
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -1576,20 +1571,6 @@ fun BottomSheetPlayer(
             )
         }
 
-        val queueHazeAlpha = 0f
-
-        val queueArtHazeState = remember { HazeState() }
-        val queueArtContext = LocalContext.current
-
-        val queueArtSwapState =
-            rememberThumbnailSwapState(
-                videoId = mediaMetadata?.id,
-                ytmUrl = mediaMetadata?.thumbnailUrl,
-                lowDataMode = rememberLowDataModeActive(),
-                isMusicVideo = mediaMetadata?.isMusicVideo ?: false,
-            )
-        val queueArtUrl = queueArtSwapState.displayUrl
-
         Box(
             modifier =
                 Modifier
@@ -2686,46 +2667,6 @@ fun BottomSheetPlayer(
                 }
             }
         }
-        }
-
-        if (queueHazeAlpha > 0f && queueArtUrl != null) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .hazeSource(state = queueArtHazeState),
-            ) {
-                AsyncImage(
-                    model =
-                        ImageRequest
-                            .Builder(queueArtContext)
-                            .data(queueArtUrl)
-                            .size(256, 256)
-                            .allowHardware(false)
-                            .build(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
-
-        if (queueHazeAlpha > 0f) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = queueHazeAlpha }
-                        .hazeEffect(
-                            state = queueArtHazeState,
-                            style =
-                                HazeStyle(
-                                    blurRadius = 80.dp,
-                                    tint = HazeTint(Color.Black.copy(alpha = 0.30f)),
-                                    noiseFactor = 0.15f,
-                                ),
-                        ),
-            )
         }
 
         val queueOnBackgroundColor =
