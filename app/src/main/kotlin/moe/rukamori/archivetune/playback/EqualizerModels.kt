@@ -24,6 +24,11 @@ data class EqProfile(
     val virtualizerStrength: Int = 0,
     val virtualizerEnabled: Boolean? = null,
     val autoHeadroomEnabled: Boolean = false,
+    val reverbEnabled: Boolean = false,
+    val reverbPreset: Int = 0,
+    val balance: Float = 0f,
+    val eightDEnabled: Boolean = false,
+    val eightDSpeedHz: Float = 0.2f,
 )
 
 @Serializable
@@ -50,7 +55,29 @@ data class EqSettings(
     val virtualizerEnabled: Boolean,
     val virtualizerStrength: Int,
     val autoHeadroomEnabled: Boolean,
+    val reverbEnabled: Boolean = false,
+    val reverbPreset: Int = 0,
+    val balance: Float = 0f,
+    val eightDEnabled: Boolean = false,
+    val eightDSpeedHz: Float = 0.2f,
 )
+
+enum class EqReverbPreset(
+    val storageValue: Int,
+) {
+    NONE(0),
+    SMALL_ROOM(1),
+    MEDIUM_ROOM(2),
+    LARGE_ROOM(3),
+    MEDIUM_HALL(4),
+    LARGE_HALL(5),
+    PLATE(6),
+    ;
+
+    companion object {
+        fun fromStorage(value: Int): EqReverbPreset = entries.firstOrNull { it.storageValue == value } ?: NONE
+    }
+}
 
 internal object EqualizerJson {
     val json: Json =

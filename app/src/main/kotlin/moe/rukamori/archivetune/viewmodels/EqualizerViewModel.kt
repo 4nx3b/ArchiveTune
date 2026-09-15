@@ -37,6 +37,7 @@ import moe.rukamori.archivetune.equalizer.UpdateEqualizerUseCase
 import moe.rukamori.archivetune.equalizer.equalizerToneIndices
 import moe.rukamori.archivetune.equalizer.resampleLevels
 import moe.rukamori.archivetune.playback.EqProfile
+import moe.rukamori.archivetune.playback.EqReverbPreset
 import javax.inject.Inject
 
 sealed interface EqualizerScreenState {
@@ -70,6 +71,11 @@ data class EqualizerUiModel(
     val virtualizerEnabled: Boolean,
     val virtualizerStrength: Int,
     val autoHeadroomEnabled: Boolean,
+    val reverbEnabled: Boolean,
+    val reverbPreset: EqReverbPreset,
+    val balance: Float,
+    val eightDEnabled: Boolean,
+    val eightDSpeedHz: Float,
     val profiles: EqualizerProfileUiModels,
     val saveProfileDialog: SaveEqualizerProfileUiModel,
     val manageProfilesVisible: Boolean,
@@ -163,6 +169,8 @@ private data class EqualizerDraft(
     val outputGainMb: Int? = null,
     val bassBoostStrength: Int? = null,
     val virtualizerStrength: Int? = null,
+    val balance: Float? = null,
+    val eightDSpeedHz: Float? = null,
 )
 
 private sealed interface EqualizerConfigurationResult {
@@ -209,6 +217,8 @@ class EqualizerViewModel
         private var outputGainCommitJob: Job? = null
         private var bassBoostCommitJob: Job? = null
         private var virtualizerCommitJob: Job? = null
+        private var balanceCommitJob: Job? = null
+        private var eightDSpeedCommitJob: Job? = null
 
         val state: StateFlow<EqualizerScreenState> =
             combine(configurationResult, draft, saveDialog, manageProfilesVisible) { result, currentDraft, profileDialog, profilesVisible ->
@@ -331,6 +341,28 @@ class EqualizerViewModel
 
         fun setAutoHeadroomEnabled(enabled: Boolean) = launchUpdate { updateEqualizer.setAutoHeadroomEnabled(enabled) }
 
+        fun setReverbEnabled(enabled: Boolean) = launchUpdate { updateEqualizer.setReverbEnabled(enabled) }
+
+        fun setReverbPreset(preset: EqReverbPreset) = launchUpdate { updateEqualizer.setReverbPreset(preset) }
+
+        fun set8DEnabled(enabled: Boolean) = launchUpdate { updateEqualizer.set8DEnabled(enabled) }
+
+        fun updateBalanceDraft(value: Float) = draft.update { it.copy(balance = value.coerceIn(-1f, 1f)) }
+
+        fun commitBalance() {
+            val value = draft.value.balance ?: return
+            balanceCommitJob?.cancel()
+            balanceCommitJob = launchUpdate { updateEqualizer.setBalance(value) }
+        }
+
+        fun update8DSpeedDraft(valueHz: Float) = draft.update { it.copy(eightDSpeedHz = valueHz.coerceIn(0.03f, 0.25f)) }
+
+        fun commit8DSpeed() {
+            val value = draft.value.eightDSpeedHz ?: return
+            eightDSpeedCommitJob?.cancel()
+            eightDSpeedCommitJob = launchUpdate { updateEqualizer.set8DSpeed(value) }
+        }
+
         fun showSaveProfileDialog() {
             saveDialog.value = SaveEqualizerProfileUiModel(visible = true)
         }
@@ -426,6 +458,8 @@ private fun EqualizerConfiguration.withDraft(draft: EqualizerDraft): EqualizerCo
                 outputGainMb = draft.outputGainMb ?: settings.outputGainMb,
                 bassBoostStrength = draft.bassBoostStrength ?: settings.bassBoostStrength,
                 virtualizerStrength = draft.virtualizerStrength ?: settings.virtualizerStrength,
+                balance = draft.balance ?: settings.balance,
+                eightDSpeedHz = draft.eightDSpeedHz ?: settings.eightDSpeedHz,
             ),
     )
 
@@ -470,6 +504,11 @@ private fun EqualizerConfiguration.toUiModel(
         virtualizerEnabled = settings.virtualizerEnabled,
         virtualizerStrength = settings.virtualizerStrength,
         autoHeadroomEnabled = settings.autoHeadroomEnabled,
+        reverbEnabled = settings.reverbEnabled,
+        reverbPreset = EqReverbPreset.fromStorage(settings.reverbPreset),
+        balance = settings.balance,
+        eightDEnabled = settings.eightDEnabled,
+        eightDSpeedHz = settings.eightDSpeedHz,
         profiles =
             EqualizerProfileUiModels(
                 profiles.map { profile ->

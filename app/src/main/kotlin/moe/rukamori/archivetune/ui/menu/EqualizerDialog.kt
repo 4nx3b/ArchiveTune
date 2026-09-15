@@ -91,6 +91,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.equalizer.EqualizerControlMode
 import moe.rukamori.archivetune.equalizer.EqualizerTone
+import moe.rukamori.archivetune.playback.EqReverbPreset
 import moe.rukamori.archivetune.viewmodels.EqualizerBandUiModel
 import moe.rukamori.archivetune.viewmodels.EqualizerEffect
 import moe.rukamori.archivetune.viewmodels.EqualizerProfileUiModel
@@ -98,6 +99,7 @@ import moe.rukamori.archivetune.viewmodels.EqualizerScreenState
 import moe.rukamori.archivetune.viewmodels.EqualizerToneUiModel
 import moe.rukamori.archivetune.viewmodels.EqualizerUiModel
 import moe.rukamori.archivetune.viewmodels.EqualizerViewModel
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 import androidx.compose.runtime.getValue
@@ -169,6 +171,13 @@ fun EqualizerDialog(
             onVirtualizerValueChange = viewModel::updateVirtualizerDraft,
             onVirtualizerValueChangeFinished = viewModel::commitVirtualizer,
             onAutoHeadroomEnabledChange = viewModel::setAutoHeadroomEnabled,
+            onReverbEnabledChange = viewModel::setReverbEnabled,
+            onReverbPresetChange = viewModel::setReverbPreset,
+            onBalanceValueChange = viewModel::updateBalanceDraft,
+            onBalanceValueChangeFinished = viewModel::commitBalance,
+            on8DEnabledChange = viewModel::set8DEnabled,
+            on8DSpeedValueChange = viewModel::update8DSpeedDraft,
+            on8DSpeedValueChangeFinished = viewModel::commit8DSpeed,
             onShowSaveProfile = viewModel::showSaveProfileDialog,
             onProfileNameChange = viewModel::updateProfileName,
             onSaveProfile = viewModel::saveProfile,
@@ -207,6 +216,13 @@ private fun EqualizerScreen(
     onVirtualizerValueChange: (Int) -> Unit,
     onVirtualizerValueChangeFinished: () -> Unit,
     onAutoHeadroomEnabledChange: (Boolean) -> Unit,
+    onReverbEnabledChange: (Boolean) -> Unit,
+    onReverbPresetChange: (EqReverbPreset) -> Unit,
+    onBalanceValueChange: (Float) -> Unit,
+    onBalanceValueChangeFinished: () -> Unit,
+    on8DEnabledChange: (Boolean) -> Unit,
+    on8DSpeedValueChange: (Float) -> Unit,
+    on8DSpeedValueChangeFinished: () -> Unit,
     onShowSaveProfile: () -> Unit,
     onProfileNameChange: (String) -> Unit,
     onSaveProfile: () -> Unit,
@@ -277,6 +293,13 @@ private fun EqualizerScreen(
                     onVirtualizerValueChange = onVirtualizerValueChange,
                     onVirtualizerValueChangeFinished = onVirtualizerValueChangeFinished,
                     onAutoHeadroomEnabledChange = onAutoHeadroomEnabledChange,
+                    onReverbEnabledChange = onReverbEnabledChange,
+                    onReverbPresetChange = onReverbPresetChange,
+                    onBalanceValueChange = onBalanceValueChange,
+                    onBalanceValueChangeFinished = onBalanceValueChangeFinished,
+                    on8DEnabledChange = on8DEnabledChange,
+                    on8DSpeedValueChange = on8DSpeedValueChange,
+                    on8DSpeedValueChangeFinished = on8DSpeedValueChangeFinished,
                     onShowSaveProfile = onShowSaveProfile,
                     onShowManageProfiles = onShowManageProfiles,
                     onImportProfiles = onImportProfiles,
@@ -328,6 +351,13 @@ private fun EqualizerContent(
     onVirtualizerValueChange: (Int) -> Unit,
     onVirtualizerValueChangeFinished: () -> Unit,
     onAutoHeadroomEnabledChange: (Boolean) -> Unit,
+    onReverbEnabledChange: (Boolean) -> Unit,
+    onReverbPresetChange: (EqReverbPreset) -> Unit,
+    onBalanceValueChange: (Float) -> Unit,
+    onBalanceValueChangeFinished: () -> Unit,
+    on8DEnabledChange: (Boolean) -> Unit,
+    on8DSpeedValueChange: (Float) -> Unit,
+    on8DSpeedValueChangeFinished: () -> Unit,
     onShowSaveProfile: () -> Unit,
     onShowManageProfiles: () -> Unit,
     onImportProfiles: () -> Unit,
@@ -397,6 +427,200 @@ private fun EqualizerContent(
                         }
                     }
                 }
+            }
+        }
+        item(key = "spatial", contentType = "spatial") {
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                SpatialEffectsSection(
+                    model = model,
+                    modifier = Modifier.widthIn(max = 840.dp),
+                    onReverbEnabledChange = onReverbEnabledChange,
+                    onReverbPresetChange = onReverbPresetChange,
+                    onBalanceValueChange = onBalanceValueChange,
+                    onBalanceValueChangeFinished = onBalanceValueChangeFinished,
+                    on8DEnabledChange = on8DEnabledChange,
+                    on8DSpeedValueChange = on8DSpeedValueChange,
+                    on8DSpeedValueChangeFinished = on8DSpeedValueChangeFinished,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpatialEffectsSection(
+    model: EqualizerUiModel,
+    modifier: Modifier = Modifier,
+    onReverbEnabledChange: (Boolean) -> Unit,
+    onReverbPresetChange: (EqReverbPreset) -> Unit,
+    onBalanceValueChange: (Float) -> Unit,
+    onBalanceValueChangeFinished: () -> Unit,
+    on8DEnabledChange: (Boolean) -> Unit,
+    on8DSpeedValueChange: (Float) -> Unit,
+    on8DSpeedValueChangeFinished: () -> Unit,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        EqualizerSection(title = stringResource(R.string.eq_spatial), subtitle = stringResource(R.string.eq_spatial_description)) {
+            ReverbCard(
+                enabled = model.reverbEnabled,
+                controlsEnabled = model.enabled,
+                preset = model.reverbPreset,
+                onEnabledChange = onReverbEnabledChange,
+                onPresetChange = onReverbPresetChange,
+            )
+            Spacer(Modifier.height(12.dp))
+            BalanceCard(
+                controlsEnabled = model.enabled,
+                balance = model.balance,
+                onValueChange = onBalanceValueChange,
+                onValueChangeFinished = onBalanceValueChangeFinished,
+            )
+            Spacer(Modifier.height(12.dp))
+            EightDAudioCard(
+                enabled = model.eightDEnabled,
+                controlsEnabled = model.enabled,
+                speedHz = model.eightDSpeedHz,
+                onEnabledChange = on8DEnabledChange,
+                onValueChange = on8DSpeedValueChange,
+                onValueChangeFinished = on8DSpeedValueChangeFinished,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReverbCard(
+    enabled: Boolean,
+    controlsEnabled: Boolean,
+    preset: EqReverbPreset,
+    onEnabledChange: (Boolean) -> Unit,
+    onPresetChange: (EqReverbPreset) -> Unit,
+) {
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = stringResource(R.string.eq_reverb), style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = stringResource(R.string.eq_reverb_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = enabled, onCheckedChange = onEnabledChange, enabled = controlsEnabled)
+            }
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(
+                    count = EqReverbPreset.entries.size,
+                    key = { EqReverbPreset.entries[it].storageValue },
+                    contentType = { "reverb_preset" },
+                ) { index ->
+                    val candidate = EqReverbPreset.entries[index]
+                    FilterChip(
+                        selected = preset == candidate,
+                        onClick = { onPresetChange(candidate) },
+                        enabled = controlsEnabled && enabled,
+                        label = { Text(text = reverbPresetLabel(candidate)) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun reverbPresetLabel(preset: EqReverbPreset): String =
+    stringResource(
+        when (preset) {
+            EqReverbPreset.NONE -> R.string.eq_reverb_preset_none
+            EqReverbPreset.SMALL_ROOM -> R.string.eq_reverb_preset_small_room
+            EqReverbPreset.MEDIUM_ROOM -> R.string.eq_reverb_preset_medium_room
+            EqReverbPreset.LARGE_ROOM -> R.string.eq_reverb_preset_large_room
+            EqReverbPreset.MEDIUM_HALL -> R.string.eq_reverb_preset_medium_hall
+            EqReverbPreset.LARGE_HALL -> R.string.eq_reverb_preset_large_hall
+            EqReverbPreset.PLATE -> R.string.eq_reverb_preset_plate
+        },
+    )
+
+@Composable
+private fun BalanceCard(
+    controlsEnabled: Boolean,
+    balance: Float,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+) {
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = stringResource(R.string.eq_balance), style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = stringResource(R.string.eq_balance_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (abs(balance) > 0.005f) {
+                    TextButton(onClick = { onValueChange(0f); onValueChangeFinished() }, enabled = controlsEnabled) {
+                        Text(text = stringResource(R.string.eq_balance_center))
+                    }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Slider(
+                    value = balance,
+                    onValueChange = { onValueChange(it.coerceIn(-1f, 1f)) },
+                    onValueChangeFinished = onValueChangeFinished,
+                    enabled = controlsEnabled,
+                    valueRange = -1f..1f,
+                    modifier = Modifier.weight(1f),
+                )
+                ValuePill(balanceLabel(balance))
+            }
+        }
+    }
+}
+
+@Composable
+private fun balanceLabel(balance: Float): String =
+    when {
+        balance < -0.005f -> stringResource(R.string.eq_balance_left, (-balance * 100).roundToInt())
+        balance > 0.005f -> stringResource(R.string.eq_balance_right, (balance * 100).roundToInt())
+        else -> stringResource(R.string.eq_balance_center)
+    }
+
+@Composable
+private fun EightDAudioCard(
+    enabled: Boolean,
+    controlsEnabled: Boolean,
+    speedHz: Float,
+    onEnabledChange: (Boolean) -> Unit,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+) {
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = stringResource(R.string.eq_8d), style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = stringResource(R.string.eq_8d_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = enabled, onCheckedChange = onEnabledChange, enabled = controlsEnabled)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Slider(
+                    value = speedHz,
+                    onValueChange = { onValueChange(it.coerceIn(0.03f, 0.25f)) },
+                    onValueChangeFinished = onValueChangeFinished,
+                    enabled = controlsEnabled && enabled,
+                    valueRange = 0.03f..0.25f,
+                    modifier = Modifier.weight(1f),
+                )
+                ValuePill(stringResource(R.string.eq_8d_speed_hz, speedHz))
             }
         }
     }
