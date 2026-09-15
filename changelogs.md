@@ -41,8 +41,56 @@ player-animation performance pass yet.
   keep-alive player subtree drops from 10 to 2 updates per second — returning
   to the app and idle scrolling are visibly smoother, and the mini player's
   idle battery drain drops with it
+- The canvas artwork video now pauses at the top of the minimise fade instead
+  of decoding all the way to the fully-collapsed mini player — minimising the
+  player while a canvas plays no longer stutters (most visible in the
+  SpatialFlow and Apple Music styles)
 - The glass shader prewarm moved out of the cold-open window (it used to
   jank the first seconds of the home feed)
+- The tint-frosted navigation bar is finally what its description promises:
+  an opaque, accent-tinted bar (25% toward the theme primary) instead of a
+  see-through black wash — correct in light mode, moderate brightness in both,
+  with icon colours that follow the app theme rather than the system one
+- Searching settings no longer offers the "yt-dlp runtime" result that crashed
+  on tap; every remaining search route was cross-checked against the real
+  navigation destinations, and Android Auto search hits now deep-link with
+  auto-scroll to the exact row
+- Lyrics provider tests get a second chance: a single slow DNS lookup or
+  dropped connection no longer marks a healthy provider as unavailable
+- Pull-to-refresh on the home page can no longer silently do nothing: a stuck
+  in-flight load no longer blocks later refreshes (120s watchdog), and
+  auto-reloads arriving mid-refresh wait for the manual one instead of
+  cancelling it
+- Tapping a song in Quick Picks plays that song again: the explicit-content
+  filter no longer dropped the song you actually tapped from its own queue
+  (which made the next song play with the wrong title and audio everywhere)
+- Apple Music popup search works without a pasted developer token (it now
+  uses the auto-scraped web-player JWT and anonymous catalog search), and
+  Deezer login works from regions without Deezer access via a manual ARL
+  cookie entry with a verify button
+- Scrolling any tab's list hides the bottom navigation bar completely and the
+  mini player smoothly takes over the freed space; scrolling back up brings
+  the bar back just as smoothly (the SpatialFlow behaviour)
+
+---
+
+## Features (15.1 addendum)
+
+- The equalizer in the song overflow menu gained SpatialFlow's audio effects:
+  **Reverb** (None / Small Room / Medium Room / Large Room / Medium Hall /
+  Large Hall / Plate — SpatialFlow's exact parameter map), **stereo balance**,
+  and **8D audio** implemented as a real-time processor inside the playback
+  pipeline — no FFmpeg, no intermediate files, works for streamed songs too,
+  and reacts to the speed slider instantly. Spatial settings are saved with
+  the equalizer profiles
+- The SpatialFlow player style's lyrics opening is now complete: alongside the
+  circular reveal, the album art morphs into a compact thumbnail in the top
+  bar while the lyrics expand and parks there until they close (canvas songs
+  keep their canvas fade)
+- Liquid Glass is more liquid everywhere: stronger edge refraction (taller
+  band, ~25% stronger bend, depth effect on), more vivid colour bleed from
+  the scrolling content behind it, and the big frosted popups actually got
+  CHEAPER on the GPU (32dp → 20dp blur pays for their new refraction)
 
 ---
 
