@@ -65,8 +65,11 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.toArgb
@@ -82,6 +85,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -324,6 +328,17 @@ fun SpatialFlowPlayerContent(
         label = "SfLyricsCanvasFade",
     )
 
+    // SpatialFlow shared-element: while the circular lyrics reveal expands, the
+    // album art morphs into the compact 44dp thumbnail in the top app bar
+    // (spring 0.86/420) and stays parked there while the lyrics are open,
+    // then morphs back on close. Only the non-canvas artwork path morphs -
+    // canvas songs keep the canvas fade instead.
+    val lyricsArtworkProgress by animateFloatAsState(
+        targetValue = if (lyricsModeEnabled) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.86f, stiffness = 420f),
+        label = "SfLyricsArtworkSharedElement",
+    )
+
     val density = LocalDensity.current
     var playerRootTopY by remember { mutableStateOf(0f) }
     var titleTopInRootY by remember { mutableStateOf<Float?>(null) }
@@ -434,6 +449,7 @@ fun SpatialFlowPlayerContent(
                 val statusBarTopDp = LocalStableSystemBarsTopPadding.current
 
                 var lyricsButtonCenterInRoot by remember { mutableStateOf<Offset?>(null) }
+                var artworkPagerBoundsInRoot by remember { mutableStateOf<Rect?>(null) }
                 val lyricsRevealProgress by animateFloatAsState(
                     targetValue = if (lyricsModeEnabled) 1f else 0f,
                     animationSpec = tween(durationMillis = 340, easing = FastOutSlowInEasing),
@@ -540,7 +556,21 @@ fun SpatialFlowPlayerContent(
                             playerConnection.player.seekToDefaultPosition(window.firstPeriodIndex)
                             playerConnection.player.playWhenReady = true
                         },
-                        modifier = Modifier.size(albumArtSize),
+                        modifier =
+                            Modifier
+                                .size(albumArtSize)
+                                .onGloballyPositioned { coordinates ->
+                                    val position = coordinates.positionInRoot()
+                                    artworkPagerBoundsInRoot =
+                                        Rect(
+                                            offset = position,
+                                            size =
+                                                Size(
+                                                    width = coordinates.size.width.toFloat(),
+                                                    height = coordinates.size.height.toFloat(),
+                                                ),
+                                        )
+                                },
                     )
 
                     Spacer(modifier = Modifier.height(36.dp))
@@ -991,6 +1021,57 @@ fun SpatialFlowPlayerContent(
                     onDismiss = { lyricsModeEnabled = false },
                     modifier = Modifier.fillMaxSize(),
                 )
+            }
+
+            // SpatialFlow artwork shared-element: for non-canvas songs the album
+            // art flies into the top app bar as the lyrics reveal expands and
+            // stays parked there (44dp, 10dp corners, soft shadow) until the
+            // lyrics close. Composed after the overlay so it renders above it.
+            val showFlyingArtwork =
+                !canvasAvailable &&
+                    !videoShowing &&
+                    !artUrl.isNullOrBlank() &&
+                    artworkPagerBoundsInRoot != null &&
+                    (lyricsModeEnabled || lyricsArtworkProgress > 0.001f)
+            if (showFlyingArtwork) {
+                var flyingLayerRootPos by remember { mutableStateOf(Offset.Zero) }
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .onGloballyPositioned { flyingLayerRootPos = it.positionInRoot() },
+                ) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .graphicsLayer {
+                                    val t = lyricsArtworkProgress.coerceIn(0f, 1f)
+                                    val bounds = artworkPagerBoundsInRoot ?: return@graphicsLayer
+                                    val fullSizePx = albumArtSize.toPx()
+                                    val thumbSizePx = 44.dp.toPx()
+                                    val targetRootX = 22.dp.toPx()
+                                    val targetRootY = statusBarTopDp.toPx() + 18.dp.toPx()
+                                    val scale = 1f + (thumbSizePx / fullSizePx - 1f) * t
+                                    scaleX = scale
+                                    scaleY = scale
+                                    translationX =
+                                        bounds.left + (targetRootX - bounds.left) * t - flyingLayerRootPos.x
+                                    translationY =
+                                        bounds.top + (targetRootY - bounds.top) * t - flyingLayerRootPos.y
+                                    transformOrigin = TransformOrigin(0f, 0f)
+                                    shape = RoundedCornerShape(lerp(16.dp, 10.dp, t))
+                                    clip = true
+                                    shadowElevation = lerp(0.dp, 6.dp, t).toPx()
+                                }.size(albumArtSize),
+                    ) {
+                        AsyncImage(
+                            model = artUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
             }
 
             SlidingQueueDrawer(
