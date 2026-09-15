@@ -80,6 +80,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -152,7 +154,10 @@ private const val FrostedNavBarBlurRadiusPx = 60f
 
 private const val FrostedNavBarOverlayAlpha = 0.30f
 
-private const val TintFrostedNavBarOverlayAlpha = 0.45f
+private const val TintFrostedNavBarOverlayAlpha = 0.32f
+
+/** How strongly the opaque tinted bar base is pulled toward the accent color. */
+private const val TintFrostedBaseBlend = 0.25f
 
 private val NavigationIndicatorWidth = 56.dp
 private val NavigationIndicatorHeight = 32.dp
@@ -181,6 +186,11 @@ fun FloatingNavigationToolbar(
     onSearchItemDoubleClick: (() -> Unit)? = null,
 ) {
     val isFloating = style == NavigationBarStyle.FLOATING
+
+    // Follows the APP theme (not the system setting) — derived from the active
+    // color scheme so the tinted bar and its icon polarity stay correct even
+    // when the in-app dark mode differs from the system one.
+    val isDarkScheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
     val (navBarWidthFraction) =
         rememberPreference(NavigationBarWidthKey, defaultValue = NAVIGATION_BAR_WIDTH_DEFAULT)
@@ -232,14 +242,39 @@ fun FloatingNavigationToolbar(
         } else if (canBlurBackdrop) {
 
             if (pureBlack) {
-                if (tintFrostedBlur) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.45f)
+                if (tintFrostedBlur) {
+                    // Opaque accent-tinted black: still reads as AMOLED black but
+                    // carries the tint instead of see-through translucency.
+                    lerp(Color.Black, MaterialTheme.colorScheme.primary, TintFrostedBaseBlend)
+                } else {
+                    Color.Black.copy(alpha = 0.45f)
+                }
             } else if (tintFrostedBlur) {
-                Color.Black.copy(alpha = 0.55f)
+                // Opaque accent-tinted base (the setting's own description: 'frosted
+                // blur tinted with the accent color'). Previously a translucent
+                // BLACK wash in both themes - wrong tint in light mode and too
+                // transparent everywhere. A 25% blend toward primary keeps the
+                // brightness moderate so both icon polarities stay readable.
+                lerp(
+                    MaterialTheme.colorScheme.surfaceContainer,
+                    MaterialTheme.colorScheme.primary,
+                    TintFrostedBaseBlend,
+                )
             } else {
                 MaterialTheme.colorScheme.surfaceContainer
             }
         } else if (pureBlack) {
-            Color.Black
+            if (tintFrostedBlur) {
+                lerp(Color.Black, MaterialTheme.colorScheme.primary, TintFrostedBaseBlend)
+            } else {
+                Color.Black
+            }
+        } else if (tintFrostedBlur) {
+            lerp(
+                MaterialTheme.colorScheme.surfaceContainer,
+                MaterialTheme.colorScheme.primary,
+                TintFrostedBaseBlend,
+            )
         } else {
 
             val baseColor = MaterialTheme.colorScheme.surfaceContainer
@@ -257,7 +292,8 @@ fun FloatingNavigationToolbar(
 
             canLiquidGlass -> Color.Transparent
 
-            tintFrostedBlur && !isFloating -> Color.White.copy(alpha = 0.18f)
+            tintFrostedBlur && !isFloating ->
+                if (isDarkScheme) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.10f)
             isFloating -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
             pureBlack -> Color.White.copy(alpha = 0.16f)
             else -> MaterialTheme.colorScheme.secondaryContainer
@@ -304,14 +340,24 @@ fun FloatingNavigationToolbar(
                     unselectedTextColor = Color.White.copy(alpha = 0.6f),
                 )
             tintFrostedBlur ->
-                ShortNavigationBarItemDefaults.colors(
-                    selectedIndicatorColor = Color.Transparent,
-                    selectedIconColor = Color.White,
-                    selectedTextColor = Color.White,
+                if (isDarkScheme) {
+                    ShortNavigationBarItemDefaults.colors(
+                        selectedIndicatorColor = Color.Transparent,
+                        selectedIconColor = Color.White,
+                        selectedTextColor = Color.White,
 
-                    unselectedIconColor = Color.White.copy(alpha = 0.7f),
-                    unselectedTextColor = Color.White.copy(alpha = 0.7f),
-                )
+                        unselectedIconColor = Color.White.copy(alpha = 0.7f),
+                        unselectedTextColor = Color.White.copy(alpha = 0.7f),
+                    )
+                } else {
+                    ShortNavigationBarItemDefaults.colors(
+                        selectedIndicatorColor = Color.Transparent,
+                        selectedIconColor = MaterialTheme.colorScheme.onSurface,
+                        selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             else -> ShortNavigationBarItemDefaults.colors(selectedIndicatorColor = Color.Transparent)
         }
 
@@ -581,7 +627,7 @@ fun FloatingNavigationToolbar(
                         when {
                             pureBlack -> Color.White
 
-                            tintFrostedBlur -> Color.White
+                            tintFrostedBlur -> if (isDarkScheme) Color.White else MaterialTheme.colorScheme.onSurface
                             else -> MaterialTheme.colorScheme.onSurface
                         },
                     windowInsets = WindowInsets(0, 0, 0, 0),

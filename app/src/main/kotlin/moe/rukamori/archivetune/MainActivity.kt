@@ -144,6 +144,7 @@ import dev.chrisbanes.haze.HazeState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedback
@@ -2117,7 +2118,16 @@ class MainActivity : ComponentActivity() {
                                     val railContainerColor =
                                         when {
                                             canRailLiquidGlass -> Color.Transparent
-                                            canRailBlur && navigationBarTintFrostedBlur -> Color.Black.copy(alpha = 0.55f)
+                                            canRailBlur && navigationBarTintFrostedBlur ->
+                                                if (pureBlack) {
+                                                    lerp(Color.Black, MaterialTheme.colorScheme.primary, 0.25f)
+                                                } else {
+                                                    lerp(
+                                                        MaterialTheme.colorScheme.surfaceContainer,
+                                                        MaterialTheme.colorScheme.primary,
+                                                        0.25f,
+                                                    )
+                                                }
                                             canRailBlur ->
                                                 if (pureBlack) Color.Black.copy(alpha = 0.45f)
                                                 else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.85f)
@@ -2127,7 +2137,8 @@ class MainActivity : ComponentActivity() {
                                     val railContentColor =
                                         when {
                                             canRailLiquidGlass -> Color.White
-                                            navigationBarTintFrostedBlur && canRailBlur -> Color.White
+                                            navigationBarTintFrostedBlur && canRailBlur ->
+                                                if (useDarkTheme) Color.White else MaterialTheme.colorScheme.onSurface
                                             pureBlack -> Color.White
                                             else -> MaterialTheme.colorScheme.onSurfaceVariant
                                         }
@@ -2141,7 +2152,7 @@ class MainActivity : ComponentActivity() {
                                     ) {
                                         if (canRailBlur && navBarFrostedBackdrop != null) {
                                             val overlayAlpha =
-                                                if (navigationBarTintFrostedBlur) 0.45f else 0.30f
+                                                if (navigationBarTintFrostedBlur) 0.32f else 0.30f
                                             Box(
                                                 modifier =
                                                     Modifier
