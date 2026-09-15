@@ -58,7 +58,14 @@ interface Queue {
             val filteredItems =
                 buildList(items.size) {
                     items.forEachIndexed { index, item ->
-                        if (keep(item)) {
+                        // The user-selected item survives every content filter.
+                        // Tapping a song must always play THAT song: before this
+                        // guard, an explicit / video / blocked-artist item at the
+                        // start index was dropped from its own queue and the
+                        // following song played instead — the "quick pick plays
+                        // an entirely different song" report. The filters shape
+                        // the rest of the queue around the selection.
+                        if (keep(item) || index == currentIndex) {
                             if (index < currentIndex) {
                                 filteredIndex++
                             }
