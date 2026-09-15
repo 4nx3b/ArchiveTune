@@ -356,6 +356,7 @@ fun BottomSheetPlayer(
     pureBlack: Boolean,
     isMiniPlayerPairedWithNavigation: Boolean = false,
     onLyricsVisibilityChange: (Boolean) -> Unit = {},
+    navbarHiddenOffset: (() -> Float)? = null,
 ) {
     val context = LocalContext.current
     val menuState = LocalMenuState.current
@@ -1313,6 +1314,7 @@ fun BottomSheetPlayer(
         },
         backHandlerEnabled = !aodModeEnabled && !isInlineLyricsOpen,
         keepContentAlive = true,
+        navbarHiddenOffset = navbarHiddenOffset,
         collapsedContent = {
             MiniPlayer(
                 positionProvider = positionProvider,

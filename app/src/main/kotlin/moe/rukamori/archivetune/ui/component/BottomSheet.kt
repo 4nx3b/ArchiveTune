@@ -67,6 +67,7 @@ fun BottomSheet(
     backHandlerEnabled: Boolean = true,
     opaqueBackground: Boolean = false,
     onCollapsedContentClick: (() -> Unit)? = null,
+    navbarHiddenOffset: (() -> Float)? = null,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -80,7 +81,13 @@ fun BottomSheet(
                         (state.expandedBound - state.value)
                             .roundToPx()
                             .coerceAtLeast(0)
-                    translationY = y.toFloat()
+                    // Scroll-to-hide / route-change navbar: while the sheet sits
+                    // collapsed, let the mini player drift down into the space
+                    // the navigation bar vacated. Fades out with sheet progress
+                    // so the expanded player is never double-shifted.
+                    val takeOver =
+                        navbarHiddenOffset?.invoke()?.coerceAtLeast(0f) ?: 0f
+                    translationY = y + takeOver * (1f - state.progress.coerceIn(0f, 1f))
                 }.bottomSheetDraggable(state, onDismiss)
                 .clip(
                     RoundedCornerShape(

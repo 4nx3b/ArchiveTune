@@ -149,6 +149,8 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -1355,6 +1357,36 @@ class MainActivity : ComponentActivity() {
                                 !active
                         }
 
+                    // SpatialFlow-style scroll-driven navbar behaviour: scrolling
+                    // down the page hides the bar completely and the mini player
+                    // smoothly takes over the freed space; scrolling back up
+                    // smoothly restores it. Reset whenever the destination
+                    // changes so a freshly opened tab always starts with the
+                    // bar visible.
+                    var isNavBarHiddenByScroll by remember { mutableStateOf(false) }
+                    LaunchedEffect(navBackStackEntry?.destination?.route) {
+                        isNavBarHiddenByScroll = false
+                    }
+                    val navBarScrollDensity = LocalDensity.current
+                    val navBarHideScrollThresholdPx = with(navBarScrollDensity) { 14.dp.toPx() }
+                    val navBarScrollHideConnection =
+                        remember(navBarHideScrollThresholdPx) {
+                            object : NestedScrollConnection {
+                                override fun onPostScroll(
+                                    consumed: Offset,
+                                    available: Offset,
+                                    source: NestedScrollSource,
+                                ): Offset {
+                                    if (consumed.y < -navBarHideScrollThresholdPx) {
+                                        isNavBarHiddenByScroll = true
+                                    } else if (consumed.y > navBarHideScrollThresholdPx) {
+                                        isNavBarHiddenByScroll = false
+                                    }
+                                    return Offset.Zero
+                                }
+                            }
+                        }
+
                     fun getBottomNavPadding(): Dp =
                         if (shouldShowNavigationBar && !useRail) {
                             NavigationBarHeight
@@ -1434,7 +1466,8 @@ class MainActivity : ComponentActivity() {
                     }
 
                     val bottomNavigationBarHeight by animateDpAsState(
-                        targetValue = if (shouldShowNavigationBar && !useRail) navVisibleHeight else 0.dp,
+                        targetValue =
+                            if (shouldShowNavigationBar && !useRail && !isNavBarHiddenByScroll) navVisibleHeight else 0.dp,
                         animationSpec = if (disableAnimations) snap() else NavigationBarAnimationSpec,
                         label = "",
                     )
@@ -2847,6 +2880,22 @@ class MainActivity : ComponentActivity() {
                                                 pureBlack = pureBlack,
                                                 isMiniPlayerPairedWithNavigation = areBottomBarsPaired,
                                                 onLyricsVisibilityChange = { isPlayerLyricsFullScreen = it },
+                                                navbarHiddenOffset = {
+                                                    // When the navigation bar slides away (route change or
+                                                    // scroll-to-hide), the collapsed mini player takes over the
+                                                    // freed space: it drifts down by exactly the bar's footprint
+                                                    // (bar height + its padding), keeping the system gesture
+                                                    // inset clear. Scaled by (1 - sheet progress) inside
+                                                    // BottomSheet so the expanded player is unaffected.
+                                                    val hideFraction =
+                                                        1f - (
+                                                            bottomNavigationBarHeight.coerceAtMost(navVisibleHeight) /
+                                                                navVisibleHeight
+                                                        )
+                                                    with(navBarScrollDensity) {
+                                                        (floatingBarsBottomPadding + navVisibleHeight).toPx() * hideFraction
+                                                    }
+                                                },
                                             )
                                         }
 
@@ -3056,6 +3105,8 @@ class MainActivity : ComponentActivity() {
                                                 },
                                             ).nestedScroll(
                                                 topAppBarScrollBehavior.nestedScrollConnection,
+                                            ).nestedScroll(
+                                                navBarScrollHideConnection,
                                             ),
                                 ) {
                                     navigationBuilder(
