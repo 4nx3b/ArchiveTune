@@ -1035,11 +1035,15 @@ fun SpatialFlowPlayerContent(
                     (lyricsModeEnabled || lyricsArtworkProgress > 0.001f)
             if (showFlyingArtwork) {
                 var flyingLayerRootPos by remember { mutableStateOf(Offset.Zero) }
+                var flyingLayerWidthPx by remember { mutableStateOf(0f) }
                 Box(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .onGloballyPositioned { flyingLayerRootPos = it.positionInRoot() },
+                            .onGloballyPositioned {
+                                flyingLayerRootPos = it.positionInRoot()
+                                flyingLayerWidthPx = it.size.width.toFloat()
+                            },
                 ) {
                     Box(
                         modifier =
@@ -1049,7 +1053,10 @@ fun SpatialFlowPlayerContent(
                                     val bounds = artworkPagerBoundsInRoot ?: return@graphicsLayer
                                     val fullSizePx = albumArtSize.toPx()
                                     val thumbSizePx = 44.dp.toPx()
-                                    val targetRootX = 22.dp.toPx()
+                                    // Parks 22dp from the RIGHT edge, inside the
+                                    // trailing 48dp slot the lyrics header reserves
+                                    // (the leading slot holds the menu button).
+                                    val targetRootX = flyingLayerWidthPx - 22.dp.toPx() - thumbSizePx
                                     val targetRootY = statusBarTopDp.toPx() + 18.dp.toPx()
                                     val scale = 1f + (thumbSizePx / fullSizePx - 1f) * t
                                     scaleX = scale
@@ -1058,7 +1065,7 @@ fun SpatialFlowPlayerContent(
                                         bounds.left + (targetRootX - bounds.left) * t - flyingLayerRootPos.x
                                     translationY =
                                         bounds.top + (targetRootY - bounds.top) * t - flyingLayerRootPos.y
-                                    transformOrigin = TransformOrigin(0f, 0f)
+                                    transformOrigin = TransformOrigin(1f, 0f)
                                     shape = RoundedCornerShape(lerp(16.dp, 10.dp, t))
                                     clip = true
                                     shadowElevation = lerp(0.dp, 6.dp, t).toPx()

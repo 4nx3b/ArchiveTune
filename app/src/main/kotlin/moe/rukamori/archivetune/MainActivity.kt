@@ -1377,10 +1377,16 @@ class MainActivity : ComponentActivity() {
                                     available: Offset,
                                     source: NestedScrollSource,
                                 ): Offset {
-                                    if (consumed.y < -navBarHideScrollThresholdPx) {
-                                        isNavBarHiddenByScroll = true
-                                    } else if (consumed.y > navBarHideScrollThresholdPx) {
-                                        isNavBarHiddenByScroll = false
+                                    // Only real user gestures (drag or fling) drive the
+                                    // hide/show; programmatic scrolls (scroll-position
+                                    // restore on playlists, settings auto-scroll) must
+                                    // not touch the bar.
+                                    if (source == NestedScrollSource.UserInput) {
+                                        if (consumed.y < -navBarHideScrollThresholdPx) {
+                                            isNavBarHiddenByScroll = true
+                                        } else if (consumed.y > navBarHideScrollThresholdPx) {
+                                            isNavBarHiddenByScroll = false
+                                        }
                                     }
                                     return Offset.Zero
                                 }
@@ -2890,13 +2896,22 @@ class MainActivity : ComponentActivity() {
                                                     // (bar height + its padding), keeping the system gesture
                                                     // inset clear. Scaled by (1 - sheet progress) inside
                                                     // BottomSheet so the expanded player is unaffected.
-                                                    val hideFraction =
-                                                        1f - (
-                                                            bottomNavigationBarHeight.coerceAtMost(navVisibleHeight) /
-                                                                navVisibleHeight
-                                                        )
-                                                    with(navBarScrollDensity) {
-                                                        (floatingBarsBottomPadding + navVisibleHeight).toPx() * hideFraction
+                                                    // Only on routes whose collapsed bound still contains the
+                                                    // bar footprint — routes that hide the bar outright
+                                                    // (settings, playlists, active search) already exclude it
+                                                    // from the bound, so drifting again would shove the mini
+                                                    // player right off the screen.
+                                                    if (shouldShowNavigationBar && !useRail) {
+                                                        val hideFraction =
+                                                            1f - (
+                                                                bottomNavigationBarHeight.coerceAtMost(navVisibleHeight) /
+                                                                    navVisibleHeight
+                                                            )
+                                                        with(navBarScrollDensity) {
+                                                            (floatingBarsBottomPadding + navVisibleHeight).toPx() * hideFraction
+                                                        }
+                                                    } else {
+                                                        0f
                                                     }
                                                 },
                                             )

@@ -338,10 +338,31 @@ internal fun SpatialFlowLyricsOverlay(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
 
-                // 48dp slot reserved for the artwork thumbnail that morphs into
-                // the top-left corner while the lyrics are open (the flying
-                // shared-element layer composed in SpatialFlowPlayer sits here).
-                Spacer(modifier = Modifier.size(48.dp))
+                // Overflow (lyrics menu) lives on the leading side.
+                IconButton(
+                    onClick = { showLyricsMenu = true },
+                    modifier =
+                        Modifier.onGloballyPositioned { coords ->
+                            val pos = coords.positionInRoot()
+                            val sz = coords.size
+                            moreIconBounds =
+                                androidx.compose.ui.geometry.Rect(
+                                    offset = pos,
+                                    size =
+                                        androidx.compose.ui.geometry.Size(
+                                            width = sz.width.toFloat(),
+                                            height = sz.height.toFloat(),
+                                        ),
+                                )
+                        },
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.more_vert),
+                        contentDescription = "Lyrics menu",
+                        tint = contentColor.copy(alpha = 0.8f),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
 
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -394,31 +415,6 @@ internal fun SpatialFlowLyricsOverlay(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    IconButton(
-                        onClick = { showLyricsMenu = true },
-                        modifier =
-                            Modifier.onGloballyPositioned { coords ->
-                                val pos = coords.positionInRoot()
-                                val sz = coords.size
-                                moreIconBounds =
-                                    androidx.compose.ui.geometry.Rect(
-                                        offset = pos,
-                                        size =
-                                            androidx.compose.ui.geometry.Size(
-                                                width = sz.width.toFloat(),
-                                                height = sz.height.toFloat(),
-                                            ),
-                                    )
-                            },
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.more_vert),
-                            contentDescription = "Lyrics menu",
-                            tint = contentColor.copy(alpha = 0.8f),
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
-
                     IconButton(onClick = onDismiss) {
                         Icon(
                             painter = painterResource(R.drawable.close),
@@ -427,6 +423,11 @@ internal fun SpatialFlowLyricsOverlay(
                             modifier = Modifier.size(24.dp),
                         )
                     }
+
+                    // 48dp slot reserved for the artwork thumbnail that morphs into
+                    // the top-right corner while the lyrics are open (the flying
+                    // shared-element layer composed in SpatialFlowPlayer sits here).
+                    Spacer(modifier = Modifier.size(48.dp))
                 }
             }
 
