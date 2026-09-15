@@ -197,21 +197,6 @@ internal fun TikTokSongPage(
         }
 
         var canvasShowing by remember(canvasPrimaryUrl, canvasFallbackUrl) { mutableStateOf(false) }
-        if (canvasPrimaryUrl != null || canvasFallbackUrl != null) {
-            CanvasArtworkPlayer(
-                primaryUrl = canvasPrimaryUrl,
-                fallbackUrl = canvasFallbackUrl,
-                isPlaying = isPlaying && !lyricsOpen,
-
-                visible = !(isCurrentPage && lyricsOpen),
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                onPlaybackAvailabilityChange = { canvasShowing = it },
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(TIKTOK_CANVAS_CORNER)),
-            )
-        }
 
         if (videoShowing) {
             Box(
@@ -343,6 +328,31 @@ internal fun TikTokSongPage(
                                             ),
                                 )
 
+                                // Canvas now plays INSIDE the fixed-radius artwork slot
+                                // instead of full-screen behind everything (matching how
+                                // every other artwork-slot style renders it). The static
+                                // artwork above already fades out via artworkFallbackAlpha
+                                // when the canvas starts playing, so the slot simply hands
+                                // over from still image to looping video.
+                                if (!videoShowing && (canvasPrimaryUrl != null || canvasFallbackUrl != null)) {
+                                    CanvasArtworkPlayer(
+                                        primaryUrl = canvasPrimaryUrl,
+                                        fallbackUrl = canvasFallbackUrl,
+                                        isPlaying = isPlaying && !lyricsOpen,
+                                        visible = !(isCurrentPage && lyricsOpen),
+                                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                                        onPlaybackAvailabilityChange = { canvasShowing = it },
+                                        modifier =
+                                            Modifier
+                                                .fillMaxSize()
+                                                .clip(RoundedCornerShape(cornerRadius)),
+                                    )
+                                }
+
+                                // Artwork-slot pause indicator — only when no music
+                                // video is on screen (the video case renders its own
+                                // copy anchored to the video's geometry above, which
+                                // fixed the icon floating near the video's upper edge).
                                 TikTokPausedOverlay(
                                     visible =
                                         isCurrentPage &&
@@ -781,8 +791,8 @@ internal fun Modifier.tiktokScrim(): Modifier = drawBehind { drawRect(TIKTOK_SCR
 
 internal const val TIKTOK_ART_PX = 1080
 
-internal val TIKTOK_CANVAS_CORNER = 20.dp
-
+/** Aspect ratio used to size the inline video surface before the first frame reports
+ * the video's true dimensions (and whenever they are degenerate). */
 internal val TIKTOK_VIDEO_FALLBACK_RATIO = 16f / 9f
 
 internal val TIKTOK_VIDEO_CONTROLS_END_CLEARANCE = 66.dp

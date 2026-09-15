@@ -65,6 +65,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -76,6 +78,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -135,6 +138,8 @@ import moe.rukamori.archivetune.constants.PlayerCustomContrastKey
 import moe.rukamori.archivetune.constants.PlayerCustomImageUriKey
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
+import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.extensions.togglePlayPause
@@ -174,6 +179,9 @@ private val LyricsSwipeStartRegion = 144.dp
 
 private const val MovingBlurDriftScale = 2.4f
 private val LyricsSwipeDismissThreshold = 96.dp
+
+/** Controls auto-hide delay on the shared lyrics page — matches AppleMusicPlayer's. */
+private const val LyricsControlsAutoHideDelayMs = 5_000L
 
 val LocalLyricsScrollListener = compositionLocalOf<(Boolean) -> Unit> { {} }
 
@@ -227,6 +235,32 @@ fun LyricsScreen(
     val swipeDismissThresholdPx = with(density) { LyricsSwipeDismissThreshold.toPx() }
 
     var isUserScrollingLyrics by remember { mutableStateOf(false) }
+
+    // Player-controls auto-hide. The old code hardcoded `controlsVisible = true`,
+    // which silently ignored the "Show lyrics player controls" / "Auto-hide"
+    // lyrics settings for every style hosting this screen (Cinematic, Little,
+    // Immersive, Material Extended, Editorial, TikTok). The wiring mirrors
+    // AppleMusicPlayer: any interaction (tap, lyrics scroll, slider/volume drag)
+    // restarts the reveal, then the controls collapse after the delay.
+    val showLyricsPlayerControls by rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
+    val autoHideLyricsPlayerControls by rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = true)
+    var controlsRevealToken by remember { mutableIntStateOf(0) }
+    var controlsHiddenByTimeout by remember { mutableStateOf(false) }
+
+    fun pokeLyricsControls() {
+        controlsRevealToken++
+    }
+
+    LaunchedEffect(mediaMetadata.id, showLyricsPlayerControls, autoHideLyricsPlayerControls, controlsRevealToken) {
+        controlsHiddenByTimeout = false
+        if (!showLyricsPlayerControls || !autoHideLyricsPlayerControls) return@LaunchedEffect
+        delay(LyricsControlsAutoHideDelayMs)
+        controlsHiddenByTimeout = true
+    }
+
+    LaunchedEffect(isUserScrollingLyrics) {
+        if (isUserScrollingLyrics) pokeLyricsControls()
+    }
 
     val hapticClick =
         remember(enableHapticFeedback, view) {
@@ -461,9 +495,10 @@ fun LyricsScreen(
     val isLoading = playbackState == STATE_BUFFERING || sliderPosition != null
     val orientation = LocalConfiguration.current.orientation
 
-    val controlsVisible = true
+    val controlsVisible = showLyricsPlayerControls && !controlsHiddenByTimeout
     val controlsExpanded = true
     val onControlsPositionChange: (Long) -> Unit = {
+        pokeLyricsControls()
         sliderPosition = it
     }
     val onControlsPositionChangeFinished: () -> Unit = {
@@ -474,6 +509,7 @@ fun LyricsScreen(
         sliderPosition = null
     }
     val onControlsVolumeChange: (Float) -> Unit = {
+        pokeLyricsControls()
         onVolumeChange(it)
     }
     val onControlsPreviousClick = {
@@ -520,6 +556,13 @@ fun LyricsScreen(
                             }
                         }
                     }
+                }.pointerInput(Unit) {
+                    // Any tap on the lyrics page re-reveals the player controls
+                    // (Apple Music "poke" behaviour) — they re-collapse after the
+                    // auto-hide delay restarts.
+                    detectTapGestures(
+                        onTap = { pokeLyricsControls() },
+                    )
                 },
     ) {
         LyricsScreenBackground(
@@ -617,7 +660,7 @@ fun LyricsScreen(
                                     onPreviousClick = onControlsPreviousClick,
                                     onPlayPauseClick = onControlsPlayPauseClick,
                                     onNextClick = onControlsNextClick,
-                                    onControlsInteraction = {},
+                                    onControlsInteraction = { pokeLyricsControls() },
                                     foregroundColor = foregroundColor,
                                     currentFormat = currentFormat,
                                     lyricsProviderName = currentLyrics?.providerName.orEmpty(),
@@ -677,7 +720,7 @@ fun LyricsScreen(
                         onPreviousClick = onControlsPreviousClick,
                         onPlayPauseClick = onControlsPlayPauseClick,
                         onNextClick = onControlsNextClick,
-                        onControlsInteraction = {},
+                        onControlsInteraction = { pokeLyricsControls() },
                         foregroundColor = foregroundColor,
                         currentFormat = currentFormat,
                         lyricsProviderName = currentLyrics?.providerName.orEmpty(),
