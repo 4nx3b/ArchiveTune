@@ -924,4 +924,8 @@
          canary had no in-page toggle, so these two strings are this fork's extension). -->
     <string name="amazon_enable">Enable Amazon Music source</string>
     <string name="amazon_enable_description">Orderable in the source priority picker; stream resolution is not available yet — see Integration → Amazon Music</string>
+
+    <!-- Amazon Music catalog search (search-from popup + results screen; anonymous, no sign-in). -->
+    <string name="search_amazon">Search Amazon Music</string>
+    <string name="amazon_track_unavailable">Amazon Music track could not be mapped to a playable source.</string>
 </resources>
