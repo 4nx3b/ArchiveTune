@@ -225,6 +225,8 @@ enum class DownloadSource {
 
     APPLE,
 
+    AMAZON,
+
     DEEZER,
 
     JIOSAAVN,
@@ -243,13 +245,19 @@ object DownloadSourceConfig {
             DownloadSource.QOBUZ_BACKUP,
             DownloadSource.TIDAL,
             DownloadSource.APPLE,
+            // Listed ahead of DEEZER on purpose: a user who signs into Amazon wants it preferred,
+            // and with no stream resolver yet AMAZON simply misses and the chain falls through to
+            // the next source — the same miss-and-fall-through the playback chain would do.
+            DownloadSource.AMAZON,
             DownloadSource.DEEZER,
             DownloadSource.JIOSAAVN,
             DownloadSource.YOUTUBE_MUSIC,
         )
 
+    // AMAZON needs pool session credentials to be usable at all (same as Qobuz/Tidal/Deezer),
+    // so the download picker marks it pool-gated even though nothing resolves through it yet.
     val REQUIRES_POOL: Set<DownloadSource> =
-        setOf(DownloadSource.QOBUZ, DownloadSource.TIDAL, DownloadSource.DEEZER)
+        setOf(DownloadSource.QOBUZ, DownloadSource.TIDAL, DownloadSource.DEEZER, DownloadSource.AMAZON)
 
     val YOUTUBE_MUSIC_CACHE_KEY_PREFIX = "ytm:"
 
