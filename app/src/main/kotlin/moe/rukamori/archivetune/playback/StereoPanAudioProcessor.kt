@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.playback
 
+import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.C
 import java.nio.ByteBuffer
@@ -67,13 +68,13 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
         rotationSpeedHz = speedHz.coerceIn(MIN_SPEED_HZ, MAX_SPEED_HZ)
     }
 
-    override fun onConfigure(inputAudioFormat: androidx.media3.common.AudioFormat): androidx.media3.common.AudioFormat =
+    override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat =
         if (inputAudioFormat.encoding == C.ENCODING_PCM_16BIT && inputAudioFormat.channelCount == STEREO_CHANNEL_COUNT) {
             // Always active for stereo so toggling effects later does not need a
             // re-configure; the disabled path is a plain bulk copy.
             inputAudioFormat
         } else {
-            androidx.media3.common.AudioFormat.NOT_SET
+            AudioProcessor.AudioFormat.NOT_SET
         }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
