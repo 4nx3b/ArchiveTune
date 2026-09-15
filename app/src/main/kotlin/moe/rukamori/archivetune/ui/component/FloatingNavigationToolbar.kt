@@ -128,8 +128,8 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sign
@@ -900,11 +900,12 @@ fun FloatingNavigationToolbar(
                             .drawBackdrop(
                                 backdrop = liquidGlassBackdrop,
                                 effects = {
-                                    vibrancy()
+                                    colorControls(saturation = 1.7f)
                                     blur(4f.dp.toPx())
                                     lens(
-                                        refractionHeight = 24f.dp.toPx(),
-                                        refractionAmount = size.minDimension / 4f,
+                                        refractionHeight = 28f.dp.toPx(),
+                                        refractionAmount = size.minDimension / 3.2f,
+                                        depthEffect = true,
                                         chromaticAberration = false,
                                     )
                                 },
