@@ -231,6 +231,7 @@ import moe.rukamori.archivetune.constants.toFormatId
 import moe.rukamori.archivetune.constants.DeezerAudioQuality
 import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
+import moe.rukamori.archivetune.constants.AmazonEnabledKey
 import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
 import moe.rukamori.archivetune.constants.SaavnAudioQuality
 import moe.rukamori.archivetune.constants.SaavnAudioQualityKey
@@ -9025,8 +9026,9 @@ class MusicService :
                 AudioSourceType.QOBUZ to dataStore.get(QobuzEnabledKey, false),
                 AudioSourceType.QOBUZ_BACKUP to dataStore.get(QobuzBackupEnabledKey, false),
                 AudioSourceType.DEEZER to dataStore.get(DeezerEnabledKey, false),
-                AudioSourceType.JIOSAAVN to dataStore.get(JioSaavnEnabledKey, false),
                 AudioSourceType.APPLE to dataStore.get(AppleMusicSourceEnabledKey, true),
+                AudioSourceType.AMAZON to dataStore.get(AmazonEnabledKey, false),
+                AudioSourceType.JIOSAAVN to dataStore.get(JioSaavnEnabledKey, false),
                 AudioSourceType.YOUTUBE to true,
             )
 
@@ -9046,6 +9048,7 @@ class MusicService :
             AudioSourceType.QOBUZ_BACKUP -> dataStore.get(QobuzBackupEnabledKey, false)
             AudioSourceType.DEEZER -> dataStore.get(DeezerEnabledKey, false)
             AudioSourceType.APPLE -> dataStore.get(AppleMusicSourceEnabledKey, true)
+            AudioSourceType.AMAZON -> dataStore.get(AmazonEnabledKey, false)
             AudioSourceType.JIOSAAVN -> dataStore.get(JioSaavnEnabledKey, false)
         }
 
@@ -9435,6 +9438,10 @@ class MusicService :
                             query,
                             trusted = overrideIsSourceOverride && override == AudioSourceType.APPLE,
                         )
+                    // Amazon serves CENC-protected fragmented MP4 and this fork ships no
+                    // decryption step (see AmazonEnabledKey in PreferenceKeys.kt), so there is
+                    // no provider to call here — always fall through to the next source.
+                    AudioSourceType.AMAZON -> null
                     AudioSourceType.JIOSAAVN -> resolveJioSaavnStream(query)
                     AudioSourceType.YOUTUBE -> null
                 }

@@ -1844,6 +1844,7 @@ private fun AudioSourceType.sourceLabelRes(): Int =
         AudioSourceType.QOBUZ_BACKUP -> R.string.source_qobuz_backup
         AudioSourceType.DEEZER -> R.string.source_deezer
         AudioSourceType.APPLE -> R.string.source_apple_music
+        AudioSourceType.AMAZON -> R.string.source_amazon
         AudioSourceType.JIOSAAVN -> R.string.source_jiosaavn
         AudioSourceType.YOUTUBE -> R.string.source_youtube
     }
@@ -1855,6 +1856,9 @@ private fun AudioSourceType.sourceIconRes(): Int =
         AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
         AudioSourceType.APPLE -> R.drawable.provider_apple
+        // No dedicated Amazon Music mark ships in drawable/ yet; ic_music is the same stand-in
+        // PlaybackSourceSections uses for APPLE there.
+        AudioSourceType.AMAZON -> R.drawable.ic_music
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
@@ -2067,6 +2071,11 @@ private suspend fun searchOneSource(
                         )
                     }
             }
+
+            // Amazon serves CENC-protected streams this fork ships no decryption step for (see
+            // AmazonEnabledKey in PreferenceKeys.kt), so there is no provider to search here —
+            // this fork's source-search dialog simply never gets Amazon results.
+            AudioSourceType.AMAZON -> emptyList()
         }
     }
 
