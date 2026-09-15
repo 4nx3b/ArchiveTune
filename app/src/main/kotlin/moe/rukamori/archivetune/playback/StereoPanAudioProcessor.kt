@@ -37,9 +37,6 @@ import kotlin.math.sin
  */
 class StereoPanAudioProcessor : BaseAudioProcessor() {
     @Volatile
-    private var masterEnabled: Boolean = false
-
-    @Volatile
     private var balance: Float = 0f
 
     @Volatile
@@ -56,10 +53,6 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
     private var echoWriteIndex: Int = 0
     private var echoDelay1Samples: Int = 0
     private var echoDelay2Samples: Int = 0
-
-    fun setMasterEnabled(enabled: Boolean) {
-        masterEnabled = enabled
-    }
 
     fun setBalance(value: Float) {
         balance = value.coerceIn(-1f, 1f)
@@ -89,8 +82,8 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
 
         val format = inputAudioFormat
         val balanceNow = balance
-        val rotationOn = rotationEnabled && masterEnabled
-        val balanceOn = masterEnabled && abs(balanceNow) > BALANCE_EPSILON
+        val rotationOn = rotationEnabled
+        val balanceOn = abs(balanceNow) > BALANCE_EPSILON
         if (
             format.encoding != C.ENCODING_PCM_16BIT ||
             format.channelCount != STEREO_CHANNEL_COUNT ||
