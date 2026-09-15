@@ -2416,3 +2416,48 @@ Stage Summary:
 - dev: constant-white lyrics, flat higher artwork, properly-rounded
   unglassed popups; changelog current.
 - Release v15.0 (exact) re-dispatched from the merged main.
+
+---
+Task ID: 42
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Two-item user batch — (1) lyrics: remove the bottom-sheet lyrics page
+behaviour + restore the 2-days-ago (v15.0) lyrics overflow menu, (2) fix the
+Immersive (V7) player whose controls sat at the top of the screen.
+
+Work Log:
+- Synced local dev to origin/dev (34 commits behind: the 15.1 batch — Looper
+  style, full-page lyrics, build repairs — plus PR #221/v15.0 on main).
+- Verified the user's report against the screenshots: Screenshot_20260915-061452
+  shows V7 with the whole control block in the top ~30% of the screen and a
+  giant empty gap below — the 0b6043b0d commit had swapped the V7 controls
+  Column's .align(Alignment.BottomCenter) for .fillMaxSize() when the inline
+  lyrics slots landed, and 0d34ee854 dropped the slots without restoring the
+  alignment.
+- Traced the lyrics-menu history: v15.0 ("2 days before") opened the lyrics
+  page's overflow menu via menuState.show { LyricsMenu(...) } (the floating
+  bottom card, song header + action grid — confirmed by the user's
+  Screenshot_20260913-223450); the 15.1 batch replaced it with the anchored
+  glass popup (Screenshot_20260914-213154) which the user reports "looks bad".
+- Player.kt: both V7 orientation branches back to .align(BottomCenter);
+  MikoLyricsTransition no longer slides up from the bottom edge (that was the
+  "bottom sheet" cue) — the full-screen page now crossfades + scales 0.92->1.0
+  in place over 650ms (Apple Music cover-to-lyrics morph timing).
+- LyricsScreen.kt: restored verbatim to the v15.0 file (menuState.show menu,
+  anchored popup + backdrop-recording wrapper + anchor plumbing removed);
+  LyricsMenu.kt: AnchoredLyricsOverflowMenu + AppleMusicLyricsMenuRow restored
+  to v15.0 styling (white rows, red destructive, glass + 0.55 black fill,
+  0.45 scrim, 220dp popup) — only the lyrics-sync-offset item retained; dead
+  LyricsOverflowSheet + UnglassedLyricsPopupColor deleted. LyricsScreen.kt is
+  byte-identical to v15.0; LyricsMenu.kt differs only by that one item.
+- changelogs.md 15.1 section rewritten to match (menu reverted, in-place
+  lyrics morph, V7 fix).
+- Committed e5d4e508a on dev, pushed; all three workflows (Build PR, Build
+  APKs, Nightly) started and were in progress with no failures through the
+  7-minute watch window; deeper status polling blocked by the anonymous API
+  rate limit (resets ~22 min after push) — to be re-checked.
+
+Stage Summary:
+- dev e5d4e508a: V7 controls bottom-anchored again; lyrics page materialises
+  in place (never a sheet); lyrics menu = the v15.0 floating card on the
+  lyrics page and the v15.0 dark anchored popup on the styles that keep it
+  (Apple Music, SpatialFlow, TikTok, SimpMusic).

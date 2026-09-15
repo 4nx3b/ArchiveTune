@@ -1,9 +1,9 @@
 # ArchiveTune 15.1 — Changelog
 
 The follow-up to 15.0: a new Looper player style, the lyrics page rebuilt as a
-true whole-page overlay with the floating Liquid Glass lyrics menu everywhere,
-darker (and honestly opaque) glass menus, video playback in two more styles,
-and the biggest player-animation performance pass yet.
+true whole-page overlay that materialises in place, the lyrics menu back to the
+familiar floating card, video playback in two more styles, and the biggest
+player-animation performance pass yet.
 
 ## New
 
@@ -16,9 +16,9 @@ and the biggest player-animation performance pass yet.
 - The lyrics page is now a whole-page overlay over the player controls —
   always full screen, no sheet corners or short box area — for the Cinematic,
   Editorial, Immersive, Material Extended and SimpMusic styles
-- Floating Liquid Glass lyrics overflow menu everywhere lyrics open (the
-  lyrics page included), anchored to the header/more buttons and scaling in
-  from them
+- Opening the lyrics page no longer slides anything up from the bottom edge:
+  the page crossfades and scales in over the player in place (650ms, the Apple
+  Music cover-to-lyrics morph), so it can never read as a bottom sheet
 - YouTube video playback in the SpatialFlow and Looper styles (the video
   replaces the artwork with its quality pill, exactly like the other styles)
 - "Disable blur effects" now also removes the backdrop gradient wash from the
@@ -26,10 +26,16 @@ and the biggest player-animation performance pass yet.
 
 ## Fixes
 
-- The Liquid Glass lyrics overflow menu renders as dark charcoal glass again —
-  it had washed milky-bright whenever it opened over the (white) lyrics text
-- With Liquid Glass OFF the lyrics overflow menu is now a fully opaque card —
-  no blur ghosts through with the toggle off
+- The lyrics overflow menu is back to the 15.0 presentation: the floating menu
+  card (song header + action grid) that Liquid Glass frosts when the toggle is
+  on, instead of the small anchored popup the page had briefly grown
+- The Immersive player's controls are back at the bottom of the screen — a
+  layout regression had pinned the whole control block to the top with a
+  giant empty gap underneath
+- The Liquid Glass lyrics popup keeps its familiar dark fill (glass under a
+  deep scrim, opaque near-black without the glass toggle) for the styles that
+  still anchor it to their header buttons (Apple Music, SpatialFlow, TikTok,
+  SimpMusic)
 - Player open/minimise animation no longer fights the app: progress ticks
   pause while the sheet is mid-flight, and the collapsed mini player's
   keep-alive player subtree drops from 10 to 2 updates per second — returning
