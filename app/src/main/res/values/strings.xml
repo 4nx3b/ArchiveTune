@@ -263,6 +263,8 @@
     <string name="canvas_saved">Canvas saved to internal storage</string>
     <string name="canvas_save_failed">Couldn’t save Canvas</string>
     <string name="canvas_unavailable">No Canvas sources are available for this song</string>
+    <string name="canvas_menu_title">Canvas</string>
+    <string name="canvas_source_selected">Canvas set to %1$s</string>
     <string name="undo_translation">Undo translation</string>
     <string name="share">Share</string>
     <string name="delete">Delete</string>

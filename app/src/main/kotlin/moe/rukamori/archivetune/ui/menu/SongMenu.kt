@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -96,7 +97,9 @@ import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
+import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.ui.player.fetchCanvasArtworkForPlayback
+import moe.rukamori.archivetune.ui.player.hasAnyCanvasSource
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.telegram.isTelegramMediaId
@@ -326,6 +329,37 @@ fun SongMenu(
     var canvasSourcesLoading by remember(song.id) { mutableStateOf(false) }
     var canvasSaving by remember(song.id) { mutableStateOf(false) }
 
+    // Availability probe for the overflow entry: the "Canvas" item only shows
+    // up when at least one integrated provider can serve this song. Starts
+    // from the instant playback-cache check, then asks the providers (bounded
+    // by a 4s timeout so a slow network can never hold the menu hostage).
+    val (archiveTuneCanvasEnabled) = rememberPreference(ArchiveTuneCanvasKey, true)
+    var canvasAvailable by remember(song.id) {
+        mutableStateOf(CanvasArtworkPlaybackCache.hasEntry(song.id))
+    }
+    LaunchedEffect(song.id, archiveTuneCanvasEnabled, spotifyCanvasAvailable) {
+        if (canvasAvailable) return@LaunchedEffect
+        if (song.song.isLocal || (!archiveTuneCanvasEnabled && !spotifyCanvasAvailable)) {
+            canvasAvailable = false
+            return@LaunchedEffect
+        }
+        val available =
+            kotlinx.coroutines.withTimeoutOrNull(4_000L) {
+                withContext(Dispatchers.IO) {
+                    hasAnyCanvasSource(
+                        mediaId = song.id,
+                        songTitleRaw = song.song.title,
+                        artistNameRaw = song.artists.firstOrNull()?.name.orEmpty(),
+                        storefront = java.util.Locale.getDefault().country.lowercase().ifBlank { "us" },
+                        albumTitle = song.song.albumName,
+                        includeAppleMusic = archiveTuneCanvasEnabled,
+                        includeSpotify = spotifyCanvasAvailable,
+                    )
+                }
+            } ?: false
+        canvasAvailable = available
+    }
+
     fun loadCanvasSources() {
         if (canvasSourcesLoading || canvasSaving) return
         canvasSourcesLoading = true
@@ -391,6 +425,23 @@ fun SongMenu(
         }
     }
 
+    // Row click: make the chosen source's canvas the one that plays for this
+    // song (streams immediately, caches in the background) without forcing a
+    // full synchronous download.
+    fun playCanvasSource(source: CanvasSourceOption) {
+        showCanvasSourceDialog = false
+        coroutineScope.launch {
+            withContext(Dispatchers.IO) {
+                CanvasArtworkPlaybackCache.put(song.id, source.artwork)
+            }
+            Toast.makeText(
+                context,
+                context.getString(R.string.canvas_source_selected, source.label),
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
     if (showCanvasSourceDialog) {
         ListDialog(onDismiss = { showCanvasSourceDialog = false }) {
             item {
@@ -406,9 +457,21 @@ fun SongMenu(
                 ListItem(
                     headlineContent = { Text(text = source.label) },
                     leadingContent = {
-                        Icon(painter = painterResource(R.drawable.download), contentDescription = null)
+                        Icon(painter = painterResource(R.drawable.image), contentDescription = null)
                     },
-                    modifier = Modifier.fillMaxWidth().clickable { saveCanvasSource(source) },
+                    trailingContent = {
+                        if (canvasSaving) {
+                            CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
+                        } else {
+                            IconButton(onClick = { saveCanvasSource(source) }) {
+                                Icon(
+                                    painter = painterResource(R.drawable.download),
+                                    contentDescription = stringResource(R.string.save_canvas),
+                                )
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().clickable { playCanvasSource(source) },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 )
             }
@@ -1337,19 +1400,19 @@ fun SongMenu(
             MenuSectionDivider()
         }
 
-        item {
+        // "Canvas": only present when a canvas from any integrated provider is
+        // (or becomes) available for this song — see the availability probe above.
+        if (!song.song.isLocal && canvasAvailable) item {
             MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = {
                             Text(
-                                text = stringResource(
-                                    if (canvasSaving) R.string.canvas_saving else R.string.save_canvas,
-                                ),
+                                text = stringResource(R.string.canvas_menu_title),
                             )
                         },
                         leadingContent = {
-                            if (canvasSaving) {
+                            if (canvasSourcesLoading || canvasSaving) {
                                 CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
                             } else {
                                 Icon(
