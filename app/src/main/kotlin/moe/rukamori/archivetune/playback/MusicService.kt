@@ -52,6 +52,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.ParserException
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Player.EVENT_POSITION_DISCONTINUITY
 import androidx.media3.common.Player.EVENT_TIMELINE_CHANGED
@@ -1511,6 +1512,27 @@ class MusicService :
             .collectLatest(scope) {
                 localPlayer.skipSilenceEnabled = it
                 secondaryCrossfadePlayer?.skipSilenceEnabled = it
+            }
+
+        // Audio effects screen playback speed + pitch matching. Pitch matched
+        // keeps the pitch at 1x (timestretched); the "vinyl" mode lets the
+        // pitch follow the speed. Both players get the same parameters so the
+        // crossfade handover stays seamless.
+        combine(
+            dataStore.data.map { it[AudioPlaybackSpeedKey] ?: 1.0f },
+            dataStore.data.map { it[AudioPlaybackSpeedPitchMatchKey] ?: false },
+        ) { speed, pitchMatched ->
+            PlaybackParameters(speed.coerceIn(0.5f, 2.0f), if (pitchMatched) 1.0f else speed.coerceIn(0.5f, 2.0f))
+        }.distinctUntilChanged()
+            .collectLatest(scope) { parameters ->
+                // Only touch the players when the parameters actually differ -
+                // avoids a needless re-configure on every service start.
+                if (localPlayer.playbackParameters != parameters) {
+                    localPlayer.playbackParameters = parameters
+                }
+                if (secondaryCrossfadePlayer?.playbackParameters != parameters) {
+                    secondaryCrossfadePlayer?.playbackParameters = parameters
+                }
             }
 
         dataStore.data
@@ -7001,7 +7023,9 @@ class MusicService :
         processor: StereoPanAudioProcessor,
         settings: EqSettings,
     ) {
-        processor.setMasterEnabled(settings.enabled)
+        // Balance and 8D are independent effects: they no longer require the
+        // band-equalizer master switch to be on (the processor itself only
+        // activates for its own flags).
         processor.setBalance(settings.balance)
         processor.setRotation(
             enabled = settings.eightDEnabled,
@@ -7028,12 +7052,12 @@ class MusicService :
         }
 
         bassBoost?.let { bb ->
-            runCatching { bb.enabled = settings.enabled && settings.bassBoostEnabled }
+            runCatching { bb.enabled = settings.bassBoostEnabled }
             runCatching { bb.setStrength(settings.bassBoostStrength.toShort()) }
         }
 
         virtualizer?.let { v ->
-            runCatching { v.enabled = settings.enabled && settings.virtualizerEnabled }
+            runCatching { v.enabled = settings.virtualizerEnabled }
             runCatching { v.setStrength(settings.virtualizerStrength.toShort()) }
         }
 
@@ -7046,12 +7070,12 @@ class MusicService :
                     else -> 0
                 }
             runCatching { le.setTargetGain(gainMb) }
-            runCatching { le.enabled = settings.enabled && (settings.autoHeadroomEnabled || settings.outputGainEnabled) }
+            runCatching { le.enabled = settings.autoHeadroomEnabled || settings.outputGainEnabled }
         }
 
         environmentalReverb?.let { reverb ->
             applyReverbPreset(reverb, EqReverbPreset.fromStorage(settings.reverbPreset))
-            runCatching { reverb.enabled = settings.enabled && settings.reverbEnabled }
+            runCatching { reverb.enabled = settings.reverbEnabled }
         }
 
         listOfNotNull(primaryStereoPanProcessor, secondaryStereoPanProcessor).forEach { stereoPan ->
