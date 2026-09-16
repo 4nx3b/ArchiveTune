@@ -25,6 +25,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -33,7 +34,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -411,23 +412,31 @@ internal fun SpatialFlowLyricsOverlay(
                     )
                 }
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                // Dismiss (X) sits alone at the far-right margin inside a thin
+                // circle outline, mirroring the leading 48dp menu slot so the
+                // title stays dead-centre on the screen.
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(48.dp),
                 ) {
-                    IconButton(onClick = onDismiss) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier =
+                            Modifier
+                                .size(36.dp)
+                                .border(
+                                    width = 1.dp,
+                                    color = contentColor.copy(alpha = 0.45f),
+                                    shape = CircleShape,
+                                ),
+                    ) {
                         Icon(
                             painter = painterResource(R.drawable.close),
                             contentDescription = "Close Lyrics",
                             tint = contentColor.copy(alpha = 0.8f),
-                            modifier = Modifier.size(24.dp),
+                            modifier = Modifier.size(20.dp),
                         )
                     }
-
-                    // 48dp slot reserved for the artwork thumbnail that morphs into
-                    // the top-right corner while the lyrics are open (the flying
-                    // shared-element layer composed in SpatialFlowPlayer sits here).
-                    Spacer(modifier = Modifier.size(48.dp))
                 }
             }
 

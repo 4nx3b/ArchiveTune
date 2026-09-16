@@ -87,6 +87,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -112,6 +113,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedKey
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedPitchMatchKey
+import moe.rukamori.archivetune.constants.EqualizerAudioEffectsEnabledKey
 import moe.rukamori.archivetune.playback.EqReverbPreset
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -234,12 +236,11 @@ private fun EqualizerScreen(
 }
 
 /**
- * The SpatialFlow-style audio effects screen: two segmented feature cards
- * (8D + Reverb + Bass + Equalizer, then Loudness + Balance + Speed +
- * Virtualizer), expressive switches with checkmark thumbs, springs on every
- * slider, and a pulsing wavy progress card while the 8D effect settles.
- * Every effect is independent - the equalizer switch governs only the
- * frequency bands.
+ * The SpatialFlow-style audio effects screen behind two category pills:
+ * "Equalizer" (the 5-band frequency shaping) and "Audio effects" (every
+ * ported effect - 8D, reverb, bass, loudness, balance, speed, virtualizer -
+ * behind one master "Enable audio effects" switch that gates both
+ * customisation in this screen and application in the playback service).
  */
 @Composable
 private fun AudioEffectsContent(
@@ -260,6 +261,14 @@ private fun AudioEffectsContent(
     // Stereo balance keeps the reference behaviour: the section switch is a
     // session-local affordance (off resets the position to the centre).
     var isBalanceSwitchOn by remember { mutableStateOf(model.balance != 0f) }
+
+    // Master switch for the Audio effects pill: until this is on, none of
+    // the ported effects can be customised here nor applied to any song.
+    val (audioEffectsEnabled, onAudioEffectsEnabledChange) =
+        rememberPreference(EqualizerAudioEffectsEnabledKey, defaultValue = false)
+
+    // 0 = Equalizer pill, 1 = Audio effects pill.
+    var selectedTab by rememberSaveable { mutableStateOf(0) }
 
     // Processing flourish: the reference shows the wavy card while it renders
     // 8D offline and keeps it 1.2s past 100%. Ours is real time, so the card
@@ -294,7 +303,14 @@ private fun AudioEffectsContent(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = stringResource(R.string.eq_audio_effects),
+                text =
+                    stringResource(
+                        if (selectedTab == 0) {
+                            R.string.eq_tab_equalizer
+                        } else {
+                            R.string.eq_audio_effects
+                        },
+                    ),
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier =
@@ -322,149 +338,239 @@ private fun AudioEffectsContent(
             }
         }
 
-        AnimatedVisibility(
-            visible = showProcessingCard,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut(),
+        // Two category pills: Equalizer | Audio effects.
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            ProcessingCard(progress = 100)
+            CategoryPill(
+                label = stringResource(R.string.eq_tab_equalizer),
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
+                modifier = Modifier.weight(1f),
+            )
+            CategoryPill(
+                label = stringResource(R.string.eq_tab_audio_effects),
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1 },
+                modifier = Modifier.weight(1f),
+            )
         }
 
         val columns = if (isLandscape) 2 else 1
 
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            maxItemsInEachRow = columns,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Box(modifier = Modifier.weight(1f)) {
-                // GROUP 1: (8D + Reverb + Bass + EQ)
-                SegmentedFeatureCard(
-                    items =
-                        listOf(
-                            {
-                                SwitchSection(
-                                    title = stringResource(R.string.eq_8d),
-                                    desc = stringResource(R.string.eq_8d_description),
-                                    checked = model.eightDEnabled,
-                                    onToggle = viewModel::set8DEnabled,
-                                    infoTooltip = stringResource(R.string.eq_8d_info),
-                                )
-                            },
-                            {
-                                ReverbSection(
-                                    enabled = model.reverbEnabled,
-                                    onToggle = viewModel::setReverbEnabled,
-                                    presetValue = model.reverbPreset.storageValue.toFloat(),
-                                    onPresetChange = { index ->
-                                        viewModel.setReverbPreset(EqReverbPreset.fromStorage(index.toInt()))
-                                    },
-                                )
-                            },
-                            {
-                                LabelSliderSection(
-                                    title = stringResource(R.string.eq_bass_boost),
-                                    label = stringResource(R.string.eq_bass_level),
-                                    value = model.bassBoostStrength / BASS_STRENGTH_PER_DB,
-                                    range = 0f..BASS_MAX_DB,
-                                    checked = model.bassBoostEnabled,
-                                    onToggle = viewModel::setBassBoostEnabled,
-                                    onValueChange = { db ->
-                                        val strength = (db * BASS_STRENGTH_PER_DB).toInt().coerceIn(0, 1000)
-                                        viewModel.updateBassBoostDraft(strength)
-                                        viewModel.commitBassBoost()
-                                    },
-                                    suffix = stringResource(R.string.eq_unit_db),
-                                )
-                            },
-                            {
-                                EqualizerSection(
-                                    enabled = model.enabled,
-                                    onToggle = viewModel::setEnabled,
-                                    bands = model.fixedBandsMb.map { it / 100f },
-                                    onBandChange = { index, db ->
-                                        viewModel.updateFixedBandDraft(index, (db * 100).toInt())
-                                        viewModel.commitFixedBands()
-                                    },
-                                    presets = model.presets,
-                                    onPresetClick = viewModel::applyPreset,
-                                )
-                            },
-                        ),
-                )
+        if (selectedTab == 0) {
+            // ===== EQUALIZER PILL =====
+            SegmentedFeatureCard(
+                items =
+                    listOf(
+                        {
+                            EqualizerSection(
+                                enabled = model.enabled,
+                                onToggle = viewModel::setEnabled,
+                                bands = model.fixedBandsMb.map { it / 100f },
+                                onBandChange = { index, db ->
+                                    viewModel.updateFixedBandDraft(index, (db * 100).toInt())
+                                    viewModel.commitFixedBands()
+                                },
+                                presets = model.presets,
+                                onPresetClick = viewModel::applyPreset,
+                            )
+                        },
+                    ),
+            )
+        } else {
+            // ===== AUDIO EFFECTS PILL =====
+            AnimatedVisibility(
+                visible = showProcessingCard,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
+                ProcessingCard(progress = 100)
             }
 
-            Box(modifier = Modifier.weight(1f)) {
-                // GROUP 2: (Loudness + Balance + Speed + Virtualizer)
-                SegmentedFeatureCard(
-                    items =
-                        listOf(
-                            {
-                                LabelSliderSection(
-                                    title = stringResource(R.string.eq_loudness),
-                                    label = stringResource(R.string.eq_gain),
-                                    value = (model.outputGainMb.coerceIn(0, 1200)) / 100f,
-                                    range = 0f..LOUDNESS_MAX_DB,
-                                    checked = model.outputGainEnabled,
-                                    onToggle = viewModel::setOutputGainEnabled,
-                                    onValueChange = { db ->
-                                        val mb = (db * 100).toInt().coerceIn(0, 1200)
-                                        viewModel.updateOutputGainDraft(mb)
-                                        viewModel.commitOutputGain()
-                                    },
-                                    prefix = "+",
-                                    suffix = stringResource(R.string.eq_unit_db),
-                                )
-                            },
-                            {
-                                BalanceSection(
-                                    enabled = isBalanceSwitchOn,
-                                    onToggle = { on ->
-                                        isBalanceSwitchOn = on
-                                        if (!on) {
-                                            viewModel.updateBalanceDraft(0f)
+            // Master switch: everything below stays read-only until it is on.
+            SwitchSection(
+                title = stringResource(R.string.eq_enable_audio_effects),
+                desc = stringResource(R.string.eq_enable_audio_effects_desc),
+                checked = audioEffectsEnabled,
+                onToggle = onAudioEffectsEnabledChange,
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                maxItemsInEachRow = columns,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    // GROUP 1: (8D + Reverb + Bass)
+                    SegmentedFeatureCard(
+                        items =
+                            listOf(
+                                {
+                                    SwitchSection(
+                                        title = stringResource(R.string.eq_8d),
+                                        desc = stringResource(R.string.eq_8d_description),
+                                        checked = model.eightDEnabled,
+                                        onToggle = viewModel::set8DEnabled,
+                                        infoTooltip = stringResource(R.string.eq_8d_info),
+                                        interactionEnabled = audioEffectsEnabled,
+                                    )
+                                },
+                                {
+                                    ReverbSection(
+                                        enabled = model.reverbEnabled,
+                                        onToggle = viewModel::setReverbEnabled,
+                                        presetValue = model.reverbPreset.storageValue.toFloat(),
+                                        onPresetChange = { index ->
+                                            viewModel.setReverbPreset(EqReverbPreset.fromStorage(index.toInt()))
+                                        },
+                                        interactionEnabled = audioEffectsEnabled,
+                                    )
+                                },
+                                {
+                                    LabelSliderSection(
+                                        title = stringResource(R.string.eq_bass_boost),
+                                        label = stringResource(R.string.eq_bass_level),
+                                        value = model.bassBoostStrength / BASS_STRENGTH_PER_DB,
+                                        range = 0f..BASS_MAX_DB,
+                                        checked = model.bassBoostEnabled,
+                                        onToggle = viewModel::setBassBoostEnabled,
+                                        onValueChange = { db ->
+                                            val strength = (db * BASS_STRENGTH_PER_DB).toInt().coerceIn(0, 1000)
+                                            viewModel.updateBassBoostDraft(strength)
+                                            viewModel.commitBassBoost()
+                                        },
+                                        suffix = stringResource(R.string.eq_unit_db),
+                                        interactionEnabled = audioEffectsEnabled,
+                                    )
+                                },
+                            ),
+                    )
+                }
+
+                Box(modifier = Modifier.weight(1f)) {
+                    // GROUP 2: (Loudness + Balance + Speed + Virtualizer)
+                    SegmentedFeatureCard(
+                        items =
+                            listOf(
+                                {
+                                    LabelSliderSection(
+                                        title = stringResource(R.string.eq_loudness),
+                                        label = stringResource(R.string.eq_gain),
+                                        value = (model.outputGainMb.coerceIn(0, 1200)) / 100f,
+                                        range = 0f..LOUDNESS_MAX_DB,
+                                        checked = model.outputGainEnabled,
+                                        onToggle = viewModel::setOutputGainEnabled,
+                                        onValueChange = { db ->
+                                            val mb = (db * 100).toInt().coerceIn(0, 1200)
+                                            viewModel.updateOutputGainDraft(mb)
+                                            viewModel.commitOutputGain()
+                                        },
+                                        prefix = "+",
+                                        suffix = stringResource(R.string.eq_unit_db),
+                                        interactionEnabled = audioEffectsEnabled,
+                                    )
+                                },
+                                {
+                                    BalanceSection(
+                                        enabled = isBalanceSwitchOn,
+                                        onToggle = { on ->
+                                            isBalanceSwitchOn = on
+                                            if (!on) {
+                                                viewModel.updateBalanceDraft(0f)
+                                                viewModel.commitBalance()
+                                            }
+                                        },
+                                        value = model.balance * BALANCE_RANGE,
+                                        onChange = { position ->
+                                            viewModel.updateBalanceDraft(position / BALANCE_RANGE)
                                             viewModel.commitBalance()
-                                        }
-                                    },
-                                    value = model.balance * BALANCE_RANGE,
-                                    onChange = { position ->
-                                        viewModel.updateBalanceDraft(position / BALANCE_RANGE)
-                                        viewModel.commitBalance()
-                                    },
-                                )
-                            },
-                            {
-                                SpeedSection(
-                                    enabled = isSpeedSwitchOn,
-                                    onToggle = { on ->
-                                        isSpeedSwitchOn = on
-                                        onPlaybackSpeedChange(if (on) playbackSpeed.coerceIn(0.5f, 2.0f) else 1.0f)
-                                    },
-                                    value = playbackSpeed,
-                                    onChange = onPlaybackSpeedChange,
-                                    isPitchMatched = isPitchMatched,
-                                    onPitchMatchToggle = { onPitchMatchedChange(!isPitchMatched) },
-                                )
-                            },
-                            {
-                                LabelSliderSection(
-                                    title = stringResource(R.string.eq_virtualizer),
-                                    label = stringResource(R.string.eq_strength),
-                                    value = model.virtualizerStrength / 10f,
-                                    range = 0f..100f,
-                                    checked = model.virtualizerEnabled,
-                                    onToggle = viewModel::setVirtualizerEnabled,
-                                    onValueChange = { percent ->
-                                        val strength = (percent * 10).toInt().coerceIn(0, 1000)
-                                        viewModel.updateVirtualizerDraft(strength)
-                                        viewModel.commitVirtualizer()
-                                    },
-                                    suffix = stringResource(R.string.eq_unit_percent),
-                                )
-                            },
-                        ),
-                )
+                                        },
+                                        interactionEnabled = audioEffectsEnabled,
+                                    )
+                                },
+                                {
+                                    SpeedSection(
+                                        enabled = isSpeedSwitchOn,
+                                        onToggle = { on ->
+                                            isSpeedSwitchOn = on
+                                            onPlaybackSpeedChange(if (on) playbackSpeed.coerceIn(0.5f, 2.0f) else 1.0f)
+                                        },
+                                        value = playbackSpeed,
+                                        onChange = onPlaybackSpeedChange,
+                                        isPitchMatched = isPitchMatched,
+                                        onPitchMatchToggle = { onPitchMatchedChange(!isPitchMatched) },
+                                        interactionEnabled = audioEffectsEnabled,
+                                    )
+                                },
+                                {
+                                    LabelSliderSection(
+                                        title = stringResource(R.string.eq_virtualizer),
+                                        label = stringResource(R.string.eq_strength),
+                                        value = model.virtualizerStrength / 10f,
+                                        range = 0f..100f,
+                                        checked = model.virtualizerEnabled,
+                                        onToggle = viewModel::setVirtualizerEnabled,
+                                        onValueChange = { percent ->
+                                            val strength = (percent * 10).toInt().coerceIn(0, 1000)
+                                            viewModel.updateVirtualizerDraft(strength)
+                                            viewModel.commitVirtualizer()
+                                        },
+                                        suffix = stringResource(R.string.eq_unit_percent),
+                                        interactionEnabled = audioEffectsEnabled,
+                                    )
+                                },
+                            ),
+                    )
+                }
             }
+        }
+    }
+}
+
+/**
+ * One of the two category pills at the top of the effects screen. Selected
+ * pills use the theme's secondary container with a bold label; unselected
+ * ones sit on surfaceContainerHigh with the variant color.
+ */
+@Composable
+private fun CategoryPill(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(percent = 50),
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        border =
+            androidx.compose.foundation.BorderStroke(
+                width = 1.dp,
+                color =
+                    if (selected) {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    },
+            ),
+        modifier = modifier.height(44.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -580,10 +686,12 @@ private const val BALANCE_RANGE = 50f
 private fun ExpressiveSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
 ) {
     Switch(
         checked = checked,
         onCheckedChange = onCheckedChange,
+        enabled = enabled,
         thumbContent =
             if (checked) {
                 {
@@ -607,6 +715,7 @@ private fun SwitchSection(
     checked: Boolean,
     onToggle: (Boolean) -> Unit,
     infoTooltip: String? = null,
+    interactionEnabled: Boolean = true,
 ) {
     var showDialog by remember { mutableStateOf(false) }
 
@@ -616,7 +725,11 @@ private fun SwitchSection(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f),
             ) {
-                Text(text = title, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = if (interactionEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 if (infoTooltip != null) {
                     IconButton(
                         onClick = { showDialog = true },
@@ -631,7 +744,7 @@ private fun SwitchSection(
                     }
                 }
             }
-            ExpressiveSwitch(checked = checked, onCheckedChange = onToggle)
+            ExpressiveSwitch(checked = checked, onCheckedChange = onToggle, enabled = interactionEnabled)
         }
         Spacer(modifier = Modifier.height(12.dp))
         Text(text = desc, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -668,11 +781,17 @@ private fun LabelSliderSection(
     onValueChange: (Float) -> Unit,
     prefix: String = "",
     suffix: String = " dB",
+    interactionEnabled: Boolean = true,
 ) {
     SectionContainer {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            ExpressiveSwitch(checked = checked, onCheckedChange = onToggle)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                color = if (interactionEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            ExpressiveSwitch(checked = checked, onCheckedChange = onToggle, enabled = interactionEnabled)
         }
         Spacer(modifier = Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -690,7 +809,7 @@ private fun LabelSliderSection(
             value = value,
             onValueChange = onValueChange,
             valueRange = range,
-            enabled = checked,
+            enabled = checked && interactionEnabled,
         )
     }
 }
@@ -792,11 +911,17 @@ private fun BalanceSection(
     onToggle: (Boolean) -> Unit,
     value: Float,
     onChange: (Float) -> Unit,
+    interactionEnabled: Boolean = true,
 ) {
     SectionContainer {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = stringResource(R.string.eq_balance), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            ExpressiveSwitch(checked = enabled, onCheckedChange = onToggle)
+            Text(
+                text = stringResource(R.string.eq_balance),
+                style = MaterialTheme.typography.titleLarge,
+                color = if (interactionEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            ExpressiveSwitch(checked = enabled, onCheckedChange = onToggle, enabled = interactionEnabled)
         }
         Spacer(modifier = Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -817,7 +942,7 @@ private fun BalanceSection(
             value = value,
             onValueChange = onChange,
             valueRange = -BALANCE_RANGE..BALANCE_RANGE,
-            enabled = enabled,
+            enabled = enabled && interactionEnabled,
         )
         Spacer(modifier = Modifier.height(12.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -836,11 +961,17 @@ private fun SpeedSection(
     onChange: (Float) -> Unit,
     isPitchMatched: Boolean,
     onPitchMatchToggle: () -> Unit,
+    interactionEnabled: Boolean = true,
 ) {
     SectionContainer {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = stringResource(R.string.eq_speed), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            ExpressiveSwitch(checked = enabled, onCheckedChange = onToggle)
+            Text(
+                text = stringResource(R.string.eq_speed),
+                style = MaterialTheme.typography.titleLarge,
+                color = if (interactionEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            ExpressiveSwitch(checked = enabled, onCheckedChange = onToggle, enabled = interactionEnabled)
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(
@@ -859,7 +990,7 @@ private fun SpeedSection(
         Box(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
             TextButton(
                 onClick = onPitchMatchToggle,
-                enabled = enabled,
+                enabled = enabled && interactionEnabled,
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), // Smaller padding
                 shapes = ButtonDefaults.shapes(),
                 modifier = Modifier.height(32.dp), // Smaller height
@@ -881,7 +1012,7 @@ private fun SpeedSection(
             value = value,
             onValueChange = onChange,
             valueRange = 0.5f..2.0f,
-            enabled = enabled,
+            enabled = enabled && interactionEnabled,
         )
         Spacer(modifier = Modifier.height(12.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -898,11 +1029,17 @@ private fun ReverbSection(
     onToggle: (Boolean) -> Unit,
     presetValue: Float,
     onPresetChange: (Float) -> Unit,
+    interactionEnabled: Boolean = true,
 ) {
     SectionContainer {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = stringResource(R.string.eq_reverb), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            ExpressiveSwitch(checked = enabled, onCheckedChange = onToggle)
+            Text(
+                text = stringResource(R.string.eq_reverb),
+                style = MaterialTheme.typography.titleLarge,
+                color = if (interactionEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            ExpressiveSwitch(checked = enabled, onCheckedChange = onToggle, enabled = interactionEnabled)
         }
         Spacer(modifier = Modifier.height(12.dp))
         val presets =
@@ -921,7 +1058,7 @@ private fun ReverbSection(
 
         ExposedDropdownMenuBox(
             expanded = expanded,
-            onExpandedChange = { if (enabled) expanded = !expanded },
+            onExpandedChange = { if (enabled && interactionEnabled) expanded = !expanded },
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         ) {
             OutlinedTextField(
@@ -932,7 +1069,7 @@ private fun ReverbSection(
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
                 modifier = Modifier.menuAnchor().fillMaxWidth(),
-                enabled = enabled,
+                enabled = enabled && interactionEnabled,
             )
             ExposedDropdownMenu(
                 expanded = expanded,

@@ -48,11 +48,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
@@ -789,12 +791,42 @@ private fun SourceCheckRow(source: AudioSourceType) {
     var checking by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<SourceCheckResult?>(null) }
 
+    // The last verdict per source lives in the service's StateFlow, so the
+    // inline status survives navigation and recomposition instead of being a
+    // one-shot dialog the user can never see again.
+    val cachedResults by SourceCheckService.results.collectAsStateWithLifecycle()
+    val cached = cachedResults[source]
+
     PreferenceEntry(
         title = { Text(stringResource(R.string.check_source)) },
-        description = stringResource(R.string.check_source_description),
-        icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+        description =
+            if (cached == null) {
+                stringResource(R.string.check_source_description)
+            } else {
+                buildString {
+                    append(sourceStatusLabel(cached.status))
+                    append(" · ")
+                    append(lastCheckedLabel(cached.checkedAtMs))
+                }
+            },
+        icon = {
+            Icon(
+                painterResource(R.drawable.graphic_eq),
+                null,
+                tint = sourceStatusColor(cached?.status),
+            )
+        },
         trailingContent = if (checking) {
             { CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp) }
+        } else if (cached != null) {
+            {
+                Text(
+                    text = sourceStatusLabel(cached.status),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = sourceStatusColor(cached.status),
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
         } else {
             null
         },
@@ -839,6 +871,36 @@ private fun SourceCheckRow(source: AudioSourceType) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun sourceStatusLabel(status: SourceCheckStatus): String =
+    when (status) {
+        SourceCheckStatus.READY -> stringResource(R.string.check_source_status_ready)
+        SourceCheckStatus.DEGRADED -> stringResource(R.string.check_source_status_degraded)
+        SourceCheckStatus.NOT_CONFIGURED -> stringResource(R.string.check_source_status_not_configured)
+        SourceCheckStatus.UNSUPPORTED -> stringResource(R.string.check_source_status_unsupported)
+        SourceCheckStatus.UNREACHABLE -> stringResource(R.string.check_source_status_unreachable)
+    }
+
+@Composable
+private fun sourceStatusColor(status: SourceCheckStatus?): Color =
+    when (status) {
+        null -> MaterialTheme.colorScheme.onSurfaceVariant
+        SourceCheckStatus.READY -> MaterialTheme.colorScheme.primary
+        SourceCheckStatus.DEGRADED -> MaterialTheme.colorScheme.tertiary
+        SourceCheckStatus.NOT_CONFIGURED -> MaterialTheme.colorScheme.onSurfaceVariant
+        SourceCheckStatus.UNSUPPORTED -> MaterialTheme.colorScheme.onSurfaceVariant
+        SourceCheckStatus.UNREACHABLE -> MaterialTheme.colorScheme.error
+    }
+
+private fun lastCheckedLabel(checkedAtMs: Long): String {
+    val minutes = (System.currentTimeMillis() - checkedAtMs) / 60_000L
+    return when {
+        minutes < 1 -> "just now"
+        minutes < 60 -> "${minutes}m ago"
+        else -> "${minutes / 60}h ago"
     }
 }
 

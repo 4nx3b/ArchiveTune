@@ -352,12 +352,9 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             else -> true
         }
     val isLyricsBackgroundStyleAvailable =
-        playerDesignStyle != PlayerDesignStyle.BITCHORD &&
-            playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC &&
+        playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC &&
             playerDesignStyle != PlayerDesignStyle.TIKTOK &&
-            playerDesignStyle != PlayerDesignStyle.SIMPMUSIC &&
-            playerDesignStyle != PlayerDesignStyle.SPATIALFLOW &&
-            playerDesignStyle != PlayerDesignStyle.LOOPER
+            playerDesignStyle != PlayerDesignStyle.SPATIALFLOW
     val isVolumeBarSupported = playerDesignStyle == PlayerDesignStyle.V7
     val isSystemInDarkTheme = isSystemInDarkTheme()
     val useDarkTheme =

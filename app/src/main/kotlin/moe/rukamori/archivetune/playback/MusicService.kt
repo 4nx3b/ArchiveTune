@@ -167,6 +167,7 @@ import moe.rukamori.archivetune.constants.EnableDiscordRPCKey
 import moe.rukamori.archivetune.constants.EnableLastFMScrobblingKey
 import moe.rukamori.archivetune.constants.Equalizer8DEnabledKey
 import moe.rukamori.archivetune.constants.Equalizer8DSpeedKey
+import moe.rukamori.archivetune.constants.EqualizerAudioEffectsEnabledKey
 import moe.rukamori.archivetune.constants.EqualizerAutoHeadroomEnabledKey
 import moe.rukamori.archivetune.constants.EqualizerBalanceKey
 import moe.rukamori.archivetune.constants.EqualizerBandLevelsMbKey
@@ -1520,8 +1521,12 @@ class MusicService :
         combine(
             dataStore.data.map { it[AudioPlaybackSpeedKey] ?: 1.0f },
             dataStore.data.map { it[AudioPlaybackSpeedPitchMatchKey] ?: false },
-        ) { speed, pitchMatched ->
-            PlaybackParameters(speed.coerceIn(0.5f, 2.0f), if (pitchMatched) 1.0f else speed.coerceIn(0.5f, 2.0f))
+            dataStore.data.map { it[EqualizerAudioEffectsEnabledKey] ?: false },
+        ) { speed, pitchMatched, audioEffectsEnabled ->
+            // Playback speed lives on the Audio effects tab and follows its
+            // master switch: nothing is applied to any song while it is off.
+            val effectiveSpeed = if (audioEffectsEnabled) speed.coerceIn(0.5f, 2.0f) else 1.0f
+            PlaybackParameters(effectiveSpeed, if (pitchMatched) 1.0f else effectiveSpeed)
         }.distinctUntilChanged()
             .collectLatest(scope) { parameters ->
                 // Only touch the players when the parameters actually differ -
@@ -6812,20 +6817,26 @@ class MusicService :
 
     private fun readEqSettingsFromPrefs(prefs: Preferences): EqSettings {
         val levels = decodeBandLevelsMb(prefs[EqualizerBandLevelsMbKey])
+        // The "Enable audio effects" master switch governs every ported DSP
+        // effect (the band equalizer keeps its own switch). With it off the
+        // user cannot customise the effects and nothing is applied to any
+        // song - the stored per-effect values are preserved so flipping the
+        // switch back on restores exactly what was configured.
+        val audioEffectsEnabled = prefs[EqualizerAudioEffectsEnabledKey] ?: false
         return EqSettings(
             enabled = prefs[EqualizerEnabledKey] ?: false,
             bandLevelsMb = levels,
-            outputGainEnabled = prefs[EqualizerOutputGainEnabledKey] ?: false,
+            outputGainEnabled = (prefs[EqualizerOutputGainEnabledKey] ?: false) && audioEffectsEnabled,
             outputGainMb = prefs[EqualizerOutputGainMbKey] ?: 0,
-            bassBoostEnabled = prefs[EqualizerBassBoostEnabledKey] ?: false,
+            bassBoostEnabled = (prefs[EqualizerBassBoostEnabledKey] ?: false) && audioEffectsEnabled,
             bassBoostStrength = (prefs[EqualizerBassBoostStrengthKey] ?: 0).coerceIn(0, 1000),
-            virtualizerEnabled = prefs[EqualizerVirtualizerEnabledKey] ?: false,
+            virtualizerEnabled = (prefs[EqualizerVirtualizerEnabledKey] ?: false) && audioEffectsEnabled,
             virtualizerStrength = (prefs[EqualizerVirtualizerStrengthKey] ?: 0).coerceIn(0, 1000),
-            autoHeadroomEnabled = prefs[EqualizerAutoHeadroomEnabledKey] ?: false,
-            reverbEnabled = prefs[EqualizerReverbEnabledKey] ?: false,
+            autoHeadroomEnabled = (prefs[EqualizerAutoHeadroomEnabledKey] ?: false) && audioEffectsEnabled,
+            reverbEnabled = (prefs[EqualizerReverbEnabledKey] ?: false) && audioEffectsEnabled,
             reverbPreset = EqReverbPreset.fromStorage(prefs[EqualizerReverbPresetKey] ?: 0).storageValue,
-            balance = (prefs[EqualizerBalanceKey] ?: 0f).coerceIn(-1f, 1f),
-            eightDEnabled = prefs[Equalizer8DEnabledKey] ?: false,
+            balance = if (audioEffectsEnabled) (prefs[EqualizerBalanceKey] ?: 0f).coerceIn(-1f, 1f) else 0f,
+            eightDEnabled = (prefs[Equalizer8DEnabledKey] ?: false) && audioEffectsEnabled,
             eightDSpeedHz = (prefs[Equalizer8DSpeedKey] ?: 0.2f).coerceIn(0.03f, 0.25f),
         )
     }

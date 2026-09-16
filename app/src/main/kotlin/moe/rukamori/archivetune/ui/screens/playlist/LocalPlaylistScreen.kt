@@ -147,6 +147,7 @@ import moe.rukamori.archivetune.ui.utils.sendPauseRunningDownloads
 import moe.rukamori.archivetune.ui.utils.sendResumePausedDownloads
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.viewmodels.LocalPlaylistViewModel
 import moe.rukamori.archivetune.viewmodels.PlaylistCoverEvent
 import moe.rukamori.archivetune.viewmodels.PlaylistCoverState
@@ -176,6 +177,8 @@ fun LocalPlaylistScreen(
 
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val songs by viewModel.playlistSongs.collectAsStateWithLifecycle()
+    val canvasArtwork by viewModel.canvasArtwork.collectAsStateWithLifecycle()
+    val pageCanvasEnabled by rememberPreference(key = AlbumCanvasEnabledKey, defaultValue = true)
     val viewCounts by viewModel.viewCounts.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val coverState by viewModel.coverState.collectAsStateWithLifecycle()
@@ -653,6 +656,12 @@ fun LocalPlaylistScreen(
                                 sectionLabel = stringResource(R.string.playlist),
                                 title = playlist.playlist.name,
                                 subtitle = metadata,
+                                canvasPrimaryUrl =
+                                    (canvasArtwork?.animated ?: canvasArtwork?.videoUrl)
+                                        ?.takeIf { pageCanvasEnabled },
+                                canvasFallbackUrl = canvasArtwork?.videoUrl?.takeIf { pageCanvasEnabled },
+                                canvasIsPlaying = true,
+                                canvasVisible = !lyricsFullScreen,
                                 onPlay =
                                     if (songs.isEmpty()) {
                                         null

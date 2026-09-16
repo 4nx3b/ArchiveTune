@@ -46,6 +46,7 @@ import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.constants.PlaylistSongSortType
 import moe.rukamori.archivetune.constants.PlaylistSuggestionSource
 import moe.rukamori.archivetune.constants.PlaylistSuggestionSourceKey
+import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.PlaylistSong
 import moe.rukamori.archivetune.extensions.filterBlockedArtists
@@ -86,6 +87,9 @@ class LocalPlaylistViewModel
             database
                 .playlist(playlistId)
                 .stateIn(viewModelScope, SharingStarted.Lazily, null)
+
+        private val _canvasArtwork = MutableStateFlow<CanvasArtwork?>(null)
+        val canvasArtwork: StateFlow<CanvasArtwork?> = _canvasArtwork.asStateFlow()
 
         val sortType: StateFlow<PlaylistSongSortType> =
             playlist
@@ -143,6 +147,20 @@ class LocalPlaylistViewModel
                     }
                 }.reversed(sortDescending && sortType != PlaylistSongSortType.CUSTOM)
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+        init {
+            viewModelScope.launch(Dispatchers.IO) {
+                val first = playlistSongs.first { it.isNotEmpty() }.firstOrNull() ?: return@launch
+                _canvasArtwork.value =
+                    fetchPlaylistCanvasArtwork(
+                        context = context,
+                        firstSongId = first.song.song.id,
+                        firstSongTitle = first.song.song.title,
+                        firstSongArtist = first.song.artists.firstOrNull()?.name,
+                        firstSongAlbumTitle = first.song.album?.title,
+                    )
+            }
+        }
 
         fun updateSortPreference(
             newSortType: PlaylistSongSortType,

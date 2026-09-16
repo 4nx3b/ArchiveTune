@@ -1053,10 +1053,12 @@ fun SpatialFlowPlayerContent(
                                     val bounds = artworkPagerBoundsInRoot ?: return@graphicsLayer
                                     val fullSizePx = albumArtSize.toPx()
                                     val thumbSizePx = 44.dp.toPx()
-                                    // Parks 22dp from the RIGHT edge, inside the
-                                    // trailing 48dp slot the lyrics header reserves
-                                    // (the leading slot holds the menu button).
-                                    val targetRootX = flyingLayerWidthPx - 22.dp.toPx() - thumbSizePx
+                                    // Parks just LEFT of the lyrics header's
+                                    // dismiss button: header padding (20dp) +
+                                    // the 48dp X slot + an 8dp gap, all inset
+                                    // from the right edge.
+                                    val targetRootX =
+                                        flyingLayerWidthPx - 20.dp.toPx() - 48.dp.toPx() - 8.dp.toPx() - thumbSizePx
                                     val targetRootY = statusBarTopDp.toPx() + 18.dp.toPx()
                                     val scale = 1f + (thumbSizePx / fullSizePx - 1f) * t
                                     scaleX = scale

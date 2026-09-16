@@ -154,10 +154,13 @@ private const val FrostedNavBarBlurRadiusPx = 60f
 
 private const val FrostedNavBarOverlayAlpha = 0.30f
 
-private const val TintFrostedNavBarOverlayAlpha = 0.32f
+private const val TintFrostedNavBarOverlayAlpha = 0.26f
 
-/** How strongly the opaque tinted bar base is pulled toward the accent color. */
-private const val TintFrostedBaseBlend = 0.25f
+/** Tinted bar: how far the LIGHT base is pulled toward the accent color. */
+private const val TintFrostedLightBaseBlend = 0.26f
+
+/** Tinted bar on dark (and pure-black) schemes: a stronger pastel that still reads light. */
+private const val TintFrostedDarkBaseBlend = 0.36f
 
 private val NavigationIndicatorWidth = 56.dp
 private val NavigationIndicatorHeight = 32.dp
@@ -191,6 +194,20 @@ fun FloatingNavigationToolbar(
     // color scheme so the tinted bar and its icon polarity stay correct even
     // when the in-app dark mode differs from the system one.
     val isDarkScheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+    // The tinted bar is a LIGHT accent pastel in BOTH schemes — that is what
+    // separates it from the neutral, surface-adaptive frosted bar, which stays
+    // dark in dark mode. Its content is therefore always the dark accent
+    // shade, readable in light mode, dark mode, pure black and every accent
+    // shade the dynamic themer can pick.
+    val tintedNavBarBaseColor =
+        lerp(
+            Color.White,
+            MaterialTheme.colorScheme.primary,
+            if (isDarkScheme) TintFrostedDarkBaseBlend else TintFrostedLightBaseBlend,
+        )
+    val tintedNavBarContentColor =
+        lerp(MaterialTheme.colorScheme.primary, Color.Black, 0.55f)
 
     val (navBarWidthFraction) =
         rememberPreference(NavigationBarWidthKey, defaultValue = NAVIGATION_BAR_WIDTH_DEFAULT)
@@ -241,40 +258,24 @@ fun FloatingNavigationToolbar(
             Color.Transparent
         } else if (canBlurBackdrop) {
 
-            if (pureBlack) {
-                if (tintFrostedBlur) {
-                    // Opaque accent-tinted black: still reads as AMOLED black but
-                    // carries the tint instead of see-through translucency.
-                    lerp(Color.Black, MaterialTheme.colorScheme.primary, TintFrostedBaseBlend)
-                } else {
-                    Color.Black.copy(alpha = 0.45f)
-                }
-            } else if (tintFrostedBlur) {
-                // Opaque accent-tinted base (the setting's own description: 'frosted
-                // blur tinted with the accent color'). Previously a translucent
-                // BLACK wash in both themes - wrong tint in light mode and too
-                // transparent everywhere. A 25% blend toward primary keeps the
-                // brightness moderate so both icon polarities stay readable.
-                lerp(
-                    MaterialTheme.colorScheme.surfaceContainer,
-                    MaterialTheme.colorScheme.primary,
-                    TintFrostedBaseBlend,
-                )
+            if (tintFrostedBlur) {
+                // Opaque LIGHT accent-tinted base in every scheme — the visible
+                // difference from the neutral frosted bar (which stays
+                // surface-adaptive and therefore dark in dark mode).
+                tintedNavBarBaseColor
+            } else if (pureBlack) {
+                Color.Black.copy(alpha = 0.45f)
             } else {
                 MaterialTheme.colorScheme.surfaceContainer
             }
         } else if (pureBlack) {
             if (tintFrostedBlur) {
-                lerp(Color.Black, MaterialTheme.colorScheme.primary, TintFrostedBaseBlend)
+                tintedNavBarBaseColor
             } else {
                 Color.Black
             }
         } else if (tintFrostedBlur) {
-            lerp(
-                MaterialTheme.colorScheme.surfaceContainer,
-                MaterialTheme.colorScheme.primary,
-                TintFrostedBaseBlend,
-            )
+            tintedNavBarBaseColor
         } else {
 
             val baseColor = MaterialTheme.colorScheme.surfaceContainer
@@ -293,7 +294,9 @@ fun FloatingNavigationToolbar(
             canLiquidGlass -> Color.Transparent
 
             tintFrostedBlur && !isFloating ->
-                if (isDarkScheme) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.10f)
+                // The tinted base is always light, so the selected pill is a
+                // subtle dark wash in both schemes.
+                Color.Black.copy(alpha = 0.12f)
             isFloating -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
             pureBlack -> Color.White.copy(alpha = 0.16f)
             else -> MaterialTheme.colorScheme.secondaryContainer
@@ -340,24 +343,16 @@ fun FloatingNavigationToolbar(
                     unselectedTextColor = Color.White.copy(alpha = 0.6f),
                 )
             tintFrostedBlur ->
-                if (isDarkScheme) {
-                    ShortNavigationBarItemDefaults.colors(
-                        selectedIndicatorColor = Color.Transparent,
-                        selectedIconColor = Color.White,
-                        selectedTextColor = Color.White,
-
-                        unselectedIconColor = Color.White.copy(alpha = 0.7f),
-                        unselectedTextColor = Color.White.copy(alpha = 0.7f),
-                    )
-                } else {
-                    ShortNavigationBarItemDefaults.colors(
-                        selectedIndicatorColor = Color.Transparent,
-                        selectedIconColor = MaterialTheme.colorScheme.onSurface,
-                        selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                // The tinted bar is always light, so its items are always the
+                // dark accent shade (selected) / dark neutral (unselected) -
+                // the polarity never flips with the scheme.
+                ShortNavigationBarItemDefaults.colors(
+                    selectedIndicatorColor = Color.Transparent,
+                    selectedIconColor = tintedNavBarContentColor,
+                    selectedTextColor = tintedNavBarContentColor,
+                    unselectedIconColor = Color.Black.copy(alpha = 0.62f),
+                    unselectedTextColor = Color.Black.copy(alpha = 0.62f),
+                )
             else -> ShortNavigationBarItemDefaults.colors(selectedIndicatorColor = Color.Transparent)
         }
 
@@ -627,7 +622,7 @@ fun FloatingNavigationToolbar(
                         when {
                             pureBlack -> Color.White
 
-                            tintFrostedBlur -> if (isDarkScheme) Color.White else MaterialTheme.colorScheme.onSurface
+                            tintFrostedBlur -> tintedNavBarContentColor
                             else -> MaterialTheme.colorScheme.onSurface
                         },
                     windowInsets = WindowInsets(0, 0, 0, 0),

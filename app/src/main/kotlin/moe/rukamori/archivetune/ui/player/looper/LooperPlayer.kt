@@ -31,7 +31,6 @@
 
 package moe.rukamori.archivetune.ui.player.looper
 
-import android.os.Build
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -117,9 +116,6 @@ import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.makeTimeString
 
-/** Looper's fixed scrim over the blurred artwork (musicDarkness). */
-private const val LooperMusicDarkness = 0.62f
-
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun LooperPlayerContent(
@@ -158,8 +154,6 @@ fun LooperPlayerContent(
 
     val accentColor = MaterialTheme.colorScheme.primary
 
-    val canvasAvailable = !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
-
     // Canvas surfaces compose while lyrics are open only for the 650ms
     // backdrop morph, then drop entirely (Apple Music style behaviour).
     var canvasPlayingForLyrics by remember { mutableStateOf(true) }
@@ -190,41 +184,6 @@ fun LooperPlayerContent(
                 .fillMaxSize()
                 .background(Color(0xFF141414)),
     ) {
-        // Blurred artwork backdrop: sigma 18, 1.08 overscan, under the fixed
-        // 0.62 black scrim — Looper's BlurredBackgroundArt + musicDarkness.
-        if (!videoShowing && !canvasAvailable) {
-            AsyncImage(
-                model =
-                    ImageRequest
-                        .Builder(context)
-                        .data(mediaMetadata.thumbnailUrl)
-                        .crossfade(800)
-                        .size(160)
-                        .build(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            scaleX = 1.08f
-                            scaleY = 1.08f
-                        }.let {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                it.blur(18.dp)
-                            } else {
-                                it
-                            }
-                        },
-            )
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = LooperMusicDarkness)),
-            )
-        }
-
         MaterialTheme(typography = LooperTypography) {
             Column(
                 modifier =

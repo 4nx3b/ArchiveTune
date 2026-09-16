@@ -106,6 +106,17 @@ object AppleMusicAudioProvider {
 
     fun isAvailable(): Boolean = devToken() != null && mediaUserToken() != null
 
+    /**
+     * Verifies an explicit (mediaUserToken, devToken) pair against the AMP API
+     * (`/v1/me/storefront` answers 200 only for a valid pairing). Used by the
+     * web sign-in flow to prove the captured token actually belongs to a live
+     * Apple Music session before anything is persisted.
+     */
+    suspend fun verifyTokens(
+        mediaToken: String,
+        devToken: String,
+    ): Boolean = fetchedStorefront(mediaToken.trim(), devToken.trim()) != null
+
     private class AuthException : Exception("apple media-user-token rejected (401/403)")
 
     private data class RingEntry(val token: String, val poolId: Long?)

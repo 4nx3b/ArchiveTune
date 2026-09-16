@@ -137,6 +137,7 @@ import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
 import moe.rukamori.archivetune.ui.utils.sendPauseRunningDownloads
 import moe.rukamori.archivetune.ui.utils.sendResumePausedDownloads
+import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.OnlinePlaylistViewModel
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
@@ -164,6 +165,8 @@ fun OnlinePlaylistScreen(
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val songs by viewModel.playlistSongs.collectAsStateWithLifecycle()
     val viewCounts by viewModel.viewCounts.collectAsStateWithLifecycle()
+    val canvasArtwork by viewModel.canvasArtwork.collectAsStateWithLifecycle()
+    val pageCanvasEnabled by rememberPreference(key = AlbumCanvasEnabledKey, defaultValue = true)
     val dbPlaylist by viewModel.dbPlaylist.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val isLoadingMore by viewModel.isLoadingMore.collectAsStateWithLifecycle()
@@ -473,6 +476,12 @@ fun OnlinePlaylistScreen(
                                 isAdded = isBookmarked,
                                 addContentDescription = R.string.add_to_library,
                                 removeContentDescription = R.string.remove_from_library,
+                                canvasPrimaryUrl =
+                                    (canvasArtwork?.animated ?: canvasArtwork?.videoUrl)
+                                        ?.takeIf { pageCanvasEnabled },
+                                canvasFallbackUrl = canvasArtwork?.videoUrl?.takeIf { pageCanvasEnabled },
+                                canvasIsPlaying = true,
+                                canvasVisible = !lyricsFullScreen,
                                 onShuffle =
                                     playlist.shuffleEndpoint?.let { shuffleEndpoint ->
                                         {

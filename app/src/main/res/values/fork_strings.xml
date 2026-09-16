@@ -79,6 +79,11 @@
     <string name="check_source">Check source</string>
     <string name="check_source_description">Run a health probe to verify this source is reachable and configured correctly</string>
     <string name="check_source_result_title">%1s check</string>
+    <string name="check_source_status_ready">Ready</string>
+    <string name="check_source_status_degraded">Partially ready</string>
+    <string name="check_source_status_not_configured">Not set up</string>
+    <string name="check_source_status_unsupported">Sign-in only (no playback yet)</string>
+    <string name="check_source_status_unreachable">Not reachable</string>
     <string name="quality_badge_aac">AAC 256 kbps</string>
     <string name="quality_badge_saavn">AAC 320 kbps</string>
     <string name="quality_badge_mp3">MP3 320 kbps</string>
@@ -115,8 +120,8 @@
     <string name="lastfm_player_unavailable">Player not ready. Try again in a moment.</string>
 
     <string name="album_page">Album page</string>
-    <string name="album_canvas_enabled">Enable canvas in albums page</string>
-    <string name="album_canvas_enabled_desc">Play the album\'s looping motion artwork behind the album header, the way Apple Music does. Turn off to always show the static cover.</string>
+    <string name="album_canvas_enabled">Enable canvas in album and playlist page</string>
+    <string name="album_canvas_enabled_desc">Play the looping motion artwork behind the album and playlist headers, the way Apple Music does. Turn off to always show the static cover.</string>
 
     <string name="source_qobuz_backup_search_hint">Search the kouzu.in backup catalogue</string>
 

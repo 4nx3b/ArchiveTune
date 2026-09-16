@@ -377,6 +377,7 @@ fun SimpMusicPlayerContent(
                 bottomSheetPageState = bottomSheetPageState,
                 color = startColor,
                 onDismiss = { lyricsFullscreenOpen = false },
+                paletteColors = palette.colors,
             )
         }
     }
