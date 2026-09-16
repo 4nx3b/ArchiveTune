@@ -51,7 +51,6 @@
     <string name="instant_playback">فوری نشر</string>
     <string name="on_device">اختراع آلہ پر</string>
     <string name="recently_played">حالیہ سنا گیا</string>
-    <string name="top_mixes">آپکے لئے اعلیٰ امیزہ گیت</string>
     <string name="library_top_mixes_loading">آپکے اے آئ امیزہ گیت تیار کیے جا رہے ہیں…</string>
     <string name="library_top_mixes_refresh">آمیزہ گیت کو تازہ کریں</string>
     <string name="library_top_mixes_configure_ai">اے آئ کی تشکیل کریں</string>
@@ -202,13 +201,8 @@
     <string name="removed_song_from_queue">‫\"%s\" کو قطار سے ہرج کیا</string>
     <string name="removed_n_songs_from_queue">‫%d گیت قطار سے ہرج کئے گئے</string>
     <string name="search_online">آنلائن تلاش کریں</string>
-    <string name="tempo_and_pitch">ٹیمپو ایور پچ</string>
     <string name="aod_mode">اے او ڈی اسلوب</string>
     <string name="aod_mode_exit">اے او ڈی سے نکلیں</string>
-    <string name="tempo">ٹیمپو</string>
-    <string name="pitch">پچ</string>
-    <string name="pitch_mode_semitones_short">st</string>
-    <string name="pitch_mode_multiplier_short">x</string>
     <string name="sort_by_create_date">تاریخ اضافہ</string>
     <string name="sort_by_name">نام</string>
     <string name="sort_by_artist">کلاکار</string>

@@ -165,7 +165,6 @@ import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
 private val AppleMusicFallbackGradient =

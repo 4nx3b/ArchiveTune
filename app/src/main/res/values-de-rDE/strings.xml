@@ -75,7 +75,6 @@
     <string name="remove_from_playlist">Aus Playlist entfernen</string>
     <string name="remove_from_queue">Aus der Warteschlange entfernen</string>
     <string name="search_online">Online suchen</string>
-    <string name="tempo_and_pitch">Tempo und Tonhöhe</string>
     <string name="sort_by_create_date">Datum hinzugefügt</string>
     <string name="sort_by_name">Name</string>
     <string name="sort_by_artist">Künstler</string>
@@ -425,10 +424,6 @@
     <string name="together_ban_confirm">Ban %1$s?</string>
     <string name="together_requesting_song_change">Frage Host das Lied zu wechseln…</string>
     <string name="together_song_change_failed">Liedänderung nicht angewendet. Bitte erneut versuchen.</string>
-    <string name="tempo">Tempo</string>
-    <string name="pitch">Tonhöhe</string>
-    <string name="pitch_mode_semitones_short">st</string>
-    <string name="pitch_mode_multiplier_short">x</string>
     <string name="added_to_playlist">Zu %s hinzugefügt</string>
     <string name="added_n_songs_to_playlist">%1$d Lieder zu %2$s hinzugefügt</string>
     <string name="added_to_n_playlists">Zu %d Playlists hinzugefügt</string>
@@ -803,7 +798,6 @@
     <string name="lastfm_login_failed">Anmeldung fehlgeschlagen. Versuche es erneut.</string>
     <string name="duration_seconds_short">%1$ds</string>
     <string name="onboarding_welcome_title">Willkommen bei ArchiveTune</string>
-    <string name="top_mixes">Top-Mixe für dich</string>
     <string name="library_top_mixes_ai_not_configured_desc">KI-Integration wird benötigt, bevor ArchiveTune persönliche Top-Mixe erstellen kann.</string>
     <string name="library_top_mixes_no_valid_mixes">KI hat keine abspielbaren Mixe aus deinem bisherigen Verlauf zurückgegeben.</string>
     <string name="library_top_mixes_failed">Erstellung der Top-Mixe fehlgeschlagen</string>

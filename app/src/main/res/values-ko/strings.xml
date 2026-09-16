@@ -95,13 +95,8 @@
     <string name="removed_song_from_queue">대기열에서 %s을(를) 삭제했습니다.</string>
     <string name="removed_n_songs_from_queue">대기열에서 %d곡을 삭제했습니다.</string>
     <string name="search_online">온라인으로 검색</string>
-    <string name="tempo_and_pitch">템포 및 피치</string>
     <string name="aod_mode">AOD 모드</string>
     <string name="aod_mode_exit">AOD 종료</string>
-    <string name="tempo">템포</string>
-    <string name="pitch">피치</string>
-    <string name="pitch_mode_semitones_short">st</string>
-    <string name="pitch_mode_multiplier_short">x</string>
     <string name="sort_by_create_date">추가된 날짜순</string>
     <string name="sort_by_name">이름순</string>
     <string name="sort_by_artist">아티스트순</string>
@@ -774,7 +769,6 @@
     <string name="discord_waiting_for_authorization">사용자 계정 승인 신호가 전달되기를 기다리는 중…</string>
     <string name="recently_added">최근에 추가됨</string>
     <string name="discord_platform_xbox">Xbox</string>
-    <string name="top_mixes">추천 믹스</string>
     <string name="discord_platform_android">Android</string>
     <string name="sort_a_to_z">가나다순</string>
     <string name="discord_platform_desktop">데스크톱</string>

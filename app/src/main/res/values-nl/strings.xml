@@ -51,7 +51,6 @@
     <string name="instant_playback">Direct afspelen</string>
     <string name="on_device">Op het apparaat</string>
     <string name="recently_played">Onlangs afgespeeld</string>
-    <string name="top_mixes">De beste mixen voor jou</string>
     <string name="library_top_mixes_loading">Je AI-mixen voorbereiden…</string>
     <string name="library_top_mixes_refresh">Mixen vernieuwen</string>
     <string name="library_top_mixes_configure_ai">AI configureren</string>
@@ -202,13 +201,8 @@
     <string name="removed_song_from_queue">“%s” uit de wachtrij verwijderd</string>
     <string name="removed_n_songs_from_queue">%d nummers uit de wachtrij verwijderd</string>
     <string name="search_online">Online zoeken</string>
-    <string name="tempo_and_pitch">Tempo en Toonhoogte</string>
     <string name="aod_mode">AOD-modus</string>
     <string name="aod_mode_exit">AOD afsluiten</string>
-    <string name="tempo">Tempo</string>
-    <string name="pitch">Toonhoogte</string>
-    <string name="pitch_mode_semitones_short">st</string>
-    <string name="pitch_mode_multiplier_short">x</string>
     <string name="sort_by_create_date">Toevoegdatum</string>
     <string name="sort_by_name">Naam</string>
     <string name="sort_by_artist">Artiest</string>

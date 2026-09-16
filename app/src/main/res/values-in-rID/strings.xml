@@ -98,13 +98,8 @@
     <string name="removed_song_from_queue">Menghapus \"%s\" dari antrean</string>
     <string name="removed_n_songs_from_queue">Menghapus %d lagu dari antrean</string>
     <string name="search_online">Cari online</string>
-    <string name="tempo_and_pitch">Tempo dan Pitch</string>
     <string name="aod_mode">Mode AOD</string>
     <string name="aod_mode_exit">Keluar dari AOD</string>
-    <string name="tempo">Tempo</string>
-    <string name="pitch">Pitch</string>
-    <string name="pitch_mode_semitones_short">st</string>
-    <string name="pitch_mode_multiplier_short">x</string>
     <string name="sort_by_create_date">Tanggal ditambahkan</string>
     <string name="sort_by_name">Nama</string>
     <string name="sort_by_artist">Artis</string>
@@ -758,7 +753,6 @@
     <string name="instant_playback">Pemutaran Instan</string>
     <string name="on_device">Di perangkat ini</string>
     <string name="recently_played">Baru saja Diputar</string>
-    <string name="top_mixes">Mix Teratas untuk Anda</string>
     <string name="library_top_mixes_loading">Menyiapkan mix AI anda…</string>
     <string name="library_top_mixes_refresh">Segarkan mix</string>
     <string name="library_top_mixes_configure_ai">Konfigurasikan AI</string>
