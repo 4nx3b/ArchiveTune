@@ -2780,3 +2780,21 @@ Work Log:
 Stage Summary:
 - dev at 47c92da6a, triple-green; PR #224 (110 files, +4231/-1662, 21 commits) open, clean, ready to merge for the 16.0 release.
 - The equalizer fix's reasoning is documented in the Dialog properties comment; if a device crash somehow persists, the next suspect to investigate is the kyant backdrop draw path inside dialogs (first dialog usage) — every static check cleared it this round.
+
+---
+Task ID: 54
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 4-item regression batch — (1) SpatialFlow non-canvas thumbnail position, (2) equalizer crash from song overflow menu, (3) playlist info disappearing + laggy playlist scrolling, (4) Android Auto settings overlapped by mini player.
+
+Work Log:
+- Recovered context: dev at 7d87f560d (Task 53 CI-green), PR #224 (dev→main, 16.0) already open and clean — new commits ride into it automatically.
+- Pixel-level analysis of the two uploaded screenshots (artwork band y=0..972 covering the top bar; playlist page with hero absent + scrollbar thumb at scroll-zero) drove all four root causes:
+- (1) SpatialFlowFloatingArtwork laid its Box at Alignment.TopStart of the sheet root with NO offset to the full slot, so at progress 1 the zero translation left the artwork at the root's (0,0) — measured: artwork at x=0..944, y=0..972 vs the real slot at y≈464..1436. Fix: .offset { IntOffset(full.left, full.top) } — the existing mini↔full translation lerp now lands exactly on the slot. Floating slot branch also gets the 36dp title spacer the video/pager branches had.
+- (2) Timeline isolation: 1e035d5e9 (no glass in dialog) worked → 6c8639207 (glass + window surgery) crashed → 0abc10a8c (window revert, glass kept) still crashed per user. The only remaining delta = the kyant backdrop path inside a real Dialog window (this dialog is the app's ONLY one doing it; ViewNews/AddToPlaylist prove Dialog+hiltViewModel+full-width+standard material3 all work on the device). Fix: remove rememberGlassScreenHeader/glassHeaderSource/glassAwareSurface/LiquidGlassIconButton from the dialog; plain IconButtons + opaque surface — the exact recipe of the last user-verified-working build, all 16.0 content kept.
+- (3) LocalPlaylistScreen (the user's 'high nights' library playlist) passes canvas URLs to AppleMusicPlaylistHero, whose canvas branch had ALL children as matchParentSize → the hero Box measures zero height in the LazyColumn the moment fetchPlaylistCanvas() lands (~1s after entry) → header vanishes, list jumps, the zero-sized video keeps decoding → scroll jank. Fix: content Column sizes the box (fillMaxWidth, not matchParentSize); identical height with/without canvas so no layout jump at all. OnlinePlaylistScreen's wrappedSongs MutableStateList also moved inside remember (was rebuilt every recomposition).
+- (4) AndroidAutoSettings used WindowInsets.safeDrawing(Horizontal+Bottom); the settings-main recipe (LocalPlayerAwareWindowInsets: horizontal padding + playerAwareBottomPadding in the bottom padding) replaces it, so the mini player no longer covers the last rows.
+- changelogs.md: three new/extended entries in the 16.0 Fixes section.
+- Static review agent over the full diff: all 6 files PASS, no compile blockers (every added symbol/import verified, zero leftover references to removed glass helpers).
+
+Stage Summary:
+- dev at e5a956cd1 (7 files, +111/-60). Equalizer crash fix is elimination-based (glass-in-dialog was the only remaining unique ingredient); if a device crash STILL persists after this, next step is capturing an adb logcat stack from the user rather than another static pass.
