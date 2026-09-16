@@ -92,6 +92,25 @@ player-animation performance pass yet.
   the scrolling content behind it, and the big frosted popups actually got
   CHEAPER on the GPU (32dp → 20dp blur pays for their new refraction)
 
+## Fixes (15.1 addendum, round 2)
+
+- The playing notification is back: the canary lifecycle port had dropped the
+  service's self-registered session, which was the only thing arming Media3's
+  notification pipeline (the app UI binds the plain local binder, never a
+  MediaController) — playback ran with no notification and no foreground
+  promotion. The session is now registered explicitly via addSession(), with
+  no binding side effects, so idle-stop keeps working
+- The tinted navigation bar no longer blurs: it is now a flat, accent-tinted
+  bar in both light and dark mode (renamed from "Tint frosted navigation bar"
+  to "Tint navigation bar"), and it works on pre-Android-12 devices too
+- The Android Auto settings page copies the settings main page header: the
+  header row sits flush below the status bar (it was inset twice) and the
+  glass back button samples real scrolling content behind it (it was reading
+  an opaque empty surface)
+- The new-releases selection popup's count line clears the corner radius and
+  gets equal vertical padding above and below
+- The SpatialFlow lyrics dismiss (X) button lost its outer circle outline
+
 ---
 
 # ArchiveTune 15.0 — Stable Changelog

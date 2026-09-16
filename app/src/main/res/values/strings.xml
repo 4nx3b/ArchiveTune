@@ -1750,8 +1750,8 @@
     <string name="greeting_default_name">there</string>
     <string name="home_jump_back_in_badge">Jump back in</string>
     <string name="home_recently_played">Recently Played</string>
-    <string name="navigation_bar_tint_frosted_blur">Tint frosted navigation bar</string>
-    <string name="navigation_bar_tint_frosted_blur_desc">Frosted bar tinted with a light shade of the accent color in both light and dark mode, with always-readable labels (turns off the neutral frosted option)</string>
+    <string name="navigation_bar_tint_frosted_blur">Tint navigation bar</string>
+    <string name="navigation_bar_tint_frosted_blur_desc">Navigation bar tinted with a light shade of the accent color in both light and dark mode, with always-readable labels (turns off the neutral frosted option)</string>
     <string name="navigation_bar_settings_title">Navigation bar</string>
     <string name="navigation_bar_settings_subtitle">Style, frosted blur, labels, dimensions</string>
     <string name="navigation_bar_dimensions">Dimensions</string>

@@ -509,8 +509,11 @@ fun NewReleaseScreen(
                         .fillMaxWidth(),
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp),
                 ) {
+                    // Count sits clear of the 28dp corner radius (24dp total
+                    // horizontal inset) and gets equal vertical padding above
+                    // and below its own line.
                     Text(
                         text = stringResource(R.string.selected_count, selectedReleaseIds.size),
                         style = MaterialTheme.typography.titleMedium,
@@ -522,12 +525,14 @@ fun NewReleaseScreen(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp),
+                                .padding(horizontal = 8.dp, vertical = 12.dp),
                     )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
                     ) {
                         TextButton(
                             onClick = {

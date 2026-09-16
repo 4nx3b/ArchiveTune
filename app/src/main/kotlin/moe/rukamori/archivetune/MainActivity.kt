@@ -2171,8 +2171,11 @@ class MainActivity : ComponentActivity() {
                                     )
                                 } else {
                                     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+                                    // Only the neutral frosted rail blurs — the tinted
+                                    // rail is a flat solid colour (tint wins if both
+                                    // flags are somehow stored on).
                                     val canRailBlur =
-                                        (navigationBarFrostedBlur || navigationBarTintFrostedBlur) &&
+                                        navigationBarFrostedBlur && !navigationBarTintFrostedBlur &&
                                             navBarFrostedBackdrop != null && !isPreS
                                     val canRailLiquidGlass =
                                         liquidGlassEnabled && liquidGlassNavBarEnabled &&
@@ -2193,7 +2196,7 @@ class MainActivity : ComponentActivity() {
                                     val railContainerColor =
                                         when {
                                             canRailLiquidGlass -> Color.Transparent
-                                            canRailBlur && navigationBarTintFrostedBlur -> railTintedBaseColor
+                                            navigationBarTintFrostedBlur -> railTintedBaseColor
                                             canRailBlur ->
                                                 if (pureBlack) Color.Black.copy(alpha = 0.45f)
                                                 else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.85f)
@@ -2203,7 +2206,7 @@ class MainActivity : ComponentActivity() {
                                     val railContentColor =
                                         when {
                                             canRailLiquidGlass -> Color.White
-                                            navigationBarTintFrostedBlur && canRailBlur -> railTintedContentColor
+                                            navigationBarTintFrostedBlur -> railTintedContentColor
                                             pureBlack -> Color.White
                                             else -> MaterialTheme.colorScheme.onSurfaceVariant
                                         }
@@ -2216,8 +2219,6 @@ class MainActivity : ComponentActivity() {
                                                 },
                                     ) {
                                         if (canRailBlur && navBarFrostedBackdrop != null) {
-                                            val overlayAlpha =
-                                                if (navigationBarTintFrostedBlur) 0.26f else 0.30f
                                             Box(
                                                 modifier =
                                                     Modifier
@@ -2229,7 +2230,7 @@ class MainActivity : ComponentActivity() {
                                                                     radiusY = 60f,
                                                                     edgeTreatment = TileMode.Clamp,
                                                                 )
-                                                            alpha = overlayAlpha
+                                                            alpha = 0.30f
                                                             clip = true
                                                         }.drawBehind {
                                                             val offset =

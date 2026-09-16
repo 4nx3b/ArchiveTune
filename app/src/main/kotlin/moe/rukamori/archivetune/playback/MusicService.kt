@@ -1403,6 +1403,19 @@ class MusicService :
                 smallIconResId = R.drawable.small_icon,
             ),
         )
+        // Arm the platform notification pipeline. MediaSessionService only
+        // creates its internal notification controller — the Player.Listener
+        // that drives onUpdateNotification() on every playback change — when
+        // a MediaController connects through the session-service stub
+        // (MediaNotificationManager.addSession). This app's UI talks to the
+        // service through the plain local binder instead of a MediaController,
+        // so without an explicit registration nothing ever arms the pipeline
+        // and playback runs with no notification and no foreground promotion.
+        // The old self-referential MediaController from onCreate did this as a
+        // side effect (at the cost of a permanent self-binding that pinned
+        // hasBoundClients); addSession() registers the session directly, with
+        // no binding side effects, so idle-stop keeps working.
+        addSession(mediaSession)
 
         updateNotification()
         scope.launch {
