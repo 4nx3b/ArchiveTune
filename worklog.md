@@ -2732,3 +2732,15 @@ Stage Summary:
 - 31 files changed (+1270/-634) + 2 new files (PlaylistCanvas.kt, StyledLyricsBackground.kt).
 - Deliberate UX calls: playback speed is gated by the audio-effects switch (it lives on that tab and the user's wording says nothing applies until the switch is on); the tinted bar is light even in dark mode (explicitly requested); BitChord/SimpMusic FOLLOW_THEME gets a 45% black scrim because those styles' content is white-only.
 - CI compile risk: low-moderate - local gradle impossible (core submodule not checked out locally), but every cross-file symbol was grep-verified (CanvasArtworkPlayer public, resolveCanvasArtworkForPlayback internal same-module, AppleMusicPlaylistHero new params defaulted, SourceCheckService single-consumer, AndroidAutoSettingsRoute internal-only).
+
+---
+Task ID: 51 (CI round)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: CI repair for the 11-item batch (1e035d5e9 failed compile: 24 errors across 5 files).
+
+Work Log:
+- 8caa2c944 fixed all 24: MainActivity rail luminance() extension import; SimpMusicFullscreenLyricsSheet missing PlayerBackgroundStyle import (the reified-CapturedType errors were its cascade); AndroidAutoSettings calculateStartPadding/calculateEndPadding imports; SourceCheckService probeQobuzBackupEndpoint rewritten onto a private EndpointProbe(ok, summary) type since SourceCheckResult now takes status; PlaylistCanvas firstSongTitle.isNullOrBlank() smart-cast.
+
+Stage Summary:
+- CI TRIPLE-GREEN on 8caa2c944 (Build Pull Request incl. tests+lint, Build APKs, Nightly canary matrix).
+- dev head 8caa2c944 pushed; the batch is 2 commits, 35 files, +1478/-654.
