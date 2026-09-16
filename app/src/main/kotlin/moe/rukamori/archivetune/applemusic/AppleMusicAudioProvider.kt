@@ -298,11 +298,6 @@ object AppleMusicAudioProvider {
             }
         }
 
-    suspend fun resolveCandidates(
-        title: String,
-        artists: List<String>,
-        album: String?,
-
     /**
      * Search the catalog and resolve every plausible candidate to a playable stream. The
      * caller applies the shared metadata-match gate ([moe.rukamori.archivetune.audiosource
