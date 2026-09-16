@@ -1081,7 +1081,8 @@ fun SpatialFlowPlayerContent(
                                     val t = lyricsArtworkProgress.coerceIn(0f, 1f)
                                     val bounds = artworkPagerBoundsInRoot ?: return@graphicsLayer
                                     val fullSizePx = albumArtSize.toPx()
-                                    val thumbSizePx = 44.dp.toPx()
+                                    // 56dp — the Apple Music lyrics header artwork size.
+                                    val thumbSizePx = 56.dp.toPx()
                                     // Parks just LEFT of the lyrics header's
                                     // dismiss button: header padding (20dp) +
                                     // the 48dp X slot + an 8dp gap, all inset

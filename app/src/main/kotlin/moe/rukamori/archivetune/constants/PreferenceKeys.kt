@@ -482,6 +482,7 @@ val PermanentShuffleKey = booleanPreferencesKey("permanentShuffle")
 val SkipSilenceKey = booleanPreferencesKey("skipSilence")
 val AudioPlaybackSpeedKey = floatPreferencesKey("audioPlaybackSpeed")
 val AudioPlaybackSpeedPitchMatchKey = booleanPreferencesKey("audioPlaybackSpeedPitchMatch")
+val AudioPlaybackPitchKey = floatPreferencesKey("audioPlaybackPitch")
 val AudioNormalizationKey = booleanPreferencesKey("audioNormalization")
 val AudioOffload = booleanPreferencesKey("audioOffload")
 val CrossfadeEnabledKey = booleanPreferencesKey("crossfadeEnabled")
@@ -1018,6 +1019,9 @@ val HistoryDuration = intPreferencesKey("historyDuration")
 const val PRELOAD_SONGS_MAX = 10
 val PRELOAD_SONGS_RANGE = 0f..PRELOAD_SONGS_MAX.toFloat()
 val PreloadSongsCountKey = intPreferencesKey("preloadSongsCount")
+
+/** Upcoming songs whose stream is resolved while the current one plays — on by default so track changes start instantly. */
+const val DEFAULT_PRELOAD_SONGS_COUNT = 2
 
 val PlayerButtonsStyleKey = stringPreferencesKey("player_buttons_style")
 val PlayerBackgroundStyleKey = stringPreferencesKey("playerBackgroundStyle")

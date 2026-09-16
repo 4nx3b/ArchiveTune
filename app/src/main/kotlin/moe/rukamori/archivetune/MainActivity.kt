@@ -530,9 +530,11 @@ class MainActivity : ComponentActivity() {
             service.clearResolvedSources(currentMediaId)
         }
 
+        // Every-launch background pool refresh — silent, throttled to one
+        // server fetch per 10 minutes so restarts never hammer the feed.
         lifecycleScope.launch(Dispatchers.IO) {
             App.startupReadiness.runOptional {
-                runCatching { PoolAccountManager.refresh(this@MainActivity, force = false) }
+                runCatching { PoolAccountManager.refreshForLaunch(this@MainActivity) }
             }
         }
     }
@@ -2184,15 +2186,21 @@ class MainActivity : ComponentActivity() {
                                         mutableStateOf(Offset.Zero)
                                     }
                                     val railDarkScheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
-                                    // Light accent pastel in both schemes — matches the tinted bar.
+                                    // Scheme-adaptive tinted rail — matches the tinted bar: light
+                                    // accent pastel in light mode, deep accent-tinted dark bar in
+                                    // dark mode, with the content polarity flipping with the scheme.
                                     val railTintedBaseColor =
-                                        lerp(
-                                            Color.White,
-                                            MaterialTheme.colorScheme.primary,
-                                            if (railDarkScheme) 0.36f else 0.26f,
-                                        )
+                                        if (railDarkScheme) {
+                                            lerp(Color.Black, MaterialTheme.colorScheme.primary, 0.30f)
+                                        } else {
+                                            lerp(Color.White, MaterialTheme.colorScheme.primary, 0.26f)
+                                        }
                                     val railTintedContentColor =
-                                        lerp(MaterialTheme.colorScheme.primary, Color.Black, 0.55f)
+                                        if (railDarkScheme) {
+                                            lerp(Color.White, MaterialTheme.colorScheme.primary, 0.45f)
+                                        } else {
+                                            lerp(MaterialTheme.colorScheme.primary, Color.Black, 0.55f)
+                                        }
                                     val railContainerColor =
                                         when {
                                             canRailLiquidGlass -> Color.Transparent

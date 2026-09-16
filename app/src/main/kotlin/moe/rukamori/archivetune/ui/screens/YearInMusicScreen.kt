@@ -129,37 +129,6 @@ private val RecapPink = Color(0xFFFF8BDE)
 private val RecapLime = Color(0xFFDFFF3E)
 private val RecapInk = Color(0xFF151515)
 
-private fun realScreenPixels(context: android.content.Context): Pair<Int, Int> {
-    return runCatching {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            val windowManager = context.getSystemService(android.view.WindowManager::class.java)
-            val bounds = windowManager?.maximumWindowMetrics?.bounds
-            if (bounds != null && bounds.width() > 0 && bounds.height() > 0) {
-                bounds.width() to bounds.height()
-            } else {
-                val metrics = context.resources.displayMetrics
-                metrics.widthPixels to metrics.heightPixels
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            val display = (context as? android.app.Activity)?.windowManager?.defaultDisplay
-                ?: runCatching { context.display }.getOrNull()
-            val metrics = android.util.DisplayMetrics()
-            @Suppress("DEPRECATION")
-            if (display != null) {
-                display.getRealMetrics(metrics)
-                metrics.widthPixels to metrics.heightPixels
-            } else {
-                val fallback = context.resources.displayMetrics
-                fallback.widthPixels to fallback.heightPixels
-            }
-        }
-    }.getOrElse {
-        val metrics = context.resources.displayMetrics
-        metrics.widthPixels to metrics.heightPixels
-    }
-}
-
 private object RecapTokens {
     val SectionRadius = 24.dp
     val ItemRadius = 18.dp
@@ -254,6 +223,7 @@ private fun YearInMusicRecapScreen(
                         isShareCaptureMode = true
                         awaitNextPreDraw(view)
                         awaitNextPreDraw(view)
+                        awaitNextPreDraw(view)
 
                         val raw =
                             ComposeToImage.captureViewBitmap(
@@ -274,13 +244,14 @@ private fun YearInMusicRecapScreen(
                                 raw
                             }
 
-                        val (screenW, screenH) = realScreenPixels(context)
+                        // Full-HD export: when the capture already meets the
+                        // 1080p floor the native pixels ship untouched (the
+                        // card fills the screen in capture mode, so its native
+                        // crop IS the full-screen image — no cover-fit upscale
+                        // that used to smear it); below the floor it enlarges
+                        // progressively instead of one big bilinear jump.
                         val fitted =
-                            ComposeToImage.coverBitmap(
-                                source = cardBitmap,
-                                targetWidth = screenW,
-                                targetHeight = screenH,
-                            )
+                            ComposeToImage.exportBitmapAtFhdFloor(source = cardBitmap)
                         val uri =
                             ComposeToImage.saveBitmapAsFile(
                                 context = context,
