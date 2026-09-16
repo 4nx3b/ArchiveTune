@@ -184,7 +184,7 @@ class SearchDiscoveryRepository
                             fromTimeStamp = AllHistoryTimestamp,
                             limit = MaxHistoryLookupItems,
                         ).first()
-                        .filterNot { song -> song.song.isLocal }
+                        .filterNot { song -> song.song.isLocal || song.song.isPodcast }
                         .take(MaxSuggestionSeedItems)
                 val seedSongIds = seedSongs.mapTo(HashSet()) { song -> song.id }
 
