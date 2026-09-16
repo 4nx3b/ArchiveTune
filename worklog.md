@@ -2763,3 +2763,20 @@ Work Log:
 Stage Summary:
 - dev at 870408e5a (+162/-118, 10 files), all three workflows green on the first round, pushed.
 - Architectural note for future batches: anything that rewires the session/service/controller graph must keep addSession armed — the UI never connects a MediaController, so notifications depend entirely on the explicit registration.
+
+---
+Task ID: 53
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 3-item batch — equalizer page crash, SpatialFlow constant cover art (lyrics/queue/full player), dev→main PR with build monitoring.
+
+Work Log:
+- (Equalizer crash) Exhaustive static hunt over the 6c8639207 dialog rework (format strings, DataStore keys, material3 alpha23 require() paths, haze 1.7.2, kyant backdrop 2.0.0, VM/repo/dao defensiveness — all clear), then compose-ui 1.12.0-beta02 source analysis: decorFitsSystemWindows=false silently switches the dialog onto FloatingDialogWindowTheme + FLAG_LAYOUT_INSET_DECOR/setFitInsetsTypes(0), and its transparent-window SideEffect was provably dead (dialogView.parent is a View, never a Window). Fix: reverted DialogProperties to usePlatformDefaultWidth=false only, restored modifier order, dropped dead imports; KeepStatusBarHiddenInDialog keeps solving the status-bar gap.
+- (SpatialFlow artwork) The floating artwork layer (5d0739207... sorry, 5d0797177) sat at zIndex 2.5-3 with only lyricsOpen = isInlineLyricsOpen as hide condition — dead wiring for this style (only other styles set that flag) and no queue check at all → the cover art floated over lyrics, queue AND full player. Fix: onLyricsOpenChange/onQueueExpandedChange callbacks on SpatialFlowPlayerContent (LaunchedEffect), spatialFlowLyricsOpen/spatialFlowQueueOpen in BottomSheetPlayer, layer alpha suppressed with progress-aware lerps + animated queue fade (original's choreography), pager swipe off while queue open, DisposableEffect clears the slot rect when the placeholder leaves composition (no more stale artwork over canvas/video).
+- (Merge repair, 3 CI rounds) PR #223 (user-merged) resolved the core pin back to dev's 0291b115 while keeping canary-branch code written against core 006b8d0db, and dropped dev lines in DatabaseDao: round 1 restored searchCandidates/AppleMusicCandidate/searchCatalogRows/verifyTokens onto the rewritten AppleMusicAudioProvider (fixed PlayerMenu + login screen); round 2 added flow.first + PlayCountEntity imports and switched bestYouTubeMatch to innertube.pages.SearchResult; round 3 restored the merge-dropped @Insert(playCountEntity) DAO overload. The missing Room schema export 36.json (CURRENT_VERSION=36) regenerated and committed.
+- 16.0 version bump + release notes + changelogs entries (equalizer crash, floating artwork) ride along.
+- Static review agent over the whole diff: no compile blockers. Local gradle compile impossible (4GB box OOM-kills the daemon mid-:app compile), CI used as the verifier.
+- PR #224 (dev→main) opened with the 16.0 release body; CI on final head 47c92da6a: Build Pull Request (compile+tests+lint) SUCCESS, Build APKs SUCCESS, Nightly all-8 matrix + release publish SUCCESS. mergeable_state: clean.
+
+Stage Summary:
+- dev at 47c92da6a, triple-green; PR #224 (110 files, +4231/-1662, 21 commits) open, clean, ready to merge for the 16.0 release.
+- The equalizer fix's reasoning is documented in the Dialog properties comment; if a device crash somehow persists, the next suspect to investigate is the kyant backdrop draw path inside dialogs (first dialog usage) — every static check cleared it this round.
