@@ -174,6 +174,8 @@ fun SpatialFlowPlayerContent(
     floatingArtwork: Boolean = false,
     onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect?) -> Unit)? = null,
     onPagerArtworkActiveChange: ((Boolean) -> Unit)? = null,
+    onLyricsOpenChange: ((Boolean) -> Unit)? = null,
+    onQueueExpandedChange: ((Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -308,6 +310,19 @@ fun SpatialFlowPlayerContent(
         } else if (queueExpanded) {
             queueExpanded = false
         }
+    }
+
+    // Report the overlay state upward so the sheet-root floating artwork
+    // layer can get out of the way: the lyrics overlay's own flying artwork
+    // owns the morph while lyrics are open, and the queue drawer covers the
+    // artwork slot while it is expanded (the original SpatialFlow fades the
+    // shared layer to 0 and drops it below the drawer in exactly these two
+    // states - see PlayerBottomSheetCompose).
+    LaunchedEffect(lyricsModeEnabled) {
+        onLyricsOpenChange?.invoke(lyricsModeEnabled)
+    }
+    LaunchedEffect(queueExpanded) {
+        onQueueExpandedChange?.invoke(queueExpanded)
     }
 
     var hapticsEnabled by remember { mutableStateOf(MusicHapticsSettings.isEnabled(context)) }
@@ -550,7 +565,11 @@ fun SpatialFlowPlayerContent(
                 } else if (!canvasAvailable && floatingArtwork) {
                     // Floating-artwork mode: the pager lives in the sheet's
                     // shared layer (see SpatialFlowFloatingArtwork); this slot
-                    // only reports its bounds so the morph can find it.
+                    // only reports its bounds so the morph can find it. The
+                    // DisposableEffect clears the reported rect when the slot
+                    // leaves composition (e.g. a canvas/video song takes over)
+                    // so the floating layer can never draw a stale-positioned
+                    // static artwork over the video surface.
                     Box(
                         modifier =
                             Modifier
@@ -570,6 +589,12 @@ fun SpatialFlowPlayerContent(
                                     onArtworkSlotPositioned?.invoke(rect)
                                 },
                     )
+                    androidx.compose.runtime.DisposableEffect(Unit) {
+                        onDispose {
+                            artworkPagerBoundsInRoot = null
+                            onArtworkSlotPositioned?.invoke(null)
+                        }
+                    }
                 } else if (!canvasAvailable) {
                     SpatialFlowArtworkPager(
                         mediaMetadata = mediaMetadata,

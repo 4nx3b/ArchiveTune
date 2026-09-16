@@ -113,6 +113,16 @@ object AppleMusicAudioProvider {
     /** True when both tokens are present — the source cannot resolve anything otherwise. */
     fun isAvailable(): Boolean = devToken() != null && mediaUserToken() != null
 
+    /**
+     * Verifies a captured (media-user-token, developer-token) pair against the
+     * storefront endpoint before the login screen persists them — a token that
+     * cannot read /v1/me/storefront is not worth saving.
+     */
+    suspend fun verifyTokens(
+        mediaToken: String,
+        devToken: String,
+    ): Boolean = fetchedStorefront(mediaToken.trim(), devToken.trim()) != null
+
     /** Thrown by [searchSongIds]/[webPlayback] on 401/403 — the media-user-token is dead. */
     private class AuthException : Exception("apple media-user-token rejected (401/403)")
 
@@ -147,6 +157,131 @@ object AppleMusicAudioProvider {
         if (ringIndex >= built.size) ringIndex = 0
         return built
     }
+
+    /**
+     * One plain catalog search hit — the metadata the source-search popup row
+     * renders (no stream resolution; tapping a row resolves via the shared
+     * title/artist text-search chain like every other source's popup results).
+     */
+    data class AppleMusicCandidate(
+        val songId: String,
+        val title: String,
+        val artist: String?,
+        val thumbnailUrl: String?,
+        val durationMs: Long?,
+    )
+
+    /**
+     * Text search over the Apple Music catalog for the source-search popup.
+     * The catalog search needs a developer JWT but NOT necessarily a signed-in
+     * user: falls back to the auto-scraped web-player token when no
+     * user-pasted developer token exists, and to an anonymous storefront
+     * lookup when no personal/pool media-user token exists (catalog data is
+     * public; a 401/403 simply yields no results, same as before).
+     */
+    suspend fun searchCandidates(
+        query: String,
+        limit: Int = 8,
+    ): List<AppleMusicCandidate> =
+        withContext(Dispatchers.IO) {
+            if (query.isBlank()) return@withContext emptyList()
+            val devToken =
+                devToken() ?: AppleMusicProvider.currentDevToken() ?: return@withContext emptyList()
+            var ringEntries = accountRing()
+            if (ringEntries.isEmpty()) {
+                ringEntries = listOf(RingEntry("", null))
+            }
+
+            for (attempt in ringEntries.indices) {
+                val index = (ringIndex + attempt) % ringEntries.size
+                val entry = ringEntries[index]
+                val rows =
+                    runCatching {
+                        searchCatalogRows(query, limit, entry.token, devToken)
+                    }.getOrElse { error ->
+                        if (error !is AuthException) {
+                            Log.w(TAG, "search failed: ${error.message}")
+                            return@withContext emptyList()
+                        }
+                        Log.w(TAG, "media-user-token rejected — rotating account ${index + 1}/${ringEntries.size}")
+                        if (entry.poolId != null) {
+                            PoolAccountManager.report(
+                                service = "apple-music",
+                                kind = "account",
+                                id = entry.poolId,
+                                reportType = "dead",
+                            )
+                        }
+                        null
+                    }
+                if (rows != null) {
+                    ringIndex = index
+                    return@withContext rows
+                }
+            }
+            emptyList()
+        }
+
+    /** One catalog search pass with a specific media-user-token (blank = anonymous). */
+    private suspend fun searchCatalogRows(
+        query: String,
+        limit: Int,
+        mediaToken: String,
+        devToken: String,
+    ): List<AppleMusicCandidate> =
+        withContext(Dispatchers.IO) {
+            val storefront = resolveStorefront()
+            val url =
+                "$AMP_BASE/v1/catalog/$storefront/search".toHttpUrl()
+                    .newBuilder()
+                    .addQueryParameter("term", query)
+                    .addQueryParameter("types", "songs")
+                    .addQueryParameter("limit", limit.coerceAtMost(25).toString())
+                    .build()
+            // An empty media-user token means an anonymous catalog lookup —
+            // sending a blank header would be rejected outright, so the header
+            // is simply omitted (catalog search does not require a user).
+            val request =
+                Request.Builder()
+                    .url(url)
+                    .header("Authorization", "Bearer $devToken")
+                    .apply {
+                        if (mediaToken.isNotBlank()) header("Media-User-Token", mediaToken)
+                    }
+                    .header("Origin", "https://music.apple.com")
+                    .header("Referer", "https://music.apple.com/")
+                    .header("User-Agent", UA)
+                    .get()
+                    .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    if (response.code == 401 || response.code == 403) throw AuthException()
+                    Log.w(TAG, "search failed: %d".format(response.code))
+                    return@withContext emptyList()
+                }
+                val root = json.parseToJsonElement(response.body?.string().orEmpty()).jsonObject
+                val songs =
+                    root["results"]?.jsonObject?.get("songs")?.jsonObject?.get("data")?.jsonArray
+                        ?: return@withContext emptyList()
+                songs.mapNotNull { element ->
+                    val song = element.jsonObject
+                    val attributes = song["attributes"]?.jsonObject ?: return@mapNotNull null
+                    val songId = song["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    val name = attributes["name"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    AppleMusicCandidate(
+                        songId = songId,
+                        title = name,
+                        artist = attributes["artistName"]?.jsonPrimitive?.contentOrNull,
+                        thumbnailUrl =
+                            attributes["artwork"]?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull
+                                ?.replace("{w}", "300")
+                                ?.replace("{h}", "300"),
+                        durationMs =
+                            attributes["durationInMillis"]?.jsonPrimitive?.contentOrNull?.toLongOrNull(),
+                    )
+                }
+            }
+        }
 
     /**
      * One playable Apple Music candidate. [playlistUrl] serves the HLS playlist whose

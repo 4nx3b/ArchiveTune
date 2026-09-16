@@ -541,6 +541,13 @@ fun BottomSheetPlayer(
     val spatialFlowMiniArtworkRect = remember { mutableStateOf<Rect?>(null) }
     val spatialFlowFullArtworkRect = remember { mutableStateOf<Rect?>(null) }
     var spatialFlowPagerArtworkActive by remember { mutableStateOf(true) }
+
+    // SpatialFlow's lyrics overlay and queue drawer report their state upward
+    // so the shared floating artwork layer can fade out under them (the
+    // SpatialFlow style keeps both flags internal to SpatialFlowPlayerContent,
+    // and `isInlineLyricsOpen` is only ever set by the other player styles).
+    var spatialFlowLyricsOpen by remember { mutableStateOf(false) }
+    var spatialFlowQueueOpen by remember { mutableStateOf(false) }
     var duration by rememberSaveable(mediaMetadata?.id) {
         mutableLongStateOf(playerConnection.player.duration)
     }
@@ -1368,7 +1375,9 @@ fun BottomSheetPlayer(
                             isPlaying = isPlaying,
                             fullArtworkRect = spatialFlowFullArtworkRect.value,
                             miniArtworkRect = spatialFlowMiniArtworkRect.value,
-                            lyricsOpen = isInlineLyricsOpen,
+                            lyricsOpen = isInlineLyricsOpen || spatialFlowLyricsOpen,
+                            queueOpen = spatialFlowQueueOpen,
+                            artworkActive = spatialFlowPagerArtworkActive,
                             onPlaySongAtWindow = { windowIndex ->
                                 val window = queueWindows.getOrNull(windowIndex) ?: return@SpatialFlowFloatingArtwork
                                 playerConnection.player.seekToDefaultPosition(window.firstPeriodIndex)
@@ -2018,6 +2027,12 @@ fun BottomSheetPlayer(
                             onPagerArtworkActiveChange = { active ->
                                 spatialFlowPagerArtworkActive = active
                             },
+                            onLyricsOpenChange = { open ->
+                                spatialFlowLyricsOpen = open
+                            },
+                            onQueueExpandedChange = { expanded ->
+                                spatialFlowQueueOpen = expanded
+                            },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2557,6 +2572,12 @@ fun BottomSheetPlayer(
                             },
                             onPagerArtworkActiveChange = { active ->
                                 spatialFlowPagerArtworkActive = active
+                            },
+                            onLyricsOpenChange = { open ->
+                                spatialFlowLyricsOpen = open
+                            },
+                            onQueueExpandedChange = { expanded ->
+                                spatialFlowQueueOpen = expanded
                             },
                             modifier =
                                 Modifier
