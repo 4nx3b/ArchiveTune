@@ -4296,7 +4296,6 @@ class MusicService :
         scope.launch(SilentHandler) {
             var autoLoadMoreEnabled = true
             try {
-                moe.rukamori.archivetune.App.startupReadiness.awaitReady()
                 autoLoadMoreEnabled = dataStore.getAsync(AutoLoadMoreKey, true)
                 val hideExplicit = shouldHideExplicitTracks()
                 val hideVideo = dataStore.get(HideVideoKey, false)
@@ -8884,7 +8883,6 @@ class MusicService :
     }
 
     private suspend fun preloadUpcomingPlaybackStreams(upcoming: List<MediaItem>) {
-        moe.rukamori.archivetune.App.startupReadiness.awaitReady()
         for (item in upcoming) {
             if (!currentCoroutineContext().isActive) return
             runCatching { preloadPlaybackStream(item) }
@@ -9339,7 +9337,6 @@ class MusicService :
             Timber.tag("MusicService").d("Multi-source skip: %s is a local/telegram media id", mediaId)
             return null
         }
-        runBlocking { moe.rukamori.archivetune.App.startupReadiness.awaitReady() }
         val qobuzTrackIdRaw = runCatching {
             runBlocking { dataStore.data.first()[SongSourceQobuzTrackIdKey] }
         }.getOrNull()
@@ -10300,7 +10297,6 @@ class MusicService :
             return dataSpec
         }
         val mediaId = dataSpec.key ?: return dataSpec
-        runBlocking { moe.rukamori.archivetune.App.startupReadiness.awaitReady() }
         val lowDataModeActive = isLowDataModeActive()
         val storedFormat =
             runBlocking(Dispatchers.IO) {
