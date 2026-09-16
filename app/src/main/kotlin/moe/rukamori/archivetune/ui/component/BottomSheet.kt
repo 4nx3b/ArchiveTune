@@ -256,7 +256,13 @@ private class PlayerSheetDynamicShape(
         val progress = progressProvider()
         val cornerPx = with(density) { androidx.compose.ui.unit.lerp(28.dp, 0.dp, progress).toPx() }
         return Outline.Rounded(
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerPx, cornerPx),
+            androidx.compose.ui.geometry.RoundRect(
+                left = 0f,
+                top = 0f,
+                right = size.width,
+                bottom = size.height,
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerPx, cornerPx),
+            ),
         )
     }
 }
