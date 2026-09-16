@@ -136,6 +136,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.luminance
 import moe.rukamori.archivetune.ui.screens.HomeTopFadeBlur
 import moe.rukamori.archivetune.ui.screens.LocalHomeHazeState
 import moe.rukamori.archivetune.ui.screens.LocalSearchHazeState

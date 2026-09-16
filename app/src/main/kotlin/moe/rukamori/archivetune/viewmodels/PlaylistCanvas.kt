@@ -32,7 +32,7 @@ internal suspend fun fetchPlaylistCanvasArtwork(
     firstSongAlbumTitle: String? = null,
     spotifyTrackId: String? = null,
 ): CanvasArtwork? {
-    if (firstSongId.isNullOrBlank() || firstSongTitle.isBlank()) return null
+    if (firstSongId.isNullOrBlank() || firstSongTitle.isNullOrBlank()) return null
 
     if (!context.dataStore.get(AlbumCanvasEnabledKey, true)) return null
 
