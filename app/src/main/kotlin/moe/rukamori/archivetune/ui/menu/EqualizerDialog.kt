@@ -244,6 +244,7 @@ private fun EqualizerScreen(
                 AudioEffectsContent(
                     model = state.model,
                     onDismiss = onDismiss,
+                    onOpenSystemEqualizer = onOpenSystemEqualizer,
                     viewModel = viewModel,
                 )
             }
@@ -285,11 +286,13 @@ private fun EqualizerScreen(
 private fun AudioEffectsContent(
     model: EqualizerUiModel,
     onDismiss: () -> Unit,
+    onOpenSystemEqualizer: () -> Unit,
     viewModel: EqualizerViewModel,
 ) {
     val scrollState = rememberScrollState()
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val glassHeader = rememberGlassScreenHeader()
 
     // Playback speed + pitch matching live in the player preferences; the
     // MusicService applies them to the (primary and crossfade) players.
@@ -1008,8 +1011,10 @@ private fun BandSliderSection(
     }
 }
 
+@Composable
 private fun formatDecibels(valueMb: Int): String = stringResource(R.string.eq_decibels, valueMb / 100f)
 
+@Composable
 private fun formatFrequency(frequencyHz: Int): String =
     if (frequencyHz >= 1000) {
         stringResource(R.string.eq_frequency_kilohertz, frequencyHz / 1000f)
@@ -1447,6 +1452,7 @@ private fun ResponsiveSlider(
     valueRange: ClosedFloatingPointRange<Float>,
     enabled: Boolean,
     modifier: Modifier = Modifier,
+    onValueChangeFinished: (() -> Unit)? = null,
 ) {
     var isDragging by remember { mutableStateOf(false) }
     var localValue by remember(value) { mutableFloatStateOf(value.coerceIn(valueRange)) }
@@ -1482,6 +1488,7 @@ private fun ResponsiveSlider(
         onValueChangeFinished = {
             isDragging = false
             onValueChange(localValue)
+            onValueChangeFinished?.invoke()
         },
         valueRange = valueRange,
         enabled = enabled,

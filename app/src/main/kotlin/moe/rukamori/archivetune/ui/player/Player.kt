@@ -1158,6 +1158,35 @@ fun BottomSheetPlayer(
         derivedStateOf { state.progress > 0.5f }
     }
     CompositionLocalProvider(LocalPlayerSheetVisible provides playerSheetCanvasVisible) {
+    val enrichedMetadata =
+        remember(mediaMetadata, currentSong) {
+            val meta = mediaMetadata ?: return@remember null
+            if (meta.album != null) return@remember meta
+            val dbAlbum = currentSong?.album
+            val dbAlbumId = currentSong?.song?.albumId
+            when {
+                dbAlbum != null -> {
+                    meta.copy(
+                        album = MediaMetadata.Album(id = dbAlbum.id, title = dbAlbum.title),
+                    )
+                }
+
+                dbAlbumId != null -> {
+                    meta.copy(
+                        album =
+                            MediaMetadata.Album(
+                                id = dbAlbumId,
+                                title = currentSong?.song?.albumName.orEmpty(),
+                            ),
+                    )
+                }
+
+                else -> {
+                    meta
+                }
+            }
+        }
+
     BottomSheet(
         state = state,
         modifier =
@@ -1394,35 +1423,6 @@ fun BottomSheetPlayer(
         val nextUpMetadata =
             remember(queueWindows, currentWindowIndex) {
                 queueWindows.getOrNull(currentWindowIndex + 1)?.mediaItem?.metadata
-            }
-
-        val enrichedMetadata =
-            remember(mediaMetadata, currentSong) {
-                val meta = mediaMetadata ?: return@remember null
-                if (meta.album != null) return@remember meta
-                val dbAlbum = currentSong?.album
-                val dbAlbumId = currentSong?.song?.albumId
-                when {
-                    dbAlbum != null -> {
-                        meta.copy(
-                            album = MediaMetadata.Album(id = dbAlbum.id, title = dbAlbum.title),
-                        )
-                    }
-
-                    dbAlbumId != null -> {
-                        meta.copy(
-                            album =
-                                MediaMetadata.Album(
-                                    id = dbAlbumId,
-                                    title = currentSong?.song?.albumName.orEmpty(),
-                                ),
-                        )
-                    }
-
-                    else -> {
-                        meta
-                    }
-                }
             }
 
         val storefront =
