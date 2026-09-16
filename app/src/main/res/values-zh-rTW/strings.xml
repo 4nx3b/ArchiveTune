@@ -50,7 +50,6 @@
     <string name="instant_playback">即刻播放</string>
     <string name="on_device">本地歌曲</string>
     <string name="recently_played">最近播放</string>
-    <string name="top_mixes">為您精選的專屬合輯</string>
     <string name="library_top_mixes_loading">正在準備您的 AI 專屬合輯…</string>
     <string name="library_top_mixes_refresh">重新整理</string>
     <string name="library_top_mixes_configure_ai">配置 AI 功能</string>
@@ -200,13 +199,8 @@
     <string name="removed_song_from_queue">已從佇列中移除%s</string>
     <string name="removed_n_songs_from_queue">已從佇列中移除%d首歌曲</string>
     <string name="search_online">線上搜尋</string>
-    <string name="tempo_and_pitch">速度與音高</string>
     <string name="aod_mode">AOD 模式</string>
     <string name="aod_mode_exit">退出 AOD</string>
-    <string name="tempo">速度</string>
-    <string name="pitch">音高</string>
-    <string name="pitch_mode_semitones_short">半音</string>
-    <string name="pitch_mode_multiplier_short">x</string>
     <string name="sort_by_create_date">新增時間</string>
     <string name="sort_by_name">名稱</string>
     <string name="sort_by_artist">藝人</string>
