@@ -2416,3 +2416,350 @@ Stage Summary:
 - dev: constant-white lyrics, flat higher artwork, properly-rounded
   unglassed popups; changelog current.
 - Release v15.0 (exact) re-dispatched from the merged main.
+
+---
+Task ID: 42
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Two-item user batch — (1) lyrics: remove the bottom-sheet lyrics page
+behaviour + restore the 2-days-ago (v15.0) lyrics overflow menu, (2) fix the
+Immersive (V7) player whose controls sat at the top of the screen.
+
+Work Log:
+- Synced local dev to origin/dev (34 commits behind: the 15.1 batch — Looper
+  style, full-page lyrics, build repairs — plus PR #221/v15.0 on main).
+- Verified the user's report against the screenshots: Screenshot_20260915-061452
+  shows V7 with the whole control block in the top ~30% of the screen and a
+  giant empty gap below — the 0b6043b0d commit had swapped the V7 controls
+  Column's .align(Alignment.BottomCenter) for .fillMaxSize() when the inline
+  lyrics slots landed, and 0d34ee854 dropped the slots without restoring the
+  alignment.
+- Traced the lyrics-menu history: v15.0 ("2 days before") opened the lyrics
+  page's overflow menu via menuState.show { LyricsMenu(...) } (the floating
+  bottom card, song header + action grid — confirmed by the user's
+  Screenshot_20260913-223450); the 15.1 batch replaced it with the anchored
+  glass popup (Screenshot_20260914-213154) which the user reports "looks bad".
+- Player.kt: both V7 orientation branches back to .align(BottomCenter);
+  MikoLyricsTransition no longer slides up from the bottom edge (that was the
+  "bottom sheet" cue) — the full-screen page now crossfades + scales 0.92->1.0
+  in place over 650ms (Apple Music cover-to-lyrics morph timing).
+- LyricsScreen.kt: restored verbatim to the v15.0 file (menuState.show menu,
+  anchored popup + backdrop-recording wrapper + anchor plumbing removed);
+  LyricsMenu.kt: AnchoredLyricsOverflowMenu + AppleMusicLyricsMenuRow restored
+  to v15.0 styling (white rows, red destructive, glass + 0.55 black fill,
+  0.45 scrim, 220dp popup) — only the lyrics-sync-offset item retained; dead
+  LyricsOverflowSheet + UnglassedLyricsPopupColor deleted. LyricsScreen.kt is
+  byte-identical to v15.0; LyricsMenu.kt differs only by that one item.
+- changelogs.md 15.1 section rewritten to match (menu reverted, in-place
+  lyrics morph, V7 fix).
+- Committed e5d4e508a on dev, pushed; all three workflows (Build PR, Build
+  APKs, Nightly) started and were in progress with no failures through the
+  7-minute watch window; deeper status polling blocked by the anonymous API
+  rate limit (resets ~22 min after push) — to be re-checked.
+
+Stage Summary:
+- dev e5d4e508a: V7 controls bottom-anchored again; lyrics page materialises
+  in place (never a sheet); lyrics menu = the v15.0 floating card on the
+  lyrics page and the v15.0 dark anchored popup on the styles that keep it
+  (Apple Music, SpatialFlow, TikTok, SimpMusic).
+
+---
+Task ID: 42 (CI follow-up)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Verify the e5d4e508a / 20802399c CI round after the rate-limit window.
+
+Work Log:
+- Re-checked via the public actions page once the anonymous API quota reset:
+  Build APKs (#955, "fix(lyrics+immersive)…"), Nightly (canary) and the
+  Build Pull Request run for PR "dev -> main" — every run of both commits
+  reports completed successfully; no repair round needed.
+
+Stage Summary:
+- dev green at 20802399c (code commit e5d4e508a + docs). Tasks 1–2 of the
+  user's latest batch done: lyrics = in-place full-page Apple Music lyrics
+  with the v15.0 floating menu, V7 controls bottom-anchored again.
+
+---
+Task ID: 46
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Resume and complete the 17-item batch (player styles, canvas,
+Android Auto, providers, settings search, navbar tint + scroll-to-hide,
+SpatialFlow audio effects/animations, liquid glass, jank) — 16 commits,
+49 files, +3365/-480.
+
+Work Log:
+- Session recovery: tasks 1-4, 6, 12, 13, 15, 17 were already on dev
+  (85447ef89..14b4845bd); tasks 11+16 (lyrics provider-test retry,
+  home-refresh watchdog + auto-reload serialization) committed as
+  e880d6add.
+- 0842445d4: repaired the 5 commits the previous session pushed without
+  a CI round — 9 Kotlin errors (isPodcast missing from fork's
+  MediaMetadata, missing LaunchedEffect/Modifier imports, a
+  MutableStateFlow.set() call, TimeoutException import,
+  HomeViewModel collectLatest misuse).
+- 607c589d1 (task 14): settings search — dead "yt-dlp runtime" child and
+  its route mapping removed (tap used to crash); ALL 391 child search
+  routes cross-checked against NavigationBuilder destinations with
+  scripts/check_settings_routes.py; the Android Auto group now maps to
+  settings/android_auto?scrollTo= and AndroidAutoSettings got
+  PreferencePositions auto-scroll + row highlight.
+- 940473914 (task 10): "Tint frosted" navbar style was translucent black
+  in both themes — now opaque accent-tinted (surfaceContainer -> primary
+  25% blend), icon colours follow the APP theme (colorScheme luminance,
+  not isSystemInDarkTheme), frosted overlay 0.45 -> 0.32; tablet rail
+  same treatment.
+- 8a9a7b323 + 94cc3d082 (task 7a): SpatialFlow's audio effects ported
+  into the equalizer — EnvironmentalReverb with SpatialFlow's exact
+  7-preset parameter map, stereo balance, and 8D audio as a REAL-TIME
+  StereoPanAudioProcessor in the media3 chain (apulsator width .75 sine
+  + aecho 0.6:0.4:30|60:0.2|0.15 + alimiter .97 params; no FFmpeg, no
+  intermediate files, works on streams, reacts to the speed slider).
+  Full prefs/repo/usecase/VM plumbing + "Spatial effects" UI section +
+  profile support. media3 1.10.1 AudioProcessor.AudioFormat fix followed.
+- 76cd0ae6d (task 7b): scroll-to-hide bottom navbar via
+  NestedScrollConnection on the scaffold content (>14dp thresholds);
+  bottomNavigationBarHeight target includes the hidden state,
+  destination changes reset it; BottomSheet's navbarHiddenOffset
+  provider lets the collapsed mini player drift down into the freed bar
+  space, scaled by (1 - sheet progress).
+- 2fe22a674 (task 9): SpatialFlow lyrics artwork shared-element — album
+  art morphs into a 44dp app-bar thumbnail (spring .86/420) during the
+  circular lyrics reveal for non-canvas songs; lyrics overlay header
+  reserves the 48dp slot, more-vert moved right.
+- 9a79fb858 (task 8, visual-only): colorControls(saturation 1.7f)
+  replaces vibrancy() everywhere; lens refraction strengthened (24->28dp
+  band, /4 -> /3.2 amount, depthEffect on) on Modifier.liquidGlass +
+  navbar pill; flat 32dp frosts (BottomSheetMenu/LyricsMenu) got lens +
+  blur cut 32 -> 20dp (net GPU saving); rail stays lens-less
+  (RectangleShape has no radii — lens throws).
+- f9a535399 (task 5): canvas artwork video now pauses at sheet progress
+  0.5 (top of the content fade) instead of at full collapse — decode +
+  compositing gone from the entire second half of collapse/expand.
+- 658b1a48b: changelogs.md 15.1 addendum for the batch (spatial audio
+  effects, navbar behaviour, glass vividness, jank + provider fixes).
+
+Stage Summary:
+- 16 of 17 tasks done; task 5's first-launch half is covered by the
+  previously-merged settled-glass defers + canvas gate — anything more
+  needs on-device profiling.
+- CI on 658b1a48b: Build Pull Request, Build APKs and Nightly (all 8
+  release/R8 matrix jobs) green; PR #222 (dev -> main) head green.
+
+
+---
+Task ID: 48
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Two user-reported regressions - (1) every playback failing with
+"The source buffer is this buffer" (code 1004), (2) the Canvas picker in the
+wrong menu (song-row menu) while the full-screen player still shows
+"Save canvas".
+
+Work Log:
+- Playback crash: traced through media3 1.10.1 sources
+  (BaseAudioProcessor/AudioProcessingPipeline/DefaultAudioSink).
+  StereoPanAudioProcessor.queueInput violated two contract rules that the
+  fork's own HapticsPcmProcessor follows: (a) an EMPTY input must be a no-op
+  - AudioProcessingPipeline feeds the SHARED AudioProcessor.EMPTY_BUFFER
+  downstream when the upstream processor is drained, and
+  replaceOutputBuffer(0) returns that same shared buffer, so the passthrough
+  did EMPTY_BUFFER.put(EMPTY_BUFFER) -> IllegalArgumentException before any
+  size check; (b) the replaced output buffer must be flip()ed before
+  getOutput() can read it. Both fixed (d8802aed9); the DSP path now also
+  consumes the whole input buffer.
+- Same commit: the processor instance was shared between the primary and the
+  crossfade secondary player's sinks (createRenderersFactory used by both
+  ExoPlayer builds) - two playback threads racing on one BaseAudioProcessor.
+  The secondary player now creates and releases its own instance;
+  applyEqSettingsToEffects broadcasts to listOfNotNull(primary, secondary)
+  via the new applyStereoPanSettingsTo helper, and the secondary instance is
+  initialised from desiredEqSettings.value at creation.
+- Menu move (5b2e967ce): the "Canvas" source picker (availability probe +
+  4s-bounded provider probe, Apple Music/Spotify source list, per-source
+  offline save, tap-to-play) moved from SongMenu into the full-screen
+  PlayerMenu's overflow, replacing the "Save canvas" row (same gate family:
+  non-local, not queue-trigger, not low-data, not V5; V7 asks providers for
+  vertical canvases). SongMenu keeps "Download cover" only. SaveCanvasDialog
+  + CanvasSaver became dead and were deleted; probe re-checks the cache
+  after a canvas refetch completes.
+
+Stage Summary:
+- d8802aed9 + 5b2e967ce pushed to dev; Build Pull Request (compile+test+lint)
+  green on 5b2e967ce; Build APKs / Nightly monitored to completion in the
+  session worklog.
+
+---
+Task ID: 4a
+Agent: Super Z (sub agent, canary port batch)
+Task: Port 5 optimization commits from the independent fork canary/canary
+(vossgraves/ArchiveTune) into dev, one commit at a time, adapted to our
+diverged code; behavior-preserving only, no visual changes; local commits
+only (no push).
+
+Work Log:
+- 04fdc880b <- canary 7a45f7dc1 (perf/tidal regex hoisting): hoisted all 20
+  fixed-pattern inline Regex constructions in TidalAudioProvider.kt to
+  file-level vals (canary's names); contentArtworkScore now takes wanted*
+  params so selectArtworkCandidates computes them once per search; also
+  ported the commit's dedup hunks that had verbatim context here -
+  inspectLocalPlaybackFile reuses inspectPlaybackHeader, manifestDeclaresFlac
+  alias folded into manifestLooksFlac, local durationMatches duplicate
+  replaced by the shared TrackMatching.durationMatches. The 3 dynamic
+  per-attr XML regexes stay inline, as in canary.
+- a5f5decc0 <- canary 231efde5e (one media-info fetch): new
+  ui/utils/MediaInfoLoader.kt ported as-is (rememberMediaInfo keeps
+  SimpMusic's YouTube-id-shape gate and shares it with the sheet - the sheet
+  loses its blind round trip on non-YouTube ids); SimpMusicPlayer +
+  ShowMediaInfo rewired to the shared loader; dropped the now-unused
+  YouTube/LaunchedEffect imports canary had left behind.
+- ffec0ee3f <- canary 1d6fbcae1 (image cache setting): functional hunks
+  skipped as already present under different names - our DataStore.get
+  operator falls back to a bounded 1.5s blocking read of the store itself
+  while PreferenceStore's first snapshot is in flight, and
+  initialSnapshot/awaitSnapshot exist since b570febe5, so the cold-start
+  MaxImageCacheSizeKey read already resolves the persisted value. Commit
+  records the port by documenting the invariant at the newImageLoader read
+  site (comment only, zero behavior change).
+- d87a8e3b4 <- canary 94a7b5946 (seek re-buffer volume):
+  pendingSeekVolumeReassert + seekVolumeReassertJob fields, STATE_READY
+  "seek_ready" reassert next to the existing source_switch_ready hook,
+  scheduleSeekVolumeReassert() 300ms fast path for in-buffer seeks,
+  SEEK_VOLUME_REASSERT_MS constant. All landmarks matched; only the
+  comment's "(below)" became "(above)" because our STATE_READY hook
+  precedes onPositionDiscontinuity.
+- 2f573c9a5 <- canary fd89a69fa (lifecycle leaks): dropped
+  MusicService.onCreate's never-released self-referential MediaController
+  (+ its 4 imports) that set hasBoundClients forever and blocked idle-stop;
+  onDestroy's stopTogetherInternal now launched NonCancellable; direct
+  DiscordPresenceManager.stop() net before scopeJob.cancel; MainActivity
+  disposePlayerConnection() extracted and now called from
+  safeUnbindMusicService (unbindService never delivers
+  onServiceDisconnected, so every clean unbind previously left the stopped
+  Activity pinned on the service player's listener list until rebind);
+  theme-color extraction downsampled to PlayerColorExtractor.Config.
+  IMAGE_SIZE (in-repo prior art in Items.kt); isPlayingNow fallback flow
+  remembered instead of re-allocated per recomposition. Our onDestroy keeps
+  its trailing safeUnbindMusicService() (canary dropped theirs; ours must
+  unbind even without StopMusicOnTaskClear, else the ServiceConnection
+  registration leaks).
+- Verification without gradle (no local SDK): per-hunk context diffing
+  against our files, import resolution, member-name existence checks
+  (TrackMatching.durationMatches, PlayerColorExtractor.Config.IMAGE_SIZE,
+  DiscordPresenceManager.stop(), inspectPlaybackHeader), state-machine
+  brace/paren balance identical before/after for all 7 touched files, no
+  leftover references to deleted symbols. Nothing pushed to any remote.
+
+Stage Summary:
+- dev at 2f573c9a5: 5 ported commits (04fdc880b, a5f5decc0, ffec0ee3f,
+  d87a8e3b4, 2f573c9a5), 7 files, +221/-116, no visual changes.
+- CI compile risk: low - every new API shape reuses in-repo prior art;
+  innertube symbols resolve via the core submodule exactly as the
+  pre-existing code did.
+- Not done: CI monitoring round for these commits (no push performed per
+  instructions).
+
+---
+Task ID: 4b
+Agent: Super Z (sub agent, Amazon Music port)
+Task: Port canary's Amazon Music integration (ec2a9e45e + 38d070556) into dev, then extend it: Amazon visible in the download priority picker, the playback source priority and the search-from popup, plus a working anonymous catalog search client. Local commits only (no push).
+
+Work Log:
+- 2d2bb8eab <- canary ec2a9e45e+38d070556 (Amazon account/pool/settings plumbing): AudioSourceType.AMAZON between APPLE and JIOSAAVN; Deezer-shaped keys (AmazonEnabledKey/SessionKey/AccountNameKey/AccountPremiumKey/InstancesKey/AudioQualityKey, AmazonAudioQuality ULTRA_HD/HD/STANDARD default HD); MusicService isSourceEnabled + enabledDefaults + resolver when (AMAZON -> null: CENC streams, no decryption step, resolution falls through); PoolAccountManager AmazonPoolAccount + CACHE_AMAZON_KEY + amazonAccounts() via ordered("amazon-music",...) + parse/persist/mergeList under wire key "amazon-music", counted in hasAccounts() but NOT hasEveryService(); new AmazonLoginScreen (verbatim canary port: at-main/sess-at-main cookie capture over AuthWebViewScreen + resetAuthWebViewSession, HttpOnly via CookieManager, DOMAIN=.amazon.com origin) and AmazonSettings (canary's screen on this fork's DeezerSettings top-bar idiom - TopAppBar + FrostedHeaderPill + ScreenHeaderHaze + PreferencePositions scroll keys - since canary's SettingsTopAppBar does not exist here); PlaybackSourceSections displayName/iconRes/isEnabled branches + amazonEnabled preference with pool refresh on enable + dedicated Amazon group (toggle + Integration link + SourceCheckRow) + SourceOrderDialog now offers every AudioSourceType entry (dialogOrder inserts resolver-less sources before the YOUTUBE fallback) while AudioSourceConfig.DEFAULT_ORDER deliberately still omits AMAZON, now with canary's explanatory KDoc at the declaration; PlayerMenu sourceLabelRes/sourceIconRes + this fork's extra searchOneSource when gets AMAZON -> emptyList(); SourceCheckService.checkAmazon (credentials found but healthy=false always); new SourceRefreshWorker (WorkManager 6h KEEP, network+battery, TidalInstanceHealthManager.refresh + PoolAccountManager.refresh) scheduled from App.initializeDeferredAsync, same spot canary used; wiring: settings/amazon?scrollTo route + AMAZON_LOGIN_ROUTE in NavigationBuilder, Integration row gated on manualSourceLogin || amazonAccountName.isNotBlank(), searchable Amazon SettingsItem + 3 children, "amazon" deep-link in SettingsScreen, canary's 23-string block verbatim in archivetune_strings.xml (+2 for this fork's in-page enable toggle).
+- ffb029ae0 (download priority picker - explicit fork divergence, canary skipped it): DownloadSource.AMAZON after APPLE; DEFAULT_ORDER after APPLE/before DEEZER (signed-in user wants it preferred; with no resolver it misses and the chain falls through); REQUIRES_POOL gains AMAZON; DownloadsSettings displayName()/displayName(context)/iconRes() AMAZON branches; DownloadUtil.resolveSourceStream AMAZON -> null; downloadSourceForAudioSource already maps via the shared name-based branch; ManageDownloadsUseCase + ExportDownloadedSongsScreen label whens label "amazon:" cache keys; cache plumbing picks the "amazon:" prefix up from DownloadSource.entries automatically (DownloadSourceConfig.parseOrder also merges the new entry into stored orders before YOUTUBE_MUSIC, so existing installs see it too).
+- ab214acae (search-from popup + catalog client): SearchProvider.AMAZON; SearchSourcePicker menu item + picker-button icon branch; MainActivity search bar + SearchScreen placeholder label branches (everything provider-generic - route encoding, persistence, suggestions - picks AMAZON up for free); PlaybackSourceSections default-search-source valueText when; OnlineSearchSuggestionViewModel AMAZON branch + SearchSuggestionViewState.amazonItems; OnlineSearchScreen Amazon suggestion section (AmazonSearchItemRow, tap fills "artist title"); OnlineSearchResult dispatches to new AmazonOnlineSearchResult (tracks-only, no filter chips, no pagination) backed by new AmazonSearchViewModel; new amazon/AmazonMusicCatalog.kt modeled on AppleMusicCatalog (same OkHttp client shape, same Json config, same runCatching->empty contract, kotlinx-serialization DTOs all-defaulted): step 1 GET music.amazon.com/config.json (anonymous device identity + CSRF triple; csrf is polymorphic - JSON object OR stringified Python dict with single quotes - parsed with org.json + regex fallback; cached ~1h behind a Mutex with stale-config fallback), step 2 POST searchCatalogTracks (na.web... with eu.mesk... fallback) with the verified text/plain envelope (keyword + stringified userHash + stringified inner x-amzn-* header object with device id/session/version, fresh 13-char [a-z0-9] request id, epoch-millis timestamp, CSRF header, hd/uhd feature flags); response methods[0].template.widgets[0].items[] mapped to AppleMusicSearchItem.Track (the item type the search UI already renders and resolves for Apple - tapping an Amazon result resolves via the same YouTube title/artist text search, not a dead-end DRM stream); durationMs 0 (not in the initial response, no extra album calls), first page only (no continuation tokens), settings-search wiring for the sources-page toggle (amazon_enable child + own(sources, playback, ...) entry).
+- Post-hoc verification round over the whole port: exhaustive-when sweep over AudioSourceType (MusicService isSourceEnabled/enabledDefaults/resolver + override whens with else; PlayerMenu sourceLabel/sourceIcon/searchOneSource; PlaybackSourceSections displayName/iconRes/isEnabled; SourceCheckService check; LosslessStreamResolver cacheKeyPrefix + MusicService sourceCachePrefix have else; DownloadUtil downloadSourceForAudioSource has else), DownloadSource (DownloadsSettings x3, DownloadUtil resolveSourceStream, ManageDownloadsUseCase + ExportDownloadedSongsScreen label whens with else) and SearchProvider (only one when site - PlaybackSourceSections valueText; all other sites are if/else chains); resource existence check for every R.string/R.drawable referenced by the new files (all resolve; ic_music stand-in used consistently across PlayerMenu/PlaybackSourceSections/SearchSourcePicker/DownloadsSettings/AmazonOnlineSearchResult since no Amazon mark ships in drawable/); symbol existence checks for every cross-file reference (AuthWebViewScreen/resetAuthWebViewSession signatures, EnumListPreference/SwitchPreference/PreferenceEntry/PreferenceGroup/TextFieldDialog params, SourceCheckRow/SourceOrderDialog, TidalInstanceHealthManager.refresh(context, includeDiscovery, staggered), PoolAccountManager ordered/field/entryId/mergeList/refresh(force), AppleMusicSearchItem.Track fields, AppleMusicPlaybackResolver.resolveTrack, YouTubeQueue.radio, ItemThumbnail/ListItem/EmptyPlaceholder params, OnlineSearchResultArgument/decodeOnlineSearchQuery internal visibility across packages - same module, OK); state-machine brace/paren balance for all 6 new files.
+- Found and fixed one real compile blocker in the final round: AmazonMusicCatalog's item chain used .asSequence().flatMap { it.widgets }...toList(), but Sequence.flatMap requires a Sequence-returning transform and it.widgets is a List - dropped asSequence()/toList() so it is a plain List chain (squashed into ab214acae via fixup+autosquash); also squashed canary's AudioSourceConfig KDoc (the one hunk initially skipped) into 2d2bb8eab.
+- Canary hunks still deliberately NOT ported: AmazonInstancesKey is stored/edited but nothing consumes it yet (same as canary - no parseAmazonInstances exists there either; the key comment's "parseInstances() reads all three" is canary's own inaccuracy, kept verbatim); AmazonMusicCatalog never attaches the at-main cookie even when signed in (anonymous device token suffices for search; keeps the client context-free).
+
+Stage Summary:
+- dev at ab214acae: 3 commits (2d2bb8eab plumbing port, ffb029ae0 download picker, ab214acae search picker + client), 29 files, +1887/-14 (after squash), no push.
+- Amazon now visible in all three requested pickers: download source priority (DownloadSource enum + DEFAULT_ORDER + REQUIRES_POOL + UI), playback source priority (AudioSourceType + SourceOrderDialog offering every entry + toggle group), search-from popup (SearchProvider + SearchSourcePicker + label branches).
+- Working anonymous catalog search: suggestions (limit 8) + first-page results (limit 20) degrade to empty on any failure, exactly like the Apple Music path.
+- CI compile risk: low-moderate - every new API shape reuses in-repo prior art and every exhaustive when was swept; the one type-inference trap (Sequence.flatMap) was caught and fixed pre-commit; cannot run gradle locally, so first CI round is the remaining check.
+
+---
+Task ID: 4c
+Agent: Super Z (sub agent, canary port batch)
+Task: Port canary 38a6cd80f "perf(bitchord): stop the position tick invalidating the whole player" (the flagship perf win of the batch) plus its follow-up 4f803b1d8 into dev, adapted to this fork's diverged BitChordPlayer. Local commits only (no push).
+
+Work Log:
+- 2b66620f3 <- canary 38a6cd80f + 4f803b1d8: BitChordPlayerContent takes positionProvider: () -> Long (with canary's KDoc) instead of position: Long; Player.kt's two BitChord call sites (landscape 1610 + portrait 2144, count matches canary) pass the remembered positionProvider lambda from line 534 that already feeds AppleMusicPlayer (reads positionUpdatedState, the State the ~100ms poll writes). Every position read relocated: fraction/shown vals became the shownFraction lambda (reads positionProvider() only inside); the seek-settle LaunchedEffect rekeyed (position, duration, pendingSeek) -> (duration, pendingSeek) with snapshotFlow { positionProvider() }.collect (no more coroutine cancel/relaunch 10x/sec for the whole time the player is open); ThinSlider takes valueProvider: () -> Float and computes the played width in its draw scope (tick = repaint, zero recomposition; scrub slider passes shownFraction, volume slider passes { volume.value } which also stops the volume tween recomposing the player per frame); three Unit-returning leaf composables added (BitChordScrubTimes for the elapsed/remaining labels, BitChordPreviousGlyph for the back button's lit state, BitChordCurrentLyric wrapping CurrentLyricLine with the lyricsSyncOffset nudge computed inside), so a tick invalidates only those leaves; lyricsPosition computed val deleted.
+- Fork-divergence site handled: the lyrics panel's scrub-preview lyricsPositionProvider (9b1617a6f) read `shown` behind rememberUpdatedState(if (duration > 0) shown / duration else 0f) in the player's body - a composition-time position read whenever lyrics are open. The shown fraction is now evaluated inside the provider lambda (shownFraction() only runs when latestScrubbing.value, where it reads scrubValue and never touches the position), preserving the pre-existing (shown/duration)*duration round trip exactly (it truncates to ~0 in practice; deliberately NOT "fixed" - behaviour-preserving port).
+- 4f803b1d8 adaptation: artwork ImageRequest uses the in-scope context val instead of a fresh LocalContext.current read; the three fully-qualified androidx.compose.foundation.layout.Arrangement references shortened behind a real import (needed by the new leaf anyway); its ten unused-import removals have no counterpart here (word-occurrence scan finds zero unused imports in this fork's file).
+- Deliberately kept different from canary: the lyric strip passes this fork's isPlaying (canary's fork has an audioAdvancing val, ours does not) and keeps our !lyricsOpen gating with the unavailable/loading branches; our call sites' blank-line placement preserved; canary's pre-existing comments our fork had stripped were not re-added, only the new explanatory comments from the commit itself.
+- Verification without gradle: grep sweep proves no bare position/shown/fraction/lyricsPosition read survives in BitChordPlayerContent's own body (the two positionProvider() calls sit inside the shownFraction lambda and the snapshotFlow, neither runs during composition); all referenced symbols exist (CurrentLyricLine/LyricLine/Haptic/rememberHaptics same package, TransportGlyph/BACK_RESTARTS_AFTER_MS/formatTime same file, positionProvider in BottomSheetPlayer scope for both call sites); import scan clean; brace/paren/bracket balance identical for all three files; ThinSlider's only two callers both migrated; call-site count matches canary exactly (2).
+
+Stage Summary:
+- dev at 2b66620f3: 1 commit, 3 files (+143/-47), no visual change, nothing pushed.
+- Effect: a position tick now invalidates the scrub-slider draw, the two timestamp labels, the back glyph's lit state and the lyric strip instead of the entire BitChordPlayerContent; the seek-settle coroutine no longer restarts 10x/sec.
+- CI compile risk: low - the ported shapes are canary's own, all symbols verified in-repo, smart-cast of `lyrics` unchanged from the pre-port call; no gradle locally, first CI round pending (no push performed per instructions).
+
+---
+Task ID: 50
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 4-item batch - spatialflow lyrics menu position, SpatialFlow equalizer redesign + independent effects, mini player auto-hide fix, canary optimization ports + Amazon Music integration.
+
+Work Log:
+- de9d0e98b (tasks 1+3): lyrics overflow moved to the leading side, artwork shared-element parks top-right (22dp from the right edge, TransformOrigin(1f,0f)); mini-player auto-hide on non-tab pages was double compensation - navbarHiddenOffset now gates on shouldShowNavigationBar && !useRail, and the scroll-hide connection only reacts to NestedScrollSource.UserInput (programmatic scrolls can't hide the bar).
+- a7647c92d (task 2): EqualizerDialog rewritten as SpatialFlow's EffectsScreen - segmented feature cards, ExpressiveSwitch, ResponsiveSlider springs, ExposedDropdown reverb presets, vertical rotated 5-band grid resampled to device bands, ProcessingCard pulse, profile header icons. All effects independent of the band-equalizer master switch (MusicService AND-gates dropped, StereoPanAudioProcessor masterEnabled removed). Playback Speed + Match Pitch added via new audioPlaybackSpeed/audioPlaybackSpeedPitchMatch prefs.
+- 3eccb7458: canary memory + dead-GPU fixes (4 resolution-cache clears on full stop; dead queue Haze layer deleted).
+- d6e1cecbc/a5b378553 + 04fdc880b/a5f5decc0/ffec0ee3f/d87a8e3b4/2f573c9a5 (task 4a): ShowCodecOnPlayerKey constant, sortedByCollated helper (all 6 DAO collator sites), Tidal regex hoisting, MediaInfoLoader dedup, image-cache invariant doc, seek re-buffer volume restore, lifecycle leak repairs. 2b66620f3: BitChord position-tick perf (positionProvider + leaf composables + draw-scope slider + snapshotFlow settle).
+- 2d2bb8eab/ffb029ae0/ab214acae (task 4b): Amazon Music ported from canary + extended - account/pool/settings plumbing, download priority picker (user requirement, deliberate divergence from canary), playback source priority, search-from popup entry with a live-verified anonymous catalog search client (config.json device token + searchCatalogTracks envelope; results map to AppleMusicSearchItem.Track so taps resolve via text search).
+- dcdeaa349: CI repair round - MusicService speed-key imports + ExposedDropdownMenu scope-member resolution.
+- Deliberately not ported: canary dead-code audit sweeps (fork diverged 600-1300 lines in those files; risk > cleanup value), ff1fa8ad9 (core submodule dependency), hasCustomBackdrop (our enum is plain).
+
+Stage Summary:
+- CI triple-green on dcdeaa349 (Build Pull Request incl. tests+lint, Build APKs, Nightly all-8 release/R8 matrix).
+- dev head dcdeaa349 pushed; batch totals ~12 commits, 46+ files, +3300/-1150.
+
+---
+Task ID: 51
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 11-item batch - playlist canvas, SpatialFlow lyrics header spacing, Apple Music login token auto-fetch, lyrics bottom-bar removal, Equalizer two-pill + audio-effects master switch, Looper flat background, tinted navbar differentiation, lyrics background styles for 7 styles, Android Auto glass header, source-check redo, new-releases selection bar.
+
+Work Log:
+- (1) Playlist page canvas: new viewmodels/PlaylistCanvas.kt (fetchPlaylistCanvasArtwork - first-song identity through resolveCanvasArtworkForPlayback, gated on AlbumCanvasEnabledKey + low-data); canvasArtwork StateFlow added to Online/Spotify/Top/Local playlist ViewModels; OnlinePlaylistScreen/SpotifyPlaylistScreen/TopPlaylistScreen pass canvas params into MediaDetailHero; AppleMusicPlaylistHero gained an optional canvas backdrop (CanvasArtworkPlayer under a surface-tinted gradient scrim so the AM text hero stays legible); toggle renamed to "Enable canvas in album and playlist page" (fork_strings + SettingsDataBuilders search entry).
+- (2) SpatialFlow lyrics header matches the reference: more-vert far left, dead-centre two-line title, X alone at the far-right margin inside a thin 1dp circle outline (36dp); the flying artwork now parks LEFT of the X (20+48+8dp inset chain) instead of occupying the trailing slot.
+- (3) Apple Music login: AppleMusicLoginScreen rewritten - resetAuthWebViewSession before load, onPageFinished + 2s ticker evaluate a localStorage probe JS (direct 'media-user-token' key + token-shaped candidates, developer/amtv/jwt keys excluded), every candidate verified against the AMP API via new AppleMusicAudioProvider.verifyTokens (public wrapper over fetchedStorefront) before persisting Media-User-Token + auto-scraped dev token (honours the "optional" help text) + AppleMusicSourceEnabledKey; success/failure toasts; new applemusic_login_success/_failed strings.
+- (4) Lyrics bottom bar removed everywhere it rendered: LyricsScreen.AppleMusicControls trailing Row (provider pill + more_horiz + close) deleted with its now-dead params (lyricsProviderName/hasLyrics/onOverflowClick/onCloseClick) and both call sites; BitChord's twin Row (pill + MoreHoriz + Close) deleted - lyrics close via artwork tap/system back; if(lyricsOpen) row-branch inverted to if(!lyricsOpen).
+- (5) Equalizer two category pills: rememberSaveable tab (Equalizer | Audio effects) behind two 44dp CategoryPill segments; Equalizer tab = the 5-band EqualizerSection card; Audio effects tab = new "Enable audio effects" master switch (new EqualizerAudioEffectsEnabledKey, default false) + all ported effects (8D, reverb, bass, loudness, balance, speed, virtualizer); every section gained interactionEnabled (gated switches/sliders/dropdowns + onSurfaceVariant titles); header title follows the tab. MusicService.readEqSettingsFromPrefs force-disables every DSP effect flag (balance->0) when the switch is off and the speed combine now clamps to 1.0x - nothing applies to any song until the switch is on; stored values survive so flipping it back restores the user's mix.
+- (6) Looper non-canvas background: the 18dp blurred artwork backdrop + 0.62 scrim block deleted (original Looper is flat 0xFF141414); Build import + LooperMusicDarkness + canvasAvailable dead vals removed.
+- (7) Tinted navbar: tinted base is now a LIGHT accent pastel in BOTH schemes (lerp(White, primary, 0.26 light / 0.36 dark)) so it reads visibly different from the neutral surface-adaptive frosted bar; content always the dark accent shade (lerp(primary, Black, 0.55)) + Black 62% unselected; selected pill Black 12%; blur overlay alpha 0.26; MainActivity rail variant mirrored; settings desc updated.
+- (8) Lyrics background style now honored by BitChord (mesh stays DEFAULT; non-DEFAULT styles take over via new shared ui/player/StyledLyricsBackground.kt), SimpMusic (fullscreen sheet gradient swapped for the same takeover, paletteColors threaded from the player) and Looper (already hosts the shared LyricsScreen - was only picker-gated); isLyricsBackgroundStyleAvailable now excludes only APPLE_MUSIC/TIKTOK/SPATIALFLOW; own-player desc string updated.
+- (9) Android Auto settings: home-screen glass recipe - rememberGlassScreenHeader + glassHeaderSource on every state branch + GlassScreenHeaderOverlay (liquid-glass back pill + title + ScreenHeaderHaze progressive blur over the status bar); plain TopAppBar only when liquid glass is off; content top padding systemBars+72dp in glass mode; onBackLongClick = backToMain threaded through the route.
+- (10) Source check redo: SourceCheckStatus enum (READY/DEGRADED/NOT_CONFIGURED/UNSUPPORTED/UNREACHABLE) + SourceCheckResult(status, summary, checkedAtMs, healthy computed); results cached in a service StateFlow so the inline status survives navigation; SourceCheckRow shows status label + age inline (icon + trailing chip + description) and still opens the detailed dialog; YouTube gets a real InnerTube probe (getMediaInfo on the rickroll id) instead of hardcoded true; JioSaavn drops its runBlocking and probes "a" instead of the literal "test query"; Amazon reports UNSUPPORTED (build limitation, not an outage) instead of fake-failing; Deezer/Amazon no longer force-refresh the pool on every tap; Apple pool-only verdict now honestly DEGRADED (needs a dev token) and points at the auto-fetching web sign-in; every stale "tap Refresh source pool at the top" advice replaced (that button no longer exists).
+- (11) New releases selection bar: count Text moved to its own full-width line above the buttons (the ExportDownloadedSongsScreen pattern); buttons share the row via weight (1f/1f/1.5f) with ellipsis safety - the count can never be squeezed to "2 se..." again.
+
+Stage Summary:
+- 31 files changed (+1270/-634) + 2 new files (PlaylistCanvas.kt, StyledLyricsBackground.kt).
+- Deliberate UX calls: playback speed is gated by the audio-effects switch (it lives on that tab and the user's wording says nothing applies until the switch is on); the tinted bar is light even in dark mode (explicitly requested); BitChord/SimpMusic FOLLOW_THEME gets a 45% black scrim because those styles' content is white-only.
+- CI compile risk: low-moderate - local gradle impossible (core submodule not checked out locally), but every cross-file symbol was grep-verified (CanvasArtworkPlayer public, resolveCanvasArtworkForPlayback internal same-module, AppleMusicPlaylistHero new params defaulted, SourceCheckService single-consumer, AndroidAutoSettingsRoute internal-only).
+
+---
+Task ID: 51 (CI round)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: CI repair for the 11-item batch (1e035d5e9 failed compile: 24 errors across 5 files).
+
+Work Log:
+- 8caa2c944 fixed all 24: MainActivity rail luminance() extension import; SimpMusicFullscreenLyricsSheet missing PlayerBackgroundStyle import (the reified-CapturedType errors were its cascade); AndroidAutoSettings calculateStartPadding/calculateEndPadding imports; SourceCheckService probeQobuzBackupEndpoint rewritten onto a private EndpointProbe(ok, summary) type since SourceCheckResult now takes status; PlaylistCanvas firstSongTitle.isNullOrBlank() smart-cast.
+
+Stage Summary:
+- CI TRIPLE-GREEN on 8caa2c944 (Build Pull Request incl. tests+lint, Build APKs, Nightly canary matrix).
+- dev head 8caa2c944 pushed; the batch is 2 commits, 35 files, +1478/-654.
+
+---
+Task ID: 52
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 5-item fix batch — missing playback notifications (post canary-port regression), flat tinted navbar + rename, Android Auto settings header copied from the settings main page, new-releases selection count padding, SpatialFlow lyrics dismiss circle.
+
+Work Log:
+- (Notifications, the regression) Root cause: MediaNotificationManager (media3-session 1.10.1) only creates the internal notification controller — the Player.Listener that drives onUpdateNotification on every playback change — when a MediaController connects through the session-service stub (addSession). This fork's UI binds the plain local binder (MusicService.onBind -> MusicBinder) and never connects a MediaController, so the self-referential MediaController dropped by 2f573c9a5's lifecycle port was the only thing arming the pipeline: playback ran with no notification and no foreground promotion. Fix: addSession(mediaSession) in onCreate after setMediaNotificationProvider — public final API; the framework's internal controller connects in-process via the session's TYPE_SESSION token (no bindService, verified against the media3 1.10.1 sources), so hasBoundClients/idle-stop semantics are untouched and canary's leak fix stays intact.
+- (Tinted navbar) canBlurBackdrop/canRailBlur exclude the tinted flag (tint wins if both flags are somehow stored on); no backdrop blur is drawn for the tinted variant in the toolbar (S+ and pre-S paths) or the MainActivity rail; navigationContainerColor restructured; TintFrostedNavBarOverlayAlpha deleted. Toggle renamed "Tint navigation bar" (title + desc without blur wording + search-entry terms), icon blur_on -> format_paint, and the pre-S unsupported warning dropped for the tinted row — it is a flat colour that works on every Android version.
+- (Android Auto settings) Rewritten onto the settings-main-page recipe: Scaffold(glassAwareSurface(), contentWindowInsets = 0, no topBar, no safeDrawing modifier padding — the old modifier double-inset the header pill below the status bar); the preference Column is a full-size glassHeaderSource with a leading Spacer(systemBarsTopPadding + AppBarHeight + 8dp) so content scrolls behind the header (the glass back button now samples real scrolling content instead of an opaque empty surface) plus windowInsetsPadding(safeDrawing Horizontal+Bottom); header row copied verbatim from SettingsHomeStyleHeader — flush below the status bar, centred bold title, LiquidGlassIconButton back in glass mode / plain app IconButton otherwise, ScreenHeaderHaze over the status bar. TopAppBar, adjustedPadding and GlassScreenHeaderOverlay dropped; imports cleaned.
+- (New releases selection popup) Count Text moved to 24dp total horizontal inset (clears the 28dp corner radius of the popup) with equal 12dp vertical padding above and below; the buttons Row keeps 6dp bottom breathing room.
+- (SpatialFlow lyrics) Dismiss (X) is a plain 20dp glyph in the 48dp slot — the outer 36dp circle outline (1dp border) removed with its border/CircleShape imports.
+- Verification: independent static-review agent over the whole diff — zero compile blockers; every symbol/signature verified against the repo (ScreenHeaderHaze/LiquidGlassIconButton/app IconButton signatures, glassAwareSurface, AppBarHeight, format_paint.xml exists, same-package SettingsDimensions + rememberPreferencePositions). The pre-S bitmap branch inside the blur overlay was already dead before this batch (canBlurBackdrop required !isPreS in the old code too) and was deliberately left alone.
+- CI: first round triple-green on 870408e5a — Build Pull Request (incl. tests+lint), Build APKs, Nightly all-8 release/R8 matrix.
+- changelogs.md: new "Fixes (15.1 addendum, round 2)" section covering all five items.
+
+Stage Summary:
+- dev at 870408e5a (+162/-118, 10 files), all three workflows green on the first round, pushed.
+- Architectural note for future batches: anything that rewires the session/service/controller graph must keep addSession armed — the UI never connects a MediaController, so notifications depend entirely on the explicit registration.

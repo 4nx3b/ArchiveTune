@@ -72,6 +72,14 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.util.Locale
 
+// Shared by every sort branch below that orders by a display name (song/album title, artist name
+// list): a fresh PRIMARY-strength Collator per branch was otherwise created from scratch each time.
+private fun <T> List<T>.sortedByCollated(keySelector: (T) -> String): List<T> {
+    val collator = Collator.getInstance(Locale.getDefault())
+    collator.strength = Collator.PRIMARY
+    return sortedWith(compareBy(collator, keySelector))
+}
+
 @Dao
 interface DatabaseDao {
     @Transaction
@@ -110,11 +118,7 @@ interface DatabaseDao {
                 } else {
                     songsByNameAsc()
                 }
-            ).map { songs ->
-                val collator = Collator.getInstance(Locale.getDefault())
-                collator.strength = Collator.PRIMARY
-                songs.sortedWith(compareBy(collator) { it.song.title })
-            }
+            ).map { songs -> songs.sortedByCollated { it.song.title } }
         }
 
         SongSortType.ARTIST -> {
@@ -124,15 +128,7 @@ interface DatabaseDao {
                 } else {
                     songsByRowIdAsc()
                 }
-            ).map { songs ->
-                val collator = Collator.getInstance(Locale.getDefault())
-                collator.strength = Collator.PRIMARY
-                songs.sortedWith(
-                    compareBy(collator) { song ->
-                        song.artists.joinToString("") { artist -> artist.name }
-                    },
-                )
-            }
+            ).map { songs -> songs.sortedByCollated { song -> song.artists.joinToString("") { artist -> artist.name } } }
         }
 
         SongSortType.PLAY_TIME -> {
@@ -223,9 +219,7 @@ interface DatabaseDao {
                     likedSongsByNameAsc()
                 }
             ).map { songs ->
-                val collator = Collator.getInstance(Locale.getDefault())
-                collator.strength = Collator.PRIMARY
-                songs.sortedWith(compareBy(collator) { it.song.title })
+                songs.sortedByCollated { it.song.title }
             }
         }
 
@@ -237,13 +231,7 @@ interface DatabaseDao {
                     likedSongsByRowIdAsc()
                 }
             ).map { songs ->
-                val collator = Collator.getInstance(Locale.getDefault())
-                collator.strength = Collator.PRIMARY
-                songs.sortedWith(
-                    compareBy(collator) { song ->
-                        song.artists.joinToString("") { artist -> artist.name }
-                    },
-                )
+                songs.sortedByCollated { song -> song.artists.joinToString("") { artist -> artist.name } }
             }
         }
 
@@ -345,9 +333,7 @@ interface DatabaseDao {
 
         ArtistSongSortType.NAME -> {
             artistSongsByNameAsc(artistId).map { artistSongs ->
-                val collator = Collator.getInstance(Locale.getDefault())
-                collator.strength = Collator.PRIMARY
-                artistSongs.sortedWith(compareBy(collator) { it.song.title })
+                artistSongs.sortedByCollated { it.song.title }
             }
         }
 
@@ -1022,17 +1008,13 @@ interface DatabaseDao {
 
         AlbumSortType.NAME -> {
             albumsByNameAsc().map { albums ->
-                val collator = Collator.getInstance(Locale.getDefault())
-                collator.strength = Collator.PRIMARY
-                albums.sortedWith(compareBy(collator) { it.album.title })
+                albums.sortedByCollated { it.album.title }
             }
         }
 
         AlbumSortType.ARTIST -> {
             albumsByCreateDateAsc().map { albums ->
-                val collator = Collator.getInstance(Locale.getDefault())
-                collator.strength = Collator.PRIMARY
-                albums.sortedWith(compareBy(collator) { album -> album.artists.joinToString("") { artist -> artist.name } })
+                albums.sortedByCollated { album -> album.artists.joinToString("") { artist -> artist.name } }
             }
         }
 

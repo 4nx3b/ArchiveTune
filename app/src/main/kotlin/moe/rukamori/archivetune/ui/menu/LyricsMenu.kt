@@ -106,7 +106,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.drawBackdrop
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -772,6 +773,13 @@ fun LyricsMenu(
                         isDestructive = false,
                         enabled = isTranslateEnabled,
                         onClick = { showTranslateDialog = true },
+                    ),
+                    AppleMusicLyricsMenuItem(
+                        label = stringResource(R.string.lyrics_sync_offset),
+                        iconRes = R.drawable.speed,
+                        isDestructive = false,
+                        enabled = true,
+                        onClick = { showLyricsSyncOffsetDialog = true },
                     ),
                     AppleMusicLyricsMenuItem(
                         label = stringResource(R.string.ai_romanize_now),
@@ -1765,7 +1773,6 @@ fun AnchoredLyricsOverflowMenu(
 
     scrimColor: Color = Color.Black.copy(alpha = 0.45f),
 ) {
-
     var dismissed by remember { mutableStateOf(false) }
 
     val density = LocalDensity.current
@@ -1841,9 +1848,16 @@ fun AnchoredLyricsOverflowMenu(
             Modifier.drawBackdrop(
                 backdrop = backdrop,
                 effects = {
-                    vibrancy()
+                    // SpatialFlow-style vivid bleed + liquid edge refraction;
+                    // 32dp -> 20dp blur pays for the lens pass (net GPU savings).
+                    colorControls(saturation = 1.7f)
 
-                    blur(32f.dp.toPx())
+                    blur(20f.dp.toPx())
+
+                    lens(
+                        refractionHeight = 16f.dp.toPx(),
+                        refractionAmount = 40f.dp.toPx(),
+                    )
                 },
                 onDrawBackdrop = { drawBackdrop ->
                     drawBackdrop()
@@ -1947,3 +1961,4 @@ fun AnchoredLyricsOverflowMenu(
         }
     }
 }
+

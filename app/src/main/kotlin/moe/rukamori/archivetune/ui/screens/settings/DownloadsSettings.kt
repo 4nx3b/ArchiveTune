@@ -449,6 +449,7 @@ private fun DownloadSource.displayName(context: android.content.Context): String
         DownloadSource.QOBUZ_BACKUP -> context.getString(R.string.source_qobuz_backup)
         DownloadSource.TIDAL -> context.getString(R.string.download_source_tidal)
         DownloadSource.APPLE -> context.getString(R.string.download_source_apple_music)
+        DownloadSource.AMAZON -> context.getString(R.string.source_amazon)
         DownloadSource.DEEZER -> context.getString(R.string.download_source_deezer)
         DownloadSource.JIOSAAVN -> context.getString(R.string.download_source_jiosaavn)
         DownloadSource.YOUTUBE_MUSIC -> context.getString(R.string.download_source_youtube_music)
@@ -461,6 +462,7 @@ private fun DownloadSource.displayName(): String =
         DownloadSource.QOBUZ_BACKUP -> "Qobuz Backup"
         DownloadSource.TIDAL -> "Tidal"
         DownloadSource.APPLE -> "Apple Music"
+        DownloadSource.AMAZON -> "Amazon Music"
         DownloadSource.DEEZER -> "Deezer"
         DownloadSource.JIOSAAVN -> "JioSaavn"
         DownloadSource.YOUTUBE_MUSIC -> "YouTube Music"
@@ -473,6 +475,9 @@ private fun DownloadSource.iconRes(): Int =
         DownloadSource.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         DownloadSource.TIDAL -> R.drawable.provider_tidal
         DownloadSource.APPLE -> R.drawable.provider_apple
+        // No dedicated Amazon Music mark ships in drawable/ yet; ic_music is the stand-in the
+        // playback source pickers use for Amazon too.
+        DownloadSource.AMAZON -> R.drawable.ic_music
         DownloadSource.DEEZER -> R.drawable.provider_deezer
         DownloadSource.JIOSAAVN -> R.drawable.provider_jiosaavn
         DownloadSource.YOUTUBE_MUSIC -> R.drawable.play

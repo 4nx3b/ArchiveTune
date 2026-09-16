@@ -1,25 +1,3 @@
-/*
- * Echo-Music stream resolution (2026-09-05 port).
- *
- * This is a port of Echo-Music's `YTPlayerUtils.playerResponseForPlayback`
- * (https://github.com/EchoMusicApp/Echo-Music, GPL-3.0, "Metrolist Project (C) 2026"),
- * copied function-for-function: the measured VISIONOS-first fallback cascade, the
- * NewPipe StreamInfo URL substitution, the last-byte HEAD+Range validation probe,
- * the WebView po-token gating and the n-transform/pot append. It runs as the
- * PRIMARY YouTube stream path; ArchiveTune's own 13-client chain remains as the
- * fallback when the Echo cascade cannot produce a validated stream, so nothing
- * that previously worked is lost.
- *
- * Adaptations (mechanical, behaviour-preserving):
- *  - Echo's `YouTube.player(videoId, playlistId, client, sts, poToken)` maps onto
- *    ArchiveTune's `YouTube.player(..., setLogin, authState)` — the auth state is
- *    passed straight through.
- *  - Echo's `NewPipeExtractor.getStreamUrl(format, videoId)` maps onto
- *    [moe.rukamori.archivetune.innertube.NewPipeUtils.getStreamUrl] (the same
- *    YoutubeJavaScriptPlayerManager deobfuscation) plus the StreamInfo fallback.
- *  - The Fix403 instrumentation is Echo's own object, copied verbatim into
- *    [moe.rukamori.archivetune.echo.utils.Fix403].
- */
 
 package moe.rukamori.archivetune.echo
 

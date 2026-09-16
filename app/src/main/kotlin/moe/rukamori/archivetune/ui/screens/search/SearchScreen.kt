@@ -86,6 +86,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.DefaultSearchSourceKey
+import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.SearchProvider
 import moe.rukamori.archivetune.constants.SearchSource
 import moe.rukamori.archivetune.db.entities.SearchHistory
@@ -116,6 +117,7 @@ import moe.rukamori.archivetune.viewmodels.SearchDiscoveryTab
 import moe.rukamori.archivetune.viewmodels.SearchDiscoveryViewModel
 import moe.rukamori.archivetune.viewmodels.SearchHistoryViewModel
 import moe.rukamori.archivetune.utils.rememberEnumPreference
+import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -162,6 +164,7 @@ fun SearchScreen(
     }
 
     val searchHazeState = LocalSearchHazeState.current
+    val (disableBlur) = rememberPreference(DisableBlurKey, false)
     Box(
         modifier =
             Modifier
@@ -175,7 +178,9 @@ fun SearchScreen(
                     },
                 ),
     ) {
-        HomeAtmosphereBackground()
+        if (!disableBlur) {
+            HomeAtmosphereBackground()
+        }
 
         LazyColumn(
             state = lazyListState,
@@ -557,6 +562,8 @@ private fun SearchEntryField(
                                                 R.string.search_source_spotify
                                             } else if (searchProvider == SearchProvider.APPLE_MUSIC) {
                                                 R.string.search_source_apple_music
+                                            } else if (searchProvider == SearchProvider.AMAZON) {
+                                                R.string.source_amazon
                                             } else {
                                                 R.string.search_yt_music
                                             }

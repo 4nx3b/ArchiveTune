@@ -272,7 +272,7 @@ fun WavySliderExpressive(
             val minThumbCenter = (currentWidth / 2f).coerceAtMost(size.width / 2f)
             val maxThumbCenter = (size.width - currentWidth / 2f).coerceAtLeast(minThumbCenter)
             val thumbX = rawThumbX.coerceIn(minThumbCenter, maxThumbCenter)
-            
+
             drawRoundRect(
                 color = thumbColor,
                 topLeft = Offset(

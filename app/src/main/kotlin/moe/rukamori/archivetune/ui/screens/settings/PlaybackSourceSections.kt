@@ -48,11 +48,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
@@ -63,6 +65,7 @@ import moe.rukamori.archivetune.constants.AppleMusicQualityKey
 import moe.rukamori.archivetune.constants.DeezerAudioQuality
 import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
+import moe.rukamori.archivetune.constants.AmazonEnabledKey
 import moe.rukamori.archivetune.constants.AppleMusicSourceEnabledKey
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
@@ -114,6 +117,7 @@ private fun AudioSourceType.displayName(context: android.content.Context): Strin
         AudioSourceType.QOBUZ_BACKUP -> context.getString(R.string.source_qobuz_backup)
         AudioSourceType.DEEZER -> context.getString(R.string.source_deezer)
         AudioSourceType.APPLE -> context.getString(R.string.source_apple_music)
+        AudioSourceType.AMAZON -> context.getString(R.string.source_amazon)
         AudioSourceType.JIOSAAVN -> context.getString(R.string.source_jiosaavn)
         AudioSourceType.YOUTUBE -> context.getString(R.string.source_youtube)
     }
@@ -125,6 +129,9 @@ private fun AudioSourceType.iconRes(): Int =
         AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
         AudioSourceType.APPLE -> R.drawable.ic_music
+        // No dedicated Amazon Music mark ships in drawable/ yet; ic_music is the same
+        // stand-in APPLE uses above for the same reason.
+        AudioSourceType.AMAZON -> R.drawable.ic_music
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
@@ -142,6 +149,7 @@ internal fun PlaybackSourceSections(
     val (qobuzEnabled, onQobuzEnabledChangeRaw) = rememberPreference(QobuzEnabledKey, false)
     val (deezerEnabled, onDeezerEnabledChangeRaw) = rememberPreference(DeezerEnabledKey, false)
     val (appleMusicEnabled, onAppleMusicEnabledChangeRaw) = rememberPreference(AppleMusicSourceEnabledKey, true)
+    val (amazonEnabled, onAmazonEnabledChangeRaw) = rememberPreference(AmazonEnabledKey, false)
     val (deezerQuality, onDeezerQualityChange) =
         rememberEnumPreference(DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
     val (jioSaavnEnabled, onJioSaavnEnabledChange) = rememberPreference(JioSaavnEnabledKey, false)
@@ -170,6 +178,14 @@ internal fun PlaybackSourceSections(
     }
     val onAppleMusicEnabledChange: (Boolean) -> Unit = { enabled ->
         onAppleMusicEnabledChangeRaw(enabled)
+        if (enabled && PoolAccountManager.isEnabled) {
+            scope.launch(Dispatchers.IO) {
+                runCatching { PoolAccountManager.refresh(context, force = true) }
+            }
+        }
+    }
+    val onAmazonEnabledChange: (Boolean) -> Unit = { enabled ->
+        onAmazonEnabledChangeRaw(enabled)
         if (enabled && PoolAccountManager.isEnabled) {
             scope.launch(Dispatchers.IO) {
                 runCatching { PoolAccountManager.refresh(context, force = true) }
@@ -227,6 +243,27 @@ internal fun PlaybackSourceSections(
             AudioSourceConfig.parseOrder(sourceOrderRaw.ifBlank { null })
         }
 
+    // The picker offers EVERY source, including ones the default resolution chain deliberately
+    // leaves out (Amazon — AudioSourceConfig.DEFAULT_ORDER does not list it because its stream
+    // resolver returns null until a decryption step exists, so a default-listing would put a
+    // guaranteed miss in front of every listener's chain). Sources missing from the stored order
+    // are offered just before the YouTube fallback: a fresh install shows DEFAULT_ORDER plus the
+    // resolver-less sources at the bottom, and a user who drags Amazon up opts into the miss-and-
+    // fall-through behavior explicitly (isEnabled(AMAZON) still gates the real resolution chain,
+    // so an untouched toggle keeps Amazon out of playback entirely).
+    val dialogOrder =
+        remember(sourceOrder) {
+            val missing = AudioSourceType.entries.filterNot { it in sourceOrder }
+            if (missing.isEmpty()) {
+                sourceOrder
+            } else {
+                val base = sourceOrder.toMutableList()
+                val youtubeIndex = base.indexOf(AudioSourceType.YOUTUBE)
+                if (youtubeIndex >= 0) base.addAll(youtubeIndex, missing) else base.addAll(missing)
+                base
+            }
+        }
+
     fun isEnabled(source: AudioSourceType): Boolean =
         when (source) {
             AudioSourceType.TIDAL -> tidalEnabled
@@ -234,6 +271,7 @@ internal fun PlaybackSourceSections(
             AudioSourceType.QOBUZ_BACKUP -> qobuzBackupEnabled
             AudioSourceType.DEEZER -> deezerEnabled
             AudioSourceType.APPLE -> appleMusicEnabled
+            AudioSourceType.AMAZON -> amazonEnabled
             AudioSourceType.JIOSAAVN -> jioSaavnEnabled
             AudioSourceType.YOUTUBE -> true
         }
@@ -242,7 +280,7 @@ internal fun PlaybackSourceSections(
 
     if (showOrderDialog) {
         SourceOrderDialog(
-            initialOrder = sourceOrder,
+            initialOrder = dialogOrder,
             isEnabled = ::isEnabled,
             onDismiss = { showOrderDialog = false },
             onConfirm = { newOrder ->
@@ -295,6 +333,7 @@ internal fun PlaybackSourceSections(
                         SearchProvider.YOUTUBE -> stringResource(R.string.search_source_youtube)
                         SearchProvider.SPOTIFY -> stringResource(R.string.search_source_spotify)
                         SearchProvider.APPLE_MUSIC -> stringResource(R.string.search_source_apple_music)
+                        SearchProvider.AMAZON -> stringResource(R.string.source_amazon)
                     }
                 },
                 onValueSelected = onDefaultSearchSourceChange,
@@ -675,6 +714,37 @@ internal fun PlaybackSourceSections(
         }
     }
 
+    // Amazon Music: account + pool plumbing exists, but no stream resolver — Amazon serves
+    // CENC-protected fragmented MP4 and this fork ships no decryption step (see AmazonEnabledKey
+    // in PreferenceKeys.kt). The toggle only opts into the source being orderable/checked; the
+    // Integration screen carries the sign-in and the full "this can't play yet" notice.
+    PreferenceGroup(title = stringResource(R.string.source_amazon)) {
+        item {
+            SwitchPreference(
+                modifier = positions.modifierFor("amazon_enable"),
+                title = { Text(stringResource(R.string.amazon_enable)) },
+                description = stringResource(R.string.amazon_enable_description),
+                icon = { Icon(painterResource(R.drawable.ic_music), null) },
+                checked = amazonEnabled,
+                onCheckedChange = onAmazonEnabledChange,
+            )
+        }
+
+        item {
+            PreferenceEntry(
+                modifier = positions.modifierFor("amazon_manage_account"),
+                title = { Text(stringResource(R.string.source_amazon)) },
+                description = stringResource(R.string.amazon_login_description),
+                icon = { Icon(painterResource(R.drawable.integration), null) },
+                onClick = { navController.navigate("settings/amazon") },
+            )
+        }
+
+        item {
+            SourceCheckRow(source = AudioSourceType.AMAZON)
+        }
+    }
+
     PreferenceGroup(title = stringResource(R.string.jiosaavn_specific)) {
         item {
             SwitchPreference(
@@ -721,12 +791,42 @@ private fun SourceCheckRow(source: AudioSourceType) {
     var checking by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<SourceCheckResult?>(null) }
 
+    // The last verdict per source lives in the service's StateFlow, so the
+    // inline status survives navigation and recomposition instead of being a
+    // one-shot dialog the user can never see again.
+    val cachedResults by SourceCheckService.results.collectAsStateWithLifecycle()
+    val cached = cachedResults[source]
+
     PreferenceEntry(
         title = { Text(stringResource(R.string.check_source)) },
-        description = stringResource(R.string.check_source_description),
-        icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+        description =
+            if (cached == null) {
+                stringResource(R.string.check_source_description)
+            } else {
+                buildString {
+                    append(sourceStatusLabel(cached.status))
+                    append(" · ")
+                    append(lastCheckedLabel(cached.checkedAtMs))
+                }
+            },
+        icon = {
+            Icon(
+                painterResource(R.drawable.graphic_eq),
+                null,
+                tint = sourceStatusColor(cached?.status),
+            )
+        },
         trailingContent = if (checking) {
             { CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp) }
+        } else if (cached != null) {
+            {
+                Text(
+                    text = sourceStatusLabel(cached.status),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = sourceStatusColor(cached.status),
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
         } else {
             null
         },
@@ -771,6 +871,36 @@ private fun SourceCheckRow(source: AudioSourceType) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun sourceStatusLabel(status: SourceCheckStatus): String =
+    when (status) {
+        SourceCheckStatus.READY -> stringResource(R.string.check_source_status_ready)
+        SourceCheckStatus.DEGRADED -> stringResource(R.string.check_source_status_degraded)
+        SourceCheckStatus.NOT_CONFIGURED -> stringResource(R.string.check_source_status_not_configured)
+        SourceCheckStatus.UNSUPPORTED -> stringResource(R.string.check_source_status_unsupported)
+        SourceCheckStatus.UNREACHABLE -> stringResource(R.string.check_source_status_unreachable)
+    }
+
+@Composable
+private fun sourceStatusColor(status: SourceCheckStatus?): Color =
+    when (status) {
+        null -> MaterialTheme.colorScheme.onSurfaceVariant
+        SourceCheckStatus.READY -> MaterialTheme.colorScheme.primary
+        SourceCheckStatus.DEGRADED -> MaterialTheme.colorScheme.tertiary
+        SourceCheckStatus.NOT_CONFIGURED -> MaterialTheme.colorScheme.onSurfaceVariant
+        SourceCheckStatus.UNSUPPORTED -> MaterialTheme.colorScheme.onSurfaceVariant
+        SourceCheckStatus.UNREACHABLE -> MaterialTheme.colorScheme.error
+    }
+
+private fun lastCheckedLabel(checkedAtMs: Long): String {
+    val minutes = (System.currentTimeMillis() - checkedAtMs) / 60_000L
+    return when {
+        minutes < 1 -> "just now"
+        minutes < 60 -> "${minutes}m ago"
+        else -> "${minutes / 60}h ago"
     }
 }
 

@@ -257,6 +257,37 @@ fun OnlineSearchScreen(
                 }
             }
 
+            if (viewState.amazonItems.isNotEmpty()) {
+                item(
+                    key = "amazon_results_header",
+                    contentType = "section_header",
+                ) {
+                    SearchSectionHeader(
+                        title = stringResource(R.string.source_amazon),
+                        pureBlack = pureBlack,
+                        modifier = Modifier.animateItem(),
+                    )
+                }
+
+                itemsIndexed(
+                    items = viewState.amazonItems,
+                    key = { _, item -> "amazon_${item.key}" },
+                    contentType = { _, _ -> "amazon_result" },
+                ) { _, item ->
+                    AmazonSearchItemRow(
+                        item = item,
+                        modifier =
+                            Modifier.combinedClickable(
+                                onClick = {
+                                    onSearch(item.appleMusicQueryText())
+                                    onDismiss()
+                                },
+                                onLongClick = {},
+                            ).animateItem(),
+                    )
+                }
+            }
+
             if (viewState.items.isNotEmpty()) {
                 item(
                     key = "top_results_header",

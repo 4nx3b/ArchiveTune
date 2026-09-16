@@ -69,6 +69,7 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -233,7 +234,10 @@ fun Modifier.liquidGlass(
             backdrop = backdrop,
             effects = {
                 val l = 0f
-                vibrancy()
+                // SpatialFlow-style vividness: 1.7x saturation bleed instead of
+                // the stock 1.5x vibrancy, so the background colours move through
+                // the glass more visibly as the content scrolls behind it.
+                colorControls(saturation = 1.7f)
                 blur(
                     if (l > 0f) {
                         lerp(blurRadius.toPx() * 2f, blurRadius.toPx() * 4f, l)
@@ -241,7 +245,14 @@ fun Modifier.liquidGlass(
                         blurRadius.toPx()
                     },
                 )
-                lens(24f.dp.toPx(), size.minDimension / 4f, false)
+                // More liquid: taller refraction band, ~25% stronger edge bend
+                // and the depth uniform enabled (same shader, no extra cost).
+                lens(
+                    refractionHeight = 28f.dp.toPx(),
+                    refractionAmount = size.minDimension / 3.2f,
+                    depthEffect = true,
+                    chromaticAberration = false,
+                )
             },
             onDrawBackdrop = { drawBackdrop ->
                 drawBackdrop()

@@ -95,7 +95,11 @@ import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
+import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
+import moe.rukamori.archivetune.constants.SpotifyCanvasKey
+import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
@@ -127,6 +131,8 @@ import moe.rukamori.archivetune.ui.player.rememberDeviceMusicVolumeController
 import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
+import moe.rukamori.archivetune.ui.player.fetchCanvasArtworkForPlayback
+import moe.rukamori.archivetune.ui.player.hasAnyCanvasSource
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
 import moe.rukamori.archivetune.utils.isLocalMediaId
@@ -150,6 +156,11 @@ import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+
+private data class CanvasSourceOption(
+    val label: String,
+    val artwork: CanvasArtwork,
+)
 
 @Composable
 fun PlayerMenu(
@@ -197,7 +208,10 @@ fun PlayerMenu(
     val (artistSeparators) = rememberPreference(ArtistSeparatorsKey, defaultValue = ",;/&")
     val (externalDownloaderEnabled) = rememberPreference(ExternalDownloaderEnabledKey, defaultValue = false)
     val (externalDownloaderPackage) = rememberPreference(ExternalDownloaderPackageKey, defaultValue = "")
-    val (archiveTuneCanvasEnabled) = rememberPreference(ArchiveTuneCanvasKey, defaultValue = false)
+    val (archiveTuneCanvasEnabled) = rememberPreference(ArchiveTuneCanvasKey, defaultValue = true)
+    val (spotifyCanvasEnabled) = rememberPreference(SpotifyCanvasKey, defaultValue = false)
+    val (spotifySpDc) = rememberPreference(SpotifySpDcKey, defaultValue = "")
+    val spotifyCanvasAvailable = spotifyCanvasEnabled || spotifySpDc.isNotBlank()
     val playerDesignStyle by rememberEnumPreference(PlayerDesignStyleKey, defaultValue = PlayerDesignStyle.V4)
     val lowDataModeActive = rememberLowDataModeActive()
     val isCanvasArtworkRefetching by playerConnection.isCanvasArtworkRefetching.collectAsStateWithLifecycle()
@@ -502,20 +516,161 @@ fun PlayerMenu(
         )
     }
 
-    var showSaveCanvasDialog by rememberSaveable { mutableStateOf(false) }
+    // "Canvas" source picker: choose which provider's canvas plays for the
+    // current song. The menu item only shows up when at least one integrated
+    // provider can serve it - instant playback-cache check first, then a
+    // provider probe bounded by a 4s timeout so a slow network can never hold
+    // the menu hostage.
+    var showCanvasSourceDialog by rememberSaveable { mutableStateOf(false) }
+    var canvasSources by remember(mediaMetadata.id) { mutableStateOf<List<CanvasSourceOption>>(emptyList()) }
+    var canvasSourcesLoading by remember(mediaMetadata.id) { mutableStateOf(false) }
+    var canvasSaving by remember(mediaMetadata.id) { mutableStateOf(false) }
+    var canvasAvailable by remember(mediaMetadata.id) {
+        mutableStateOf(CanvasArtworkPlaybackCache.hasEntry(mediaMetadata.id))
+    }
+    LaunchedEffect(mediaMetadata.id, archiveTuneCanvasEnabled, spotifyCanvasAvailable, isCanvasArtworkRefetching) {
+        // Re-check the instant cache state first (covers post-refetch updates).
+        if (CanvasArtworkPlaybackCache.hasEntry(mediaMetadata.id)) {
+            canvasAvailable = true
+            return@LaunchedEffect
+        }
+        if (isLocalMedia || (!archiveTuneCanvasEnabled && !spotifyCanvasAvailable)) {
+            canvasAvailable = false
+            return@LaunchedEffect
+        }
+        val available =
+            kotlinx.coroutines.withTimeoutOrNull(4_000L) {
+                withContext(Dispatchers.IO) {
+                    hasAnyCanvasSource(
+                        mediaId = mediaMetadata.id,
+                        songTitleRaw = mediaMetadata.title,
+                        artistNameRaw = mediaMetadata.artists.firstOrNull()?.name.orEmpty(),
+                        storefront = java.util.Locale.getDefault().country.lowercase().ifBlank { "us" },
+                        albumTitle = mediaMetadata.album?.title,
+                        includeAppleMusic = archiveTuneCanvasEnabled,
+                        includeSpotify = spotifyCanvasAvailable,
+                    )
+                }
+            } ?: false
+        canvasAvailable = available
+    }
 
-    if (showSaveCanvasDialog) {
-        SaveCanvasDialog(
-            mediaId = mediaMetadata.id,
-            songTitle = mediaMetadata.title,
-            artistName = mediaMetadata.artists.joinToString(separator = ", ") { it.name },
-            albumTitle = mediaMetadata.album?.title,
-            storefront = remember {
-                val country = java.util.Locale.getDefault().country
-                if (country.length == 2) country.lowercase(java.util.Locale.ROOT) else "us"
-            },
-            onDismiss = { showSaveCanvasDialog = false },
-        )
+    fun loadCanvasSources() {
+        if (canvasSourcesLoading || canvasSaving) return
+        canvasSourcesLoading = true
+        coroutineScope.launch {
+            val sources = withContext(Dispatchers.IO) {
+                val byUrl = linkedMapOf<String, CanvasSourceOption>()
+                val title = mediaMetadata.title
+                val artist = mediaMetadata.artists.firstOrNull()?.name.orEmpty()
+                val storefront = java.util.Locale.getDefault().country.lowercase().ifBlank { "us" }
+                fetchCanvasArtworkForPlayback(
+                    songTitleRaw = title,
+                    artistNameRaw = artist,
+                    storefront = storefront,
+                    requireVertical = playerDesignStyle == PlayerDesignStyle.V7,
+                    forceRefresh = true,
+                    strictIdentity = !isLocalMedia,
+                    albumTitle = mediaMetadata.album?.title,
+                )?.let { artwork ->
+                    artwork.preferredAnimationUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                        byUrl[url] = CanvasSourceOption("ArchiveTune / Apple Music", artwork)
+                    }
+                }
+                if (spotifyCanvasAvailable && !isLocalMedia) {
+                    runCatching {
+                        SpotifyCanvasProvider.getByVideoId(
+                            videoId = mediaMetadata.id,
+                            songTitle = title,
+                            artistName = artist,
+                        )
+                    }
+                        .getOrNull()
+                        ?.let { artwork ->
+                            artwork.preferredAnimationUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                                byUrl.putIfAbsent(url, CanvasSourceOption("Spotify", artwork))
+                            }
+                        }
+                }
+                byUrl.values.toList()
+            }
+            canvasSources = sources
+            canvasSourcesLoading = false
+            if (sources.isEmpty()) {
+                Toast.makeText(context, context.getString(R.string.canvas_unavailable), Toast.LENGTH_SHORT).show()
+            } else {
+                showCanvasSourceDialog = true
+            }
+        }
+    }
+
+    fun saveCanvasSource(source: CanvasSourceOption) {
+        showCanvasSourceDialog = false
+        canvasSaving = true
+        coroutineScope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                CanvasArtworkPlaybackCache.save(mediaMetadata.id, source.artwork)
+            }
+            canvasSaving = false
+            Toast.makeText(
+                context,
+                context.getString(if (saved) R.string.canvas_saved else R.string.canvas_save_failed),
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    // Row click: make the chosen source's canvas the one that plays for this
+    // song (streams immediately, caches in the background) without forcing a
+    // full synchronous download.
+    fun playCanvasSource(source: CanvasSourceOption) {
+        showCanvasSourceDialog = false
+        coroutineScope.launch {
+            withContext(Dispatchers.IO) {
+                CanvasArtworkPlaybackCache.put(mediaMetadata.id, source.artwork)
+            }
+            Toast.makeText(
+                context,
+                context.getString(R.string.canvas_source_selected, source.label),
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    if (showCanvasSourceDialog) {
+        ListDialog(onDismiss = { showCanvasSourceDialog = false }) {
+            item {
+                ListItem(
+                    headlineContent = { Text(text = stringResource(R.string.canvas_source_title)) },
+                    leadingContent = {
+                        Icon(painter = painterResource(R.drawable.image), contentDescription = null)
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                )
+            }
+            items(canvasSources, key = { it.label }) { source ->
+                ListItem(
+                    headlineContent = { Text(text = source.label) },
+                    leadingContent = {
+                        Icon(painter = painterResource(R.drawable.image), contentDescription = null)
+                    },
+                    trailingContent = {
+                        if (canvasSaving) {
+                            CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
+                        } else {
+                            IconButton(onClick = { saveCanvasSource(source) }) {
+                                Icon(
+                                    painter = painterResource(R.drawable.download),
+                                    contentDescription = stringResource(R.string.save_canvas),
+                                )
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().clickable { playCanvasSource(source) },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                )
+            }
+        }
     }
 
     val nowPlayingTitle =
@@ -791,27 +946,33 @@ fun PlayerMenu(
             MenuSectionDivider()
         }
 
+        // "Canvas": pick which provider's canvas plays for the current song -
+        // shown whenever any integrated provider can serve it (see the
+        // availability probe above).
         if (
             !isLocalMedia &&
             isQueueTrigger != true &&
-            archiveTuneCanvasEnabled &&
             !lowDataModeActive &&
             playerDesignStyle != PlayerDesignStyle.V5 &&
-            hasCanvasArtwork
+            canvasAvailable
         ) {
             item {
                 MenuSurfaceSection {
                     ListItem(
-                        headlineContent = { Text(text = stringResource(R.string.save_canvas)) },
+                        headlineContent = { Text(text = stringResource(R.string.canvas_menu_title)) },
                         leadingContent = {
-                            Icon(
-                                painter = painterResource(R.drawable.motion_photos_on),
-                                contentDescription = null,
-                            )
+                            if (canvasSourcesLoading || canvasSaving) {
+                                CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
+                            } else {
+                                Icon(
+                                    painter = painterResource(R.drawable.motion_photos_on),
+                                    contentDescription = null,
+                                )
+                            }
                         },
                         modifier =
                             Modifier.clickable {
-                                showSaveCanvasDialog = true
+                                loadCanvasSources()
                             },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
@@ -1683,6 +1844,7 @@ private fun AudioSourceType.sourceLabelRes(): Int =
         AudioSourceType.QOBUZ_BACKUP -> R.string.source_qobuz_backup
         AudioSourceType.DEEZER -> R.string.source_deezer
         AudioSourceType.APPLE -> R.string.source_apple_music
+        AudioSourceType.AMAZON -> R.string.source_amazon
         AudioSourceType.JIOSAAVN -> R.string.source_jiosaavn
         AudioSourceType.YOUTUBE -> R.string.source_youtube
     }
@@ -1694,6 +1856,9 @@ private fun AudioSourceType.sourceIconRes(): Int =
         AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
         AudioSourceType.APPLE -> R.drawable.provider_apple
+        // No dedicated Amazon Music mark ships in drawable/ yet; ic_music is the same stand-in
+        // PlaybackSourceSections uses for APPLE there.
+        AudioSourceType.AMAZON -> R.drawable.ic_music
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
@@ -1906,6 +2071,11 @@ private suspend fun searchOneSource(
                         )
                     }
             }
+
+            // Amazon serves CENC-protected streams this fork ships no decryption step for (see
+            // AmazonEnabledKey in PreferenceKeys.kt), so there is no provider to search here —
+            // this fork's source-search dialog simply never gets Amazon results.
+            AudioSourceType.AMAZON -> emptyList()
         }
     }
 

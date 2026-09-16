@@ -37,6 +37,7 @@ import moe.rukamori.archivetune.equalizer.UpdateEqualizerUseCase
 import moe.rukamori.archivetune.equalizer.equalizerToneIndices
 import moe.rukamori.archivetune.equalizer.resampleLevels
 import moe.rukamori.archivetune.playback.EqProfile
+import moe.rukamori.archivetune.playback.EqReverbPreset
 import javax.inject.Inject
 
 sealed interface EqualizerScreenState {
@@ -61,6 +62,7 @@ data class EqualizerUiModel(
     val presets: EqualizerPresetUiModels,
     val tones: EqualizerToneUiModels,
     val bands: EqualizerBandUiModels,
+    val fixedBandsMb: List<Int>,
     val minimumBandLevelMb: Int,
     val maximumBandLevelMb: Int,
     val outputGainEnabled: Boolean,
@@ -70,6 +72,11 @@ data class EqualizerUiModel(
     val virtualizerEnabled: Boolean,
     val virtualizerStrength: Int,
     val autoHeadroomEnabled: Boolean,
+    val reverbEnabled: Boolean,
+    val reverbPreset: EqReverbPreset,
+    val balance: Float,
+    val eightDEnabled: Boolean,
+    val eightDSpeedHz: Float,
     val profiles: EqualizerProfileUiModels,
     val saveProfileDialog: SaveEqualizerProfileUiModel,
     val manageProfilesVisible: Boolean,
@@ -159,10 +166,13 @@ sealed interface EqualizerEffect {
 
 private data class EqualizerDraft(
     val bandLevelsMb: List<Int>? = null,
+    val fixedBandLevelsMb: List<Int>? = null,
     val toneLevelsMb: Map<EqualizerTone, Int> = emptyMap(),
     val outputGainMb: Int? = null,
     val bassBoostStrength: Int? = null,
     val virtualizerStrength: Int? = null,
+    val balance: Float? = null,
+    val eightDSpeedHz: Float? = null,
 )
 
 private sealed interface EqualizerConfigurationResult {
@@ -209,6 +219,8 @@ class EqualizerViewModel
         private var outputGainCommitJob: Job? = null
         private var bassBoostCommitJob: Job? = null
         private var virtualizerCommitJob: Job? = null
+        private var balanceCommitJob: Job? = null
+        private var eightDSpeedCommitJob: Job? = null
 
         val state: StateFlow<EqualizerScreenState> =
             combine(configurationResult, draft, saveDialog, manageProfilesVisible) { result, currentDraft, profileDialog, profilesVisible ->
@@ -287,6 +299,32 @@ class EqualizerViewModel
             }
         }
 
+        fun updateFixedBandDraft(
+            index: Int,
+            valueMb: Int,
+        ) {
+            val config = configuration ?: return
+            draft.update { current ->
+                val levels =
+                    resampleLevels(
+                        levelsMb = current.fixedBandLevelsMb ?: config.settings.bandLevelsMb,
+                        targetCount = FIXED_UI_BAND_COUNT,
+                    ).toMutableList()
+                if (index in levels.indices) levels[index] = valueMb
+                current.copy(fixedBandLevelsMb = levels)
+            }
+        }
+
+        fun commitFixedBands() {
+            val capabilities = configuration?.capabilities ?: return
+            val levels = draft.value.fixedBandLevelsMb ?: return
+            bandCommitJob?.cancel()
+            bandCommitJob =
+                launchUpdate {
+                    updateEqualizer.updateBandLevels(resampleLevels(levels, capabilities.bandCount))
+                }
+        }
+
         fun commitBands() {
             val levels = draft.value.bandLevelsMb ?: return
             bandCommitJob?.cancel()
@@ -330,6 +368,28 @@ class EqualizerViewModel
         }
 
         fun setAutoHeadroomEnabled(enabled: Boolean) = launchUpdate { updateEqualizer.setAutoHeadroomEnabled(enabled) }
+
+        fun setReverbEnabled(enabled: Boolean) = launchUpdate { updateEqualizer.setReverbEnabled(enabled) }
+
+        fun setReverbPreset(preset: EqReverbPreset) = launchUpdate { updateEqualizer.setReverbPreset(preset) }
+
+        fun set8DEnabled(enabled: Boolean) = launchUpdate { updateEqualizer.set8DEnabled(enabled) }
+
+        fun updateBalanceDraft(value: Float) = draft.update { it.copy(balance = value.coerceIn(-1f, 1f)) }
+
+        fun commitBalance() {
+            val value = draft.value.balance ?: return
+            balanceCommitJob?.cancel()
+            balanceCommitJob = launchUpdate { updateEqualizer.setBalance(value) }
+        }
+
+        fun update8DSpeedDraft(valueHz: Float) = draft.update { it.copy(eightDSpeedHz = valueHz.coerceIn(0.03f, 0.25f)) }
+
+        fun commit8DSpeed() {
+            val value = draft.value.eightDSpeedHz ?: return
+            eightDSpeedCommitJob?.cancel()
+            eightDSpeedCommitJob = launchUpdate { updateEqualizer.set8DSpeed(value) }
+        }
 
         fun showSaveProfileDialog() {
             saveDialog.value = SaveEqualizerProfileUiModel(visible = true)
@@ -422,10 +482,15 @@ private fun EqualizerConfiguration.withDraft(draft: EqualizerDraft): EqualizerCo
     copy(
         settings =
             settings.copy(
-                bandLevelsMb = draft.bandLevelsMb ?: settings.bandLevelsMb,
+                bandLevelsMb =
+                    draft.fixedBandLevelsMb?.let { fixed ->
+                        resampleLevels(fixed, settings.bandLevelsMb.size.coerceAtLeast(1))
+                    } ?: draft.bandLevelsMb ?: settings.bandLevelsMb,
                 outputGainMb = draft.outputGainMb ?: settings.outputGainMb,
                 bassBoostStrength = draft.bassBoostStrength ?: settings.bassBoostStrength,
                 virtualizerStrength = draft.virtualizerStrength ?: settings.virtualizerStrength,
+                balance = draft.balance ?: settings.balance,
+                eightDSpeedHz = draft.eightDSpeedHz ?: settings.eightDSpeedHz,
             ),
     )
 
@@ -461,6 +526,7 @@ private fun EqualizerConfiguration.toUiModel(
                     EqualizerBandUiModel(index, capabilities.centerFreqHz.getOrElse(index) { 0 }, bandLevels[index])
                 },
             ),
+        fixedBandsMb = resampleLevels(bandLevels, FIXED_UI_BAND_COUNT),
         minimumBandLevelMb = capabilities.minBandLevelMb,
         maximumBandLevelMb = maxOf(capabilities.maxBandLevelMb, capabilities.minBandLevelMb + 1),
         outputGainEnabled = settings.outputGainEnabled,
@@ -470,6 +536,11 @@ private fun EqualizerConfiguration.toUiModel(
         virtualizerEnabled = settings.virtualizerEnabled,
         virtualizerStrength = settings.virtualizerStrength,
         autoHeadroomEnabled = settings.autoHeadroomEnabled,
+        reverbEnabled = settings.reverbEnabled,
+        reverbPreset = EqReverbPreset.fromStorage(settings.reverbPreset),
+        balance = settings.balance,
+        eightDEnabled = settings.eightDEnabled,
+        eightDSpeedHz = settings.eightDSpeedHz,
         profiles =
             EqualizerProfileUiModels(
                 profiles.map { profile ->
@@ -480,3 +551,6 @@ private fun EqualizerConfiguration.toUiModel(
         manageProfilesVisible = manageProfilesVisible,
     )
 }
+
+/** Number of bands the redesigned (SpatialFlow-style) effects screen shows. */
+private const val FIXED_UI_BAND_COUNT = 5

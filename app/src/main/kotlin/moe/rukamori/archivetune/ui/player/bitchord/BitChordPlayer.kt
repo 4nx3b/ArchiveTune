@@ -32,6 +32,7 @@ import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -73,6 +74,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.media3.ui.AspectRatioFrameLayout
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
 import androidx.compose.runtime.rememberUpdatedState
@@ -138,22 +140,24 @@ import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
-import moe.rukamori.archivetune.ui.menu.LyricsMenu
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.LocalAnimationsDisabled
+import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
+import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
 import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.LyricsModeKey
+import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
+import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
+import moe.rukamori.archivetune.ui.player.StyledLyricsBackground
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.player.LosslessOrStats
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.navigation.NavController
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -331,7 +335,16 @@ fun BitChordPlayerContent(
     isLoading: Boolean,
     canSkipPrevious: Boolean,
     canSkipNext: Boolean,
-    position: Long,
+    /**
+     * Read as late as possible, never in this composable's own body.
+     *
+     * Taking the position as a plain `Long` meant this whole scope was invalidated by every tick of
+     * the ~100ms poll, for the sake of three leaves that actually use it. Each of those now reads
+     * through the provider inside its own composable, so a tick invalidates the scrubber, the lyric
+     * line and the previous button rather than the entire player. The same shape AppleMusicPlayer
+     * already uses, fed by the same remembered lambda in Player.kt.
+     */
+    positionProvider: () -> Long,
     duration: Long,
     playerConnection: PlayerConnection,
     navController: NavController,
@@ -363,7 +376,6 @@ fun BitChordPlayerContent(
     }
     val lyrics = parsedLyrics?.lines
     val lyricsSynced = parsedLyrics?.isSynced ?: true
-    val lyricsProviderName = lyricsEntity?.providerName.orEmpty()
     val lyricsUnavailable = lyricsEntity?.lyrics == LyricsEntityNotFound
 
     val lyricsMenuViewModel: LyricsMenuViewModel = hiltViewModel()
@@ -439,8 +451,6 @@ fun BitChordPlayerContent(
         mutableIntStateOf(0)
     }
 
-    val lyricsPosition = (position + lyricsSyncOffset.toLong()).coerceAtLeast(0L)
-
     BackHandler(enabled = lyricsOpen || queueOpen) {
         if (queueOpen) {
             queueOpen = false
@@ -496,17 +506,27 @@ fun BitChordPlayerContent(
 
     var pendingSeek by remember { mutableStateOf<Float?>(null) }
 
-    val fraction = if (duration > 0) position.toFloat() / duration else 0f
-    val shown = when {
-        scrubbing -> scrubValue
-        pendingSeek != null -> pendingSeek!!
-        else -> fraction.coerceIn(0f, 1f)
+    // A lambda, not a value: each consumer below invokes it inside its own scope (the slider inside
+    // draw), so a position tick lands there instead of invalidating this whole composable.
+    val shownFraction: () -> Float = {
+        when {
+            scrubbing -> scrubValue
+            pendingSeek != null -> pendingSeek!!
+            duration > 0 -> (positionProvider().toFloat() / duration).coerceIn(0f, 1f)
+            else -> 0f
+        }
     }
 
-    LaunchedEffect(position, duration, pendingSeek) {
-        val target = pendingSeek ?: return@LaunchedEffect
-        if (duration > 0 && abs(position - (target * duration).toLong()) < SEEK_SETTLE_TOLERANCE_MS) {
-            pendingSeek = null
+    // Collected rather than keyed on the position: keying restarted this effect on every tick of
+    // the poll, so a coroutine was cancelled and relaunched ten times a second for as long as the
+    // player was open, to check a condition that is only ever true just after a scrub.
+    LaunchedEffect(duration, pendingSeek) {
+        if (pendingSeek == null) return@LaunchedEffect
+        snapshotFlow { positionProvider() }.collect { position ->
+            val target = pendingSeek ?: return@collect
+            if (duration > 0 && abs(position - (target * duration).toLong()) < SEEK_SETTLE_TOLERANCE_MS) {
+                pendingSeek = null
+            }
         }
     }
     LaunchedEffect(pendingSeek) {
@@ -599,6 +619,14 @@ fun BitChordPlayerContent(
 
     val meshColors = rememberArtworkColors(artUrl)
 
+    // Lyrics background style: BitChord's mesh stays the player's own look;
+    // while the lyrics panel is open a non-DEFAULT style takes over the
+    // background (same option set the shared lyrics screen honours).
+    val lyricsBackgroundStylePref by rememberEnumPreference(LyricsBackgroundStyleKey, LyricsBackgroundStyle.DEFAULT)
+    val playerBackgroundStylePref by rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.DEFAULT)
+    val resolvedLyricsBackground = lyricsBackgroundStylePref.resolveFor(playerBackgroundStylePref)
+    val lyricsUseStyledBackground = lyricsOpen && resolvedLyricsBackground != LyricsBackgroundStyle.DEFAULT
+
     val onPlayPause = {
         if (player.isPlaying) player.pause() else player.play()
     }
@@ -612,11 +640,19 @@ fun BitChordPlayerContent(
 
     Box(modifier = modifier.fillMaxSize()) {
 
-        MeshGradientBackground(
-            palette = meshColors,
-            trackKey = mediaMetadata.id,
-            reduceAnimation = reduceAnimations,
-        )
+        if (lyricsUseStyledBackground) {
+            StyledLyricsBackground(
+                style = resolvedLyricsBackground,
+                mediaMetadata = mediaMetadata,
+                gradientColors = meshColors.colors,
+            )
+        } else {
+            MeshGradientBackground(
+                palette = meshColors,
+                trackKey = mediaMetadata.id,
+                reduceAnimation = reduceAnimations,
+            )
+        }
 
         if (heroHeight > 0.dp) {
             if (heroMode && (p < 0.5f || heroVisible > 0.001f)) {
@@ -912,7 +948,7 @@ fun BitChordPlayerContent(
                         if (!cardCanvasShowing) {
                             AsyncImage(
 
-                                model = ImageRequest.Builder(LocalContext.current)
+                                model = ImageRequest.Builder(context)
                                     .data(artUrl)
                                     .size(ART_PX)
                                     .build(),
@@ -1029,12 +1065,18 @@ fun BitChordPlayerContent(
                         }
 
                     val latestScrubbing = rememberUpdatedState(scrubbing)
-                    val latestShownFraction = rememberUpdatedState(if (duration > 0) shown / duration else 0f)
                     val latestDuration = rememberUpdatedState(duration)
                     val lyricsPositionProvider = remember {
+                        // The shown fraction used to arrive as a value from an
+                        // updated state up here; evaluating it in composition
+                        // would now put the position read straight back in the
+                        // player's own body whenever the lyrics panel is open,
+                        // so it is evaluated inside the provider instead.
                         {
                             if (latestScrubbing.value) {
-                                (latestShownFraction.value * maxOf(latestDuration.value, 1L)).toLong()
+                                val shown = shownFraction()
+                                ((if (latestDuration.value > 0) shown / latestDuration.value else 0f) *
+                                    maxOf(latestDuration.value, 1L)).toLong()
                             } else {
                                 null
                             }
@@ -1116,10 +1158,11 @@ fun BitChordPlayerContent(
             ) {
                 if (!lyricsOpen) {
                     if (!lyrics.isNullOrEmpty()) {
-                        CurrentLyricLine(
+                        BitChordCurrentLyric(
                             lines = lyrics,
                             trackKey = mediaMetadata.id,
-                            positionMs = lyricsPosition,
+                            positionProvider = positionProvider,
+                            lyricsSyncOffset = lyricsSyncOffset,
                             isPlaying = isPlaying,
                             durationMs = duration,
 
@@ -1148,7 +1191,7 @@ fun BitChordPlayerContent(
                 }
             }
             ThinSlider(
-                value = shown,
+                valueProvider = shownFraction,
                 onValueChange = {
                     scrubbing = true
                     scrubValue = it
@@ -1167,21 +1210,7 @@ fun BitChordPlayerContent(
 
                     .offset(y = (-9).dp),
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        text = formatTime((shown * duration).toLong()),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White.copy(alpha = 0.55f),
-                    )
-                    Text(
-                        text = "-" + formatTime(duration - (shown * duration).toLong()),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White.copy(alpha = 0.55f),
-                    )
-                }
+                BitChordScrubTimes(shownFraction = shownFraction, duration = duration)
 
                 LosslessOrStats(
                     isLoading = isLoading,
@@ -1192,104 +1221,19 @@ fun BitChordPlayerContent(
                 )
             }
 
-            if (lyricsOpen) {
-                Spacer(Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.height(IntrinsicSize.Min),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(percent = 50))
-                            .background(Color.White.copy(alpha = 0.10f))
-                            .padding(horizontal = 18.dp, vertical = 8.dp),
-                    ) {
-                        Text(
-                            text = when {
-                                lyricsProviderName.isNotBlank() -> "Lyrics by $lyricsProviderName"
-                                lyrics == null -> "No lyrics found"
-                                else -> "Lyrics"
-                            },
-                            style = MaterialTheme.typography.labelLarge,
-                            color = Color.White.copy(alpha = 0.7f),
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-
-                            .fillMaxHeight()
-                            .aspectRatio(1f, matchHeightConstraintsFirst = true)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.10f))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) {
-                                haptics.play(Haptic.Tap)
-                                menuState.show {
-                                    LyricsMenu(
-                                        lyricsProvider = { lyricsEntity },
-                                        mediaMetadataProvider = { mediaMetadata },
-                                        lyricsSyncOffset = lyricsSyncOffset,
-                                        onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
-                                        onDismiss = menuState::dismiss,
-                                    )
-                                }
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.MoreHoriz,
-                            contentDescription = "Lyrics options",
-                            tint = Color.White.copy(alpha = 0.7f),
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-
-                            .fillMaxHeight()
-                            .aspectRatio(1f, matchHeightConstraintsFirst = true)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.10f))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) {
-                                haptics.play(Haptic.Tap)
-                                lyricsOpen = false
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = "Close lyrics",
-                            tint = Color.White.copy(alpha = 0.7f),
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                }
-                Spacer(Modifier.height(20.dp))
-            } else {
+            if (!lyricsOpen) {
 
             Spacer(Modifier.height(14.dp + controlSpread / 2))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly,
+                horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TransportGlyph(
-                    icon = Icons.Rounded.FastRewind,
-                    contentDescription = "Previous",
-                    size = 46.dp,
+                BitChordPreviousGlyph(
+                    positionProvider = positionProvider,
+                    canSkipPrevious = canSkipPrevious,
                     onClick = { playerConnection.seekToPrevious() },
-
-                    enabled = canSkipPrevious || position > BACK_RESTARTS_AFTER_MS,
-                    haptic = Haptic.SkipPrevious,
                 )
 
                 if (isLoading) {
@@ -1334,7 +1278,7 @@ fun BitChordPlayerContent(
                 )
                 Spacer(Modifier.width(10.dp))
                 ThinSlider(
-                    value = volume.value,
+                    valueProvider = { volume.value },
                     onValueChange = {
                         volumeDragging = true
 
@@ -1363,7 +1307,7 @@ fun BitChordPlayerContent(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly,
+                horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 BottomGlyph(
@@ -1612,4 +1556,88 @@ private object OverlayBack {
         if (callback !is OnBackInvokedCallback) return
         view.findOnBackInvokedDispatcher()?.unregisterOnBackInvokedCallback(callback)
     }
+}
+
+/**
+ * The elapsed/remaining pair under the scrubber.
+ *
+ * Its own composable purely so the position read is scoped here: these two labels change once a
+ * second, and reading the position for them in the player's body invalidated the entire player ten
+ * times a second instead.
+ */
+@Composable
+private fun BitChordScrubTimes(
+    shownFraction: () -> Float,
+    duration: Long,
+) {
+    val shown = shownFraction()
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = formatTime((shown * duration).toLong()),
+            style = MaterialTheme.typography.labelMedium,
+            color = Color.White.copy(alpha = 0.55f),
+        )
+        Text(
+            text = "-" + formatTime(duration - (shown * duration).toLong()),
+            style = MaterialTheme.typography.labelMedium,
+            color = Color.White.copy(alpha = 0.55f),
+        )
+    }
+}
+
+/**
+ * The back glyph, in its own composable so its position read is scoped here.
+ *
+ * A value-returning @Composable would not have done: Compose does not make those restartable, so
+ * the read would have landed in the caller and invalidated the whole player anyway.
+ */
+@Composable
+private fun BitChordPreviousGlyph(
+    positionProvider: () -> Long,
+    canSkipPrevious: Boolean,
+    onClick: () -> Unit,
+) {
+    TransportGlyph(
+        icon = Icons.Rounded.FastRewind,
+        contentDescription = "Previous",
+        size = 46.dp,
+        onClick = onClick,
+        // Lit whenever back has something to do — either a track to step to, or enough elapsed for
+        // it to restart this one.
+        enabled = canSkipPrevious || positionProvider() > BACK_RESTARTS_AFTER_MS,
+        haptic = Haptic.SkipPrevious,
+    )
+}
+
+/**
+ * The one-line lyric strip, wrapped so the position read is scoped here rather than in the player.
+ *
+ * The nudge by the sync offset happens inside for the same reason: computing it in the caller would
+ * have put the read straight back where it was.
+ */
+@Composable
+private fun BitChordCurrentLyric(
+    lines: List<LyricLine>,
+    trackKey: Any,
+    positionProvider: () -> Long,
+    lyricsSyncOffset: Int,
+    isPlaying: Boolean,
+    durationMs: Long,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    synced: Boolean = true,
+) {
+    CurrentLyricLine(
+        lines = lines,
+        trackKey = trackKey,
+        positionMs = (positionProvider() + lyricsSyncOffset.toLong()).coerceAtLeast(0L),
+        isPlaying = isPlaying,
+        durationMs = durationMs,
+        onClick = onClick,
+        modifier = modifier,
+        synced = synced,
+    )
 }

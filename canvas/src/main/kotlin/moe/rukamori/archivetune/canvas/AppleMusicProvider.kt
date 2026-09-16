@@ -129,6 +129,15 @@ object AppleMusicProvider {
         }
     }
 
+    /**
+     * The best available developer JWT: the user-pasted token when present,
+     * otherwise the auto-scraped web-player token (refreshed when stale).
+     * Lets the audio-provider search path work without a manually pasted
+     * developer token — the popup search used to see null and silently return
+     * no results.
+     */
+    suspend fun currentDevToken(): String? = ensureTokenFresh()?.trim()?.takeIf { it.isNotBlank() }
+
     suspend fun refreshToken(): String? =
         tokenRefreshMutex.withLock {
             appleMusicTokenLastRefreshAtMs = System.currentTimeMillis()
