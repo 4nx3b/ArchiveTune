@@ -1,3 +1,115 @@
+# ArchiveTune 16.0 — Changelog
+
+The sources update: podcasts join the app, Apple Music and Amazon Music become
+full members of the source chain, Tidal and the community account pools arrive,
+the equalizer grows into a complete Audio Effects console, Home learns to be
+Spotify, and the SpatialFlow player finally collapses as smoothly as the
+original app.
+
+## Podcasts
+
+- **Podcasts, ported from upstream**: search a show and it appears as its own
+  card in the results; shows open a dedicated podcast page with episode lists,
+  playback and pagination; the Home page's Podcasts chip is back (it was
+  hidden) and home sections render shows and episodes; episodes play as
+  normal queue entries with an "N episodes" queue header
+- Podcast episodes are first-class citizens everywhere: square thumbnails,
+  media-type metadata, no lyrics/scrobble/Discord-presence noise, excluded
+  from mixes, quick picks, stats and the auto-radio; blocked-artist and AI
+  content filters cover shows and episodes
+
+## Sources & Accounts
+
+- **Apple Music as a full music source**: web sign-in with auto-fetched
+  tokens (the login no longer needs a pasted developer token), catalog search
+  with suggestions, full-track playback with quality pickers
+  (AAC / Lossless / Hi-Res), the Apple Music canvas, and word-synced lyrics
+  from the signed-in account
+- **Amazon Music source**: account login, settings (quality HD/Ultra HD,
+  premium toggle, instances), a slot in the playback source priority, the
+  download source priority and the search-from popup, plus a working
+  anonymous catalog search client
+- **Tidal lossless source**: account or token login with instant
+  paste-verification, the Monochrome public instance list with dead-instance
+  skipping and racing, Hi-Res Lossless quality
+- **Community account pools v2**: lossless sources work without a personal
+  login — encrypted-at-rest pool cache, per-user pool API key, community
+  paste-list source, dead-account reporting, and a silent background refresh
+  on every app open (no toast, one server fetch per 10 minutes)
+- YouTube sign-in via OAuth device code; downloadable Japanese romanisation
+  language packs
+
+## Player & Audio
+
+- **The Audio Effects console**: the equalizer popup is rebuilt around two
+  pills — Equalizer (the original control set restored: basic/advanced mode,
+  tone sliders, the device's real band sliders with reset, full-range output
+  gain, automatic headroom, profiles with import/export) and Audio effects
+  (8D, reverb, bass, loudness, balance, virtualizer and — new here —
+  playback speed and pitch, moved out of the song's overflow menu, with an
+  independent pitch slider and an "Enable audio effects" master switch that
+  gates every effect)
+- **SpatialFlow-exact player transition**: one floating artwork layer morphs
+  continuously between the mini player's circle and the full player's slot
+  (scale, position, corner radius and shadow all track the sheet progress),
+  the sheet corners morph instead of popping, the crossfade hands over at the
+  halfway point, and the settle spring carries the finger's fling velocity —
+  ported from MythicalSHUB/SpatialFlow's own bottom-sheet architecture
+- **Instant YouTube stream starts**: upcoming songs are now pre-resolved
+  while the current one plays (on by default, two songs ahead), and the
+  SimpMusic resolution runs its InnerTube request and NewPipe extraction
+  concurrently — first-sound latency is the max of the two round trips, not
+  their sum
+- Fixed: the 8D/balance processor killed every playback ("The source buffer
+  is this buffer"); volume restored after a seek re-buffer; the playing
+  notification regression after the lifecycle port (the session is armed
+  explicitly again)
+
+## Home, Library & Search
+
+- **Spotify home feed** as a second Home page with the app-bar switcher and
+  its own settings
+- Library customization (hide/show the Liked/Offline/Cached/Local/Top-50
+  cards plus a Recently Liked subsection), New Releases multi-select with a
+  live count bar, voice search, UI scale, hide-music-videos, blocked artists
+  filtered from playback
+- Source check, redone: honest statuses (READY / DEGRADED / NOT_CONFIGURED /
+  UNSUPPORTED / UNREACHABLE), cached inline state, real YouTube/JioSaavn/
+  Apple/Amazon probes
+
+## Design
+
+- The tinted navigation bar now follows the scheme: a light accent pastel in
+  light mode, a deep accent-tinted dark bar in dark mode, flat (no blur), on
+  every Android version
+- Lyrics pages across every player style share the Apple Music player's 56dp
+  header thumbnail (was oversized in the other styles)
+- Android Auto settings with the home-screen glass recipe (title inside the
+  liquid-glass pill, content scrolling behind the haze band); the equalizer
+  dialog draws edge-to-edge behind the status bar with the same treatment
+- Year-in-music card exports are full screen and full HD: native pixels ship
+  untouched whenever the capture meets the 1080p floor (no more cover-fit
+  upscale smear), progressive enlargement below it
+
+## Performance & Size
+
+- YouTube stream resolution rebuilt on the SimpMusic/Echo extractors — the
+  embedded yt-dlp/Python layer is gone and the APK dropped from ~50 MB to
+  ~33 MB
+- BitChord position-tick no longer invalidates the whole player; ported
+  memory/lifecycle/GPU fixes (idle-stop restored, resolution-cache clears,
+  dead Haze layer removed)
+- Dead-code sweep: 141 unused string entries (all locales), 16 legacy
+  drawables, orphaned functions and imports removed
+
+## Android Auto
+
+- Android Auto support: the settings page, car browse roots with per-policy
+  filtering, voice search, media buttons — plus an Android Automotive
+  (AAOSP) build flavor
+
+---
+
 # ArchiveTune 15.1 — Changelog
 
 The follow-up to 15.0: a new Looper player style, the lyrics page rebuilt as a
