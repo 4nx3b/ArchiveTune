@@ -507,7 +507,6 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         serviceBindingJob = lifecycleScope.launch {
             try {
-                App.startupReadiness.awaitReady()
                 if (!isMusicServiceBound) {
                     isMusicServiceBound = bindService(
                         Intent(this@MainActivity, MusicService::class.java),
@@ -533,9 +532,7 @@ class MainActivity : ComponentActivity() {
         // Every-launch background pool refresh — silent, throttled to one
         // server fetch per 10 minutes so restarts never hammer the feed.
         lifecycleScope.launch(Dispatchers.IO) {
-            App.startupReadiness.runOptional {
-                runCatching { PoolAccountManager.refreshForLaunch(this@MainActivity) }
-            }
+            runCatching { PoolAccountManager.refreshForLaunch(this@MainActivity) }
         }
     }
 
@@ -662,9 +659,7 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
-        moe.rukamori.archivetune.utils.traceStartup("ArchiveTune.activityInjection") {
-            super.onCreate(savedInstanceState)
-        }
+        super.onCreate(savedInstanceState)
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
@@ -739,12 +734,6 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            val startupResult by App.startupReadiness.result.collectAsStateWithLifecycle()
-            LaunchedEffect(Unit) {
-                androidx.compose.runtime.withFrameNanos { }
-                androidx.compose.runtime.withFrameNanos { }
-                App.startupReadiness.onFirstFrame()
-            }
             val updateChannel by rememberEnumPreference(UpdateChannelKey, defaultValue = defaultUpdateChannel)
 
             val effectiveUpdateChannel = if (isCanaryBuild) UpdateChannel.CANARY else updateChannel
@@ -1067,20 +1056,6 @@ class MainActivity : ComponentActivity() {
                 fontPreference = fontPreference,
                 customFontUri = customFontUri,
             ) {
-                if (startupResult?.isSuccess != true) {
-                    Surface(Modifier.fillMaxSize()) {
-                        if (startupResult == null) {
-                            moe.rukamori.archivetune.ui.screens.HomeSkeletonFeed(
-                                contentPadding = WindowInsets.systemBars.asPaddingValues(),
-                            )
-                        } else {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(stringResource(R.string.error_unknown))
-                            }
-                        }
-                    }
-                    return@ArchiveTuneTheme
-                }
                 val navController = rememberNavController()
                 val homeListState = rememberLazyListState()
                 val searchListState = rememberLazyListState()
