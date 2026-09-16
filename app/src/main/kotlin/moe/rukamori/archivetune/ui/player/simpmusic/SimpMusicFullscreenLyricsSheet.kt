@@ -78,9 +78,14 @@ import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
+import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
+import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
+import moe.rukamori.archivetune.ui.player.StyledLyricsBackground
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -119,6 +124,7 @@ internal fun SimpMusicFullscreenLyricsSheet(
     bottomSheetPageState: BottomSheetPageState,
     color: Color,
     onDismiss: () -> Unit,
+    paletteColors: List<Color> = emptyList(),
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -222,6 +228,12 @@ internal fun SimpMusicFullscreenLyricsSheet(
     val midColor2 by animateColorAsState(color.copy(alpha = 0.85f), tween(1200, easing = FastOutSlowInEasing))
     val endColor by animateColorAsState(Color.Black, tween(1200, easing = FastOutSlowInEasing))
 
+    // Lyrics background style: SimpMusic's diagonal wash is the DEFAULT look;
+    // any other style takes over the sheet background while lyrics are up.
+    val lyricsBackgroundStylePref by rememberEnumPreference(LyricsBackgroundStyleKey, LyricsBackgroundStyle.DEFAULT)
+    val playerBackgroundStylePref by rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.DEFAULT)
+    val resolvedLyricsBackground = lyricsBackgroundStylePref.resolveFor(playerBackgroundStylePref)
+
     var queueOpen by rememberSaveable { mutableStateOf(false) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -280,33 +292,41 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     },
             ) {
 
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.linearGradient(
-                                colors =
-                                    listOf(
-                                        startColor,
-                                        midColor1,
-                                        midColor2,
-                                        endColor.copy(alpha = 0.9f),
-                                        endColor,
-                                    ),
-                                start =
-                                    Offset(
-                                        x = 0f,
-                                        y = 0f,
-                                    ),
-                                end =
-                                    Offset(
-                                        x = 2500f,
-                                        y = 2500f,
-                                    ),
+            if (resolvedLyricsBackground != LyricsBackgroundStyle.DEFAULT) {
+                StyledLyricsBackground(
+                    style = resolvedLyricsBackground,
+                    mediaMetadata = mediaMetadata,
+                    gradientColors = paletteColors,
+                )
+            } else {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.linearGradient(
+                                    colors =
+                                        listOf(
+                                            startColor,
+                                            midColor1,
+                                            midColor2,
+                                            endColor.copy(alpha = 0.9f),
+                                            endColor,
+                                        ),
+                                    start =
+                                        Offset(
+                                            x = 0f,
+                                            y = 0f,
+                                        ),
+                                    end =
+                                        Offset(
+                                            x = 2500f,
+                                            y = 2500f,
+                                        ),
+                                ),
                             ),
-                        ),
-            )
+                )
+            }
 
             Column(
                 modifier =

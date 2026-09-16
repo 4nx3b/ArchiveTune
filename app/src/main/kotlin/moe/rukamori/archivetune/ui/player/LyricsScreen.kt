@@ -663,10 +663,6 @@ fun LyricsScreen(
                                     onControlsInteraction = { pokeLyricsControls() },
                                     foregroundColor = foregroundColor,
                                     currentFormat = currentFormat,
-                                    lyricsProviderName = currentLyrics?.providerName.orEmpty(),
-                                    hasLyrics = currentLyrics != null,
-                                    onOverflowClick = showLyricsMenu,
-                                    onCloseClick = onBackClick,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -723,10 +719,6 @@ fun LyricsScreen(
                         onControlsInteraction = { pokeLyricsControls() },
                         foregroundColor = foregroundColor,
                         currentFormat = currentFormat,
-                        lyricsProviderName = currentLyrics?.providerName.orEmpty(),
-                        hasLyrics = currentLyrics != null,
-                        onOverflowClick = showLyricsMenu,
-                        onCloseClick = onBackClick,
                         modifier =
                             Modifier
                                 .fillMaxWidth()
@@ -1280,10 +1272,6 @@ private fun AppleMusicControls(
     onControlsInteraction: () -> Unit,
     foregroundColor: Color,
     currentFormat: FormatEntity?,
-    lyricsProviderName: String,
-    hasLyrics: Boolean,
-    onOverflowClick: () -> Unit,
-    onCloseClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val position = positionProvider()
@@ -1436,51 +1424,6 @@ private fun AppleMusicControls(
                         contentDescription = stringResource(R.string.maximum_volume),
                         tint = foregroundColor.copy(alpha = 0.66f),
                         modifier = Modifier.size(19.dp),
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.padding(top = 18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .clip(RoundedCornerShape(percent = 50))
-                                .background(foregroundColor.copy(alpha = 0.10f))
-                                .clickable(onClick = onOverflowClick)
-                                .padding(horizontal = 18.dp, vertical = 8.dp),
-                    ) {
-                        Text(
-                            text =
-                                when {
-                                    lyricsProviderName.isNotBlank() ->
-                                        stringResource(R.string.lyrics_from_source, lyricsProviderName)
-                                    hasLyrics -> stringResource(R.string.lyrics)
-                                    else -> stringResource(R.string.lyrics_not_found)
-                                },
-                            style = MaterialTheme.typography.labelLarge,
-                            color = foregroundColor.copy(alpha = 0.75f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    AppleMusicTransportButton(
-                        iconRes = R.drawable.more_horiz,
-                        contentDescription = stringResource(R.string.more_options),
-                        iconSize = 20.dp,
-                        touchSize = 40.dp,
-                        foregroundColor = foregroundColor.copy(alpha = 0.75f),
-                        onClick = onOverflowClick,
-                    )
-                    AppleMusicTransportButton(
-                        iconRes = R.drawable.close,
-                        contentDescription = stringResource(R.string.close),
-                        iconSize = 20.dp,
-                        touchSize = 40.dp,
-                        foregroundColor = foregroundColor.copy(alpha = 0.75f),
-                        onClick = onCloseClick,
                     )
                 }
             }

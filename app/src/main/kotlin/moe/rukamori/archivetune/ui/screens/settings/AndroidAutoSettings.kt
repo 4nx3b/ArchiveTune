@@ -21,6 +21,7 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -43,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -50,6 +52,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.collectLatest
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.androidauto.AndroidAutoActionSlot
 import moe.rukamori.archivetune.androidauto.AndroidAutoConnectionStatus
@@ -59,6 +62,10 @@ import moe.rukamori.archivetune.ui.component.ListPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.ui.screens.glassHeaderSource
+import moe.rukamori.archivetune.ui.screens.GlassScreenHeaderOverlay
+import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
+import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.viewmodels.AndroidAutoSettingsAction
 import moe.rukamori.archivetune.viewmodels.AndroidAutoSettingsEvent
 import moe.rukamori.archivetune.viewmodels.AndroidAutoSettingsState
@@ -76,12 +83,19 @@ fun AndroidAutoSettings(
     viewModel: AndroidAutoSettingsViewModel = hiltViewModel(),
 ) {
     val onBack = remember(navController) { { navController.navigateUp(); Unit } }
-    AndroidAutoSettingsRoute(onBack = onBack, viewModel = viewModel, scrollTo = scrollTo)
+    val onBackLongClick = remember(navController) { { navController.backToMain(); Unit } }
+    AndroidAutoSettingsRoute(
+        onBack = onBack,
+        onBackLongClick = onBackLongClick,
+        viewModel = viewModel,
+        scrollTo = scrollTo,
+    )
 }
 
 @Composable
 fun AndroidAutoSettingsRoute(
     onBack: () -> Unit,
+    onBackLongClick: () -> Unit,
     viewModel: AndroidAutoSettingsViewModel = hiltViewModel(),
     scrollTo: String? = null,
 ) {
@@ -114,7 +128,13 @@ fun AndroidAutoSettingsRoute(
             }
         }
     }
-    AndroidAutoSettingsContent(state = state, onAction = onAction, onBack = onBack, scrollTo = scrollTo)
+    AndroidAutoSettingsContent(
+        state = state,
+        onAction = onAction,
+        onBack = onBack,
+        onBackLongClick = onBackLongClick,
+        scrollTo = scrollTo,
+    )
 }
 
 @Composable
@@ -122,38 +142,87 @@ private fun AndroidAutoSettingsContent(
     state: AndroidAutoSettingsState,
     onAction: (AndroidAutoSettingsAction) -> Unit,
     onBack: () -> Unit,
+    onBackLongClick: () -> Unit,
     scrollTo: String? = null,
     modifier: Modifier = Modifier,
 ) {
+    // Home-screen recipe: the scrolling preferences are the haze/backdrop
+    // source, a progressive ScreenHeaderHaze band fades over the status bar
+    // and the header itself becomes a liquid-glass back pill + title when
+    // the liquid-glass look is enabled.
+    val glassHeader = rememberGlassScreenHeader()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     Scaffold(
         modifier = modifier.windowInsetsPadding(WindowInsets.safeDrawing),
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.android_auto)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(painterResource(R.drawable.arrow_back), stringResource(R.string.back_button_desc))
-                    }
-                },
-            )
+            if (!glassHeader.liquidGlassActive) {
+                TopAppBar(
+                    title = { Text(stringResource(R.string.android_auto)) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(painterResource(R.drawable.arrow_back), stringResource(R.string.back_button_desc))
+                        }
+                    },
+                )
+            }
         },
     ) { padding ->
-        when (state) {
-            AndroidAutoSettingsState.Loading -> Box(
-                Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
-            is AndroidAutoSettingsState.Success -> AndroidAutoSettingsBody(
-                model = state.model,
-                onAction = onAction,
-                scrollTo = scrollTo,
-                modifier = Modifier.padding(padding),
+        val contentTopPadding =
+            if (glassHeader.liquidGlassActive) {
+                systemBarsTopPadding + 72.dp
+            } else {
+                padding.calculateTopPadding()
+            }
+        val adjustedPadding =
+            PaddingValues(
+                start = padding.calculateStartPadding(LocalLayoutDirection.current),
+                top = contentTopPadding,
+                end = padding.calculateEndPadding(LocalLayoutDirection.current),
+                bottom = padding.calculateBottomPadding(),
             )
-            AndroidAutoSettingsState.Empty -> AndroidAutoSettingsFailure(onAction, Modifier.padding(padding))
-            is AndroidAutoSettingsState.Error -> AndroidAutoSettingsFailure(
-                onAction = onAction,
-                modifier = Modifier.padding(padding),
-                messageRes = state.messageRes,
+        Box(modifier = Modifier.fillMaxSize()) {
+            when (state) {
+                AndroidAutoSettingsState.Loading -> Box(
+                    Modifier
+                        .fillMaxSize()
+                        .glassHeaderSource(glassHeader)
+                        .padding(adjustedPadding),
+                    contentAlignment = Alignment.Center,
+                ) { CircularProgressIndicator() }
+                is AndroidAutoSettingsState.Success -> AndroidAutoSettingsBody(
+                    model = state.model,
+                    onAction = onAction,
+                    scrollTo = scrollTo,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .glassHeaderSource(glassHeader)
+                            .padding(adjustedPadding),
+                )
+                AndroidAutoSettingsState.Empty -> AndroidAutoSettingsFailure(
+                    onAction,
+                    Modifier
+                        .fillMaxSize()
+                        .glassHeaderSource(glassHeader)
+                        .padding(adjustedPadding),
+                )
+                is AndroidAutoSettingsState.Error -> AndroidAutoSettingsFailure(
+                    onAction = onAction,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .glassHeaderSource(glassHeader)
+                            .padding(adjustedPadding),
+                    messageRes = state.messageRes,
+                )
+            }
+
+            GlassScreenHeaderOverlay(
+                header = glassHeader,
+                title = stringResource(R.string.android_auto),
+                onBack = onBack,
+                onBackLongClick = onBackLongClick,
             )
         }
     }

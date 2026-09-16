@@ -2179,19 +2179,20 @@ class MainActivity : ComponentActivity() {
                                     var railPositionInRoot by remember {
                                         mutableStateOf(Offset.Zero)
                                     }
+                                    val railDarkScheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+                                    // Light accent pastel in both schemes — matches the tinted bar.
+                                    val railTintedBaseColor =
+                                        lerp(
+                                            Color.White,
+                                            MaterialTheme.colorScheme.primary,
+                                            if (railDarkScheme) 0.36f else 0.26f,
+                                        )
+                                    val railTintedContentColor =
+                                        lerp(MaterialTheme.colorScheme.primary, Color.Black, 0.55f)
                                     val railContainerColor =
                                         when {
                                             canRailLiquidGlass -> Color.Transparent
-                                            canRailBlur && navigationBarTintFrostedBlur ->
-                                                if (pureBlack) {
-                                                    lerp(Color.Black, MaterialTheme.colorScheme.primary, 0.25f)
-                                                } else {
-                                                    lerp(
-                                                        MaterialTheme.colorScheme.surfaceContainer,
-                                                        MaterialTheme.colorScheme.primary,
-                                                        0.25f,
-                                                    )
-                                                }
+                                            canRailBlur && navigationBarTintFrostedBlur -> railTintedBaseColor
                                             canRailBlur ->
                                                 if (pureBlack) Color.Black.copy(alpha = 0.45f)
                                                 else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.85f)
@@ -2201,8 +2202,7 @@ class MainActivity : ComponentActivity() {
                                     val railContentColor =
                                         when {
                                             canRailLiquidGlass -> Color.White
-                                            navigationBarTintFrostedBlur && canRailBlur ->
-                                                if (useDarkTheme) Color.White else MaterialTheme.colorScheme.onSurface
+                                            navigationBarTintFrostedBlur && canRailBlur -> railTintedContentColor
                                             pureBlack -> Color.White
                                             else -> MaterialTheme.colorScheme.onSurfaceVariant
                                         }
@@ -2216,7 +2216,7 @@ class MainActivity : ComponentActivity() {
                                     ) {
                                         if (canRailBlur && navBarFrostedBackdrop != null) {
                                             val overlayAlpha =
-                                                if (navigationBarTintFrostedBlur) 0.32f else 0.30f
+                                                if (navigationBarTintFrostedBlur) 0.26f else 0.30f
                                             Box(
                                                 modifier =
                                                     Modifier

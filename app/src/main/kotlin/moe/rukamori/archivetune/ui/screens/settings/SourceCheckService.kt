@@ -3,7 +3,11 @@ package moe.rukamori.archivetune.ui.screens.settings
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.AmazonAccountNameKey
 import moe.rukamori.archivetune.constants.AmazonAccountPremiumKey
@@ -12,6 +16,7 @@ import moe.rukamori.archivetune.constants.QobuzBackupEndpointsKey
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
+import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzBackupProvider
@@ -24,10 +29,27 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
+/**
+ * Verdict of a source health probe. Distinct from a boolean so the row (and
+ * the result dialog) can tell "structurally cannot play in this build"
+ * (UNSUPPORTED) apart from "down right now" (UNREACHABLE) and "nothing
+ * configured" (NOT_CONFIGURED) — those need completely different advice.
+ */
+enum class SourceCheckStatus {
+    READY,
+    DEGRADED,
+    NOT_CONFIGURED,
+    UNSUPPORTED,
+    UNREACHABLE,
+}
+
 data class SourceCheckResult(
-    val healthy: Boolean,
+    val status: SourceCheckStatus,
     val summary: String,
-)
+    val checkedAtMs: Long = System.currentTimeMillis(),
+) {
+    val healthy: Boolean get() = status == SourceCheckStatus.READY
+}
 
 object SourceCheckService {
 
@@ -41,33 +63,54 @@ object SourceCheckService {
             .build()
     }
 
-    suspend fun check(source: AudioSourceType, context: Context): SourceCheckResult =
-        withContext(Dispatchers.IO) {
-            when (source) {
-                AudioSourceType.TIDAL -> checkTidal(context)
-                AudioSourceType.QOBUZ -> checkQobuz(context)
-                AudioSourceType.QOBUZ_BACKUP -> checkQobuzBackup(context)
-                AudioSourceType.DEEZER -> checkDeezer(context)
-                AudioSourceType.APPLE -> checkAppleMusic()
-                AudioSourceType.AMAZON -> checkAmazon(context)
-                AudioSourceType.JIOSAAVN -> checkJioSaavn()
-                AudioSourceType.YOUTUBE -> SourceCheckResult(
-                    healthy = true,
-                    summary = "YouTube is always available as the fallback source.",
-                )
+    private val _results = MutableStateFlow<Map<AudioSourceType, SourceCheckResult>>(emptyMap())
+
+    /** Last verdict per source — survives recomposition, navigation and re-checks. */
+    val results: StateFlow<Map<AudioSourceType, SourceCheckResult>> = _results.asStateFlow()
+
+    fun cachedResult(source: AudioSourceType): SourceCheckResult? = _results.value[source]
+
+    suspend fun check(source: AudioSourceType, context: Context): SourceCheckResult {
+        val result =
+            withContext(Dispatchers.IO) {
+                when (source) {
+                    AudioSourceType.TIDAL -> checkTidal(context)
+                    AudioSourceType.QOBUZ -> checkQobuz(context)
+                    AudioSourceType.QOBUZ_BACKUP -> checkQobuzBackup(context)
+                    AudioSourceType.DEEZER -> checkDeezer(context)
+                    AudioSourceType.APPLE -> checkAppleMusic()
+                    AudioSourceType.AMAZON -> checkAmazon(context)
+                    AudioSourceType.JIOSAAVN -> checkJioSaavn()
+                    AudioSourceType.YOUTUBE -> checkYouTube()
+                }
             }
-        }
+        _results.update { it + (source to result) }
+        return result
+    }
 
     private suspend fun checkTidal(context: Context): SourceCheckResult {
 
         PoolAccountManager.refresh(context, force = false)
         val accounts = PoolAccountManager.tidalAccounts()
         if (accounts.isEmpty()) {
-            return SourceCheckResult(
-                healthy = false,
-                summary = "No Tidal accounts in the source pool. Tap 'Refresh source pool' at the top, " +
-                    "or add your own Tidal token via Integration → Manual source sign-in.",
-            )
+            val healthyInstances = runCatching {
+                moe.rukamori.archivetune.tidal.TidalInstanceHealthManager.healthyUrls(context).size
+            }.getOrDefault(0)
+            return if (healthyInstances > 0) {
+                SourceCheckResult(
+                    status = SourceCheckStatus.DEGRADED,
+                    summary = "No Tidal accounts in the source pool, but $healthyInstances public " +
+                        "instance(s) are reachable — playback works at reduced quality (may serve previews). " +
+                        "For lossless, sign in with your own Tidal token via Integration → Manual source sign-in.",
+                )
+            } else {
+                SourceCheckResult(
+                    status = SourceCheckStatus.NOT_CONFIGURED,
+                    summary = "No Tidal accounts in the source pool and no public instance is reachable. " +
+                        "Sign in with your own Tidal token via Integration → Manual source sign-in, " +
+                        "or re-toggle the Tidal source here to pull fresh pool accounts.",
+                )
+            }
         }
         val premium = accounts.count { it.premium }
 
@@ -79,7 +122,7 @@ object SourceCheckService {
             }
         val accountLabel =
             when {
-                session == null -> "token rejected by the Tidal API (expired — refresh the source pool)"
+                session == null -> "token rejected by the Tidal API (expired — re-toggle the source to refresh the pool)"
                 subscription == TidalAccountManager.Subscription.PREMIUM -> "valid (premium — lossless available)"
                 subscription == TidalAccountManager.Subscription.FREE -> "valid but FREE (previews only, no lossless)"
                 else -> "valid, subscription tier unknown"
@@ -103,21 +146,25 @@ object SourceCheckService {
                     )
                 }
             } else {
-                append("\n\nTidal source is NOT ready: ")
+                append("\n\nTidal source is ")
                 append(
                     if (healthyInstances > 0) {
-                        "the account path failed, so playback will fall back to a public instance " +
-                            "(lower quality, may serve previews)."
+                        "PARTIALLY ready: the account path failed, so playback will fall back to a public " +
+                            "instance (lower quality, may serve previews)."
                     } else {
-                        "the account path failed and no public instance is reachable. " +
-                            "Tap 'Refresh source pool' to pull fresh tokens, or add a private " +
+                        "NOT ready: the account path failed and no public instance is reachable. " +
+                            "Re-toggle the Tidal source to pull fresh pool tokens, or add a private " +
                             "Tidal instance via Integration."
                     },
                 )
             }
         }
         return SourceCheckResult(
-            healthy = accountPathReady || healthyInstances > 0,
+            status = when {
+                accountPathReady -> SourceCheckStatus.READY
+                healthyInstances > 0 -> SourceCheckStatus.DEGRADED
+                else -> SourceCheckStatus.UNREACHABLE
+            },
             summary = summary,
         )
     }
@@ -127,9 +174,10 @@ object SourceCheckService {
         val accounts = PoolAccountManager.qobuzAccounts()
         if (accounts.isEmpty()) {
             return SourceCheckResult(
-                healthy = false,
-                summary = "No Qobuz accounts in the source pool. Tap 'Refresh source pool' at the top, " +
-                    "or add your own Qobuz token (with app_id + app_secret) via Integration → Manual source sign-in.",
+                status = SourceCheckStatus.NOT_CONFIGURED,
+                summary = "No Qobuz accounts in the source pool. Sign in with your own Qobuz token " +
+                    "(with app_id + app_secret) via Integration → Manual source sign-in, " +
+                    "or re-toggle the Qobuz source here to pull fresh pool accounts.",
             )
         }
         val premium = accounts.count { it.premium }
@@ -143,18 +191,32 @@ object SourceCheckService {
             subscription = if (first.premium) "premium" else "",
         )
         val health = QobuzAudioProvider.verifyToken(token, probeTrackId = null, formatId = 5)
-        val healthLabel = when (health) {
-            moe.rukamori.archivetune.tidal.TidalAudioProvider.InstanceHealth.HEALTHY -> "healthy (premium)"
-            moe.rukamori.archivetune.tidal.TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> "preview-only (no subscription)"
-            moe.rukamori.archivetune.tidal.TidalAudioProvider.InstanceHealth.UNREACHABLE -> "unreachable (token invalid / app_secret mismatch)"
-            else -> "unknown"
+        return when (health) {
+            TidalAudioProvider.InstanceHealth.HEALTHY ->
+                SourceCheckResult(
+                    status = SourceCheckStatus.READY,
+                    summary = "Pool accounts: ${accounts.size} ($premium premium)\n" +
+                        "First token probe: healthy (premium)\n" +
+                        "Qobuz source is READY.",
+                )
+
+            TidalAudioProvider.InstanceHealth.PREVIEW_ONLY ->
+                SourceCheckResult(
+                    status = SourceCheckStatus.DEGRADED,
+                    summary = "Pool accounts: ${accounts.size} ($premium premium)\n" +
+                        "First token probe: preview-only (no subscription)\n" +
+                        "The token works, but without a subscription only 30-second previews will play.",
+                )
+
+            else ->
+                SourceCheckResult(
+                    status = SourceCheckStatus.UNREACHABLE,
+                    summary = "Pool accounts: ${accounts.size} ($premium premium)\n" +
+                        "First token probe: unreachable (token invalid / app_secret mismatch)\n" +
+                        "Qobuz source is NOT ready — re-toggle the source to pull fresh pool tokens, " +
+                        "or add your own token via Integration.",
+                )
         }
-        return SourceCheckResult(
-            healthy = health == moe.rukamori.archivetune.tidal.TidalAudioProvider.InstanceHealth.HEALTHY,
-            summary = "Pool accounts: ${accounts.size} ($premium premium)\n" +
-                "First token probe: $healthLabel\n" +
-                "Qobuz source is ${if (health == moe.rukamori.archivetune.tidal.TidalAudioProvider.InstanceHealth.HEALTHY) "READY" else "NOT ready — see above"}.",
-        )
     }
 
     private suspend fun checkQobuzBackup(context: Context): SourceCheckResult {
@@ -164,6 +226,13 @@ object SourceCheckService {
                 stored.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
         }
         val endpoints = QobuzBackupProvider.endpointList()
+        if (endpoints.isEmpty()) {
+            return SourceCheckResult(
+                status = SourceCheckStatus.NOT_CONFIGURED,
+                summary = "No backup resolver endpoints configured. Add a mirror of the kouzu.in API " +
+                    "under Settings → Sources → Qobuz backup → Backup resolver endpoints (one URL per line).",
+            )
+        }
         val reports = mutableListOf<String>()
         var anyHealthy = false
 
@@ -178,10 +247,13 @@ object SourceCheckService {
         }
 
         return if (anyHealthy) {
-            SourceCheckResult(healthy = true, summary = reports.joinToString("\n"))
+            SourceCheckResult(
+                status = SourceCheckStatus.READY,
+                summary = reports.joinToString("\n"),
+            )
         } else {
             SourceCheckResult(
-                healthy = false,
+                status = SourceCheckStatus.UNREACHABLE,
                 summary = reports.joinToString("\n") +
                     "\nNo live backup endpoint. The shipped community mirror " +
                     "(mlc-ytify.kouzu.in) went dark in September 2026 — add a live " +
@@ -323,42 +395,47 @@ object SourceCheckService {
             val pool = PoolAccountManager.appleMusicAccounts()
             if (pool.isNotEmpty()) {
                 return SourceCheckResult(
-                    healthy = true,
-                    summary = "Signed in via the Source Pool (%d shared Apple Music account%s).".format(
-                        pool.size,
-                        if (pool.size == 1) "" else "s",
-                    ),
+                    status = SourceCheckStatus.DEGRADED,
+                    summary = "Signed in via the Source Pool (%d shared Apple Music account%s), but " +
+                        "playback also needs a developer token and none is set. Sign in once via " +
+                        "Settings → Apple Music → Sign in with Apple Music (web) — it fetches both " +
+                        "tokens automatically.".format(pool.size, if (pool.size == 1) "" else "s"),
                 )
             }
             return SourceCheckResult(
-                healthy = false,
-                summary = "No $missing. Sign in via Settings → Apple Music, or refresh the source pool.",
+                status = SourceCheckStatus.NOT_CONFIGURED,
+                summary = "No $missing. Sign in via Settings → Apple Music → Sign in with Apple Music (web) " +
+                    "— the token pair is fetched automatically — or paste them in the Tokens sheet.",
             )
         }
         return runCatching {
             val storefront = AppleMusicAudioProvider.resolveStorefront()
             SourceCheckResult(
-                healthy = true,
+                status = SourceCheckStatus.READY,
                 summary = "Apple Music reachable — storefront '$storefront' resolved from your token.",
             )
         }.getOrElse {
             SourceCheckResult(
-                healthy = false,
-                summary = "Token present but the API rejected it (${it.message}). Re-paste a fresh Media-User-Token.",
+                status = SourceCheckStatus.UNREACHABLE,
+                summary = "Token present but the API rejected it (${it.message}). Sign in again via " +
+                    "Settings → Apple Music — a fresh token pair is fetched automatically.",
             )
         }
     }
 
     private suspend fun checkDeezer(context: Context): SourceCheckResult {
 
-        PoolAccountManager.refresh(context, force = true)
+        // Not forced: a throttled pool refresh (the 6h worker keeps it warm)
+        // already answers "are credentials available", and a forced refresh on
+        // every tap hammered the pool host for no diagnostic value.
+        PoolAccountManager.refresh(context, force = false)
 
         val availability = DeezerAudioProvider.accountAvailability()
         if (availability.total == 0) {
             return SourceCheckResult(
-                healthy = false,
+                status = SourceCheckStatus.NOT_CONFIGURED,
                 summary = "No Deezer credentials available. Sign in with your own Deezer account via " +
-                    "Integration → Deezer, or tap 'Refresh source pool' at the top to pick up shared accounts.",
+                    "Integration → Deezer, or re-toggle the Deezer source here to pick up shared accounts.",
             )
         }
 
@@ -375,32 +452,32 @@ object SourceCheckService {
         val info = DeezerAudioProvider.verifyPreferredAccount()
         return if (info == null) {
             SourceCheckResult(
-                healthy = false,
+                status = SourceCheckStatus.UNREACHABLE,
                 summary = "Found $origin, but the Deezer gateway rejected the credential it would use " +
-                    "first. Sign in again via Integration → Deezer, or refresh the source pool.",
+                    "first. Sign in again via Integration → Deezer, or re-toggle the Deezer source " +
+                    "to pull fresh pool accounts.",
             )
         } else {
             val tier = if (info.lossless) "lossless (FLAC) available" else "no lossless — 320kbps MP3 at best"
             SourceCheckResult(
-                healthy = true,
+                status = SourceCheckStatus.READY,
                 summary = "Credentials: $origin. Verified as '${info.name}' — $tier. Deezer source is READY.",
             )
         }
     }
 
     private suspend fun checkAmazon(context: Context): SourceCheckResult {
-        // force = true, same reasoning as checkDeezer: this row exists to answer "can accounts be
-        // found right now", and a throttled refresh would just repeat advice this call declined.
-        PoolAccountManager.refresh(context, force = true)
+        // Not forced — see checkDeezer.
+        PoolAccountManager.refresh(context, force = false)
         val pooled = PoolAccountManager.amazonAccounts()
         val prefs = context.dataStore.data.first()
         val manualName = prefs[AmazonAccountNameKey]?.takeIf { it.isNotBlank() }
         val manualPremium = prefs[AmazonAccountPremiumKey] == true
         if (pooled.isEmpty() && manualName == null) {
             return SourceCheckResult(
-                healthy = false,
+                status = SourceCheckStatus.NOT_CONFIGURED,
                 summary = "No Amazon Music credentials available. Sign in via Integration → Amazon Music, " +
-                    "or tap 'Refresh source pool' at the top to pick up shared accounts.",
+                    "or re-toggle the Amazon source here to pick up shared accounts.",
             )
         }
         val origin =
@@ -414,38 +491,63 @@ object SourceCheckService {
             }.joinToString(" + ")
         // There is no AmazonAudioProvider: Amazon serves CENC-protected fragmented MP4 and this
         // fork ships no decryption step (see AmazonEnabledKey in PreferenceKeys.kt). Credentials
-        // being present is not the same as the source working, so this never reports healthy —
-        // doing so would tell users Amazon plays when it structurally cannot.
+        // being present is not the same as the source working — but that is a structural limit of
+        // this build (UNSUPPORTED), not an outage, and the row says so instead of crying "down".
         return SourceCheckResult(
-            healthy = false,
-            summary = "Credentials: $origin. Amazon Music is NOT ready: this build has no stream-decryption " +
-                "step for Amazon's protected audio, so this source can be signed into but will never play a track.",
+            status = SourceCheckStatus.UNSUPPORTED,
+            summary = "Credentials: $origin. Amazon Music sign-in and catalogue search work, but this " +
+                "build ships no stream-decryption step for Amazon's CENC-protected audio, so the source " +
+                "cannot play tracks yet. This is a build limitation, not an outage — it is safe to leave " +
+                "Amazon out of the playback order until playback lands.",
         )
     }
 
-    private fun checkJioSaavn(): SourceCheckResult {
-
+    private suspend fun checkJioSaavn(): SourceCheckResult {
+        // check() already runs on Dispatchers.IO and this is a suspend call —
+        // no runBlocking bridge needed. The probe query is a single letter so
+        // the service cannot return an honest zero just because the literal
+        // phrase matched nothing.
         return runCatching {
-            val result = kotlinx.coroutines.runBlocking {
-                SaavnService.searchSongs("test query").getOrDefault(emptyList())
-            }
+            val result = SaavnService.searchSongs("a").getOrDefault(emptyList())
             if (result.isEmpty()) {
                 SourceCheckResult(
-                    healthy = false,
-                    summary = "JioSaavn search returned no results. The service may be down or " +
-                        "rate-limiting your IP — try again in a minute.",
+                    status = SourceCheckStatus.UNREACHABLE,
+                    summary = "JioSaavn search returned no results for a probe query. The service may be " +
+                        "down or rate-limiting your IP — try again in a minute.",
                 )
             } else {
                 SourceCheckResult(
-                    healthy = true,
+                    status = SourceCheckStatus.READY,
                     summary = "JioSaavn is reachable and returned ${result.size} results for a probe query. " +
                         "JioSaavn source is READY.",
                 )
             }
         }.getOrElse { e ->
             SourceCheckResult(
-                healthy = false,
+                status = SourceCheckStatus.UNREACHABLE,
                 summary = "Failed to reach JioSaavn: ${e.message ?: e.javaClass.simpleName}",
+            )
+        }
+    }
+
+    private suspend fun checkYouTube(): SourceCheckResult {
+        // YouTube used to answer "always true" — an honest probe asks the same
+        // InnerTube endpoint playback resolution depends on.
+        val probe =
+            runCatching { YouTube.getMediaInfo(KOZU_PROBE_YT_ID).getOrNull() }
+        return if (probe.getOrNull() != null) {
+            SourceCheckResult(
+                status = SourceCheckStatus.READY,
+                summary = "YouTube is reachable — the InnerTube API answered a probe request. " +
+                    "YouTube is always available as the fallback source.",
+            )
+        } else {
+            val detail = probe.exceptionOrNull()?.message?.let { " ($it)" }.orEmpty()
+            SourceCheckResult(
+                status = SourceCheckStatus.UNREACHABLE,
+                summary = "YouTube's InnerTube API did not answer a probe request$detail. Check your " +
+                    "connection — every other source falls back to YouTube, so a failure here affects " +
+                    "all playback.",
             )
         }
     }

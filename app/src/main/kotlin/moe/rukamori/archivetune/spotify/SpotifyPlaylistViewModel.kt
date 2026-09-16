@@ -27,10 +27,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylistTracksRef
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 import moe.rukamori.archivetune.utils.reportException
+import moe.rukamori.archivetune.viewmodels.fetchPlaylistCanvasArtwork
 import javax.inject.Inject
 
 @HiltViewModel
@@ -46,6 +48,9 @@ class SpotifyPlaylistViewModel
 
         private val _uiState = MutableStateFlow(SpotifyPlaylistUiState(isLoading = true))
         val uiState: StateFlow<SpotifyPlaylistUiState> = _uiState.asStateFlow()
+
+        private val _canvasArtwork = MutableStateFlow<CanvasArtwork?>(null)
+        val canvasArtwork: StateFlow<CanvasArtwork?> = _canvasArtwork.asStateFlow()
 
         private val eventChannel = Channel<SpotifyPlaylistEvent>(Channel.BUFFERED)
         val events = eventChannel.receiveAsFlow()
@@ -105,6 +110,7 @@ class SpotifyPlaylistViewModel
                             tracks = tracks,
                             isLoading = false,
                         )
+                    fetchPlaylistCanvas(tracks)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Throwable) {
@@ -116,6 +122,22 @@ class SpotifyPlaylistViewModel
                         )
                     }
                 }
+            }
+        }
+
+        private fun fetchPlaylistCanvas(tracks: List<SpotifyTrack>) {
+            if (_canvasArtwork.value != null) return
+            val first = tracks.firstOrNull() ?: return
+            viewModelScope.launch(Dispatchers.IO) {
+                _canvasArtwork.value =
+                    fetchPlaylistCanvasArtwork(
+                        context = context,
+                        firstSongId = first.id,
+                        firstSongTitle = first.name,
+                        firstSongArtist = first.artists.firstOrNull()?.name,
+                        firstSongAlbumTitle = first.album?.name,
+                        spotifyTrackId = first.id.takeIf { it.isNotBlank() },
+                    )
             }
         }
 

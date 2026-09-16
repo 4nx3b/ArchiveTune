@@ -102,6 +102,7 @@ import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import android.os.Build
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
@@ -132,6 +133,8 @@ fun SpotifyPlaylistScreen(
     viewModel: SpotifyPlaylistViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val canvasArtwork by viewModel.canvasArtwork.collectAsStateWithLifecycle()
+    val pageCanvasEnabled by rememberPreference(key = AlbumCanvasEnabledKey, defaultValue = true)
     val downloadUtil = LocalDownloadUtil.current
     val downloads by downloadUtil.downloads.collectAsStateWithLifecycle()
     val playerConnection = LocalPlayerConnection.current
@@ -454,6 +457,12 @@ fun SpotifyPlaylistScreen(
                             isAdded = false,
                             addContentDescription = R.string.add_to_library,
                             removeContentDescription = R.string.remove_from_library,
+                            canvasPrimaryUrl =
+                                (canvasArtwork?.animated ?: canvasArtwork?.videoUrl)
+                                    ?.takeIf { pageCanvasEnabled },
+                            canvasFallbackUrl = canvasArtwork?.videoUrl?.takeIf { pageCanvasEnabled },
+                            canvasIsPlaying = true,
+                            canvasVisible = !lyricsFullScreen,
                             onShuffle =
                                 if (tracks.isNotEmpty()) {
                                     { playPlaylist(shuffled = true) }

@@ -140,22 +140,24 @@ import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
-import moe.rukamori.archivetune.ui.menu.LyricsMenu
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.LocalAnimationsDisabled
+import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
+import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
 import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.LyricsModeKey
+import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
+import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
+import moe.rukamori.archivetune.ui.player.StyledLyricsBackground
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.player.LosslessOrStats
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.navigation.NavController
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -374,7 +376,6 @@ fun BitChordPlayerContent(
     }
     val lyrics = parsedLyrics?.lines
     val lyricsSynced = parsedLyrics?.isSynced ?: true
-    val lyricsProviderName = lyricsEntity?.providerName.orEmpty()
     val lyricsUnavailable = lyricsEntity?.lyrics == LyricsEntityNotFound
 
     val lyricsMenuViewModel: LyricsMenuViewModel = hiltViewModel()
@@ -618,6 +619,14 @@ fun BitChordPlayerContent(
 
     val meshColors = rememberArtworkColors(artUrl)
 
+    // Lyrics background style: BitChord's mesh stays the player's own look;
+    // while the lyrics panel is open a non-DEFAULT style takes over the
+    // background (same option set the shared lyrics screen honours).
+    val lyricsBackgroundStylePref by rememberEnumPreference(LyricsBackgroundStyleKey, LyricsBackgroundStyle.DEFAULT)
+    val playerBackgroundStylePref by rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.DEFAULT)
+    val resolvedLyricsBackground = lyricsBackgroundStylePref.resolveFor(playerBackgroundStylePref)
+    val lyricsUseStyledBackground = lyricsOpen && resolvedLyricsBackground != LyricsBackgroundStyle.DEFAULT
+
     val onPlayPause = {
         if (player.isPlaying) player.pause() else player.play()
     }
@@ -631,11 +640,19 @@ fun BitChordPlayerContent(
 
     Box(modifier = modifier.fillMaxSize()) {
 
-        MeshGradientBackground(
-            palette = meshColors,
-            trackKey = mediaMetadata.id,
-            reduceAnimation = reduceAnimations,
-        )
+        if (lyricsUseStyledBackground) {
+            StyledLyricsBackground(
+                style = resolvedLyricsBackground,
+                mediaMetadata = mediaMetadata,
+                gradientColors = meshColors.colors,
+            )
+        } else {
+            MeshGradientBackground(
+                palette = meshColors,
+                trackKey = mediaMetadata.id,
+                reduceAnimation = reduceAnimations,
+            )
+        }
 
         if (heroHeight > 0.dp) {
             if (heroMode && (p < 0.5f || heroVisible > 0.001f)) {
@@ -1204,88 +1221,7 @@ fun BitChordPlayerContent(
                 )
             }
 
-            if (lyricsOpen) {
-                Spacer(Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.height(IntrinsicSize.Min),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(percent = 50))
-                            .background(Color.White.copy(alpha = 0.10f))
-                            .padding(horizontal = 18.dp, vertical = 8.dp),
-                    ) {
-                        Text(
-                            text = when {
-                                lyricsProviderName.isNotBlank() -> "Lyrics by $lyricsProviderName"
-                                lyrics == null -> "No lyrics found"
-                                else -> "Lyrics"
-                            },
-                            style = MaterialTheme.typography.labelLarge,
-                            color = Color.White.copy(alpha = 0.7f),
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-
-                            .fillMaxHeight()
-                            .aspectRatio(1f, matchHeightConstraintsFirst = true)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.10f))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) {
-                                haptics.play(Haptic.Tap)
-                                menuState.show {
-                                    LyricsMenu(
-                                        lyricsProvider = { lyricsEntity },
-                                        mediaMetadataProvider = { mediaMetadata },
-                                        lyricsSyncOffset = lyricsSyncOffset,
-                                        onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
-                                        onDismiss = menuState::dismiss,
-                                    )
-                                }
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.MoreHoriz,
-                            contentDescription = "Lyrics options",
-                            tint = Color.White.copy(alpha = 0.7f),
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-
-                            .fillMaxHeight()
-                            .aspectRatio(1f, matchHeightConstraintsFirst = true)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.10f))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) {
-                                haptics.play(Haptic.Tap)
-                                lyricsOpen = false
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = "Close lyrics",
-                            tint = Color.White.copy(alpha = 0.7f),
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                }
-                Spacer(Modifier.height(20.dp))
-            } else {
+            if (!lyricsOpen) {
 
             Spacer(Modifier.height(14.dp + controlSpread / 2))
 

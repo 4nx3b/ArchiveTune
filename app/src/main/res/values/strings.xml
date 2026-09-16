@@ -557,7 +557,7 @@
     <string name="archivetune_canvas">ArchiveTune Canvas</string>
     <string name="archivetune_canvas_desc">Animate album artwork while playing (Powered by BetterLyrics)</string>
     <string name="player_background_style_v8_v9_desc">Unavailable with V8, V9, and V10 player styles</string>
-    <string name="lyrics_background_style_own_player_desc">Unavailable with BitChord and Apple Music player styles</string>
+    <string name="lyrics_background_style_own_player_desc">Unavailable with the Apple Music, TikTok and SpatialFlow player styles</string>
     <string name="show_button1_description">Toggle visibility of button 1 in Discord Rich Presence</string>
     <string name="show_button2_description">Toggle visibility of button 2 in Discord Rich Presence</string>
     <string name="discord_activity_type">Activity type</string>
@@ -786,6 +786,10 @@
     <string name="eq_frequency_hertz">%1$d Hz</string>
     <string name="eq_frequency_kilohertz">%1$.1f kHz</string>
     <string name="eq_audio_effects">Audio Effects</string>
+    <string name="eq_tab_equalizer">Equalizer</string>
+    <string name="eq_tab_audio_effects">Audio effects</string>
+    <string name="eq_enable_audio_effects">Enable audio effects</string>
+    <string name="eq_enable_audio_effects_desc">Master switch for the ported audio effects — 8D, reverb, bass boost, loudness, balance, playback speed and virtualizer. Nothing below can be customised, and nothing is applied to any song, until this is on.</string>
     <string name="eq_8d_info">Runs in real time on any song — streamed or local — with no offline processing needed.</string>
     <string name="eq_information">Information</string>
     <string name="eq_preset">Preset</string>
@@ -1230,7 +1234,10 @@
     <string name="applemusic_quality_lossless">Lossless (ALAC 24/48)</string>
     <string name="applemusic_quality_hires">Hi-Res Lossless (up to 24/192)</string>
     <string name="applemusic_login">Sign in to Apple Music</string>
-    <string name="applemusic_login_subtitle">Sign in with your Apple ID to get your Music User Token.</string>
+    <string name="applemusic_login_subtitle">Sign in with your Apple ID — your Music User Token is fetched automatically.</string>
+    <string name="applemusic_login_success">Signed in to Apple Music</string>
+    <string name="applemusic_login_failed">Couldn\'t fetch your Apple Music token — try the manual token sheet</string>
+    <string name="applemusic_login_fetching">Fetching your Apple Music token…</string>
     <string name="applemusic_helper">Your Apple Music account — no pool. Works with your ES token.</string>
     <string name="applemusic_helper_short">ES account • uses your Music User Token</string>
     <string name="applemusic_sign_in_web">Sign in with Apple Music (web)</string>
@@ -1744,7 +1751,7 @@
     <string name="home_jump_back_in_badge">Jump back in</string>
     <string name="home_recently_played">Recently Played</string>
     <string name="navigation_bar_tint_frosted_blur">Tint frosted navigation bar</string>
-    <string name="navigation_bar_tint_frosted_blur_desc">Frosted blur tinted with the accent color (turns off the neutral frosted option)</string>
+    <string name="navigation_bar_tint_frosted_blur_desc">Frosted bar tinted with a light shade of the accent color in both light and dark mode, with always-readable labels (turns off the neutral frosted option)</string>
     <string name="navigation_bar_settings_title">Navigation bar</string>
     <string name="navigation_bar_settings_subtitle">Style, frosted blur, labels, dimensions</string>
     <string name="navigation_bar_dimensions">Dimensions</string>

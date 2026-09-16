@@ -19,7 +19,9 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -27,6 +29,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.extensions.filterBlockedArtists
@@ -77,6 +80,9 @@ class OnlinePlaylistViewModel
         private val _viewCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
         val viewCounts = _viewCounts.asStateFlow()
 
+        private val _canvasArtwork = MutableStateFlow<CanvasArtwork?>(null)
+        val canvasArtwork: StateFlow<CanvasArtwork?> = _canvasArtwork.asStateFlow()
+
         private val viewCountsMutex = Mutex()
         private val viewCountsInFlight = mutableSetOf<String>()
         private val viewCountsSemaphore = Semaphore(permits = 4)
@@ -86,6 +92,7 @@ class OnlinePlaylistViewModel
 
         init {
             load(initial = true)
+            fetchPlaylistCanvas()
         }
 
         fun refresh() {
@@ -121,6 +128,19 @@ class OnlinePlaylistViewModel
 
         fun retry() {
             load(initial = true)
+        }
+
+        private fun fetchPlaylistCanvas() {
+            viewModelScope.launch(Dispatchers.IO) {
+                val firstSong = _playlistSongs.first { it.isNotEmpty() }.firstOrNull() ?: return@launch
+                _canvasArtwork.value =
+                    fetchPlaylistCanvasArtwork(
+                        context = context,
+                        firstSongId = firstSong.id,
+                        firstSongTitle = firstSong.title,
+                        firstSongArtist = firstSong.artists.firstOrNull()?.name,
+                    )
+            }
         }
 
         private fun load(initial: Boolean) {

@@ -510,6 +510,7 @@ val ShowTagsInLibraryKey = booleanPreferencesKey("showTagsInLibrary")
 val MinimalHomeModeKey = booleanPreferencesKey("minimalHomeMode")
 
 val EqualizerEnabledKey = booleanPreferencesKey("equalizerEnabled")
+val EqualizerAudioEffectsEnabledKey = booleanPreferencesKey("audioEffectsEnabled")
 val EqualizerControlModeKey = stringPreferencesKey("equalizerControlMode")
 val EqualizerBandLevelsMbKey = stringPreferencesKey("equalizerBandLevelsMb")
 val EqualizerAutoHeadroomEnabledKey = booleanPreferencesKey("equalizerAutoHeadroomEnabled")
