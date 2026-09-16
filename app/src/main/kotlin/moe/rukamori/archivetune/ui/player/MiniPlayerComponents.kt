@@ -388,7 +388,7 @@ private fun MiniPlayerArtwork(
                     if (onArtworkSlotPositioned != null) {
                         onArtworkSlotPositioned(
                             androidx.compose.ui.geometry.Rect(
-                                offset = coordinates.positionInRoot,
+                                offset = coordinates.positionInRoot(),
                                 size =
                                     androidx.compose.ui.geometry.Size(
                                         width = coordinates.size.width.toFloat(),
