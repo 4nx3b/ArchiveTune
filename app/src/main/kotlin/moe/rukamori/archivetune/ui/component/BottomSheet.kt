@@ -36,7 +36,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -44,9 +47,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
@@ -55,6 +60,7 @@ import moe.rukamori.archivetune.constants.BottomSheetAnimationSpec
 import moe.rukamori.archivetune.constants.BottomSheetSoftAnimationSpec
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import kotlin.math.roundToInt
 
 @Composable
 fun BottomSheet(
@@ -68,9 +74,28 @@ fun BottomSheet(
     opaqueBackground: Boolean = false,
     onCollapsedContentClick: (() -> Unit)? = null,
     navbarHiddenOffset: (() -> Float)? = null,
+    sharedLayer: (@Composable BoxScope.() -> Unit)? = null,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
+    // Morph mode (the SpatialFlow recipe): the sheet corner radius and both
+    // crossfade layers animate continuously with the sheet progress — no
+    // discrete corner pop at the transition edges, and the shared layer (the
+    // floating artwork) bridges the mini and full content across the whole
+    // 0..1 travel instead of both sides fading out mid-flight.
+    val morphShape =
+        if (morphMode) {
+            remember(state) {
+                PlayerSheetDynamicShape(
+                    // Reads state.progress inside createOutline (the draw
+                    // phase) so the corner rebuilds every frame without any
+                    // recomposition.
+                    progressProvider = { state.progress.coerceIn(0f, 1f) },
+                )
+            }
+        } else {
+            null
+        }
     Box(
         modifier =
             modifier
@@ -89,11 +114,17 @@ fun BottomSheet(
                         navbarHiddenOffset?.invoke()?.coerceAtLeast(0f) ?: 0f
                     translationY = y + takeOver * (1f - state.progress.coerceIn(0f, 1f))
                 }.bottomSheetDraggable(state, onDismiss)
-                .clip(
-                    RoundedCornerShape(
-                        topStart = if (!state.isExpanded) 16.dp else 0.dp,
-                        topEnd = if (!state.isExpanded) 16.dp else 0.dp,
-                    ),
+                .then(
+                    if (morphShape != null) {
+                        Modifier.clip(morphShape)
+                    } else {
+                        Modifier.clip(
+                            RoundedCornerShape(
+                                topStart = if (!state.isExpanded) 16.dp else 0.dp,
+                                topEnd = if (!state.isExpanded) 16.dp else 0.dp,
+                            ),
+                        )
+                    },
                 ).then(
 
                     if (opaqueBackground) {
@@ -118,6 +149,25 @@ fun BottomSheet(
             BackHandler(onBack = state::collapseSoft)
         }
 
+        // The shared layer rides above both crossfade containers: its content
+        // (the floating artwork morph) stays visible across the whole
+        // mini <-> full travel.
+        if (sharedLayer != null) {
+            val sharedZIndex by remember(state) {
+                derivedStateOf { if (state.progress > 0.5f) 3f else 2.5f }
+            }
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { zIndex = sharedZIndex },
+                content = sharedLayer,
+            )
+        }
+
+        val fullContentZIndex by remember(state) {
+            derivedStateOf { if (state.progress > 0.5f) 2f else 1f }
+        }
         if (keepContentAlive) {
 
             BoxWithConstraints(
@@ -125,12 +175,16 @@ fun BottomSheet(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
+                            zIndex = fullContentZIndex
                             if (morphMode) {
-
+                                // SpatialFlow curves: the full player only
+                                // starts fading in past halfway — the shared
+                                // artwork layer covers the first half of the
+                                // travel. No settle translation: the floating
+                                // artwork's target IS this layer's layout slot.
                                 val p = state.progress.coerceIn(0f, 1f)
-                                alpha = ((p - 0.25f) * 4).coerceIn(0f, 1f)
-                                scaleX = 0.94f + 0.06f * p
-                                scaleY = 0.94f + 0.06f * p
+                                alpha = ((p - 0.5f) * 2).coerceIn(0f, 1f)
+                                if (p <= 0.01f) translationY = 10_000f
                             } else {
                                 alpha = if (state.isCollapsed) 0f else ((state.progress - 0.25f) * 4).coerceIn(0f, 1f)
                             }
@@ -143,11 +197,10 @@ fun BottomSheet(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
+                            zIndex = fullContentZIndex
                             if (morphMode) {
                                 val p = state.progress.coerceIn(0f, 1f)
-                                alpha = ((p - 0.25f) * 4).coerceIn(0f, 1f)
-                                scaleX = 0.94f + 0.06f * p
-                                scaleY = 0.94f + 0.06f * p
+                                alpha = ((p - 0.5f) * 2).coerceIn(0f, 1f)
                             } else {
                                 alpha = ((state.progress - 0.25f) * 4).coerceIn(0f, 1f)
                             }
@@ -157,11 +210,22 @@ fun BottomSheet(
         }
 
         if (!state.isExpanded && (onDismiss == null || !state.isDismissed)) {
+            val miniZIndex by remember(state) {
+                derivedStateOf { if (state.progress > 0.5f) 1f else 2f }
+            }
             Box(
                 modifier =
                     Modifier
                         .graphicsLayer {
-                            alpha = 1f - (state.progress * 4).coerceAtMost(1f)
+                            zIndex = miniZIndex
+                            alpha =
+                                if (morphMode) {
+                                    // Gone exactly at halfway, when the full
+                                    // layer starts taking over.
+                                    (1f - 2f * state.progress.coerceIn(0f, 1f)).coerceIn(0f, 1f)
+                                } else {
+                                    1f - (state.progress * 4).coerceAtMost(1f)
+                                }
                         }.clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -174,6 +238,31 @@ fun BottomSheet(
     }
 }
 
+/**
+ * A shape whose top corner radius is read at draw time from [topCornerProvider]
+ * (fed the live sheet progress), so the sheet corners morph continuously with
+ * the mini <-> full transition instead of flipping between two fixed radii.
+ * Draw-phase only: no recomposition per frame.
+ */
+private class PlayerSheetDynamicShape(
+    private val progressProvider: () -> Float,
+) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: androidx.compose.ui.unit.LayoutDirection,
+        density: Density,
+    ): Outline {
+        val progress = progressProvider()
+        val cornerPx = with(density) { androidx.compose.ui.unit.lerp(28.dp, 0.dp, progress).toPx() }
+        return Outline.Rounded(
+            corner = androidx.compose.ui.geometry.CornerRadius(cornerPx, cornerPx),
+            size = size,
+        )
+    }
+}
+
+private fun lerp(start: Float, stop: Float, fraction: Float): Float = start + (stop - start) * fraction
+
 @Stable
 class BottomSheetState(
     draggableState: DraggableState,
@@ -181,6 +270,7 @@ class BottomSheetState(
     private val animatable: Animatable<Dp, AnimationVector1D>,
     private val onAnchorChanged: (Int) -> Unit,
     private val animationsDisabled: Boolean,
+    private val density: Density,
     val collapsedBound: Dp,
     initialAnchor: Int = DISMISSED_ANCHOR,
 ) : DraggableState by draggableState {
@@ -234,12 +324,45 @@ class BottomSheetState(
         }
     }
 
-    private fun collapse() {
-        collapse(if (animationsDisabled) snap() else BottomSheetAnimationSpec)
+    /**
+     * Velocity-carrying settle (the SpatialFlow trick): the fling velocity is
+     * handed into the spring as its initial velocity, so the sheet continues
+     * at the finger's speed instead of stopping dead on release and
+     * re-accelerating toward the anchor.
+     */
+    fun collapse(animationSpec: AnimationSpec<Dp>, velocityPx: Float) {
+        updateAnchor(COLLAPSED_ANCHOR)
+        coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            animatable.animateTo(
+                collapsedBound,
+                animationSpec,
+                initialVelocity = velocityPx.toAnimatableVelocity(),
+            )
+        }
     }
 
-    private fun expand() {
-        expand(if (animationsDisabled) snap() else BottomSheetAnimationSpec)
+    fun expand(animationSpec: AnimationSpec<Dp>, velocityPx: Float) {
+        updateAnchor(EXPANDED_ANCHOR)
+        sheetScrollConnection.resetLatch()
+        coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            animatable.animateTo(
+                animatable.upperBound!!,
+                animationSpec,
+                initialVelocity = velocityPx.toAnimatableVelocity(),
+            )
+        }
+    }
+
+    private fun Float.toAnimatableVelocity(): AnimationVector1D =
+        // px/s -> dp/s (the animatable's unit), wrapped for animateTo.
+        AnimationVector1D(with(density) { toDp() }.value)
+
+    private fun collapse(velocityPx: Float = 0f) {
+        collapse(if (animationsDisabled) snap() else BottomSheetAnimationSpec, velocityPx)
+    }
+
+    private fun expand(velocityPx: Float = 0f) {
+        expand(if (animationsDisabled) snap() else BottomSheetAnimationSpec, velocityPx)
     }
 
     fun collapseSoft() {
@@ -276,13 +399,13 @@ class BottomSheetState(
         onDismiss: (() -> Unit)?,
     ) {
         if (velocity > 250) {
-            expand()
+            expand(velocity)
         } else if (velocity < -250) {
             if (value < collapsedBound && onDismiss != null) {
                 dismiss()
                 onDismiss.invoke()
             } else {
-                collapse()
+                collapse(velocity)
             }
         } else {
             val l0 = dismissedBound
@@ -296,16 +419,16 @@ class BottomSheetState(
                         dismiss()
                         onDismiss.invoke()
                     } else {
-                        collapse()
+                        collapse(velocity)
                     }
                 }
 
                 in l1..l2 -> {
-                    collapse()
+                    collapse(velocity)
                 }
 
                 in l2..l3 -> {
-                    expand()
+                    expand(velocity)
                 }
 
                 else -> {
@@ -429,6 +552,7 @@ fun rememberBottomSheetState(
             coroutineScope = coroutineScope,
             animatable = animatable,
             animationsDisabled = animationsDisabled,
+            density = density,
             collapsedBound = collapsedBound,
             initialAnchor = previousAnchor,
         )

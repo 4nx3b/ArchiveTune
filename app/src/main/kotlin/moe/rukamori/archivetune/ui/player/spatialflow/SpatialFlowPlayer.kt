@@ -171,6 +171,9 @@ fun SpatialFlowPlayerContent(
     appIsDark: Boolean = isSystemInDarkTheme(),
     onSeek: (Long) -> Unit,
     onSeekFinished: () -> Unit,
+    floatingArtwork: Boolean = false,
+    onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect?) -> Unit)? = null,
+    onPagerArtworkActiveChange: ((Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -459,6 +462,9 @@ fun SpatialFlowPlayerContent(
                 val lyricsContentReady = lyricsRevealProgress > 0.8f
 
                 val keepMainContentComposed = !lyricsModeEnabled || lyricsRevealProgress < 1f
+                androidx.compose.runtime.LaunchedEffect(videoShowing, canvasAvailable, lyricsModeEnabled) {
+                    onPagerArtworkActiveChange?.invoke(!videoShowing && !canvasAvailable && !lyricsModeEnabled)
+                }
                 if (keepMainContentComposed) {
                 Column(
                     modifier =
@@ -541,6 +547,29 @@ fun SpatialFlowPlayerContent(
                     // stay pinned exactly where they sit while the canvas
                     // plays (the weighted spacer above absorbs the shift).
                     Spacer(modifier = Modifier.height(36.dp))
+                } else if (!canvasAvailable && floatingArtwork) {
+                    // Floating-artwork mode: the pager lives in the sheet's
+                    // shared layer (see SpatialFlowFloatingArtwork); this slot
+                    // only reports its bounds so the morph can find it.
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(albumArtSize)
+                                .onGloballyPositioned { coordinates ->
+                                    val position = coordinates.positionInRoot()
+                                    val rect =
+                                        Rect(
+                                            offset = position,
+                                            size =
+                                                Size(
+                                                    width = coordinates.size.width.toFloat(),
+                                                    height = coordinates.size.height.toFloat(),
+                                                ),
+                                        )
+                                    artworkPagerBoundsInRoot = rect
+                                    onArtworkSlotPositioned?.invoke(rect)
+                                },
+                    )
                 } else if (!canvasAvailable) {
                     SpatialFlowArtworkPager(
                         mediaMetadata = mediaMetadata,
@@ -1157,7 +1186,7 @@ fun SpatialFlowPlayerContent(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SpatialFlowArtworkPager(
+internal fun SpatialFlowArtworkPager(
     mediaMetadata: MediaMetadata,
     queueWindows: List<androidx.media3.common.Timeline.Window>,
     currentWindowIndex: Int,
