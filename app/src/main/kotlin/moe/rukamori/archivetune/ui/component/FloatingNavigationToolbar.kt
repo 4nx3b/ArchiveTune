@@ -154,11 +154,17 @@ private const val FrostedNavBarBlurRadiusPx = 60f
 
 private const val FrostedNavBarOverlayAlpha = 0.30f
 
-/** Tinted bar: how far the LIGHT base is pulled toward the accent color. */
+/** Tinted bar in light mode: how far the white base is pulled toward the accent. */
 private const val TintFrostedLightBaseBlend = 0.26f
 
-/** Tinted bar on dark (and pure-black) schemes: a stronger pastel that still reads light. */
-private const val TintFrostedDarkBaseBlend = 0.36f
+/** Tinted bar in dark (and pure-black) schemes: how far the black base is pulled toward the accent. */
+private const val TintedDarkBaseBlend = 0.30f
+
+/** Tinted bar content in light mode: how far the accent is darkened. */
+private const val TintFrostedContentBlend = 0.55f
+
+/** Tinted bar content in dark mode: how far white is pulled toward the accent. */
+private const val TintedDarkContentBlend = 0.45f
 
 private val NavigationIndicatorWidth = 56.dp
 private val NavigationIndicatorHeight = 32.dp
@@ -193,20 +199,27 @@ fun FloatingNavigationToolbar(
     // when the in-app dark mode differs from the system one.
     val isDarkScheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
-    // The tinted bar is a LIGHT accent pastel in BOTH schemes — that is what
-    // separates it from the neutral, surface-adaptive frosted bar, which stays
-    // dark in dark mode. It is flat: no backdrop blur is drawn for it at all.
-    // Its content is therefore always the dark accent
-    // shade, readable in light mode, dark mode, pure black and every accent
-    // shade the dynamic themer can pick.
+    // The tinted bar follows the scheme: a light accent pastel in light mode,
+    // a deep accent-tinted dark bar in dark mode (what separates it from the
+    // neutral frosted bar is the visible accent tint in both). It is flat: no
+    // backdrop blur is drawn for it at all. Its content polarity flips with
+    // the scheme — dark accent shade on the light bar, light accent tint on
+    // the dark bar — readable in every mode and accent the dynamic themer can
+    // pick.
     val tintedNavBarBaseColor =
-        lerp(
-            Color.White,
-            MaterialTheme.colorScheme.primary,
-            if (isDarkScheme) TintFrostedDarkBaseBlend else TintFrostedLightBaseBlend,
-        )
+        if (isDarkScheme) {
+            lerp(Color.Black, MaterialTheme.colorScheme.primary, TintedDarkBaseBlend)
+        } else {
+            lerp(Color.White, MaterialTheme.colorScheme.primary, TintFrostedLightBaseBlend)
+        }
     val tintedNavBarContentColor =
-        lerp(MaterialTheme.colorScheme.primary, Color.Black, 0.55f)
+        if (isDarkScheme) {
+            lerp(Color.White, MaterialTheme.colorScheme.primary, TintedDarkContentBlend)
+        } else {
+            lerp(MaterialTheme.colorScheme.primary, Color.Black, TintFrostedContentBlend)
+        }
+    val tintedNavBarUnselectedContentColor =
+        if (isDarkScheme) Color.White.copy(alpha = 0.62f) else Color.Black.copy(alpha = 0.62f)
 
     val (navBarWidthFraction) =
         rememberPreference(NavigationBarWidthKey, defaultValue = NAVIGATION_BAR_WIDTH_DEFAULT)
@@ -290,9 +303,8 @@ fun FloatingNavigationToolbar(
             canLiquidGlass -> Color.Transparent
 
             tintFrostedBlur && !isFloating ->
-                // The tinted base is always light, so the selected pill is a
-                // subtle dark wash in both schemes.
-                Color.Black.copy(alpha = 0.12f)
+                // A subtle wash of the opposite polarity per scheme.
+                if (isDarkScheme) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.12f)
             isFloating -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
             pureBlack -> Color.White.copy(alpha = 0.16f)
             else -> MaterialTheme.colorScheme.secondaryContainer
@@ -339,15 +351,14 @@ fun FloatingNavigationToolbar(
                     unselectedTextColor = Color.White.copy(alpha = 0.6f),
                 )
             tintFrostedBlur ->
-                // The tinted bar is always light, so its items are always the
-                // dark accent shade (selected) / dark neutral (unselected) -
-                // the polarity never flips with the scheme.
+                // Selected = tinted content colour, unselected = the scheme's
+                // neutral at 62% — both readable on their scheme's tinted base.
                 ShortNavigationBarItemDefaults.colors(
                     selectedIndicatorColor = Color.Transparent,
                     selectedIconColor = tintedNavBarContentColor,
                     selectedTextColor = tintedNavBarContentColor,
-                    unselectedIconColor = Color.Black.copy(alpha = 0.62f),
-                    unselectedTextColor = Color.Black.copy(alpha = 0.62f),
+                    unselectedIconColor = tintedNavBarUnselectedContentColor,
+                    unselectedTextColor = tintedNavBarUnselectedContentColor,
                 )
             else -> ShortNavigationBarItemDefaults.colors(selectedIndicatorColor = Color.Transparent)
         }

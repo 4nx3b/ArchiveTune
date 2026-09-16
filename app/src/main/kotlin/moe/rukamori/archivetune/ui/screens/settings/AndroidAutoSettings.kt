@@ -63,11 +63,11 @@ import moe.rukamori.archivetune.androidauto.AndroidAutoSettingsSnapshot
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.ListPreference
-import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.glassAwareSurface
+import moe.rukamori.archivetune.ui.screens.GlassScreenHeaderOverlay
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.glassHeaderSource
 import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
@@ -206,43 +206,40 @@ private fun AndroidAutoSettingsContent(
                 )
             }
 
-            // Header row copied from the settings main page: flush below the
-            // status bar, centred bold title, round liquid-glass back button
-            // when glass is on (plain icon button otherwise).
-            ScreenHeaderHaze(
-                hazeState = glassHeader.haze,
-                systemBarsTopPadding = systemBarsTopPadding,
-            )
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .padding(top = systemBarsTopPadding)
-                        .height(AppBarHeight),
-            ) {
-                Text(
-                    text = stringResource(R.string.android_auto),
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleLarge,
-                    maxLines = 1,
-                    modifier = Modifier.align(Alignment.Center),
+            // Glass header exactly like the home screen: the back button AND
+            // the title live together inside one liquid-glass pill, floating
+            // over the scrolling content with the ScreenHeaderHaze band over
+            // the status bar. Without glass: a plain flush app bar row.
+            val backdrop = glassHeader.backdrop
+            if (backdrop != null) {
+                GlassScreenHeaderOverlay(
+                    header = glassHeader,
+                    title = stringResource(R.string.android_auto),
+                    onBack = onBack,
+                    onBackLongClick = onBackLongClick,
                 )
-
-                val backdrop = glassHeader.backdrop
-                if (backdrop != null) {
-                    LiquidGlassIconButton(
-                        backdrop = backdrop,
-                        painter = painterResource(R.drawable.arrow_back),
-                        contentDescription = stringResource(R.string.back_button_desc),
-                        modifier =
-                            Modifier
-                                .align(Alignment.CenterStart)
-                                .padding(start = 12.dp),
-                        onClick = onBack,
+            } else {
+                ScreenHeaderHaze(
+                    hazeState = glassHeader.haze,
+                    systemBarsTopPadding = systemBarsTopPadding,
+                )
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .padding(top = systemBarsTopPadding)
+                            .height(AppBarHeight),
+                ) {
+                    Text(
+                        text = stringResource(R.string.android_auto),
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 1,
+                        modifier = Modifier.align(Alignment.Center),
                     )
-                } else {
+
                     IconButton(
                         onClick = onBack,
                         onLongClick = onBackLongClick,

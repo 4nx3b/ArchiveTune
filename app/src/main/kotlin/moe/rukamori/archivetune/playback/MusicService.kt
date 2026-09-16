@@ -146,10 +146,12 @@ import moe.rukamori.archivetune.cast.CastScreenState
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedKey
+import moe.rukamori.archivetune.constants.AudioPlaybackPitchKey
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedPitchMatchKey
 import moe.rukamori.archivetune.constants.DefaultMetadataSourceKey
 import moe.rukamori.archivetune.constants.MetadataSource
 import moe.rukamori.archivetune.constants.PreloadSongsCountKey
+import moe.rukamori.archivetune.constants.DEFAULT_PRELOAD_SONGS_COUNT
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.AudioQualityKey
 import moe.rukamori.archivetune.constants.DownloadSourceConfig
@@ -1353,7 +1355,7 @@ class MusicService :
                 }
             }
         dataStore.data
-            .map { preferences -> preferences[PreloadSongsCountKey] ?: 0 }
+            .map { preferences -> preferences[PreloadSongsCountKey] ?: DEFAULT_PRELOAD_SONGS_COUNT }
             .distinctUntilChanged()
             .collect(scope) { updateSongPreload() }
         widgetUpdater =
@@ -1534,12 +1536,25 @@ class MusicService :
         combine(
             dataStore.data.map { it[AudioPlaybackSpeedKey] ?: 1.0f },
             dataStore.data.map { it[AudioPlaybackSpeedPitchMatchKey] ?: false },
+            dataStore.data.map { it[AudioPlaybackPitchKey] ?: 1.0f },
             dataStore.data.map { it[EqualizerAudioEffectsEnabledKey] ?: false },
-        ) { speed, pitchMatched, audioEffectsEnabled ->
-            // Playback speed lives on the Audio effects tab and follows its
-            // master switch: nothing is applied to any song while it is off.
+        ) { speed, pitchMatched, pitch, audioEffectsEnabled ->
+            // Playback speed + pitch live on the Audio effects tab and follow
+            // its master switch: nothing is applied to any song while it is
+            // off. Match-pitch keeps 1x (timestretched); vinyl mode follows
+            // the speed unless the user picked an explicit pitch offset.
             val effectiveSpeed = if (audioEffectsEnabled) speed.coerceIn(0.5f, 2.0f) else 1.0f
-            PlaybackParameters(effectiveSpeed, if (pitchMatched) 1.0f else effectiveSpeed)
+            val effectivePitch =
+                if (!audioEffectsEnabled) {
+                    1.0f
+                } else if (pitchMatched) {
+                    1.0f
+                } else if (pitch != 1.0f) {
+                    pitch.coerceIn(0.5f, 2.0f)
+                } else {
+                    effectiveSpeed
+                }
+            PlaybackParameters(effectiveSpeed, effectivePitch)
         }.distinctUntilChanged()
             .collectLatest(scope) { parameters ->
                 // Only touch the players when the parameters actually differ -
@@ -8883,7 +8898,7 @@ class MusicService :
         if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
             return
         }
-        val preloadCount = dataStore.get(PreloadSongsCountKey, 0)
+        val preloadCount = dataStore.get(PreloadSongsCountKey, DEFAULT_PRELOAD_SONGS_COUNT)
         if (preloadCount <= 0) return
         val currentIndex = player.currentMediaItemIndex
         if (currentIndex < 0) return

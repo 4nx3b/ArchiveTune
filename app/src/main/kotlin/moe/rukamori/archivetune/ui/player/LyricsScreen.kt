@@ -1121,10 +1121,13 @@ private fun AppleMusicTrackHeader(
         modifier = modifier.heightIn(min = 72.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 56dp — the Apple Music player's lyrics header artwork size, shared
+        // by every player style's lyrics page so the thumbnail never reads
+        // oversized in the other styles.
         Box(
             modifier =
                 Modifier
-                    .size(72.dp)
+                    .size(56.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(foregroundColor.copy(alpha = 0.18f)),
             contentAlignment = Alignment.Center,
