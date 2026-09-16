@@ -13,12 +13,15 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
@@ -91,6 +94,16 @@ fun BoxScope.SpatialFlowFloatingArtwork(
         modifier =
             modifier
                 .align(Alignment.TopStart)
+                // Base layout position = the full player's artwork slot. The
+                // layer Box is laid out AT the slot's top-left (root layout
+                // coordinates — the sheet's graphicsLayer slide cancels out
+                // for every participant), so at progress 1 the zero
+                // translation below lands the artwork exactly on the slot.
+                // Without this offset the Box sat at the sheet root's
+                // (0, 0): the expanded artwork drew over the top bar with a
+                // gap where the slot actually is (the "weird thumbnail
+                // position" for non-canvas songs).
+                .offset { IntOffset(full.left.roundToInt(), full.top.roundToInt()) }
                 .size(with(androidx.compose.ui.platform.LocalDensity.current) { full.width.toDp() })
                 .graphicsLayer {
                     val p = state.progress.coerceIn(0f, 1f)

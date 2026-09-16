@@ -595,6 +595,10 @@ fun SpatialFlowPlayerContent(
                             onArtworkSlotPositioned?.invoke(null)
                         }
                     }
+                    // Breathing room to the title stack, matching the video
+                    // and in-column pager branches so the title sits at the
+                    // same height whichever branch owns the artwork slot.
+                    Spacer(modifier = Modifier.height(36.dp))
                 } else if (!canvasAvailable) {
                     SpatialFlowArtworkPager(
                         mediaMetadata = mediaMetadata,

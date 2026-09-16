@@ -142,7 +142,33 @@ player-animation performance pass yet.
   onto an edge-to-edge window path (FloatingDialogWindowTheme +
   layout-in-decor flags) that crashed on open on real devices — the dialog is
   back on the long-working window configuration, with the status bar still
-  hidden while it shows
+  hidden while it shows. The dialog also drops the liquid-glass header it had
+  grown: it was the only real dialog window in the app drawing the backdrop
+  glass (layer recording + AGSL effect passes + a haze source inside a
+  separate window), the one ingredient the crashing version still had that
+  the long-working one never did — the header is back to plain material3
+  icon buttons on the opaque dialog surface
+- Non-canvas songs no longer show a misplaced artwork in the SpatialFlow
+  player: the shared floating-artwork layer was laid out at the sheet root's
+  top-left instead of at the full player's artwork slot, so the expanded
+  artwork drew over the top bar with an empty gap where the slot actually
+  is — the layer now bases itself on the slot's measured rect and the
+  mini-to-full morph math lands it exactly on the slot (plus the slot keeps
+  the same title spacing as the video and in-column branches)
+- Library playlists keep their header: the Apple-Music-style hero collapsed
+  to zero height the moment the playlist's canvas artwork finished loading
+  (~1s after opening the page) — every child of the canvas backdrop box was
+  matchParentSize, so inside the lazy list the box measured to nothing and
+  the playlist information vanished (and the still-running video decode made
+  scrolling laggy). The content column now sizes the box, with the canvas
+  rendering behind the text as designed; the online playlist screen also
+  stops rebuilding its song list instance on every recomposition (another
+  scroll-jank source while playback state ticks)
+- The Android Auto settings page reserves space for the mini player: the
+  page used plain safe-drawing insets for its bottom padding, so the last
+  preference rows sat underneath the mini player whenever something was
+  playing — it now uses the player-aware window insets, the same recipe as
+  the settings main page
 - The SpatialFlow floating artwork no longer floats over the lyrics overlay
   and the queue drawer: the lyrics/queue state is now reported up from the
   player (the lyrics flag was previously wired to a signal the SpatialFlow
