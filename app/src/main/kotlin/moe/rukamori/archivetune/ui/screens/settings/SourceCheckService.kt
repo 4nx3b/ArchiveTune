@@ -238,7 +238,7 @@ object SourceCheckService {
 
         for (base in endpoints) {
             val result = probeQobuzBackupEndpoint(base)
-            if (result.healthy) {
+            if (result.ok) {
                 anyHealthy = true
                 reports.add("OK  $base — ${result.summary}")
                 break
@@ -265,7 +265,7 @@ object SourceCheckService {
         }
     }
 
-    private fun probeQobuzBackupEndpoint(base: String): SourceCheckResult {
+    private fun probeQobuzBackupEndpoint(base: String): EndpointProbe {
         val resolverUrl = "$base/api/stream?id=$KOZU_PROBE_YT_ID"
         return runCatching {
             val resolverRequest = Request.Builder()
@@ -277,22 +277,22 @@ object SourceCheckService {
                 .build()
             client.newCall(resolverRequest).execute().use { resolverResponse ->
                 if (!resolverResponse.isSuccessful) {
-                    return@runCatching SourceCheckResult(
-                        healthy = false,
+                    return@runCatching EndpointProbe(
+                        ok = false,
                         summary = "resolver returned HTTP ${resolverResponse.code}.",
                     )
                 }
                 val body = resolverResponse.body?.string().orEmpty()
                 if (body.isBlank()) {
-                    return@runCatching SourceCheckResult(
-                        healthy = false,
+                    return@runCatching EndpointProbe(
+                        ok = false,
                         summary = "resolver returned an empty body.",
                     )
                 }
                 val root = runCatching { JSONObject(body) }.getOrNull()
                 if (root == null) {
-                    return@runCatching SourceCheckResult(
-                        healthy = false,
+                    return@runCatching EndpointProbe(
+                        ok = false,
                         summary = "resolver returned a non-JSON response.",
                     )
                 }
@@ -300,8 +300,8 @@ object SourceCheckService {
                 val losslessUrl = root.optString("lossless").takeIf { it.isNotBlank() }
                 val lossyUrl = root.optString("url").takeIf { it.isNotBlank() }
                 if (losslessUrl == null && lossyUrl == null) {
-                    return@runCatching SourceCheckResult(
-                        healthy = false,
+                    return@runCatching EndpointProbe(
+                        ok = false,
                         summary = "resolver returned a JSON envelope with no stream URL.",
                     )
                 }
@@ -310,23 +310,23 @@ object SourceCheckService {
                 val lossyProbe = if (losslessProbe?.ok == true) null else lossyUrl?.let { probeCdn(it) }
                 when {
                     losslessProbe?.ok == true ->
-                        SourceCheckResult(
-                            healthy = true,
+                        EndpointProbe(
+                            ok = true,
                             summary = "reachable and served a lossless stream " +
                                 "(${losslessProbe.contentType}${losslessProbe.sizeSuffix()}).",
                         )
 
                     lossyProbe?.ok == true ->
-                        SourceCheckResult(
-                            healthy = true,
+                        EndpointProbe(
+                            ok = true,
                             summary = "reachable but only the lossy mirror served audio " +
                                 "(${lossyProbe.contentType}). No lossless copy of the probe track yet.",
                         )
 
                     else -> {
                         val failed = losslessProbe ?: lossyProbe
-                        SourceCheckResult(
-                            healthy = false,
+                        EndpointProbe(
+                            ok = false,
                             summary = "resolver returned a stream URL but the CDN served " +
                                 "${failed?.describeFailure() ?: "no response"}.",
                         )
@@ -334,14 +334,19 @@ object SourceCheckService {
                 }
             }
         }.getOrElse { e ->
-            SourceCheckResult(
-                healthy = false,
+            EndpointProbe(
+                ok = false,
                 summary = "failed to reach endpoint: ${e.message ?: e.javaClass.simpleName}",
             )
         }
     }
 
-    private data class CdnProbe(
+    private data class EndpointProbe(
+    val ok: Boolean,
+    val summary: String,
+)
+
+private data class CdnProbe(
         val ok: Boolean,
         val code: Int,
         val contentType: String,
