@@ -50,7 +50,6 @@
     <string name="instant_playback">すぐ再生</string>
     <string name="on_device">端末内</string>
     <string name="recently_played">最近再生</string>
-    <string name="top_mixes">おすすめミックス</string>
     <string name="library_top_mixes_loading">AIミックスを準備中…</string>
     <string name="library_top_mixes_refresh">ミックスを更新</string>
     <string name="library_top_mixes_configure_ai">AIを設定</string>
@@ -201,13 +200,8 @@
     <string name="removed_song_from_queue">「%s」をキューから削除した</string>
     <string name="removed_n_songs_from_queue">%d曲をキューから削除した</string>
     <string name="search_online">オンラインで検索</string>
-    <string name="tempo_and_pitch">テンポとピッチ</string>
     <string name="aod_mode">AODモード</string>
     <string name="aod_mode_exit">AODを終了</string>
-    <string name="tempo">テンポ</string>
-    <string name="pitch">ピッチ</string>
-    <string name="pitch_mode_semitones_short">半音</string>
-    <string name="pitch_mode_multiplier_short">倍</string>
     <string name="sort_by_create_date">追加日</string>
     <string name="sort_by_name">名前</string>
     <string name="sort_by_artist">アーティスト</string>

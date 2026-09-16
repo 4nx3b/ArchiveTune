@@ -3747,32 +3747,6 @@ internal fun EditorialCircleButton(
 }
 
 @Composable
-internal fun EditorialChip(
-    checked: Boolean,
-    onClick: () -> Unit,
-    accent: Color,
-    field: Color,
-    content: @Composable () -> Unit
-) {
-    val backgroundColor by animateColorAsState(
-        targetValue = if (checked) accent else Color.Transparent,
-        label = "EditorialChipBg"
-    )
-    val contentColor = if (checked) field else accent
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .background(backgroundColor)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        CompositionLocalProvider(LocalContentColor provides contentColor) {
-            content()
-        }
-    }
-}
-
 @Composable
 private fun V10ToggleButton(
     checked: Boolean,

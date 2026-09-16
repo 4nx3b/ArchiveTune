@@ -24,8 +24,6 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -108,6 +106,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -234,7 +233,9 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicPlayerContent
+import moe.rukamori.archivetune.ui.player.spatialflow.SpatialFlowFloatingArtwork
 import moe.rukamori.archivetune.ui.player.spatialflow.SpatialFlowPlayerContent
+import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.ui.player.looper.LooperPlayerContent
 import java.util.Locale
 import kotlin.math.abs
@@ -532,6 +533,14 @@ fun BottomSheetPlayer(
 
     val positionUpdatedState = rememberUpdatedState(position)
     val positionProvider = remember { { positionUpdatedState.value } }
+
+    // SpatialFlow floating-artwork morph: the shared artwork layer bridging
+    // the mini player's circle and the full player's artwork slot. Slot rects
+    // are measured in root layout coordinates (the sheet's graphicsLayer
+    // slide cancels out because every participant shares the sliding box).
+    val spatialFlowMiniArtworkRect = remember { mutableStateOf<Rect?>(null) }
+    val spatialFlowFullArtworkRect = remember { mutableStateOf<Rect?>(null) }
+    var spatialFlowPagerArtworkActive by remember { mutableStateOf(true) }
     var duration by rememberSaveable(mediaMetadata?.id) {
         mutableLongStateOf(playerConnection.player.duration)
     }
@@ -1315,13 +1324,47 @@ fun BottomSheetPlayer(
         },
         backHandlerEnabled = !aodModeEnabled && !isInlineLyricsOpen,
         keepContentAlive = true,
+        morphMode = playerDesignStyle == PlayerDesignStyle.SPATIALFLOW,
         navbarHiddenOffset = navbarHiddenOffset,
+        sharedLayer =
+            if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
+                {
+                    enrichedMetadata?.let { metadata ->
+                        SpatialFlowFloatingArtwork(
+                            state = state,
+                            mediaMetadata = metadata,
+                            queueWindows = queueWindows,
+                            currentWindowIndex = currentWindowIndex,
+                            artUrl = metadata.thumbnailUrl?.highRes(),
+                            isPlaying = isPlaying,
+                            fullArtworkRect = spatialFlowFullArtworkRect.value,
+                            miniArtworkRect = spatialFlowMiniArtworkRect.value,
+                            lyricsOpen = isInlineLyricsOpen,
+                            onPlaySongAtWindow = { windowIndex ->
+                                val window = queueWindows.getOrNull(windowIndex) ?: return@SpatialFlowFloatingArtwork
+                                playerConnection.player.seekToDefaultPosition(window.firstPeriodIndex)
+                                playerConnection.player.playWhenReady = true
+                            },
+                        )
+                    }
+                }
+            } else {
+                null
+            },
         collapsedContent = {
             MiniPlayer(
                 positionProvider = positionProvider,
                 durationProvider = durationProvider,
                 pureBlack = pureBlack,
                 isPairedWithNavigation = isMiniPlayerPairedWithNavigation,
+                artworkPlaceholder =
+                    playerDesignStyle == PlayerDesignStyle.SPATIALFLOW &&
+                        spatialFlowPagerArtworkActive,
+                onArtworkSlotPositioned = { rect ->
+                    if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
+                        spatialFlowMiniArtworkRect.value = rect
+                    }
+                },
             )
         },
     ) {
@@ -1968,6 +2011,13 @@ fun BottomSheetPlayer(
                             appIsDark = useDarkTheme,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
+                            floatingArtwork = true,
+                            onArtworkSlotPositioned = { rect ->
+                                spatialFlowFullArtworkRect.value = rect
+                            },
+                            onPagerArtworkActiveChange = { active ->
+                                spatialFlowPagerArtworkActive = active
+                            },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2501,6 +2551,13 @@ fun BottomSheetPlayer(
                             appIsDark = useDarkTheme,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
+                            floatingArtwork = true,
+                            onArtworkSlotPositioned = { rect ->
+                                spatialFlowFullArtworkRect.value = rect
+                            },
+                            onPagerArtworkActiveChange = { active ->
+                                spatialFlowPagerArtworkActive = active
+                            },
                             modifier =
                                 Modifier
                                     .fillMaxSize()

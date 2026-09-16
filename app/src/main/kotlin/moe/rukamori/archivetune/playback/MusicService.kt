@@ -146,10 +146,12 @@ import moe.rukamori.archivetune.cast.CastScreenState
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedKey
+import moe.rukamori.archivetune.constants.AudioPlaybackPitchKey
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedPitchMatchKey
 import moe.rukamori.archivetune.constants.DefaultMetadataSourceKey
 import moe.rukamori.archivetune.constants.MetadataSource
 import moe.rukamori.archivetune.constants.PreloadSongsCountKey
+import moe.rukamori.archivetune.constants.DEFAULT_PRELOAD_SONGS_COUNT
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.AudioQualityKey
 import moe.rukamori.archivetune.constants.DownloadSourceConfig
@@ -389,7 +391,6 @@ import kotlin.math.ceil
 import kotlin.math.pow
 import kotlin.math.roundToLong
 import kotlin.time.Duration.Companion.seconds
-import kotlinx.coroutines.plus
 
 private val JIO_SAAVN_NORMALIZE_REGEX = Regex("[^a-z0-9]")
 
@@ -1353,7 +1354,7 @@ class MusicService :
                 }
             }
         dataStore.data
-            .map { preferences -> preferences[PreloadSongsCountKey] ?: 0 }
+            .map { preferences -> preferences[PreloadSongsCountKey] ?: DEFAULT_PRELOAD_SONGS_COUNT }
             .distinctUntilChanged()
             .collect(scope) { updateSongPreload() }
         widgetUpdater =
@@ -1501,7 +1502,7 @@ class MusicService :
         ) { mediaMetadata, _ ->
             mediaMetadata
         }.collectLatest(ioScope) { mediaMetadata ->
-            if (mediaMetadata == null) return@collectLatest
+            if (mediaMetadata == null || mediaMetadata.isPodcast) return@collectLatest
 
             val stored = database.lyrics(mediaMetadata.id).first()
             val shouldFetch =
@@ -1534,12 +1535,25 @@ class MusicService :
         combine(
             dataStore.data.map { it[AudioPlaybackSpeedKey] ?: 1.0f },
             dataStore.data.map { it[AudioPlaybackSpeedPitchMatchKey] ?: false },
+            dataStore.data.map { it[AudioPlaybackPitchKey] ?: 1.0f },
             dataStore.data.map { it[EqualizerAudioEffectsEnabledKey] ?: false },
-        ) { speed, pitchMatched, audioEffectsEnabled ->
-            // Playback speed lives on the Audio effects tab and follows its
-            // master switch: nothing is applied to any song while it is off.
+        ) { speed, pitchMatched, pitch, audioEffectsEnabled ->
+            // Playback speed + pitch live on the Audio effects tab and follow
+            // its master switch: nothing is applied to any song while it is
+            // off. Match-pitch keeps 1x (timestretched); vinyl mode follows
+            // the speed unless the user picked an explicit pitch offset.
             val effectiveSpeed = if (audioEffectsEnabled) speed.coerceIn(0.5f, 2.0f) else 1.0f
-            PlaybackParameters(effectiveSpeed, if (pitchMatched) 1.0f else effectiveSpeed)
+            val effectivePitch =
+                if (!audioEffectsEnabled) {
+                    1.0f
+                } else if (pitchMatched) {
+                    1.0f
+                } else if (pitch != 1.0f) {
+                    pitch.coerceIn(0.5f, 2.0f)
+                } else {
+                    effectiveSpeed
+                }
+            PlaybackParameters(effectiveSpeed, effectivePitch)
         }.distinctUntilChanged()
             .collectLatest(scope) { parameters ->
                 // Only touch the players when the parameters actually differ -
@@ -2446,6 +2460,11 @@ class MusicService :
     private fun ensurePresenceManager() {
         if (DiscordPresenceManager.isRunning() && lastPresenceToken != null) return
 
+        if (currentMediaMetadata.value?.isPodcast == true) {
+            requestDiscordSync(reason = "podcast_playback", force = true)
+            return
+        }
+
         scope.launch {
 
             if (!dataStore.get(EnableDiscordRPCKey, true)) {
@@ -2802,6 +2821,11 @@ class MusicService :
             return
         }
         if (!player.playWhenReady || sleepTimer.pauseWhenSongEnd) {
+            localPlayer.pauseAtEndOfMediaItems = false
+            releaseSecondaryCrossfadePlayer()
+            return
+        }
+        if (player.currentMetadata?.isPodcast == true) {
             localPlayer.pauseAtEndOfMediaItems = false
             releaseSecondaryCrossfadePlayer()
             return
@@ -7513,12 +7537,12 @@ class MusicService :
             Timber.tag("MusicService").d("Skipping remote YouTube history for %s (sync disabled)", mediaId)
             return false
         }
-        if (database
-                .song(mediaId)
-                .first()
-                ?.song
-                ?.isLocal == true
-        ) {
+        val dbSong = database.song(mediaId).first()?.song
+        if (dbSong?.isLocal == true) {
+            return false
+        }
+        if (dbSong?.isPodcast == true) {
+            Timber.tag("MusicService").d("Skipping remote YouTube history for %s (podcast episode)", mediaId)
             return false
         }
 
@@ -8199,6 +8223,7 @@ class MusicService :
             val timelineDuration = player.duration
             val timelinePosition = player.currentPosition
             scope.launch {
+                if (timelineMetadata?.isPodcast == true) return@launch
                 try {
                     val song =
                         if (timelineMediaId != null) {
@@ -8303,8 +8328,9 @@ class MusicService :
         }
 
         if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED)) {
-
-            scrobbleManager?.onPlayerStateChanged(player.isPlaying, player.currentMetadata, duration = player.duration)
+            if (player.currentMetadata?.isPodcast != true) {
+                scrobbleManager?.onPlayerStateChanged(player.isPlaying, player.currentMetadata, duration = player.duration)
+            }
         }
 
         if (events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED) && player.mediaItemCount > 0) {
@@ -8872,7 +8898,7 @@ class MusicService :
         if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
             return
         }
-        val preloadCount = dataStore.get(PreloadSongsCountKey, 0)
+        val preloadCount = dataStore.get(PreloadSongsCountKey, DEFAULT_PRELOAD_SONGS_COUNT)
         if (preloadCount <= 0) return
         val currentIndex = player.currentMediaItemIndex
         if (currentIndex < 0) return
@@ -11211,6 +11237,7 @@ class MusicService :
         mediaMetadata: MediaMetadata?,
         durationMs: Long,
     ): Song? {
+        if (mediaMetadata?.isPodcast == true || dbSong?.song?.isPodcast == true) return null
         val metadataSong = mediaMetadata?.let { createTransientSongFromMedia(it) }
         val song =
             when {
@@ -11273,6 +11300,7 @@ class MusicService :
                 albumName = media.album?.title,
                 explicit = media.explicit,
                 isMusicVideo = media.isMusicVideo,
+                isPodcast = media.isPodcast,
                 isLocal = media.id.isLocalMediaId(),
             )
 

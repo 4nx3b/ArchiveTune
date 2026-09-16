@@ -523,6 +523,12 @@ interface DatabaseDao {
                       OFFSET :offset)
                      ON artist.id = artistId
         WHERE artist.blockedAt IS NULL
+          AND artist.id NOT IN (
+              SELECT song_artist_map.artistId
+              FROM song_artist_map
+                       JOIN song ON song.id = song_artist_map.songId
+              WHERE song.isPodcast = 1
+          )
     """,
     )
     fun mostPlayedArtists(
@@ -1779,6 +1785,7 @@ interface DatabaseDao {
                 albumName = mediaMetadata.album?.title,
                 explicit = mediaMetadata.explicit,
                 isMusicVideo = mediaMetadata.isMusicVideo,
+                isPodcast = mediaMetadata.isPodcast,
             ),
         )
         songArtistMap(song.id).forEach(::delete)
