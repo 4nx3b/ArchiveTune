@@ -222,9 +222,7 @@ object PoolAccountManager {
     private fun hasEveryService(): Boolean =
         tidalCache.isNotEmpty() && qobuzCache.isNotEmpty() && deezerCache.isNotEmpty() && appleMusicCache.isNotEmpty()
 
-    private companion object {
-        const val LAUNCH_REFRESH_THROTTLE_MS = 10L * 60L * 1000L
-    }
+    private const val LAUNCH_REFRESH_THROTTLE_MS = 10L * 60L * 1000L
 
     private fun refreshIntervalMs(): Long =
         if (hasEveryService()) MIN_REFRESH_INTERVAL_MS else MIN_PARTIAL_REFRESH_INTERVAL_MS
