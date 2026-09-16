@@ -1501,7 +1501,7 @@ class MusicService :
         ) { mediaMetadata, _ ->
             mediaMetadata
         }.collectLatest(ioScope) { mediaMetadata ->
-            if (mediaMetadata == null) return@collectLatest
+            if (mediaMetadata == null || mediaMetadata.isPodcast) return@collectLatest
 
             val stored = database.lyrics(mediaMetadata.id).first()
             val shouldFetch =
@@ -2446,6 +2446,11 @@ class MusicService :
     private fun ensurePresenceManager() {
         if (DiscordPresenceManager.isRunning() && lastPresenceToken != null) return
 
+        if (currentMediaMetadata.value?.isPodcast == true) {
+            requestDiscordSync(reason = "podcast_playback", force = true)
+            return
+        }
+
         scope.launch {
 
             if (!dataStore.get(EnableDiscordRPCKey, true)) {
@@ -2802,6 +2807,11 @@ class MusicService :
             return
         }
         if (!player.playWhenReady || sleepTimer.pauseWhenSongEnd) {
+            localPlayer.pauseAtEndOfMediaItems = false
+            releaseSecondaryCrossfadePlayer()
+            return
+        }
+        if (player.currentMetadata?.isPodcast == true) {
             localPlayer.pauseAtEndOfMediaItems = false
             releaseSecondaryCrossfadePlayer()
             return
@@ -7512,12 +7522,12 @@ class MusicService :
             Timber.tag("MusicService").d("Skipping remote YouTube history for %s (sync disabled)", mediaId)
             return false
         }
-        if (database
-                .song(mediaId)
-                .first()
-                ?.song
-                ?.isLocal == true
-        ) {
+        val dbSong = database.song(mediaId).first()?.song
+        if (dbSong?.isLocal == true) {
+            return false
+        }
+        if (dbSong?.isPodcast == true) {
+            Timber.tag("MusicService").d("Skipping remote YouTube history for %s (podcast episode)", mediaId)
             return false
         }
 
@@ -8198,6 +8208,7 @@ class MusicService :
             val timelineDuration = player.duration
             val timelinePosition = player.currentPosition
             scope.launch {
+                if (timelineMetadata?.isPodcast == true) return@launch
                 try {
                     val song =
                         if (timelineMediaId != null) {
@@ -8302,8 +8313,9 @@ class MusicService :
         }
 
         if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED)) {
-
-            scrobbleManager?.onPlayerStateChanged(player.isPlaying, player.currentMetadata, duration = player.duration)
+            if (player.currentMetadata?.isPodcast != true) {
+                scrobbleManager?.onPlayerStateChanged(player.isPlaying, player.currentMetadata, duration = player.duration)
+            }
         }
 
         if (events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED) && player.mediaItemCount > 0) {
@@ -11194,6 +11206,7 @@ class MusicService :
         mediaMetadata: MediaMetadata?,
         durationMs: Long,
     ): Song? {
+        if (mediaMetadata?.isPodcast == true || dbSong?.song?.isPodcast == true) return null
         val metadataSong = mediaMetadata?.let { createTransientSongFromMedia(it) }
         val song =
             when {
@@ -11256,6 +11269,7 @@ class MusicService :
                 albumName = media.album?.title,
                 explicit = media.explicit,
                 isMusicVideo = media.isMusicVideo,
+                isPodcast = media.isPodcast,
                 isLocal = media.id.isLocalMediaId(),
             )
 

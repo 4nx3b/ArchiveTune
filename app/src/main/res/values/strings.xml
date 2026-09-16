@@ -1748,6 +1748,13 @@
     <string name="greeting_evening">Good evening</string>
     <string name="greeting_night">Good night</string>
     <string name="greeting_default_name">there</string>
+    <string name="podcast">Podcast</string>
+    <string name="episodes">Episodes</string>
+    <string name="podcast_has_no_episodes">This podcast has no available episodes.</string>
+    <plurals name="n_episode">
+        <item quantity="one">%d episode</item>
+        <item quantity="other">%d episodes</item>
+    </plurals>
     <string name="home_jump_back_in_badge">Jump back in</string>
     <string name="home_recently_played">Recently Played</string>
     <string name="navigation_bar_tint_frosted_blur">Tint navigation bar</string>

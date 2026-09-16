@@ -119,6 +119,13 @@ fun CurrentSongHeader(
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
 
     val stableTopInset = LocalStableSystemBarsTopPadding.current
+    val infiniteQueueAvailable = mediaMetadata?.isPodcast != true
+    val queueItemCountText =
+        if (mediaMetadata?.isPodcast == true) {
+            pluralStringResource(R.plurals.n_episode, songCount, songCount)
+        } else {
+            pluralStringResource(R.plurals.n_song, songCount, songCount)
+        }
 
     Column(
         modifier =
@@ -275,7 +282,7 @@ fun CurrentSongHeader(
 
             Text(
                 text =
-                    pluralStringResource(R.plurals.n_song, songCount, songCount) +
+                    queueItemCountText +
                         "  •  " + makeTimeString(queueDuration * 1000L),
                 style = MaterialTheme.typography.labelMedium,
                 color = onBackgroundColor.copy(alpha = 0.55f),
@@ -360,12 +367,12 @@ fun CurrentSongHeader(
             }
 
             ToggleButton(
-                checked = infiniteQueueEnabled,
+                checked = infiniteQueueAvailable && infiniteQueueEnabled,
                 onCheckedChange = { onInfiniteQueueClick() },
                 modifier = Modifier.weight(1f).size(48.dp),
                 shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
                 colors = infiniteCheckedColors,
-                enabled = !infiniteQueueLoading,
+                enabled = infiniteQueueAvailable && !infiniteQueueLoading,
             ) {
                 AnimatedContent(
                     targetState = infiniteQueueLoading,

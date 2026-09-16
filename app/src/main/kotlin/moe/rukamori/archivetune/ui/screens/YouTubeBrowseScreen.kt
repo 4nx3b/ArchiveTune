@@ -259,6 +259,8 @@ fun YouTubeBrowseScreen(
                                                                         onDismiss = menuState::dismiss,
                                                                     )
                                                                 }
+
+                                                                is PodcastItem, is EpisodeItem -> Unit
                                                             }
                                                         }
                                                     },

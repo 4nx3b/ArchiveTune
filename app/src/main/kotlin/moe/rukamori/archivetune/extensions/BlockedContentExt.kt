@@ -23,6 +23,8 @@ fun <T : YTItem> List<T>.filterBlockedArtists(blockedArtistIds: Set<String>): Li
             is SongItem -> item.artists.none { it.id in blockedArtistIds }
             is AlbumItem -> item.artists.orEmpty().none { it.id in blockedArtistIds }
             is PlaylistItem -> item.author?.id !in blockedArtistIds
+            is PodcastItem -> item.author?.id !in blockedArtistIds
+            is EpisodeItem -> item.podcast?.id !in blockedArtistIds
         }
     }
 }

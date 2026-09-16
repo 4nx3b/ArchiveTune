@@ -283,6 +283,7 @@ fun LyricsScreen(
         }
 
     LaunchedEffect(mediaMetadata.id, currentLyrics?.lyrics, currentLyrics?.providerName) {
+        if (mediaMetadata.isPodcast) return@LaunchedEffect
         val snapshot = currentLyrics
         val needsFetch =
             snapshot == null ||
