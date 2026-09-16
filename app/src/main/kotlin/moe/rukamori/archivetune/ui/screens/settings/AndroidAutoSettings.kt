@@ -24,12 +24,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -49,11 +49,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.collectLatest
+import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.androidauto.AndroidAutoActionSlot
@@ -175,21 +177,33 @@ private fun AndroidAutoSettingsContent(
                         .glassHeaderSource(glassHeader),
                     contentAlignment = Alignment.Center,
                 ) { CircularProgressIndicator() }
-                is AndroidAutoSettingsState.Success -> AndroidAutoSettingsBody(
-                    model = state.model,
-                    onAction = onAction,
-                    scrollTo = scrollTo,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .glassHeaderSource(glassHeader)
-                            .windowInsetsPadding(
-                                WindowInsets.safeDrawing.only(
-                                    WindowInsetsSides.Horizontal +
-                                        WindowInsetsSides.Bottom,
+                is AndroidAutoSettingsState.Success -> {
+                    // Settings-main-page recipe: the bottom inset comes from
+                    // the player-aware window insets (navigation bar PLUS the
+                    // mini player height when playback is active) instead of
+                    // plain safeDrawing — otherwise the mini player overlapped
+                    // the last preference rows on this page.
+                    val playerAwareBottomPadding =
+                        LocalPlayerAwareWindowInsets.current
+                            .only(WindowInsetsSides.Bottom)
+                            .asPaddingValues()
+                            .calculateBottomPadding()
+                    AndroidAutoSettingsBody(
+                        model = state.model,
+                        onAction = onAction,
+                        scrollTo = scrollTo,
+                        bottomBarPadding = playerAwareBottomPadding,
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .glassHeaderSource(glassHeader)
+                                .windowInsetsPadding(
+                                    LocalPlayerAwareWindowInsets.current.only(
+                                        WindowInsetsSides.Horizontal,
+                                    ),
                                 ),
-                            ),
-                )
+                    )
+                }
                 AndroidAutoSettingsState.Empty -> AndroidAutoSettingsFailure(
                     onAction,
                     Modifier
@@ -264,6 +278,7 @@ private fun AndroidAutoSettingsBody(
     model: AndroidAutoSettingsUiModel,
     onAction: (AndroidAutoSettingsAction) -> Unit,
     scrollTo: String? = null,
+    bottomBarPadding: Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
     val configuration = model.snapshot.configuration
@@ -277,7 +292,7 @@ private fun AndroidAutoSettingsBody(
                 .fillMaxSize()
                 .verticalScroll(scrollState)
                 .then(positions.containerModifier())
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                .padding(bottom = bottomBarPadding + SettingsDimensions.ScreenBottomPadding),
     ) {
         // Content scrolls behind the header row, like the settings main page.
         Spacer(Modifier.height(systemBarsTopPadding + AppBarHeight + 8.dp))
