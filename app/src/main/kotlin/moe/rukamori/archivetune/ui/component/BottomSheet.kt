@@ -33,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -160,7 +161,7 @@ fun BottomSheet(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .graphicsLayer { zIndex = sharedZIndex },
+                        .zIndex(sharedZIndex),
                 content = sharedLayer,
             )
         }
@@ -174,8 +175,8 @@ fun BottomSheet(
                 modifier =
                     Modifier
                         .fillMaxSize()
+                        .zIndex(fullContentZIndex)
                         .graphicsLayer {
-                            zIndex = fullContentZIndex
                             if (morphMode) {
                                 // SpatialFlow curves: the full player only
                                 // starts fading in past halfway — the shared
@@ -196,8 +197,8 @@ fun BottomSheet(
                 modifier =
                     Modifier
                         .fillMaxSize()
+                        .zIndex(fullContentZIndex)
                         .graphicsLayer {
-                            zIndex = fullContentZIndex
                             if (morphMode) {
                                 val p = state.progress.coerceIn(0f, 1f)
                                 alpha = ((p - 0.5f) * 2).coerceIn(0f, 1f)
@@ -216,8 +217,8 @@ fun BottomSheet(
             Box(
                 modifier =
                     Modifier
+                        .zIndex(miniZIndex)
                         .graphicsLayer {
-                            zIndex = miniZIndex
                             alpha =
                                 if (morphMode) {
                                     // Gone exactly at halfway, when the full
@@ -255,8 +256,7 @@ private class PlayerSheetDynamicShape(
         val progress = progressProvider()
         val cornerPx = with(density) { androidx.compose.ui.unit.lerp(28.dp, 0.dp, progress).toPx() }
         return Outline.Rounded(
-            corner = androidx.compose.ui.geometry.CornerRadius(cornerPx, cornerPx),
-            size = size,
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerPx, cornerPx),
         )
     }
 }
@@ -353,9 +353,9 @@ class BottomSheetState(
         }
     }
 
-    private fun Float.toAnimatableVelocity(): AnimationVector1D =
-        // px/s -> dp/s (the animatable's unit), wrapped for animateTo.
-        AnimationVector1D(with(density) { toDp() }.value)
+    private fun Float.toAnimatableVelocity(): Dp =
+        // px/s -> dp/s (the animatable's unit).
+        with(density) { toDp() }
 
     private fun collapse(velocityPx: Float = 0f) {
         collapse(if (animationsDisabled) snap() else BottomSheetAnimationSpec, velocityPx)

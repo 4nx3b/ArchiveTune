@@ -101,8 +101,10 @@ data class EqualizerPresetUiModel(
 @Immutable
 data class EqualizerToneUiModels(
     private val values: List<EqualizerToneUiModel>,
-) {
+) : Iterable<EqualizerToneUiModel> {
     val size: Int get() = values.size
+
+    override fun iterator(): Iterator<EqualizerToneUiModel> = values.iterator()
 
     operator fun get(index: Int): EqualizerToneUiModel = values[index]
 }
