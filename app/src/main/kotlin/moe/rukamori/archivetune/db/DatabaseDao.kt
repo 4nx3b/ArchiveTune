@@ -1680,6 +1680,9 @@ interface DatabaseDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insert(map: RelatedSongMap)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    fun insert(playCountEntity: PlayCountEntity): Long
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insert(libraryTopMix: LibraryTopMixEntity)
 
