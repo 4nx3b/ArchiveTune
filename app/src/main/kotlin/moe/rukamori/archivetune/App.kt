@@ -148,10 +148,8 @@ class App :
         } catch (_: Exception) {
         }
 
-        moe.rukamori.archivetune.utils.traceStartup("ArchiveTune.applicationSetup") {
-            initializeCriticalSync()
-            initializeDeferredAsync()
-        }
+        initializeCriticalSync()
+        initializeDeferredAsync()
     }
 
     override fun onTrimMemory(level: Int) {
@@ -174,12 +172,13 @@ class App :
     }
 
     private fun initializeCriticalSync() {
+        initializeDiskBackedComponents()
+
         AppleMusicProvider.logger = { level, tag, message ->
             moe.rukamori.archivetune.utils.GlobalLog.append(level, tag, message)
         }
 
         applicationScope.launch(Dispatchers.IO) {
-            startupReadiness.awaitReady()
             var lastMedia = appleMusicMediaUserTokenCache
             dataStore.data.collect { prefs ->
                 val newDev = prefs[AppleMusicDevTokenKey]?.trim().orEmpty()
@@ -232,18 +231,15 @@ class App :
         }
 
         applicationScope.launch(Dispatchers.IO) {
-            startupReadiness.runOptional {
-                runCatching {
-                    if (appleMusicDevTokenCache.isBlank()) AppleMusicProvider.refreshToken()
-                    YouTube.currentPlaybackAuthState().sessionId?.takeIf { it.isNotBlank() }?.let {
-                        BotGuardTokenGenerator.preWarm(it)
-                    }
+            runCatching {
+                if (appleMusicDevTokenCache.isBlank()) AppleMusicProvider.refreshToken()
+                YouTube.currentPlaybackAuthState().sessionId?.takeIf { it.isNotBlank() }?.let {
+                    BotGuardTokenGenerator.preWarm(it)
                 }
             }
         }
 
         applicationScope.launch(Dispatchers.IO) {
-            startupReadiness.awaitReady()
             runCatching { moe.rukamori.archivetune.telegram.TelegramClient.startIfSessionExists(this@App) }
                 .onFailure { Timber.w(it, "Telegram session restore failed") }
         }
@@ -280,65 +276,72 @@ class App :
 
         applicationScope.launch(Dispatchers.IO) {
             try {
-                startupReadiness.initialize {
-                    val prefs = moe.rukamori.archivetune.utils.traceStartupAsync("ArchiveTune.preferences") {
-                        PreferenceStore.awaitSnapshot()
-                    }
-                    initializeDiskBackedComponents()
+                val prefs = dataStore.data.first()
 
-                    prefs[ContentCountryKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { country ->
-                        YouTube.locale = YouTube.locale.copy(gl = country)
-                    }
-                    prefs[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { lang ->
-                        YouTube.locale = YouTube.locale.copy(hl = lang)
-                    }
-                    prefs[YouTubeMusicRegionKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { regionValue ->
-                        YouTube.locale = YouTube.locale.copy(gl = regionValue)
-                        YouTube.regionSpooferActive = true
-                    }
+                prefs[ContentCountryKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { country ->
+                    YouTube.locale = YouTube.locale.copy(gl = country)
+                }
+                prefs[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { lang ->
+                    YouTube.locale = YouTube.locale.copy(hl = lang)
+                }
+                prefs[YouTubeMusicRegionKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { regionValue ->
+                    YouTube.locale = YouTube.locale.copy(gl = regionValue)
+                    YouTube.regionSpooferActive = true
+                }
 
-                    LastFmServiceConfig.fromPreferences(prefs).apply(prefs[LastFMSessionKey])
+                LastFmServiceConfig.fromPreferences(prefs).apply(prefs[LastFMSessionKey])
 
-                    ProxyUtils.applyYouTubeProxy(
-                        enabled = prefs[ProxyEnabledKey] == true,
-                        type = prefs[ProxyTypeKey].toEnum(defaultValue = Proxy.Type.HTTP),
-                        host = prefs[ProxyHostKey],
-                        port = prefs[ProxyPortKey],
-                        username = prefs[ProxyUsernameKey],
-                        password = prefs[ProxyPasswordKey],
-                    )
-                    YouTube.streamBypassProxy = YouTube.proxy != null && prefs[StreamBypassProxyKey] == true
-                    YouTube.useLoginForBrowse = prefs[UseLoginForBrowse] != false
-                    YouTube.authState = prefs.toPlaybackAuthState()
-                    applyDnsConfiguration(
-                        enabled = prefs[EnableDnsOverHttpsKey] ?: false,
-                        provider = prefs[DnsOverHttpsProviderKey] ?: "Cloudflare",
-                        customUrl = prefs[stringPreferencesKey("customDnsUrl")] ?: "https://",
-                    )
-                    appleMusicDevTokenCache = prefs[AppleMusicDevTokenKey]?.trim().orEmpty()
-                    appleMusicMediaUserTokenCache = prefs[AppleMusicMediaUserTokenKey]?.trim().orEmpty()
-                    DeezerAudioProvider.setManualArl(prefs[DeezerArlKey].orEmpty(), prefs[DeezerAccountPremiumKey] ?: false)
-                    if (PoolAccountManager.isEnabled) PoolAccountManager.loadCached(this@App)
+                ProxyUtils.applyYouTubeProxy(
+                    enabled = prefs[ProxyEnabledKey] == true,
+                    type = prefs[ProxyTypeKey].toEnum(defaultValue = Proxy.Type.HTTP),
+                    host = prefs[ProxyHostKey],
+                    port = prefs[ProxyPortKey],
+                    username = prefs[ProxyUsernameKey],
+                    password = prefs[ProxyPasswordKey],
+                )
+                YouTube.streamBypassProxy = YouTube.proxy != null && prefs[StreamBypassProxyKey] == true
 
-                    if (prefs[UseLoginForBrowse] != false) {
-                        YouTube.useLoginForBrowse = true
-                    }
+                // Re-install the rotating proxy pool when the user left IP rotation on. Without
+                // this the toggle in Internet Settings read as ON after every restart while no
+                // proxy was actually installed, so rotation appeared to do nothing. Fetching and
+                // validating the pool is network-bound, so it runs here in the deferred IO block
+                // and not on the startup critical path. A pool that validates to nothing leaves
+                // rotation off; requests then go out directly, exactly as before.
+                if (prefs[IpRotationEnabledKey] == true) {
+                    runCatching { YouTube.enableIpRotation() }
+                        .onFailure { Timber.w(it, "IP rotation restore failed") }
+                }
+                YouTube.useLoginForBrowse = prefs[UseLoginForBrowse] != false
+                YouTube.authState = prefs.toPlaybackAuthState()
+                applyDnsConfiguration(
+                    enabled = prefs[EnableDnsOverHttpsKey] ?: false,
+                    provider = prefs[DnsOverHttpsProviderKey] ?: "Cloudflare",
+                    customUrl = prefs[stringPreferencesKey("customDnsUrl")] ?: "https://",
+                )
+                appleMusicDevTokenCache = prefs[AppleMusicDevTokenKey]?.trim().orEmpty()
+                appleMusicMediaUserTokenCache = prefs[AppleMusicMediaUserTokenKey]?.trim().orEmpty()
+                DeezerAudioProvider.setManualArl(prefs[DeezerArlKey].orEmpty(), prefs[DeezerAccountPremiumKey] ?: false)
 
-                    if (prefs[RandomThemeOnStartupKey] == true) {
-                        val randomPalette = ThemePalettes.generateRandomPalette()
-                        val seedPalette =
-                            ThemeSeedPalette(
-                                primary = randomPalette.primary,
-                                secondary = randomPalette.secondary,
-                                tertiary = randomPalette.tertiary,
-                                neutral = randomPalette.neutral,
-                            )
-                        val encodedPalette = ThemeSeedPaletteCodec.encodeForPreference(seedPalette, "Random")
-                        dataStore.edit { settings ->
-                            settings[CustomThemeColorKey] = encodedPalette
-                        }
+                if (prefs[UseLoginForBrowse] != false) {
+                    YouTube.useLoginForBrowse = true
+                }
+
+                if (prefs[RandomThemeOnStartupKey] == true) {
+                    val randomPalette = ThemePalettes.generateRandomPalette()
+                    val seedPalette =
+                        ThemeSeedPalette(
+                            primary = randomPalette.primary,
+                            secondary = randomPalette.secondary,
+                            tertiary = randomPalette.tertiary,
+                            neutral = randomPalette.neutral,
+                        )
+                    val encodedPalette = ThemeSeedPaletteCodec.encodeForPreference(seedPalette, "Random")
+                    dataStore.edit { settings ->
+                        settings[CustomThemeColorKey] = encodedPalette
                     }
                 }
+
+                isInitialized = true
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -358,9 +361,7 @@ class App :
                     }
 
                     val autoDiscover = BuildConfig.SOURCE_PROVIDER_URL.isNotBlank()
-                    startupReadiness.runOptional {
-                        TidalInstanceHealthManager.refresh(this@App, includeDiscovery = autoDiscover, staggered = true)
-                    }
+                    TidalInstanceHealthManager.refresh(this@App, includeDiscovery = autoDiscover, staggered = true)
                 }
             } catch (e: Exception) {
                 Timber.w(e, "Tidal instance startup health scan failed")
@@ -370,19 +371,11 @@ class App :
         applicationScope.launch(Dispatchers.IO) {
             try {
                 if (PoolAccountManager.isEnabled) {
-                    startupReadiness.runOptional { PoolAccountManager.refresh(this@App) }
+                    PoolAccountManager.loadCached(this@App)
+                    PoolAccountManager.refresh(this@App)
                 }
             } catch (e: Exception) {
                 Timber.w(e, "Pool account startup refresh failed")
-            }
-        }
-
-        applicationScope.launch(Dispatchers.IO) {
-            startupReadiness.runOptional {
-                if (dataStore.data.first()[IpRotationEnabledKey] == true) {
-                    runCatching { YouTube.enableIpRotation() }
-                        .onFailure { Timber.w(it, "IP rotation restore failed") }
-                }
             }
         }
 
@@ -399,7 +392,6 @@ class App :
         }
 
         applicationScope.launch(Dispatchers.IO) {
-            startupReadiness.awaitReady()
             dataStore.data
                 .map {
                     Triple(
@@ -414,7 +406,6 @@ class App :
         }
 
         applicationScope.launch(Dispatchers.IO) {
-            startupReadiness.awaitReady()
             dataStore.data
                 .map { (it[DeezerArlKey] ?: "") to (it[DeezerAccountPremiumKey] ?: false) }
                 .distinctUntilChanged()
@@ -424,7 +415,6 @@ class App :
         }
 
         applicationScope.launch(Dispatchers.IO) {
-            startupReadiness.awaitReady()
             dataStore.data
                 .map { it.toPlaybackAuthState() }
                 .distinctUntilChanged()
@@ -435,12 +425,8 @@ class App :
                         YTPlayerUtils.clearPlaybackAuthCaches()
                         val sessionId = authState.sessionId
                         if (!sessionId.isNullOrBlank()) {
-                            applicationScope.launch(Dispatchers.IO) {
-                                startupReadiness.runOptional {
-                                    if (YouTube.currentPlaybackAuthState().sessionId == sessionId) {
-                                        BotGuardTokenGenerator.preWarm(sessionId)
-                                    }
-                                }
+                            if (YouTube.currentPlaybackAuthState().sessionId == sessionId) {
+                                BotGuardTokenGenerator.preWarm(sessionId)
                             }
                         }
                     }
@@ -448,7 +434,6 @@ class App :
         }
 
         applicationScope.launch(Dispatchers.IO) {
-            startupReadiness.awaitReady()
             dataStore.data
                 .map { it.toPlaybackAuthState().visitorData }
                 .distinctUntilChanged()
@@ -501,7 +486,6 @@ class App :
             }
         }
         applicationScope.launch(Dispatchers.IO) {
-            startupReadiness.awaitReady()
             dataStore.data
                 .map { prefs ->
                     LastFmServiceConfig.fromPreferences(prefs) to prefs[LastFMSessionKey]
@@ -579,8 +563,6 @@ class App :
     }
 
     companion object {
-        val startupReadiness = moe.rukamori.archivetune.utils.StartupReadiness()
-
         lateinit var instance: App
             private set
 

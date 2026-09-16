@@ -219,7 +219,6 @@ class SyncUtils
                 }
 
         private suspend fun isLoggedIn(): Boolean {
-            moe.rukamori.archivetune.App.startupReadiness.awaitReady()
             val cookie =
                 context.dataStore.data
                     .map { it[InnerTubeCookieKey] }
