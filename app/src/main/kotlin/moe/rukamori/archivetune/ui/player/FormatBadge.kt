@@ -77,6 +77,47 @@ fun LosslessOrStats(
 private fun FormatEntity.isLossless(): Boolean =
     mimeType.endsWith("flac") || mimeType.endsWith("alac")
 
+/**
+ * The quality badge the player styles render over their artwork areas:
+ * a headphones glyph plus the label, in the translucent-white convention
+ * this file already uses. [animated] runs the label through the shimmer
+ * sweep (the lossless / hi-res states), so an active badge reads as live
+ * instead of a static caption.
+ */
+@Composable
+private fun LosslessLabel(
+    text: String,
+    animated: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Headphones,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.55f),
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(4.dp))
+        if (animated) {
+            ShimmerText(text)
+        } else {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium.copy(
+                    color = Color.White.copy(alpha = 0.55f),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = (MaterialTheme.typography.labelMedium.fontSize.value + 1).sp,
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
 @Composable
 private fun ShimmerText(text: String) {
     var widthPx by remember { mutableIntStateOf(0) }

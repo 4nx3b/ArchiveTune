@@ -64,6 +64,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
 import moe.rukamori.archivetune.ui.player.PlayerFadeConfig
@@ -387,7 +388,7 @@ private fun MiniPlayerArtwork(
                     if (onArtworkSlotPositioned != null) {
                         onArtworkSlotPositioned(
                             androidx.compose.ui.geometry.Rect(
-                                offset = coordinates.positionInRoot(),
+                                offset = coordinates.positionInRoot,
                                 size =
                                     androidx.compose.ui.geometry.Size(
                                         width = coordinates.size.width.toFloat(),

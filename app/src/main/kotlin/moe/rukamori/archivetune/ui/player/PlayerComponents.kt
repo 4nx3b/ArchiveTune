@@ -3747,7 +3747,6 @@ internal fun EditorialCircleButton(
 }
 
 @Composable
-@Composable
 private fun V10ToggleButton(
     checked: Boolean,
     onClick: () -> Unit,
