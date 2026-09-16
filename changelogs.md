@@ -138,6 +138,18 @@ player-animation performance pass yet.
 
 ## Fixes
 
+- The equalizer popup opens again: the 16.0 rework had switched the dialog
+  onto an edge-to-edge window path (FloatingDialogWindowTheme +
+  layout-in-decor flags) that crashed on open on real devices — the dialog is
+  back on the long-working window configuration, with the status bar still
+  hidden while it shows
+- The SpatialFlow floating artwork no longer floats over the lyrics overlay
+  and the queue drawer: the lyrics/queue state is now reported up from the
+  player (the lyrics flag was previously wired to a signal the SpatialFlow
+  style never sets, and the queue had no check at all), and the shared
+  artwork layer fades out under both — exactly like the original app. The
+  layer also stops drawing a stale-positioned artwork over canvas/video
+  playback once the artwork slot reports it is occupied
 - The lyrics overflow menu is back to the 15.0 presentation: the floating menu
   card (song header + action grid) that Liquid Glass frosts when the toggle is
   on, instead of the small anchored popup the page had briefly grown

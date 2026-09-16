@@ -563,13 +563,15 @@ jobs:
           cat > release_notes.md <<EOF
           # ArchiveTune ${VERSION}
 
-          The biggest update since the first stable release: new music sources,
-          new player styles, a Liquid Glass redesign, AI-powered lyrics, and
-          hundreds of fixes.
+          The sources update: podcasts join the app, Apple Music and Amazon Music
+          become full members of the source chain, Tidal and the community
+          account pools arrive, the equalizer grows into a complete Audio
+          Effects console, Home learns to be Spotify, and the SpatialFlow player
+          finally collapses as smoothly as the original app.
 
           **Full changelog:** https://github.com/${{ github.repository }}/blob/${TAG}/changelogs.md
 
-          **All changes since v14:** https://github.com/${{ github.repository }}/compare/v14.0.5362...${TAG}
+          **All changes since v15.0:** https://github.com/${{ github.repository }}/compare/v15.0...${TAG}
           EOF
 
           gh release create "$TAG" \

@@ -7,11 +7,15 @@
 
 package moe.rukamori.archivetune.ui.player.spatialflow
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -38,6 +42,14 @@ import moe.rukamori.archivetune.ui.component.BottomSheetState
  * the sheet's graphicsLayer slide does not affect layout positions, and since
  * every participant (mini slot, full slot, this layer) lives inside the same
  * sliding sheet box, the shared offset cancels out.
+ *
+ * Overlay choreography (matching the original's PlayerBottomSheetCompose):
+ * while the lyrics overlay is open its own flying artwork owns the morph, and
+ * while the queue drawer is expanded the drawer owns the whole screen — the
+ * shared layer fades to 0 (animated with the same spring family as the
+ * drawer's slide) instead of floating above them. `artworkActive` covers the
+ * canvas/video case: when the player's artwork slot is occupied by a canvas
+ * or music video, the layer never draws over the media surface.
  */
 @Composable
 fun BoxScope.SpatialFlowFloatingArtwork(
@@ -50,6 +62,8 @@ fun BoxScope.SpatialFlowFloatingArtwork(
     fullArtworkRect: Rect?,
     miniArtworkRect: Rect?,
     lyricsOpen: Boolean,
+    queueOpen: Boolean = false,
+    artworkActive: Boolean = true,
     onPlaySongAtWindow: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -58,6 +72,21 @@ fun BoxScope.SpatialFlowFloatingArtwork(
     }
     val full = fullArtworkRect
     val mini = miniArtworkRect
+
+    // Animated fade for the queue drawer (the original animates the shared
+    // layer's alpha with the drawer's spring so the two never fight). Lyrics
+    // and canvas/video take the instant path: their own artwork replaces this
+    // layer the moment they take over.
+    val queueFade by animateFloatAsState(
+        targetValue = if (queueOpen) 0f else 1f,
+        animationSpec =
+            spring(
+                dampingRatio = Spring.DampingRatioLowBouncy,
+                stiffness = 300f,
+            ),
+        label = "SfFloatingArtworkQueueFade",
+    )
+
     Box(
         modifier =
             modifier
@@ -65,11 +94,16 @@ fun BoxScope.SpatialFlowFloatingArtwork(
                 .size(with(androidx.compose.ui.platform.LocalDensity.current) { full.width.toDp() })
                 .graphicsLayer {
                     val p = state.progress.coerceIn(0f, 1f)
-                    // Hide while the lyrics overlay owns the artwork morph
-                    // (the flying artwork in SpatialFlowPlayer takes over).
-                    val visible = !lyricsOpen
-                    alpha = if (visible) 1f else 0f
-                    if (!visible) return@graphicsLayer
+                    // The lyrics overlay and the queue drawer only exist on the
+                    // expanded side, so their suppression scales with progress:
+                    // collapsing the sheet under an open overlay smoothly hands
+                    // the mini circle back to this layer instead of leaving it
+                    // stuck invisible. Canvas/video suppression applies at every
+                    // progress (the mini player renders its own artwork then).
+                    val lyricsSuppress = lerp(1f, if (lyricsOpen) 0f else 1f, p)
+                    val queueSuppress = lerp(1f, queueFade, p)
+                    alpha = (if (artworkActive) 1f else 0f) * lyricsSuppress * queueSuppress
+                    if (alpha <= 0.01f) return@graphicsLayer
 
                     // Scale the full-size artwork down to the mini circle.
                     val scale = lerp(mini.width / full.width, 1f, p)
@@ -96,7 +130,7 @@ fun BoxScope.SpatialFlowFloatingArtwork(
             mediaMetadata = mediaMetadata,
             queueWindows = queueWindows,
             currentWindowIndex = currentWindowIndex,
-            userScrollEnabled = state.progress > 0.95f && !lyricsOpen,
+            userScrollEnabled = state.progress > 0.95f && !lyricsOpen && !queueOpen,
             artUrl = artUrl,
             isPlaying = isPlaying,
             cornerRadius = 16.dp,
