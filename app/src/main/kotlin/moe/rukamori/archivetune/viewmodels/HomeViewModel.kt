@@ -621,7 +621,6 @@ class HomeViewModel
             loadError.value = null
 
             try {
-                moe.rukamori.archivetune.App.startupReadiness.awaitReady()
                 val aiContentFilterPolicy = loadAiContentFilterPolicy()
                 supervisorScope {
                     val hideExplicit = context.dataStore.getAsync(HideExplicitKey, false)
@@ -1179,7 +1178,6 @@ class HomeViewModel
             }
 
             viewModelScope.launch(Dispatchers.IO) {
-                moe.rukamori.archivetune.App.startupReadiness.awaitReady()
                 var previousAccount: Pair<String?, String?>? = null
                 context.dataStore.data
                     .map { it[InnerTubeCookieKey] to it[DataSyncIdKey] }
@@ -1205,9 +1203,7 @@ class HomeViewModel
 
                                 if (loginTransition && context.dataStore.getAsync(YtmSyncKey, true)) {
                                     screenState.first { it !is HomeScreenState.Loading }
-                                    moe.rukamori.archivetune.App.startupReadiness.runOptional {
-                                        syncUtils.performFullSync()
-                                    }
+                                    syncUtils.performFullSync()
                                 }
                             } else {
                                 clearAccountData()

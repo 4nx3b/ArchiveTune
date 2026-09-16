@@ -205,9 +205,7 @@ abstract class InternalDatabase : RoomDatabase() {
                             runCatching { context.deleteDatabase(DB_NAME) }
                         },
                         open = { helper, writable ->
-                            moe.rukamori.archivetune.utils.traceStartup("ArchiveTune.databaseOpen") {
-                                if (writable) helper.writableDatabase else helper.readableDatabase
-                            }
+                            if (writable) helper.writableDatabase else helper.readableDatabase
                         },
                     )
                 }

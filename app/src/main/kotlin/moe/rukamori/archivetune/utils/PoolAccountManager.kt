@@ -141,11 +141,17 @@ object PoolAccountManager {
         get() = BuildConfig.SOURCE_PROVIDER_URL.isNotBlank()
 
     private val poolBaseUrl: String?
-        get() =
-            BuildConfig.SOURCE_PROVIDER_URL
-                .trim()
+        get() {
+            // Users routinely paste the full feed endpoint instead of the bare base URL; the client
+            // appends /api/accounts (with a legacy /api/sources fallback) itself, so a configured
+            // ".../api/sources" would 404 on every request while looking like a non-pool deployment.
+            val raw = BuildConfig.SOURCE_PROVIDER_URL.trim()
+            if (raw.isEmpty()) return null
+            return raw
+                .replace(Regex("(?i)/api/(sources|accounts)/?$"), "")
                 .trimEnd('/')
                 .takeIf { it.isNotEmpty() }
+        }
 
     private val accountsUrl: String? get() = poolBaseUrl?.let { "$it/api/accounts" }
 
@@ -309,9 +315,8 @@ object PoolAccountManager {
                                 "No pool API at $poolBaseUrl (HTTP 404) — that URL is not an ArchivePool deployment."
                             }
                             result.code == 401 ->
-                                "The pool requires an API key (HTTP 401). Create a free account at " +
-                                    "$poolBaseUrl, press “Request API key” on its dashboard, then paste the key " +
-                                    "into Sources → Pool API key and refresh again."
+                                "Pool rejected the API key (HTTP 401) — SOURCE_PROVIDER_KEY is missing, revoked, " +
+                                    "or issued by a different deployment."
                             result.code == 0 -> "Could not reach $poolBaseUrl — network error."
                             else -> "Pool feed returned HTTP ${result.code}."
                         }
