@@ -178,6 +178,131 @@ object AppleMusicAudioProvider {
         val matchedDurationMs: Long?,
     )
 
+    data class AppleMusicCandidate(
+        val songId: String,
+        val title: String,
+        val artist: String?,
+        val thumbnailUrl: String?,
+        val durationMs: Long?,
+    )
+
+    suspend fun searchCandidates(
+        query: String,
+        limit: Int = 8,
+    ): List<AppleMusicCandidate> =
+        withContext(Dispatchers.IO) {
+            if (query.isBlank()) return@withContext emptyList()
+            // The catalog search needs a developer JWT but NOT necessarily a
+            // signed-in user: fall back to the auto-scraped web-player token
+            // when no user-pasted developer token exists (previously this
+            // returned an empty list and the popup search showed nothing).
+            val devToken =
+                devToken() ?: AppleMusicProvider.currentDevToken() ?: return@withContext emptyList()
+            var ringEntries = accountRing()
+            if (ringEntries.isEmpty()) {
+                // No personal or pool media-user token: try the storefront
+                // catalog search anonymously — catalog data is public; the
+                // Media-User-Token header is only required for personalised
+                // endpoints. A 401/403 simply yields no results, same as the
+                // old behaviour.
+                ringEntries = listOf(RingEntry("", null))
+            }
+
+            for (attempt in ringEntries.indices) {
+                val index = (ringIndex + attempt) % ringEntries.size
+                val entry = ringEntries[index]
+                val rows =
+                    runCatching {
+                        searchCatalogRows(query, limit, entry.token, devToken)
+                    }.getOrElse { error ->
+                        if (error !is AuthException) {
+                            Log.w(TAG, "search failed: ${error.message}")
+                            return@withContext emptyList()
+                        }
+                        Log.w(TAG, "media-user-token rejected — rotating account ${index + 1}/${ringEntries.size}")
+                        if (entry.poolId != null) {
+                            PoolAccountManager.report(
+                                service = "apple-music",
+                                kind = "account",
+                                id = entry.poolId,
+                                reportType = "dead",
+                            )
+                        }
+                        null
+                    }
+                if (rows != null) {
+                    ringIndex = index
+                    return@withContext rows
+                }
+            }
+            emptyList()
+        }
+
+    private suspend fun searchCatalogRows(
+        query: String,
+        limit: Int,
+        mediaToken: String,
+        devToken: String,
+    ): List<AppleMusicCandidate> =
+        withContext(Dispatchers.IO) {
+            val storefront = resolveStorefront()
+            val url =
+                "$AMP_BASE/v1/catalog/$storefront/search".toHttpUrl()
+                    .newBuilder()
+                    .addQueryParameter("term", query)
+                    .addQueryParameter("types", "songs")
+                    .addQueryParameter("limit", limit.coerceAtMost(25).toString())
+                    .build()
+            // An empty media-user token means an anonymous catalog lookup —
+            // sending a blank header would be rejected outright, so the header
+            // is simply omitted (catalog search does not require a user).
+            val request =
+                Request.Builder()
+                    .url(url)
+                    .header("Authorization", "Bearer $devToken")
+                    .apply {
+                        if (mediaToken.isNotBlank()) header("Media-User-Token", mediaToken)
+                    }
+                    .header("Origin", "https://music.apple.com")
+                    .header("Referer", "https://music.apple.com/")
+                    .header("User-Agent", UA)
+                    .get()
+                    .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    if (response.code == 401 || response.code == 403) throw AuthException()
+                    Log.w(TAG, "search failed: %d".format(response.code))
+                    return@withContext emptyList()
+                }
+                val root = json.parseToJsonElement(response.body?.string().orEmpty()).jsonObject
+                val songs =
+                    root["results"]?.jsonObject?.get("songs")?.jsonObject?.get("data")?.jsonArray
+                        ?: return@withContext emptyList()
+                songs.mapNotNull { element ->
+                    val song = element.jsonObject
+                    val attributes = song["attributes"]?.jsonObject ?: return@mapNotNull null
+                    val songId = song["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    val name = attributes["name"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    AppleMusicCandidate(
+                        songId = songId,
+                        title = name,
+                        artist = attributes["artistName"]?.jsonPrimitive?.contentOrNull,
+                        thumbnailUrl =
+                            attributes["artwork"]?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull
+                                ?.replace("{w}", "300")
+                                ?.replace("{h}", "300"),
+                        durationMs =
+                            attributes["durationInMillis"]?.jsonPrimitive?.contentOrNull?.toLongOrNull(),
+                    )
+                }
+            }
+        }
+
+    suspend fun resolveCandidates(
+        title: String,
+        artists: List<String>,
+        album: String?,
+
     /**
      * Search the catalog and resolve every plausible candidate to a playable stream. The
      * caller applies the shared metadata-match gate ([moe.rukamori.archivetune.audiosource
