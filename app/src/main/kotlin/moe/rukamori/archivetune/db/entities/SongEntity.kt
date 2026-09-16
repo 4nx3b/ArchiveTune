@@ -49,6 +49,8 @@ data class SongEntity(
     val dateDownload: LocalDateTime? = LocalDateTime.now(),
     @ColumnInfo(name = "isMusicVideo", defaultValue = "0")
     val isMusicVideo: Boolean = false,
+    @ColumnInfo(name = "isPodcast", defaultValue = "0")
+    val isPodcast: Boolean = false,
     @ColumnInfo(name = "isLocal", defaultValue = "0")
     val isLocal: Boolean = false,
 

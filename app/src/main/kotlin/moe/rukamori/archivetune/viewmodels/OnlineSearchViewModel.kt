@@ -33,7 +33,6 @@ import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.innertube.models.filterExplicit
 import moe.rukamori.archivetune.innertube.models.filterVideo
-import moe.rukamori.archivetune.innertube.models.filterUnsupportedEpisodes
 import moe.rukamori.archivetune.innertube.pages.SearchSummaryPage
 import moe.rukamori.archivetune.models.ItemsPage
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchProviderArgument
@@ -128,7 +127,7 @@ class OnlineSearchViewModel
                                             .copy(
                                                 items =
                                                     filterAiContent(
-                                                        summary.items.filterUnsupportedEpisodes(),
+                                                        summary.items,
                                                         aiContentFilterPolicy,
                                                     ),
                                             )
@@ -157,7 +156,6 @@ class OnlineSearchViewModel
                                 filterAiContent(
                                     result.items
                                         .distinctBy { it.id }
-                                        .filterUnsupportedEpisodes()
                                         .filterExplicit(
                                             context.dataStore.get(
                                                 HideExplicitKey,

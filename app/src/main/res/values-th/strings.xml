@@ -50,7 +50,6 @@
     <string name="instant_playback">เล่นทันที</string>
     <string name="on_device">บนอุปกรณ์นี้</string>
     <string name="recently_played">เพิ่งเล่นล่าสุด</string>
-    <string name="top_mixes">ท็อปมิกซ์สำหรับคุณ</string>
     <string name="library_top_mixes_loading">กำลังจัดเตรียมมิกซ์ AI…</string>
     <string name="library_top_mixes_refresh">รีเฟรชมิกซ์</string>
     <string name="library_top_mixes_configure_ai">ตั้งค่า AI</string>

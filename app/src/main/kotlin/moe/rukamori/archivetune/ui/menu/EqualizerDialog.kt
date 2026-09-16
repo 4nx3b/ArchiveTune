@@ -111,6 +111,31 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.rukamori.archivetune.R
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.sp
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import moe.rukamori.archivetune.equalizer.EqualizerControlMode
+import moe.rukamori.archivetune.equalizer.EqualizerTone
+import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
+import moe.rukamori.archivetune.ui.component.glassAwareSurface
+import moe.rukamori.archivetune.ui.screens.GlassScreenHeader
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.glassHeaderSource
+import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
+import moe.rukamori.archivetune.viewmodels.EqualizerBandUiModel
+import moe.rukamori.archivetune.viewmodels.EqualizerToneUiModel
+import kotlin.math.roundToInt
+import moe.rukamori.archivetune.constants.AudioPlaybackPitchKey
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedKey
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedPitchMatchKey
 import moe.rukamori.archivetune.constants.EqualizerAudioEffectsEnabledKey
@@ -167,8 +192,22 @@ fun EqualizerDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties =
+            DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false,
+            ),
     ) {
+        // Edge-to-edge: the dialog draws behind the status bar (the old
+        // decor-fits window left the status-bar strip showing the screen
+        // behind the dialog — the "gap around the header"), and a transparent
+        // window background lets the liquid-glass surface read through.
+        val dialogView = LocalView.current
+        SideEffect {
+            (dialogView.parent as? android.view.Window)?.setBackgroundDrawable(
+                android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT),
+            )
+        }
         KeepStatusBarHiddenInDialog()
         EqualizerScreen(
             state = state,
@@ -256,6 +295,7 @@ private fun AudioEffectsContent(
     // MusicService applies them to the (primary and crossfade) players.
     val (playbackSpeed, onPlaybackSpeedChange) = rememberPreference(AudioPlaybackSpeedKey, defaultValue = 1.0f)
     val (isPitchMatched, onPitchMatchedChange) = rememberPreference(AudioPlaybackSpeedPitchMatchKey, defaultValue = false)
+    val (playbackPitch, onPlaybackPitchChange) = rememberPreference(AudioPlaybackPitchKey, defaultValue = 1.0f)
     var isSpeedSwitchOn by remember { mutableStateOf(playbackSpeed != 1.0f) }
 
     // Stereo balance keeps the reference behaviour: the section switch is a
@@ -291,9 +331,10 @@ private fun AudioEffectsContent(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surface)
-                .statusBarsPadding()
+                .background(glassAwareSurface())
+                .glassHeaderSource(glassHeader)
                 .verticalScroll(scrollState)
+                .statusBarsPadding()
                 .padding(horizontal = 24.dp)
                 .padding(top = 8.dp, bottom = 120.dp),
     ) {
@@ -318,23 +359,48 @@ private fun AudioEffectsContent(
                         .weight(1f)
                         .padding(top = 8.dp),
             )
-            IconButton(onClick = viewModel::showSaveProfileDialog) {
-                Icon(
+            val glassBackdrop = glassHeader.backdrop
+            if (glassBackdrop != null) {
+                LiquidGlassIconButton(
+                    backdrop = glassBackdrop,
                     painter = painterResource(R.drawable.add),
                     contentDescription = stringResource(R.string.eq_save_profile),
+                    interactive = true,
+                    onClick = viewModel::showSaveProfileDialog,
                 )
-            }
-            IconButton(onClick = viewModel::showManageProfiles, enabled = model.profiles.size > 0) {
-                Icon(
+                LiquidGlassIconButton(
+                    backdrop = glassBackdrop,
                     painter = painterResource(R.drawable.tune),
                     contentDescription = stringResource(R.string.eq_manage),
+                    interactive = true,
+                    onClick = viewModel::showManageProfiles,
                 )
-            }
-            IconButton(onClick = onDismiss) {
-                Icon(
+                LiquidGlassIconButton(
+                    backdrop = glassBackdrop,
                     painter = painterResource(R.drawable.close),
                     contentDescription = stringResource(R.string.eq_close),
+                    interactive = true,
+                    onClick = onDismiss,
                 )
+            } else {
+                IconButton(onClick = viewModel::showSaveProfileDialog) {
+                    Icon(
+                        painter = painterResource(R.drawable.add),
+                        contentDescription = stringResource(R.string.eq_save_profile),
+                    )
+                }
+                IconButton(onClick = viewModel::showManageProfiles, enabled = model.profiles.size > 0) {
+                    Icon(
+                        painter = painterResource(R.drawable.tune),
+                        contentDescription = stringResource(R.string.eq_manage),
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        painter = painterResource(R.drawable.close),
+                        contentDescription = stringResource(R.string.eq_close),
+                    )
+                }
             }
         }
 
@@ -364,6 +430,11 @@ private fun AudioEffectsContent(
 
         if (selectedTab == 0) {
             // ===== EQUALIZER PILL =====
+            // The full original control set, restored: the basic/advanced mode
+            // selector, the fixed-band shaper, and (in advanced mode) the
+            // device's real band sliders with reset, the signal section
+            // (output gain + auto headroom) and the profiles row — plus the
+            // system-equalizer escape hatch.
             SegmentedFeatureCard(
                 items =
                     listOf(
@@ -382,6 +453,162 @@ private fun AudioEffectsContent(
                         },
                     ),
             )
+
+            // Basic <-> Advanced mode selector (the original card).
+            SectionContainer {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = stringResource(R.string.eq_control_mode),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        EqualizerControlMode.entries.forEachIndexed { index, mode ->
+                            SegmentedButton(
+                                selected = model.controlMode == mode,
+                                onClick = { viewModel.setControlMode(mode) },
+                                shape = SegmentedButtonDefaults.itemShape(index, EqualizerControlMode.entries.size),
+                                icon = {},
+                            ) {
+                                Text(
+                                    text =
+                                        stringResource(
+                                            if (mode == EqualizerControlMode.BASIC) R.string.eq_basic else R.string.eq_advanced,
+                                        ),
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        text =
+                            stringResource(
+                                if (model.controlMode == EqualizerControlMode.BASIC) {
+                                    R.string.eq_basic_description
+                                } else {
+                                    R.string.eq_advanced_description
+                                },
+                            ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            if (model.controlMode == EqualizerControlMode.BASIC) {
+                // Basic: the two tone sliders driving the device bands.
+                SegmentedFeatureCard(
+                    items =
+                        model.tones.map { tone ->
+                            {
+                                ToneSliderSection(
+                                    tone = tone,
+                                    enabled = model.enabled,
+                                    minimumValueMb = model.minimumBandLevelMb,
+                                    maximumValueMb = model.maximumBandLevelMb,
+                                    onValueChange = { valueMb ->
+                                        viewModel.updateToneDraft(tone.tone, valueMb)
+                                    },
+                                    onValueChangeFinished = { viewModel.commitTone(tone.tone) },
+                                )
+                            }
+                        },
+                )
+            } else {
+                // Advanced: the device's real band sliders with a reset action.
+                SectionContainer {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = stringResource(R.string.eq_bands),
+                                style = MaterialTheme.typography.titleLarge,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(
+                                onClick = viewModel::resetBands,
+                                enabled = model.enabled,
+                                shapes = ButtonDefaults.shapes(),
+                            ) {
+                                Text(text = stringResource(R.string.reset))
+                            }
+                        }
+                        Text(
+                            text = stringResource(R.string.eq_bands_description),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        repeat(model.bands.size) { index ->
+                            BandSliderSection(
+                                band = model.bands[index],
+                                enabled = model.enabled,
+                                minimumValueMb = model.minimumBandLevelMb,
+                                maximumValueMb = model.maximumBandLevelMb,
+                                onValueChange = { valueMb ->
+                                    viewModel.updateBandDraft(index, valueMb)
+                                },
+                                onValueChangeFinished = viewModel::commitBands,
+                            )
+                            if (index != model.bands.size - 1) {
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                            }
+                        }
+                    }
+                }
+
+                // Signal: full-range output gain + auto headroom (originals).
+                LabelSliderSection(
+                    title = stringResource(R.string.eq_output_gain),
+                    label = stringResource(R.string.eq_signal),
+                    value = model.outputGainMb / 100f,
+                    range = -15f..15f,
+                    checked = model.outputGainEnabled,
+                    onToggle = viewModel::setOutputGainEnabled,
+                    onValueChange = { db ->
+                        viewModel.updateOutputGainDraft((db * 100).toInt().coerceIn(-1500, 1500))
+                        viewModel.commitOutputGain()
+                    },
+                    prefix = if (model.outputGainMb >= 0) "+" else "",
+                    suffix = stringResource(R.string.eq_unit_db),
+                    interactionEnabled = model.enabled && !model.autoHeadroomEnabled,
+                )
+
+                SwitchSection(
+                    title = stringResource(R.string.eq_auto_headroom),
+                    desc = stringResource(R.string.eq_auto_headroom_description),
+                    checked = model.autoHeadroomEnabled,
+                    onToggle = viewModel::setAutoHeadroomEnabled,
+                    interactionEnabled = model.enabled,
+                )
+
+                // Profiles row: save / manage / import (the originals).
+                SectionContainer {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Button(onClick = viewModel::showSaveProfileDialog, enabled = model.enabled, shapes = ButtonDefaults.shapes()) {
+                            Icon(painterResource(R.drawable.add), contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(text = stringResource(R.string.eq_save_profile))
+                        }
+                        OutlinedButton(onClick = viewModel::showManageProfiles, enabled = model.profiles.size > 0, shapes = ButtonDefaults.shapes()) {
+                            Text(text = stringResource(R.string.eq_manage))
+                        }
+                        OutlinedButton(onClick = viewModel::requestImport, shapes = ButtonDefaults.shapes()) {
+                            Text(text = stringResource(R.string.eq_import))
+                        }
+                    }
+                }
+            }
+
+            // The system equalizer escape hatch (original).
+            SectionContainer {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.eq_open_system_equalizer)) },
+                    leadingContent = { Icon(painterResource(R.drawable.tune), contentDescription = null) },
+                    modifier = Modifier.clickable(onClick = onOpenSystemEqualizer),
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                )
+            }
         } else {
             // ===== AUDIO EFFECTS PILL =====
             AnimatedVisibility(
@@ -505,7 +732,14 @@ private fun AudioEffectsContent(
                                         value = playbackSpeed,
                                         onChange = onPlaybackSpeedChange,
                                         isPitchMatched = isPitchMatched,
-                                        onPitchMatchToggle = { onPitchMatchedChange(!isPitchMatched) },
+                                        onPitchMatchToggle = {
+                                            val next = !isPitchMatched
+                                            onPitchMatchedChange(next)
+                                            // Reset the explicit pitch when entering match mode.
+                                            if (next) onPlaybackPitchChange(1.0f)
+                                        },
+                                        pitchValue = playbackPitch,
+                                        onPitchChange = onPlaybackPitchChange,
                                         interactionEnabled = audioEffectsEnabled,
                                     )
                                 },
@@ -706,6 +940,93 @@ private fun ExpressiveSwitch(
                 null
             },
     )
+}
+
+@Composable
+private fun ToneSliderSection(
+    tone: EqualizerToneUiModel,
+    enabled: Boolean,
+    minimumValueMb: Int,
+    maximumValueMb: Int,
+    onValueChange: (Int) -> Unit,
+    onValueChangeFinished: () -> Unit,
+) {
+    SectionContainer {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text =
+                        stringResource(
+                            when (tone.tone) {
+                                EqualizerTone.BASS -> R.string.eq_bass
+                                EqualizerTone.MIDRANGE -> R.string.eq_midrange
+                                EqualizerTone.TREBLE -> R.string.eq_treble
+                            },
+                        ),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                ValuePill(formatDecibels(tone.levelMb))
+            }
+            ResponsiveSlider(
+                value = tone.levelMb.toFloat(),
+                onValueChange = { onValueChange(it.roundToInt()) },
+                onValueChangeFinished = onValueChangeFinished,
+                valueRange = minimumValueMb.toFloat()..maximumValueMb.toFloat(),
+                enabled = enabled,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BandSliderSection(
+    band: EqualizerBandUiModel,
+    enabled: Boolean,
+    minimumValueMb: Int,
+    maximumValueMb: Int,
+    onValueChange: (Int) -> Unit,
+    onValueChangeFinished: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = formatFrequency(band.centerFrequencyHz),
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f),
+            )
+            ValuePill(formatDecibels(band.levelMb))
+        }
+        Slider(
+            value = band.levelMb.toFloat(),
+            onValueChange = { onValueChange(it.roundToInt()) },
+            onValueChangeFinished = onValueChangeFinished,
+            enabled = enabled,
+            valueRange = minimumValueMb.toFloat()..maximumValueMb.toFloat(),
+        )
+    }
+}
+
+private fun formatDecibels(valueMb: Int): String = stringResource(R.string.eq_decibels, valueMb / 100f)
+
+private fun formatFrequency(frequencyHz: Int): String =
+    if (frequencyHz >= 1000) {
+        stringResource(R.string.eq_frequency_kilohertz, frequencyHz / 1000f)
+    } else {
+        stringResource(R.string.eq_frequency_hertz, frequencyHz)
+    }
+
+@Composable
+private fun ValuePill(value: String) {
+    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+        )
+    }
 }
 
 @Composable
@@ -961,6 +1282,8 @@ private fun SpeedSection(
     onChange: (Float) -> Unit,
     isPitchMatched: Boolean,
     onPitchMatchToggle: () -> Unit,
+    pitchValue: Float = 1f,
+    onPitchChange: (Float) -> Unit = {},
     interactionEnabled: Boolean = true,
 ) {
     SectionContainer {
@@ -997,6 +1320,30 @@ private fun SpeedSection(
             ) {
                 Text(text = stringResource(R.string.eq_match_pitch), style = MaterialTheme.typography.labelMedium)
             }
+        }
+
+        // Independent pitch slider (moved here from the song overflow menu):
+        // 1x = follow the speed (vinyl), otherwise the explicit multiplier.
+        if (!isPitchMatched) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(R.string.eq_pitch),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = stringResource(R.string.eq_speed_value, pitchValue),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                )
+            }
+            ResponsiveSlider(
+                value = pitchValue,
+                onValueChange = onPitchChange,
+                valueRange = 0.5f..2.0f,
+                enabled = enabled && interactionEnabled,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {

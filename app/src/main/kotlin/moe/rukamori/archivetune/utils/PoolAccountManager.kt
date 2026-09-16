@@ -116,6 +116,7 @@ object PoolAccountManager {
 
     @Volatile
     private var lastRefreshAt = 0L
+    private var lastLaunchRefreshAt = 0L
 
     @Volatile
     private var lastFeedFailureAt = 0L
@@ -221,6 +222,10 @@ object PoolAccountManager {
     private fun hasEveryService(): Boolean =
         tidalCache.isNotEmpty() && qobuzCache.isNotEmpty() && deezerCache.isNotEmpty() && appleMusicCache.isNotEmpty()
 
+    private companion object {
+        const val LAUNCH_REFRESH_THROTTLE_MS = 10L * 60L * 1000L
+    }
+
     private fun refreshIntervalMs(): Long =
         if (hasEveryService()) MIN_REFRESH_INTERVAL_MS else MIN_PARTIAL_REFRESH_INTERVAL_MS
 
@@ -258,6 +263,22 @@ object PoolAccountManager {
             }.onFailure { Timber.tag(TAG).w(it, "Failed to load cached pool accounts") }
         }
     }
+
+    /**
+     * Every-launch background refresh: pulls fresh accounts from the server
+     * when the app is opened, throttled to one fetch per 10 minutes so
+     * rotations and quick activity restarts never hammer the feed. Silent —
+     * no UI surface, success or failure.
+     */
+    suspend fun refreshForLaunch(context: Context): Boolean =
+        withContext(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            if (now - lastLaunchRefreshAt < LAUNCH_REFRESH_THROTTLE_MS) {
+                return@withContext hasAccounts()
+            }
+            lastLaunchRefreshAt = now
+            refresh(context, force = true)
+        }
 
     suspend fun refresh(
         context: Context,

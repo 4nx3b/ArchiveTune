@@ -353,7 +353,8 @@ internal fun SimpMusicFullscreenLyricsSheet(
                         contentScale = ContentScale.Crop,
                         modifier =
                             Modifier
-                                .size(45.dp)
+                                // 56dp — the Apple Music lyrics header artwork size.
+                                .size(56.dp)
                                 .clip(RoundedCornerShape(8.dp)),
                     )
 

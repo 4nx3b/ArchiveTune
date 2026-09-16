@@ -90,9 +90,6 @@
     <string name="remove_from_playlist">Quitar de la lista de reproducción</string>
     <string name="remove_from_queue">Quitar de cola</string>
     <string name="search_online">Buscar en linea</string>
-    <string name="tempo_and_pitch">Velocidad y tono</string>
-    <string name="tempo">Velocidad</string>
-    <string name="pitch">Tono</string>
     <string name="sort_by_create_date">Fecha añadida</string>
     <string name="sort_by_name">Nombre</string>
     <string name="sort_by_artist">Artista</string>
@@ -195,8 +192,6 @@
     <string name="random_theme_on_startup_desc">Aplicar paletas de colores aleatorias cada vez que la aplicación se inicie</string>
     <string name="color_palette">Paleta de color</string>
     <string name="customize_theme_colors">Elige los colores del tema de tu aplicación</string>
-    <string name="pitch_mode_semitones_short">Semitono</string>
-    <string name="pitch_mode_multiplier_short">Multiplicador</string>
     <string name="palette_default">Por defecto</string>
     <string name="palette_ocean_blue">Azul Océano</string>
     <string name="palette_arctic_blue">Ártico</string>
@@ -693,7 +688,6 @@
     <string name="instant_playback">Repetición instantánea</string>
     <string name="on_device">En el dispositivo</string>
     <string name="recently_played">Reproducidas recientemente</string>
-    <string name="top_mixes">Las mejores mezclas para ti</string>
     <string name="your_playlists">Tus listas de reproducción</string>
     <string name="see_all">Mostrar todo</string>
     <string name="your_artists">Tus artistas</string>

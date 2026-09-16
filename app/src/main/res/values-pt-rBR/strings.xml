@@ -52,7 +52,6 @@
     <string name="instant_playback">Reprodução instantânea</string>
     <string name="on_device">No dispositivo</string>
     <string name="recently_played">Tocadas recentemente</string>
-    <string name="top_mixes">Top mixes para você</string>
     <string name="library_top_mixes_loading">Preparando seus mixes de IA…</string>
     <string name="library_top_mixes_refresh">Atualizar mixes</string>
     <string name="library_top_mixes_configure_ai">Configurar IA</string>
@@ -204,13 +203,8 @@
     <string name="removed_song_from_queue">"%s" removido da fila</string>
     <string name="removed_n_songs_from_queue">%d músicas removidas da fila</string>
     <string name="search_online">Pesquisar online</string>
-    <string name="tempo_and_pitch">Tempo e tom</string>
     <string name="aod_mode">Modo AOD</string>
     <string name="aod_mode_exit">Sair do AOD</string>
-    <string name="tempo">Tempo</string>
-    <string name="pitch">Tom</string>
-    <string name="pitch_mode_semitones_short">st</string>
-    <string name="pitch_mode_multiplier_short">x</string>
     <string name="sort_by_create_date">Data de adição</string>
     <string name="sort_by_name">Nome</string>
     <string name="sort_by_artist">Artista</string>

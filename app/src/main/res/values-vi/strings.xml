@@ -48,7 +48,6 @@
     <string name="instant_playback">Phát ngay lập tức</string>
     <string name="on_device">Trên thiết bị</string>
     <string name="recently_played">Đã phát gần đây</string>
-    <string name="top_mixes">Tổng hợp hàng đầu cho bạn</string>
     <string name="your_playlists">Danh sách phát của bạn</string>
     <string name="see_all">Xem tất cả</string>
     <string name="your_artists">Nghệ sĩ của bạn</string>
@@ -142,7 +141,6 @@
     <string name="removed_song_from_queue">Đã xóa \"%s\" khỏi Queue</string>
     <string name="removed_n_songs_from_queue">Đã xóa %d bài hát khỏi queue</string>
     <string name="search_online">Tìm kiếm trực tuyến</string>
-    <string name="tempo_and_pitch">Tốc độ và Cao độ</string>
     <string name="sort_by_create_date">Ngày thêm</string>
     <string name="sort_by_name">Tên</string>
     <string name="sort_by_artist">Nghệ sĩ</string>
@@ -554,10 +552,6 @@
     <string name="permission_status_allowed">Đã cho phép</string>
     <string name="next">Tiếp theo</string>
     <string name="allow">Cho phép</string>
-    <string name="tempo">Nhịp độ</string>
-    <string name="pitch">Cao độ</string>
-    <string name="pitch_mode_semitones_short">st</string>
-    <string name="pitch_mode_multiplier_short">x</string>
     <string name="permanent_shuffle">Luôn bật xáo trộn</string>
     <string name="permanent_shuffle_desc">Giữ nguyên trạng thái xáo trộn khi chuyển bài hát</string>
     <string name="restore_success">Khôi phục sao lưu thành công</string>

@@ -416,11 +416,6 @@ class HomeViewModel
             }
         }
 
-        private fun filterHomeChips(chips: List<HomePage.Chip>?): List<HomePage.Chip>? =
-            chips?.filterNot {
-                it.title.contains("podcasts", ignoreCase = true)
-            }
-
         private fun HomePage.extractQuickPicks(): Pair<HomePage, HomePage.Section?> {
             val quickPicksIndex = sections.indexOfFirst { section ->
                 section.title.equals(context.getString(R.string.quick_picks), ignoreCase = true) ||
@@ -432,7 +427,7 @@ class HomeViewModel
         }
 
         private fun List<Song>.toQuickPickSample(): List<Song> =
-            filter { song -> song.artists.none { it.blockedAt != null } }
+            filter { song -> !song.song.isPodcast && song.artists.none { it.blockedAt != null } }
                 .distinctBy { it.id }
                 .shuffled()
                 .take(20)
@@ -635,7 +630,7 @@ class HomeViewModel
                             database
                                 .forgottenFavorites()
                                 .first()
-                                .filter { song -> song.artists.none { it.blockedAt != null } }
+                                .filter { song -> !song.song.isPodcast && song.artists.none { it.blockedAt != null } }
                                 .filter { song -> song.id !in blockedSongIds }
                                 .shuffled()
                                 .take(20)
@@ -657,7 +652,7 @@ class HomeViewModel
                             database
                                 .mostPlayedSongs(fromTimeStamp, limit = 15, offset = 5)
                                 .first()
-                                .filter { song -> song.artists.none { it.blockedAt != null } }
+                                .filter { song -> !song.song.isPodcast && song.artists.none { it.blockedAt != null } }
                                 .shuffled()
                                 .take(10)
                         val keepListeningAlbums =
@@ -687,7 +682,7 @@ class HomeViewModel
                                 currentCoroutineContext().ensureActive()
                                 val filteredPage =
                                     page.copy(
-                                        chips = filterHomeChips(page.chips),
+                                        chips = page.chips,
                                         sections =
                                             page.sections.map { section ->
                                                 section.copy(
@@ -790,7 +785,7 @@ class HomeViewModel
                 database
                     .mostPlayedSongs(fromTimeStamp, limit = 10)
                     .first()
-                    .filter { it.album != null }
+                    .filter { !it.song.isPodcast && it.album != null }
                     .shuffled()
                     .take(2)
                     .mapNotNull { song ->
