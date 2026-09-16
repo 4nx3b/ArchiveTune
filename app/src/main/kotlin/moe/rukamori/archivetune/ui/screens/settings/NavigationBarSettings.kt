@@ -257,24 +257,14 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 }
 
                 item {
-                    Column {
-                        SwitchPreference(
-                            modifier = positions.modifierFor("navigation_bar_tint_frosted_blur"),
-                            title = { Text(stringResource(R.string.navigation_bar_tint_frosted_blur)) },
-                            description = stringResource(R.string.navigation_bar_tint_frosted_blur_desc),
-                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
-                            checked = navigationBarTintFrostedBlur,
-                            onCheckedChange = onTintFrostedBlurChange,
-                        )
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && navigationBarTintFrostedBlur) {
-                            Text(
-                                text = stringResource(R.string.navigation_bar_frosted_blur_unsupported),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
-                            )
-                        }
-                    }
+                    SwitchPreference(
+                        modifier = positions.modifierFor("navigation_bar_tint_frosted_blur"),
+                        title = { Text(stringResource(R.string.navigation_bar_tint_frosted_blur)) },
+                        description = stringResource(R.string.navigation_bar_tint_frosted_blur_desc),
+                        icon = { Icon(painterResource(R.drawable.format_paint), null) },
+                        checked = navigationBarTintFrostedBlur,
+                        onCheckedChange = onTintFrostedBlurChange,
+                    )
                 }
 
                 item {

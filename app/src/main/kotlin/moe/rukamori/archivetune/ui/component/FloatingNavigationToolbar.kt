@@ -154,8 +154,6 @@ private const val FrostedNavBarBlurRadiusPx = 60f
 
 private const val FrostedNavBarOverlayAlpha = 0.30f
 
-private const val TintFrostedNavBarOverlayAlpha = 0.26f
-
 /** Tinted bar: how far the LIGHT base is pulled toward the accent color. */
 private const val TintFrostedLightBaseBlend = 0.26f
 
@@ -197,7 +195,8 @@ fun FloatingNavigationToolbar(
 
     // The tinted bar is a LIGHT accent pastel in BOTH schemes — that is what
     // separates it from the neutral, surface-adaptive frosted bar, which stays
-    // dark in dark mode. Its content is therefore always the dark accent
+    // dark in dark mode. It is flat: no backdrop blur is drawn for it at all.
+    // Its content is therefore always the dark accent
     // shade, readable in light mode, dark mode, pure black and every accent
     // shade the dynamic themer can pick.
     val tintedNavBarBaseColor =
@@ -223,8 +222,10 @@ fun FloatingNavigationToolbar(
         rememberPreference(NavigationBarCornerRadiusKey, defaultValue = NAVIGATION_BAR_CORNER_RADIUS_DEFAULT)
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
 
-    val anyFrosted = frostedBlur || tintFrostedBlur
-    val canBlurBackdrop = anyFrosted && frostedBackdrop != null && !isPreS
+    // Only the neutral frosted bar blurs its backdrop — the tinted bar is a
+    // flat solid colour in every scheme (tint wins if both flags are somehow
+    // stored on).
+    val canBlurBackdrop = frostedBlur && !tintFrostedBlur && frostedBackdrop != null && !isPreS
 
     val canLiquidGlass = liquidGlass && liquidGlassBackdrop != null && !isPreS
     val resolvedBarHeight =
@@ -258,12 +259,7 @@ fun FloatingNavigationToolbar(
             Color.Transparent
         } else if (canBlurBackdrop) {
 
-            if (tintFrostedBlur) {
-                // Opaque LIGHT accent-tinted base in every scheme — the visible
-                // difference from the neutral frosted bar (which stays
-                // surface-adaptive and therefore dark in dark mode).
-                tintedNavBarBaseColor
-            } else if (pureBlack) {
+            if (pureBlack) {
                 Color.Black.copy(alpha = 0.45f)
             } else {
                 MaterialTheme.colorScheme.surfaceContainer
@@ -574,13 +570,12 @@ fun FloatingNavigationToolbar(
                     )
                     if (blurredBitmap != null) {
 
-                        val preSOverlayAlpha = if (tintFrostedBlur) TintFrostedNavBarOverlayAlpha else FrostedNavBarOverlayAlpha
                         Box(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
                                     .graphicsLayer {
-                                        alpha = preSOverlayAlpha
+                                        alpha = FrostedNavBarOverlayAlpha
                                         clip = true
                                     }.drawBehind {
                                         drawImage(blurredBitmap)
@@ -588,7 +583,6 @@ fun FloatingNavigationToolbar(
                         )
                     }
                 } else {
-                    val frostedOverlayAlpha = if (tintFrostedBlur) TintFrostedNavBarOverlayAlpha else FrostedNavBarOverlayAlpha
                     Box(
                         modifier =
                             Modifier
@@ -600,7 +594,7 @@ fun FloatingNavigationToolbar(
                                             radiusY = FrostedNavBarBlurRadiusPx,
                                             edgeTreatment = TileMode.Clamp,
                                         )
-                                    alpha = frostedOverlayAlpha
+                                    alpha = FrostedNavBarOverlayAlpha
                                     clip = true
                                 }.drawBehind {
                                     val offset = frostedBackdrop.contentOffsetInRoot - barPositionInRoot

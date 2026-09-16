@@ -25,7 +25,6 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -41,7 +40,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -412,31 +410,19 @@ internal fun SpatialFlowLyricsOverlay(
                     )
                 }
 
-                // Dismiss (X) sits alone at the far-right margin inside a thin
-                // circle outline, mirroring the leading 48dp menu slot so the
-                // title stays dead-centre on the screen.
+                // Dismiss (X) sits alone at the far-right margin as a plain
+                // glyph, mirroring the leading 48dp menu slot so the title
+                // stays dead-centre on the screen.
                 IconButton(
                     onClick = onDismiss,
                     modifier = Modifier.size(48.dp),
                 ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier =
-                            Modifier
-                                .size(36.dp)
-                                .border(
-                                    width = 1.dp,
-                                    color = contentColor.copy(alpha = 0.45f),
-                                    shape = CircleShape,
-                                ),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.close),
-                            contentDescription = "Close Lyrics",
-                            tint = contentColor.copy(alpha = 0.8f),
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
+                    Icon(
+                        painter = painterResource(R.drawable.close),
+                        contentDescription = "Close Lyrics",
+                        tint = contentColor.copy(alpha = 0.8f),
+                        modifier = Modifier.size(20.dp),
+                    )
                 }
             }
 
