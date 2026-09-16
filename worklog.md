@@ -2744,3 +2744,22 @@ Work Log:
 Stage Summary:
 - CI TRIPLE-GREEN on 8caa2c944 (Build Pull Request incl. tests+lint, Build APKs, Nightly canary matrix).
 - dev head 8caa2c944 pushed; the batch is 2 commits, 35 files, +1478/-654.
+
+---
+Task ID: 52
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 5-item fix batch — missing playback notifications (post canary-port regression), flat tinted navbar + rename, Android Auto settings header copied from the settings main page, new-releases selection count padding, SpatialFlow lyrics dismiss circle.
+
+Work Log:
+- (Notifications, the regression) Root cause: MediaNotificationManager (media3-session 1.10.1) only creates the internal notification controller — the Player.Listener that drives onUpdateNotification on every playback change — when a MediaController connects through the session-service stub (addSession). This fork's UI binds the plain local binder (MusicService.onBind -> MusicBinder) and never connects a MediaController, so the self-referential MediaController dropped by 2f573c9a5's lifecycle port was the only thing arming the pipeline: playback ran with no notification and no foreground promotion. Fix: addSession(mediaSession) in onCreate after setMediaNotificationProvider — public final API; the framework's internal controller connects in-process via the session's TYPE_SESSION token (no bindService, verified against the media3 1.10.1 sources), so hasBoundClients/idle-stop semantics are untouched and canary's leak fix stays intact.
+- (Tinted navbar) canBlurBackdrop/canRailBlur exclude the tinted flag (tint wins if both flags are somehow stored on); no backdrop blur is drawn for the tinted variant in the toolbar (S+ and pre-S paths) or the MainActivity rail; navigationContainerColor restructured; TintFrostedNavBarOverlayAlpha deleted. Toggle renamed "Tint navigation bar" (title + desc without blur wording + search-entry terms), icon blur_on -> format_paint, and the pre-S unsupported warning dropped for the tinted row — it is a flat colour that works on every Android version.
+- (Android Auto settings) Rewritten onto the settings-main-page recipe: Scaffold(glassAwareSurface(), contentWindowInsets = 0, no topBar, no safeDrawing modifier padding — the old modifier double-inset the header pill below the status bar); the preference Column is a full-size glassHeaderSource with a leading Spacer(systemBarsTopPadding + AppBarHeight + 8dp) so content scrolls behind the header (the glass back button now samples real scrolling content instead of an opaque empty surface) plus windowInsetsPadding(safeDrawing Horizontal+Bottom); header row copied verbatim from SettingsHomeStyleHeader — flush below the status bar, centred bold title, LiquidGlassIconButton back in glass mode / plain app IconButton otherwise, ScreenHeaderHaze over the status bar. TopAppBar, adjustedPadding and GlassScreenHeaderOverlay dropped; imports cleaned.
+- (New releases selection popup) Count Text moved to 24dp total horizontal inset (clears the 28dp corner radius of the popup) with equal 12dp vertical padding above and below; the buttons Row keeps 6dp bottom breathing room.
+- (SpatialFlow lyrics) Dismiss (X) is a plain 20dp glyph in the 48dp slot — the outer 36dp circle outline (1dp border) removed with its border/CircleShape imports.
+- Verification: independent static-review agent over the whole diff — zero compile blockers; every symbol/signature verified against the repo (ScreenHeaderHaze/LiquidGlassIconButton/app IconButton signatures, glassAwareSurface, AppBarHeight, format_paint.xml exists, same-package SettingsDimensions + rememberPreferencePositions). The pre-S bitmap branch inside the blur overlay was already dead before this batch (canBlurBackdrop required !isPreS in the old code too) and was deliberately left alone.
+- CI: first round triple-green on 870408e5a — Build Pull Request (incl. tests+lint), Build APKs, Nightly all-8 release/R8 matrix.
+- changelogs.md: new "Fixes (15.1 addendum, round 2)" section covering all five items.
+
+Stage Summary:
+- dev at 870408e5a (+162/-118, 10 files), all three workflows green on the first round, pushed.
+- Architectural note for future batches: anything that rewires the session/service/controller graph must keep addSession armed — the UI never connects a MediaController, so notifications depend entirely on the explicit registration.
