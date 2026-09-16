@@ -165,15 +165,17 @@ object Updater {
     }
 
     private val semVerRegex =
-        Regex("""(?i)\bv?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?\b""")
+        Regex("""(?i)\bv?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?\b""")
 
     private val canaryTagRegex = Regex("""N\d{8}(?:\d{4})?""")
+
+    private val appReleaseTagRegex = Regex("""(?i)^v\d.*""")
 
     private fun parseSemVerOrNull(text: String): SemVer? {
         val match = semVerRegex.find(text) ?: return null
         val major = match.groupValues.getOrNull(1)?.toIntOrNull() ?: return null
-        val minor = match.groupValues.getOrNull(2)?.toIntOrNull() ?: return null
-        val patch = match.groupValues.getOrNull(3)?.toIntOrNull() ?: return null
+        val minor = match.groupValues.getOrNull(2)?.toIntOrNull() ?: 0
+        val patch = match.groupValues.getOrNull(3)?.toIntOrNull() ?: 0
         val preReleaseText = match.groupValues.getOrNull(4)?.takeIf { it.isNotBlank() }
         val preRelease =
             preReleaseText
@@ -238,15 +240,18 @@ object Updater {
     internal fun findLatestRelease(releases: List<ReleaseInfo>): ReleaseInfo? {
         if (releases.isEmpty()) return null
 
-        val nonCanary = releases.filterNot { canaryTagRegex.matches(it.tagName) }
-        if (nonCanary.isEmpty()) return null
+        val appReleases =
+            releases.filter { release ->
+                appReleaseTagRegex.matches(release.tagName.removePrefix("refs/tags/"))
+            }
+        if (appReleases.isEmpty()) return null
 
         val parsed =
-            nonCanary.mapNotNull { release ->
+            appReleases.mapNotNull { release ->
                 parseReleaseSemVerOrNull(release)?.let { version -> version to release }
             }
 
-        if (parsed.isEmpty()) return nonCanary.firstOrNull()
+        if (parsed.isEmpty()) return appReleases.firstOrNull()
 
         val stable = parsed.filter { it.first.preRelease.isEmpty() }
         val candidates = stable.ifEmpty { parsed }

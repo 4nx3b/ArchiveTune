@@ -52,6 +52,7 @@ import moe.rukamori.archivetune.ui.screens.search.OnlineSearchProviderArgument
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchResultRoute
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchResultRoutePrefix
 import moe.rukamori.archivetune.ui.screens.search.SearchScreen
+import moe.rukamori.archivetune.ui.screens.settings.AndroidAutoSettings
 import moe.rukamori.archivetune.ui.screens.settings.AboutScreen
 import moe.rukamori.archivetune.ui.screens.settings.AccountSettings
 import moe.rukamori.archivetune.ui.screens.settings.AiIntegrationSettings
@@ -72,6 +73,7 @@ import moe.rukamori.archivetune.ui.screens.settings.IntegrationScreen
 import moe.rukamori.archivetune.ui.screens.settings.InternetSettings
 import moe.rukamori.archivetune.ui.screens.settings.TidalSettings
 import moe.rukamori.archivetune.ui.screens.settings.QobuzSettings
+import moe.rukamori.archivetune.ui.screens.settings.AmazonSettings
 import moe.rukamori.archivetune.ui.screens.settings.DeezerSettings
 import moe.rukamori.archivetune.ui.screens.settings.JioSettings
 import moe.rukamori.archivetune.ui.screens.settings.TidalLoginScreen
@@ -82,6 +84,8 @@ import moe.rukamori.archivetune.ui.screens.settings.DeezerLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.AppleMusicLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.APPLE_MUSIC_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.AppleMusicSettings
+import moe.rukamori.archivetune.ui.screens.settings.AmazonLoginScreen
+import moe.rukamori.archivetune.ui.screens.settings.AMAZON_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.DEEZER_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LastFmLoginScreen
@@ -533,6 +537,12 @@ fun NavGraphBuilder.navigationBuilder(
         ExportDownloadedSongsScreen(navController)
     }
     composable(
+        route = "settings/android_auto?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        AndroidAutoSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
+    }
+    composable(
         route = "settings/downloads?scrollTo={scrollTo}",
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
@@ -581,6 +591,12 @@ fun NavGraphBuilder.navigationBuilder(
         DeezerSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable(
+        route = "settings/amazon?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        AmazonSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
+    }
+    composable(
         route = "settings/jiosaavn?scrollTo={scrollTo}",
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
@@ -594,6 +610,9 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(DEEZER_LOGIN_ROUTE) {
         DeezerLoginScreen(navController)
+    }
+    composable(AMAZON_LOGIN_ROUTE) {
+        AmazonLoginScreen(navController)
     }
     composable(APPLE_MUSIC_LOGIN_ROUTE) {
         AppleMusicLoginScreen(navController)

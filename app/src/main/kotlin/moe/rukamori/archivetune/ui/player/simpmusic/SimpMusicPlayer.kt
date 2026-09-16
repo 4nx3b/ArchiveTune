@@ -105,7 +105,6 @@ import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.extensions.togglePlayPause
-import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.MediaInfo
 import moe.rukamori.archivetune.lyrics.LyricsUtils.findCurrentLineIndex
 import moe.rukamori.archivetune.models.MediaMetadata
@@ -120,6 +119,7 @@ import moe.rukamori.archivetune.ui.player.rememberInlineLyricLines
 import moe.rukamori.archivetune.ui.player.rememberMeshPalette
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
+import moe.rukamori.archivetune.ui.utils.rememberMediaInfo
 import java.util.Locale
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -127,8 +127,6 @@ import androidx.compose.runtime.setValue
 private val Backdrop = Color(0xFF121212)
 
 private val CardPanel = Color(0xFF212121)
-
-private val YOUTUBE_ID = Regex("^[A-Za-z0-9_-]{11}$")
 
 private const val MAX_SURFACE_LUMINANCE = 0.10f
 
@@ -167,7 +165,6 @@ fun SimpMusicPlayerContent(
     currentFormat: FormatEntity?,
     onSeek: (Long) -> Unit,
     onSeekFinished: () -> Unit,
-    onShowLyrics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -184,11 +181,9 @@ fun SimpMusicPlayerContent(
     val startColor = (palette.colors.getOrNull(0) ?: Backdrop).asSurface()
     val endColor = (palette.colors.getOrNull(1) ?: lerp(startColor, Backdrop, 0.6f)).asSurface()
 
-    var mediaInfo by remember(mediaMetadata.id) { mutableStateOf<MediaInfo?>(null) }
-    LaunchedEffect(mediaMetadata.id) {
-        if (!YOUTUBE_ID.matches(mediaMetadata.id)) return@LaunchedEffect
-        mediaInfo = runCatching { YouTube.getMediaInfo(mediaMetadata.id).getOrNull() }.getOrNull()
-    }
+    // The two lower cards are YouTube facts about the track. Each hides itself when this is null,
+    // which covers a non-YouTube source as well as a lookup that came back empty.
+    val mediaInfo = rememberMediaInfo(mediaMetadata.id)
 
     val scrollState = rememberScrollState()
 
@@ -382,6 +377,7 @@ fun SimpMusicPlayerContent(
                 bottomSheetPageState = bottomSheetPageState,
                 color = startColor,
                 onDismiss = { lyricsFullscreenOpen = false },
+                paletteColors = palette.colors,
             )
         }
     }

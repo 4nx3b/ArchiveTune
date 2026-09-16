@@ -508,10 +508,12 @@ fun NewReleaseScreen(
                         .padding(bottom = paddingValues.calculateBottomPadding())
                         .fillMaxWidth(),
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp),
                 ) {
+                    // Count sits clear of the 28dp corner radius (24dp total
+                    // horizontal inset) and gets equal vertical padding above
+                    // and below its own line.
                     Text(
                         text = stringResource(R.string.selected_count, selectedReleaseIds.size),
                         style = MaterialTheme.typography.titleMedium,
@@ -522,61 +524,75 @@ fun NewReleaseScreen(
                         softWrap = false,
                         modifier =
                             Modifier
-                                .weight(1f, fill = false)
-                                .padding(horizontal = 12.dp),
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 12.dp),
                     )
-                    TextButton(
-                        onClick = {
-                            val state = uiState
-                            if (state is NewReleaseUiState.Success) {
-                                selectedReleaseIds.addAll(
-                                    (state.content.albums + state.content.singles + state.content.eps)
-                                        .map { it.id },
-                                )
-                            }
-                        },
-                        contentPadding = PaddingValues(horizontal = 12.dp),
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
                     ) {
-                        Text(
-                            stringResource(R.string.select_all),
-                            maxLines = 1,
-                            softWrap = false,
-                        )
-                    }
-                    TextButton(
-                        onClick = {
-                            isSelectionMode = false
-                            selectedReleaseIds.clear()
-                        },
-                        contentPadding = PaddingValues(horizontal = 12.dp),
-                    ) {
-                        Text(
-                            stringResource(R.string.cancel),
-                            maxLines = 1,
-                            softWrap = false,
-                        )
-                    }
-                    FilledTonalButton(
-                        onClick = {
-                            viewModel.markAsRead(selectedReleaseIds.toSet())
-                            showMarkedAsReadToast()
-                            selectedReleaseIds.clear()
-                            isSelectionMode = false
-                        },
-                        shape = RoundedCornerShape(20.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.solar_check_circle_linear),
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            stringResource(R.string.mark_as_read),
-                            maxLines = 1,
-                            softWrap = false,
-                        )
+                        TextButton(
+                            onClick = {
+                                val state = uiState
+                                if (state is NewReleaseUiState.Success) {
+                                    selectedReleaseIds.addAll(
+                                        (state.content.albums + state.content.singles + state.content.eps)
+                                            .map { it.id },
+                                    )
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 12.dp),
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(
+                                stringResource(R.string.select_all),
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        TextButton(
+                            onClick = {
+                                isSelectionMode = false
+                                selectedReleaseIds.clear()
+                            },
+                            contentPadding = PaddingValues(horizontal = 12.dp),
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(
+                                stringResource(R.string.cancel),
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        FilledTonalButton(
+                            onClick = {
+                                viewModel.markAsRead(selectedReleaseIds.toSet())
+                                showMarkedAsReadToast()
+                                selectedReleaseIds.clear()
+                                isSelectionMode = false
+                            },
+                            shape = RoundedCornerShape(20.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            modifier = Modifier.weight(1.5f),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.solar_check_circle_linear),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                stringResource(R.string.mark_as_read),
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
             }

@@ -384,22 +384,40 @@ class LyricsHelper
             return coroutineScope {
                 enabled.map { provider ->
                     async(Dispatchers.IO) {
+                        // A single probe is a flaky verdict: one slow DNS
+                        // lookup or a dropped connection reported a healthy
+                        // provider as "not working". Each provider now gets one
+                        // retry with a longer window before it is declared
+                        // broken, and only terminal verdicts (OK / NO_MATCH —
+                        // the API answered either way) are accepted from the
+                        // first attempt.
+                        fun classify(result: Result<String>?): LyricsProviderTestOutcome =
+                            when {
+                                result == null -> LyricsProviderTestOutcome.TIMEOUT
+                                result.isFailure -> LyricsProviderTestOutcome.FAILED
+                                result.getOrNull().isNullOrBlank() ||
+                                    result.getOrNull() == LYRICS_NOT_FOUND -> LyricsProviderTestOutcome.NO_MATCH
+                                else -> LyricsProviderTestOutcome.OK
+                            }
+
                         val outcome =
                             try {
-                                val result =
+                                val first =
                                     withTimeoutOrNull(PROVIDER_TEST_TIMEOUT_MS) {
                                         provider.getLyrics(testId, testTitle, testArtist, null, testDuration)
+                                    }.let(::classify)
+                                if (first == LyricsProviderTestOutcome.OK || first == LyricsProviderTestOutcome.NO_MATCH) {
+                                    first
+                                } else {
+                                    val second =
+                                        withTimeoutOrNull(PROVIDER_TEST_RETRY_TIMEOUT_MS) {
+                                            provider.getLyrics(testId, testTitle, testArtist, null, testDuration)
+                                        }.let(::classify)
+                                    if (second == LyricsProviderTestOutcome.OK || second == LyricsProviderTestOutcome.NO_MATCH) {
+                                        second
+                                    } else {
+                                        first
                                     }
-                                when {
-                                    result == null ->
-                                        LyricsProviderTestOutcome.TIMEOUT
-                                    result.isFailure ->
-                                        LyricsProviderTestOutcome.FAILED
-                                    result.getOrNull().isNullOrBlank() ||
-                                        result.getOrNull() == LYRICS_NOT_FOUND ->
-                                        LyricsProviderTestOutcome.NO_MATCH
-                                    else ->
-                                        LyricsProviderTestOutcome.OK
                                 }
                             } catch (_: CancellationException) {
                                 throw CancellationException()
@@ -440,6 +458,8 @@ class LyricsHelper
             private const val WORD_SYNC_PROVIDER_TIMEOUT_MS = 15_000L
 
             private const val PROVIDER_TEST_TIMEOUT_MS = 12_000L
+
+            private const val PROVIDER_TEST_RETRY_TIMEOUT_MS = 20_000L
         }
     }
 

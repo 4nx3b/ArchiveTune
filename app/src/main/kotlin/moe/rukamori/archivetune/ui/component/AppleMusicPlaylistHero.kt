@@ -11,6 +11,7 @@ package moe.rukamori.archivetune.ui.component
 
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +33,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -39,6 +42,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.ui.AspectRatioFrameLayout
+import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
 
 val AppleMusicStyleAccentColor: Color = Color(0xFFFF375C)
 
@@ -53,6 +58,84 @@ fun AppleMusicPlaylistHero(
     @DrawableRes primaryTrailingIcon: Int? = null,
     @StringRes primaryTrailingDescription: Int? = null,
     additionalActions: @Composable (() -> Unit)? = null,
+    canvasPrimaryUrl: String? = null,
+    canvasFallbackUrl: String? = null,
+    canvasIsPlaying: Boolean = false,
+    canvasVisible: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    if (canvasPrimaryUrl.isNullOrBlank() && canvasFallbackUrl.isNullOrBlank()) {
+        AppleMusicPlaylistHeroContent(
+            sectionLabel = sectionLabel,
+            title = title,
+            subtitle = subtitle,
+            onPlay = onPlay,
+            onShuffle = onShuffle,
+            onPrimaryTrailing = onPrimaryTrailing,
+            primaryTrailingIcon = primaryTrailingIcon,
+            primaryTrailingDescription = primaryTrailingDescription,
+            additionalActions = additionalActions,
+            modifier = modifier,
+        )
+        return
+    }
+
+    // Animated canvas backdrop behind the Apple-Music-style text hero: the
+    // looping artwork from the playlist's first song plays behind the text,
+    // under a surface-tinted scrim that keeps every line readable in light and
+    // dark schemes and fades into the page surface at the bottom edge.
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clipToBounds(),
+    ) {
+        CanvasArtworkPlayer(
+            primaryUrl = canvasPrimaryUrl,
+            fallbackUrl = canvasFallbackUrl,
+            isPlaying = canvasIsPlaying,
+            visible = canvasVisible,
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+            modifier = Modifier.matchParentSize(),
+        )
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to MaterialTheme.colorScheme.surface.copy(alpha = 0.60f),
+                            0.55f to MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                            1f to MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                        ),
+                    ),
+        )
+        AppleMusicPlaylistHeroContent(
+            sectionLabel = sectionLabel,
+            title = title,
+            subtitle = subtitle,
+            onPlay = onPlay,
+            onShuffle = onShuffle,
+            onPrimaryTrailing = onPrimaryTrailing,
+            primaryTrailingIcon = primaryTrailingIcon,
+            primaryTrailingDescription = primaryTrailingDescription,
+            additionalActions = additionalActions,
+            modifier = Modifier.matchParentSize(),
+        )
+    }
+}
+
+@Composable
+private fun AppleMusicPlaylistHeroContent(
+    sectionLabel: String?,
+    title: String,
+    subtitle: String?,
+    onPlay: (() -> Unit)?,
+    onShuffle: (() -> Unit)?,
+    onPrimaryTrailing: (() -> Unit)?,
+    @DrawableRes primaryTrailingIcon: Int?,
+    @StringRes primaryTrailingDescription: Int?,
+    additionalActions: @Composable (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val accent = AppleMusicStyleAccentColor

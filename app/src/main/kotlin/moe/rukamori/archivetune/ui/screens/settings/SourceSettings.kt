@@ -128,6 +128,3 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
         }
 }
 }
-
-
-

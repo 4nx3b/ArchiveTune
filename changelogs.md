@@ -1,3 +1,118 @@
+# ArchiveTune 15.1 — Changelog
+
+The follow-up to 15.0: a new Looper player style, the lyrics page rebuilt as a
+true whole-page overlay that materialises in place, the lyrics menu back to the
+familiar floating card, video playback in two more styles, and the biggest
+player-animation performance pass yet.
+
+## New
+
+- New player style: **Looper** (ported from
+  [SthrNilshaaa/looper](https://github.com/SthrNilshaaa/looper)) — Jost
+  typography, the squiggly ExpressiveSlider, asymmetric 80dp transport pills,
+  40dp utility pills, the blurred-sleeve backdrop under a fixed scrim, and the
+  Apple-Music-exact canvas twin behind the controls; lyrics use ArchiveTune's
+  online lyrics with the enhanced animation
+- The lyrics page is now a whole-page overlay over the player controls —
+  always full screen, no sheet corners or short box area — for the Cinematic,
+  Editorial, Immersive, Material Extended and SimpMusic styles
+- Opening the lyrics page no longer slides anything up from the bottom edge:
+  the page crossfades and scales in over the player in place (650ms, the Apple
+  Music cover-to-lyrics morph), so it can never read as a bottom sheet
+- YouTube video playback in the SpatialFlow and Looper styles (the video
+  replaces the artwork with its quality pill, exactly like the other styles)
+- "Disable blur effects" now also removes the backdrop gradient wash from the
+  Home and Search pages (the Library already obeyed it)
+
+## Fixes
+
+- The lyrics overflow menu is back to the 15.0 presentation: the floating menu
+  card (song header + action grid) that Liquid Glass frosts when the toggle is
+  on, instead of the small anchored popup the page had briefly grown
+- The Immersive player's controls are back at the bottom of the screen — a
+  layout regression had pinned the whole control block to the top with a
+  giant empty gap underneath
+- The Liquid Glass lyrics popup keeps its familiar dark fill (glass under a
+  deep scrim, opaque near-black without the glass toggle) for the styles that
+  still anchor it to their header buttons (Apple Music, SpatialFlow, TikTok,
+  SimpMusic)
+- Player open/minimise animation no longer fights the app: progress ticks
+  pause while the sheet is mid-flight, and the collapsed mini player's
+  keep-alive player subtree drops from 10 to 2 updates per second — returning
+  to the app and idle scrolling are visibly smoother, and the mini player's
+  idle battery drain drops with it
+- The canvas artwork video now pauses at the top of the minimise fade instead
+  of decoding all the way to the fully-collapsed mini player — minimising the
+  player while a canvas plays no longer stutters (most visible in the
+  SpatialFlow and Apple Music styles)
+- The glass shader prewarm moved out of the cold-open window (it used to
+  jank the first seconds of the home feed)
+- The tint-frosted navigation bar is finally what its description promises:
+  an opaque, accent-tinted bar (25% toward the theme primary) instead of a
+  see-through black wash — correct in light mode, moderate brightness in both,
+  with icon colours that follow the app theme rather than the system one
+- Searching settings no longer offers the "yt-dlp runtime" result that crashed
+  on tap; every remaining search route was cross-checked against the real
+  navigation destinations, and Android Auto search hits now deep-link with
+  auto-scroll to the exact row
+- Lyrics provider tests get a second chance: a single slow DNS lookup or
+  dropped connection no longer marks a healthy provider as unavailable
+- Pull-to-refresh on the home page can no longer silently do nothing: a stuck
+  in-flight load no longer blocks later refreshes (120s watchdog), and
+  auto-reloads arriving mid-refresh wait for the manual one instead of
+  cancelling it
+- Tapping a song in Quick Picks plays that song again: the explicit-content
+  filter no longer dropped the song you actually tapped from its own queue
+  (which made the next song play with the wrong title and audio everywhere)
+- Apple Music popup search works without a pasted developer token (it now
+  uses the auto-scraped web-player JWT and anonymous catalog search), and
+  Deezer login works from regions without Deezer access via a manual ARL
+  cookie entry with a verify button
+- Scrolling any tab's list hides the bottom navigation bar completely and the
+  mini player smoothly takes over the freed space; scrolling back up brings
+  the bar back just as smoothly (the SpatialFlow behaviour)
+
+---
+
+## Features (15.1 addendum)
+
+- The equalizer in the song overflow menu gained SpatialFlow's audio effects:
+  **Reverb** (None / Small Room / Medium Room / Large Room / Medium Hall /
+  Large Hall / Plate — SpatialFlow's exact parameter map), **stereo balance**,
+  and **8D audio** implemented as a real-time processor inside the playback
+  pipeline — no FFmpeg, no intermediate files, works for streamed songs too,
+  and reacts to the speed slider instantly. Spatial settings are saved with
+  the equalizer profiles
+- The SpatialFlow player style's lyrics opening is now complete: alongside the
+  circular reveal, the album art morphs into a compact thumbnail in the top
+  bar while the lyrics expand and parks there until they close (canvas songs
+  keep their canvas fade)
+- Liquid Glass is more liquid everywhere: stronger edge refraction (taller
+  band, ~25% stronger bend, depth effect on), more vivid colour bleed from
+  the scrolling content behind it, and the big frosted popups actually got
+  CHEAPER on the GPU (32dp → 20dp blur pays for their new refraction)
+
+## Fixes (15.1 addendum, round 2)
+
+- The playing notification is back: the canary lifecycle port had dropped the
+  service's self-registered session, which was the only thing arming Media3's
+  notification pipeline (the app UI binds the plain local binder, never a
+  MediaController) — playback ran with no notification and no foreground
+  promotion. The session is now registered explicitly via addSession(), with
+  no binding side effects, so idle-stop keeps working
+- The tinted navigation bar no longer blurs: it is now a flat, accent-tinted
+  bar in both light and dark mode (renamed from "Tint frosted navigation bar"
+  to "Tint navigation bar"), and it works on pre-Android-12 devices too
+- The Android Auto settings page copies the settings main page header: the
+  header row sits flush below the status bar (it was inset twice) and the
+  glass back button samples real scrolling content behind it (it was reading
+  an opaque empty surface)
+- The new-releases selection popup's count line clears the corner radius and
+  gets equal vertical padding above and below
+- The SpatialFlow lyrics dismiss (X) button lost its outer circle outline
+
+---
+
 # ArchiveTune 15.0 — Stable Changelog
 
 The biggest update since the first stable release: new music sources, new player
@@ -7,14 +122,11 @@ styles, a Liquid Glass redesign, AI-powered lyrics, and hundreds of fixes.
 
 - Liquid Glass design across the app
 - Liquid-glass popups: compact height cap (40% of the screen), visible row
-  dividers on every glass menu (Spotify playlist rows and sleep-timer sections
-  included), and the glass effect only draws when a live backdrop is available
-- Floating popups with Liquid Glass OFF: redesigned "solid sheet" — one opaque
-  elevated theme surface with a hairline edge, a drag handle, a flat header,
-  outlined action tiles and flat sections with hairline dividers (replaces the
-  old grey-on-grey translucent card stack; the glass mode is unchanged); the
-  sheet fill now carries the rounded menu shape so no sharp square corners
-  peek past the rounded border, shadow and clip
+  dividers on every glass menu, and the glass effect only draws when a live
+  backdrop is available; floating popups with Liquid Glass OFF get a
+  redesigned "solid sheet" (one opaque elevated surface, hairline edge,
+  outlined action tiles) with no square corners peeking past the rounded
+  border, shadow and clip
 - Hide status bar
 - Canvas playback in the albums page
 - Show Lyrics toggle, Auto Enter AOD, Enter AOD when screen dims
@@ -35,11 +147,8 @@ styles, a Liquid Glass redesign, AI-powered lyrics, and hundreds of fixes.
 - New icons for the whole app
 - Lyrics text customisation and vinyl mode with preview for lyrics/song share
 - New Apple Music-style popup in the Apple Music lyrics style
-- Lyrics overflow popup matches the main branch exactly, scales in from the
-  anchor icon, and uses a neutral scrim while open
-- Menu row dividers span the full row at a consistent hairline weight (the old
-  one-sided inset dimmed only the centre of the row)
-- App icon packs — applying an icon now switches the real launcher icon on the
+- Menu row dividers span the full row at a consistent hairline weight
+- App icon packs — applying an icon switches the real launcher icon on the
   home screen and app drawer; the downloadable pack is 96% smaller (WebP
   rasters, aliases kept) with a pinned integrity digest
 - SF Pro font picker rows render a live specimen of the real font
@@ -63,9 +172,9 @@ styles, a Liquid Glass redesign, AI-powered lyrics, and hundreds of fixes.
 - Download source priority
 - Word-by-word synced (karaoke) lyrics
 - Prioritise word-synced lyrics
-- Enhanced lyrics now render in the new player styles too (SpatialFlow overlay
-  and SimpMusic fullscreen sheet share the word-synced view; BitChord shows the
-  seek-preview line while scrubbing)
+- Enhanced lyrics render in the new player styles too (SpatialFlow overlay,
+  SimpMusic fullscreen sheet; BitChord shows the seek-preview line while
+  scrubbing)
 - Musixmatch experimental lyrics
 - Lyrics API check
 - Automatic AI translation
@@ -73,11 +182,10 @@ styles, a Liquid Glass redesign, AI-powered lyrics, and hundreds of fixes.
 - Exclude languages for auto translation and romanisation
 - Direct API link for each AI provider
 - More AI providers
-- Separate AI provider for translation and romanisation — when enabled the
-  dedicated provider does ALL romanisation and the main provider only
-  translates; romanisation cache is persisted across restarts and keyed per
-  provider config, Mistral gained working completions, and OpenRouter/Mistral
-  get a model picker
+- Separate AI provider for translation and romanisation — a dedicated provider
+  does all romanisation while the main one only translates; the romanisation
+  cache persists across restarts keyed per provider config, Mistral gained
+  working completions, and OpenRouter/Mistral get a model picker
 - AI batches run in parallel with higher rate limits — translations and
   romanisations land visibly faster
 - API token compressor for token savings
@@ -122,37 +230,20 @@ styles, a Liquid Glass redesign, AI-powered lyrics, and hundreds of fixes.
   auto-retry, and live per-item download progress
 - Fixed Apple Music player crash, YouTube playback stalls, lyrics lag and
   misalignment, queue controls, and Last.fm decoding
-- Lyrics active line no longer freezes after a song change (stale position
-  provider), and the enhanced-lyrics restart race is fixed
-- SpatialFlow lyrics: no more opaque colour flash when opening lyrics — the
-  blurred artwork backdrop is pre-warmed and composes on the first frame
-- SpatialFlow lyrics performance: pre-blurred bitmap backdrop on all APIs,
-  the covered main player column drops out of composition once lyrics are
-  revealed, and karaoke character paths are cached per layout
-- SpatialFlow canvas freezes the instant lyrics open (no background decoding
-  during the fade) and resumes from the exact paused position on close
-- SpatialFlow canvas layering rebuilt to Apple Music's exact recipe —
-  full-height frosted twin, AM scrim, sharp stage with the 0.62→1.0 fade
-- SpatialFlow queue reordering works (optimistic drag with commit on release)
-- SpatialFlow time row: the quality pill is pinned to the centre between the
-  timestamps instead of drifting with label widths
-- SpatialFlow light mode: text reads over every surface — on-canvas text is
-  white (the canvas always renders behind a dark scrim, so light mode no
-  longer paints near-black text over it), the no-canvas blurred backdrop
-  uses a white scrim in light theme instead of the black one that sank dark
-  artworks into an unreadable wash, and the player follows the app's
-  dark-mode setting (ON/OFF/AUTO) instead of the raw system state
-- SpatialFlow artwork layout: with no canvas playing, the thumbnail and the
-  control stack pin to the bottom of the player exactly where the bottom
-  controls sit while the canvas plays — no more floating mid-screen or
-  jumping when the canvas resolves (the fixed top-offset calculation is
-  removed); the artwork also sits a touch higher with breathing room above
-  the title, and the 16dp drop shadow is gone — it read as a black
-  border/background hugging the cover, glaring on light backdrops
-- SpatialFlow lyrics: the text is constant white over a constant dark
-  backdrop in both dark and light mode — the lyrics sheet always renders the
-  blurred artwork under the dark scrim, so light mode no longer paints dark
-  lyrics text on it
+- Lyrics active line no longer freezes after a song change, and the
+  enhanced-lyrics restart race is fixed
+- SpatialFlow: canvas/lyrics overhaul — AM-exact canvas layering (frosted
+  twin, scrim, sharp-stage fade), constant-white lyrics over the dark
+  blurred-artwork backdrop in both themes, canvas freeze-on-lyrics-open,
+  working queue reordering, pinned quality pill, bottom-pinned no-canvas
+  layout, overflow icon and light-mode text fixes
+- Cinematic player light mode: the lyrics text now follows the player's
+  own text colour (dark ink on the light theme surface, white over artwork
+  backgrounds) instead of constant white that vanished against the light
+  background
+- Cinematic and Immersive players: the overflow (three-dot) icon next to the
+  now-playing title is removed — the row keeps share and like; the full song
+  menu stays reachable from the queue
 - Default and SpatialFlow players: the three-dot song overflow menu sits next
   to the "Now Playing" header, top right, opening the full song menu
 - BitChord canvas actually plays now (the canvas resolver used to clear the

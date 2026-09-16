@@ -106,6 +106,17 @@ object AppleMusicAudioProvider {
 
     fun isAvailable(): Boolean = devToken() != null && mediaUserToken() != null
 
+    /**
+     * Verifies an explicit (mediaUserToken, devToken) pair against the AMP API
+     * (`/v1/me/storefront` answers 200 only for a valid pairing). Used by the
+     * web sign-in flow to prove the captured token actually belongs to a live
+     * Apple Music session before anything is persisted.
+     */
+    suspend fun verifyTokens(
+        mediaToken: String,
+        devToken: String,
+    ): Boolean = fetchedStorefront(mediaToken.trim(), devToken.trim()) != null
+
     private class AuthException : Exception("apple media-user-token rejected (401/403)")
 
     private data class RingEntry(val token: String, val poolId: Long?)
@@ -162,9 +173,21 @@ object AppleMusicAudioProvider {
     ): List<AppleMusicCandidate> =
         withContext(Dispatchers.IO) {
             if (query.isBlank()) return@withContext emptyList()
-            val devToken = devToken() ?: return@withContext emptyList()
-            val ringEntries = accountRing()
-            if (ringEntries.isEmpty()) return@withContext emptyList()
+            // The catalog search needs a developer JWT but NOT necessarily a
+            // signed-in user: fall back to the auto-scraped web-player token
+            // when no user-pasted developer token exists (previously this
+            // returned an empty list and the popup search showed nothing).
+            val devToken =
+                devToken() ?: AppleMusicProvider.currentDevToken() ?: return@withContext emptyList()
+            var ringEntries = accountRing()
+            if (ringEntries.isEmpty()) {
+                // No personal or pool media-user token: try the storefront
+                // catalog search anonymously — catalog data is public; the
+                // Media-User-Token header is only required for personalised
+                // endpoints. A 401/403 simply yields no results, same as the
+                // old behaviour.
+                ringEntries = listOf(RingEntry("", null))
+            }
 
             for (attempt in ringEntries.indices) {
                 val index = (ringIndex + attempt) % ringEntries.size
@@ -211,11 +234,16 @@ object AppleMusicAudioProvider {
                     .addQueryParameter("types", "songs")
                     .addQueryParameter("limit", limit.coerceAtMost(25).toString())
                     .build()
+            // An empty media-user token means an anonymous catalog lookup —
+            // sending a blank header would be rejected outright, so the header
+            // is simply omitted (catalog search does not require a user).
             val request =
                 Request.Builder()
                     .url(url)
                     .header("Authorization", "Bearer $devToken")
-                    .header("Media-User-Token", mediaToken)
+                    .apply {
+                        if (mediaToken.isNotBlank()) header("Media-User-Token", mediaToken)
+                    }
                     .header("Origin", "https://music.apple.com")
                     .header("Referer", "https://music.apple.com/")
                     .header("User-Agent", UA)

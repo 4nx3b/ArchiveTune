@@ -346,15 +346,14 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             PlayerDesignStyle.TIKTOK,
             PlayerDesignStyle.SIMPMUSIC,
             PlayerDesignStyle.SPATIALFLOW,
+            PlayerDesignStyle.LOOPER,
             -> false
 
             else -> true
         }
     val isLyricsBackgroundStyleAvailable =
-        playerDesignStyle != PlayerDesignStyle.BITCHORD &&
-            playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC &&
+        playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC &&
             playerDesignStyle != PlayerDesignStyle.TIKTOK &&
-            playerDesignStyle != PlayerDesignStyle.SIMPMUSIC &&
             playerDesignStyle != PlayerDesignStyle.SPATIALFLOW
     val isVolumeBarSupported = playerDesignStyle == PlayerDesignStyle.V7
     val isSystemInDarkTheme = isSystemInDarkTheme()
@@ -823,6 +822,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                         stringResource(R.string.player_design_simpmusic)
                                     PlayerDesignStyle.SPATIALFLOW ->
                                         stringResource(R.string.player_design_spatialflow)
+                                    PlayerDesignStyle.LOOPER ->
+                                        stringResource(R.string.player_design_looper)
                                 }
                             },
                         )

@@ -61,7 +61,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -81,7 +80,6 @@ import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.MediaInfo
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import androidx.compose.runtime.getValue
@@ -121,7 +119,7 @@ fun ShowMediaInfo(videoId: String) {
     val playerConnection = LocalPlayerConnection.current
     val song by database.song(videoId).collectAsStateWithLifecycle(initialValue = null)
     val currentFormat by database.format(videoId).collectAsStateWithLifecycle(initialValue = null)
-    var info by remember(videoId) { mutableStateOf<MediaInfo?>(null) }
+    val info = rememberMediaInfo(videoId)
     var selectedTab by rememberSaveable(videoId) { mutableStateOf(MediaInfoTab.Information) }
 
     val unknownText = stringResource(R.string.unknown)
@@ -145,10 +143,6 @@ fun ShowMediaInfo(videoId: String) {
     val informationLabel = stringResource(R.string.information)
 
     val mediaUrl = remember(videoId) { "https://music.youtube.com/watch?v=$videoId" }
-
-    LaunchedEffect(videoId) {
-        info = YouTube.getMediaInfo(videoId).getOrNull()
-    }
 
     val heroTitle = song?.title ?: info?.title ?: videoId
     val heroSubtitle =

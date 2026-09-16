@@ -21,17 +21,23 @@ import moe.rukamori.archivetune.constants.EqualizerAutoHeadroomEnabledKey
 import moe.rukamori.archivetune.constants.EqualizerBandLevelsMbKey
 import moe.rukamori.archivetune.constants.EqualizerBassBoostEnabledKey
 import moe.rukamori.archivetune.constants.EqualizerBassBoostStrengthKey
+import moe.rukamori.archivetune.constants.Equalizer8DEnabledKey
+import moe.rukamori.archivetune.constants.Equalizer8DSpeedKey
+import moe.rukamori.archivetune.constants.EqualizerBalanceKey
 import moe.rukamori.archivetune.constants.EqualizerControlModeKey
 import moe.rukamori.archivetune.constants.EqualizerCustomProfilesJsonKey
 import moe.rukamori.archivetune.constants.EqualizerEnabledKey
 import moe.rukamori.archivetune.constants.EqualizerOutputGainEnabledKey
 import moe.rukamori.archivetune.constants.EqualizerOutputGainMbKey
+import moe.rukamori.archivetune.constants.EqualizerReverbEnabledKey
+import moe.rukamori.archivetune.constants.EqualizerReverbPresetKey
 import moe.rukamori.archivetune.constants.EqualizerSelectedProfileIdKey
 import moe.rukamori.archivetune.constants.EqualizerVirtualizerEnabledKey
 import moe.rukamori.archivetune.constants.EqualizerVirtualizerStrengthKey
 import moe.rukamori.archivetune.playback.EqCapabilities
 import moe.rukamori.archivetune.playback.EqProfile
 import moe.rukamori.archivetune.playback.EqProfilesPayload
+import moe.rukamori.archivetune.playback.EqReverbPreset
 import moe.rukamori.archivetune.playback.EqSettings
 import moe.rukamori.archivetune.playback.EqualizerJson
 import moe.rukamori.archivetune.playback.EqualizerPlaybackController
@@ -73,6 +79,11 @@ class EqualizerRepository
                                 virtualizerEnabled = preferences[EqualizerVirtualizerEnabledKey] ?: false,
                                 virtualizerStrength = (preferences[EqualizerVirtualizerStrengthKey] ?: 0).coerceIn(0, 1000),
                                 autoHeadroomEnabled = preferences[EqualizerAutoHeadroomEnabledKey] ?: false,
+                                reverbEnabled = preferences[EqualizerReverbEnabledKey] ?: false,
+                                reverbPreset = EqReverbPreset.fromStorage(preferences[EqualizerReverbPresetKey] ?: 0).storageValue,
+                                balance = (preferences[EqualizerBalanceKey] ?: 0f).coerceIn(-1f, 1f),
+                                eightDEnabled = preferences[Equalizer8DEnabledKey] ?: false,
+                                eightDSpeedHz = (preferences[Equalizer8DSpeedKey] ?: DEFAULT_8D_SPEED_HZ).coerceIn(0.03f, 0.25f),
                             ),
                         capabilities = null,
                         profiles = profiles,
@@ -107,6 +118,16 @@ class EqualizerRepository
 
         suspend fun setAutoHeadroomEnabled(enabled: Boolean) = editManual { it[EqualizerAutoHeadroomEnabledKey] = enabled }
 
+        suspend fun setReverbEnabled(enabled: Boolean) = editManual { it[EqualizerReverbEnabledKey] = enabled }
+
+        suspend fun setReverbPreset(preset: EqReverbPreset) = editManual { it[EqualizerReverbPresetKey] = preset.storageValue }
+
+        suspend fun setBalance(balance: Float) = editManual { it[EqualizerBalanceKey] = balance.coerceIn(-1f, 1f) }
+
+        suspend fun set8DEnabled(enabled: Boolean) = editManual { it[Equalizer8DEnabledKey] = enabled }
+
+        suspend fun set8DSpeed(speedHz: Float) = editManual { it[Equalizer8DSpeedKey] = speedHz.coerceIn(0.03f, 0.25f) }
+
         suspend fun applyProfile(profile: EqProfile) {
             context.dataStore.edit { preferences ->
                 writeProfileSettings(preferences, profile)
@@ -132,6 +153,11 @@ class EqualizerRepository
                     virtualizerStrength = settings.virtualizerStrength,
                     virtualizerEnabled = settings.virtualizerEnabled,
                     autoHeadroomEnabled = settings.autoHeadroomEnabled,
+                    reverbEnabled = settings.reverbEnabled,
+                    reverbPreset = settings.reverbPreset,
+                    balance = settings.balance,
+                    eightDEnabled = settings.eightDEnabled,
+                    eightDSpeedHz = settings.eightDSpeedHz,
                 )
             context.dataStore.edit { preferences ->
                 val profiles = decodeProfiles(preferences[EqualizerCustomProfilesJsonKey])
@@ -213,6 +239,11 @@ class EqualizerRepository
             preferences[EqualizerVirtualizerStrengthKey] = profile.virtualizerStrength.coerceIn(0, 1000)
             preferences[EqualizerVirtualizerEnabledKey] = profile.virtualizerEnabled ?: (profile.virtualizerStrength != 0)
             preferences[EqualizerAutoHeadroomEnabledKey] = profile.autoHeadroomEnabled
+            preferences[EqualizerReverbEnabledKey] = profile.reverbEnabled
+            preferences[EqualizerReverbPresetKey] = EqReverbPreset.fromStorage(profile.reverbPreset).storageValue
+            preferences[EqualizerBalanceKey] = profile.balance.coerceIn(-1f, 1f)
+            preferences[Equalizer8DEnabledKey] = profile.eightDEnabled
+            preferences[Equalizer8DSpeedKey] = profile.eightDSpeedHz.coerceIn(0.03f, 0.25f)
         }
 
         private fun decodeLevels(raw: String?): List<Int> =
@@ -242,5 +273,6 @@ class EqualizerRepository
             const val FLAT_PROFILE_ID = "flat"
             const val MANUAL_PROFILE_ID = "manual"
             const val PROFILE_PREFIX = "profile:"
+            const val DEFAULT_8D_SPEED_HZ = 0.2f
         }
     }

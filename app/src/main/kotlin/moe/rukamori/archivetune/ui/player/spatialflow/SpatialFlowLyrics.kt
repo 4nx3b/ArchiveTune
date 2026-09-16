@@ -337,6 +337,7 @@ internal fun SpatialFlowLyricsOverlay(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
 
+                // Overflow (lyrics menu) lives on the leading side.
                 IconButton(
                     onClick = { showLyricsMenu = true },
                     modifier =
@@ -409,12 +410,18 @@ internal fun SpatialFlowLyricsOverlay(
                     )
                 }
 
-                IconButton(onClick = onDismiss) {
+                // Dismiss (X) sits alone at the far-right margin as a plain
+                // glyph, mirroring the leading 48dp menu slot so the title
+                // stays dead-centre on the screen.
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(48.dp),
+                ) {
                     Icon(
                         painter = painterResource(R.drawable.close),
                         contentDescription = "Close Lyrics",
                         tint = contentColor.copy(alpha = 0.8f),
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }

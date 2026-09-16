@@ -137,7 +137,6 @@ object TelegramClient {
     val hasApiCredentials: Boolean
         get() = BuildConfig.TELEGRAM_API_ID > 0 || BuildConfig.TELEGRAM_API_HASH.isNotBlank()
 
-
     fun ensureStarted(context: Context, allowEngineDownload: Boolean = true): Boolean {
         if (!hasApiCredentials) return false
         if (TdEngine.isRunning || isReady) return true
@@ -377,7 +376,6 @@ object TelegramClient {
             }
         }
 
-
     suspend fun logOut() {
         runCatching { TelegramDataSource.cancelRetainedDownloads() }
         _authState.value = TelegramAuthState.LoggingOut
@@ -429,7 +427,6 @@ object TelegramClient {
         account = me
         return me
     }
-
 
     internal suspend fun onAuthorizationStateUpdate(state: TdApi.AuthorizationState) {
         when (state) {
@@ -531,7 +528,6 @@ object TelegramClient {
 
             else -> TelegramCodeType.OTHER
         }
-
 
     suspend fun searchChannels(query: String): List<TelegramChannel> {
         val trimmed = query.trim()
@@ -710,7 +706,6 @@ object TelegramClient {
             else -> null
         }
 
-
     suspend fun getFile(fileId: Int): TdApi.File = TdEngine.send<TdApi.File>(TdApi.GetFile(fileId))
 
     suspend fun resolveTrackFile(
@@ -829,7 +824,6 @@ object TelegramClient {
             "file://${file.absolutePath}"
         }.getOrNull()
     }
-
 
     private suspend fun requireStarted() {
         val context = appContext

@@ -268,6 +268,9 @@ class App :
     }
 
     private fun initializeDeferredAsync() {
+        // Registers the recurring source refresh. KEEP, so this is a no-op once scheduled rather
+        // than pushing the next run further out on every launch.
+        moe.rukamori.archivetune.utils.SourceRefreshWorker.schedule(this)
 
         applicationScope.launch(Dispatchers.IO) {
             runCatching {
@@ -464,33 +467,38 @@ class App :
                 }
         }
 
-        try {
-            Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-                try {
-                    val sw = StringWriter()
-                    val pw = PrintWriter(sw)
-                    throwable.printStackTrace(pw)
-                    val stack = sw.toString()
-
-                    val intent =
-                        Intent(this@App, DebugActivity::class.java).apply {
-                            putExtra(DebugActivity.EXTRA_STACK_TRACE, stack)
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                        }
-                    startActivity(intent)
+        // The automotive build has no DebugActivity to forward crashes to —
+        // killing the process from a car head unit without any UI would loop
+        // forever, so the crash reporter only arms on phone/TV builds.
+        if (BuildConfig.DEVICE != "automotive") {
+            try {
+                Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
                     try {
-                        Thread.sleep(100)
-                    } catch (_: InterruptedException) {
+                        val sw = StringWriter()
+                        val pw = PrintWriter(sw)
+                        throwable.printStackTrace(pw)
+                        val stack = sw.toString()
+
+                        val intent =
+                            Intent(this@App, DebugActivity::class.java).apply {
+                                putExtra(DebugActivity.EXTRA_STACK_TRACE, stack)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                            }
+                        startActivity(intent)
+                        try {
+                            Thread.sleep(100)
+                        } catch (_: InterruptedException) {
+                        }
+                    } catch (e: Exception) {
+                        reportException(e)
+                    } finally {
+                        android.os.Process.killProcess(android.os.Process.myPid())
+                        exitProcess(2)
                     }
-                } catch (e: Exception) {
-                    reportException(e)
-                } finally {
-                    android.os.Process.killProcess(android.os.Process.myPid())
-                    exitProcess(2)
                 }
+            } catch (e: Exception) {
+                reportException(e)
             }
-        } catch (e: Exception) {
-            reportException(e)
         }
         applicationScope.launch(Dispatchers.IO) {
             startupReadiness.awaitReady()
@@ -523,6 +531,12 @@ class App :
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
+        // Coil builds this once and keeps it for the life of the process, so a preference read here
+        // cannot tolerate a miss: a null would pin the image cache to the built-in defaults until
+        // the app is killed, silently ignoring the size the reader chose. The DataStore.get operator
+        // below already covers that — while PreferenceStore's first snapshot is still in flight it
+        // falls back to a bounded (1.5s) blocking read of the store itself, so the cold-start read
+        // still resolves the persisted value (or times out to defaults, never blocking the app).
         val imageCacheConfig = resolveImageDiskCacheConfig(dataStore[MaxImageCacheSizeKey])
         val lowRam = isLowRamDevice()
 
@@ -532,7 +546,6 @@ class App :
                 .directory(StorageLocationRepository.cacheDirectory(this, StorageFolderKind.IMAGE_CACHE))
                 .maxSizeBytes(imageCacheConfig.maxSizeBytes)
                 .build()
-
 
         val imageHttpClient =
             OkHttpClient

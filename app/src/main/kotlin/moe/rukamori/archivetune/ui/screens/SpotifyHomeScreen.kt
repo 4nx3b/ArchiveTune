@@ -1,8 +1,3 @@
-/*
- * YumaPlayer (2026) | Modified work by MuwMx
- * ArchiveTune (2026) | Original work by © Rukamori
- * GPL-3.0 License | Contributors: see git history
- */
 
 package moe.rukamori.archivetune.ui.screens
 

@@ -84,6 +84,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ManualSourceLoginEnabledKey
+import moe.rukamori.archivetune.constants.ShowCodecOnPlayerKey
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -128,7 +129,7 @@ fun DebugSettings(navController: NavController) {
 
     val (showCodecOnPlayer, onShowCodecOnPlayerChange) =
         rememberPreference(
-            key = booleanPreferencesKey("show_codec_on_player"),
+            key = ShowCodecOnPlayerKey,
             defaultValue = false,
         )
 
