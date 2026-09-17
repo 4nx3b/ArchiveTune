@@ -77,49 +77,40 @@ fun LosslessOrStats(
 private fun FormatEntity.isLossless(): Boolean =
     mimeType.endsWith("flac") || mimeType.endsWith("alac")
 
-internal fun FormatEntity.describe(): String {
-    val parts = buildList {
-        codecLabel(mimeType)?.let(::add)
-        if (!isLossless()) add("${bitrate / 1000} kbps")
-        sampleRate?.let { add("%.1f kHz".format(Locale.ROOT, it / 1000f)) }
-    }
-    return parts.joinToString(" · ").takeIf { it.isNotEmpty() } ?: ""
-}
-
-internal fun codecLabel(mimeType: String?): String? = when {
-    mimeType == null -> null
-    mimeType.endsWith("opus") -> "Opus"
-    mimeType.endsWith("mp4a-latm") -> "AAC"
-    mimeType.endsWith("vorbis") -> "Vorbis"
-    mimeType.endsWith("mpeg") -> "MP3"
-    mimeType.endsWith("flac") -> "FLAC"
-    mimeType.endsWith("alac") -> "ALAC"
-    else -> mimeType.substringAfter('/').uppercase(Locale.ROOT)
-}
-
+/**
+ * The quality badge the player styles render over their artwork areas:
+ * a headphones glyph plus the label, in the translucent-white convention
+ * this file already uses. [animated] runs the label through the shimmer
+ * sweep (the lossless / hi-res states), so an active badge reads as live
+ * instead of a static caption.
+ */
 @Composable
-private fun LosslessLabel(text: String, animated: Boolean, modifier: Modifier = Modifier) {
+private fun LosslessLabel(
+    text: String,
+    animated: Boolean,
+    modifier: Modifier = Modifier,
+) {
     Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier,
     ) {
         Icon(
             imageVector = Icons.Rounded.Headphones,
             contentDescription = null,
-            tint = Color.White.copy(alpha = if (animated) 0.7f else 0.45f),
-            modifier = Modifier.size(13.dp),
+            tint = Color.White.copy(alpha = 0.55f),
+            modifier = Modifier.size(16.dp),
         )
         Spacer(Modifier.width(4.dp))
         if (animated) {
-            ShimmerText(text = text)
+            ShimmerText(text)
         } else {
             Text(
                 text = text,
                 style = MaterialTheme.typography.labelMedium.copy(
+                    color = Color.White.copy(alpha = 0.55f),
+                    fontWeight = FontWeight.SemiBold,
                     fontSize = (MaterialTheme.typography.labelMedium.fontSize.value + 1).sp,
                 ),
-                color = Color.White.copy(alpha = 0.45f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

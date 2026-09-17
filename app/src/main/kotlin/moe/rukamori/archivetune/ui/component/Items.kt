@@ -123,7 +123,9 @@ import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.innertube.models.ArtistItem
+import moe.rukamori.archivetune.innertube.models.EpisodeItem
 import moe.rukamori.archivetune.innertube.models.PlaylistItem
+import moe.rukamori.archivetune.innertube.models.PodcastItem
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.models.MediaMetadata
@@ -1395,6 +1397,10 @@ fun YouTubeListItem(
                     is PlaylistItem -> {
                         joinByBullet(item.author?.name, item.songCountText)
                     }
+
+                    is PodcastItem -> item.author?.name
+
+                    is EpisodeItem -> joinByBullet(item.podcast?.name, item.dateText, item.durationText)
                 },
             badges = badges,
             thumbnailContent = {
@@ -1505,6 +1511,10 @@ fun YouTubeGridItem(
                     is AlbumItem -> joinByBullet(item.artists?.joinToString { it.name }, item.year?.toString())
                     is ArtistItem -> null
                     is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText)
+
+                    is PodcastItem -> item.author?.name
+
+                    is EpisodeItem -> joinByBullet(item.podcast?.name, item.dateText, item.durationText)
                 }
             if (subtitle != null) {
                 Text(

@@ -24,12 +24,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -49,11 +49,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.collectLatest
+import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.androidauto.AndroidAutoActionSlot
@@ -63,11 +65,11 @@ import moe.rukamori.archivetune.androidauto.AndroidAutoSettingsSnapshot
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.ListPreference
-import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.glassAwareSurface
+import moe.rukamori.archivetune.ui.screens.GlassScreenHeaderOverlay
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.glassHeaderSource
 import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
@@ -175,21 +177,33 @@ private fun AndroidAutoSettingsContent(
                         .glassHeaderSource(glassHeader),
                     contentAlignment = Alignment.Center,
                 ) { CircularProgressIndicator() }
-                is AndroidAutoSettingsState.Success -> AndroidAutoSettingsBody(
-                    model = state.model,
-                    onAction = onAction,
-                    scrollTo = scrollTo,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .glassHeaderSource(glassHeader)
-                            .windowInsetsPadding(
-                                WindowInsets.safeDrawing.only(
-                                    WindowInsetsSides.Horizontal +
-                                        WindowInsetsSides.Bottom,
+                is AndroidAutoSettingsState.Success -> {
+                    // Settings-main-page recipe: the bottom inset comes from
+                    // the player-aware window insets (navigation bar PLUS the
+                    // mini player height when playback is active) instead of
+                    // plain safeDrawing — otherwise the mini player overlapped
+                    // the last preference rows on this page.
+                    val playerAwareBottomPadding =
+                        LocalPlayerAwareWindowInsets.current
+                            .only(WindowInsetsSides.Bottom)
+                            .asPaddingValues()
+                            .calculateBottomPadding()
+                    AndroidAutoSettingsBody(
+                        model = state.model,
+                        onAction = onAction,
+                        scrollTo = scrollTo,
+                        bottomBarPadding = playerAwareBottomPadding,
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .glassHeaderSource(glassHeader)
+                                .windowInsetsPadding(
+                                    LocalPlayerAwareWindowInsets.current.only(
+                                        WindowInsetsSides.Horizontal,
+                                    ),
                                 ),
-                            ),
-                )
+                    )
+                }
                 AndroidAutoSettingsState.Empty -> AndroidAutoSettingsFailure(
                     onAction,
                     Modifier
@@ -206,43 +220,40 @@ private fun AndroidAutoSettingsContent(
                 )
             }
 
-            // Header row copied from the settings main page: flush below the
-            // status bar, centred bold title, round liquid-glass back button
-            // when glass is on (plain icon button otherwise).
-            ScreenHeaderHaze(
-                hazeState = glassHeader.haze,
-                systemBarsTopPadding = systemBarsTopPadding,
-            )
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .padding(top = systemBarsTopPadding)
-                        .height(AppBarHeight),
-            ) {
-                Text(
-                    text = stringResource(R.string.android_auto),
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleLarge,
-                    maxLines = 1,
-                    modifier = Modifier.align(Alignment.Center),
+            // Glass header exactly like the home screen: the back button AND
+            // the title live together inside one liquid-glass pill, floating
+            // over the scrolling content with the ScreenHeaderHaze band over
+            // the status bar. Without glass: a plain flush app bar row.
+            val backdrop = glassHeader.backdrop
+            if (backdrop != null) {
+                GlassScreenHeaderOverlay(
+                    header = glassHeader,
+                    title = stringResource(R.string.android_auto),
+                    onBack = onBack,
+                    onBackLongClick = onBackLongClick,
                 )
-
-                val backdrop = glassHeader.backdrop
-                if (backdrop != null) {
-                    LiquidGlassIconButton(
-                        backdrop = backdrop,
-                        painter = painterResource(R.drawable.arrow_back),
-                        contentDescription = stringResource(R.string.back_button_desc),
-                        modifier =
-                            Modifier
-                                .align(Alignment.CenterStart)
-                                .padding(start = 12.dp),
-                        onClick = onBack,
+            } else {
+                ScreenHeaderHaze(
+                    hazeState = glassHeader.haze,
+                    systemBarsTopPadding = systemBarsTopPadding,
+                )
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .padding(top = systemBarsTopPadding)
+                            .height(AppBarHeight),
+                ) {
+                    Text(
+                        text = stringResource(R.string.android_auto),
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 1,
+                        modifier = Modifier.align(Alignment.Center),
                     )
-                } else {
+
                     IconButton(
                         onClick = onBack,
                         onLongClick = onBackLongClick,
@@ -267,6 +278,7 @@ private fun AndroidAutoSettingsBody(
     model: AndroidAutoSettingsUiModel,
     onAction: (AndroidAutoSettingsAction) -> Unit,
     scrollTo: String? = null,
+    bottomBarPadding: Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
     val configuration = model.snapshot.configuration
@@ -280,7 +292,7 @@ private fun AndroidAutoSettingsBody(
                 .fillMaxSize()
                 .verticalScroll(scrollState)
                 .then(positions.containerModifier())
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                .padding(bottom = bottomBarPadding + SettingsDimensions.ScreenBottomPadding),
     ) {
         // Content scrolls behind the header row, like the settings main page.
         Spacer(Modifier.height(systemBarsTopPadding + AppBarHeight + 8.dp))

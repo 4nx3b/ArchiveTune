@@ -77,7 +77,6 @@
     <string name="remove_from_playlist">Удалить из плейлиста</string>
     <string name="remove_from_queue">Удалить из очереди</string>
     <string name="search_online">Искать онлайн</string>
-    <string name="tempo_and_pitch">Темп и тон</string>
     <string name="sort_by_create_date">Дата добавления</string>
     <string name="sort_by_name">Имя</string>
     <string name="sort_by_artist">Исполнитель</string>
@@ -165,10 +164,6 @@
     <string name="together_ban_confirm">Забанить %1$s?</string>
     <string name="together_requesting_song_change">Просим хоста сменить песню…</string>
     <string name="together_song_change_failed">Смена песни не применилась. Попробуйте ещё раз.</string>
-    <string name="tempo">Темп</string>
-    <string name="pitch">Тональность</string>
-    <string name="pitch_mode_semitones_short">пт</string>
-    <string name="pitch_mode_multiplier_short">x</string>
     <string name="added_to_n_playlists">Добавлено в %d плейлистов</string>
     <string name="added_n_songs_to_n_playlists">Добавлено %1$d треков в %2$d плейлиста</string>
     <string name="playlist_synced">Плейлист синхронизирован</string>

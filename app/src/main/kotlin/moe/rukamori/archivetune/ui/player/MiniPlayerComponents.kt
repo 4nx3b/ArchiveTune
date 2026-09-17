@@ -63,6 +63,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
 import moe.rukamori.archivetune.ui.player.PlayerFadeConfig
@@ -75,6 +77,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -86,12 +91,14 @@ import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.together.isConnectedToSession
+import moe.rukamori.archivetune.ui.utils.getNextFallbackUrl
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 
 private val MiniPlayerTransportButtonSpacing = 4.dp
 
@@ -373,11 +380,29 @@ private fun MiniPlayerArtwork(
     progress: () -> Float,
     isLoading: Boolean,
     colors: MiniPlayerContentColors,
+    onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     Box(
         contentAlignment = Alignment.Center,
-        modifier = modifier.size(52.dp),
+        modifier =
+            modifier
+                .size(52.dp)
+                .onGloballyPositioned { coordinates ->
+                    if (onArtworkSlotPositioned != null) {
+                        onArtworkSlotPositioned(
+                            androidx.compose.ui.geometry.Rect(
+                                offset = coordinates.positionInRoot(),
+                                size =
+                                    androidx.compose.ui.geometry.Size(
+                                        width = coordinates.size.width.toFloat(),
+                                        height = coordinates.size.height.toFloat(),
+                                    ),
+                            ),
+                        )
+                    }
+                },
     ) {
         if (isLoading) {
             CircularWavyProgressIndicator(
@@ -407,6 +432,16 @@ private fun MiniPlayerArtwork(
                         shape = CircleShape,
                     ),
         ) {
+            // The artwork always renders here, even when the SpatialFlow
+            // morph layer is expected to draw over this slot (canvas songs,
+            // plain songs). The floating layer sits at a higher z-index and
+            // shows the exact same image, so covering it is invisible — and if
+            // that layer ever fails to draw (rects not yet measured, artwork
+            // inactive, canvas URL blank) the thumbnail is still on screen
+            // instead of an empty ring. This is the fix for the
+            // "thumbnail doesn't load in mini player in spatialflow style"
+            // report: the placeholder-only path had no artwork of its own and
+            // no fallback when the shared layer could not draw.
             val baseThumbnailUrl = mediaMetadata?.thumbnailUrl
             if (baseThumbnailUrl != null) {
                 val thumbnailSwapState =
@@ -416,10 +451,33 @@ private fun MiniPlayerArtwork(
                         lowDataMode = rememberLowDataModeActive(),
                         isMusicVideo = mediaMetadata.isMusicVideo,
                     )
+                // Same hardening as every other artwork surface: a
+                // disk-cache-backed request plus the maxres -> hq720 -> mq
+                // fallback chain, so a single failed ytimg request can never
+                // park the 42dp slot empty for the rest of the session.
+                var displayUrl by remember(thumbnailSwapState.displayUrl) {
+                    mutableStateOf(thumbnailSwapState.displayUrl)
+                }
+                val artworkRequest =
+                    remember(displayUrl) {
+                        ImageRequest
+                            .Builder(context)
+                            .data(displayUrl)
+                            .memoryCacheKey(displayUrl)
+                            .diskCacheKey(displayUrl)
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .networkCachePolicy(CachePolicy.ENABLED)
+                            .build()
+                    }
                 AsyncImage(
-                    model = thumbnailSwapState.displayUrl,
+                    model = artworkRequest,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
+                    onState = { state ->
+                        if (state is AsyncImagePainter.State.Error) {
+                            getNextFallbackUrl(displayUrl)?.let { displayUrl = it }
+                        }
+                    },
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
@@ -566,6 +624,7 @@ fun NewMiniPlayerContent(
     durationProvider: () -> Long,
     playerConnection: PlayerConnection,
     colors: MiniPlayerContentColors,
+    onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val playbackState by playerConnection.playbackState.collectAsStateWithLifecycle()
@@ -600,6 +659,7 @@ fun NewMiniPlayerContent(
             progress = progressProvider,
             isLoading = isLoading,
             colors = colors,
+            onArtworkSlotPositioned = onArtworkSlotPositioned,
         )
 
         mediaMetadata?.let {

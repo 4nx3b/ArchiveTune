@@ -137,7 +137,6 @@
     <string name="instant_playback">تشغيل فوري</string>
     <string name="on_device">على الجهاز</string>
     <string name="recently_played">المشغلة مؤخراً</string>
-    <string name="top_mixes">أفضل ميكسات ليك</string>
     <string name="library_top_mixes_loading">بنجهّز ميكسات الذكاء الاصطناعي بتاعتك…</string>
     <string name="library_top_mixes_refresh">تحديث الميكسات</string>
     <string name="library_top_mixes_configure_ai">إعداد الذكاء الاصطناعي</string>
@@ -256,13 +255,8 @@
     <string name="together_unknown_participant">شخص ما</string>
     <string name="removed_n_songs_from_queue">تم إزالة %d أغنية من الدور</string>
     <string name="search_online">بحث أونلاين</string>
-    <string name="tempo_and_pitch">السرعة وطبقة الصوت</string>
     <string name="aod_mode">وضع الشاشة الدائمة</string>
     <string name="aod_mode_exit">الخروج من الشاشة الدائمة</string>
-    <string name="tempo">السرعة</string>
-    <string name="pitch">طبقة الصوت</string>
-    <string name="pitch_mode_semitones_short">نصف نغمة</string>
-    <string name="pitch_mode_multiplier_short">مرة</string>
     <string name="sort_by_create_date">تاريخ الإضافة</string>
     <string name="sort_by_name">الاسم</string>
     <string name="sort_by_artist">الفنان</string>

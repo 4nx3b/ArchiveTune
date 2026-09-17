@@ -55,7 +55,9 @@ import moe.rukamori.archivetune.constants.ListItemHeight
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.innertube.models.ArtistItem
+import moe.rukamori.archivetune.innertube.models.EpisodeItem
 import moe.rukamori.archivetune.innertube.models.PlaylistItem
+import moe.rukamori.archivetune.innertube.models.PodcastItem
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
@@ -222,6 +224,7 @@ fun YouTubeBrowseScreen(
                                                             is AlbumItem -> navController.navigate("album/${item.id}")
                                                             is ArtistItem -> navController.navigate("artist/${item.id}")
                                                             is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
+                                                            is PodcastItem -> navController.navigate("podcast/${android.net.Uri.encode(item.browseId)}")
                                                             else -> item
                                                         }
                                                     },
@@ -259,6 +262,8 @@ fun YouTubeBrowseScreen(
                                                                         onDismiss = menuState::dismiss,
                                                                     )
                                                                 }
+
+                                                                is PodcastItem, is EpisodeItem -> Unit
                                                             }
                                                         }
                                                     },

@@ -75,7 +75,6 @@
     <string name="remove_from_playlist">Oynatma listesinden kaldır</string>
     <string name="remove_from_queue">Sıradan kaldır</string>
     <string name="search_online">Çevrimiçi ara</string>
-    <string name="tempo_and_pitch">Tempo ve Perde</string>
     <string name="sort_by_create_date">Eklenme tarihi</string>
     <string name="sort_by_name">İsim</string>
     <string name="sort_by_artist">Sanatçı</string>
@@ -479,7 +478,6 @@
     <string name="instant_playback">Anında playback</string>
     <string name="on_device">Cihazda</string>
     <string name="recently_played">Yakın Zamanda Oynatılmış</string>
-    <string name="top_mixes">Sizin için en iyi Mix\'ler</string>
     <string name="library_top_mixes_loading">YZ mix\'leriniz hazırlanıyor…</string>
     <string name="library_top_mixes_refresh">Mix\'leri yenile</string>
     <string name="library_top_mixes_configure_ai">YZ\'yi Yapılandır</string>

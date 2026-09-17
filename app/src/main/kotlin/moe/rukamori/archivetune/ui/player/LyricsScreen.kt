@@ -165,7 +165,6 @@ import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
 private val AppleMusicFallbackGradient =
@@ -283,6 +282,7 @@ fun LyricsScreen(
         }
 
     LaunchedEffect(mediaMetadata.id, currentLyrics?.lyrics, currentLyrics?.providerName) {
+        if (mediaMetadata.isPodcast) return@LaunchedEffect
         val snapshot = currentLyrics
         val needsFetch =
             snapshot == null ||
@@ -1120,10 +1120,13 @@ private fun AppleMusicTrackHeader(
         modifier = modifier.heightIn(min = 72.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 56dp — the Apple Music player's lyrics header artwork size, shared
+        // by every player style's lyrics page so the thumbnail never reads
+        // oversized in the other styles.
         Box(
             modifier =
                 Modifier
-                    .size(72.dp)
+                    .size(56.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(foregroundColor.copy(alpha = 0.18f)),
             contentAlignment = Alignment.Center,
