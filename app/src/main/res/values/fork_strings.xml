@@ -57,7 +57,7 @@
     <!-- Update info dialog (ported from vivi-music under GPL-3.0). -->
 
     <string name="minimal_home_mode">Minimal mode</string>
-    <string name="minimal_home_mode_desc">Hide all home sections except Keep listening, Recently played and Live performances. The hero card at the top stays visible.</string>
+    <string name="minimal_home_mode_desc">Hide all home sections except Keep listening, Recently played and Live performances. The hero card at the top stays visible. Also applies to the search tab: only the search field and recent searches stay, trending content is hidden.</string>
 
     <string name="download_source_jiosaavn">JioSaavn</string>
 

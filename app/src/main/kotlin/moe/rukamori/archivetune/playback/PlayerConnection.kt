@@ -418,6 +418,27 @@ class PlayerConnection(
         }
     }
 
+    /**
+     * Pushes a freshly pinned canvas (the "Choose Canvas source" picker's
+     * selection) straight into every live canvas render state. The player
+     * sheet's and the full-player thumbnail's collectors apply the artwork on
+     * the next frame, so the visible canvas swaps immediately instead of
+     * waiting for the next track change or a manual refetch.
+     */
+    internal fun publishCanvasArtworkUpdate(
+        mediaId: String,
+        artwork: CanvasArtwork,
+    ) {
+        connectionScope.launch {
+            _canvasArtworkUpdates.emit(
+                CanvasArtworkUpdate(
+                    mediaId = mediaId,
+                    artwork = artwork,
+                ),
+            )
+        }
+    }
+
     fun dismissPlaybackError() {
         dismissedPlaybackError = error.value ?: player.playerError
         error.value = null

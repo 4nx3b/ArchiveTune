@@ -50,9 +50,12 @@ import moe.rukamori.archivetune.ui.component.BottomSheetState
  * while the lyrics overlay is open its own flying artwork owns the morph, and
  * while the queue drawer is expanded the drawer owns the whole screen — the
  * shared layer fades to 0 (animated with the same spring family as the
- * drawer's slide) instead of floating above them. `artworkActive` covers the
- * canvas/video case: when the player's artwork slot is occupied by a canvas
- * or music video, the layer never draws over the media surface.
+ * drawer's slide / the flying artwork's morph, so the handoff is a crossfade
+ * between two identical images rather than an instant pop) instead of
+ * floating above them. `artworkActive` covers the canvas/video case: when the
+ * player's artwork slot is occupied by a canvas or music video, the layer
+ * never draws over the media surface (the mini player renders its own
+ * thumbnail then).
  */
 @Composable
 fun BoxScope.SpatialFlowFloatingArtwork(
@@ -78,8 +81,13 @@ fun BoxScope.SpatialFlowFloatingArtwork(
 
     // Animated fade for the queue drawer (the original animates the shared
     // layer's alpha with the drawer's spring so the two never fight). Lyrics
-    // and canvas/video take the instant path: their own artwork replaces this
-    // layer the moment they take over.
+    // takes an animated spring too: with an instant boolean the layer snapped
+    // back to fully opaque the MOMENT lyrics closed, drawing the artwork under
+    // the still-closing reveal while the flying shared-element was still in
+    // flight — two artworks on screen at once read as a flicker. The spring
+    // crossfades the two identical images instead (open: layer fades out as
+    // the flying artwork takes over; close: layer fades back in exactly as
+    // the flying artwork lands on the slot).
     val queueFade by animateFloatAsState(
         targetValue = if (queueOpen) 0f else 1f,
         animationSpec =
@@ -88,6 +96,15 @@ fun BoxScope.SpatialFlowFloatingArtwork(
                 stiffness = 300f,
             ),
         label = "SfFloatingArtworkQueueFade",
+    )
+    val lyricsFade by animateFloatAsState(
+        targetValue = if (lyricsOpen) 0f else 1f,
+        animationSpec =
+            spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = 420f,
+            ),
+        label = "SfFloatingArtworkLyricsFade",
     )
 
     Box(
@@ -113,7 +130,7 @@ fun BoxScope.SpatialFlowFloatingArtwork(
                     // the mini circle back to this layer instead of leaving it
                     // stuck invisible. Canvas/video suppression applies at every
                     // progress (the mini player renders its own artwork then).
-                    val lyricsSuppress = lerp(1f, if (lyricsOpen) 0f else 1f, p)
+                    val lyricsSuppress = lerp(1f, lyricsFade, p)
                     val queueSuppress = lerp(1f, queueFade, p)
                     alpha = (if (artworkActive) 1f else 0f) * lyricsSuppress * queueSuppress
                     if (alpha <= 0.01f) return@graphicsLayer

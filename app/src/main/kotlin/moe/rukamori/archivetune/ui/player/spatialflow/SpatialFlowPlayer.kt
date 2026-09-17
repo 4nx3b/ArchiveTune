@@ -52,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -474,9 +475,27 @@ fun SpatialFlowPlayerContent(
                     label = "LyricsCircularReveal",
                 )
 
-                val lyricsContentReady = lyricsRevealProgress > 0.8f
-
-                val keepMainContentComposed = !lyricsModeEnabled || lyricsRevealProgress < 1f
+                // Every read of the animating reveal value below is a derived
+                // Boolean: reading the raw float in this composition scope
+                // would invalidate the WHOLE player (pager, canvas surfaces,
+                // controls, queue drawer) on every one of the ~20 frames of
+                // the reveal — the dropped-frame "flicker" during the lyrics
+                // transition. The derived values flip at most twice, so the
+                // heavy scope only recomposes at the thresholds.
+                val lyricsContentReady by remember {
+                    derivedStateOf { lyricsRevealProgress > 0.45f }
+                }
+                val lyricsOverlayVisible by remember {
+                    derivedStateOf { lyricsRevealProgress > 0.01f }
+                }
+                // Keyed on the song: lyricsModeEnabled's backing state is
+                // replaced on every track change (rememberSaveable is keyed on
+                // the media id), so an unkeyed derivedStateOf here would keep
+                // capturing the ORPHANED first-song state and the flag would
+                // freeze at its first value for the whole session.
+                val keepMainContentComposed by remember(mediaMetadata.id) {
+                    derivedStateOf { !lyricsModeEnabled || lyricsRevealProgress < 0.995f }
+                }
                 androidx.compose.runtime.LaunchedEffect(videoShowing, canvasAvailable, lyricsModeEnabled) {
                     onPagerArtworkActiveChange?.invoke(!videoShowing && !canvasAvailable && !lyricsModeEnabled)
                 }
@@ -1061,7 +1080,7 @@ fun SpatialFlowPlayerContent(
                 }
             }
 
-            if (lyricsRevealProgress > 0f) {
+            if (lyricsOverlayVisible) {
                 SpatialFlowLyricsOverlay(
                     currentSong = mediaMetadata,
                     syncedLyrics = syncedLyrics,

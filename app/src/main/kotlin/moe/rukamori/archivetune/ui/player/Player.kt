@@ -1395,9 +1395,6 @@ fun BottomSheetPlayer(
                 durationProvider = durationProvider,
                 pureBlack = pureBlack,
                 isPairedWithNavigation = isMiniPlayerPairedWithNavigation,
-                artworkPlaceholder =
-                    playerDesignStyle == PlayerDesignStyle.SPATIALFLOW &&
-                        spatialFlowPagerArtworkActive,
                 onArtworkSlotPositioned = { rect ->
                     if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
                         spatialFlowMiniArtworkRect.value = rect
