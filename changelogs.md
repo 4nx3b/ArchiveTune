@@ -222,6 +222,51 @@ player-animation performance pass yet.
   mini player smoothly takes over the freed space; scrolling back up brings
   the bar back just as smoothly (the SpatialFlow behaviour)
 
+## Fixes (16.0 addendum)
+
+- The song thumbnail always renders in the mini player in the SpatialFlow
+  style: the mini player's artwork slot had become a placeholder ring
+  whenever the floating morph layer was expected to draw over it, so canvas
+  and video songs (where that layer never draws) — or any moment the layer
+  could not — left an empty circle with no artwork and no fallback. The mini
+  player now always renders its own thumbnail underneath the morph layer
+  (identical image, higher z-index — invisible when both draw), and that
+  thumbnail gained the same hardening as every other artwork surface: a
+  disk-cache-backed request plus the maxres → hq720 → mq fallback chain, so a
+  single failed image request can never park the slot empty
+- Opening the lyrics page in the SpatialFlow style no longer flickers: the
+  circular-reveal progress was read as a raw float inside the player's main
+  composition scope, invalidating the entire player (artwork pager, canvas
+  surfaces, controls, queue drawer) on every one of the reveal's ~20 frames —
+  the reads are now derived booleans that flip only at the thresholds, and
+  the lyrics content composes at 45% of the reveal (still clipped) instead of
+  popping in at 80%. The floating artwork's lyrics hand-off also animates
+  with the flying artwork's spring: closing the lyrics page used to snap the
+  slot artwork back to full opacity while the flying thumbnail was still
+  morphing home, putting two artworks on screen at once
+- The canvas source picker applies the chosen canvas immediately: picking a
+  source in the player's overflow menu only re-wrote the playback cache —
+  the visible canvas kept playing the old source until the next track
+  change. The picker now pins the choice (replacing any existing entry — the
+  old insert kept the previous artwork and silently ignored the tap) and
+  publishes it into the live canvas render states, so the playing canvas
+  swaps on the next frame; the "Save" download path does the same once the
+  videos are on disk
+- The canvas source picker dialog grew its requested polish: the
+  "Choose Canvas source" title is centred and bold, and each source row
+  shows its provider's mark — the Spotify logo for the Spotify canvas, the
+  Apple Music logo for the ArchiveTune (Apple Music / BetterLyrics) canvas
+- Minimal mode now also applies to the search tab: with the setting on, the
+  search page shows only the search field and the recent searches — the
+  trending searches chips, trending songs, new albums, moods & genres and
+  the recommendation tabs are hidden (the same philosophy as minimal home:
+  personal history stays, discovery goes)
+- Local playlist pages no longer play canvas in their header: the
+  Apple-Music-style hero had grown a looping canvas backdrop resolved from
+  the playlist's first song (and the "Enable canvas in albums and playlists
+  page" toggle gated it) — local playlists are back to the plain text hero,
+  while online, top and Spotify playlist pages keep theirs
+
 ---
 
 ## Features (15.1 addendum)

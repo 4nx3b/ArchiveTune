@@ -44,9 +44,13 @@ fun rememberThumbnailSwapState(
     val context = LocalContext.current
     val shouldAttemptYT = videoId != null && !lowDataMode && isMusicVideo
 
-    var displayUrl by remember { mutableStateOf(ytmUrl) }
-    var isYTReady by remember { mutableStateOf(false) }
-    var ytUrl by remember { mutableStateOf<String?>(null) }
+    // Keyed on the incoming URL: without the key the remembered value kept
+    // the PREVIOUS song's URL for the first frame of a track change (the
+    // LaunchedEffect below only runs after that recomposition), flashing a
+    // stale artwork through the mini player.
+    var displayUrl by remember(videoId, ytmUrl) { mutableStateOf(ytmUrl) }
+    var isYTReady by remember(videoId, ytmUrl) { mutableStateOf(false) }
+    var ytUrl by remember(videoId, ytmUrl) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(videoId, ytmUrl, shouldAttemptYT) {
         displayUrl = ytmUrl

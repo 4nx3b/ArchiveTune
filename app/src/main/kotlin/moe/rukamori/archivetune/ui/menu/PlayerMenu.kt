@@ -589,6 +589,18 @@ fun PlayerMenu(
             val saved = withContext(Dispatchers.IO) {
                 CanvasArtworkPlaybackCache.save(mediaMetadata.id, source.artwork)
             }
+            if (saved) {
+                // Re-read the playable entry (local file URIs once the videos
+                // are on disk) and push it into the live render states so the
+                // playing canvas swaps right now, not on the next track change.
+                val playable =
+                    withContext(Dispatchers.IO) {
+                        CanvasArtworkPlaybackCache.getCachedOnlyFast(mediaMetadata.id)
+                    }
+                if (playable != null) {
+                    playerConnection.publishCanvasArtworkUpdate(mediaMetadata.id, playable)
+                }
+            }
             canvasSaving = false
             Toast.makeText(
                 context,
@@ -600,13 +612,18 @@ fun PlayerMenu(
 
     // Row click: make the chosen source's canvas the one that plays for this
     // song (streams immediately, caches in the background) without forcing a
-    // full synchronous download.
+    // full synchronous download. `replace` (not `put`) swaps any existing
+    // entry for the song — `put` would silently keep the previous source's
+    // artwork and the picker would appear to do nothing — and the published
+    // update makes the player re-render the artwork slot on the next frame.
     fun playCanvasSource(source: CanvasSourceOption) {
         showCanvasSourceDialog = false
         coroutineScope.launch {
-            withContext(Dispatchers.IO) {
-                CanvasArtworkPlaybackCache.put(mediaMetadata.id, source.artwork)
-            }
+            val artwork =
+                withContext(Dispatchers.IO) {
+                    CanvasArtworkPlaybackCache.replace(mediaMetadata.id, source.artwork)
+                }
+            playerConnection.publishCanvasArtworkUpdate(mediaMetadata.id, artwork)
             Toast.makeText(
                 context,
                 context.getString(R.string.canvas_source_selected, source.label),
@@ -617,20 +634,40 @@ fun PlayerMenu(
 
     if (showCanvasSourceDialog) {
         ListDialog(onDismiss = { showCanvasSourceDialog = false }) {
-            item {
-                ListItem(
-                    headlineContent = { Text(text = stringResource(R.string.canvas_source_title)) },
-                    leadingContent = {
-                        Icon(painter = painterResource(R.drawable.image), contentDescription = null)
-                    },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                )
+            item(key = "canvas_source_title") {
+                // Centered bold title (user request): the header is a plain
+                // centered label, not a ListItem row with a leading icon.
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.canvas_source_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
             items(canvasSources, key = { it.label }) { source ->
+                val providerTag = source.artwork.provider ?: source.artwork.inferredProvider()
+                val sourceIcon =
+                    if (providerTag == CanvasArtwork.PROVIDER_SPOTIFY) {
+                        R.drawable.spotify_icon
+                    } else {
+                        R.drawable.apple_music_icon
+                    }
                 ListItem(
                     headlineContent = { Text(text = source.label) },
                     leadingContent = {
-                        Icon(painter = painterResource(R.drawable.image), contentDescription = null)
+                        Icon(
+                            painter = painterResource(sourceIcon),
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                        )
                     },
                     trailingContent = {
                         if (canvasSaving) {
