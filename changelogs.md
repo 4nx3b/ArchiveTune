@@ -224,6 +224,23 @@ player-animation performance pass yet.
 
 ## Fixes (16.0 addendum)
 
+- The SpatialFlow lyrics page no longer closes itself moments after opening:
+  the lyrics flag lived in a rememberSaveable keyed on the song id, and any
+  transient metadata re-emission (a queue/source resolver swapping the current
+  item mid-playback, with the id reverting a moment later) re-initialised that
+  state to false — on-device the lyrics page reliably shut itself ~0.9 seconds
+  after every tap on the Lyrics pill, with the reveal circle animating shut
+  exactly like a user dismissal. The flag is now unkeyed and resets only when a
+  genuinely different song id stays put for 250 ms, so resolver flickers can
+  never kick you out of the lyrics. Two companion glitches died with it: the
+  one-frame full-size artwork flash in the top-left corner right as the reveal
+  finished (the flying shared element drew at its raw (0,0) layout slot for a
+  frame when the artwork-slot rect was momentarily nulled — the rect is now
+  retained while the lyrics own the screen and the layer turns itself invisible
+  instead of drawing unpositioned), and the missing 56 dp thumbnail that was
+  supposed to park in the lyrics header (the same premature rect null killed
+  the flying artwork right after it finished its morph — the Apple-Music-style
+  header thumbnail is back)
 - The song thumbnail always renders in the mini player in the SpatialFlow
   style: the mini player's artwork slot had become a placeholder ring
   whenever the floating morph layer was expected to draw over it, so canvas

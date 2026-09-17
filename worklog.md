@@ -2818,3 +2818,25 @@ Work Log:
 Stage Summary:
 - dev at f198d91ca (13 files, +246/-70): mini player artwork can no longer be an empty ring in any SpatialFlow state; the lyrics transition recomposes the player only at its thresholds; the canvas picker swaps the playing canvas on the next frame and shows provider marks; minimal mode covers the search tab; local playlist heroes are canvas-free.
 - Pushed to dev — rides into PR #224 (dev -> main, 16.0). CI monitored with scripts/poll_ci_sha.sh.
+
+---
+Task ID: 56
+Agent: Super Z (main agent, session web-e130fa90)
+Task: "In spatialflow player style, it still flickers when I open lyrics. Look at the video and fix it" (VID_20260917_193957_392.mp4)
+
+Work Log:
+- Forensic analysis of the uploaded screen recording (frame extraction at 6/38.6fps + per-frame/per-region brightness profiling + VLM passes over ~200 sampled frames): the "flicker" decomposed into three distinct defects, none of which was the recomposition churn the previous round (Task 55) fixed:
+  1. THE KILLER — the lyrics page closes itself ~0.88-0.90s after every tap on the Lyrics pill (three identical cycles in this video, three more in the earlier 16:33 recording; no touch ripple anywhere near the X button, no back gesture, playback continuous, same song). The close is ANIMATED (reveal circle shrinks over ~340ms; the artwork recomposes in first, then the circle recedes) — proving the composition survived and lyricsModeEnabled simply read false. With no write site reachable (only the X onClick and BackHandler write it) and slot-level state otherwise provably preserved, the only mechanism consistent with every observation is rememberSaveable(mediaMetadata.id) re-keying: a transient mediaMetadata.id change (metadata re-emission from the queue/source resolver swapping the current item and reverting) re-runs the saver init and replaces the boolean with a fresh false, while the unkeyed animateFloatAsState instances survive and animate the close.
+  2. A one-frame full-size artwork flash in the TOP-LEFT corner right as the reveal finished (measured: bright 328x328 square at x=0-0.91w, y=0-0.41h = the flying shared-element Box's RAW layout slot). The artwork-slot DisposableEffect nulls artworkPagerBoundsInRoot when keepMainContentComposed drops the main content at reveal progress 0.995; the flying layer composed in that same frame reads the null at draw time, its graphicsLayer lambda early-returns, and the fresh RenderNode draws at (0,0) with no scale/translation for exactly one frame.
+  3. The 56dp artwork thumbnail never parks in the lyrics header (the intended Apple-Music-style choreography from 2fe22a674): the same premature rect null kills the flying artwork right after its morph completes — the user's lyrics page never showed any header thumbnail at all.
+- Fixes (SpatialFlowPlayer.kt only):
+  (1) lyricsModeEnabled is now an UNKEYED rememberSaveable; per-track reset is explicit — a LaunchedEffect(mediaMetadata.id) closes the lyrics only when a genuinely different id stays put for 250ms (a resolver flicker reverts and cancels the effect via key relaunch; a real track change closes as before, 250ms later which the 340ms reveal close absorbs). lyricsModeSongId remembers the last stable id (saveable).
+  (2) The slot's DisposableEffect only clears artworkPagerBoundsInRoot / onArtworkSlotPositioned when lyrics is NOT the reason the slot left composition — while the lyrics overlay owns the screen the rect stays alive for the flying shared element (also restores the parked header thumbnail).
+  (3) The flying layer's graphicsLayer now sets alpha=0 before the null-bounds early return — it can never again draw at its raw (0,0) layout slot.
+  Belt-and-suspenders: keepMainContentComposed's comment updated (its mediaMetadata.id key is hygiene now, not correctness).
+- changelogs.md: new lead entry in "Fixes (16.0 addendum)" documenting the auto-close root cause and the two companion glitches.
+- Static review agent over the diff: all 6 checks PASS (imports, labels, delegate writes, nesting depth, smart casts, brace balance; repo-wide reference sweep clean). Local compile impossible on this box (4GB OOM ceiling) — CI is the verifier per established workflow.
+
+Stage Summary:
+- dev carries the fix (1 file, SpatialFlowPlayer.kt, +38/-7): the SpatialFlow lyrics page can no longer be kicked shut by transient metadata re-emissions, the reveal-to-header artwork morph completes as designed (thumbnail parks next to the X), and no unpositioned artwork frame can flash at reveal completion.
+- Verification note: if a device still shows any lyrics-page self-close after this, the next diagnostic step is adb logcat on PlayerConnection's metadata emissions around the tap (the 250ms stability window covers every flicker shorter than a quarter second).
