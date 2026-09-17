@@ -73,11 +73,24 @@ fun BoxScope.SpatialFlowFloatingArtwork(
     onPlaySongAtWindow: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (fullArtworkRect == null || miniArtworkRect == null || fullArtworkRect.width <= 0f) {
+    if (fullArtworkRect == null || fullArtworkRect.width <= 0f) {
         return
     }
     val full = fullArtworkRect
-    val mini = miniArtworkRect
+    // Notification-restore fallback: when the activity is re-created straight
+    // into the expanded anchor (opened from the media notification after the
+    // system destroyed the backgrounded activity), the mini player is never
+    // composed — the sheet only composes collapsedContent below the expanded
+    // anchor — so no mini rect has ever been measured. The old early return
+    // here dropped the whole layer, leaving the expanded player's artwork
+    // slot an empty hole until the next collapse/expand cycle. Instead the
+    // geometry pins to the full slot for the whole travel and only the alpha
+    // follows the sheet progress below (handing off to the mini player's own
+    // thumbnail exactly like the normal morph crossfade). The real mini rect
+    // is reported within a frame of the sheet leaving the expanded anchor,
+    // which restores the true morph.
+    val mini = miniArtworkRect ?: full
+    val miniRectMissing = miniArtworkRect == null
 
     // Animated fade for the queue drawer (the original animates the shared
     // layer's alpha with the drawer's spring so the two never fight). Lyrics
@@ -123,7 +136,13 @@ fun BoxScope.SpatialFlowFloatingArtwork(
                 .offset { IntOffset(full.left.roundToInt(), full.top.roundToInt()) }
                 .size(with(androidx.compose.ui.platform.LocalDensity.current) { full.width.toDp() })
                 .graphicsLayer {
-                    val p = state.progress.coerceIn(0f, 1f)
+                    val rawP = state.progress.coerceIn(0f, 1f)
+                    // Pinned fallback (no mini rect): the geometry ignores the
+                    // travel and stays on the full slot; the alpha fades out
+                    // below halfway instead, mirroring the morph-mode
+                    // crossfade choreography (full content (p-0.5)*2, mini
+                    // 1-2p) so the handoff stays seamless.
+                    val p = if (miniRectMissing) 1f else rawP
                     // The lyrics overlay and the queue drawer only exist on the
                     // expanded side, so their suppression scales with progress:
                     // collapsing the sheet under an open overlay smoothly hands
@@ -132,7 +151,8 @@ fun BoxScope.SpatialFlowFloatingArtwork(
                     // progress (the mini player renders its own artwork then).
                     val lyricsSuppress = lerp(1f, lyricsFade, p)
                     val queueSuppress = lerp(1f, queueFade, p)
-                    alpha = (if (artworkActive) 1f else 0f) * lyricsSuppress * queueSuppress
+                    val fallbackFade = if (miniRectMissing) (2f * rawP).coerceIn(0f, 1f) else 1f
+                    alpha = (if (artworkActive) 1f else 0f) * lyricsSuppress * queueSuppress * fallbackFade
                     if (alpha <= 0.01f) return@graphicsLayer
 
                     // Scale the full-size artwork down to the mini circle.

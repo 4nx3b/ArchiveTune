@@ -94,6 +94,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -312,6 +313,18 @@ internal class DeviceMusicVolumeController(
             0
         }
 }
+
+/**
+ * Persists the SpatialFlow floating-artwork slot rects across activity
+ * re-creation: the measured geometry survives the notification-reopen path
+ * (system destroyed the backgrounded activity, sheet restored straight into
+ * the expanded anchor) so the shared morph layer can draw immediately.
+ */
+private val SpatialFlowArtworkRectSaver =
+    Saver<Rect?, List<Float>>(
+        save = { rect -> rect?.let { listOf(it.left, it.top, it.right, it.bottom) } },
+        restore = { values -> Rect(values[0], values[1], values[2], values[3]) },
+    )
 
 @Composable
 internal fun rememberDeviceMusicVolumeController(): DeviceMusicVolumeController {
@@ -538,8 +551,17 @@ fun BottomSheetPlayer(
     // the mini player's circle and the full player's artwork slot. Slot rects
     // are measured in root layout coordinates (the sheet's graphicsLayer
     // slide cancels out because every participant shares the sliding box).
-    val spatialFlowMiniArtworkRect = remember { mutableStateOf<Rect?>(null) }
-    val spatialFlowFullArtworkRect = remember { mutableStateOf<Rect?>(null) }
+    // Saveable: when the app is reopened from the media notification after
+    // the system destroyed the backgrounded activity, the sheet restores
+    // straight into the EXPANDED anchor — the mini player never composes on
+    // that path (BottomSheet only composes collapsedContent below the
+    // expanded anchor), so a plain remember would leave the mini rect null
+    // and the shared layer would not draw at all (the invisible artwork
+    // until the next collapse/expand cycle).
+    val spatialFlowMiniArtworkRect =
+        rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
+    val spatialFlowFullArtworkRect =
+        rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
     var spatialFlowPagerArtworkActive by remember { mutableStateOf(true) }
 
     // SpatialFlow's lyrics overlay and queue drawer report their state upward
