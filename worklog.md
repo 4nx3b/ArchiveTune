@@ -2861,3 +2861,18 @@ Work Log:
 Stage Summary:
 - dev @ b55df61c4: the notification-reopen artwork fix (Player.kt + SpatialFlowSheetMorph.kt), changelog consolidated, release title fixed. CI is the compile verifier (no local SDK on this box).
 - Release "ArchiveTune 16.0" (tag v16.0) to be created via the release workflow once PR #224 merges; notes carry the changelogs.md link.
+
+---
+Task ID: 57 (completion addendum)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Release ArchiveTune 16.0 — outcome record
+
+Work Log:
+- CI on 99ebee720 (fix + worklog commits): Build Pull Request / Build APKs / Nightly all green (~47 min for the R8 matrix).
+- PR #224 (dev -> main, 29 commits) merged with a merge commit 021389ca3.
+- release.yml dispatched on main (run 35261579873): check-version computed v16.0 (versionCode from commit count), all 7 release APK variants built and signed, reproducibility job verified the universal APK, create-release published the release.
+- Release live: "ArchiveTune 16.0" (exactly as requested), tag v16.0, stable (not pre-release), https://github.com/4nx3b/ArchiveTune/releases/tag/v16.0 — notes carry the changelogs.md link (blob/v16.0/changelogs.md) and the v15.0...v16.0 compare link; assets: foss+gms mobile (arm64/armeabi/universal/x86/x86_64), gms tv universal, and changelogs.md itself.
+- Workflow overall conclusion: completed / success.
+
+Stage Summary:
+- ArchiveTune 16.0 stable release shipped with the notification-reopen artwork fix on board.
