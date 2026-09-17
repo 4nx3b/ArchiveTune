@@ -370,11 +370,6 @@ class DownloadUtil
                             .setFragmentSize(DOWNLOAD_FRAGMENT_SIZE),
                     ),
             ) { dataSpec ->
-                runBlocking {
-                    kotlinx.coroutines.withTimeoutOrNull(STARTUP_READINESS_WAIT_MS) {
-                        moe.rukamori.archivetune.App.startupReadiness.awaitReady()
-                    }
-                }
                 val requestKey = dataSpec.key ?: error("No media id")
                 val mediaId = DownloadSourceConfig.downloadIdToSongId(requestKey)
 
@@ -643,7 +638,6 @@ class DownloadUtil
             }
 
         suspend fun prewarmSongForDownload(mediaId: String): String? {
-            moe.rukamori.archivetune.App.startupReadiness.awaitReady()
             if (PoolAccountManager.isEnabled) {
                 runCatching {
                     kotlinx.coroutines.withTimeout(POOL_REFRESH_TIMEOUT_MS) {
@@ -1370,7 +1364,6 @@ class DownloadUtil
 
             internal const val YT_DOWNLOAD_RESOLVE_TIMEOUT_MS = 120_000L
 
-            internal const val STARTUP_READINESS_WAIT_MS = 10_000L
 
             internal const val DOWNLOAD_AUTO_RETRY_DELAY_MS = 4_000L
 

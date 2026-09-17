@@ -87,6 +87,7 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.DefaultSearchSourceKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
+import moe.rukamori.archivetune.constants.MinimalHomeModeKey
 import moe.rukamori.archivetune.constants.SearchProvider
 import moe.rukamori.archivetune.constants.SearchSource
 import moe.rukamori.archivetune.db.entities.SearchHistory
@@ -141,6 +142,14 @@ fun SearchScreen(
 ) {
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var searchProvider by rememberEnumPreference(DefaultSearchSourceKey, SearchProvider.YOUTUBE)
+    // The home tab's Minimal mode setting now also applies here (user
+    // request): with it on, the search tab shows only the search field and the
+    // user's own recent searches — trending searches, trending songs, new
+    // albums, moods/genres and the recommendation tabs are all hidden, the
+    // same philosophy as minimal home (personal history stays, discovery
+    // goes). Render-only gating, exactly like HomeScreen: the discovery
+    // view model still loads, it just has nothing to draw.
+    val (minimalMode, _) = rememberPreference(MinimalHomeModeKey, defaultValue = false)
     val onSearchSourceSelection: (SearchSource, SearchProvider) -> Unit = { _, provider ->
         searchProvider = provider
     }
@@ -214,6 +223,26 @@ fun SearchScreen(
                 )
             }
 
+            if (minimalMode) {
+                // Minimal search: keep the user's own recent-search history
+                // (the analogue of minimal home keeping "Recently played"),
+                // skip the discovery tabs and every trending/recommendation
+                // section below.
+                if (recentSearches.isNotEmpty()) {
+                    item(
+                        key = "search_recent_searches",
+                        contentType = "recent_searches",
+                    ) {
+                        RecentSearchesSection(
+                            recent = recentSearches,
+                            onClear = historyViewModel::clearAll,
+                            onDelete = historyViewModel::delete,
+                            onQueryClick = onSearchQuery,
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
+                }
+            } else {
             item(
                 key = "search_tabs",
                 contentType = "search_tabs",
@@ -479,6 +508,7 @@ fun SearchScreen(
                     }
                 }
             }
+            } // end !minimalMode
 
             item(key = "search_bottom_spacer", contentType = "spacer") {
                 Spacer(Modifier.height(SearchSectionSpacing))

@@ -66,6 +66,7 @@ import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.PRELOAD_SONGS_RANGE
 import moe.rukamori.archivetune.constants.PreloadSongsCountKey
+import moe.rukamori.archivetune.constants.DEFAULT_PRELOAD_SONGS_COUNT
 import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
 import moe.rukamori.archivetune.constants.AutoStartOnBluetoothKey
 import moe.rukamori.archivetune.constants.CanvasResolverEndpointsKey
@@ -205,7 +206,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
     val (preloadSongsCount, onPreloadSongsCountChange) =
         rememberPreference(
             PreloadSongsCountKey,
-            defaultValue = 0,
+            defaultValue = DEFAULT_PRELOAD_SONGS_COUNT,
         )
 
     val (crossfadeEnabled, onCrossfadeEnabledChange) =

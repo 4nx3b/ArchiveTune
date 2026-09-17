@@ -24,8 +24,6 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -96,6 +94,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -108,6 +107,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -234,7 +234,9 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicPlayerContent
+import moe.rukamori.archivetune.ui.player.spatialflow.SpatialFlowFloatingArtwork
 import moe.rukamori.archivetune.ui.player.spatialflow.SpatialFlowPlayerContent
+import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.ui.player.looper.LooperPlayerContent
 import java.util.Locale
 import kotlin.math.abs
@@ -311,6 +313,18 @@ internal class DeviceMusicVolumeController(
             0
         }
 }
+
+/**
+ * Persists the SpatialFlow floating-artwork slot rects across activity
+ * re-creation: the measured geometry survives the notification-reopen path
+ * (system destroyed the backgrounded activity, sheet restored straight into
+ * the expanded anchor) so the shared morph layer can draw immediately.
+ */
+private val SpatialFlowArtworkRectSaver =
+    Saver<Rect?, List<Float>>(
+        save = { rect -> rect?.let { listOf(it.left, it.top, it.right, it.bottom) } },
+        restore = { values -> Rect(values[0], values[1], values[2], values[3]) },
+    )
 
 @Composable
 internal fun rememberDeviceMusicVolumeController(): DeviceMusicVolumeController {
@@ -532,6 +546,30 @@ fun BottomSheetPlayer(
 
     val positionUpdatedState = rememberUpdatedState(position)
     val positionProvider = remember { { positionUpdatedState.value } }
+
+    // SpatialFlow floating-artwork morph: the shared artwork layer bridging
+    // the mini player's circle and the full player's artwork slot. Slot rects
+    // are measured in root layout coordinates (the sheet's graphicsLayer
+    // slide cancels out because every participant shares the sliding box).
+    // Saveable: when the app is reopened from the media notification after
+    // the system destroyed the backgrounded activity, the sheet restores
+    // straight into the EXPANDED anchor — the mini player never composes on
+    // that path (BottomSheet only composes collapsedContent below the
+    // expanded anchor), so a plain remember would leave the mini rect null
+    // and the shared layer would not draw at all (the invisible artwork
+    // until the next collapse/expand cycle).
+    val spatialFlowMiniArtworkRect =
+        rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
+    val spatialFlowFullArtworkRect =
+        rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
+    var spatialFlowPagerArtworkActive by remember { mutableStateOf(true) }
+
+    // SpatialFlow's lyrics overlay and queue drawer report their state upward
+    // so the shared floating artwork layer can fade out under them (the
+    // SpatialFlow style keeps both flags internal to SpatialFlowPlayerContent,
+    // and `isInlineLyricsOpen` is only ever set by the other player styles).
+    var spatialFlowLyricsOpen by remember { mutableStateOf(false) }
+    var spatialFlowQueueOpen by remember { mutableStateOf(false) }
     var duration by rememberSaveable(mediaMetadata?.id) {
         mutableLongStateOf(playerConnection.player.duration)
     }
@@ -1149,6 +1187,35 @@ fun BottomSheetPlayer(
         derivedStateOf { state.progress > 0.5f }
     }
     CompositionLocalProvider(LocalPlayerSheetVisible provides playerSheetCanvasVisible) {
+    val enrichedMetadata =
+        remember(mediaMetadata, currentSong) {
+            val meta = mediaMetadata ?: return@remember null
+            if (meta.album != null) return@remember meta
+            val dbAlbum = currentSong?.album
+            val dbAlbumId = currentSong?.song?.albumId
+            when {
+                dbAlbum != null -> {
+                    meta.copy(
+                        album = MediaMetadata.Album(id = dbAlbum.id, title = dbAlbum.title),
+                    )
+                }
+
+                dbAlbumId != null -> {
+                    meta.copy(
+                        album =
+                            MediaMetadata.Album(
+                                id = dbAlbumId,
+                                title = currentSong?.song?.albumName.orEmpty(),
+                            ),
+                    )
+                }
+
+                else -> {
+                    meta
+                }
+            }
+        }
+
     BottomSheet(
         state = state,
         modifier =
@@ -1315,13 +1382,46 @@ fun BottomSheetPlayer(
         },
         backHandlerEnabled = !aodModeEnabled && !isInlineLyricsOpen,
         keepContentAlive = true,
+        morphMode = playerDesignStyle == PlayerDesignStyle.SPATIALFLOW,
         navbarHiddenOffset = navbarHiddenOffset,
+        sharedLayer =
+            if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
+                {
+                    enrichedMetadata?.let { metadata ->
+                        SpatialFlowFloatingArtwork(
+                            state = state,
+                            mediaMetadata = metadata,
+                            queueWindows = queueWindows,
+                            currentWindowIndex = currentWindowIndex,
+                            artUrl = metadata.thumbnailUrl?.highRes(),
+                            isPlaying = isPlaying,
+                            fullArtworkRect = spatialFlowFullArtworkRect.value,
+                            miniArtworkRect = spatialFlowMiniArtworkRect.value,
+                            lyricsOpen = isInlineLyricsOpen || spatialFlowLyricsOpen,
+                            queueOpen = spatialFlowQueueOpen,
+                            artworkActive = spatialFlowPagerArtworkActive,
+                            onPlaySongAtWindow = { windowIndex ->
+                                val window = queueWindows.getOrNull(windowIndex) ?: return@SpatialFlowFloatingArtwork
+                                playerConnection.player.seekToDefaultPosition(window.firstPeriodIndex)
+                                playerConnection.player.playWhenReady = true
+                            },
+                        )
+                    }
+                }
+            } else {
+                null
+            },
         collapsedContent = {
             MiniPlayer(
                 positionProvider = positionProvider,
                 durationProvider = durationProvider,
                 pureBlack = pureBlack,
                 isPairedWithNavigation = isMiniPlayerPairedWithNavigation,
+                onArtworkSlotPositioned = { rect ->
+                    if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
+                        spatialFlowMiniArtworkRect.value = rect
+                    }
+                },
             )
         },
     ) {
@@ -1351,35 +1451,6 @@ fun BottomSheetPlayer(
         val nextUpMetadata =
             remember(queueWindows, currentWindowIndex) {
                 queueWindows.getOrNull(currentWindowIndex + 1)?.mediaItem?.metadata
-            }
-
-        val enrichedMetadata =
-            remember(mediaMetadata, currentSong) {
-                val meta = mediaMetadata ?: return@remember null
-                if (meta.album != null) return@remember meta
-                val dbAlbum = currentSong?.album
-                val dbAlbumId = currentSong?.song?.albumId
-                when {
-                    dbAlbum != null -> {
-                        meta.copy(
-                            album = MediaMetadata.Album(id = dbAlbum.id, title = dbAlbum.title),
-                        )
-                    }
-
-                    dbAlbumId != null -> {
-                        meta.copy(
-                            album =
-                                MediaMetadata.Album(
-                                    id = dbAlbumId,
-                                    title = currentSong?.song?.albumName.orEmpty(),
-                                ),
-                        )
-                    }
-
-                    else -> {
-                        meta
-                    }
-                }
             }
 
         val storefront =
@@ -1968,6 +2039,19 @@ fun BottomSheetPlayer(
                             appIsDark = useDarkTheme,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
+                            floatingArtwork = true,
+                            onArtworkSlotPositioned = { rect ->
+                                spatialFlowFullArtworkRect.value = rect
+                            },
+                            onPagerArtworkActiveChange = { active ->
+                                spatialFlowPagerArtworkActive = active
+                            },
+                            onLyricsOpenChange = { open ->
+                                spatialFlowLyricsOpen = open
+                            },
+                            onQueueExpandedChange = { expanded ->
+                                spatialFlowQueueOpen = expanded
+                            },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2501,6 +2585,19 @@ fun BottomSheetPlayer(
                             appIsDark = useDarkTheme,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
+                            floatingArtwork = true,
+                            onArtworkSlotPositioned = { rect ->
+                                spatialFlowFullArtworkRect.value = rect
+                            },
+                            onPagerArtworkActiveChange = { active ->
+                                spatialFlowPagerArtworkActive = active
+                            },
+                            onLyricsOpenChange = { open ->
+                                spatialFlowLyricsOpen = open
+                            },
+                            onQueueExpandedChange = { expanded ->
+                                spatialFlowQueueOpen = expanded
+                            },
                             modifier =
                                 Modifier
                                     .fillMaxSize()

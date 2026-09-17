@@ -49,7 +49,6 @@
     <string name="instant_playback">הפעלה מיידית</string>
     <string name="on_device">במכשיר</string>
     <string name="recently_played">הושמע לאחרונה</string>
-    <string name="top_mixes">המיקסים המובילים בשבילך</string>
     <string name="your_playlists">הפלייליסטים שלך</string>
     <string name="see_all">ראה הכל</string>
     <string name="your_artists">האמנים שלך</string>
@@ -128,7 +127,6 @@
     <string name="dark_theme_on">פעיל</string>
     <string name="smart_trimmer_description">גוזם חכם מנהל באופן דינמי את מטמון התמונות ומטמון השירים, וגוזם ערכים ישנים כדי לחסוך מקום בדיסק.</string>
     <string name="palette_electric_blue">כחול חשמלי</string>
-    <string name="pitch_mode_semitones_short">חצי טון</string>
     <string name="reset">איפוס</string>
     <string name="song_cache">מטמון שירים</string>
     <string name="lyrics_line_spacing">ריווח שורות בין מילות השיר</string>
@@ -140,7 +138,6 @@
     <string name="blur">טשטוש</string>
     <string name="palette_olive_garden">זית</string>
     <string name="open_with_downloader">פתח עם מוריד</string>
-    <string name="pitch">גובה צליל</string>
     <string name="together_ban">חסימה</string>
     <string name="action_logout">התנתק</string>
     <string name="image_cache">מטמון תמונה</string>
@@ -166,7 +163,6 @@
     <string name="eq_flat">שטוח</string>
     <string name="palette_scarlet">שני</string>
     <string name="year_sort">שנה</string>
-    <string name="tempo">מקצב</string>
     <string name="internet_warning_doh">DNS over HTTPS פועל רק אם המדינה שלך חוסמת את YouTube. אם YouTube חוסם באופן פעיל את האזור שלך, כדאי לשקול להשתמש ב-Proxy או ב-VPN.</string>
     <string name="no_matching_playlists">אין פלייליסטים תואמים</string>
     <string name="added_n_songs_to_playlist">נוספו %1$d שירים ל%2$s</string>
@@ -373,7 +369,6 @@
     <string name="stop_music_on_task_clear">עצירת מוזיקה עם סגירת האפליקציה</string>
     <string name="together_song_change_failed">שינוי השיר לא אושר. אנא נסה שוב.</string>
     <string name="end_of_song">סוף השיר</string>
-    <string name="pitch_mode_multiplier_short">x</string>
     <string name="bitrate">קצב סיביות</string>
     <string name="start_radio">התחל רדיו</string>
     <string name="view_all">הצג הכל</string>
@@ -383,7 +378,6 @@
     <string name="content">תוכן</string>
     <string name="search_online">חיפוש באינטרנט</string>
     <string name="palette_tangerine_blast">מנדרינה</string>
-    <string name="tempo_and_pitch">קצב וגובה צליל</string>
     <string name="player_background_style_v8_v9_desc">אינו זמין עם סגנונות נגן V8 וV9</string>
     <string name="slider_style_circular">מעוגל</string>
     <string name="song_artists">אמני שיר</string>

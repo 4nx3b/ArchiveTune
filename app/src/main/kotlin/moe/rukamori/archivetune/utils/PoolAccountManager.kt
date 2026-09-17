@@ -116,6 +116,7 @@ object PoolAccountManager {
 
     @Volatile
     private var lastRefreshAt = 0L
+    private var lastLaunchRefreshAt = 0L
 
     @Volatile
     private var lastFeedFailureAt = 0L
@@ -141,11 +142,17 @@ object PoolAccountManager {
         get() = BuildConfig.SOURCE_PROVIDER_URL.isNotBlank()
 
     private val poolBaseUrl: String?
-        get() =
-            BuildConfig.SOURCE_PROVIDER_URL
-                .trim()
+        get() {
+            // Users routinely paste the full feed endpoint instead of the bare base URL; the client
+            // appends /api/accounts (with a legacy /api/sources fallback) itself, so a configured
+            // ".../api/sources" would 404 on every request while looking like a non-pool deployment.
+            val raw = BuildConfig.SOURCE_PROVIDER_URL.trim()
+            if (raw.isEmpty()) return null
+            return raw
+                .replace(Regex("(?i)/api/(sources|accounts)/?$"), "")
                 .trimEnd('/')
                 .takeIf { it.isNotEmpty() }
+        }
 
     private val accountsUrl: String? get() = poolBaseUrl?.let { "$it/api/accounts" }
 
@@ -215,6 +222,8 @@ object PoolAccountManager {
     private fun hasEveryService(): Boolean =
         tidalCache.isNotEmpty() && qobuzCache.isNotEmpty() && deezerCache.isNotEmpty() && appleMusicCache.isNotEmpty()
 
+    private const val LAUNCH_REFRESH_THROTTLE_MS = 10L * 60L * 1000L
+
     private fun refreshIntervalMs(): Long =
         if (hasEveryService()) MIN_REFRESH_INTERVAL_MS else MIN_PARTIAL_REFRESH_INTERVAL_MS
 
@@ -252,6 +261,22 @@ object PoolAccountManager {
             }.onFailure { Timber.tag(TAG).w(it, "Failed to load cached pool accounts") }
         }
     }
+
+    /**
+     * Every-launch background refresh: pulls fresh accounts from the server
+     * when the app is opened, throttled to one fetch per 10 minutes so
+     * rotations and quick activity restarts never hammer the feed. Silent —
+     * no UI surface, success or failure.
+     */
+    suspend fun refreshForLaunch(context: Context): Boolean =
+        withContext(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            if (now - lastLaunchRefreshAt < LAUNCH_REFRESH_THROTTLE_MS) {
+                return@withContext hasAccounts()
+            }
+            lastLaunchRefreshAt = now
+            refresh(context, force = true)
+        }
 
     suspend fun refresh(
         context: Context,
@@ -309,9 +334,8 @@ object PoolAccountManager {
                                 "No pool API at $poolBaseUrl (HTTP 404) — that URL is not an ArchivePool deployment."
                             }
                             result.code == 401 ->
-                                "The pool requires an API key (HTTP 401). Create a free account at " +
-                                    "$poolBaseUrl, press “Request API key” on its dashboard, then paste the key " +
-                                    "into Sources → Pool API key and refresh again."
+                                "Pool rejected the API key (HTTP 401) — SOURCE_PROVIDER_KEY is missing, revoked, " +
+                                    "or issued by a different deployment."
                             result.code == 0 -> "Could not reach $poolBaseUrl — network error."
                             else -> "Pool feed returned HTTP ${result.code}."
                         }

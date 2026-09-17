@@ -41,10 +41,10 @@ import moe.rukamori.archivetune.db.entities.LibraryTopMixSongMap
 import moe.rukamori.archivetune.db.entities.ListeningBySlot
 import moe.rukamori.archivetune.db.entities.ListeningTotals
 import moe.rukamori.archivetune.db.entities.LyricsEntity
-import moe.rukamori.archivetune.db.entities.PlayCountEntity
 import moe.rukamori.archivetune.db.entities.Playlist
 import moe.rukamori.archivetune.db.entities.PlaylistEntity
 import moe.rukamori.archivetune.db.entities.PlaylistPlayCount
+import moe.rukamori.archivetune.db.entities.PlayCountEntity
 import moe.rukamori.archivetune.db.entities.PlaylistSong
 import moe.rukamori.archivetune.db.entities.PlaylistSongMap
 import moe.rukamori.archivetune.db.entities.PlaylistTagMap
@@ -525,6 +525,12 @@ interface DatabaseDao {
                       OFFSET :offset)
                      ON artist.id = artistId
         WHERE artist.blockedAt IS NULL
+          AND artist.id NOT IN (
+              SELECT song_artist_map.artistId
+              FROM song_artist_map
+                       JOIN song ON song.id = song_artist_map.songId
+              WHERE song.isPodcast = 1
+          )
     """,
     )
     fun mostPlayedArtists(
@@ -1784,6 +1790,7 @@ interface DatabaseDao {
                 albumName = mediaMetadata.album?.title,
                 explicit = mediaMetadata.explicit,
                 isMusicVideo = mediaMetadata.isMusicVideo,
+                isPodcast = mediaMetadata.isPodcast,
             ),
         )
         songArtistMap(song.id).forEach(::delete)
@@ -2122,17 +2129,6 @@ interface DatabaseDao {
 
     @Query("DELETE FROM library_top_mix")
     fun deleteLibraryTopMixes()
-
-    @Transaction
-    @Query("SELECT * FROM playlist_song_map WHERE songId = :songId")
-    fun playlistSongMaps(songId: String): List<PlaylistSongMap>
-
-    @Transaction
-    @Query("SELECT * FROM playlist_song_map WHERE playlistId = :playlistId AND position >= :from ORDER BY position")
-    fun playlistSongMaps(
-        playlistId: String,
-        from: Int,
-    ): List<PlaylistSongMap>
 
     @Query("SELECT MAX(position) FROM playlist_song_map WHERE playlistId = :playlistId")
     fun maxPlaylistSongPosition(playlistId: String): Int?

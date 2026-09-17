@@ -73,7 +73,6 @@
     <string name="remove_from_playlist">Rimuovi dalla playlist</string>
     <string name="remove_from_queue">Rimuovi dalla coda</string>
     <string name="search_online">Cerca in linea</string>
-    <string name="tempo_and_pitch">Tempo e intonazione</string>
     <string name="sort_by_create_date">Data aggiunta</string>
     <string name="sort_by_name">Nome</string>
     <string name="sort_by_artist">Artista</string>
@@ -481,10 +480,6 @@
     <string name="removed_n_songs_from_queue">Rimossi %d brani dalla coda</string>
     <string name="aod_mode">Modalità AOD</string>
     <string name="aod_mode_exit">Lascia AOD</string>
-    <string name="tempo">Ritmo</string>
-    <string name="pitch">Tono</string>
-    <string name="pitch_mode_semitones_short">st</string>
-    <string name="pitch_mode_multiplier_short">x</string>
     <string name="sort_by_most_played">Più riproduzioni</string>
     <string name="sort_order_ascending">Crescente</string>
     <string name="sort_order_descending">Decrescente</string>
@@ -543,6 +538,5 @@
     <string name="downloaded_desc">Scaricato</string>
     <string name="instant_playback">Riproduzione istantanea</string>
     <string name="recently_played">Riprodotto di recente</string>
-    <string name="top_mixes">Le migliori combinazioni per te</string>
     <string name="library_top_mixes_loading">Preparando i tuoi Mixes AI</string>
 </resources>

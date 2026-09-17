@@ -51,10 +51,13 @@ val NavigationBarAnimationSpec =
         stiffness = Spring.StiffnessLow,
     )
 
+// SpatialFlow-tuned settle: slightly under-damped (0.85) with a snappier
+// stiffness, and reached WITH the finger's fling velocity so the sheet never
+// stops dead on release and re-accelerates.
 val BottomSheetAnimationSpec =
     spring<Dp>(
-        dampingRatio = Spring.DampingRatioNoBouncy,
-        stiffness = Spring.StiffnessMediumLow,
+        dampingRatio = 0.85f,
+        stiffness = 400f,
     )
 
 val BottomSheetSoftAnimationSpec =

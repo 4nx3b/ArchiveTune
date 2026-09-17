@@ -1,3 +1,194 @@
+# ArchiveTune 16.0 — Changelog
+
+The sources update: podcasts join the app, Apple Music and Amazon Music become
+full members of the source chain, Tidal and the community account pools arrive,
+the equalizer grows into a complete Audio Effects console, Home learns to be
+Spotify, and the SpatialFlow player finally collapses as smoothly as the
+original app.
+
+## Podcasts
+
+- **Podcasts, ported from upstream**: search a show and it appears as its own
+  card in the results; shows open a dedicated podcast page with episode lists,
+  playback and pagination; the Home page's Podcasts chip is back (it was
+  hidden) and home sections render shows and episodes; episodes play as
+  normal queue entries with an "N episodes" queue header
+- Podcast episodes are first-class citizens everywhere: square thumbnails,
+  media-type metadata, no lyrics/scrobble/Discord-presence noise, excluded
+  from mixes, quick picks, stats and the auto-radio; blocked-artist and AI
+  content filters cover shows and episodes
+
+## Sources & Accounts
+
+- **Apple Music as a full music source**: web sign-in with auto-fetched
+  tokens (the login no longer needs a pasted developer token), catalog search
+  with suggestions, full-track playback with quality pickers
+  (AAC / Lossless / Hi-Res), the Apple Music canvas, and word-synced lyrics
+  from the signed-in account
+- **Amazon Music source**: account login, settings (quality HD/Ultra HD,
+  premium toggle, instances), a slot in the playback source priority, the
+  download source priority and the search-from popup, plus a working
+  anonymous catalog search client
+- **Tidal lossless source**: account or token login with instant
+  paste-verification, the Monochrome public instance list with dead-instance
+  skipping and racing, Hi-Res Lossless quality
+- **Community account pools v2**: lossless sources work without a personal
+  login — encrypted-at-rest pool cache, per-user pool API key, community
+  paste-list source, dead-account reporting, and a silent background refresh
+  on every app open (no toast, one server fetch per 10 minutes)
+- YouTube sign-in via OAuth device code; downloadable Japanese romanisation
+  language packs
+
+## Player & Audio
+
+- **The Audio Effects console**: the equalizer popup is rebuilt around two
+  pills — Equalizer (the original control set restored: basic/advanced mode,
+  tone sliders, the device's real band sliders with reset, full-range output
+  gain, automatic headroom, profiles with import/export) and Audio effects
+  (8D, reverb, bass, loudness, balance, virtualizer and — new here —
+  playback speed and pitch, moved out of the song's overflow menu, with an
+  independent pitch slider and an "Enable audio effects" master switch that
+  gates every effect)
+- **SpatialFlow-exact player transition**: one floating artwork layer morphs
+  continuously between the mini player's circle and the full player's slot
+  (scale, position, corner radius and shadow all track the sheet progress),
+  the sheet corners morph instead of popping, the crossfade hands over at the
+  halfway point, and the settle spring carries the finger's fling velocity —
+  ported from MythicalSHUB/SpatialFlow's own bottom-sheet architecture
+- Fixed: reopening the app from the media notification no longer lands on a
+  SpatialFlow player with an empty artwork slot. When the sheet is restored
+  straight into the expanded anchor (activity re-created by the system while
+  the player was open, or the persisted-anchor restore after a process
+  death), the mini player is never composed — the sheet only composes
+  collapsed content below the expanded anchor — so the shared artwork layer
+  had no mini-rect to morph from and drew nothing at all, leaving the
+  artwork area blank until the next collapse/expand or a small sheet drag.
+  The slot rects now survive activity re-creation (saved state), and the
+  layer pins to the full player's slot whenever the mini rect is missing,
+  fading with the sheet travel exactly like the normal morph crossfade —
+  the true mini-to-full morph resumes the moment the sheet leaves the
+  expanded anchor and the mini player measures itself
+- **Instant YouTube stream starts**: upcoming songs are now pre-resolved
+  while the current one plays (on by default, two songs ahead), and the
+  SimpMusic resolution runs its InnerTube request and NewPipe extraction
+  concurrently — first-sound latency is the max of the two round trips, not
+  their sum
+- Fixed: the 8D/balance processor killed every playback ("The source buffer
+  is this buffer"); volume restored after a seek re-buffer; the playing
+  notification regression after the lifecycle port (the session is armed
+  explicitly again)
+
+## Home, Library & Search
+
+- **Spotify home feed** as a second Home page with the app-bar switcher and
+  its own settings
+- Library customization (hide/show the Liked/Offline/Cached/Local/Top-50
+  cards plus a Recently Liked subsection), New Releases multi-select with a
+  live count bar, voice search, UI scale, hide-music-videos, blocked artists
+  filtered from playback
+- Source check, redone: honest statuses (READY / DEGRADED / NOT_CONFIGURED /
+  UNSUPPORTED / UNREACHABLE), cached inline state, real YouTube/JioSaavn/
+  Apple/Amazon probes
+
+## Design
+
+- The tinted navigation bar now follows the scheme: a light accent pastel in
+  light mode, a deep accent-tinted dark bar in dark mode, flat (no blur), on
+  every Android version
+- Lyrics pages across every player style share the Apple Music player's 56dp
+  header thumbnail (was oversized in the other styles)
+- Android Auto settings with the home-screen glass recipe (title inside the
+  liquid-glass pill, content scrolling behind the haze band); the equalizer
+  dialog draws edge-to-edge behind the status bar with the same treatment
+- Year-in-music card exports are full screen and full HD: native pixels ship
+  untouched whenever the capture meets the 1080p floor (no more cover-fit
+  upscale smear), progressive enlargement below it
+
+## Performance & Size
+
+- YouTube stream resolution rebuilt on the SimpMusic/Echo extractors — the
+  embedded yt-dlp/Python layer is gone and the APK dropped from ~50 MB to
+  ~33 MB
+- BitChord position-tick no longer invalidates the whole player; ported
+  memory/lifecycle/GPU fixes (idle-stop restored, resolution-cache clears,
+  dead Haze layer removed)
+- Dead-code sweep: 141 unused string entries (all locales), 16 legacy
+  drawables, orphaned functions and imports removed
+
+## Android Auto
+
+- Android Auto support: the settings page, car browse roots with per-policy
+  filtering, voice search, media buttons — plus an Android Automotive
+  (AAOSP) build flavor
+
+---
+
+## Fixes (final rounds before the 16.0 release)
+
+- The SpatialFlow lyrics page no longer closes itself moments after opening:
+  the lyrics flag lived in a rememberSaveable keyed on the song id, and any
+  transient metadata re-emission (a queue/source resolver swapping the current
+  item mid-playback, with the id reverting a moment later) re-initialised that
+  state to false — on-device the lyrics page reliably shut itself ~0.9 seconds
+  after every tap on the Lyrics pill, with the reveal circle animating shut
+  exactly like a user dismissal. The flag is now unkeyed and resets only when a
+  genuinely different song id stays put for 250 ms, so resolver flickers can
+  never kick you out of the lyrics. Two companion glitches died with it: the
+  one-frame full-size artwork flash in the top-left corner right as the reveal
+  finished (the flying shared element drew at its raw (0,0) layout slot for a
+  frame when the artwork-slot rect was momentarily nulled — the rect is now
+  retained while the lyrics own the screen and the layer turns itself invisible
+  instead of drawing unpositioned), and the missing 56 dp thumbnail that was
+  supposed to park in the lyrics header (the same premature rect null killed
+  the flying artwork right after it finished its morph — the Apple-Music-style
+  header thumbnail is back)
+- The song thumbnail always renders in the mini player in the SpatialFlow
+  style: the mini player's artwork slot had become a placeholder ring
+  whenever the floating morph layer was expected to draw over it, so canvas
+  and video songs (where that layer never draws) — or any moment the layer
+  could not — left an empty circle with no artwork and no fallback. The mini
+  player now always renders its own thumbnail underneath the morph layer
+  (identical image, higher z-index — invisible when both draw), and that
+  thumbnail gained the same hardening as every other artwork surface: a
+  disk-cache-backed request plus the maxres → hq720 → mq fallback chain, so a
+  single failed image request can never park the slot empty
+- Opening the lyrics page in the SpatialFlow style no longer flickers: the
+  circular-reveal progress was read as a raw float inside the player's main
+  composition scope, invalidating the entire player (artwork pager, canvas
+  surfaces, controls, queue drawer) on every one of the reveal's ~20 frames —
+  the reads are now derived booleans that flip only at the thresholds, and
+  the lyrics content composes at 45% of the reveal (still clipped) instead of
+  popping in at 80%. The floating artwork's lyrics hand-off also animates
+  with the flying artwork's spring: closing the lyrics page used to snap the
+  slot artwork back to full opacity while the flying thumbnail was still
+  morphing home, putting two artworks on screen at once
+- The canvas source picker applies the chosen canvas immediately: picking a
+  source in the player's overflow menu only re-wrote the playback cache —
+  the visible canvas kept playing the old source until the next track
+  change. The picker now pins the choice (replacing any existing entry — the
+  old insert kept the previous artwork and silently ignored the tap) and
+  publishes it into the live canvas render states, so the playing canvas
+  swaps on the next frame; the "Save" download path does the same once the
+  videos are on disk
+- The canvas source picker dialog grew its requested polish: the
+  "Choose Canvas source" title is centred and bold, and each source row
+  shows its provider's mark — the Spotify logo for the Spotify canvas, the
+  Apple Music logo for the ArchiveTune (Apple Music / BetterLyrics) canvas
+- Minimal mode now also applies to the search tab: with the setting on, the
+  search page shows only the search field and the recent searches — the
+  trending searches chips, trending songs, new albums, moods & genres and
+  the recommendation tabs are hidden (the same philosophy as minimal home:
+  personal history stays, discovery goes)
+- Local playlist pages no longer play canvas in their header: the
+  Apple-Music-style hero had grown a looping canvas backdrop resolved from
+  the playlist's first song (and the "Enable canvas in albums and playlists
+  page" toggle gated it) — local playlists are back to the plain text hero,
+  while online, top and Spotify playlist pages keep theirs
+
+
+
+---
+
 # ArchiveTune 15.1 — Changelog
 
 The follow-up to 15.0: a new Looper player style, the lyrics page rebuilt as a
@@ -26,6 +217,44 @@ player-animation performance pass yet.
 
 ## Fixes
 
+- The equalizer popup opens again: the 16.0 rework had switched the dialog
+  onto an edge-to-edge window path (FloatingDialogWindowTheme +
+  layout-in-decor flags) that crashed on open on real devices — the dialog is
+  back on the long-working window configuration, with the status bar still
+  hidden while it shows. The dialog also drops the liquid-glass header it had
+  grown: it was the only real dialog window in the app drawing the backdrop
+  glass (layer recording + AGSL effect passes + a haze source inside a
+  separate window), the one ingredient the crashing version still had that
+  the long-working one never did — the header is back to plain material3
+  icon buttons on the opaque dialog surface
+- Non-canvas songs no longer show a misplaced artwork in the SpatialFlow
+  player: the shared floating-artwork layer was laid out at the sheet root's
+  top-left instead of at the full player's artwork slot, so the expanded
+  artwork drew over the top bar with an empty gap where the slot actually
+  is — the layer now bases itself on the slot's measured rect and the
+  mini-to-full morph math lands it exactly on the slot (plus the slot keeps
+  the same title spacing as the video and in-column branches)
+- Library playlists keep their header: the Apple-Music-style hero collapsed
+  to zero height the moment the playlist's canvas artwork finished loading
+  (~1s after opening the page) — every child of the canvas backdrop box was
+  matchParentSize, so inside the lazy list the box measured to nothing and
+  the playlist information vanished (and the still-running video decode made
+  scrolling laggy). The content column now sizes the box, with the canvas
+  rendering behind the text as designed; the online playlist screen also
+  stops rebuilding its song list instance on every recomposition (another
+  scroll-jank source while playback state ticks)
+- The Android Auto settings page reserves space for the mini player: the
+  page used plain safe-drawing insets for its bottom padding, so the last
+  preference rows sat underneath the mini player whenever something was
+  playing — it now uses the player-aware window insets, the same recipe as
+  the settings main page
+- The SpatialFlow floating artwork no longer floats over the lyrics overlay
+  and the queue drawer: the lyrics/queue state is now reported up from the
+  player (the lyrics flag was previously wired to a signal the SpatialFlow
+  style never sets, and the queue had no check at all), and the shared
+  artwork layer fades out under both — exactly like the original app. The
+  layer also stops drawing a stale-positioned artwork over canvas/video
+  playback once the artwork slot reports it is occupied
 - The lyrics overflow menu is back to the 15.0 presentation: the floating menu
   card (song header + action grid) that Liquid Glass frosts when the toggle is
   on, instead of the small anchored popup the page had briefly grown

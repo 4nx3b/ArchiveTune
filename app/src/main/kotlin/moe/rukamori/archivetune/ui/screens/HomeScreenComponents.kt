@@ -790,6 +790,14 @@ fun HomePageSectionContent(
                 haptic = haptic,
                 scope = scope,
                 onPlaySongFromSection = ::playFromSection,
+                onPlayEpisode = { episode ->
+                    onPlayQueue(
+                        ListQueue(
+                            title = episode.podcast?.name ?: episode.title,
+                            items = listOf(episode.toMediaItem()),
+                        ),
+                    )
+                },
             )
         }
     }

@@ -346,63 +346,6 @@ private fun CanvasArtwork.hasRequiredCanvasVariant(requireVertical: Boolean): Bo
 
 private const val CanvasArtworkLogTag = "CanvasArtwork"
 
-data class CanvasSourceResult(
-    val sourceName: String,
-    val artwork: CanvasArtwork,
-)
-
-internal suspend fun fetchAllCanvasSourcesForSong(
-    mediaId: String,
-    songTitleRaw: String,
-    artistNameRaw: String,
-    storefront: String,
-    albumTitle: String? = null,
-): List<CanvasSourceResult> = coroutineScope {
-    val strictIdentity = !(mediaId.isTelegramMediaId() || mediaId.isLocalMediaId())
-    val songTitle = normalizeCanvasSongTitle(songTitleRaw)
-    val artistName = normalizeCanvasArtistName(artistNameRaw)
-
-    val spotifyDeferred = async {
-        if (strictIdentity && mediaId.isNotBlank()) {
-            runCatching {
-                SpotifyCanvasProvider.getByVideoId(
-                    videoId = mediaId,
-                    songTitle = songTitleRaw,
-                    artistName = artistNameRaw,
-                )
-            }.getOrNull()
-                ?.takeIf { it.hasRequiredCanvasVariant(requireVertical = false) }
-        } else {
-            null
-        }
-    }
-
-    val appleMusicDeferred = async {
-        val candidates =
-            linkedSetOf(
-                songTitle to artistName,
-                songTitleRaw to artistName,
-                songTitle to artistNameRaw,
-                songTitleRaw to artistNameRaw,
-            ).filter { (song, artist) ->
-                song.isNotBlank() && artist.isNotBlank()
-            }
-        candidates.firstNotNullOfOrNull { (song, artist) ->
-            AppleMusicProvider.getBySongArtist(
-                song = song,
-                artist = artist,
-                storefront = storefront,
-                forceRefresh = false,
-                album = albumTitle,
-            )?.takeIf { it.hasRequiredCanvasVariant(requireVertical = false) }
-        }
-    }
-
-    val results = mutableListOf<CanvasSourceResult>()
-    spotifyDeferred.await()?.let { results.add(CanvasSourceResult("Spotify Canvas", it)) }
-    appleMusicDeferred.await()?.let { results.add(CanvasSourceResult("Apple Music", it)) }
-    results
-}
 
 private fun normalizeCanvasSongTitle(raw: String): String {
     val stripped =

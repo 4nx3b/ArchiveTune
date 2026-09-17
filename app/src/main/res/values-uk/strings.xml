@@ -154,11 +154,6 @@
     <string name="playlist_synced">Плейліст синхронізовано</string>
     <string name="archivetune_canvas">ArchiveTune Canvas</string>
     <string name="archivetune_canvas_desc">Анімувати обкладинку альбому під час відтворення (за технологією BetterLyrics)</string>
-    <string name="tempo_and_pitch">Темп і висота звуку</string>
-    <string name="tempo">Темп</string>
-    <string name="pitch">Висота звуку</string>
-    <string name="pitch_mode_semitones_short">st</string>
-    <string name="pitch_mode_multiplier_short">x</string>
     <string name="sort_by_create_date">Дата додавання</string>
     <string name="scrobble_min_track_duration">Мінімальна тривалість треку</string>
     <string name="sort_by_name">Назва</string>

@@ -84,6 +84,7 @@ fun MiniPlayer(
     modifier: Modifier = Modifier,
     pureBlack: Boolean,
     isPairedWithNavigation: Boolean = false,
+    onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
 
     val docked = LocalMiniPlayerDocked.current
@@ -119,6 +120,7 @@ fun MiniPlayer(
         modifier = dockedModifier,
         pureBlack = pureBlack,
         isPairedWithNavigation = isPairedWithNavigation,
+        onArtworkSlotPositioned = onArtworkSlotPositioned,
     )
 }
 
@@ -129,6 +131,7 @@ private fun NewMiniPlayer(
     modifier: Modifier = Modifier,
     pureBlack: Boolean,
     isPairedWithNavigation: Boolean,
+    onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val context = LocalContext.current
@@ -317,6 +320,7 @@ private fun NewMiniPlayer(
                 durationProvider = durationProvider,
                 playerConnection = playerConnection,
                 colors = contentColors,
+                onArtworkSlotPositioned = onArtworkSlotPositioned,
             )
         }
     }
