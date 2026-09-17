@@ -576,7 +576,7 @@ jobs:
 
           gh release create "$TAG" \
             --target "${{ github.sha }}" \
-            --title "${VERSION}" \
+            --title "ArchiveTune ${VERSION}" \
             --notes-file release_notes.md \
             "$MOBILE_UNIVERSAL_APK" \
             $OTHER_APKS \
