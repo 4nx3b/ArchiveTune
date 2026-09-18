@@ -2909,3 +2909,46 @@ Work Log:
 
 Stage Summary:
 - The 5-fix batch is CI-green on PR #225, awaiting merge instructions.
+
+---
+Task ID: 59
+Agent: Super Z (main agent, session web-e130fa90)
+Task: User follow-up on the task-58 vivi transport port — "The play/pause icon
+is smaller and it looks inconsistent. Fix it" (screenshot
+Screenshot_20260918-181414_ArchiveTune.png).
+
+Work Log:
+- VLM forensics on the screenshot + a cropped transport row: the pause glyph
+  renders ~20-24px wide vs ~35-40px for the chevrons — the center control
+  reads visually smaller, confirming the report.
+- Root cause: the ported vivi glyphs fill very different fractions of their
+  960-unit viewports — the double chevrons span ~88% of the width (845.5/960
+  incl. the 60-unit stroke) while the play/pause glyph spans only ~41%. The
+  task-58 port used my own dp sizes (52dp skips / 62dp play-pause, ratio
+  1.19:1); vivi-music's beta Player_v2 (checked against the fetched
+  vivi_player_v2.kt) renders the SAME drawables at 48dp skips / 80dp
+  play-pause (ratio 5:3). At 52/62 the visual result was ~46dp-wide chevrons
+  next to ~25dp-wide pause bars.
+- Fix (AppleMusicPlayer.kt): transport row now carries the reference
+  proportions — AppleMusicTransportIconSize 48dp, AppleMusicPlayPauseIconSize
+  80dp (exact vivi numbers; visual 42.3x28.2dp chevrons vs 33.8x41.2dp
+  center, center dominant). Height-adaptive scaling for compact screens
+  (44/73 at <720dp, 40/67 at <620dp) so landscape keeps its row footprint;
+  scrubberToTransportGap and transportToVolumeGap tightened (22/16/12 and
+  20/14/8 -> 18/14/12 and 16/12/8) to absorb the taller row; new dedicated
+  AppleMusicPlayPauseSpinnerSize 48dp so the loading indicator no longer
+  tracks the 80dp glyph size (old code drew the spinner at
+  AppleMusicPlayPauseIconSize).
+- Verification: mockup render of the exact glyph coordinates at old vs new
+  sizes (scripts/transport_size_check.py) — VLM confirms the new row is the
+  visually consistent one; numeric visual bounds match the vivi reference
+  exactly. Brace/paren balance on the edited file; declaration-before-use
+  and stale-constant checks green. changelogs.md: entry added to the 16.0.1
+  follow-up section.
+- Commit a579f7b29 pushed to dev — PR #225 head auto-updated; CI monitor via
+  REST API (gh CLI absent in this session's env).
+
+Stage Summary:
+- dev carries the transport-ratio fix on top of the task-58 batch; PR #225
+  re-running CI on a579f7b29. Transport set now visually matches the
+  vivi-music Player_V2 reference at every screen height.
