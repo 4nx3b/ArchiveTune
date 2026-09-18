@@ -302,6 +302,8 @@ fun FloatingNavigationToolbar(
 
             canLiquidGlass -> Color.Transparent
 
+            // Tint wins over pure black here too — the tinted bar's indicator is
+            // the scheme-opposite wash in every scheme (incl. AMOLED black).
             tintFrostedBlur && !isFloating ->
                 // A subtle wash of the opposite polarity per scheme.
                 if (isDarkScheme) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.12f)
@@ -342,14 +344,12 @@ fun FloatingNavigationToolbar(
                     unselectedTextColor =
                         if (pureBlack) Color.White.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            pureBlack ->
-                ShortNavigationBarItemDefaults.colors(
-                    selectedIndicatorColor = Color.Transparent,
-                    selectedIconColor = Color.White,
-                    selectedTextColor = Color.White,
-                    unselectedIconColor = Color.White.copy(alpha = 0.6f),
-                    unselectedTextColor = Color.White.copy(alpha = 0.6f),
-                )
+            // The tinted bar keeps its tinted identity in EVERY scheme — including
+            // pure black. With the pureBlack branch first, a pure-black + tinted
+            // combination fell through to the plain white-on-black item set, which
+            // (together with the near-black 30%-tint base) made the bar read as the
+            // untinted pure-black navbar — "almost transparent". Tint wins here,
+            // matching the container color which already stays tinted in pure black.
             tintFrostedBlur ->
                 // Selected = tinted content colour, unselected = the scheme's
                 // neutral at 62% — both readable on their scheme's tinted base.
@@ -359,6 +359,14 @@ fun FloatingNavigationToolbar(
                     selectedTextColor = tintedNavBarContentColor,
                     unselectedIconColor = tintedNavBarUnselectedContentColor,
                     unselectedTextColor = tintedNavBarUnselectedContentColor,
+                )
+            pureBlack ->
+                ShortNavigationBarItemDefaults.colors(
+                    selectedIndicatorColor = Color.Transparent,
+                    selectedIconColor = Color.White,
+                    selectedTextColor = Color.White,
+                    unselectedIconColor = Color.White.copy(alpha = 0.6f),
+                    unselectedTextColor = Color.White.copy(alpha = 0.6f),
                 )
             else -> ShortNavigationBarItemDefaults.colors(selectedIndicatorColor = Color.Transparent)
         }
@@ -625,9 +633,10 @@ fun FloatingNavigationToolbar(
                     containerColor = Color.Transparent,
                     contentColor =
                         when {
-                            pureBlack -> Color.White
-
+                            // Tint wins over pure black so the bar keeps its tinted
+                            // identity in the AMOLED scheme too (see itemColors).
                             tintFrostedBlur -> tintedNavBarContentColor
+                            pureBlack -> Color.White
                             else -> MaterialTheme.colorScheme.onSurface
                         },
                     windowInsets = WindowInsets(0, 0, 0, 0),

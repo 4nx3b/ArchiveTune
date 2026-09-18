@@ -2861,3 +2861,112 @@ Work Log:
 Stage Summary:
 - dev @ b55df61c4: the notification-reopen artwork fix (Player.kt + SpatialFlowSheetMorph.kt), changelog consolidated, release title fixed. CI is the compile verifier (no local SDK on this box).
 - Release "ArchiveTune 16.0" (tag v16.0) to be created via the release workflow once PR #224 merges; notes carry the changelogs.md link.
+
+---
+Task ID: 57 (completion addendum)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Release ArchiveTune 16.0 — outcome record
+
+Work Log:
+- CI on 99ebee720 (fix + worklog commits): Build Pull Request / Build APKs / Nightly all green (~47 min for the R8 matrix).
+- PR #224 (dev -> main, 29 commits) merged with a merge commit 021389ca3.
+- release.yml dispatched on main (run 35261579873): check-version computed v16.0 (versionCode from commit count), all 7 release APK variants built and signed, reproducibility job verified the universal APK, create-release published the release.
+- Release live: "ArchiveTune 16.0" (exactly as requested), tag v16.0, stable (not pre-release), https://github.com/4nx3b/ArchiveTune/releases/tag/v16.0 — notes carry the changelogs.md link (blob/v16.0/changelogs.md) and the v15.0...v16.0 compare link; assets: foss+gms mobile (arm64/armeabi/universal/x86/x86_64), gms tv universal, and changelogs.md itself.
+- Workflow overall conclusion: completed / success.
+
+Stage Summary:
+- ArchiveTune 16.0 stable release shipped with the notification-reopen artwork fix on board.
+
+---
+Task ID: 58
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 5-item post-16.0 bug batch: 1) SpatialFlow lyrics overflow menu — lower buttons unclickable 2) Apple Music login — tokens not fetched after automatic sign-in 3) tinted navbar almost transparent in pure dark mode 4) lossless icon in the quality pill 5) vivi-music Player_V2 transport icons for the Apple Music player style.
+
+Work Log:
+- VLM + pixel forensics over Screenshot_20260918-155024 (lyrics menu open): menu rows measured at y=340..1106px, 45.7dp spacing, 7 rows, popup top ~285px — layout exactly as coded.
+- Task A root cause hunt: traced every pointer-input candidate above the lyrics overlay (flying artwork = no input; queue drawer = off-screen at offset screenHeight+100dp; sheet drag = tap-transparent; scrim/popup z-order = correct; kyant drawBackdrop/layerBackdrop = draw-only LayoutModifierNodes, bounds-neutral). Measured the artwork slot rect from the task-57 full-player screenshot: y=404..1470px — the menu's rows 2-7 fall ENTIRELY inside the slot; row 1 (Edit, y 340-387) escapes by 17px — matching "upper buttons work, lower buttons blocked". The only SpatialFlow-specific input surface over that region: the shared floating-artwork layer (BottomSheet sharedLayer, zIndex 3 > content zIndex 2) whose HorizontalPager stays COMPOSED while the layer's draw alpha is 0 (lyrics/queue open, artworkActive=false) — an invisible scroll surface eating taps over the slot region. Confirmed via Compose foundation source that pager scrollables CAN consume the initial down (processDragGesture consumes when startDragImmediately/shouldAwaitTouchSlop=false) and via the KotlinLang Slack thread on pager+userScrollEnabled=false click interception; the idle-pager nuance (queue appears to work) stays unresolved but the fix is correct by construction.
+- Task A fix (SpatialFlowSheetMorph.kt): pagerVisible — a composition-level derivedStateOf twin of the draw-phase alpha formula (artworkActive × lyricsSuppress × queueSuppress × fallbackFade > 0.01); the SpatialFlowArtworkPager is only composed while the twin reports visible. Visually identical (the layer already drew nothing below 1% alpha — the pager now also leaves composition), and the lyrics menu + queue drawer lose the invisible input surface. Flips at most twice per transition (same pattern as keepMainContentComposed).
+- Task B root cause: the previous auto-fetch probed ONLY localStorage, gated on its.pod/pxro cookies; the web player writes the media-user-token as a COOKIE on music.apple.com (documented by Music Assistant) before/without the SPA mirroring it to localStorage. Fix (AppleMusicLoginScreen.kt): readMediaUserTokenCookie() reads the media-user-token entry from CookieManager (sees HttpOnly cookies, accepts URI-decoded values, JWT/0.-base64 shape validated by looksLikeMediaUserToken) and is checked FIRST in probeForToken + onPageFinished; the poll gate now passes on the token cookie alone. finishLogin/verification flow untouched.
+- Task C root cause: FloatingNavigationToolbar's itemColors and contentColor `when` blocks put the pureBlack branch BEFORE tintFrostedBlur — pure black + "Tint navigation bar" rendered plain white icons/labels over the (already tinted, opaque) container, so the bar read as the untinted AMOLED navbar ("almost transparent"). Fix: tintFrostedBlur now wins over pureBlack in itemColors + contentColor (container was already tinted-opaque in pure black); indicator order unchanged (already tint-first) with a clarifying comment.
+- Task D: the user's referenced SVG never arrived in the session (only the screenshot attached; no SVG anywhere in upload/ or the repo). Recreated the official Apple Lossless glyph instead: traced the Apple Lossless Logo from Wikimedia (rate-limited direct fetch; recovered via agent-browser page-render + pixelated enlargement + ASCII pixel tracing) — a sawtooth-wave glyph — and shipped it as res/drawable/ic_lossless_wave.xml (stroke path, 24dp). FormatBadge.kt: LosslessLabel now takes iconRes and every state (Upgrading/Lossless/Hi-Res/Hi-Quality) shows the lossless wave instead of Icons.Rounded.Headphones. If the user re-sends their exact SVG it can be dropped in as a 1-file swap.
+- Task E: fetched vivi-music@beta (Player_v2.kt) — its transport set uses apple_skip_previous / apple_skip_next / pause_applemusic / play_applemusic. Ported all four drawables verbatim (GPL header + provenance comment; stripped the ?attr/colorControlNormal tint from the skip icons — the app theme is framework android:Theme.Material, the appcompat attr would not resolve, and AppleMusicTransportButton applies its own tint anyway). AppleMusicPlayer.kt transport row now uses them (previous: mirrored player_fast_forward + player_play/pause).
+- changelogs.md: new "Fixes (16.0.1 follow-up)" section at the head of the 16.0 document covering all five.
+- Static verification: brace/paren balance on every touched Kotlin file (login screen's +1 brace imbalance is the pre-existing TOKEN_PROBE_JS literal, byte-identical to HEAD), XML well-formedness on all five new drawables, drawable-name collision check, import review (derivedStateOf/remember/painterResource/R added; unused Icons/Headphones removed). Local compile impossible on this box — CI is the verifier per established workflow.
+
+Stage Summary:
+- dev carries the 5-fix batch: SpatialFlowSheetMorph.kt (invisible-input fix), AppleMusicLoginScreen.kt (cookie-first token capture), FloatingNavigationToolbar.kt (tint-over-pure-black precedence), FormatBadge.kt + ic_lossless_wave.xml (lossless glyph in the quality pill), AppleMusicPlayer.kt + 4 ported vivi drawables (Player_V2 transport set).
+- Verification notes: Task A's exact tap-eating mechanism (idle pager vs scroll-in-progress pager) is not 100% pinned — the fix removes the invisible input surface in every state regardless; if the menu rows still misbehave on-device, next step is adb logcat on the hit-path around the tap. Task D used a faithful recreation of the official Apple lossless glyph because the user's SVG file never attached — swap path documented.
+
+---
+Task ID: 58 (completion addendum)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 5-item post-16.0 batch — outcome record
+
+Work Log:
+- Code commit d8b1a2cca (10 files: 5 Kotlin + 5 drawables + changelogs.md) + worklog commit 2fc1f95f4 pushed to dev.
+- PR #225 (dev -> main, "Post-16.0 fixes: SpatialFlow lyrics-menu taps, Apple token capture, AMOLED tinted navbar, lossless pill glyph, vivi transport set") opened.
+- CI on 2fc1f95f484a7000c71e20c773c07bd7361bef7e: ALL 12 check-runs green — check, build (compile), the full Nightly APK matrix (foss/gms mobile arm64/armeabi/x86/x86_64/universal, gms tv universal), Release APKs (gms-mobile-arm64, gms-tv-universal) and create-nightly (~17 min total).
+
+Stage Summary:
+- The 5-fix batch is CI-green on PR #225, awaiting merge instructions.
+
+---
+Task ID: 59
+Agent: Super Z (main agent, session web-e130fa90)
+Task: User follow-up on the task-58 vivi transport port — "The play/pause icon
+is smaller and it looks inconsistent. Fix it" (screenshot
+Screenshot_20260918-181414_ArchiveTune.png).
+
+Work Log:
+- VLM forensics on the screenshot + a cropped transport row: the pause glyph
+  renders ~20-24px wide vs ~35-40px for the chevrons — the center control
+  reads visually smaller, confirming the report.
+- Root cause: the ported vivi glyphs fill very different fractions of their
+  960-unit viewports — the double chevrons span ~88% of the width (845.5/960
+  incl. the 60-unit stroke) while the play/pause glyph spans only ~41%. The
+  task-58 port used my own dp sizes (52dp skips / 62dp play-pause, ratio
+  1.19:1); vivi-music's beta Player_v2 (checked against the fetched
+  vivi_player_v2.kt) renders the SAME drawables at 48dp skips / 80dp
+  play-pause (ratio 5:3). At 52/62 the visual result was ~46dp-wide chevrons
+  next to ~25dp-wide pause bars.
+- Fix (AppleMusicPlayer.kt): transport row now carries the reference
+  proportions — AppleMusicTransportIconSize 48dp, AppleMusicPlayPauseIconSize
+  80dp (exact vivi numbers; visual 42.3x28.2dp chevrons vs 33.8x41.2dp
+  center, center dominant). Height-adaptive scaling for compact screens
+  (44/73 at <720dp, 40/67 at <620dp) so landscape keeps its row footprint;
+  scrubberToTransportGap and transportToVolumeGap tightened (22/16/12 and
+  20/14/8 -> 18/14/12 and 16/12/8) to absorb the taller row; new dedicated
+  AppleMusicPlayPauseSpinnerSize 48dp so the loading indicator no longer
+  tracks the 80dp glyph size (old code drew the spinner at
+  AppleMusicPlayPauseIconSize).
+- Verification: mockup render of the exact glyph coordinates at old vs new
+  sizes (scripts/transport_size_check.py) — VLM confirms the new row is the
+  visually consistent one; numeric visual bounds match the vivi reference
+  exactly. Brace/paren balance on the edited file; declaration-before-use
+  and stale-constant checks green. changelogs.md: entry added to the 16.0.1
+  follow-up section.
+- Commit a579f7b29 pushed to dev — PR #225 head auto-updated; CI monitor via
+  REST API (gh CLI absent in this session's env).
+
+Stage Summary:
+- dev carries the transport-ratio fix on top of the task-58 batch; PR #225
+  re-running CI on a579f7b29. Transport set now visually matches the
+  vivi-music Player_V2 reference at every screen height.
+
+---
+Task ID: 59 (completion addendum)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: AM transport-ratio fix — outcome record
+
+Work Log:
+- Code commit a579f7b29 (AppleMusicPlayer.kt + changelogs.md) and worklog
+  commit 49920e6de pushed to dev; PR #225 head auto-updated.
+- CI on 49920e6de83a19babd768214d7a3a3dcd9909171: ALL 12 check-runs green —
+  check, build, the full Nightly APK matrix (foss/gms mobile
+  arm64/armeabi/x86/x86_64/universal, gms tv universal), Release APKs
+  (gms-mobile-arm64, gms-tv-universal) and create-nightly (~35 min total,
+  the canary nightly matrix ran long this round).
+
+Stage Summary:
+- PR #225 carries the 5-fix batch + the transport-ratio fix, CI-green,
+  awaiting merge instructions.

@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -120,6 +122,32 @@ fun BoxScope.SpatialFlowFloatingArtwork(
         label = "SfFloatingArtworkLyricsFade",
     )
 
+    // Composition-level twin of the draw-phase alpha below. The graphicsLayer
+    // only SKIPS DRAWING when the alpha settles to ~0 (lyrics overlay or queue
+    // drawer owning the screen, canvas/video, or the collapsed half of the
+    // morph) — the layer Box and, critically, the HorizontalPager inside it
+    // stayed COMPOSED and hit-testable the whole time. The shared layer rides
+    // at zIndex 3, ABOVE the player content (zIndex 2) that hosts the lyrics
+    // overlay, so the invisible pager's scroll surface sat over the artwork
+    // slot region and ate the taps meant for the lyrics overflow menu's rows
+    // overlapping it (the lower menu rows — the slot starts just below the
+    // first row). While the layer draws nothing, it must not host input either:
+    // the pager is only composed while the twin below reports it visible.
+    // derivedStateOf flips at most twice per transition, mirroring the
+    // keepMainContentComposed / lyricsOverlayVisible pattern used above.
+    val pagerVisible by remember(artworkActive, miniRectMissing) {
+        derivedStateOf {
+            val rawP = state.progress.coerceIn(0f, 1f)
+            val p = if (miniRectMissing) 1f else rawP
+            val lyricsSuppress = lerp(1f, lyricsFade, p)
+            val queueSuppress = lerp(1f, queueFade, p)
+            val fallbackFade = if (miniRectMissing) (2f * rawP).coerceIn(0f, 1f) else 1f
+            val layerAlpha =
+                (if (artworkActive) 1f else 0f) * lyricsSuppress * queueSuppress * fallbackFade
+            layerAlpha > 0.01f
+        }
+    }
+
     Box(
         modifier =
             modifier
@@ -176,18 +204,23 @@ fun BoxScope.SpatialFlowFloatingArtwork(
                     shadowElevation = lerp(0f, 16.dp.toPx(), p)
                 },
     ) {
-        SpatialFlowArtworkPager(
-            mediaMetadata = mediaMetadata,
-            queueWindows = queueWindows,
-            currentWindowIndex = currentWindowIndex,
-            userScrollEnabled = state.progress > 0.95f && !lyricsOpen && !queueOpen,
-            artUrl = artUrl,
-            isPlaying = isPlaying,
-            cornerRadius = 16.dp,
-            shadowElevation = 0.dp,
-            onPlaySongAtWindow = onPlaySongAtWindow,
-            modifier = Modifier.fillMaxSize(),
-        )
+        // See pagerVisible above: while the layer would draw nothing the pager
+        // is left out of composition entirely, so no invisible scroll surface
+        // can intercept touches above the lyrics overlay / queue drawer.
+        if (pagerVisible) {
+            SpatialFlowArtworkPager(
+                mediaMetadata = mediaMetadata,
+                queueWindows = queueWindows,
+                currentWindowIndex = currentWindowIndex,
+                userScrollEnabled = state.progress > 0.95f && !lyricsOpen && !queueOpen,
+                artUrl = artUrl,
+                isPlaying = isPlaying,
+                cornerRadius = 16.dp,
+                shadowElevation = 0.dp,
+                onPlaySongAtWindow = onPlaySongAtWindow,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
 

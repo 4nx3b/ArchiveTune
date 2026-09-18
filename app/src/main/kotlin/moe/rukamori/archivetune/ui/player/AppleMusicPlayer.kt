@@ -180,8 +180,12 @@ import androidx.compose.runtime.setValue
 
 private val AppleMusicContentPadding = 28.dp
 private val AppleMusicChipSize = 34.dp
-private val AppleMusicTransportIconSize = 52.dp
-private val AppleMusicPlayPauseIconSize = 62.dp
+private val AppleMusicTransportIconSize = 48.dp
+private val AppleMusicPlayPauseIconSize = 80.dp
+
+// The loading spinner replaces the glyph visually; decoupled so the 80dp
+// play/pause glyph size does not balloon the indicator.
+private val AppleMusicPlayPauseSpinnerSize = 48.dp
 
 private val AppleMusicBottomIconSize = 26.dp
 private val AppleMusicBottomButtonSize = 48.dp
@@ -1340,8 +1344,8 @@ private fun AppleMusicControlsColumn(
     val compactHeight = screenHeight < 720.dp
     val veryCompactHeight = screenHeight < 620.dp
     val titleToScrubberGap = if (veryCompactHeight) 8.dp else if (compactHeight) 14.dp else 20.dp
-    val scrubberToTransportGap = if (veryCompactHeight) 12.dp else if (compactHeight) 16.dp else 22.dp
-    val transportToVolumeGap = if (veryCompactHeight) 8.dp else if (compactHeight) 14.dp else 20.dp
+    val scrubberToTransportGap = if (veryCompactHeight) 12.dp else if (compactHeight) 14.dp else 18.dp
+    val transportToVolumeGap = if (veryCompactHeight) 8.dp else if (compactHeight) 12.dp else 16.dp
     val volumeToActionsGap = if (veryCompactHeight) 12.dp else if (compactHeight) 16.dp else 22.dp
 
     Column(
@@ -1480,16 +1484,31 @@ private fun AppleMusicControlsColumn(
 
     Spacer(Modifier.height(scrubberToTransportGap))
 
+    // vivi-music (beta) Player_V2 transport proportions, restored. The ported
+    // glyphs fill very different fractions of their 960-unit viewports (the
+    // chevrons span ~88% of the width, the play/pause glyph only ~41%), so the
+    // dp sizes are what must carry the reference's 5:3 ratio: 48dp skips vs an
+    // 80dp play/pause. At the previous 52dp/62dp the play/pause rendered
+    // visually smaller than the skips (25dp-wide pause bars next to 46dp-wide
+    // chevrons). Scaled down proportionally on short screens so the row keeps
+    // its footprint in compact/landscape heights.
+    val transportIconSize =
+        if (veryCompactHeight) 40.dp else if (compactHeight) 44.dp else AppleMusicTransportIconSize
+    val playPauseIconSize =
+        if (veryCompactHeight) 67.dp else if (compactHeight) 73.dp else AppleMusicPlayPauseIconSize
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // vivi-music (beta) Player_v2 transport set: the exact play/pause,
+        // next and previous glyphs from vivi's new player style.
         AppleMusicTransportButton(
-            iconRes = R.drawable.player_fast_forward,
+            iconRes = R.drawable.apple_skip_previous,
             enabled = canSkipPrevious,
-            mirrored = true,
-            iconSize = AppleMusicTransportIconSize,
+            mirrored = false,
+            iconSize = transportIconSize,
             onClick = playerConnection::seekToPrevious,
         )
 
@@ -1497,30 +1516,30 @@ private fun AppleMusicControlsColumn(
             contentAlignment = Alignment.Center,
             modifier =
                 Modifier
-                    .size(AppleMusicPlayPauseIconSize + 20.dp)
+                    .size(playPauseIconSize + 20.dp)
                     .clip(CircleShape),
         ) {
             if (isLoading) {
                 CircularProgressIndicator(
                     color = Color.White,
-                    modifier = Modifier.size(AppleMusicPlayPauseIconSize),
+                    modifier = Modifier.size(AppleMusicPlayPauseSpinnerSize),
                     strokeWidth = 3.dp,
                 )
             } else {
                 AppleMusicTransportButton(
-                    iconRes = if (isPlaying) R.drawable.player_pause else R.drawable.player_play,
+                    iconRes = if (isPlaying) R.drawable.pause_applemusic else R.drawable.play_applemusic,
                     enabled = true,
                     mirrored = false,
-                    iconSize = AppleMusicPlayPauseIconSize,
+                    iconSize = playPauseIconSize,
                     onClick = onPlayPauseClick,
                 )
             }
         }
         AppleMusicTransportButton(
-            iconRes = R.drawable.player_fast_forward,
+            iconRes = R.drawable.apple_skip_next,
             enabled = canSkipNext,
             mirrored = false,
-            iconSize = AppleMusicTransportIconSize,
+            iconSize = transportIconSize,
             onClick = playerConnection::seekToNext,
         )
     }
