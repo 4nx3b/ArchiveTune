@@ -40,6 +40,14 @@ original app.
 - The Apple Music player style uses the vivi-music (beta) Player_v2 transport
   set: the exact play, pause, next and previous glyphs from vivi-music's new
   player style replace the old fast-forward/mirrored pair
+- The transport set carries the reference's proportions too: the ported glyphs
+  fill very different fractions of their vector viewports (the double
+  chevrons span ~88% of the width, the play/pause glyph only ~41%), so the
+  play/pause button now renders its glyph at the vivi reference's 5:3 size
+  ratio (48dp skips / 80dp center) instead of the near-equal dp sizes that
+  made the play/pause read visually smaller than the skip chevrons — the
+  center control is dominant again, scaled down proportionally on
+  compact-height screens so the row keeps its footprint in landscape
 
 ## Podcasts
 
