@@ -2896,3 +2896,16 @@ Work Log:
 Stage Summary:
 - dev carries the 5-fix batch: SpatialFlowSheetMorph.kt (invisible-input fix), AppleMusicLoginScreen.kt (cookie-first token capture), FloatingNavigationToolbar.kt (tint-over-pure-black precedence), FormatBadge.kt + ic_lossless_wave.xml (lossless glyph in the quality pill), AppleMusicPlayer.kt + 4 ported vivi drawables (Player_V2 transport set).
 - Verification notes: Task A's exact tap-eating mechanism (idle pager vs scroll-in-progress pager) is not 100% pinned — the fix removes the invisible input surface in every state regardless; if the menu rows still misbehave on-device, next step is adb logcat on the hit-path around the tap. Task D used a faithful recreation of the official Apple lossless glyph because the user's SVG file never attached — swap path documented.
+
+---
+Task ID: 58 (completion addendum)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 5-item post-16.0 batch — outcome record
+
+Work Log:
+- Code commit d8b1a2cca (10 files: 5 Kotlin + 5 drawables + changelogs.md) + worklog commit 2fc1f95f4 pushed to dev.
+- PR #225 (dev -> main, "Post-16.0 fixes: SpatialFlow lyrics-menu taps, Apple token capture, AMOLED tinted navbar, lossless pill glyph, vivi transport set") opened.
+- CI on 2fc1f95f484a7000c71e20c773c07bd7361bef7e: ALL 12 check-runs green — check, build (compile), the full Nightly APK matrix (foss/gms mobile arm64/armeabi/x86/x86_64/universal, gms tv universal), Release APKs (gms-mobile-arm64, gms-tv-universal) and create-nightly (~17 min total).
+
+Stage Summary:
+- The 5-fix batch is CI-green on PR #225, awaiting merge instructions.
