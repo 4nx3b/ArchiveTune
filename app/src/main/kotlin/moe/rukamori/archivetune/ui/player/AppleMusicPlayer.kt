@@ -1485,10 +1485,12 @@ private fun AppleMusicControlsColumn(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // vivi-music (beta) Player_v2 transport set: the exact play/pause,
+        // next and previous glyphs from vivi's new player style.
         AppleMusicTransportButton(
-            iconRes = R.drawable.player_fast_forward,
+            iconRes = R.drawable.apple_skip_previous,
             enabled = canSkipPrevious,
-            mirrored = true,
+            mirrored = false,
             iconSize = AppleMusicTransportIconSize,
             onClick = playerConnection::seekToPrevious,
         )
@@ -1508,7 +1510,7 @@ private fun AppleMusicControlsColumn(
                 )
             } else {
                 AppleMusicTransportButton(
-                    iconRes = if (isPlaying) R.drawable.player_pause else R.drawable.player_play,
+                    iconRes = if (isPlaying) R.drawable.pause_applemusic else R.drawable.play_applemusic,
                     enabled = true,
                     mirrored = false,
                     iconSize = AppleMusicPlayPauseIconSize,
@@ -1517,7 +1519,7 @@ private fun AppleMusicControlsColumn(
             }
         }
         AppleMusicTransportButton(
-            iconRes = R.drawable.player_fast_forward,
+            iconRes = R.drawable.apple_skip_next,
             enabled = canSkipNext,
             mirrored = false,
             iconSize = AppleMusicTransportIconSize,

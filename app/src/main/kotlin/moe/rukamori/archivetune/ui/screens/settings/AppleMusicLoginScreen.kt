@@ -6,14 +6,17 @@
  *
  * WebView-based Apple Music sign-in with automatic token capture.
  *
- * The Music User Token never reaches the cookie jar — the Apple Music web
- * player keeps it in localStorage on the music.apple.com origin. This screen
- * therefore probes localStorage after every page load and on a short ticker,
- * hands every candidate that looks like a media-user-token to the AMP API for
- * verification (`/v1/me/storefront` answers 200 only for a valid pairing),
- * and persists the winner (plus a developer token when the user hasn't pasted
- * one — scraped from the web player, honouring the "optional" help text).
- * Mirrors the DeezerLoginScreen finishLogin shape: verify, persist, toast.
+ * The Music User Token is captured from BOTH places the web player puts it:
+ * the `media-user-token` cookie on the music.apple.com origin (the primary
+ * source — the web player writes it there right after the Apple ID handshake,
+ * which is why the localStorage-only probe used to miss it and tokens were
+ * never fetched right after signing in) and localStorage (the web app also
+ * mirrors it there once the player SPA boots). Every candidate is handed to
+ * the AMP API for verification (`/v1/me/storefront` answers 200 only for a
+ * valid pairing), and the winner is persisted (plus a developer token when
+ * the user hasn't pasted one — scraped from the web player, honouring the
+ * "optional" help text). Mirrors the DeezerLoginScreen finishLogin shape:
+ * verify, persist, toast.
  */
 
 package moe.rukamori.archivetune.ui.screens.settings
@@ -57,6 +60,21 @@ const val APPLE_MUSIC_LOGIN_ROUTE = "settings/applemusic/login"
 private const val LOGIN_URL = "https://music.apple.com/login"
 private const val COOKIE_ORIGIN = "https://music.apple.com"
 private const val TAG = "AppleMusicLogin"
+
+/**
+ * Shape shared by every capture path: a JWT (three dot-separated base64url
+ * segments, `eyJ…`) or the classic `0.` + base64 media-user-token. Length is
+ * bounded the same way as the in-page probe so both paths agree on what a
+ * token looks like.
+ */
+private fun looksLikeMediaUserToken(value: String?): Boolean {
+    if (value.isNullOrBlank()) return false
+    if (value.length < 40 || value.length > 4096) return false
+    return MEDIA_TOKEN_JWT_REGEX.matches(value) || MEDIA_TOKEN_CLASSIC_REGEX.matches(value)
+}
+
+private val MEDIA_TOKEN_JWT_REGEX = Regex("^eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$")
+private val MEDIA_TOKEN_CLASSIC_REGEX = Regex("^0\\.[A-Za-z0-9+/=]{40,}$")
 
 /**
  * Collects every localStorage value that looks like a media-user-token
@@ -119,6 +137,29 @@ fun AppleMusicLoginScreen(navController: NavController) {
             ?.any { it.trim().startsWith("its.pod=", ignoreCase = true) || it.trim().startsWith("pxro=", ignoreCase = true) }
             ?: false
 
+    /**
+     * The primary capture path: the `media-user-token` cookie on the
+     * music.apple.com origin. CookieManager sees every cookie the WebView
+     * stored (including HttpOnly ones, which the in-page JS probe can never
+     * read), and the web player writes this cookie directly after the Apple ID
+     * handshake — usually before any localStorage mirror exists. The cookie
+     * value may arrive URI-encoded, so the decoded form is accepted too.
+     */
+    fun readMediaUserTokenCookie(): String? {
+        val jar = CookieManager.getInstance().getCookie(COOKIE_ORIGIN) ?: return null
+        for (raw in jar.split(';')) {
+            val entry = raw.trim()
+            val eq = entry.indexOf('=')
+            if (eq <= 0) continue
+            if (!entry.substring(0, eq).equals("media-user-token", ignoreCase = true)) continue
+            val value = entry.substring(eq + 1).trim().trim('"')
+            if (looksLikeMediaUserToken(value)) return value
+            val decoded = runCatching { android.net.Uri.decode(value) }.getOrDefault(value)
+            if (looksLikeMediaUserToken(decoded)) return decoded
+        }
+        return null
+    }
+
     fun finishLogin(mediaToken: String) {
         if (!handled.compareAndSet(false, true)) return
         scope.launch {
@@ -160,6 +201,17 @@ fun AppleMusicLoginScreen(navController: NavController) {
 
     fun probeForToken(view: WebView) {
         if (handled.get()) return
+        // Cookie first: it is written by the Apple ID handshake itself and does
+        // not depend on the web app's JS booting, so it is available the moment
+        // the sign-in completes (the localStorage mirror only appears once the
+        // player SPA initialises — which is why the old probe missed the token
+        // right after an automatic sign-in).
+        readMediaUserTokenCookie()?.let { token ->
+            if (!handled.get()) {
+                finishLogin(token)
+                return
+            }
+        }
         view.evaluateJavascript(TOKEN_PROBE_JS) { result ->
             if (result == null || result == "null" || result == "[]") return@evaluateJavascript
             val candidates =
@@ -176,12 +228,17 @@ fun AppleMusicLoginScreen(navController: NavController) {
 
     // The token can appear without any navigation once the web player boots
     // after the Apple ID handshake, so polling is the only reliable trigger.
+    // The cookie capture is not gated on the session cookies: the
+    // media-user-token cookie IS the proof the handshake finished, so it is
+    // checked on every tick even while its.pod/pxro are still settling.
     LaunchedEffect(Unit) {
         while (true) {
             delay(2000)
             webView?.let { view ->
-                if (!handled.get() && readSessionCookie()) {
-                    view.post { probeForToken(view) }
+                if (!handled.get()) {
+                    if (readMediaUserTokenCookie() != null || readSessionCookie()) {
+                        view.post { probeForToken(view) }
+                    }
                 }
             }
         }
@@ -201,7 +258,7 @@ fun AppleMusicLoginScreen(navController: NavController) {
                             url: String?,
                         ) {
                             if (url == null || !url.startsWith("https://music.apple.com")) return
-                            if (!readSessionCookie()) return
+                            if (!readSessionCookie() && readMediaUserTokenCookie() == null) return
                             probeForToken(view)
                         }
                     }

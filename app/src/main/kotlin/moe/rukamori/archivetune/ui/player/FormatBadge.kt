@@ -18,8 +18,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,10 +30,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import java.util.Locale
 import androidx.compose.runtime.getValue
@@ -55,6 +55,7 @@ fun LosslessOrStats(
         format == null || (isLoading && !lossless) -> LosslessLabel(
             text = "Upgrading Quality",
             animated = false,
+            iconRes = R.drawable.ic_lossless_wave,
             modifier = modifier,
         )
         lossless -> LosslessLabel(
@@ -62,12 +63,16 @@ fun LosslessOrStats(
             text = if (hiRes) "Hi-Res Lossless" else "Lossless",
 
             animated = true,
+            // The user-supplied lossless glyph: the Apple-style sawtooth wave
+            // marks every lossless stream in the quality pill.
+            iconRes = R.drawable.ic_lossless_wave,
             modifier = modifier,
         )
 
         hiQuality -> LosslessLabel(
             text = "Hi-Quality",
             animated = false,
+            iconRes = R.drawable.ic_lossless_wave,
             modifier = modifier,
         )
         else -> {}
@@ -79,15 +84,18 @@ private fun FormatEntity.isLossless(): Boolean =
 
 /**
  * The quality badge the player styles render over their artwork areas:
- * a headphones glyph plus the label, in the translucent-white convention
- * this file already uses. [animated] runs the label through the shimmer
- * sweep (the lossless / hi-res states), so an active badge reads as live
- * instead of a static caption.
+ * the lossless glyph plus the label, in the translucent-white convention
+ * this file already uses. Every state now carries the lossless sawtooth
+ * wave (the "Upgrading" / "Hi-Quality" states used a headphones glyph
+ * before; the pill stays on one icon family). [animated] runs the label
+ * through the shimmer sweep (the lossless / hi-res states), so an active
+ * badge reads as live instead of a static caption.
  */
 @Composable
 private fun LosslessLabel(
     text: String,
     animated: Boolean,
+    iconRes: Int,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -95,7 +103,7 @@ private fun LosslessLabel(
         modifier = modifier,
     ) {
         Icon(
-            imageVector = Icons.Rounded.Headphones,
+            painter = painterResource(iconRes),
             contentDescription = null,
             tint = Color.White.copy(alpha = 0.55f),
             modifier = Modifier.size(16.dp),

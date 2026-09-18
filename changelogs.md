@@ -6,6 +6,41 @@ the equalizer grows into a complete Audio Effects console, Home learns to be
 Spotify, and the SpatialFlow player finally collapses as smoothly as the
 original app.
 
+## Fixes (16.0.1 follow-up)
+
+- The SpatialFlow lyrics overflow menu's lower rows are tappable again: the
+  floating artwork layer that bridges the mini-player circle and the full
+  player's slot rides above the player content in the sheet (zIndex 3 vs 2),
+  and while the lyrics overlay owned the screen it was still composed with its
+  artwork pager at the slot's position — drawing nothing (alpha 0), but its
+  scroll surface silently ate every touch that landed on the menu rows
+  overlapping the slot region (everything below the first row). The pager is
+  now composed only while the layer is actually visible — a composition-level
+  twin of the draw-phase alpha, flipping at most twice per transition — so an
+  invisible layer never hosts input again; the queue drawer gets the same
+  protection for free
+- Apple Music web sign-in captures the Music User Token the moment the sign-in
+  completes: the token is now read from the `media-user-token` cookie on the
+  music.apple.com origin first (written by the Apple ID handshake itself,
+  visible to CookieManager even when the page keeps it HttpOnly) and the
+  localStorage probe stays as the secondary source — the old probe waited for
+  the web player SPA to mirror the token into localStorage, which is why
+  nothing was fetched right after an automatic sign-in. The poll is no longer
+  gated on the its.pod/pxro session cookies either: the token cookie is itself
+  the proof the handshake finished
+- The tinted navigation bar keeps its tinted identity in pure black mode: the
+  pure-black branch of the bar's item colours shadowed the tinted branch, so
+  AMOLED + "Tint navigation bar" fell through to plain white icons on the
+  near-black 30%-tint base and read as the untinted bar ("almost
+  transparent"). Tint now wins over pure black for the icons, labels and
+  content colour — the bar renders exactly as it does in usual dark mode
+- The quality pill carries a dedicated lossless glyph: every Lossless /
+  Hi-Res Lossless stream (and the Upgrading/Hi-Quality states) now shows the
+  Apple-style sawtooth-wave icon instead of the generic headphones
+- The Apple Music player style uses the vivi-music (beta) Player_v2 transport
+  set: the exact play, pause, next and previous glyphs from vivi-music's new
+  player style replace the old fast-forward/mirrored pair
+
 ## Podcasts
 
 - **Podcasts, ported from upstream**: search a show and it appears as its own
