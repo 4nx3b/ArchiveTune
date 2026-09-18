@@ -2952,3 +2952,21 @@ Stage Summary:
 - dev carries the transport-ratio fix on top of the task-58 batch; PR #225
   re-running CI on a579f7b29. Transport set now visually matches the
   vivi-music Player_V2 reference at every screen height.
+
+---
+Task ID: 59 (completion addendum)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: AM transport-ratio fix — outcome record
+
+Work Log:
+- Code commit a579f7b29 (AppleMusicPlayer.kt + changelogs.md) and worklog
+  commit 49920e6de pushed to dev; PR #225 head auto-updated.
+- CI on 49920e6de83a19babd768214d7a3a3dcd9909171: ALL 12 check-runs green —
+  check, build, the full Nightly APK matrix (foss/gms mobile
+  arm64/armeabi/x86/x86_64/universal, gms tv universal), Release APKs
+  (gms-mobile-arm64, gms-tv-universal) and create-nightly (~35 min total,
+  the canary nightly matrix ran long this round).
+
+Stage Summary:
+- PR #225 carries the 5-fix batch + the transport-ratio fix, CI-green,
+  awaiting merge instructions.
