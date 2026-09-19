@@ -66,6 +66,7 @@ import moe.rukamori.archivetune.constants.DeezerAudioQuality
 import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
 import moe.rukamori.archivetune.constants.AmazonEnabledKey
+import moe.rukamori.archivetune.constants.QqMusicEnabledKey
 import moe.rukamori.archivetune.constants.AppleMusicSourceEnabledKey
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
@@ -118,6 +119,7 @@ private fun AudioSourceType.displayName(context: android.content.Context): Strin
         AudioSourceType.DEEZER -> context.getString(R.string.source_deezer)
         AudioSourceType.APPLE -> context.getString(R.string.source_apple_music)
         AudioSourceType.AMAZON -> context.getString(R.string.source_amazon)
+        AudioSourceType.QQ -> context.getString(R.string.source_qq_music)
         AudioSourceType.JIOSAAVN -> context.getString(R.string.source_jiosaavn)
         AudioSourceType.YOUTUBE -> context.getString(R.string.source_youtube)
     }
@@ -131,6 +133,8 @@ private fun AudioSourceType.iconRes(): Int =
         AudioSourceType.APPLE -> R.drawable.ic_music
 
         AudioSourceType.AMAZON -> R.drawable.ic_music
+        // Same stand-in for QQ Music.
+        AudioSourceType.QQ -> R.drawable.ic_music
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
@@ -149,6 +153,7 @@ internal fun PlaybackSourceSections(
     val (deezerEnabled, onDeezerEnabledChangeRaw) = rememberPreference(DeezerEnabledKey, false)
     val (appleMusicEnabled, onAppleMusicEnabledChangeRaw) = rememberPreference(AppleMusicSourceEnabledKey, true)
     val (amazonEnabled, onAmazonEnabledChangeRaw) = rememberPreference(AmazonEnabledKey, false)
+    val (qqMusicEnabled, onQqMusicEnabledChange) = rememberPreference(QqMusicEnabledKey, false)
     val (deezerQuality, onDeezerQualityChange) =
         rememberEnumPreference(DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
     val (jioSaavnEnabled, onJioSaavnEnabledChange) = rememberPreference(JioSaavnEnabledKey, false)
@@ -263,11 +268,34 @@ internal fun PlaybackSourceSections(
             AudioSourceType.DEEZER -> deezerEnabled
             AudioSourceType.APPLE -> appleMusicEnabled
             AudioSourceType.AMAZON -> amazonEnabled
+            AudioSourceType.QQ -> qqMusicEnabled
             AudioSourceType.JIOSAAVN -> jioSaavnEnabled
             AudioSourceType.YOUTUBE -> true
         }
 
     var showOrderDialog by rememberSaveable { mutableStateOf(false) }
+
+    // Dragging a source to the top is the strongest possible signal the user wants it — a
+    // disabled top source would be silently skipped by the resolver, which is exactly how
+    // "I put Qobuz first but still got YouTube" happens. Auto-enable the new top source on
+    // confirm so the order dialog and the enable toggles can never disagree again.
+    fun onOrderConfirm(newOrder: List<AudioSourceType>) {
+        newOrder.firstOrNull { it != AudioSourceType.YOUTUBE }?.let { top ->
+            when (top) {
+                AudioSourceType.TIDAL -> if (!tidalEnabled) onTidalEnabledChange(true)
+                AudioSourceType.QOBUZ -> if (!qobuzEnabled) onQobuzEnabledChange(true)
+                AudioSourceType.QOBUZ_BACKUP -> if (!qobuzBackupEnabled) onQobuzBackupEnabledChange(true)
+                AudioSourceType.DEEZER -> if (!deezerEnabled) onDeezerEnabledChange(true)
+                AudioSourceType.APPLE -> if (!appleMusicEnabled) onAppleMusicEnabledChange(true)
+                AudioSourceType.AMAZON -> if (!amazonEnabled) onAmazonEnabledChange(true)
+                AudioSourceType.QQ -> if (!qqMusicEnabled) onQqMusicEnabledChange(true)
+                AudioSourceType.JIOSAAVN -> if (!jioSaavnEnabled) onJioSaavnEnabledChange(true)
+                AudioSourceType.YOUTUBE -> Unit
+            }
+        }
+        onSourceOrderChange(newOrder.joinToString(",") { it.name })
+        showOrderDialog = false
+    }
 
     if (showOrderDialog) {
         SourceOrderDialog(

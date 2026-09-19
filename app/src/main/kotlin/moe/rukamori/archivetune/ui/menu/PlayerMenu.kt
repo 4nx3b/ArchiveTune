@@ -1407,6 +1407,7 @@ private fun AudioSourceType.sourceLabelRes(): Int =
         AudioSourceType.DEEZER -> R.string.source_deezer
         AudioSourceType.APPLE -> R.string.source_apple_music
         AudioSourceType.AMAZON -> R.string.source_amazon
+        AudioSourceType.QQ -> R.string.source_qq_music
         AudioSourceType.JIOSAAVN -> R.string.source_jiosaavn
         AudioSourceType.YOUTUBE -> R.string.source_youtube
     }
@@ -1420,6 +1421,7 @@ private fun AudioSourceType.sourceIconRes(): Int =
         AudioSourceType.APPLE -> R.drawable.provider_apple
 
         AudioSourceType.AMAZON -> R.drawable.ic_music
+        AudioSourceType.QQ -> R.drawable.ic_music
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
     }

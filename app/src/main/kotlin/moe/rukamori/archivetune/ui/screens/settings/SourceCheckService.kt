@@ -73,6 +73,7 @@ object SourceCheckService {
                     AudioSourceType.DEEZER -> checkDeezer(context)
                     AudioSourceType.APPLE -> checkAppleMusic()
                     AudioSourceType.AMAZON -> checkAmazon(context)
+                    AudioSourceType.QQ -> checkQqMusic()
                     AudioSourceType.JIOSAAVN -> checkJioSaavn()
                     AudioSourceType.YOUTUBE -> checkYouTube()
                 }
@@ -80,6 +81,24 @@ object SourceCheckService {
         _results.update { it + (source to result) }
         return result
     }
+
+    private fun checkQqMusic(): SourceCheckResult =
+        // There is nothing to probe: QQ Music playback exists through Tencent's partner program
+        // only, and a build without partner credentials cannot even open a session.
+        if (!QqMusicProvider.isConfigured()) {
+            SourceCheckResult(
+                healthy = false,
+                summary = "QQ Music needs a Tencent Music partner application (QQ_PARTNER_APP_ID). " +
+                    "There is no public personal-developer playback API, so until the maintainer " +
+                    "registers as a partner this source stays inert and playback falls through.",
+            )
+        } else {
+            SourceCheckResult(
+                healthy = true,
+                summary = "Partner credentials are present. QQ Music resolves through Tencent's " +
+                    "documented OpenAPI; encrypted formats are reported unavailable rather than bypassed.",
+            )
+        }
 
     private suspend fun checkTidal(context: Context): SourceCheckResult {
         PoolAccountManager.refresh(context, force = false)
