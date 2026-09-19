@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.AmazonAccountNameKey
 import moe.rukamori.archivetune.constants.AmazonAccountPremiumKey
+import moe.rukamori.archivetune.amazon.AmazonMusicProvider
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.QobuzBackupEndpointsKey
 import moe.rukamori.archivetune.utils.dataStore
@@ -465,6 +466,17 @@ private data class CdnProbe(
         val prefs = context.dataStore.data.first()
         val manualName = prefs[AmazonAccountNameKey]?.takeIf { it.isNotBlank() }
         val manualPremium = prefs[AmazonAccountPremiumKey] == true
+        // The Web API is approval-gated: without the security profile this build cannot talk to
+        // Amazon at all, so credentials alone would not make the source work and reporting them as
+        // healthy would promise playback that cannot happen.
+        if (!AmazonMusicProvider.isConfigured()) {
+            return SourceCheckResult(
+                healthy = false,
+                summary = "Amazon Music needs an approved Web API security profile (AMAZON_LWA_CLIENT_ID) " +
+                    "in this build. Until the maintainer provisions one the source stays inert and " +
+                    "playback falls through to the next source.",
+            )
+        }
         if (pooled.isEmpty() && manualName == null) {
             return SourceCheckResult(
                 status = SourceCheckStatus.NOT_CONFIGURED,
@@ -481,13 +493,11 @@ private data class CdnProbe(
                     add("${pooled.size} pool account(s), ${pooled.count { it.premium }} HD/Ultra HD")
                 }
             }.joinToString(" + ")
-
         return SourceCheckResult(
-            status = SourceCheckStatus.UNSUPPORTED,
-            summary = "Credentials: $origin. Amazon Music sign-in and catalogue search work, but this " +
-                "build ships no stream-decryption step for Amazon's CENC-protected audio, so the source " +
-                "cannot play tracks yet. This is a build limitation, not an outage — it is safe to leave " +
-                "Amazon out of the playback order until playback lands.",
+            healthy = true,
+            summary = "Credentials: $origin. Playback resolves through Amazon's Web API and is licensed " +
+                "by Amazon's own server for the signed-in account; the quality tier the account is " +
+                "entitled to is the tier it gets.",
         )
     }
 
