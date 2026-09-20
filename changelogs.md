@@ -51,6 +51,43 @@ original app.
 
 ## Fixes (16.0.3 follow-up)
 
+- The TikTok lyric strip's translation no longer drifts away from the line it
+  translates: line-synced lyrics stacked the romanisation and the translation
+  with a full blank line between them, so the translation read as a detached
+  second thought instead of part of the same line. The single-active-line
+  captions now join them directly (the full lyrics page keeps its looser
+  spacing)
+- Guest song changes actually reach the host: approving a suggestion used a
+  raw seekToNextMediaItem that skipped the manual-skip machinery, so an
+  in-flight crossfade (or its pauseAtEnd handoff) kept streaming the OLD
+  song's audio through the secondary player while the queue had already moved
+  on — the host "never changed" even though every guest did. Approved
+  suggestions now go through the full skip path (crossfade cancelled, player
+  prepared, play state preserved)
+- The `Field 'track_info' is required` error on suggest_track is gone: the
+  vivi server relays the host's bare approve_suggestion payload to the room,
+  which carries only suggestion_id — the app demanded track_info and dropped
+  the whole frame. The field is optional now and the approval is acknowledged
+  with either the track title or the suggestion id
+- Listen Together chat grows up: messages carry the sender's profile picture
+  before their name, long-pressing a bubble opens an Instagram-style action
+  popup anchored to it (quick reactions, all-emoji picker, reply, copy, edit,
+  pin, delete) with the lyrics popup's morph animation over liquid glass,
+  swiping a bubble toward the screen centre replies to it, reaction chips
+  sit under the message and toggle on tap, pins show in a banner above the
+  list with jump-to, edits rewrite the message everywhere with an "edited"
+  mark, deletes remove it room-wide, and the composer folds into an edit bar
+  for your own messages
+- The chat now tells you who is composing: each typing member's avatar pops
+  in above the composer — several typists layer on top of each other with
+  surface outlines — next to bouncing dots and their names, expiring a few
+  seconds after they stop
+- Chat history follows you: the conversation persists locally per username
+  and reloads after reconnects and room changes, so the same you never walks
+  into an empty chat
+- Volume sync to the host ships OFF by default — opt in from Settings →
+  Integrations → Listen Together if you want guests to follow the host's
+  volume level
 - Video songs play again. The High-by-default video quality (added with the
   4K persistence change) skipped the SimpMusic extractor whenever the ceiling
   rose above 1080p — removing the exact path whose NewPipe-harvested URLs

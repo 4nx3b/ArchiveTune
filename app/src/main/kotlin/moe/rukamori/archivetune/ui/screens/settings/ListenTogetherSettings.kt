@@ -124,7 +124,7 @@ fun ListenTogetherSettings(
     var avatarIndex by rememberPreference(ListenTogetherAvatarIndexKey, 0)
     var autoApproval by rememberPreference(ListenTogetherAutoApprovalKey, false)
     var suggestionAutoApprove by rememberPreference(ListenTogetherSuggestionAutoApproveKey, true)
-    var syncHostVolume by rememberPreference(ListenTogetherSyncVolumeKey, true)
+    var syncHostVolume by rememberPreference(ListenTogetherSyncVolumeKey, false)
     var smartResync by rememberPreference(ListenTogetherSmartResyncKey, true)
     var chatNotifications by rememberPreference(ListenTogetherChatNotificationsKey, true)
 

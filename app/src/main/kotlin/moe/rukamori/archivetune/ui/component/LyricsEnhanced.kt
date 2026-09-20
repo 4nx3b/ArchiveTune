@@ -423,7 +423,7 @@ fun LyricsEnhanced(
         )
     }
 
-    LaunchedEffect(lyricsEntries, romanizationPreferences, aiRomanizedLines, lyricsProviderLabel, composerFooterLabel, mediaMetadata?.id) {
+    LaunchedEffect(lyricsEntries, romanizationPreferences, aiRomanizedLines, lyricsProviderLabel, composerFooterLabel, mediaMetadata?.id, singleActiveLine) {
         withContext(Dispatchers.Default) {
         fun publish(romanization: Map<Int, List<String?>>) {
             val previous = karaokeBuild
@@ -439,6 +439,7 @@ fun LyricsEnhanced(
                             romanizationMap = romanization,
                             providerHeader = lyricsProviderLabel,
                             composerFooter = composerFooterLabel,
+                            compactTranslation = singleActiveLine,
                         ),
                     romanization = romanization,
                     generation = if (changesVisibleLines) previous.generation + 1 else previous.generation,
@@ -1660,6 +1661,7 @@ private fun buildSyncedLyrics(
     romanizationMap: Map<Int, List<String?>>,
     providerHeader: String?,
     composerFooter: String? = null,
+    compactTranslation: Boolean = false,
 ): SyncedLyrics {
     if (entries.isEmpty()) return SyncedLyrics(emptyList())
     val lines = mutableListOf<ISyncedLine>()
@@ -1749,6 +1751,7 @@ private fun buildSyncedLyrics(
                     romanizedText = romanizationMap[index]?.firstOrNull(),
                     start = entry.time.toInt(),
                     end = lineEnd,
+                    compactTranslation = compactTranslation,
                 ),
             )
         }
@@ -1773,6 +1776,7 @@ private fun buildLineSyncedLrcLine(
     romanizedText: String?,
     start: Int,
     end: Int,
+    compactTranslation: Boolean = false,
 ): ISyncedLine {
     val translation = providedTranslationTextForEntry(entry)
     val normalizedRomanizedText = romanizedText?.trim()?.takeIf { it.isNotEmpty() }
@@ -1786,9 +1790,12 @@ private fun buildLineSyncedLrcLine(
         )
     }
 
+    // Compact mode (TikTok single-line captions) stacks the romanisation directly
+    // on top of the translation; the full player keeps the looser blank-line break.
     val combinedTranslation =
         when {
             translation.isNullOrBlank() -> normalizedRomanizedText
+            compactTranslation -> "$normalizedRomanizedText\n$translation"
             else -> "$normalizedRomanizedText\n\n$translation"
         }
 
