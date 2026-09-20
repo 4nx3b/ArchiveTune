@@ -22,15 +22,15 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.constants.TikTokMainLyricsEnabledKey
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
-import moe.rukamori.archivetune.ui.utils.smoothFadingEdge
 import moe.rukamori.archivetune.utils.rememberPreference
 
 /**
- * Compact karaoke lyrics strip for the TikTok player's main screen, rendered with
- * the enhanced lyrics library: word-timed sweep animations, smooth animated line
- * scrolling, and both translation and romanisation secondary lines driven by the
- * global lyrics preferences. Left-aligned with the song info block (and its
- * "recently played" queue pill).
+ * Karaoke caption strip for the TikTok player's main screen. Renders ONLY the
+ * active line — bigger and bolder than the old scrolling strip — together with
+ * its per-word phonetic (romanisation) and its translation, animated by the
+ * enhanced lyrics library's word-timed sweep. Left-aligned with the song info
+ * block (and its "recently played" queue pill); previous and upcoming lines are
+ * never composed.
  */
 @Composable
 internal fun TikTokMainLyrics(
@@ -62,12 +62,12 @@ internal fun TikTokMainLyrics(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(TikTokMainLyricsHeight)
-                .smoothFadingEdge(vertical = TikTokMainLyricsFade),
+                .height(TikTokMainLyricsHeight),
     ) {
         LyricsEnhanced(
             sliderPositionProvider = sliderPositionProvider,
             lyricsSyncOffset = lyricsSyncOffset,
+            singleActiveLine = true,
             textColorOverride = Color.White,
             textSizeOverride = TikTokMainLyricsTextSizeSp,
             modifier = Modifier.fillMaxSize(),
@@ -75,6 +75,8 @@ internal fun TikTokMainLyrics(
     }
 }
 
-private val TikTokMainLyricsHeight = 168.dp
-private val TikTokMainLyricsFade = 30.dp
-private const val TikTokMainLyricsTextSizeSp = 18f
+// One line cluster: main line (24sp bold, may wrap to two rows) + per-word
+// phonetic above it + translation below. Sized for the worst case without
+// stealing too much height from the artwork above.
+private val TikTokMainLyricsHeight = 140.dp
+private const val TikTokMainLyricsTextSizeSp = 24f

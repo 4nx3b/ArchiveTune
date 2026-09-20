@@ -17,10 +17,15 @@ import android.app.Activity
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -215,6 +220,15 @@ private fun extractTtmlWriters(lyrics: String?): String {
     return writers.joinToString(", ").trim()
 }
 
+/**
+ * Enhanced karaoke lyrics renderer.
+ *
+ * @param singleActiveLine when true, renders ONLY the active line cluster — the
+ *   main karaoke line (word-timed sweep), its per-word phonetic (romanisation)
+ *   and its translation — cross-fading between lines as playback advances.
+ *   Designed for compact surfaces like the TikTok player strip, where previous
+ *   and upcoming lines must not be visible and no line-list scrolling applies.
+ */
 @Composable
 fun LyricsEnhanced(
     sliderPositionProvider: () -> Long?,
@@ -224,6 +238,7 @@ fun LyricsEnhanced(
     lyricsLineBlurOverride: Boolean? = null,
 
     textSizeOverride: Float? = null,
+    singleActiveLine: Boolean = false,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val player = playerConnection.player
@@ -523,6 +538,21 @@ fun LyricsEnhanced(
         }
     val currentLineIndexState = remember { mutableIntStateOf(-1) }
 
+    // Single-active-line mode (TikTok strip): pick the currently-sung line out of
+    // the fully-built karaoke model. Metadata lines (provider header at start<0,
+    // composer footer at start>=1h) are skipped so the strip only ever shows real
+    // lyrics; before the first line and after the last one it renders nothing.
+    val activeKaraokeLine =
+        remember(syncedLyrics, currentLineIndexState.intValue, singleActiveLine) {
+            if (!singleActiveLine) {
+                null
+            } else {
+                val index = currentLineIndexState.intValue
+                val line = syncedLyrics.lines.getOrNull(index)
+                if (line != null && line.start >= 0 && line.start < 86_400_000) line else null
+            }
+        }
+
     val latestSyncedLyrics = rememberUpdatedState(syncedLyrics)
 
     var positionResetCounter by remember { mutableIntStateOf(0) }
@@ -720,7 +750,9 @@ fun LyricsEnhanced(
     val latestSyncedLyricsForScroll = rememberUpdatedState(syncedLyrics)
 
     LaunchedEffect(lyricsSessionKey, isSynced, positionResetCounter, karaokeGeneration) {
-        if (!isSynced) {
+        if (!isSynced || singleActiveLine) {
+            // Single-line mode never scrolls a lyric list, so there is no first
+            // focus to wait for — fade the strip in right away.
             awaitingFirstFocus = false
             return@LaunchedEffect
         }
@@ -1007,6 +1039,32 @@ fun LyricsEnhanced(
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
+            }
+
+            // TikTok-style strip: only the active line cluster is ever composed —
+            // no line list, no scrolling, no previous/upcoming lines.
+            singleActiveLine && isSynced -> {
+                key(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        androidx.compose.material3.LocalTextStyle provides phoneticTextStyle,
+                    ) {
+                        SingleActiveKaraokeLine(
+                            activeLine = activeKaraokeLine,
+                            currentPosition = playbackSyncPosition,
+                            textColor = textColor,
+                            normalTextStyle = normalTextStyle,
+                            accompanimentTextStyle = accompanimentTextStyle,
+                            phoneticTextStyle = phoneticTextStyle,
+                            showTranslation = showTranslations,
+                            onLineClick = { line ->
+                                if (lyricsClick && line.start > 0) {
+                                    player.seekTo(line.start.toLong())
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
             }
 
             else -> {
@@ -1740,4 +1798,64 @@ private fun buildLineSyncedLrcLine(
         start = start,
         end = end,
     )
+}
+
+/**
+ * Renders exactly one karaoke line cluster — the main line with its word-timed
+ * sweep, the per-word phonetic (romanisation) above it and the translation
+ * below it — using the enhanced lyrics library's own [KaraokeLyricsView] so the
+ * word sweep, gradient fill and text layouts stay identical to the full player.
+ *
+ * A [LazyListState] is created per target line inside [AnimatedContent] so the
+ * outgoing and incoming line clusters never share a list state during the
+ * cross-fade transition.
+ */
+@Composable
+private fun SingleActiveKaraokeLine(
+    activeLine: ISyncedLine?,
+    currentPosition: () -> Int,
+    textColor: Color,
+    normalTextStyle: TextStyle,
+    accompanimentTextStyle: TextStyle,
+    phoneticTextStyle: TextStyle,
+    showTranslation: Boolean,
+    onLineClick: (ISyncedLine) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedContent(
+        targetState = activeLine,
+        transitionSpec = {
+            (fadeIn(tween(durationMillis = 240, easing = LinearEasing)) +
+                slideInVertically(
+                    animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
+                    initialOffsetY = { it / 5 },
+                )).togetherWith(fadeOut(tween(durationMillis = 160, easing = LinearEasing)))
+        },
+        label = "single-active-lyric-line",
+        modifier = modifier,
+    ) { line ->
+        val lineListState = remember(line) { LazyListState() }
+        if (line != null) {
+            KaraokeLyricsView(
+                listState = lineListState,
+                lyrics = SyncedLyrics(listOf(line)),
+                currentPosition = currentPosition,
+                onLineClicked = onLineClick,
+                onLinePressed = {},
+                textColor = textColor,
+                normalLineTextStyle = normalTextStyle,
+                accompanimentLineTextStyle = accompanimentTextStyle,
+                phoneticTextStyle = phoneticTextStyle,
+                blendMode = BlendMode.SrcOver,
+                useBlurEffect = false,
+                showTranslation = showTranslation,
+                showPhonetic = true,
+                offset = 0.dp,
+                keepAliveZone = 8.dp,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize())
+        }
+    }
 }
