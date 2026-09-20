@@ -257,7 +257,7 @@ object SourceCheckService {
     }
 
     private fun probeQobuzBackupEndpoint(base: String): EndpointProbe {
-        val resolverUrl = "$base/api/stream?id=$KOZU_PROBE_YT_ID" (fix(sources+queue+video+settings): 4-item batch — lossless API host, add-to-queue position, AM queue full view, video quality High=4K + persistence, settings search toggles + autoscroll anchors)
+        val resolverUrl = "$base/api/stream?id=$KOZU_PROBE_YT_ID"
         return runCatching {
             val resolverRequest = Request.Builder()
                 .url(resolverUrl)

@@ -728,7 +728,7 @@ internal fun PlaybackSourceSections(
         }
 
         item {
-            SourceCheckRow(source = AudioSourceType.AMAZON)
+            SourceCheckRow(source = AudioSourceType.AMAZON, positions = positions)
         }
     }
 

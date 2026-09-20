@@ -13,6 +13,8 @@ import org.json.JSONObject
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
+import kotlinx.coroutines.*
+import okhttp3.*
 
 private sealed class GatewayFrame {
     data class Text(
