@@ -278,7 +278,11 @@ internal suspend fun hasAnyCanvasSource(
         if (spotify != null && !spotify.preferredAnimationUrl.isNullOrBlank()) return true
     }
 
-    CanvasResolutionMissCache.markMissed(mediaId, requireVertical = false)
+    // Only remember the miss when the enabled sources were actually queried — a caller
+    // that disabled both must not poison the cache for the ones that did look.
+    if (includeAppleMusic || (includeSpotify && strictIdentity)) {
+        CanvasResolutionMissCache.markMissed(mediaId, requireVertical = false)
+    }
     return false
 }
 
