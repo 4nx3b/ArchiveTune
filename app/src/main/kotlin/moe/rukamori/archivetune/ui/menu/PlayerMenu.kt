@@ -1636,6 +1636,10 @@ private suspend fun searchOneSource(
             }
 
             AudioSourceType.AMAZON -> emptyList()
+
+            // No partner credentials in this build — the catalogue search has nothing
+            // to query, and reporting "no results" keeps the pill honest about it.
+            AudioSourceType.QQ -> emptyList()
         }
     }
 
