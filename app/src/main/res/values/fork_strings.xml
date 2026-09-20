@@ -174,10 +174,6 @@
     <string name="sponsor_block_hooks">Hook/Greetings</string>
 
     <string name="tiktok_main_lyrics">Show lyrics on main player</string>
-    <string name="tiktok_main_lyrics_desc">Display the current line with karaoke animation and line scroll on the TikTok player screen</string>
-    <string name="tiktok_main_lyrics_secondary">Secondary lyrics line</string>
-    <string name="tiktok_main_lyrics_secondary_desc">Choose whether the second line under the current lyric shows the translation or the romanisation — only one can be shown at a time</string>
-    <string name="tiktok_lyrics_secondary_translation">Translation</string>
-    <string name="tiktok_lyrics_secondary_romanization">Romanisation</string>
+    <string name="tiktok_main_lyrics_desc">Display a scrolling karaoke lyrics strip with word animation, translation and romanisation on the TikTok player screen, aligned with the song info</string>
 
 </resources>

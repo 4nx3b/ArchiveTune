@@ -393,14 +393,13 @@ internal fun TikTokSongPage(
             }
 
             if (!immersive && isCurrentPage && !lyricsOpen) {
-                TikTokCurrentLyricLine(
-                    playerConnection = playerConnection,
-                    positionProvider = sliderPositionProvider,
+                TikTokMainLyrics(
+                    sliderPositionProvider = sliderPositionProvider,
                     lyricsSyncOffset = lyricsSyncOffset,
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 20.dp)
+                            .padding(horizontal = 16.dp)
                             .padding(bottom = 4.dp),
                 )
             }

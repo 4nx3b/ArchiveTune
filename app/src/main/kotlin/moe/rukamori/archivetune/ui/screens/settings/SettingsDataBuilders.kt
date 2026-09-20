@@ -197,7 +197,6 @@ fun buildSettingsGroups(
                 SettingsChild("Enable canvas in album, playlist and artist page", "album_canvas_enabled", listOf("album canvas", "playlist canvas", "artist canvas", "canvas in album", "canvas in playlist", "canvas in artist", "canvas page", "motion artwork", "animated cover", "album header video", "playlist header video", "artist header video")) { SearchResultSwitch(AlbumCanvasEnabledKey, true) },
                 SettingsChild("Player design style", "player_design_style", listOf("player design", "player layout", "player style")),
                 SettingsChild("Show lyrics on main player (TikTok)", "tiktok_main_lyrics", listOf("tiktok lyrics", "main player lyrics", "current line lyrics", "karaoke line", "tiktok player")) { SearchResultSwitch(TikTokMainLyricsEnabledKey, false) },
-                SettingsChild("Secondary lyrics line (TikTok)", "tiktok_main_lyrics_secondary", listOf("tiktok translation", "tiktok romanisation", "tiktok romanization", "secondary lyrics line", "lyrics translation or romanisation")),
                 SettingsChild("Player background style", "player_background_style", listOf("player background", "player bg", "background style")),
                 SettingsChild("Lyrics background style", "lyrics_background_style", listOf("lyrics background", "lyrics bg")),
                 SettingsChild("Mini player background style", "mini_player_background_style", listOf("mini player", "mini player background")),
