@@ -193,12 +193,11 @@ fun AppleMusicQueueSheet(
 
             mutableQueueWindows.move(actualFromQueueIndex, toQueueIndex)
 
-            val destinationUid: Any? =
-                if (toQueueIndex == 0) {
-                    currentPlayingUid
-                } else {
-                    mutableQueueWindows.getOrNull(toQueueIndex - 1)?.uid
-                }
+            // Anchor on the item above the drop position; a drop at the very
+            // top targets physical index 0 (destinationUid null). The current
+            // song itself stays put — a full-queue list no longer starts at
+            // the current row.
+            val destinationUid: Any? = mutableQueueWindows.getOrNull(toQueueIndex - 1)?.uid
             dragInfo = AMQueueDragInfo(draggedItemUid, destinationUid)
         }
 
@@ -252,8 +251,11 @@ fun AppleMusicQueueSheet(
 
         Snapshot.withMutableSnapshot {
             mutableQueueWindows.clear()
-            val startIndex = currentWindowIndex.coerceAtLeast(0)
-            mutableQueueWindows.addAll(queueWindows.drop(startIndex))
+            // The full queue in play order — songs already played stay visible
+            // above the current one (dimmed) instead of being hidden: clicking
+            // a song deep in a playlist or shuffling must not make the rest of
+            // the playlist disappear from the queue view.
+            mutableQueueWindows.addAll(queueWindows)
         }
     }
 
@@ -397,6 +399,8 @@ fun AppleMusicQueueSheet(
                 ) {
                     val isActive = window.uid == currentPlayingUid
                     val metadata = window.mediaItem.metadata ?: return@ReorderableItem
+                    val isPlayed =
+                        currentWindowIndex >= 0 && index < currentWindowIndex && !isActive
 
                     val dismissBoxState =
                         rememberSwipeToDismissBoxState(
@@ -440,7 +444,7 @@ fun AppleMusicQueueSheet(
 
                                 showActiveContainer = false,
 
-                                textColorOverride = Color.White,
+                                textColorOverride = if (isPlayed) Color.White.copy(alpha = 0.55f) else Color.White,
                                 trailingContent = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         IconButton(

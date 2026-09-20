@@ -419,7 +419,9 @@ fun StorageSettings(
                     )
                 }
                 item(visible = maxSongCacheSize > 0) {
-                    CacheUsagePreference(progress = playerCacheProgress)
+                    Column(modifier = positions.modifierFor("size_used")) {
+                        CacheUsagePreference(progress = playerCacheProgress)
+                    }
                 }
                 item {
                     PreferenceEntry(
@@ -652,7 +654,7 @@ private fun StorageFolderSection(
     positions: PreferencePositions,
 ) {
     PreferenceGroup(
-        modifier = positions.modifierFor("storage_folder"),
+        modifier = positions.modifierFor("storage_folder", "download_location", "storage_folder_pick"),
         title = stringResource(R.string.storage_folder),
     ) {
         when (state) {

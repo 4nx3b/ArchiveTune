@@ -132,9 +132,62 @@ private const val VideoReadyHoldTimeoutMs = 10000L
 
 private const val VideoClientAttemptTimeoutMs = 8000L
 
-private const val VideoSimpMusicAttemptTimeoutMs = 12000L
+private const val VideoSimpMusicAttemptTimeoutMs = 6000L
 
 private const val VideoLoadResumeDelayMs = 1000L
+
+/**
+ * The WEB_REMIX player responses (the SimpMusic extractor and YouTube Music
+ * web client) top out at 1080p — they can never satisfy a High-quality
+ * request on a 4K-capable device, so >1080p ceilings must keep hunting down
+ * the client chain instead of settling for the first success.
+ */
+private const val WebRemixMaxVideoHeight = 1080
+
+/** Clients whose responses are known to cap at 1080p — demoted to the tail of the chain when a higher ceiling is requested. */
+private val LowCeilingVideoClientNames =
+    setOf(
+        "WEB_REMIX",
+        "ANDROID_MUSIC",
+        "IOS_MUSIC",
+        "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
+        "WEB_EMBEDDED",
+    )
+
+/**
+ * In-memory cache of resolved video streams, keyed by videoId + quality
+ * ceiling. A cached hit resolves instantly — re-visiting a video (queue
+ * cycling, quality re-picks, sheet re-opens) never pays the extractor
+ * round-trip again. Entries carry the resolution time and expire well
+ * before YouTube's stream URLs do.
+ */
+private const val VideoStreamInfoCacheMaxEntries = 16
+
+private const val VideoStreamInfoCacheValidityMs = 45 * 60 * 1000L
+
+private val videoStreamInfoCache =
+    java.util.Collections.synchronizedMap(LinkedHashMap<String, Pair<Long, VideoStreamInfo>>())
+
+private fun resolveVideoStreamInfoFromCache(cacheKey: String): VideoStreamInfo? {
+    val cached = videoStreamInfoCache[cacheKey] ?: return null
+    val (cachedAtMs, info) = cached
+    val fresh = System.currentTimeMillis() - cachedAtMs < VideoStreamInfoCacheValidityMs
+    if (!fresh) videoStreamInfoCache.remove(cacheKey)
+    return if (fresh) info else null
+}
+
+private fun cacheResolvedVideoStreamInfo(
+    cacheKey: String,
+    info: VideoStreamInfo,
+) {
+    synchronized(videoStreamInfoCache) {
+        videoStreamInfoCache[cacheKey] = System.currentTimeMillis() to info
+        while (videoStreamInfoCache.size > VideoStreamInfoCacheMaxEntries) {
+            val eldest = videoStreamInfoCache.keys.firstOrNull() ?: break
+            videoStreamInfoCache.remove(eldest)
+        }
+    }
+}
 
 data class VideoStreamInfo(
     val streamUrl: String,
@@ -1329,8 +1382,30 @@ private suspend fun resolveVideoStreamUrl(
     videoId: String,
     preferredHeight: Int?,
 ): VideoStreamInfo? {
+    val heightCeiling = maxVideoHeightFor(preferredHeight)
+    val cacheKey = "$videoId|$heightCeiling"
+    resolveVideoStreamInfoFromCache(cacheKey)?.let { return it }
 
-    resolveVideoStreamUrlViaSimpMusic(videoId, preferredHeight)?.let { return it }
+    // SimpMusic resolver first — the same machinery the audio path trusts
+    // (YTPlayerUtils.playerResponseForPlaybackOnce). It runs a WEB_REMIX player
+    // request and splices NewPipe-harvested URLs into the response by itag, so
+    // video formats come back with working URLs even when the direct innertube
+    // URLs are bot-blocked or 403'd — the failure mode that leaves the video
+    // surface stuck on the artwork fallback (a zoomed still) while audio keeps
+    // playing through the SimpMusic-resolved stream. Returns null on any
+    // failure so the per-client innertube chain below remains the fallback.
+    //
+    // WEB_REMIX responses cap at 1080p: when the requested ceiling is higher,
+    // the attempt is skipped outright — it can never satisfy the request, and
+    // its multi-second round-trip is the biggest single chunk of the video
+    // start latency the user waits through.
+    var bestResult: VideoStreamInfo? = null
+    if (heightCeiling <= WebRemixMaxVideoHeight) {
+        resolveVideoStreamUrlViaSimpMusic(videoId, preferredHeight)?.let {
+            cacheResolvedVideoStreamInfo(cacheKey, it)
+            return it
+        }
+    }
 
     val authState = YouTube.currentPlaybackAuthState()
     val preferredClient =
@@ -1341,13 +1416,27 @@ private suspend fun resolveVideoStreamUrl(
     val clients = YTPlayerUtils.buildStreamClientOrder(preferredClient, authState)
 
     val usableClients =
-        clients.filterNot { client ->
-            YTPlayerUtils.isStreamClientBlocked(
+        clients
+            .filterNot { client ->
+                YTPlayerUtils.isStreamClientBlocked(
                     videoId = videoId,
                     clientKey = StreamClientUtils.buildClientKey(client),
                     authFingerprint = authState.fingerprint,
                 )
-        }
+            }.let { ordered ->
+                if (heightCeiling > WebRemixMaxVideoHeight) {
+                    // Clients known to cap at 1080p can never satisfy a higher
+                    // request — demote them to the tail so the 4K-capable ones
+                    // answer first. They still run at the end and serve as the
+                    // best-effort fallback when the video itself tops out at
+                    // 1080p or below.
+                    val (highCeiling, lowCeiling) =
+                        ordered.partition { it.clientName !in LowCeilingVideoClientNames }
+                    highCeiling + lowCeiling
+                } else {
+                    ordered
+                }
+            }
 
     for (client in usableClients) {
         val usesCookieAuthentication = authState.hasPlaybackLoginContext && client.supportsCookieAuthentication
@@ -1415,11 +1504,28 @@ private suspend fun resolveVideoStreamUrl(
 
         val streamInfo = result.getOrNull()
         if (streamInfo != null && streamInfo.streamUrl.isNotBlank()) {
-            YTPlayerUtils.markStreamUrlSuccessful(streamInfo.streamUrl)
+            if ((streamInfo.selectedHeight ?: 0) >= heightCeiling) {
+                // Reached the requested ceiling — nothing better exists.
+                YTPlayerUtils.markStreamUrlSuccessful(streamInfo.streamUrl)
+                Timber
+                    .tag(VideoPlaybackLogTag)
+                    .i("Resolved video stream for $videoId via ${client.clientName}@${client.clientVersion} at ${streamInfo.selectedHeight}p")
+                cacheResolvedVideoStreamInfo(cacheKey, streamInfo)
+                return streamInfo
+            }
+            // The client worked but its catalogue stops below the requested
+            // ceiling (or the video itself maxes out there). Keep it as the
+            // best-so-far fallback and keep hunting for a higher rendition —
+            // this is NOT a client failure, so no failure marking.
+            if ((streamInfo.selectedHeight ?: 0) > (bestResult?.selectedHeight ?: Int.MIN_VALUE)) {
+                bestResult = streamInfo
+            }
             Timber
                 .tag(VideoPlaybackLogTag)
-                .i("Resolved video stream for $videoId via ${client.clientName}@${client.clientVersion}")
-            return streamInfo
+                .i(
+                    "Video stream via ${client.clientName} reached only ${streamInfo.selectedHeight}p for $videoId (ceiling ${heightCeiling}p) — continuing",
+                )
+            continue
         }
 
         if (autoChoose) {
@@ -1435,6 +1541,17 @@ private suspend fun resolveVideoStreamUrl(
                 .tag(VideoPlaybackLogTag)
                 .w(error, "Video stream resolution failed for $videoId via ${client.clientName}@${client.clientVersion}")
         }
+    }
+
+    if (bestResult != null) {
+        // The video (or every surviving client) tops out below the ceiling —
+        // the highest rendition found wins.
+        YTPlayerUtils.markStreamUrlSuccessful(bestResult.streamUrl)
+        Timber
+            .tag(VideoPlaybackLogTag)
+            .i("Resolved video stream for $videoId at ${bestResult.selectedHeight}p (best available below the ${heightCeiling}p ceiling)")
+        cacheResolvedVideoStreamInfo(cacheKey, bestResult)
+        return bestResult
     }
 
     Timber.tag(VideoPlaybackLogTag).w("All video stream clients exhausted for $videoId")

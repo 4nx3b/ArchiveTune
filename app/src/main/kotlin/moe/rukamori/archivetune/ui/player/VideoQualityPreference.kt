@@ -17,6 +17,9 @@ object VideoQualityPreference {
 
     const val HIGH_QUALITY = -2
 
+    /** Sentinel for the persisted "Auto" choice ([preferredHeight] is nullable). */
+    const val STORED_AUTO = 0
+
     const val AUTO_HEIGHT_CEILING = 1080
 
     const val DATA_SAVER_HEIGHT_CEILING = 480
@@ -34,6 +37,10 @@ object VideoQualityPreference {
             }
         return minOf(requested, deviceMax)
     }
+
+    fun toPreferredHeight(stored: Int): Int? = if (stored == STORED_AUTO) null else stored
+
+    fun toStoredQuality(preferredHeight: Int?): Int = preferredHeight ?: STORED_AUTO
 }
 
 object VideoDecoderCapabilities {

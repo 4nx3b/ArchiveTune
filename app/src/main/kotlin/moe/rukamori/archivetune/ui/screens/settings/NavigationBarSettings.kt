@@ -238,7 +238,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 item {
                     Column {
                         SwitchPreference(
-                            modifier = positions.modifierFor("navigation_bar_frosted_blur"),
+                            modifier = positions.modifierFor("navigation_bar_frosted_blur", "frosted_nav_bar"),
                             title = { Text(stringResource(R.string.navigation_bar_frosted_blur)) },
                             description = stringResource(R.string.navigation_bar_frosted_blur_desc),
                             icon = { Icon(painterResource(R.drawable.blur_on), null) },

@@ -4789,7 +4789,25 @@ class MusicService :
             return
         }
         suppressAutoPlayback = false
-        player.addMediaItems(allowedItems)
+        // "Add to queue" places songs right below the currently playing song
+        // instead of at the queue's tail: songs added one by one all land
+        // under the current song, so they play up next rather than being
+        // buried at the bottom. Shuffle mode gets the same next-up guarantee
+        // via the play-next shuffle order.
+        val insertionIndex = if (player.mediaItemCount == 0) 0 else player.currentMediaItemIndex + 1
+        val addQueueShuffleOrder =
+            if (player.shuffleModeEnabled && player.mediaItemCount > 0) {
+                buildPlayNextShuffleOrder(
+                    currentIndex = player.currentMediaItemIndex,
+                    insertionIndex = insertionIndex,
+                    insertionCount = allowedItems.size,
+                )
+            } else {
+                null
+            }
+
+        player.addMediaItems(insertionIndex, allowedItems)
+        addQueueShuffleOrder?.let(localPlayer::setShuffleOrder)
         player.prepare()
     }
 
@@ -10007,7 +10025,7 @@ class MusicService :
             }.getOrNull() ?: return null
 
         Timber.tag("MusicService").i(
-            "Qobuz backup resolved \"%s\" via mlc-ytify.kouzu.in → %s [%s%s%s]",
+            "Qobuz backup resolved \"%s\" via mls.kouzu.in → %s [%s%s%s]",
             query.title,
             resolved.uri.take(80),
             resolved.contentType,
