@@ -72,6 +72,7 @@ import dev.chrisbanes.haze.hazeSource
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.getValue
+import moe.rukamori.archivetune.constants.*
 
 @Composable
 fun ContentSettings(

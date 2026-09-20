@@ -90,6 +90,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import moe.rukamori.archivetune.constants.*
+import moe.rukamori.archivetune.ui.component.*
 
 @Composable
 fun InternetWarningBox(modifier: Modifier = Modifier) {

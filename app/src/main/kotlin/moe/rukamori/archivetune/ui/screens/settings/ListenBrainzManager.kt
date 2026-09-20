@@ -18,6 +18,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.*
 
 object ListenBrainzManager {
     private val logTag = "ListenBrainzManager"

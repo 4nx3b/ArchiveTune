@@ -79,6 +79,8 @@ import java.util.*
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlin.system.exitProcess
+import moe.rukamori.archivetune.constants.*
+import moe.rukamori.archivetune.extensions.*
 
 @HiltAndroidApp
 class App :

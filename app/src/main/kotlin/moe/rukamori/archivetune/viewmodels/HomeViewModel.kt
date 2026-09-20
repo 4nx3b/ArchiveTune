@@ -78,6 +78,7 @@ import moe.rukamori.archivetune.utils.reportException
 import moe.rukamori.archivetune.utils.toPlaybackAuthState
 import timber.log.Timber
 import javax.inject.Inject
+import moe.rukamori.archivetune.db.entities.*
 
 sealed interface AccountChannelsState {
     data object Loading : AccountChannelsState
