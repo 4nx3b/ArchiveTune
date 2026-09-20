@@ -41,6 +41,8 @@ import moe.rukamori.archivetune.backup.BackupArchiveCategory
 import moe.rukamori.archivetune.backup.BackupArchiveRepository
 import moe.rukamori.archivetune.backup.BackupArchiveStep
 import moe.rukamori.archivetune.backup.CreateBackupUseCase
+import moe.rukamori.archivetune.backup.LyricsBackup
+import moe.rukamori.archivetune.backup.mergeLyricsIntoDatabase
 import moe.rukamori.archivetune.backup.ObserveScheduledBackupSettingsUseCase
 import moe.rukamori.archivetune.backup.ScheduledBackupFrequency
 import moe.rukamori.archivetune.backup.ScheduledBackupSettings
@@ -86,6 +88,8 @@ enum class BackupCategory {
     LIBRARY,
     ACCOUNT,
     SETTINGS,
+    LYRICS,
+    CANVAS,
 }
 
 data class BackupValidationResult(
@@ -347,6 +351,14 @@ class BackupRestoreViewModel
                                     }
 
                                     BackupArchiveStep.COPY_CUSTOM_FONTS -> {
+                                        context.getString(R.string.backup_step_copying_file, progress.fileName.orEmpty())
+                                    }
+
+                                    BackupArchiveStep.EXPORT_LYRICS -> {
+                                        context.getString(R.string.backup_step_export_lyrics)
+                                    }
+
+                                    BackupArchiveStep.COPY_CANVAS_FILE -> {
                                         context.getString(R.string.backup_step_copying_file, progress.fileName.orEmpty())
                                     }
                                 }
@@ -629,6 +641,8 @@ class BackupRestoreViewModel
                     val includeSettings = BackupCategory.SETTINGS in categories
                     val includeAccount = BackupCategory.ACCOUNT in categories
                     val includeLibrary = BackupCategory.LIBRARY in categories
+                    val includeLyrics = BackupCategory.LYRICS in categories
+                    val includeCanvas = BackupCategory.CANVAS in categories
                     val settingsExcludedKeys = if (includeAccount) emptySet() else ACCOUNT_PREF_KEYS
                     emitProgress(
                         title = title,
@@ -654,11 +668,14 @@ class BackupRestoreViewModel
                     if (includeLibrary && !hasDb) throw IllegalStateException("Backup missing database")
 
                     val includeStatsMerge = !includeLibrary && hasStats
+                    val includeLyricsMerge = includeLyrics && LyricsBackup.ZIP_ENTRY_NAME in entryNames
                     val restoreEntries =
                         entryNames.filter { name ->
                             (includeSettings && (name == SETTINGS_XML_FILENAME || name == SETTINGS_FILENAME)) ||
                                 (includeSettings && name.startsWith("$FONTS_ZIP_PREFIX/")) ||
                                 (includeStatsMerge && name == StatsBackup.ZIP_ENTRY_NAME) ||
+                                (includeLyricsMerge && name == LyricsBackup.ZIP_ENTRY_NAME) ||
+                                (includeCanvas && name.startsWith("$CANVAS_ZIP_PREFIX/")) ||
                                 (
                                     includeLibrary && (
                                         name == InternalDatabase.DB_NAME ||
@@ -712,6 +729,17 @@ class BackupRestoreViewModel
                                         }
                                     }
 
+                                    LyricsBackup.ZIP_ENTRY_NAME -> {
+                                        emit(context.getString(R.string.restore_step_restoring_lyrics), indeterminate = true)
+                                        val payload =
+                                            runCatching {
+                                                LyricsBackup.decode(zip.readBytes().toString(Charsets.UTF_8))
+                                            }.getOrNull()
+                                        if (payload != null) {
+                                            mergeLyricsIntoDatabase(database, payload)
+                                        }
+                                    }
+
                                     SETTINGS_XML_FILENAME -> {
                                         emit(context.getString(R.string.restore_step_restoring_settings), indeterminate = true)
                                         restoreSettingsFromXml(context, zip, settingsExcludedKeys)
@@ -750,6 +778,24 @@ class BackupRestoreViewModel
                                             val fontFile = fontsDir / fontFileName
                                             fontFile.outputStream().use { out ->
                                                 zip.copyTo(out)
+                                            }
+                                        } else if (includeCanvas && name.startsWith("$CANVAS_ZIP_PREFIX/")) {
+                                            emit(context.getString(R.string.restore_step_restoring_file, name), indeterminate = true)
+                                            val canvasDir =
+                                                runCatching {
+                                                    moe.rukamori.archivetune.storage.StorageLocationRepository
+                                                        .cacheDirectory(
+                                                            context.applicationContext,
+                                                            moe.rukamori.archivetune.storage.StorageFolderKind.CANVAS_CACHE,
+                                                        )
+                                                }.getOrNull()
+                                            if (canvasDir != null) {
+                                                if (!canvasDir.exists()) canvasDir.mkdirs()
+                                                val canvasFileName = name.removePrefix("$CANVAS_ZIP_PREFIX/")
+                                                val canvasFile = canvasDir / canvasFileName
+                                                canvasFile.outputStream().use { out ->
+                                                    zip.copyTo(out)
+                                                }
                                             }
                                         }
                                     }
@@ -1069,12 +1115,20 @@ class BackupRestoreViewModel
                         val categories = mutableSetOf<BackupCategory>()
                         val hasSettings = SETTINGS_XML_FILENAME in entryNames || SETTINGS_FILENAME in entryNames
                         val hasDb = entryNames.any { it.startsWith(InternalDatabase.DB_NAME) }
+                        val hasLyrics = LyricsBackup.ZIP_ENTRY_NAME in entryNames
+                        val hasCanvas = entryNames.any { it.startsWith("$CANVAS_ZIP_PREFIX/") }
                         if (hasSettings) {
                             categories.add(BackupCategory.SETTINGS)
                             categories.add(BackupCategory.ACCOUNT)
                         }
                         if (hasDb) {
                             categories.add(BackupCategory.LIBRARY)
+                        }
+                        if (hasLyrics) {
+                            categories.add(BackupCategory.LYRICS)
+                        }
+                        if (hasCanvas) {
+                            categories.add(BackupCategory.CANVAS)
                         }
                         if (categories.isEmpty()) {
                             return@withContext BackupValidationResult(
@@ -1104,6 +1158,7 @@ class BackupRestoreViewModel
             const val SETTINGS_XML_FILENAME = BackupArchiveRepository.SETTINGS_XML_FILENAME
             const val CUSTOM_FONTS_DIR_NAME = BackupArchiveRepository.CUSTOM_FONTS_DIR_NAME
             const val FONTS_ZIP_PREFIX = BackupArchiveRepository.FONTS_ZIP_PREFIX
+            const val CANVAS_ZIP_PREFIX = BackupArchiveRepository.CANVAS_ZIP_PREFIX
 
             val ACCOUNT_PREF_KEYS: Set<String> = BackupArchiveRepository.ACCOUNT_PREFERENCE_KEYS
         }

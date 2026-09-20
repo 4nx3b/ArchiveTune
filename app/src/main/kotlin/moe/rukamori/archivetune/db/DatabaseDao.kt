@@ -1660,6 +1660,9 @@ interface DatabaseDao {
     @Query("SELECT id FROM song")
     suspend fun allSongIdsOnce(): List<String>
 
+    @Query("SELECT * FROM lyrics")
+    suspend fun allLyricsOnce(): List<LyricsEntity>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEvents(events: List<Event>): List<Long>
 
