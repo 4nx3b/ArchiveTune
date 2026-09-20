@@ -1667,6 +1667,7 @@ private fun SongSourceDialog(
     onPlayFromSource: (SourceSearchResult) -> Unit,
     initialQuery: String = "",
 ) {
+    val context = LocalContext.current
     var searchMode by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var sourceFilter by rememberSaveable { mutableStateOf<AudioSourceType?>(null) }
