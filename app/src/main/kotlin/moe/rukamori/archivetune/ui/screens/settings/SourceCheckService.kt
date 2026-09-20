@@ -88,14 +88,14 @@ object SourceCheckService {
         // only, and a build without partner credentials cannot even open a session.
         if (!QqMusicProvider.isConfigured()) {
             SourceCheckResult(
-                healthy = false,
+                status = SourceCheckStatus.UNSUPPORTED,
                 summary = "QQ Music needs a Tencent Music partner application (QQ_PARTNER_APP_ID). " +
                     "There is no public personal-developer playback API, so until the maintainer " +
                     "registers as a partner this source stays inert and playback falls through.",
             )
         } else {
             SourceCheckResult(
-                healthy = true,
+                status = SourceCheckStatus.READY,
                 summary = "Partner credentials are present. QQ Music resolves through Tencent's " +
                     "documented OpenAPI; encrypted formats are reported unavailable rather than bypassed.",
             )
@@ -491,7 +491,7 @@ private data class CdnProbe(
         // healthy would promise playback that cannot happen.
         if (!AmazonMusicProvider.isConfigured()) {
             return SourceCheckResult(
-                healthy = false,
+                status = SourceCheckStatus.UNSUPPORTED,
                 summary = "Amazon Music needs an approved Web API security profile (AMAZON_LWA_CLIENT_ID) " +
                     "in this build. Until the maintainer provisions one the source stays inert and " +
                     "playback falls through to the next source.",
@@ -514,7 +514,7 @@ private data class CdnProbe(
                 }
             }.joinToString(" + ")
         return SourceCheckResult(
-            healthy = true,
+            status = SourceCheckStatus.READY,
             summary = "Credentials: $origin. Playback resolves through Amazon's Web API and is licensed " +
                 "by Amazon's own server for the signed-in account; the quality tier the account is " +
                 "entitled to is the tier it gets.",
