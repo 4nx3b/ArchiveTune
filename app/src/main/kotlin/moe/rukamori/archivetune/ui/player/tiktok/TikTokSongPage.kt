@@ -399,7 +399,10 @@ internal fun TikTokSongPage(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
+                            // Mirror the title/artist clearance: the right-side
+                            // rail (~58dp of buttons, bottom-anchored and tall)
+                            // must never overlap or cut the wrapped lyric rows.
+                            .padding(start = 16.dp, end = TIKTOK_CAPTION_TEXT_CLEARANCE + 16.dp)
                             .padding(bottom = 4.dp),
                 )
             }

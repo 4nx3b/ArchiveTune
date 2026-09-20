@@ -59,6 +59,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,12 +80,17 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalListenTogetherManager
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.listentogether.ChatMessagePayload
 import moe.rukamori.archivetune.listentogether.RepliedMessage
+import moe.rukamori.archivetune.listentogether.TrackInfo
+import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -102,11 +108,21 @@ fun CommentTogetherScreen(navController: NavController) {
     var editingMessage by remember { mutableStateOf<ChatMessagePayload?>(null) }
     var actionTarget by remember { mutableStateOf<MessageActionTarget?>(null) }
     var showEmojiPicker by remember { mutableStateOf(false) }
+    var jumpTargetKey by remember { mutableStateOf<String?>(null) }
 
     val lazyListState = rememberLazyListState()
     val focusManager = LocalFocusManager.current
     val coroutineScope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
+
+    // Local liquid-glass source for the anchored popup: records the chat content
+    // ONLY while the popup is open. The popup is composed as a SIBLING below, so
+    // sampling this backdrop cannot recurse — drawing from the app-wide
+    // LocalLiquidGlassBackdrop here (the popup lives inside the NavHost subtree
+    // that backdrop records) caused a circular-rendering SIGSEGV on long-press.
+    val chatGlassSource = rememberLayerBackdrop()
+    val globalGlassEnabled = LocalLiquidGlassBackdrop.current != null
+    val chatGlassBackdrop = if (globalGlassEnabled) chatGlassSource else null
 
     // While the chat screen is on top, the client suppresses chat-message
     // notifications (and the shade conversation is cancelled via markChatAsRead).
@@ -115,11 +131,30 @@ fun CommentTogetherScreen(navController: NavController) {
         onDispose { manager.setChatScreenVisible(false) }
     }
 
+    // Auto-follow the newest messages only when the reader is already at (or
+    // near) the bottom — yanking the list down while someone reads pinned
+    // history would fight both them and the pinned jump.
+    val atBottom by remember {
+        derivedStateOf {
+            val info = lazyListState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = info.totalItemsCount
+            total == 0 || last >= total - 2
+        }
+    }
+
     LaunchedEffect(messages.size) {
         manager.markChatAsRead()
-        if (messages.isNotEmpty()) {
+        if (messages.isNotEmpty() && atBottom) {
             lazyListState.animateScrollToItem(messages.size - 1)
         }
+    }
+
+    // Clear the jump highlight shortly after it lands.
+    LaunchedEffect(jumpTargetKey) {
+        if (jumpTargetKey == null) return@LaunchedEffect
+        delay(1400)
+        jumpTargetKey = null
     }
 
     val latestPinned = messages.lastOrNull { it.pinned }
@@ -148,6 +183,40 @@ fun CommentTogetherScreen(navController: NavController) {
         }
     }
 
+    fun shareCurrentTrack() {
+        // Room state first (guests are synced from the host); the local player
+        // window covers hosts whose room state may lag its own track changes.
+        val track = roomState?.currentTrack ?: manager.currentLocalTrack()
+        if (track == null || track.id.isBlank() || track.id == "unknown") {
+            Toast.makeText(context, R.string.listen_together_chat_nothing_playing, Toast.LENGTH_SHORT).show()
+            return
+        }
+        manager.shareTrackToChat(track)
+    }
+
+    fun playSharedTrack(track: TrackInfo) {
+        manager.playSharedTrack(track)
+        Toast.makeText(context, R.string.listen_together_chat_play_song, Toast.LENGTH_SHORT).show()
+    }
+
+    // Root wrapper: the chat (inside the recorded box) and the anchored popup
+    // (sibling, outside it) — the structure that keeps the liquid glass
+    // non-recursive. The layerBackdrop modifier is attached ONLY while the
+    // popup is open, so normal chatting pays zero recording overhead.
+    Box(modifier = Modifier.fillMaxSize()) {
+        val recordingGlass = chatGlassBackdrop != null && actionTarget != null
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (recordingGlass) {
+                            Modifier.layerBackdrop(chatGlassSource)
+                        } else {
+                            Modifier
+                        }
+                    )
+        ) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -278,7 +347,8 @@ fun CommentTogetherScreen(navController: NavController) {
                         textInput = newText
                         if (newText.isNotBlank()) manager.notifyTyping()
                     },
-                    onSend = ::sendMessage
+                    onSend = ::sendMessage,
+                    onShareTrack = ::shareCurrentTrack,
                 )
             }
         },
@@ -297,7 +367,13 @@ fun CommentTogetherScreen(navController: NavController) {
                     onJumpTo = {
                         val index = messages.indexOfFirst { it.pinned && it.timestamp == pinned.timestamp && it.userId == pinned.userId }
                         if (index >= 0) {
-                            coroutineScope.launch { lazyListState.animateScrollToItem(index) }
+                            jumpTargetKey = "${pinned.userId}:${pinned.timestamp}"
+                            coroutineScope.launch {
+                                // Instant (not animated) so long histories snap
+                                // straight to the pinned message; the highlight
+                                // flash below marks the target row.
+                                lazyListState.scrollToItem(index)
+                            }
                         }
                     },
                 )
@@ -327,17 +403,22 @@ fun CommentTogetherScreen(navController: NavController) {
                             onToggleReaction = { msg, emoji ->
                                 manager.toggleReaction(msg, emoji)
                             },
+                            onPlayTrack = ::playSharedTrack,
+                            highlighted = jumpTargetKey == "${message.userId}:${message.timestamp}",
                         )
                     }
                 }
             }
         }
+        }
     }
 
-    // Anchored Instagram-style action popup (morph + liquid glass).
+    // Anchored Instagram-style action popup (morph + liquid glass over the
+    // locally-recorded chat layer — see chatGlassSource above).
     actionTarget?.let { target ->
         MessageActionsPopup(
             target = target,
+            backdrop = chatGlassBackdrop,
             myUsername = manager.currentUsername,
             onReact = { emoji -> manager.toggleReaction(target.message, emoji) },
             onOpenEmojiPicker = { showEmojiPicker = true },
@@ -374,6 +455,7 @@ fun CommentTogetherScreen(navController: NavController) {
             onDismiss = { showEmojiPicker = false },
         )
     }
+    }
 }
 
 @Composable
@@ -381,6 +463,7 @@ private fun ChatInputArea(
     text: String,
     onTextChange: (String) -> Unit,
     onSend: () -> Unit,
+    onShareTrack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -392,6 +475,15 @@ private fun ChatInputArea(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
+            IconButton(onClick = onShareTrack) {
+                Icon(
+                    painter = painterResource(R.drawable.music_note),
+                    contentDescription = stringResource(R.string.listen_together_chat_share_song),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+
             OutlinedTextField(
                 value = text,
                 onValueChange = onTextChange,

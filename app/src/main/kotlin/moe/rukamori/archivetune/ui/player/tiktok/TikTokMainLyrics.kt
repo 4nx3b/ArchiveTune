@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -62,7 +64,9 @@ internal fun TikTokMainLyrics(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(TikTokMainLyricsHeight),
+                .height(TikTokMainLyricsHeight)
+                .clipToBounds(),
+        contentAlignment = Alignment.BottomStart,
     ) {
         LyricsEnhanced(
             sliderPositionProvider = sliderPositionProvider,
@@ -75,8 +79,9 @@ internal fun TikTokMainLyrics(
     }
 }
 
-// One line cluster: main line (24sp bold, may wrap to two rows) + per-word
-// phonetic above it + translation below. Sized for the worst case without
-// stealing too much height from the artwork above.
-private val TikTokMainLyricsHeight = 140.dp
+// One line cluster: main line (24sp bold, may wrap to two rows) + the joined
+// phonetic row above it + the translation below — sized for the worst case
+// without stealing too much height from the artwork above, and clipped at the
+// strip edge so a freak three-row line never bleeds into the song info.
+private val TikTokMainLyricsHeight = 168.dp
 private const val TikTokMainLyricsTextSizeSp = 24f

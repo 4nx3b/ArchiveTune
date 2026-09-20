@@ -200,6 +200,67 @@ original app.
   partner credentials; the source pool refreshes every five hours instead of
   every fifteen minutes and the settings refresh row respects that interval
 
+## Fixes (16.0.4 follow-up)
+
+- Video songs start only when BOTH streams are loaded: the video player and
+  the main audio player form one start barrier now — the video is parked
+  until the audio player has finished loading (STATE_READY, not merely "not
+  buffering") and the audio is held back until the video's first frame is
+  rendered, so neither one ever runs ahead no matter how long the other
+  takes. The 10-second first-frame timeout that degraded slow-loading videos
+  to an audio-only start is gone (only a hard player error triggers the
+  artwork fallback), and the stuck-buffering watchdog now watches the
+  buffered position — a stream that is still downloading, however slowly,
+  keeps waiting instead of being declared dead
+- Video songs load much faster: the video ExoPlayer gets a fast-start load
+  control (600ms to the first frame instead of media3's default 2.5s of
+  media — 4x less to download before anything appears, with a 90s buffer
+  ceiling for aggressive prefetch), and every usable innertube client is
+  raced concurrently during stream resolution instead of paying each failing
+  client its full 8-second serial timeout
+- Long-pressing a chat message no longer crashes the app: the action popup
+  drew its liquid glass from the app-wide backdrop, which records the very
+  NavHost subtree the popup lives in — a circular rendering that killed the
+  RenderThread (SIGSEGV). The popup now samples a local backdrop recorded
+  from the chat content only, with the popup composed outside that layer;
+  the glass look (rounded 18dp sheet, refraction lens, dividers between the
+  reaction strip and the action row) is unchanged, and the no-glass fallback
+  is a properly rounded, bordered menu instead of a dark square
+- The chat's full emoji picker covers the whole Android keyboard: 3781
+  fully-qualified emoji sequences (Unicode 16.0 emoji-test data) across the
+  nine CLDR groups replace the ~214-emoji hand-picked list, and the entry
+  chip in the action popup is a "+" icon now
+- Profile pictures are real citizens of the chat: your own custom picture
+  renders on your messages (and refreshes live when you pick a new one —
+  it's re-broadcast to the room immediately, mid-session), and others'
+  pictures keep arriving through the avatar broadcast
+- Deleting a message leaves a "This message was deleted" tombstone for
+  everyone (and in the persisted history) instead of silently vanishing;
+  reply/reactions are disabled on tombstones
+- Chat history only persists conversations with other people: messages sent
+  while alone in a room are never written, so rejoining an empty room no
+  longer resurrects a monologue
+- Tapping the pinned banner jumps straight to the pinned message with a
+  highlight flash (instant scroll, and the list no longer yanks you to the
+  bottom when new messages arrive while you're reading history)
+- Links in chat messages are tappable whatever they are (any http/https URL
+  opens directly; YouTube Music links still open in-app)
+- Songs can be shared into the chat: a music-note button beside the composer
+  shares what's playing in the room as a rich card — thumbnail, title,
+  artist and duration, Instagram-style — and tapping the card plays that
+  song in the room for everyone (the host applies it directly, guests
+  suggest it and the host's auto-approve plays it)
+- TikTok captions no longer fade on long lines: the single-active-line
+  renderer is rebuilt without the lyrics library's viewport-wide fading-edge
+  mask — the mask's 100dp bottom ramp swallowed every line that wrapped to a
+  second row, dimming it "the more line there is". Word-timed karaoke sweep,
+  romanisation and translation are rendered by the app's own compact
+  cluster, fully opaque at any length
+- The TikTok caption strip sits lower — bottom-aligned directly above the
+  song info — and clears the right-side control rail (56dp end clearance
+  matching the title/artist), so wrapped lines never run under the like/
+  comment/share buttons
+
 ## Podcasts
 
 - **Podcasts, ported from upstream**: search a show and it appears as its own
