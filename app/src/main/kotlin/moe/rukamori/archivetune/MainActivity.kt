@@ -16,6 +16,8 @@ import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.speech.RecognizerIntent
 import android.content.pm.PackageManager
@@ -216,8 +218,9 @@ import moe.rukamori.archivetune.aod.ACTION_AOD_MODE
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.AppFontPreference
 import moe.rukamori.archivetune.constants.AppLanguageKey
-import moe.rukamori.archivetune.constants.AodAutoOnScreenDimKey
+import moe.rukamori.archivetune.constants.AodAutoStartScreenOffKey
 import moe.rukamori.archivetune.constants.AodAutoTimerSecondsKey
+import moe.rukamori.archivetune.constants.AodModeEnabledKey
 import moe.rukamori.archivetune.constants.CustomFontUriKey
 import moe.rukamori.archivetune.constants.CustomThemeColorKey
 import moe.rukamori.archivetune.constants.WallpaperExtractionFailedKey
@@ -403,7 +406,9 @@ class MainActivity : ComponentActivity() {
     private var pendingVoiceSearchQuery: String? = null
     private var pendingAodModeRequest = false
     private var pendingAodModeJob: Job? = null
+    private var aodPreferenceReadJob: Job? = null
     private var aodModeLaunchRequestCount by mutableIntStateOf(0)
+    private var isAodScreenOffReceiverRegistered = false
     private var pendingBackupRestoreUri by mutableStateOf<Uri?>(null)
     private var latestVersionName by mutableStateOf(BuildConfig.VERSION_NAME)
     private var latestUpdateChannel by mutableStateOf(defaultUpdateChannel)
@@ -453,10 +458,55 @@ class MainActivity : ComponentActivity() {
         connection.playFromVoiceSearch(query)
     }
 
-    private fun requestAodMode() {
-        pendingAodModeRequest = true
-        startMusicServiceSafely()
-        openPendingAodModeIfReady()
+    private fun requestAodMode(requireAutoStart: Boolean = false) {
+        aodPreferenceReadJob?.cancel()
+        aodPreferenceReadJob =
+            lifecycleScope.launch {
+                try {
+                    val preferences = dataStore.data.first()
+                    val isAodEnabled = preferences[AodModeEnabledKey] ?: true
+                    val shouldAutoStart = preferences[AodAutoStartScreenOffKey] ?: true
+                    if (!isAodEnabled || (requireAutoStart && !shouldAutoStart)) return@launch
+
+                    pendingAodModeRequest = true
+                    startMusicServiceSafely()
+                    openPendingAodModeIfReady()
+                } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                    throw cancellation
+                } catch (throwable: Throwable) {
+                    pendingAodModeRequest = false
+                    reportException(throwable)
+                }
+            }
+    }
+
+    private val aodScreenOffReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(
+                context: Context?,
+                intent: Intent?,
+            ) {
+                if (intent?.action != Intent.ACTION_SCREEN_OFF) return
+                if (playerConnection?.player?.isPlaying != true) return
+                requestAodMode(requireAutoStart = true)
+            }
+        }
+
+    private fun registerAodScreenOffReceiver() {
+        if (isAodScreenOffReceiverRegistered) return
+        val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(aodScreenOffReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(aodScreenOffReceiver, filter)
+        }
+        isAodScreenOffReceiverRegistered = true
+    }
+
+    private fun unregisterAodScreenOffReceiver() {
+        if (!isAodScreenOffReceiverRegistered) return
+        unregisterReceiver(aodScreenOffReceiver)
+        isAodScreenOffReceiverRegistered = false
     }
 
     private fun openPendingAodModeIfReady() {
@@ -494,6 +544,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        registerAodScreenOffReceiver()
         serviceBindingJob = lifecycleScope.launch {
             try {
                 if (!isMusicServiceBound) {
@@ -544,6 +595,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        unregisterAodScreenOffReceiver()
         serviceBindingJob?.cancel()
         serviceBindingJob = null
         safeUnbindMusicService()
@@ -1501,7 +1553,6 @@ class MainActivity : ComponentActivity() {
                     }
 
                     val aodAutoTimerSeconds by rememberPreference(AodAutoTimerSecondsKey, defaultValue = 0)
-                    val aodAutoOnScreenDim by rememberPreference(AodAutoOnScreenDimKey, defaultValue = false)
                     val isPlayingNow by remember(playerConnection) {
                         playerConnection?.isPlaying ?: MutableStateFlow(false)
                     }.collectAsStateWithLifecycle()
@@ -1521,36 +1572,6 @@ class MainActivity : ComponentActivity() {
                         requestAodMode()
                     }
 
-                    LaunchedEffect(
-                        aodAutoOnScreenDim,
-                        isPlayingNow,
-                        playerBottomSheetState.isExpanded,
-                        playerBottomSheetState.isDismissed,
-                        aodModeEnabled,
-                    ) {
-                        if (!aodAutoOnScreenDim) return@LaunchedEffect
-                        if (aodModeEnabled) return@LaunchedEffect
-                        if (!isPlayingNow) return@LaunchedEffect
-                        if (playerBottomSheetState.isExpanded) return@LaunchedEffect
-                        if (playerBottomSheetState.isDismissed) return@LaunchedEffect
-
-                        val systemTimeoutMs =
-                            Settings.System
-                                .getLong(
-                                    contentResolver,
-                                    Settings.System.SCREEN_OFF_TIMEOUT,
-                                    30_000L,
-                                ).coerceIn(5_000L, 600_000L)
-
-                        val triggerDelayMs = (systemTimeoutMs - 2_000L).coerceAtLeast(2_000L)
-                        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                        try {
-                            delay(triggerDelayMs)
-                            requestAodMode()
-                        } finally {
-                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                        }
-                    }
 
                     LaunchedEffect(useDarkTheme, playerBottomSheetState.isExpanded, playerBackground, aodModeEnabled) {
                         if (aodModeEnabled) return@LaunchedEffect

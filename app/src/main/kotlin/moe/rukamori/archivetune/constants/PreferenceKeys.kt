@@ -83,6 +83,26 @@ val AodHorizontalPaddingKey = floatPreferencesKey("aodHorizontalPadding")
 val AodVerticalSpacingKey = floatPreferencesKey("aodVerticalSpacing")
 val AodTitleMaxLinesKey = intPreferencesKey("aodTitleMaxLines")
 val AodAmbientIntensityKey = floatPreferencesKey("aodAmbientIntensity")
+val AodModeEnabledKey = booleanPreferencesKey("aodModeEnabled")
+val AodAutoStartScreenOffKey = booleanPreferencesKey("aodAutoStartScreenOff")
+val AodTouchLockEnabledKey = booleanPreferencesKey("aodTouchLockEnabled")
+val AodUnlockMethodKey = stringPreferencesKey("aodUnlockMethod")
+val AodShowClockKey = booleanPreferencesKey("aodShowClock")
+val AodClockStyleKey = stringPreferencesKey("aodClockStyle")
+val AodShowBatteryKey = booleanPreferencesKey("aodShowBattery")
+val AodPixelShiftEnabledKey = booleanPreferencesKey("aodPixelShiftEnabled")
+val AodShowLyricTickerKey = booleanPreferencesKey("aodShowLyricTicker")
+val AodAutoDimmingKey = booleanPreferencesKey("aodAutoDimming")
+val AodAutoDimTimeoutKey = intPreferencesKey("aodAutoDimTimeout")
+val AodGesturesEnabledKey = booleanPreferencesKey("aodGesturesEnabled")
+val AodShakeToUnlockKey = booleanPreferencesKey("aodShakeToUnlock")
+val AodAutoLockEnabledKey = booleanPreferencesKey("aodAutoLockEnabled")
+val AodAutoLockTimeoutKey = intPreferencesKey("aodAutoLockTimeout")
+val AodMarqueeTitlesKey = booleanPreferencesKey("aodMarqueeTitles")
+val AodMinimalLockedStateKey = booleanPreferencesKey("aodMinimalLockedState")
+val AodBrightnessKey = floatPreferencesKey("aodBrightness")
+val AodProximityBlackoutKey = booleanPreferencesKey("aodProximityBlackout")
+val AodTrueAmbientModeKey = booleanPreferencesKey("aodTrueAmbientMode")
 
 val AodShowLyricsKey = booleanPreferencesKey("aodShowLyrics")
 
@@ -129,11 +149,26 @@ enum class AodBackgroundStyle {
     SOFT_RADIAL,
     TONAL_EDGE,
     AMBIENT_GLOW,
+    ADAPTIVE_ART,
+    FROSTED_WALLPAPER,
+    ADAPTIVE_FROSTED,
 }
 
 enum class AodAccentStyle {
     MONOCHROME,
     THEME,
+}
+
+enum class AodUnlockMethod {
+    SLIDE,
+    HOLD,
+}
+
+enum class AodClockStyle {
+    BOLD_DIGITAL,
+    MINIMAL,
+    ELEGANT_THIN,
+    PIXEL_STACKED,
 }
 
 enum class AodContentPosition {
