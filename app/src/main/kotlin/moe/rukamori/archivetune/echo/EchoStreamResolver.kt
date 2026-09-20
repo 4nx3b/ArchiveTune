@@ -334,7 +334,6 @@ object EchoStreamResolver {
                         if (wasOriginallyAgeRestricted) {
                             streamPlayerResponse
                         } else {
-
                             val newPipeResponse = YouTube.newPipePlayer(videoId, streamPlayerResponse)
                             newPipeResponse ?: streamPlayerResponse
                         }
@@ -432,7 +431,6 @@ object EchoStreamResolver {
                     }
 
                     if (clientIndex == STREAM_FALLBACK_CLIENTS.size - 1 || isPrivatelyOwnedTrack) {
-
                         Timber.tag(TAG).i("Playback: client=${currentClient.clientName}, videoId=$videoId, private=$isPrivatelyOwnedTrack")
                         cascade += "${currentClient.clientName}=ACCEPTED(unvalidated)"
                         Fix403.i(
@@ -607,7 +605,6 @@ object EchoStreamResolver {
             }
             accepted
         } catch (e: java.io.IOException) {
-
             Timber.tag(logTag).w(e, "Stream URL HEAD probe failed (IO); accepting optimistically")
             true
         } catch (e: Exception) {
@@ -664,7 +661,6 @@ object EchoStreamResolver {
             if (skipNewPipe) {
                 Timber.tag(logTag).d("Skipping NewPipe methods for age-restricted content")
             } else {
-
                 try {
                     val deobfuscatedUrl =
                         NewPipeUtils

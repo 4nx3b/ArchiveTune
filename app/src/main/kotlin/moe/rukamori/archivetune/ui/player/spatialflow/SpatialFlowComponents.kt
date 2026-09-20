@@ -207,9 +207,7 @@ internal fun SpatialFlowBlurredBackdrop(
         }
 
         if (withScrim) {
-            // Theme-aware scrim: in light theme the gradient must be white.
-            // A black scrim over a dark artwork would sink the light-theme
-            // surface (and its near-black text) into an unreadable dark wash.
+
             val scrimBrush =
                 if (isDark) {
                     Brush.verticalGradient(
@@ -259,7 +257,6 @@ internal fun SplitLikeDislikeChip(
                 .background(backgroundColor),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-
         Row(
             modifier =
                 Modifier
@@ -520,7 +517,6 @@ internal fun LyricsMetadataFooter(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-
         if (currentSong.title.isNotBlank()) {
             Text(text = currentSong.title, style = metaStyle, maxLines = 1)
         }

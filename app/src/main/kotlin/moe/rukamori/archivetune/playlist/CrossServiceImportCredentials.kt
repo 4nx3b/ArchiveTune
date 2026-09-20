@@ -19,10 +19,8 @@ import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.dataStore
 
 object CrossServiceImportCredentials {
-
     suspend fun load(context: Context): CrossServicePlaylistImporter.Credentials =
         withContext(Dispatchers.IO) {
-
             runCatching { PoolAccountManager.loadCached(context) }
 
             val prefs = runCatching { context.dataStore.data.first() }.getOrNull()

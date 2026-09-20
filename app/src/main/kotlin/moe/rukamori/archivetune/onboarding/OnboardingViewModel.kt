@@ -39,7 +39,6 @@ class OnboardingViewModel
         private var completionJob: Job? = null
 
         init {
-
             viewModelScope.launch {
                 val restored = onboardingRepository.currentPage()
                 if (restored > 0 && currentPage.value == 0) {

@@ -34,9 +34,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import moe.rukamori.archivetune.constants.*
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
-import moe.rukamori.archivetune.extensions.*
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.YouTubeLocale
 import moe.rukamori.archivetune.kugou.KuGou
@@ -86,7 +84,6 @@ import kotlin.system.exitProcess
 class App :
     Application(),
     SingletonImageLoader.Factory {
-
     @Inject
     lateinit var spotifyLibraryRepository: SpotifyLibraryRepository
 
@@ -264,8 +261,7 @@ class App :
     }
 
     private fun initializeDeferredAsync() {
-        // Registers the recurring source refresh. KEEP, so this is a no-op once scheduled rather
-        // than pushing the next run further out on every launch.
+
         moe.rukamori.archivetune.utils.SourceRefreshWorker.schedule(this)
 
         applicationScope.launch(Dispatchers.IO) {
@@ -301,12 +297,6 @@ class App :
                 )
                 YouTube.streamBypassProxy = YouTube.proxy != null && prefs[StreamBypassProxyKey] == true
 
-                // Re-install the rotating proxy pool when the user left IP rotation on. Without
-                // this the toggle in Internet Settings read as ON after every restart while no
-                // proxy was actually installed, so rotation appeared to do nothing. Fetching and
-                // validating the pool is network-bound, so it runs here in the deferred IO block
-                // and not on the startup critical path. A pool that validates to nothing leaves
-                // rotation off; requests then go out directly, exactly as before.
                 if (prefs[IpRotationEnabledKey] == true) {
                     runCatching { YouTube.enableIpRotation() }
                         .onFailure { Timber.w(it, "IP rotation restore failed") }
@@ -353,7 +343,6 @@ class App :
         applicationScope.launch(Dispatchers.IO) {
             try {
                 if (dataStore.get(TidalEnabledKey, true)) {
-
                     dataStore.get(TidalLastProbeTrackKey)?.takeIf { it.isNotBlank() }?.let {
                         if (TidalAudioProvider.lastResolvedTrackId.isNullOrBlank()) {
                             TidalAudioProvider.seedProbeTrack(it)
@@ -452,9 +441,6 @@ class App :
                 }
         }
 
-        // The automotive build has no DebugActivity to forward crashes to —
-        // killing the process from a car head unit without any UI would loop
-        // forever, so the crash reporter only arms on phone/TV builds.
         if (BuildConfig.DEVICE != "automotive") {
             try {
                 Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
@@ -515,12 +501,7 @@ class App :
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
-        // Coil builds this once and keeps it for the life of the process, so a preference read here
-        // cannot tolerate a miss: a null would pin the image cache to the built-in defaults until
-        // the app is killed, silently ignoring the size the reader chose. The DataStore.get operator
-        // below already covers that — while PreferenceStore's first snapshot is still in flight it
-        // falls back to a bounded (1.5s) blocking read of the store itself, so the cold-start read
-        // still resolves the persisted value (or times out to defaults, never blocking the app).
+
         val imageCacheConfig = resolveImageDiskCacheConfig(dataStore[MaxImageCacheSizeKey])
         val lowRam = isLowRamDevice()
 

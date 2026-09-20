@@ -10,8 +10,6 @@ package moe.rukamori.archivetune.ui.player
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
 import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
@@ -23,22 +21,11 @@ import moe.rukamori.archivetune.telegram.isTelegramMediaId
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import timber.log.Timber
 
-/**
- * Live mirror of the user's canvas ranking inside the artwork provider order
- * (Settings -> Player -> Artwork priority). The static artwork resolver skips
- * the two canvas entries entirely, so without this mirror the VIDEO canvas
- * pipeline resolved in a hard-coded order (Spotify first) no matter how the
- * user ranked "ArchiveTune Canvas" vs "Spotify Canvas" — the exact
- * "Spotify canvas plays first even though ArchiveTune is top priority"
- * report. MusicService pushes the deserialized order here whenever the
- * preference changes.
- */
 internal object CanvasProviderPriority {
     @Volatile
     internal var preferArchiveTuneCanvasFirst: Boolean = false
         private set
 
-    /** media ids whose lower-priority cached canvas already failed a priority upgrade — don't hammer the network on every play. */
     private val failedUpgradeMediaIds: MutableSet<String> =
         Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
 
@@ -59,7 +46,6 @@ internal object CanvasProviderPriority {
 
     fun hasFailedUpgradeAttempt(mediaId: String): Boolean = mediaId in failedUpgradeMediaIds
 
-    /** 0 = top-priority canvas provider, 1 = the other; unknown/null ranks last. */
     internal fun providerRank(provider: String?): Int =
         when {
             provider == CanvasArtwork.PROVIDER_APPLE_MUSIC && preferArchiveTuneCanvasFirst -> 0
@@ -81,7 +67,6 @@ internal suspend fun resolveCanvasArtworkForPlayback(
 
     spotifyTrackId: String? = null,
 ): CanvasArtwork? {
-
     val strictIdentity = !(mediaId.isTelegramMediaId() || mediaId.isLocalMediaId())
 
     val preferArchiveTuneCanvasFirst = CanvasProviderPriority.preferArchiveTuneCanvasFirst
@@ -99,9 +84,7 @@ internal suspend fun resolveCanvasArtworkForPlayback(
             cachedArtwork.hasRequiredCanvasVariant(requireVertical) &&
                 cachedArtwork.matchesIdentity(songTitleRaw, artistNameRaw, strictIdentity)
         if (isValid) {
-            // Cache hit — but if the entry came from the lower-priority canvas
-            // provider, try to upgrade it once. A failed upgrade is remembered
-            // per media id so playback never re-asks the network on every play.
+
             if (
                 allowNetwork &&
                 preferArchiveTuneCanvasFirst &&
@@ -136,10 +119,7 @@ internal suspend fun resolveCanvasArtworkForPlayback(
     }
 
     return withContext(Dispatchers.IO) {
-        // Resolution order follows the user's artwork-provider priority: when
-        // ArchiveTune Canvas outranks Spotify Canvas, the Apple Music
-        // (ArchiveTune) provider is queried first and Spotify becomes the
-        // fallback — the inverse of the historical hard-coded order.
+
         if (preferArchiveTuneCanvasFirst) {
             val fetchedFirst =
                 fetchCanvasArtworkForPlayback(
@@ -251,12 +231,6 @@ internal suspend fun fetchCanvasArtworkForPlayback(
     }
 }
 
-/**
- * Cheap availability probe backing the song-overflow "Canvas" entry: true when
- * any integrated canvas provider (ArchiveTune/Apple Music, Spotify) can serve
- * this song, or a playback-cache entry already exists. Provider-side TTL
- * caches absorb repeated probes.
- */
 internal suspend fun hasAnyCanvasSource(
     mediaId: String,
     songTitleRaw: String,
@@ -333,7 +307,6 @@ private fun CanvasArtwork.matchesIdentity(
     if (strict) {
         matchesSongIdentity(songTitleRaw, artistNameRaw)
     } else {
-
         looselyMatchesSongIdentity(songTitleRaw, artistNameRaw) || !albumName.isNullOrBlank()
     }
 
@@ -345,7 +318,6 @@ private fun CanvasArtwork.hasRequiredCanvasVariant(requireVertical: Boolean): Bo
     }
 
 private const val CanvasArtworkLogTag = "CanvasArtwork"
-
 
 private fun normalizeCanvasSongTitle(raw: String): String {
     val stripped =

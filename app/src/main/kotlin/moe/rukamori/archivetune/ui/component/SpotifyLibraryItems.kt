@@ -56,7 +56,6 @@ fun SpotifyLibraryPlaylistListItem(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(26.dp),
 ) {
-
     val libraryPlaylist = remember(playlist) { playlist.toLibraryPlaylist() }
     val openPlaylist = {
         navController.navigate("spotify_playlist/${playlist.id}")
@@ -132,7 +131,6 @@ fun SpotifyLikedSongsListItem(
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
-
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(

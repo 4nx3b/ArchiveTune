@@ -35,22 +35,9 @@ data class MediaMetadata(
     val inLibrary: LocalDateTime? = null,
     val isMusicVideo: Boolean = false,
     val isPodcast: Boolean = false,
-    /**
-     * ISRC of the recording this item represents, when the source catalogue supplied one.
-     *
-     * It is the one identifier every lossless catalogue agrees on — it names a single recording —
-     * so a source can be asked for exactly this take instead of scoring a title/artist search.
-     * Carried on the queue item (in memory) rather than the song table, which has no ISRC column;
-     * null for YouTube-sourced items, which publish no ISRC, and those still resolve by text.
-     *
-     * Declared last with a default so existing positional constructions keep compiling and queues
-     * serialized before this field existed still deserialize (serialVersionUID stays 1L).
-     */
+
     val isrc: String? = null,
-    // PORT-NOTE: Listen Together attribution — ported from vivi-music's MediaMetadata
-    // (suggestedBy: String? = null). Carries who suggested a queued track so the queue
-    // can show "suggested by X". Additive defaulted field: existing constructors,
-    // copy() calls and componentN order are unaffected.
+
     val suggestedBy: String? = null,
 ) : Serializable {
     companion object {

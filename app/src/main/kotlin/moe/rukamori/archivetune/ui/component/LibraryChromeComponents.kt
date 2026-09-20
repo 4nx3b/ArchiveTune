@@ -43,7 +43,6 @@ fun LibraryBackPill(
 ) {
     FrostedHeaderPill(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-
             IconButton(
                 onClick = onClick,
                 onLongClick = onLongClick ?: {},
@@ -73,7 +72,6 @@ fun LibraryHomeDockButton(
     backdrop: PlatformBackdrop? = null,
 ) {
     if (backdrop != null) {
-
         Box(
             modifier =
                 modifier
@@ -99,7 +97,6 @@ fun LibraryHomeDockButton(
             }
         }
     } else {
-
         val baseColor = MaterialTheme.colorScheme.surfaceContainer
         Surface(
             modifier =
@@ -113,7 +110,6 @@ fun LibraryHomeDockButton(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-
                 IconButton(
                     onClick = onClick,
                     onLongClick = {},

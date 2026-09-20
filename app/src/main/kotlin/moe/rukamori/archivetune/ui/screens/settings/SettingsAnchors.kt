@@ -34,7 +34,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
 object SettingsAnchorRequest {
-
     private const val CLAIM_WINDOW_MS = 1_500L
 
     private var pendingScreen: String? = null
@@ -85,7 +84,6 @@ object SettingsAnchorScreens {
 }
 
 object SettingsAnchors {
-
     const val CROSSFADE = "crossfade"
     const val GAPLESS = "gapless"
     const val SKIP_SILENCE = "skip_silence"
@@ -144,7 +142,6 @@ class SettingsAnchorState internal constructor(
     highlightColor: Color,
     val scrollState: ScrollState,
 ) {
-
     internal var highlightColor: Color by mutableStateOf(highlightColor)
     private var containerTop: Float? by mutableStateOf(null)
     private var anchorTop: Float? by mutableStateOf(null)

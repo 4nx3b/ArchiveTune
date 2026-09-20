@@ -82,7 +82,6 @@ object CompactYtDlp {
     }
 
     fun resolveYtDlpBinary(context: Context): File? {
-
         val cached = File(context.noBackupFilesDir, "ytdlnis/yt-dlp/yt-dlp")
         if (cached.exists() && cached.canExecute()) return cached
         val fallback = File(context.filesDir, "ytdlnis/yt-dlp/yt-dlp")

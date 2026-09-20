@@ -71,7 +71,6 @@ fun AppleMusicSleepTimerSheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-
     var remainingMs by remember { mutableLongStateOf(0L) }
     LaunchedEffect(sleepTimer, sleepTimer.isActive) {
         while (isActive) {
@@ -101,7 +100,6 @@ fun AppleMusicSleepTimerSheet(
         if (isActive) {
             sliderMinutes = activeTimerMinutes.toFloat()
         } else if (sliderMinutes > 0 && !isActive) {
-
             sliderMinutes = 0f
         }
     }
@@ -122,7 +120,6 @@ fun AppleMusicSleepTimerSheet(
                     .padding(horizontal = 20.dp, vertical = 16.dp)
                     .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
         ) {
-
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),

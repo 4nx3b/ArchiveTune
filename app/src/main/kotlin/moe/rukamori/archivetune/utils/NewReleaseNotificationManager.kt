@@ -143,7 +143,6 @@ object NewReleaseNotificationManager {
             try {
                 NotificationManagerCompat.from(context).notify(notificationId, notification)
             } catch (security: SecurityException) {
-
             }
         }
 
@@ -168,7 +167,6 @@ object NewReleaseNotificationManager {
             try {
                 NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_BASE + 0xFFF, summary)
             } catch (security: SecurityException) {
-
             }
         }
     }

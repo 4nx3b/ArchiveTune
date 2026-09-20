@@ -93,13 +93,11 @@ fun ProfileMenuDialog(
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                 ) {
-
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp),

@@ -55,7 +55,6 @@ fun DraggableScrollbar(
     minScrollRangeForDrag: Int = 5,
     headerItems: Int = 0,
 ) {
-
     if (moe.rukamori.archivetune.LocalHideScrollbar.current) return
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()

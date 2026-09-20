@@ -167,7 +167,6 @@ fun HomeShimmerBox(modifier: Modifier = Modifier, shape: Shape = HomeBlockShape)
         modifier
             .clip(shape)
             .drawWithCache {
-
                 val band = size.width * 0.5f
                 val startX = -band + sweep.value * (size.width + band * 2)
                 val brush =
@@ -742,7 +741,6 @@ fun HomeTopFadeBlur(
 
                     style = HazeMaterials.ultraThin(pageColor),
                 ) {
-
                     progressive =
                         HazeProgressive.verticalGradient(
                             easing = EaseOutCubic,

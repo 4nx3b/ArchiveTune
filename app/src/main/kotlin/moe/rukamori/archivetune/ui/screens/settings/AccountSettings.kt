@@ -385,7 +385,6 @@ fun AccountSettings(
                 }
 
                 item {
-
                     val browserRowVisible = !isLoggedIn
                     val rowCount = (if (browserRowVisible) 1 else 0) + (if (hasOAuthSession) 1 else 0)
                     if (rowCount > 0) {

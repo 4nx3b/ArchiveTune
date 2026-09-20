@@ -178,7 +178,6 @@ fun LibrarySongsScreen(
                         top = systemBarsTopPadding + AppBarHeight + LibraryHeaderContentPadding,
                     ),
         ) {
-
             Row(
                 modifier =
                     Modifier
@@ -188,7 +187,6 @@ fun LibrarySongsScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-
                 SongSubFilterChip(
                     label = stringResource(R.string.filter_liked),
                     selected = filter == SongFilter.LIKED,
@@ -325,7 +323,6 @@ fun LibrarySongsScreen(
                 verticalArrangement = Arrangement.spacedBy(0.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-
                 item(key = "collection_spotlight") {
                     Box(
                         modifier =
@@ -472,7 +469,6 @@ fun LibrarySongsScreen(
                                 ).padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-
                         val thumbCorner = if (isActive) 26.dp else 10.dp
                         ItemThumbnail(
                             thumbnailUrl = song.song.thumbnailUrl,

@@ -442,7 +442,6 @@ class SyncUtils
                         if (!isSyncStillEnabled(gen)) return@onSuccess
                         val remoteAlbums = page.items.filterIsInstance<AlbumItem>().reversed()
                         if (remoteAlbums.isEmpty() && !authoritative) {
-
                             Timber.d("syncLikedAlbums: No liked albums found")
                             return@onSuccess
                         }

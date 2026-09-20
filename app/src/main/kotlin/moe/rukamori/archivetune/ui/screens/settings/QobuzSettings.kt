@@ -575,7 +575,6 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -980,7 +979,6 @@ private fun SecretField(
         visualTransformation =
             if (revealed) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
-
             androidx.compose.material3.IconButton(onClick = onToggleReveal) {
                 Icon(
                     imageVector =

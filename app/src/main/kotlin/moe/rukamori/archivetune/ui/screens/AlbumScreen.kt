@@ -389,7 +389,6 @@ fun AlbumScreen(
                                             }
 
                                             is HeaderDownloadState.Partial -> {
-
                                                 if (headerState.paused) {
                                                     sendResumePausedDownloads(
                                                         context = context,
@@ -762,7 +761,6 @@ fun AlbumScreen(
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
                 if (selection) {
-
                     val selectedCount = wrappedSongs.count { it.isSelected }
                     val allSelected = selectedCount == wrappedSongs.size && wrappedSongs.isNotEmpty()
                     Box(
@@ -815,7 +813,6 @@ fun AlbumScreen(
                         }
                     }
                 } else {
-
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -869,7 +866,6 @@ fun AlbumScreen(
         }
 
         if (!liquidGlassHeaderActive) {
-
         val topAppBarColors =
             if (transparentAppBar) {
                 TopAppBarDefaults.topAppBarColors(
@@ -910,7 +906,6 @@ fun AlbumScreen(
                 }
             },
             navigationIcon = {
-
                 if (selection || showTopBarTitle || !liquidGlassHeaderActive) {
                     IconButton(
                         onClick = {
@@ -979,7 +974,6 @@ fun AlbumScreen(
                         )
                     }
                 } else {
-
                     if (showTopBarTitle || !liquidGlassHeaderActive) {
                         albumWithSongs?.let { currentAlbum ->
                             IconButton(

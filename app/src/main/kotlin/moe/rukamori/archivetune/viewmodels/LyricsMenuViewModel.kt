@@ -231,7 +231,6 @@ class LyricsMenuViewModel
             providerName: String = "",
         ) {
             viewModelScope.launch(Dispatchers.IO) {
-
                 val effectiveProviderName =
                     if (source == LyricsEntity.Source.AI_TRANSLATION && providerName.isBlank()) {
                         captureLyricsBeforeTranslation(mediaMetadata.id)
@@ -347,7 +346,6 @@ class LyricsMenuViewModel
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-
                         Log.w(
                             TAG,
                             "AI translate failed: song=${mediaMetadata.title} automatic=$isAutomatic " +

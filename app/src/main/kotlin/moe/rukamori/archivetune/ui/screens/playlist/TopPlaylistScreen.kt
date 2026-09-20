@@ -163,7 +163,6 @@ fun TopPlaylistScreen(
             selection = false
         }
     } else {
-
         BackHandler {
             try {
                 if (!navController.popBackStack()) {
@@ -177,7 +176,6 @@ fun TopPlaylistScreen(
                         navController.navigate("library") { launchSingleTop = true }
                     }
                 } catch (_: Exception) {
-
                 }
             }
         }
@@ -394,7 +392,6 @@ fun TopPlaylistScreen(
                                                 }
 
                                                 is HeaderDownloadState.Partial -> {
-
                                                     if (headerState.paused) {
                                                         sendResumePausedDownloads(
                                                             context = context,

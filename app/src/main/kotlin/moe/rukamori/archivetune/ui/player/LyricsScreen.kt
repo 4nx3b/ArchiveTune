@@ -179,7 +179,6 @@ private val LyricsSwipeStartRegion = 144.dp
 private const val MovingBlurDriftScale = 2.4f
 private val LyricsSwipeDismissThreshold = 96.dp
 
-/** Controls auto-hide delay on the shared lyrics page — matches AppleMusicPlayer's. */
 private const val LyricsControlsAutoHideDelayMs = 5_000L
 
 val LocalLyricsScrollListener = compositionLocalOf<(Boolean) -> Unit> { {} }
@@ -235,12 +234,6 @@ fun LyricsScreen(
 
     var isUserScrollingLyrics by remember { mutableStateOf(false) }
 
-    // Player-controls auto-hide. The old code hardcoded `controlsVisible = true`,
-    // which silently ignored the "Show lyrics player controls" / "Auto-hide"
-    // lyrics settings for every style hosting this screen (Cinematic, Little,
-    // Immersive, Material Extended, Editorial, TikTok). The wiring mirrors
-    // AppleMusicPlayer: any interaction (tap, lyrics scroll, slider/volume drag)
-    // restarts the reveal, then the controls collapse after the delay.
     val showLyricsPlayerControls by rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
     val autoHideLyricsPlayerControls by rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = true)
     var controlsRevealToken by remember { mutableIntStateOf(0) }
@@ -385,7 +378,6 @@ fun LyricsScreen(
     val darkTheme = isSystemInDarkTheme()
 
     LaunchedEffect(mediaMetadata.id, mediaMetadata.thumbnailUrl, lyricsBackground, darkTheme) {
-
         kotlinx.coroutines.delay(120)
         if (lyricsBackground != LyricsBackgroundStyle.DEFAULT &&
             lyricsBackground != LyricsBackgroundStyle.COLORING &&
@@ -557,9 +549,7 @@ fun LyricsScreen(
                         }
                     }
                 }.pointerInput(Unit) {
-                    // Any tap on the lyrics page re-reveals the player controls
-                    // (Apple Music "poke" behaviour) — they re-collapse after the
-                    // auto-hide delay restarts.
+
                     detectTapGestures(
                         onTap = { pokeLyricsControls() },
                     )
@@ -923,7 +913,6 @@ internal fun MovingBlurBackground(
                         )
                     }
                 } else {
-
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
@@ -1011,7 +1000,6 @@ private fun AppleMusicBackground(
         ) { thumbnailUrl ->
             if (thumbnailUrl != null) {
                 if (isPreS) {
-
                     val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
                         value = withContext(Dispatchers.IO) {
                             try {
@@ -1120,9 +1108,7 @@ private fun AppleMusicTrackHeader(
         modifier = modifier.heightIn(min = 72.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 56dp — the Apple Music player's lyrics header artwork size, shared
-        // by every player style's lyrics page so the thumbnail never reads
-        // oversized in the other styles.
+
         Box(
             modifier =
                 Modifier
@@ -1511,7 +1497,6 @@ private fun LyricsContent(
     textColor: Color,
     modifier: Modifier = Modifier,
 ) {
-
     when (lyricsMode) {
         LyricsMode.V2 -> {
             LyricsV2(

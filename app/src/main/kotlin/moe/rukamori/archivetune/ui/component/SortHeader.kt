@@ -72,7 +72,6 @@ inline fun <reified T : Enum<T>> SortHeader(
     val pillShape = RoundedCornerShape(percent = 50)
 
     Box(modifier = modifier.padding(vertical = 8.dp)) {
-
         Surface(
             shape = pillShape,
             color = containerColor,
@@ -85,7 +84,6 @@ inline fun <reified T : Enum<T>> SortHeader(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(horizontal = 16.dp),
             ) {
-
                 Icon(
                     painter = painterResource(R.drawable.sort_alt),
                     contentDescription = null,

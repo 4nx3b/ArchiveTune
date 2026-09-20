@@ -176,8 +176,7 @@ fun LocalPlaylistScreen(
 
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val songs by viewModel.playlistSongs.collectAsStateWithLifecycle()
-    // No canvas on local playlist pages (user request 2026-09-16): the hero
-    // renders its plain Apple-Music text layout — no canvas URLs threaded in.
+
     val viewCounts by viewModel.viewCounts.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val coverState by viewModel.coverState.collectAsStateWithLifecycle()
@@ -286,7 +285,6 @@ fun LocalPlaylistScreen(
             selection = false
         }
     } else {
-
         BackHandler {
             try {
                 if (!navController.popBackStack()) {
@@ -295,13 +293,11 @@ fun LocalPlaylistScreen(
                     }
                 }
             } catch (_: Exception) {
-
                 try {
                     if (!navController.navigateUp()) {
                         navController.navigate("library") { launchSingleTop = true }
                     }
                 } catch (_: Exception) {
-
                 }
             }
         }
@@ -513,7 +509,6 @@ fun LocalPlaylistScreen(
             savedScrollIndex = lazyListState.firstVisibleItemIndex
             savedScrollOffset = lazyListState.firstVisibleItemScrollOffset
         } else {
-
             withFrameNanos {}
             lazyListState.scrollToItem(savedScrollIndex, savedScrollOffset)
         }
@@ -585,7 +580,6 @@ fun LocalPlaylistScreen(
     CompositionLocalProvider(
         LocalMiniPlayerDocked provides isListScrolling,
     ) {
-
     val headerHaze = rememberScreenHeaderHaze()
     ExpressivePullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -704,7 +698,6 @@ fun LocalPlaylistScreen(
                                                             showRemoveDownloadDialog = true
                                                         }
                                                         is HeaderDownloadState.Partial -> {
-
                                                             if (headerState.paused) {
                                                                 sendResumePausedDownloads(
                                                                     context = context,
@@ -1073,7 +1066,6 @@ fun LocalPlaylistScreen(
 
         val currentPlaylist = playlist
         if (layerBackdropActive && !isSearching && currentPlaylist != null) {
-
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 interactive = true,
@@ -1118,7 +1110,6 @@ fun LocalPlaylistScreen(
                 )
             }
             if (selection) {
-
                 val selectedCount = selectedPlaylistSongs.size
                 val allSelected = selectedCount == filteredSongs.size && filteredSongs.isNotEmpty()
                 LiquidGlassActionPill(
@@ -1186,7 +1177,6 @@ fun LocalPlaylistScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
-
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -1252,7 +1242,6 @@ fun LocalPlaylistScreen(
         }
 
         if (!liquidGlassHeaderActive || isSearching) {
-
         val topAppBarColors =
             if (transparentAppBar) {
                 TopAppBarDefaults.topAppBarColors(
@@ -1312,7 +1301,6 @@ fun LocalPlaylistScreen(
                 }
             },
             navigationIcon = {
-
                 if (isSearching || selection || showTopBarTitle || !liquidGlassHeaderActive) {
                     IconButton(
                         onClick = {
@@ -1387,7 +1375,6 @@ fun LocalPlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-
                     if (showTopBarTitle || !liquidGlassHeaderActive) {
                         IconButton(
                             onClick = { isSearching = true },

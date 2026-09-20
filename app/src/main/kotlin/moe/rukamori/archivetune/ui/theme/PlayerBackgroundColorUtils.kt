@@ -13,7 +13,6 @@ import androidx.compose.ui.graphics.toArgb
 import android.graphics.Color as AndroidColor
 
 object PlayerBackgroundColorUtils {
-
     private const val DEFAULT_MIN_BRIGHTNESS = 0.35f
     private const val DEFAULT_MAX_BRIGHTNESS = 0.85f
 
@@ -37,7 +36,6 @@ object PlayerBackgroundColorUtils {
     }
 
     fun buildColoringStops(baseColor: Color): Array<Pair<Float, Color>> {
-
         val comfortable = ensureComfortableColor(baseColor, minBrightness = 0.42f, maxBrightness = 0.72f)
         val mid = darkenColor(comfortable, 0.86f)
         val deep = darkenColor(comfortable, 0.7f)

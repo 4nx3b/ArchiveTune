@@ -136,7 +136,6 @@ fun TidalLoginScreen(navController: NavController) {
         val code = uri?.getQueryParameter("code")
         val error = uri?.getQueryParameter("error")
         if (code.isNullOrBlank()) {
-
             handled.set(false)
             android.util.Log.w("TidalLogin", "PKCE redirect without code (error=$error)")
             switchToCapture(view)
@@ -150,7 +149,6 @@ fun TidalLoginScreen(navController: NavController) {
             if (token != null) {
                 finishLogin(token, TidalAccountManager.FLOW_PKCE)
             } else {
-
                 handled.set(false)
                 switchToCapture(view)
             }
@@ -184,7 +182,6 @@ fun TidalLoginScreen(navController: NavController) {
                             view: WebView,
                             url: String?,
                         ) {
-
                             if (url?.contains("tidal.com", ignoreCase = true) == true &&
                                 url.contains("listen", ignoreCase = true)
                             ) {

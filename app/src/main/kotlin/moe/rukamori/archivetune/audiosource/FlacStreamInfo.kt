@@ -8,7 +8,6 @@
 package moe.rukamori.archivetune.audiosource
 
 object FlacStreamInfo {
-
     const val REQUIRED_BYTES: Int = 42
 
     private const val MAGIC_LENGTH = 4
@@ -25,7 +24,6 @@ object FlacStreamInfo {
 
         val totalSamples: Long?,
     ) {
-
         val durationMs: Long?
             get() {
                 val samples = totalSamples ?: return null

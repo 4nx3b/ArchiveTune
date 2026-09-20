@@ -11,9 +11,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,7 +29,6 @@ fun Material3SettingsGroup(
     Column(
         modifier = Modifier.fillMaxWidth(),
     ) {
-
         title?.let {
             Text(
                 text = it,
@@ -84,7 +81,6 @@ private fun Material3SettingsItemRow(
                     ).padding(horizontal = 20.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-
             item.icon?.let { icon ->
                 Box(
                     modifier =
@@ -139,7 +135,6 @@ private fun Material3SettingsItemRow(
             Column(
                 modifier = Modifier.weight(1f),
             ) {
-
                 item.title()
 
                 item.description?.let { desc ->
@@ -176,8 +171,7 @@ data class Material3SettingsItem(
     val showBadge: Boolean = false,
     val isHighlighted: Boolean = false,
     val onClick: (() -> Unit)? = null,
-    // Listen Together port (vivi parity, appended with defaults so existing call sites are
-    // untouched): consumed by ExpressiveSettingGroup and the Listen Together settings screen.
+
     val leadingContent: (@Composable () -> Unit)? = null,
     val tintIcon: Boolean = true,
     val iconShape: Shape? = null,

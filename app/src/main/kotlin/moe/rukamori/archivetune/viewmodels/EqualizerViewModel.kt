@@ -554,5 +554,4 @@ private fun EqualizerConfiguration.toUiModel(
     )
 }
 
-/** Number of bands the redesigned (SpatialFlow-style) effects screen shows. */
 private const val FIXED_UI_BAND_COUNT = 5

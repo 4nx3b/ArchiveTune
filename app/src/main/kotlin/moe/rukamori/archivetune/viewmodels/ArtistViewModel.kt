@@ -149,7 +149,6 @@ class ArtistViewModel
                 }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
         init {
-
             viewModelScope.launch {
                 context.dataStore.data
                     .map { preferences ->
@@ -205,7 +204,6 @@ class ArtistViewModel
                         reportException(it)
                     }
                 if (manual) {
-
                     isManuallyRefreshing = false
                 }
             }

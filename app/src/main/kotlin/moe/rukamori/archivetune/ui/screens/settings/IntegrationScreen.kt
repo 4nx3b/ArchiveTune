@@ -141,7 +141,6 @@ fun IntegrationScreen(
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -163,7 +162,6 @@ fun IntegrationScreen(
                 .padding(top = topPadding)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
-
             PreferenceGroup(
                 modifier = positions.modifierFor("ai_integration"),
                 title = stringResource(R.string.ai_integration),
@@ -201,7 +199,6 @@ fun IntegrationScreen(
                         .then(positions.modifierFor("music_sources")),
                 title = stringResource(R.string.music_sources),
             ) {
-
                 item(visible = showAppleMusicGroup) {
                     PreferenceEntry(
                         modifier = positions.modifierFor("applemusic"),

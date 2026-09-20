@@ -43,8 +43,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -63,7 +61,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -105,14 +102,14 @@ fun ListenTogetherSettings(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    
+
     val connectionState by viewModel.connectionState.collectAsState()
     val roomState by viewModel.roomState.collectAsState()
     val role by viewModel.role.collectAsState()
     val pendingJoinRequests by viewModel.pendingJoinRequests.collectAsState()
     val logs by viewModel.logs.collectAsState()
     val blockedUsernames by viewModel.blockedUsernames.collectAsState()
-    
+
     val servers = remember { ListenTogetherServers.servers }
     var serverUrl by rememberPreference(ListenTogetherServerUrlKey, ListenTogetherServers.defaultServerUrl)
     var username by rememberPreference(ListenTogetherUsernameKey, "")
@@ -120,7 +117,7 @@ fun ListenTogetherSettings(
     var autoApproval by rememberPreference(ListenTogetherAutoApprovalKey, false)
     var syncHostVolume by rememberPreference(ListenTogetherSyncVolumeKey, true)
     var smartResync by rememberPreference(ListenTogetherSmartResyncKey, true)
-    
+
     var showServerUrlDialog by rememberSaveable { mutableStateOf(false) }
     var showUsernameDialog by rememberSaveable { mutableStateOf(false) }
     var showAvatarPicker by rememberSaveable { mutableStateOf(false) }
@@ -129,7 +126,7 @@ fun ListenTogetherSettings(
     var showLogsDialog by rememberSaveable { mutableStateOf(false) }
     var showBlockedUsersDialog by rememberSaveable { mutableStateOf(false) }
     var roomCodeInput by rememberSaveable { mutableStateOf("") }
-    
+
     val avatarOptions = remember {
         listOf(
             R.drawable.person,
@@ -148,13 +145,11 @@ fun ListenTogetherSettings(
             R.drawable.luxury_women
         )
     }
-    
-    // Handle events
+
     LaunchedEffect(Unit) {
         viewModel.events.collectLatest { event ->
             when (event) {
                 is ListenTogetherEvent.RoomCreated -> {
-                    // Room created toast is shown globally by the client
                 }
                 is ListenTogetherEvent.JoinApproved -> {
                     Toast.makeText(context, "Joined room: ${event.roomCode}", Toast.LENGTH_SHORT).show()
@@ -178,8 +173,7 @@ fun ListenTogetherSettings(
             }
         }
     }
-    
-    // Dialogs
+
     if (showServerUrlDialog) {
         ServerChooserDialog(
             servers = servers,
@@ -195,7 +189,7 @@ fun ListenTogetherSettings(
             onDismiss = { showServerUrlDialog = false }
         )
     }
-    
+
     if (showUsernameDialog) {
         var tempUsername by rememberSaveable(showUsernameDialog) { mutableStateOf(username) }
 
@@ -232,7 +226,7 @@ fun ListenTogetherSettings(
             )
         }
     }
-    
+
     if (showCreateRoomDialog) {
         var createUsername by rememberSaveable(showCreateRoomDialog) { mutableStateOf(username) }
 
@@ -283,7 +277,7 @@ fun ListenTogetherSettings(
             }
         }
     }
-    
+
     if (showJoinRoomDialog) {
         var joinUsername by rememberSaveable(showJoinRoomDialog) { mutableStateOf(username) }
 
@@ -340,7 +334,7 @@ fun ListenTogetherSettings(
             }
         }
     }
-    
+
     if (showLogsDialog) {
         LogsDialog(
             logs = logs,
@@ -381,10 +375,9 @@ fun ListenTogetherSettings(
                 LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top)
             )
         )
-        
-        // Settings section
+
         val selectedServer = remember(serverUrl) { ListenTogetherServers.findByUrl(serverUrl) }
-        
+
         ExpressiveSettingGroup(
             title = stringResource(R.string.settings),
             items = listOf(
@@ -577,13 +570,13 @@ fun LogsDialog(
     onDismiss: () -> Unit
 ) {
     val listState = rememberLazyListState()
-    
+
     LaunchedEffect(logs.size) {
         if (logs.isNotEmpty()) {
             listState.animateScrollToItem(logs.size - 1)
         }
     }
-    
+
     val context = LocalContext.current
 
     DefaultDialog(

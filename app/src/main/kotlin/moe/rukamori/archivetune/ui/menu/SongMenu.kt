@@ -32,14 +32,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -220,7 +218,6 @@ fun SongMenu(
                             .map { it.trim() }
                             .filter { it.isNotEmpty() }
                     if (parts.size > 1) {
-
                         parts.mapIndexed { index, name ->
                             SplitArtist(name, if (index == 0) artist else null)
                         }
@@ -511,7 +508,6 @@ fun SongMenu(
                             }
 
                             else -> {
-
                                 val dl = download
                                 if (dl != null && dl.state != Download.STATE_COMPLETED) {
                                     DownloadService.sendRemoveDownload(
@@ -579,7 +575,6 @@ fun SongMenu(
                 bottom = 12.dp,
             ),
     ) {
-
         if (showSleepTimerSheet) {
             item {
                 AppleMusicSleepTimerSheet(
@@ -591,7 +586,6 @@ fun SongMenu(
                 )
             }
         } else {
-
             item {
                 MuzoQuickActionRow(actions = quickActions)
             }
@@ -994,7 +988,6 @@ fun SongMenu(
                                         },
                                         modifier =
                                             Modifier.clickable {
-
                                                 val dl = download
                                                 if (dl != null &&
                                                     dl.state != Download.STATE_COMPLETED

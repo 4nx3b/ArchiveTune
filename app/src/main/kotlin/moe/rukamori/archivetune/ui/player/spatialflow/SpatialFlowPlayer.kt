@@ -185,9 +185,6 @@ fun SpatialFlowPlayerContent(
     val isDark = appIsDark
     val canvasAvailable = !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
 
-    // YouTube music-video playback: the video artwork replaces the artwork
-    // pager the same way V7 does it — full InlineVideoPlayer with the quality
-    // pill, falling back to the sleeve when it fails or while lyrics are open.
     val videoState = LocalVideoArtworkState.current
     val videoPlaybackFailed = LocalVideoPlaybackFailed.current
     val surfaceIsDark = isDark || canvasAvailable
@@ -222,7 +219,6 @@ fun SpatialFlowPlayerContent(
             val hsl = FloatArray(3)
             androidx.core.graphics.ColorUtils.colorToHSL(playerBackgroundColor.toArgb(), hsl)
             if (hsl[1] < 0.08f) {
-
                 if (surfaceIsDark) Color.White else Color(0xFF1C1B1F)
             } else {
                 if (surfaceIsDark) {
@@ -263,21 +259,12 @@ fun SpatialFlowPlayerContent(
             SolidColor(finalColor)
         }
 
-    // Deliberately NOT keyed on mediaMetadata.id: an input-keyed
-    // rememberSaveable resets to false on ANY id change — including the
-    // transient metadata re-emissions (source/queue resolver swapping the
-    // current item mid-playback) that can land while the lyrics overlay is
-    // open. On-device that read as the lyrics page "closing itself" ~0.9s
-    // after every tap on the Lyrics pill, with the reveal circle animating
-    // shut exactly like a user dismissal. The per-track reset below is
-    // explicit and only fires when a NEW id stays stable for 250ms.
     var lyricsModeEnabled by rememberSaveable { mutableStateOf(false) }
     var lyricsModeSongId by rememberSaveable { mutableStateOf(mediaMetadata.id) }
     LaunchedEffect(mediaMetadata.id) {
         val candidate = mediaMetadata.id
         if (candidate == lyricsModeSongId) return@LaunchedEffect
-        // A genuine track change persists; a resolver flicker reverts within
-        // the window and the lyrics page stays open.
+
         delay(250)
         if (mediaMetadata.id == candidate) {
             lyricsModeSongId = candidate
@@ -296,7 +283,6 @@ fun SpatialFlowPlayerContent(
             if (text.isNullOrBlank()) {
                 null
             } else {
-
                 runCatching {
                     if (LyricsUtils.isTtml(text)) {
                         LyricsUtils.parseTtml(text)
@@ -333,12 +319,6 @@ fun SpatialFlowPlayerContent(
         }
     }
 
-    // Report the overlay state upward so the sheet-root floating artwork
-    // layer can get out of the way: the lyrics overlay's own flying artwork
-    // owns the morph while lyrics are open, and the queue drawer covers the
-    // artwork slot while it is expanded (the original SpatialFlow fades the
-    // shared layer to 0 and drops it below the drawer in exactly these two
-    // states - see PlayerBottomSheetCompose).
     LaunchedEffect(lyricsModeEnabled) {
         onLyricsOpenChange?.invoke(lyricsModeEnabled)
     }
@@ -367,11 +347,6 @@ fun SpatialFlowPlayerContent(
         label = "SfLyricsCanvasFade",
     )
 
-    // SpatialFlow shared-element: while the circular lyrics reveal expands, the
-    // album art morphs into the compact 44dp thumbnail in the top app bar
-    // (spring 0.86/420) and stays parked there while the lyrics are open,
-    // then morphs back on close. Only the non-canvas artwork path morphs -
-    // canvas songs keep the canvas fade instead.
     val lyricsArtworkProgress by animateFloatAsState(
         targetValue = if (lyricsModeEnabled) 1f else 0f,
         animationSpec = spring(dampingRatio = 0.86f, stiffness = 420f),
@@ -495,25 +470,13 @@ fun SpatialFlowPlayerContent(
                     label = "LyricsCircularReveal",
                 )
 
-                // Every read of the animating reveal value below is a derived
-                // Boolean: reading the raw float in this composition scope
-                // would invalidate the WHOLE player (pager, canvas surfaces,
-                // controls, queue drawer) on every one of the ~20 frames of
-                // the reveal — the dropped-frame "flicker" during the lyrics
-                // transition. The derived values flip at most twice, so the
-                // heavy scope only recomposes at the thresholds.
                 val lyricsContentReady by remember {
                     derivedStateOf { lyricsRevealProgress > 0.45f }
                 }
                 val lyricsOverlayVisible by remember {
                     derivedStateOf { lyricsRevealProgress > 0.01f }
                 }
-                // Keyed on the song for cheap hygiene: the key rebuilds the
-                // derivedStateOf on track changes so it always captures the
-                // current composition's state objects. (lyricsModeEnabled's
-                // backing state is no longer replaced per track — it is
-                // unkeyed and reset explicitly — so this key is belt and
-                // suspenders, not a correctness requirement.)
+
                 val keepMainContentComposed by remember(mediaMetadata.id) {
                     derivedStateOf { !lyricsModeEnabled || lyricsRevealProgress < 0.995f }
                 }
@@ -530,7 +493,6 @@ fun SpatialFlowPlayerContent(
                             .padding(horizontal = 20.dp, vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-
                 Row(
                     modifier =
                         Modifier
@@ -597,23 +559,9 @@ fun SpatialFlowPlayerContent(
                                 .clip(RoundedCornerShape(16.dp)),
                     )
 
-                    // Breathing room between the artwork and the title stack:
-                    // the artwork sits a bit higher while the bottom controls
-                    // stay pinned exactly where they sit while the canvas
-                    // plays (the weighted spacer above absorbs the shift).
                     Spacer(modifier = Modifier.height(36.dp))
                 } else if (!canvasAvailable && floatingArtwork) {
-                    // Floating-artwork mode: the pager lives in the sheet's
-                    // shared layer (see SpatialFlowFloatingArtwork); this slot
-                    // only reports its bounds so the morph can find it. The
-                    // DisposableEffect clears the reported rect when the slot
-                    // leaves composition for a real reason (a canvas/video
-                    // song taking over, or the player content going away) —
-                    // but NOT when the lyrics reveal finishes and drops the
-                    // main content: the flying shared element still needs the
-                    // rect to park in the lyrics header, and a mid-reveal null
-                    // lands the artwork at its raw (0,0) layout slot for one
-                    // frame (the top-left artwork flash at lyrics-open).
+
                     Box(
                         modifier =
                             Modifier
@@ -641,9 +589,7 @@ fun SpatialFlowPlayerContent(
                             }
                         }
                     }
-                    // Breathing room to the title stack, matching the video
-                    // and in-column pager branches so the title sits at the
-                    // same height whichever branch owns the artwork slot.
+
                     Spacer(modifier = Modifier.height(36.dp))
                 } else if (!canvasAvailable) {
                     SpatialFlowArtworkPager(
@@ -857,7 +803,6 @@ fun SpatialFlowPlayerContent(
                                 }
 
                                 else -> {
-
                                     val dl = download
                                     if (dl != null && dl.state != Download.STATE_COMPLETED) {
                                         DownloadService.sendRemoveDownload(
@@ -1127,10 +1072,6 @@ fun SpatialFlowPlayerContent(
                 )
             }
 
-            // SpatialFlow artwork shared-element: for non-canvas songs the album
-            // art flies into the top app bar as the lyrics reveal expands and
-            // stays parked there (44dp, 10dp corners, soft shadow) until the
-            // lyrics close. Composed after the overlay so it renders above it.
             val showFlyingArtwork =
                 !canvasAvailable &&
                     !videoShowing &&
@@ -1156,21 +1097,14 @@ fun SpatialFlowPlayerContent(
                                     val t = lyricsArtworkProgress.coerceIn(0f, 1f)
                                     val bounds = artworkPagerBoundsInRoot
                                     if (bounds == null) {
-                                        // Never draw the shared element at its
-                                        // raw (0,0) layout slot: a mid-transition
-                                        // null rect used to flash the full-size
-                                        // artwork in the top-left corner for one
-                                        // frame right as the lyrics reveal ended.
+
                                         alpha = 0f
                                         return@graphicsLayer
                                     }
                                     val fullSizePx = albumArtSize.toPx()
-                                    // 56dp — the Apple Music lyrics header artwork size.
+
                                     val thumbSizePx = 56.dp.toPx()
-                                    // Parks just LEFT of the lyrics header's
-                                    // dismiss button: header padding (20dp) +
-                                    // the 48dp X slot + an 8dp gap, all inset
-                                    // from the right edge.
+
                                     val targetRootX =
                                         flyingLayerWidthPx - 20.dp.toPx() - 48.dp.toPx() - 8.dp.toPx() - thumbSizePx
                                     val targetRootY = statusBarTopDp.toPx() + 18.dp.toPx()
@@ -1231,7 +1165,6 @@ fun SpatialFlowPlayerContent(
                     playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled
                 },
                 onToggleLoopMode = {
-
                     playerConnection.player.repeatMode =
                         when (repeatMode) {
                             androidx.media3.common.Player.REPEAT_MODE_OFF ->

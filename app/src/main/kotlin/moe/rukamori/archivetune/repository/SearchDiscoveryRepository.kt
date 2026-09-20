@@ -57,7 +57,6 @@ class SearchDiscoveryRepository
     constructor(
         private val database: MusicDatabase,
     ) {
-
         private data class CachedSnapshot(
             val data: SearchDiscoveryData,
             val expiresAtMs: Long,
@@ -94,7 +93,6 @@ class SearchDiscoveryRepository
                 }
 
                 loadMutex.withLock {
-
                     if (!forceRefresh) {
                         cache[CacheKey]?.let { snapshot ->
                             if (snapshot.expiresAtMs > System.currentTimeMillis()) {
@@ -126,7 +124,6 @@ class SearchDiscoveryRepository
 
         private suspend fun loadDiscoveryFromNetwork(): SearchDiscoveryData =
             coroutineScope {
-
                 val explorePageDeferred =
                     async {
                         runCatching { YouTube.explore().getOrThrow() }.getOrNull()

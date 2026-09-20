@@ -155,7 +155,6 @@ data class LastFmServiceConfig(
             val endpointValid = provider != LastFmProvider.CUSTOM || normalizedCustomEndpoint != null
             val apiKey =
                 when (provider) {
-
                     LastFmProvider.LASTFM -> defaultApiKey.ifBlank { apiKeyOverride }
 
                     LastFmProvider.LIBREFM,

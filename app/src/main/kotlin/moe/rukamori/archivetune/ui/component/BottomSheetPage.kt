@@ -144,7 +144,6 @@ fun BottomSheetPage(
                         }
                     },
         ) {
-
             Box(
                 modifier =
                     Modifier

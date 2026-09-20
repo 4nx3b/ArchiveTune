@@ -8,10 +8,8 @@
 
 package moe.rukamori.archivetune.ui.screens
 
-import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -19,8 +17,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,7 +44,6 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import java.text.SimpleDateFormat
-import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,7 +60,6 @@ fun CommentTogetherScreen(navController: NavController) {
     val focusManager = LocalFocusManager.current
     val coroutineScope = rememberCoroutineScope()
 
-    // Auto-scroll to bottom when new messages arrive and clear unread badge
     LaunchedEffect(messages.size) {
         manager.markChatAsRead()
         if (messages.isNotEmpty()) {
@@ -110,7 +104,6 @@ fun CommentTogetherScreen(navController: NavController) {
                     .imePadding()
                     .padding(16.dp)
             ) {
-                // Reply Preview
                 AnimatedVisibility(
                     visible = replyingTo != null,
                     enter = expandVertically() + fadeIn(),
@@ -259,13 +252,12 @@ private fun MessageItem(
                 )
         ) {
             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                // Render Quoted Reply
                 message.replyTo?.let { reply ->
                     Surface(
                         color = replyBgColor,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier
-                            .padding(bottom = 6.dp) // Space between quote and message
+                            .padding(bottom = 6.dp)
                             .fillMaxWidth()
                     ) {
                         Row(
@@ -429,10 +421,8 @@ private fun formatMessageWithLinks(text: String): AnnotatedString {
     return buildAnnotatedString {
         var lastIdx = 0
         for (match in matches) {
-            // Append text before the link
             append(text.substring(lastIdx, match.range.first))
 
-            // Append the link with interaction listener
             val url = match.value
             val linkAnnotation = LinkAnnotation.Url(
                 url = url,

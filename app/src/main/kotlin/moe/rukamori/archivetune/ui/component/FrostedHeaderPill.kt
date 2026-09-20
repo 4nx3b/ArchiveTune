@@ -36,7 +36,6 @@ fun FrostedHeaderPill(
 ) {
     val pillShape = RoundedCornerShape(percent = 50)
     if (plain) {
-
         CompositionLocalProvider(LocalPlainHeaderPill provides true) {
             ProvideTextStyle(MaterialTheme.typography.titleLarge) {
                 Row(
@@ -48,7 +47,6 @@ fun FrostedHeaderPill(
             }
         }
     } else if (backdrop != null) {
-
         Row(
             modifier =
                 modifier
@@ -65,7 +63,6 @@ fun FrostedHeaderPill(
             content()
         }
     } else {
-
         val baseColor = MaterialTheme.colorScheme.surfaceContainerHigh
         Surface(
             modifier = modifier.clip(pillShape),

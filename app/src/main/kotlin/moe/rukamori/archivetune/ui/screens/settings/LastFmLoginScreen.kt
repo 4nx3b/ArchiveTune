@@ -49,7 +49,6 @@ fun LastFmLoginScreen(navController: NavController) {
 
     fun finishLogin(auth: Authentication) {
         scope.launch {
-
             LastFM.initialize(
                 apiKey = LastFmAppCredentials.API_KEY,
                 secret = LastFmAppCredentials.API_SECRET,
@@ -77,7 +76,6 @@ fun LastFmLoginScreen(navController: NavController) {
         val uri = runCatching { Uri.parse(url) }.getOrNull()
         val token = uri?.getQueryParameter("token")?.trim()
         if (token.isNullOrBlank()) {
-
             android.util.Log.w("LastFmLogin", "Auth callback without token: $url")
             scope.launch {
                 withContext(Dispatchers.Main) {
@@ -90,7 +88,6 @@ fun LastFmLoginScreen(navController: NavController) {
         scope.launch {
             val result =
                 withContext(Dispatchers.IO) {
-
                     LastFM.initialize(
                         apiKey = LastFmAppCredentials.API_KEY,
                         secret = LastFmAppCredentials.API_SECRET,

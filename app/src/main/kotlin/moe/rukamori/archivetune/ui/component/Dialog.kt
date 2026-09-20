@@ -100,7 +100,6 @@ fun DefaultDialog(
     constrainContentHeight: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-
     val dialogShowingState = LocalSettingsDialogShowing.current
     DisposableEffect(Unit) {
         dialogShowingState.value = true
@@ -111,9 +110,7 @@ fun DefaultDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-
         UnglassedDialogTheme {
-
             KeepStatusBarHiddenInDialog()
 
             BoxWithConstraints(
@@ -212,7 +209,6 @@ fun ActionPromptDialog(
     onCancel: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
-
     val dialogShowingState = LocalSettingsDialogShowing.current
     DisposableEffect(Unit) {
         dialogShowingState.value = true
@@ -223,9 +219,7 @@ fun ActionPromptDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-
         UnglassedDialogTheme {
-
             KeepStatusBarHiddenInDialog()
 
             BoxWithConstraints(
@@ -249,7 +243,6 @@ fun ActionPromptDialog(
                         modifier = Modifier.padding(24.dp),
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
-
                             if (titleBar != null) {
                                 Row {
                                     titleBar()
@@ -311,7 +304,6 @@ fun ListDialog(
     modifier: Modifier = Modifier,
     content: LazyListScope.() -> Unit,
 ) {
-
     val dialogShowingState = LocalSettingsDialogShowing.current
     DisposableEffect(Unit) {
         dialogShowingState.value = true
@@ -322,9 +314,7 @@ fun ListDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-
         UnglassedDialogTheme {
-
             KeepStatusBarHiddenInDialog()
 
             BoxWithConstraints(

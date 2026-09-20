@@ -29,12 +29,6 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-/**
- * Verdict of a source health probe. Distinct from a boolean so the row (and
- * the result dialog) can tell "structurally cannot play in this build"
- * (UNSUPPORTED) apart from "down right now" (UNREACHABLE) and "nothing
- * configured" (NOT_CONFIGURED) — those need completely different advice.
- */
 enum class SourceCheckStatus {
     READY,
     DEGRADED,
@@ -52,7 +46,6 @@ data class SourceCheckResult(
 }
 
 object SourceCheckService {
-
     private const val KOZU_PROBE_YT_ID = "dQw4w9WgXcQ"
 
     private val client by lazy {
@@ -65,7 +58,6 @@ object SourceCheckService {
 
     private val _results = MutableStateFlow<Map<AudioSourceType, SourceCheckResult>>(emptyMap())
 
-    /** Last verdict per source — survives recomposition, navigation and re-checks. */
     val results: StateFlow<Map<AudioSourceType, SourceCheckResult>> = _results.asStateFlow()
 
     fun cachedResult(source: AudioSourceType): SourceCheckResult? = _results.value[source]
@@ -89,7 +81,6 @@ object SourceCheckService {
     }
 
     private suspend fun checkTidal(context: Context): SourceCheckResult {
-
         PoolAccountManager.refresh(context, force = false)
         val accounts = PoolAccountManager.tidalAccounts()
         if (accounts.isEmpty()) {
@@ -430,9 +421,6 @@ private data class CdnProbe(
 
     private suspend fun checkDeezer(context: Context): SourceCheckResult {
 
-        // Not forced: a throttled pool refresh (the 6h worker keeps it warm)
-        // already answers "are credentials available", and a forced refresh on
-        // every tap hammered the pool host for no diagnostic value.
         PoolAccountManager.refresh(context, force = false)
 
         val availability = DeezerAudioProvider.accountAvailability()
@@ -472,7 +460,6 @@ private data class CdnProbe(
     }
 
     private suspend fun checkAmazon(context: Context): SourceCheckResult {
-        // Not forced — see checkDeezer.
         PoolAccountManager.refresh(context, force = false)
         val pooled = PoolAccountManager.amazonAccounts()
         val prefs = context.dataStore.data.first()
@@ -494,10 +481,7 @@ private data class CdnProbe(
                     add("${pooled.size} pool account(s), ${pooled.count { it.premium }} HD/Ultra HD")
                 }
             }.joinToString(" + ")
-        // There is no AmazonAudioProvider: Amazon serves CENC-protected fragmented MP4 and this
-        // fork ships no decryption step (see AmazonEnabledKey in PreferenceKeys.kt). Credentials
-        // being present is not the same as the source working — but that is a structural limit of
-        // this build (UNSUPPORTED), not an outage, and the row says so instead of crying "down".
+
         return SourceCheckResult(
             status = SourceCheckStatus.UNSUPPORTED,
             summary = "Credentials: $origin. Amazon Music sign-in and catalogue search work, but this " +
@@ -508,10 +492,7 @@ private data class CdnProbe(
     }
 
     private suspend fun checkJioSaavn(): SourceCheckResult {
-        // check() already runs on Dispatchers.IO and this is a suspend call —
-        // no runBlocking bridge needed. The probe query is a single letter so
-        // the service cannot return an honest zero just because the literal
-        // phrase matched nothing.
+
         return runCatching {
             val result = SaavnService.searchSongs("a").getOrDefault(emptyList())
             if (result.isEmpty()) {
@@ -536,8 +517,7 @@ private data class CdnProbe(
     }
 
     private suspend fun checkYouTube(): SourceCheckResult {
-        // YouTube used to answer "always true" — an honest probe asks the same
-        // InnerTube endpoint playback resolution depends on.
+
         val probe =
             runCatching { YouTube.getMediaInfo(KOZU_PROBE_YT_ID).getOrNull() }
         return if (probe.getOrNull() != null) {

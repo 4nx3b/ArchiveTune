@@ -48,7 +48,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -429,16 +428,7 @@ private fun MiniPlayerArtwork(
                         shape = CircleShape,
                     ),
         ) {
-            // The artwork always renders here, even when the SpatialFlow
-            // morph layer is expected to draw over this slot (canvas songs,
-            // plain songs). The floating layer sits at a higher z-index and
-            // shows the exact same image, so covering it is invisible — and if
-            // that layer ever fails to draw (rects not yet measured, artwork
-            // inactive, canvas URL blank) the thumbnail is still on screen
-            // instead of an empty ring. This is the fix for the
-            // "thumbnail doesn't load in mini player in spatialflow style"
-            // report: the placeholder-only path had no artwork of its own and
-            // no fallback when the shared layer could not draw.
+
             val baseThumbnailUrl = mediaMetadata?.thumbnailUrl
             if (baseThumbnailUrl != null) {
                 val thumbnailSwapState =
@@ -448,10 +438,7 @@ private fun MiniPlayerArtwork(
                         lowDataMode = rememberLowDataModeActive(),
                         isMusicVideo = mediaMetadata.isMusicVideo,
                     )
-                // Same hardening as every other artwork surface: a
-                // disk-cache-backed request plus the maxres -> hq720 -> mq
-                // fallback chain, so a single failed ytimg request can never
-                // park the 42dp slot empty for the rest of the session.
+
                 var displayUrl by remember(thumbnailSwapState.displayUrl) {
                     mutableStateOf(thumbnailSwapState.displayUrl)
                 }

@@ -177,7 +177,6 @@ fun LibraryPlaylistsScreen(
                     navController.navigate("library") { launchSingleTop = true }
                 }
             } catch (_: Exception) {
-
             }
         }
     }
@@ -311,7 +310,6 @@ fun LibraryPlaylistsScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-
                 var showSortMenu by remember { mutableStateOf(false) }
                 val currentSortLabel =
                     when (sortType) {
@@ -856,7 +854,6 @@ fun rememberArtworkCardColor(
         val hue = hsv[0]
 
         if (useDarkTheme) {
-
             val s = (hsv[1] * 0.45f).coerceIn(0.06f, 0.20f)
             val v = if (pureBlack) 0.18f else 0.12f
             Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, s, v)))
@@ -877,7 +874,6 @@ fun PlaylistListCard(
     showDragHandle: Boolean = false,
     dragHandleModifier: Modifier = Modifier,
 ) {
-
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(

@@ -229,8 +229,6 @@ internal fun SimpMusicFullscreenLyricsSheet(
     val midColor2 by animateColorAsState(color.copy(alpha = 0.85f), tween(1200, easing = FastOutSlowInEasing))
     val endColor by animateColorAsState(Color.Black, tween(1200, easing = FastOutSlowInEasing))
 
-    // Lyrics background style: SimpMusic's diagonal wash is the DEFAULT look;
-    // any other style takes over the sheet background while lyrics are up.
     val lyricsBackgroundStylePref by rememberEnumPreference(LyricsBackgroundStyleKey, LyricsBackgroundStyle.DEFAULT)
     val playerBackgroundStylePref by rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.DEFAULT)
     val resolvedLyricsBackground = lyricsBackgroundStylePref.resolveFor(playerBackgroundStylePref)
@@ -257,7 +255,6 @@ internal fun SimpMusicFullscreenLyricsSheet(
 
     ModalBottomSheet(
         onDismissRequest = {
-
             menuState.dismiss()
             bottomSheetPageState.dismiss()
             onDismiss()
@@ -275,13 +272,11 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
                 ) {
-
                     showControlButtons = true
                 },
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-
             Box(
                 modifier =
                     Modifier.fillMaxSize().let { base ->
@@ -292,7 +287,6 @@ internal fun SimpMusicFullscreenLyricsSheet(
                         }
                     },
             ) {
-
             if (resolvedLyricsBackground != LyricsBackgroundStyle.DEFAULT) {
                 StyledLyricsBackground(
                     style = resolvedLyricsBackground,
@@ -339,7 +333,6 @@ internal fun SimpMusicFullscreenLyricsSheet(
                             bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
                         ),
             ) {
-
                 Row(
                     modifier =
                         Modifier
@@ -353,7 +346,7 @@ internal fun SimpMusicFullscreenLyricsSheet(
                         contentScale = ContentScale.Crop,
                         modifier =
                             Modifier
-                                // 56dp — the Apple Music lyrics header artwork size.
+
                                 .size(56.dp)
                                 .clip(RoundedCornerShape(8.dp)),
                     )

@@ -207,7 +207,6 @@ fun SpotifyPlaylistScreen(
             }
 
             is HeaderDownloadState.Partial -> {
-
                 if (headerState.paused) {
                     sendResumePausedDownloads(
                         context = navController.context,
@@ -297,12 +296,10 @@ fun SpotifyPlaylistScreen(
 
     LaunchedEffect(isSearching) {
         if (isSearching) {
-
             savedScrollIndex = lazyListState.firstVisibleItemIndex
             savedScrollOffset = lazyListState.firstVisibleItemScrollOffset
             focusRequester.requestFocus()
         } else {
-
             withFrameNanos {}
             lazyListState.scrollToItem(savedScrollIndex, savedScrollOffset)
         }
@@ -331,7 +328,6 @@ fun SpotifyPlaylistScreen(
             query = TextFieldValue()
         }
     } else {
-
         BackHandler {
             try {
                 if (!navController.popBackStack()) {
@@ -345,7 +341,6 @@ fun SpotifyPlaylistScreen(
                         navController.navigate("library") { launchSingleTop = true }
                     }
                 } catch (_: Exception) {
-
                 }
             }
         }
@@ -631,7 +626,6 @@ fun SpotifyPlaylistScreen(
         )
 
         if (layerBackdropActive && !isSearching && playlist != null) {
-
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 interactive = true,
@@ -643,7 +637,6 @@ fun SpotifyPlaylistScreen(
                 IconButton(
                     onClick = {
                         if (!navController.navigateUp()) {
-
                             navController.navigate("library") {
                                 launchSingleTop = true
                                 restoreState = true
@@ -670,7 +663,6 @@ fun SpotifyPlaylistScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
-
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -728,7 +720,6 @@ fun SpotifyPlaylistScreen(
                 }
             },
             navigationIcon = {
-
                 if (isSearching || showTopBarTitle) {
                     IconButton(
                         onClick = {

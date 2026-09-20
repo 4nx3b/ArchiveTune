@@ -336,7 +336,6 @@ fun HistoryScreen(
     }
 
     val historySourceDock: @Composable () -> Unit = {
-
         Column(modifier = Modifier.fillMaxWidth()) {
             AppleMusicPlaylistHero(
                 sectionLabel = stringResource(R.string.recently_played),
@@ -599,11 +598,9 @@ fun HistoryScreen(
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-
             if (!showSearchBar && !showPersistentLiquidGlassHeader) {
                 LargeFlexibleTopAppBar(
                     title = {
-
                         if (selectionCount > 0) {
                             FrostedHeaderPill {
                                 Text(
@@ -614,7 +611,6 @@ fun HistoryScreen(
                         }
                     },
                     navigationIcon = {
-
                         FrostedHeaderPill {
                             AppIconButton(
                                 onClick = {
@@ -682,7 +678,6 @@ fun HistoryScreen(
                         .hazeSource(headerHaze),
             ) {
                 if (!showSearchBar) {
-
                     val topPaddingForContent =
                         if (showPersistentLiquidGlassHeader) 0.dp
                         else innerPadding.calculateTopPadding()
@@ -695,7 +690,6 @@ fun HistoryScreen(
             )
 
             if (showPersistentLiquidGlassHeader) {
-
                 LiquidGlassActionPill(
                     backdrop = backdrop,
                     interactive = true,
@@ -1260,7 +1254,6 @@ private fun HistorySourcePill(
     availableSources: List<HistorySource>,
     onSourceChange: (HistorySource) -> Unit,
 ) {
-
     var expanded by remember { mutableStateOf(false) }
     val accent = AppleMusicStyleAccentColor
     val onBackgroundColor = MaterialTheme.colorScheme.onBackground
@@ -1291,7 +1284,6 @@ private fun HistorySourcePill(
                 shape = RoundedCornerShape(percent = 50),
                 color = containerColor,
             ) {
-
                 Row(
                     modifier =
                         Modifier

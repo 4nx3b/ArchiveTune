@@ -1,12 +1,5 @@
 @file:OptIn(androidx.media3.common.util.UnstableApi::class)
 
-/*
- * ArchiveTune (2026)
- * © Rukamori — github.com/rukamori
- * GPL-3.0 License | Contributors: see git history
- * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
- */
-
 package moe.rukamori.archivetune.playback
 
 import androidx.media3.common.audio.AudioProcessor
@@ -18,22 +11,6 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.sin
 
-/**
- * Real-time stereo balance + 8D rotating-swing effect, ported from SpatialFlow's
- * offline FFmpeg chain (apulsator=hz=<speed>:width=0.75:mode=sine +
- * aecho=0.6:0.4:30|60:0.2|0.15 + alimiter=0.97) into a media3 AudioProcessor.
- *
- * Advantages over the offline original: no FFmpeg dependency, no intermediate
- * files, works for streamed (non-local) sources too, and it reacts to setting
- * changes instantly because it runs inside the playback pipeline.
- *
- * Thread-safety: configuration setters are called from the service scope while
- * [queueInput] runs on the playback thread - all mutable config is @Volatile
- * and individually consistent (a torn read only bends one buffer's gains by a
- * few percent, which is inaudible for a psychacooustic effect). Each player
- * (primary + crossfade secondary) must use its OWN instance: BaseAudioProcessor
- * buffer state is not synchronised across playback threads.
- */
 class StereoPanAudioProcessor : BaseAudioProcessor() {
     @Volatile
     private var balance: Float = 0f
@@ -44,10 +21,8 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
     @Volatile
     private var rotationSpeedHz: Float = DEFAULT_SPEED_HZ
 
-    // Continuous rotation phase, kept across buffers so the swing never clicks.
     private var phase: Double = 0.0
 
-    // Per-channel circular history of the dry signal for the echo taps.
     private var echoHistory: ShortArray? = null
     private var echoWriteIndex: Int = 0
     private var echoDelay1Samples: Int = 0
@@ -64,19 +39,14 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat =
         if (inputAudioFormat.encoding == C.ENCODING_PCM_16BIT && inputAudioFormat.channelCount == STEREO_CHANNEL_COUNT) {
-            // Always active for stereo so toggling effects later does not need a
-            // re-configure; the disabled path is a plain bulk copy.
+
             inputAudioFormat
         } else {
             AudioProcessor.AudioFormat.NOT_SET
         }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
-        // The pipeline queues the SHARED AudioProcessor.EMPTY_BUFFER when the
-        // upstream processor is drained. put()ing a buffer into itself throws
-        // ("The source buffer is this buffer"), and rewriting the pending
-        // output with an empty buffer would drop audio - so an empty input is
-        // a strict no-op.
+
         if (!inputBuffer.hasRemaining()) return
 
         val format = inputAudioFormat
@@ -89,7 +59,6 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
             format.sampleRate <= 0 ||
             (!rotationOn && !balanceOn)
         ) {
-            // Fast path: nothing to do - copy the payload unchanged.
             replaceOutputBuffer(inputBuffer.remaining()).put(inputBuffer).flip()
             return
         }
@@ -104,14 +73,11 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
         val phaseStep = 2.0 * PI * speedHz / sampleRate
         val swingHalfWidth = PULSATOR_WIDTH / 2f
 
-        // FFmpeg aecho=0.6:0.4:30|60:0.2|0.15 (dry gain kept at 1, the whole
-        // stage scaled by outGain like the original chain).
         val dryGain = if (rotationOn) ECHO_OUT_GAIN else 1f
         val echoGain = if (rotationOn) ECHO_OUT_GAIN * ECHO_IN_GAIN else 0f
         val tap1Gain = echoGain * ECHO_TAP1_DECAY
         val tap2Gain = echoGain * ECHO_TAP2_DECAY
 
-        // Balance gains (linear law so the centre position stays unity).
         val balanceLeft = if (balanceOn) 1f - max(0f, balanceNow) else 1f
         val balanceRight = if (balanceOn) 1f - max(0f, -balanceNow) else 1f
 
@@ -129,8 +95,7 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
             val left: Float
             val right: Float
             if (rotationOn) {
-                // apulsator mode=sine width=0.75: opposite-phase equal swings
-                // between the ears around the 0.5 centre.
+
                 val swing = sin(localPhase).toFloat()
                 val modLeft = 0.5f + swingHalfWidth * swing
                 val modRight = 0.5f - swingHalfWidth * swing
@@ -153,9 +118,6 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
                     tap2Gain * history[frame2 * STEREO_CHANNEL_COUNT + 1]
             }
 
-            // alimiter=limit=0.97 safety ceiling (part of the 8D chain only -
-            // the balance path never adds gain, so full-scale samples must
-            // pass through untouched).
             if (rotationOn) {
                 outLeft = softLimit(outLeft)
                 outRight = softLimit(outRight)
@@ -173,16 +135,13 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
 
         phase = localPhase % (2.0 * PI)
         echoWriteIndex = writeIndex
-        // The sample loop consumes 4 bytes per frame; swallow a trailing odd
-        // pair so the caller sees the buffer fully consumed, then publish the
-        // output for getOutput() (position=0, limit=bytes written).
+
         inputBuffer.position(inputBuffer.limit())
         output.flip()
     }
 
     override fun onFlush() {
-        // Drop any stale echo tail (seek / stream change); keep the rotation
-        // phase so the swing continues smoothly afterwards.
+
         echoHistory?.fill(0)
         echoWriteIndex = 0
     }
@@ -212,7 +171,7 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
     private fun softLimit(value: Float): Float {
         if (abs(value) <= LIMITER_CEILING) return value
         val sign = if (value >= 0) 1 else -1
-        // Fold overshoot back with a soft knee instead of a hard clip.
+
         val overshoot = abs(value) - LIMITER_CEILING
         return sign * (LIMITER_CEILING + overshoot / (1f + overshoot * KNEE_SHARPNESS))
     }
@@ -223,10 +182,8 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
         const val STEREO_CHANNEL_COUNT = 2
         const val BYTES_PER_SAMPLE = 2
 
-        /** FFmpeg apulsator width=0.75. */
         const val PULSATOR_WIDTH = 0.75f
 
-        /** FFmpeg aecho=0.6:0.4:30|60:0.2|0.15. */
         const val ECHO_IN_GAIN = 0.6f
         const val ECHO_OUT_GAIN = 0.4f
         const val ECHO_TAP1_DELAY_MS = 30
@@ -234,7 +191,6 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
         const val ECHO_TAP1_DECAY = 0.2f
         const val ECHO_TAP2_DECAY = 0.15f
 
-        /** FFmpeg alimiter=limit=0.97. */
         const val LIMITER_CEILING = 0.97f * Short.MAX_VALUE
         const val KNEE_SHARPNESS = 0.02f
 

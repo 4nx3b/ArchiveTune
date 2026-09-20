@@ -82,9 +82,7 @@ class OnlineSearchSuggestionViewModel
                                 )
                             }
                         } else if (provider == SearchProvider.AMAZON) {
-                            // Anonymous catalogue search — no Amazon sign-in needed (see
-                            // AmazonMusicCatalog's header); failures degrade to empty like the
-                            // Apple Music branch above.
+
                             val amazonItems =
                                 try {
                                     AmazonMusicCatalog.searchTrackSuggestions(query, limit = 8)
@@ -173,7 +171,7 @@ data class SearchSuggestionViewState(
     val history: List<SearchHistory> = emptyList(),
     val spotifyItems: List<SpotifySearchItem> = emptyList(),
     val appleMusicItems: List<AppleMusicSearchItem> = emptyList(),
-    // Amazon items reuse the Apple Music search-item type — see AmazonMusicCatalog's header.
+
     val amazonItems: List<AppleMusicSearchItem.Track> = emptyList(),
     val suggestions: List<String> = emptyList(),
     val items: List<YTItem> = emptyList(),

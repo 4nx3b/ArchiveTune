@@ -213,7 +213,6 @@ fun ArtistScreen(
                     navController.navigate("library") { launchSingleTop = true }
                 }
             } catch (_: Exception) {
-
             }
         }
     }
@@ -379,7 +378,6 @@ fun ArtistScreen(
                 ),
         ) {
             if (isManuallyRefreshing && artistPage == null && !showLocal) {
-
                 item(key = "shimmer") {
                     ShimmerHost {
                         Box(
@@ -701,7 +699,6 @@ fun ArtistScreen(
                                         .fillMaxWidth()
                                         .padding(horizontal = 16.dp, vertical = 8.dp),
                             ) {
-
                                 TextPlaceholder(
                                     height = 18.dp,
                                     modifier = Modifier.fillMaxWidth(0.35f),
@@ -739,7 +736,6 @@ fun ArtistScreen(
                         }
                     }
                 } else if (showLocal) {
-
                     if (librarySongs.isNotEmpty()) {
                         item {
                             NavigationTitle(
@@ -900,7 +896,6 @@ fun ArtistScreen(
                         }
                     }
                 } else {
-
                     orderedRemoteSections.fastForEach { section ->
                         if (section.items.isNotEmpty()) {
                             item(
@@ -1151,7 +1146,6 @@ fun ArtistScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
-
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -1169,7 +1163,6 @@ fun ArtistScreen(
     }
 
     if (!liquidGlassHeaderActive) {
-
     TopAppBar(
         windowInsets =
             WindowInsets(top = systemBarsTopPadding)
@@ -1188,7 +1181,6 @@ fun ArtistScreen(
             )
         },
         navigationIcon = {
-
             IconButton(
                 onClick = navController::navigateUp,
                 onLongClick = navController::backToMain,
@@ -1200,7 +1192,6 @@ fun ArtistScreen(
             }
         },
         actions = {
-
             IconButton(
                 onClick = showArtistOverflowMenu,
                 onLongClick = {},

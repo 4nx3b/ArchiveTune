@@ -215,7 +215,6 @@ val EnableVideoPlaybackKey = booleanPreferencesKey("enableVideoPlayback")
 val EnablePipModeKey = booleanPreferencesKey("enablePipMode")
 val AllowAgeRestrictedKey = booleanPreferencesKey("allowAgeRestricted")
 enum class DownloadSource {
-
     AUTO,
 
     QOBUZ,
@@ -245,17 +244,13 @@ object DownloadSourceConfig {
             DownloadSource.QOBUZ_BACKUP,
             DownloadSource.TIDAL,
             DownloadSource.APPLE,
-            // Listed ahead of DEEZER on purpose: a user who signs into Amazon wants it preferred,
-            // and with no stream resolver yet AMAZON simply misses and the chain falls through to
-            // the next source — the same miss-and-fall-through the playback chain would do.
+
             DownloadSource.AMAZON,
             DownloadSource.DEEZER,
             DownloadSource.JIOSAAVN,
             DownloadSource.YOUTUBE_MUSIC,
         )
 
-    // AMAZON needs pool session credentials to be usable at all (same as Qobuz/Tidal/Deezer),
-    // so the download picker marks it pool-gated even though nothing resolves through it yet.
     val REQUIRES_POOL: Set<DownloadSource> =
         setOf(DownloadSource.QOBUZ, DownloadSource.TIDAL, DownloadSource.DEEZER, DownloadSource.AMAZON)
 
@@ -621,9 +616,6 @@ val LyricsProviderOrderKey = stringPreferencesKey("lyricsProviderOrder")
 val ArtworkProviderOrderKey = stringPreferencesKey("artworkProviderOrder")
 val QueueEditLockKey = booleanPreferencesKey("queueEditLock")
 
-// Player HUD: show the resolved codec/bitrate line. Bound by the Developer Options toggle
-// (DebugSettings) and read by the player + queue overlays — a shared constant keeps the three
-// call sites from drifting on the raw string.
 val ShowCodecOnPlayerKey = booleanPreferencesKey("show_codec_on_player")
 
 enum class LibraryViewType {
@@ -877,7 +869,6 @@ enum class HomeSource {
 val HomeSourceKey = stringPreferencesKey("homeSource")
 
 enum class PlayerDesignStyle {
-
     V4,
     V5,
     V7,
@@ -885,23 +876,6 @@ enum class PlayerDesignStyle {
     APPLE_MUSIC,
     V10,
 
-    /**
-     * Self-contained styles: their layout, controls, lyrics surface and backdrop live in their
-     * own package and share nothing with the numbered styles above.
-     *
-     * [BITCHORD] is the BitChord "Now Playing" screen — a mesh-gradient field with the artwork
-     * dissolving into it. [TIKTOK] is a full-screen vertical feed where each queue entry is one
-     * page: swipe up for the next song, down for the previous. [SIMPMUSIC] is SimpMusic's
-     * default now-playing screen — a diagonal palette wash with the sleeve on a queue-backed
-     * pager. [SPATIALFLOW] is the SpatialFlow player (github.com/MythicalSHUB/SpatialFlow,
-     * GPL-3.0) — artwork pager, pill-chip control row, wavy seek bar, M3 Expressive transport,
-     * embedded sliding queue drawer, circular-reveal lyrics overlay and music haptics.
-     * [LOOPER] is the Looper player (github.com/SthrNilshaaa/looper, GPL-3.0) — Jost
-     * typography, the squiggly expressive seek bar, asymmetric 80dp transport pills, the
-     * blurred-sleeve backdrop under a fixed scrim, and the Apple-Music-exact canvas twin
-     * behind the controls. All are views over the app's one playback engine and queue, not
-     * players of their own.
-     */
     BITCHORD,
     TIKTOK,
     SIMPMUSIC,
@@ -1011,7 +985,6 @@ const val PRELOAD_SONGS_MAX = 10
 val PRELOAD_SONGS_RANGE = 0f..PRELOAD_SONGS_MAX.toFloat()
 val PreloadSongsCountKey = intPreferencesKey("preloadSongsCount")
 
-/** Upcoming songs whose stream is resolved while the current one plays — on by default so track changes start instantly. */
 const val DEFAULT_PRELOAD_SONGS_COUNT = 2
 
 val PlayerButtonsStyleKey = stringPreferencesKey("player_buttons_style")
@@ -1247,33 +1220,14 @@ val DeezerAccountNameKey = stringPreferencesKey("deezerAccountName")
 
 val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
 
-// ---------------------------------------------------------------------------
-// Amazon Music source
-// ---------------------------------------------------------------------------
-// Shaped like Deezer rather than Tidal/Qobuz: credentials come from a signed-in account or from
-// the pool, and the instance list below only locates the metadata/search tier.
-//
-// IMPORTANT — this source cannot play audio on its own. Amazon serves CENC-protected fragmented
-// MP4, and turning that into a decodable stream needs a decryption step this fork does not ship.
-// Everything here is the account, catalogue and ordering plumbing around that gap; leaving the
-// toggle on without it yields a source that resolves metadata and then fails to produce a stream,
-// which is why it defaults OFF and the settings row says so.
 val AmazonEnabledKey = booleanPreferencesKey("amazonEnabled")
 
-// A manually captured Amazon session, stored separately from the pool cache for the same reason
-// DeezerArlKey is: the pool is wiped and rewritten on every refresh.
 val AmazonSessionKey = stringPreferencesKey("amazonSession")
 
-// Display label for the manually signed-in account, so the settings row can name who is signed in
-// without the session token going near the UI.
 val AmazonAccountNameKey = stringPreferencesKey("amazonAccountName")
 
-// Whether the signed-in account reported a lossless-capable (HD/Ultra HD) plan. Orders resolution
-// attempts only; the provider still verifies the real tier per track.
 val AmazonAccountPremiumKey = booleanPreferencesKey("amazonAccountPremium")
 
-// Newline-separated instance URLs, same shape as TidalInstancesKey and QobuzInstancesKey so
-// parseInstances() in MusicService reads all three.
 val AmazonInstancesKey = stringPreferencesKey("amazonInstances")
 
 val AmazonAudioQualityKey = stringPreferencesKey("amazonAudioQuality")

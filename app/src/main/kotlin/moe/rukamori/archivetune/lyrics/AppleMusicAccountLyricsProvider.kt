@@ -36,7 +36,6 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
     override val name = "Apple Music"
 
     override fun isEnabled(context: Context): Boolean {
-
         val token = context.dataStore[AppleMusicMediaUserTokenKey]?.trim().orEmpty()
         if (token.isNotBlank()) return true
         return PoolAccountManager.appleMusicAccounts().isNotEmpty()
@@ -82,7 +81,6 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
     private const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
 
     private suspend fun fetchTtml(title: String, artist: String, album: String?): String? {
-
         val storefront = resolveStorefront()
         val devToken = AppleMusicProvider.devTokenProvider?.invoke() ?: fetchFallbackToken()
         val mediaToken = AppleMusicProvider.mediaUserTokenProvider?.invoke()?.trim() ?: return null
@@ -131,9 +129,7 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
     }
 
     private suspend fun resolveStorefront(): String {
-
         return try {
-
             val media = AppleMusicProvider.mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() } ?: return "us"
             val dev = AppleMusicProvider.devTokenProvider?.invoke()?.takeIf { it.isNotBlank() } ?: fetchFallbackToken()
             val resp = client.get("$AMP_BASE/v1/me/storefront") {
@@ -152,13 +148,11 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
     }
 
     private suspend fun fetchFallbackToken(): String {
-
         return AppleMusicProvider.devTokenProvider?.invoke()?.takeIf { it.isNotBlank() }
             ?: "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiIsImtpZCI6IldlYlBsYXlLaWQifQ.eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzg2NjMyOTI0LCJleHAiOjE3OTI2ODA5MjQsInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSJdfQ.hBgj61sZf-y7bmuvT-joXAUAcf7TVJ51732xnH5vFkLHOmsQHxVqGMYUuI4h8c0-RX3fRY3moylhLW8fewFJyw"
     }
 
     private fun ttmlToLrc(ttml: String): String {
-
         val pRegex = Regex("""<p[^>]*begin="([^"]+)"[^>]*>(.*?)</p>""", RegexOption.DOT_MATCHES_ALL)
         val spanRegex = Regex("""<span[^>]*>.*?</span>""")
         val sb = StringBuilder()
@@ -181,14 +175,12 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
             sb.append(formatLrc(sec)).append(text).append('\n')
         }
         if (sb.isEmpty()) {
-
             return ttml.replace(Regex("""<[^>]+>"""), "\n").trim()
         }
         return sb.toString().trimEnd()
     }
 
     private fun parseTimeSec(raw: String): Double {
-
         val parts = raw.split(":")
         return try {
             when (parts.size) {

@@ -315,12 +315,6 @@ internal class DeviceMusicVolumeController(
         }
 }
 
-/**
- * Persists the SpatialFlow floating-artwork slot rects across activity
- * re-creation: the measured geometry survives the notification-reopen path
- * (system destroyed the backgrounded activity, sheet restored straight into
- * the expanded anchor) so the shared morph layer can draw immediately.
- */
 private val SpatialFlowArtworkRectSaver =
     Saver<Rect?, List<Float>>(
         save = { rect -> rect?.let { listOf(it.left, it.top, it.right, it.bottom) } },
@@ -548,27 +542,12 @@ fun BottomSheetPlayer(
     val positionUpdatedState = rememberUpdatedState(position)
     val positionProvider = remember { { positionUpdatedState.value } }
 
-    // SpatialFlow floating-artwork morph: the shared artwork layer bridging
-    // the mini player's circle and the full player's artwork slot. Slot rects
-    // are measured in root layout coordinates (the sheet's graphicsLayer
-    // slide cancels out because every participant shares the sliding box).
-    // Saveable: when the app is reopened from the media notification after
-    // the system destroyed the backgrounded activity, the sheet restores
-    // straight into the EXPANDED anchor — the mini player never composes on
-    // that path (BottomSheet only composes collapsedContent below the
-    // expanded anchor), so a plain remember would leave the mini rect null
-    // and the shared layer would not draw at all (the invisible artwork
-    // until the next collapse/expand cycle).
     val spatialFlowMiniArtworkRect =
         rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
     val spatialFlowFullArtworkRect =
         rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
     var spatialFlowPagerArtworkActive by remember { mutableStateOf(true) }
 
-    // SpatialFlow's lyrics overlay and queue drawer report their state upward
-    // so the shared floating artwork layer can fade out under them (the
-    // SpatialFlow style keeps both flags internal to SpatialFlowPlayerContent,
-    // and `isInlineLyricsOpen` is only ever set by the other player styles).
     var spatialFlowLyricsOpen by remember { mutableStateOf(false) }
     var spatialFlowQueueOpen by remember { mutableStateOf(false) }
     var duration by rememberSaveable(mediaMetadata?.id) {
@@ -936,17 +915,7 @@ fun BottomSheetPlayer(
         val startTime = SystemClock.elapsedRealtime()
         if (playbackState == STATE_READY) {
             while (isActive) {
-                // Cadence by surface. The expanded player (and its sliders and
-                // lyrics) needs the 100ms tick; the collapsed mini player only
-                // draws a thin progress bar, so a coarse 500ms tick carries it
-                // while cutting the whole keep-alive player subtree's
-                // recomposition rate by 5x — that subtree stays composed
-                // behind the mini player, and its 10Hz ticks were the dominant
-                // cost of returning to the app and of the mini-player's idle
-                // battery drain. While the sheet is mid-flight between the
-                // mini player and the full player, ticks pause entirely so the
-                // open/close animation frames never compete with a full-player
-                // recomposition.
+
                 val settledCollapsed = state.isCollapsed
                 val settledExpanded = state.isExpanded
                 if (!settledCollapsed && !settledExpanded) {
@@ -1102,7 +1071,6 @@ fun BottomSheetPlayer(
         }
 
     if (!aodModeEnabled) {
-
         val rootOverlayActive = LocalRootOverlayActive.current
         BackHandler(
             enabled =
@@ -1133,10 +1101,7 @@ fun BottomSheetPlayer(
         mediaMetadata
             ?.takeIf { enableVideoPlayback && it.isMusicVideo == true && !it.id.isLocalMediaId() }
             ?.id
-    // Persisted video quality: 0 = Auto, -1 = Data saver, -2 = High, >0 = exact
-    // height. Defaults to High — every fresh open streams the maximum quality the
-    // device can decode (4K where the video offers it) — and manual picks stick
-    // across restarts instead of resetting to Auto/1080p.
+
     var videoQualityStored by rememberPreference(VideoQualityPreferredHeightKey, VideoQualityPreference.HIGH_QUALITY)
     var videoPreferredHeight by remember(videoQualityStored) {
         mutableStateOf(VideoQualityPreference.toPreferredHeight(videoQualityStored))
@@ -1186,12 +1151,7 @@ fun BottomSheetPlayer(
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
     val playerSheetCanvasVisible by remember(state) {
-        // Early canvas gate: the sheet's expanded content starts fading at
-        // progress 0.5 and is fully gone by 0.25, so pausing the (muted, purely
-        // visual) canvas artwork loop at the TOP of the fade removes the video
-        // decode + surface compositing cost from the entire second half of the
-        // collapse/expand animation - the biggest contributor to the
-        // 'minimising the player janks while a canvas plays' report.
+
         derivedStateOf { state.progress > 0.5f }
     }
     CompositionLocalProvider(LocalPlayerSheetVisible provides playerSheetCanvasVisible) {
@@ -1311,7 +1271,6 @@ fun BottomSheetPlayer(
                 },
         backgroundColor =
             if (playerDesignStyle == PlayerDesignStyle.V9) {
-
                 val progress =
                     ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
                         .coerceIn(0f, 1f)
@@ -1347,7 +1306,6 @@ fun BottomSheetPlayer(
             } else {
                 when (playerBackground) {
                     PlayerBackgroundStyle.BLUR, PlayerBackgroundStyle.GRADIENT -> {
-
                         val progress =
                             ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
                                 .coerceIn(0f, 1f)
@@ -1363,7 +1321,6 @@ fun BottomSheetPlayer(
                     }
 
                     else -> {
-
                         val progress =
                             ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
                                 .coerceIn(0f, 1f)
@@ -1376,10 +1333,8 @@ fun BottomSheetPlayer(
                             }
 
                         if (useBlackBackground) {
-
                             Color.Black.copy(alpha = 1f - fadeProgress)
                         } else {
-
                             MaterialTheme.colorScheme.surface.copy(alpha = 1f - fadeProgress)
                         }
                     }
@@ -1441,7 +1396,6 @@ fun BottomSheetPlayer(
             sliderPosition?.let {
                 val isTransitioning = playerConnection.player.currentMediaItem?.mediaId != mediaMetadata?.id
                 if (isTransitioning) {
-
                     playerConnection.player.seekToNext()
                     playerConnection.player.seekTo(it)
                 } else {
@@ -1684,7 +1638,6 @@ fun BottomSheetPlayer(
         when (LocalConfiguration.current.orientation) {
             Configuration.ORIENTATION_LANDSCAPE -> {
                 if (playerDesignStyle == PlayerDesignStyle.BITCHORD) {
-
                     enrichedMetadata?.let { metadata ->
                         BitChordPlayerContent(
                             mediaMetadata = metadata,
@@ -1709,7 +1662,6 @@ fun BottomSheetPlayer(
                         )
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.TIKTOK) {
-
                     enrichedMetadata?.let { metadata ->
                         TikTokPlayerContent(
                             mediaMetadata = metadata,
@@ -1839,7 +1791,6 @@ fun BottomSheetPlayer(
                                 !videoPlaybackFailed
 
                         if (v7VideoShowing) {
-
                             Box(
                                 modifier =
                                     Modifier
@@ -2025,7 +1976,6 @@ fun BottomSheetPlayer(
                         )
                     }
 } else if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
-
                     enrichedMetadata?.let { metadata ->
                         SpatialFlowPlayerContent(
                             mediaMetadata = metadata,
@@ -2070,7 +2020,6 @@ fun BottomSheetPlayer(
                         )
                     }
 } else if (playerDesignStyle == PlayerDesignStyle.LOOPER) {
-
                     enrichedMetadata?.let { metadata ->
                         LooperPlayerContent(
                             mediaMetadata = metadata,
@@ -2104,7 +2053,6 @@ fun BottomSheetPlayer(
                         )
                     }
 } else if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
-
                     enrichedMetadata?.let { metadata ->
                         SimpMusicPlayerContent(
                             mediaMetadata = metadata,
@@ -2231,7 +2179,6 @@ fun BottomSheetPlayer(
 
             else -> {
                 if (playerDesignStyle == PlayerDesignStyle.BITCHORD) {
-
                     enrichedMetadata?.let { metadata ->
                         BitChordPlayerContent(
                             mediaMetadata = metadata,
@@ -2256,7 +2203,6 @@ fun BottomSheetPlayer(
                         )
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.TIKTOK) {
-
                     enrichedMetadata?.let { metadata ->
                         TikTokPlayerContent(
                             mediaMetadata = metadata,
@@ -2569,9 +2515,7 @@ fun BottomSheetPlayer(
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
-
 } else if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
-
                     enrichedMetadata?.let { metadata ->
                         SpatialFlowPlayerContent(
                             mediaMetadata = metadata,
@@ -2616,7 +2560,6 @@ fun BottomSheetPlayer(
                         )
                     }
 } else if (playerDesignStyle == PlayerDesignStyle.LOOPER) {
-
                     enrichedMetadata?.let { metadata ->
                         LooperPlayerContent(
                             mediaMetadata = metadata,
@@ -2650,7 +2593,6 @@ fun BottomSheetPlayer(
                         )
                     }
 } else if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
-
                     enrichedMetadata?.let { metadata ->
                         SimpMusicPlayerContent(
                             mediaMetadata = metadata,
@@ -2991,14 +2933,7 @@ private fun MikoLyricsTransition(
         if (animationsDisabled) {
             progress.snapTo(if (visible) 1f else 0f)
         } else {
-            // BitChord sleeve-collapse cadence: the same 420ms FastOutSlowInEasing
-            // tween BitChordPlayer.kt drives its lyrics panel with, applied to the
-            // full-screen lyrics page hosted by the numbered styles (Cinematic,
-            // Little, Immersive, Material Extended, Editorial) and TikTok. The old
-            // 900ms slide-up-with-corner-morph ("morphe") is gone: the panel now
-            // fades in over the tail of the collapse — alpha ramps from 45% of the
-            // way in — while settling from 26dp below, exactly like BitChord's
-            // lyrics panel graphicsLayer.
+
             progress.animateTo(
                 targetValue = if (visible) 1f else 0f,
                 animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
@@ -3011,10 +2946,7 @@ private fun MikoLyricsTransition(
     }
 
     if (showContent) {
-        // A whole-page lyrics overlay, always full screen: no rounded "sheet"
-        // corners, no dim scrim and no slide-up-from-the-bottom-edge motion —
-        // the page materialises in place over the player (controls included),
-        // the way the Apple Music player morphs its cover into the lyrics.
+
         Box(
             modifier =
                 Modifier
@@ -3022,12 +2954,6 @@ private fun MikoLyricsTransition(
                     .graphicsLayer {
                         val p = progressState.value.coerceIn(0f, 1f)
 
-                        // BitChord lyrics-panel ramp: the page materialises over
-                        // the tail of the sleeve collapse (45% in) and settles
-                        // from 26dp below — the panel fades in over the player
-                        // behind it, exactly like BitChord's panel over its mesh
-                        // gradient, with the 0.92 -> 1 scale echoing the artwork
-                        // shrinking into the page.
                         alpha = ((p - 0.45f) / 0.55f).coerceIn(0f, 1f)
                         translationY = (1f - p) * 26.dp.toPx()
                         scaleX = 0.92f + 0.08f * p
@@ -3476,7 +3402,6 @@ private data class V7BackdropPalette(
             colors: List<Color>,
             fallbackColor: Int,
         ): V7BackdropPalette {
-
             val dominantColor = colors.firstOrNull()
             val fallback = Color(fallbackColor).v7BackdropTone(valueMin = 0.12f, valueMax = 0.38f)
             val top = dominantColor?.v7BackdropTone(valueMin = 0.20f, valueMax = 0.72f) ?: fallback

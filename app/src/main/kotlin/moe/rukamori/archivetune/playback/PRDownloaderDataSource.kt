@@ -36,7 +36,6 @@ internal class PRDownloaderDataSource private constructor(
     private val context: Context,
     private val userAgent: String,
 ) : BaseDataSource(true) {
-
     private var tempFile: File? = null
     private var fileSource: FileDataSource? = null
     private var bytesRemaining: Long = 0L
@@ -85,7 +84,6 @@ internal class PRDownloaderDataSource private constructor(
     }
 
     private fun openSingle(dataSpec: DataSpec, url: String, attempt: Int): Long {
-
         val tempDir = File(context.cacheDir, "prd_tmp").apply { mkdirs() }
         val nameHash = sha1("$url|${dataSpec.position}|${dataSpec.length}")
         val safeName = "dl_$nameHash"
@@ -246,7 +244,6 @@ internal class PRDownloaderDataSource private constructor(
     override fun getUri(): Uri? = fileSource?.uri
 
     override fun close() {
-
         if (activeDownloadId != -1) {
             runCatching { PRDownloader.cancel(activeDownloadId) }
             activeDownloadId = -1
@@ -267,7 +264,6 @@ internal class PRDownloaderDataSource private constructor(
     }
 
     private fun resolveExpectedContentLength(url: String, dataSpec: DataSpec): Long {
-
         dataSpec.httpRequestHeaders["X-Expected-Content-Length"]?.toLongOrNull()
             ?.let { if (it > 0L) return it }
 

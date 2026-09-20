@@ -340,7 +340,6 @@ fun YouTubeSongMenu(
                             }
 
                             else -> {
-
                                 database.transaction {
                                     insert(song.toMediaMetadata())
                                 }
@@ -406,7 +405,6 @@ fun YouTubeSongMenu(
                 bottom = 12.dp,
             ),
     ) {
-
         item {
             MuzoQuickActionRow(actions = quickActions)
         }
@@ -866,7 +864,6 @@ fun YouTubeSongMenu(
                             Modifier.clickable {
                                 coroutineScope.launch {
                                     database.withTransaction {
-
                                         if (getSongById(song.id) == null) {
                                             insert(song.toMediaMetadata())
                                         }

@@ -205,7 +205,6 @@ private fun IconScreenContent(
     onSortOrderChange: (AppIconSortOrder) -> Unit,
     onDownloadPack: () -> Unit,
 ) {
-
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -213,7 +212,6 @@ private fun IconScreenContent(
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-
             TopAppBar(
                 title = {},
                 navigationIcon = {

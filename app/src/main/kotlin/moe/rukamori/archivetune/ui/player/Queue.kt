@@ -547,27 +547,21 @@ fun Queue(
                 }
 
                 PlayerDesignStyle.APPLE_MUSIC -> {
-
                 }
 
                 PlayerDesignStyle.BITCHORD -> {
-
                 }
 
                 PlayerDesignStyle.TIKTOK -> {
-
                 }
 
                 PlayerDesignStyle.SIMPMUSIC -> {
-
                 }
 
                 PlayerDesignStyle.SPATIALFLOW -> {
-
                 }
 
                 PlayerDesignStyle.LOOPER -> {
-
                 }
             }
 

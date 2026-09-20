@@ -177,20 +177,17 @@ fun TikTokPlayerContent(
         if (queueWindows.isEmpty()) return@LaunchedEffect
         val pending = pendingSeekTarget
         if (pending != null) {
-
             if (currentWindowIndex == pending) pendingSeekTarget = null
             return@LaunchedEffect
         }
         if (currentWindowIndex !in 0 until queueWindows.size) return@LaunchedEffect
         if (pagerState.currentPage == currentWindowIndex) return@LaunchedEffect
         if (pagerState.isScrollInProgress) {
-
             snapshotFlow { pagerState.isScrollInProgress }.first { !it }
             if (pagerState.currentPage == currentWindowIndex) return@LaunchedEffect
         }
         val delta = currentWindowIndex - pagerState.currentPage
         if (delta == 1 || delta == -1) {
-
             autoAdvancing = true
             try {
                 pagerState.animateScrollToPage(currentWindowIndex)
@@ -363,7 +360,6 @@ fun TikTokPlayerContent(
             val window = queueWindows.getOrNull(page)
             val isCurrentPage = page == currentWindowIndex
             if (window == null) {
-
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -573,7 +569,6 @@ private fun TikTokTopNavigation(
                 .height(TIKTOK_TOP_NAV_HEIGHT)
                 .padding(horizontal = 6.dp),
     ) {
-
         if (showFullscreenButton) {
             Box(
                 contentAlignment = Alignment.Center,

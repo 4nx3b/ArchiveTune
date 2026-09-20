@@ -503,7 +503,6 @@ class BackupRestoreViewModel
                 try {
                     val settings = googleDriveSettings
                     if (settings == null || !settings.enabled || settings.remoteFolderUri == null) {
-
                         updateGoogleDriveSync.runNow()
                         return@launch
                     }
@@ -520,7 +519,6 @@ class BackupRestoreViewModel
                     when (val result = googleDriveClient.uploadBackup(settings, fileName)) {
                         is GoogleDriveClient.UploadResult.Success -> {
                             updateGoogleDriveSync {
-
                                 googleDriveSyncRepository.recordSyncResult(success = true)
                             }
                             _googleDriveSyncEvent.emit(R.string.google_drive_sync_succeeded)
@@ -744,7 +742,6 @@ class BackupRestoreViewModel
                                     }
 
                                     else -> {
-
                                         if (name.startsWith("$FONTS_ZIP_PREFIX/") && name.endsWith(".ttf", ignoreCase = true)) {
                                             emit(context.getString(R.string.restore_step_restoring_file, name), indeterminate = true)
                                             val fontsDir = context.filesDir / CUSTOM_FONTS_DIR_NAME

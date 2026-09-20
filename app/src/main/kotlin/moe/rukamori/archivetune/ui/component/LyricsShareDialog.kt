@@ -203,7 +203,6 @@ fun LyricsShareImageDialog(
             isSharing = true
             scope.launch {
                 try {
-
                     val image =
                         if (options.vinylMode) {
                             ComposeToImage.createVinylImage(
@@ -597,7 +596,6 @@ private fun PreviewContainer(
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.primaryContainer,
     ) {
-
         Column(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -815,7 +813,6 @@ private fun ControlsSection(
                     }
                 }
             } else {
-
                 TextButton(
                     onClick = onShowAdvancedOptions,
                     modifier =
@@ -1061,7 +1058,6 @@ private fun ActionsSection(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-
     val actionModifier = Modifier.height(48.dp)
     val contentPadding =
         Modifier.padding(

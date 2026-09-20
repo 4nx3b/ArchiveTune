@@ -200,7 +200,6 @@ public fun MediaDetailHero(
                     ),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineLarge.copy(lineHeight = 36.sp),

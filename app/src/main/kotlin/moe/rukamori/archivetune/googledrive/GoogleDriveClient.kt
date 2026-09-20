@@ -29,7 +29,6 @@ class GoogleDriveClient
         @ApplicationContext private val context: Context,
         private val createBackupUseCase: CreateBackupUseCase,
     ) {
-
         sealed interface UploadResult {
             data class Success(val fileName: String) : UploadResult
 
@@ -66,7 +65,6 @@ class GoogleDriveClient
                 val tempDir = File(context.cacheDir, "gdrive_backup").apply { mkdirs() }
                 val tempFile = File(tempDir, "${System.currentTimeMillis()}_upload.backup")
                 try {
-
                     val tempUri = FileProvider.getUriForFile(
                         context,
                         "${context.packageName}.FileProvider",
@@ -128,7 +126,6 @@ class GoogleDriveClient
                 } catch (cancellation: kotlinx.coroutines.CancellationException) {
                     throw cancellation
                 } catch (security: SecurityException) {
-
                     Timber.w(security, "GoogleDriveClient: no permission for folder URI")
                     UploadResult.PermanentFailure("Folder access was revoked — please re-pick the folder")
                 } catch (e: Exception) {
@@ -167,7 +164,6 @@ class GoogleDriveClient
         }
 
         companion object {
-
             private const val BACKUP_MIME_TYPE = "application/octet-stream"
 
             private val GOOGLE_DRIVE_AUTHORITIES = setOf(

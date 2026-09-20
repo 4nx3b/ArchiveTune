@@ -31,7 +31,6 @@ fun Modifier.recomposeHighlighter(): Modifier = this.then(recomposeModifier)
 
 private val recomposeModifier =
     Modifier.composed(inspectorInfo = debugInspectorInfo { name = "recomposeHighlighter" }) {
-
         val totalCompositions = remember { arrayOf(0L) }
         totalCompositions[0]++
 
@@ -44,7 +43,6 @@ private val recomposeModifier =
 
         Modifier.drawWithCache {
             onDrawWithContent {
-
                 drawContent()
 
                 val numCompositionsSinceTimeout =
@@ -57,7 +55,6 @@ private val recomposeModifier =
 
                 val (color, strokeWidthPx) =
                     when (numCompositionsSinceTimeout) {
-
                         1L -> {
                             Color.Blue to 1f
                         }

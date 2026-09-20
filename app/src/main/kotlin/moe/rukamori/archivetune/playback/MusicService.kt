@@ -104,7 +104,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
@@ -421,7 +420,6 @@ class MusicService :
     @Inject
     lateinit var listenTogetherManager: moe.rukamori.archivetune.listentogether.ListenTogetherManager
 
-    /** Beat-driven music haptics engine (SpatialFlow port), fed from the PCM tap. */
     @Volatile
     var musicHapticsEngine: SpatialFlowHapticEngine? = null
         private set
@@ -534,7 +532,6 @@ class MusicService :
                         host.endsWith("ytimg.com")
 
                 if (!isYouTubeMediaHost) {
-
                     if (host.endsWith("kouzu.in") && !request.header("x-request-source").isNullOrEmpty()) {
                         return@addInterceptor chain.proceed(request)
                     }
@@ -854,9 +851,7 @@ class MusicService :
     private var virtualizer: Virtualizer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
     private var environmentalReverb: EnvironmentalReverb? = null
-    // One processor per audio sink: the primary and the crossfade secondary
-    // player each drive their own instance from their own playback thread -
-    // sharing one would race on the BaseAudioProcessor buffer state.
+
     private val primaryStereoPanProcessor = StereoPanAudioProcessor()
 
     @Volatile
@@ -1080,12 +1075,9 @@ class MusicService :
             .collect(scope) { settings ->
                 val changed = artworkSettingsFlow.value != settings
                 artworkSettingsFlow.value = settings
-                // Feed the canvas video pipeline's provider ranking too — the
-                // video resolver reads it to decide whether ArchiveTune canvas
-                // or Spotify canvas resolves first.
+
                 CanvasProviderPriority.updateFrom(settings.providerOrder)
                 if (changed) {
-
                     artworkResolver.invalidate()
                     if (settings.tidalArtworkEnabled && settings.tidalAvailable) {
                         beginArtworkResolutionForCurrentTrack()
@@ -1171,18 +1163,7 @@ class MusicService :
                 smallIconResId = R.drawable.small_icon,
             ),
         )
-        // Arm the platform notification pipeline. MediaSessionService only
-        // creates its internal notification controller — the Player.Listener
-        // that drives onUpdateNotification() on every playback change — when
-        // a MediaController connects through the session-service stub
-        // (MediaNotificationManager.addSession). This app's UI talks to the
-        // service through the plain local binder instead of a MediaController,
-        // so without an explicit registration nothing ever arms the pipeline
-        // and playback runs with no notification and no foreground promotion.
-        // The old self-referential MediaController from onCreate did this as a
-        // side effect (at the cost of a permanent self-binding that pinned
-        // hasBoundClients); addSession() registers the session directly, with
-        // no binding side effects, so idle-stop keeps working.
+
         addSession(mediaSession)
 
         updateNotification()
@@ -1275,7 +1256,6 @@ class MusicService :
             val shouldFetch =
                 stored == null || stored.lyrics == LyricsEntity.LYRICS_NOT_FOUND
             if (shouldFetch) {
-
                 val lyricsResult = lyricsHelper.getLyricsWithProvider(mediaMetadata)
                 database.query {
                     replaceLyricsIfAbsentOrNotFound(
@@ -1295,20 +1275,13 @@ class MusicService :
                 secondaryCrossfadePlayer?.skipSilenceEnabled = it
             }
 
-        // Audio effects screen playback speed + pitch matching. Pitch matched
-        // keeps the pitch at 1x (timestretched); the "vinyl" mode lets the
-        // pitch follow the speed. Both players get the same parameters so the
-        // crossfade handover stays seamless.
         combine(
             dataStore.data.map { it[AudioPlaybackSpeedKey] ?: 1.0f },
             dataStore.data.map { it[AudioPlaybackSpeedPitchMatchKey] ?: false },
             dataStore.data.map { it[AudioPlaybackPitchKey] ?: 1.0f },
             dataStore.data.map { it[EqualizerAudioEffectsEnabledKey] ?: false },
         ) { speed, pitchMatched, pitch, audioEffectsEnabled ->
-            // Playback speed + pitch live on the Audio effects tab and follow
-            // its master switch: nothing is applied to any song while it is
-            // off. Match-pitch keeps 1x (timestretched); vinyl mode follows
-            // the speed unless the user picked an explicit pitch offset.
+
             val effectiveSpeed = if (audioEffectsEnabled) speed.coerceIn(0.5f, 2.0f) else 1.0f
             val effectivePitch =
                 if (!audioEffectsEnabled) {
@@ -1323,8 +1296,7 @@ class MusicService :
             PlaybackParameters(effectiveSpeed, effectivePitch)
         }.distinctUntilChanged()
             .collectLatest(scope) { parameters ->
-                // Only touch the players when the parameters actually differ -
-                // avoids a needless re-configure on every service start.
+
                 if (localPlayer.playbackParameters != parameters) {
                     localPlayer.playbackParameters = parameters
                 }
@@ -1394,9 +1366,7 @@ class MusicService :
                     gapless = gapless,
                 )
             }
-            // Disable crossfade while in a Listen Together room — the guest
-            // side of the sync needs deterministic track starts, and a fade
-            // tail delays them (mirrors vivi's gating).
+
             .combine(listenTogetherManager.roomState) { config, roomState ->
                 config.copy(enabled = config.enabled && roomState == null)
             }
@@ -2241,7 +2211,6 @@ class MusicService :
         }
 
         scope.launch {
-
             if (!dataStore.get(EnableDiscordRPCKey, true)) {
                 if (DiscordPresenceManager.isRunning()) {
                     Timber.tag("MusicService").d("Discord RPC disabled → stopping presence manager")
@@ -2758,8 +2727,7 @@ class MusicService :
     }
 
     private fun createSecondaryCrossfadePlayer(): ExoPlayer {
-        // Dedicated stereo-pan instance for the secondary sink; it receives the
-        // same settings broadcasts and dies with the player it belongs to.
+
         val secondaryStereoPan = StereoPanAudioProcessor()
         applyStereoPanSettingsTo(secondaryStereoPan, desiredEqSettings.value)
         secondaryStereoPanProcessor = secondaryStereoPan
@@ -2931,7 +2899,6 @@ class MusicService :
         incomingPlayer: ExoPlayer,
         generation: Long,
     ) {
-
         if (generation != crossfadeGeneration.get()) {
             Timber.tag(TAG).d("crossfade[%d] stale generation at promotion; ignoring", generation)
             return
@@ -2949,7 +2916,6 @@ class MusicService :
                 ),
             )
         if (!incomingUsable) {
-
             Timber.tag(TAG).w("crossfade[%d] incoming player unusable at promotion; keeping outgoing", generation)
             cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
             return
@@ -3049,7 +3015,6 @@ class MusicService :
             Timber.tag(TAG).w(error, "Crossfade promotion failed; incoming player stays active if it is the only audible one")
 
             if (localPlayer !== incomingPlayer) {
-
                 runCatching { incomingPlayer.stop() }
                 runCatching { incomingPlayer.release() }
                 secondaryCrossfadePlayer = null
@@ -3132,7 +3097,6 @@ class MusicService :
         resetVolume: Boolean,
         resetPauseAtEnd: Boolean,
     ) {
-
         crossfadeGeneration.incrementAndGet()
         crossfadeTriggerJob?.cancel()
         crossfadeTriggerJob = null
@@ -3181,7 +3145,6 @@ class MusicService :
 
         val loudnessDb = format?.normalizationLoudnessDb()
         if (loudnessDb == null || !loudnessDb.isFinite()) {
-
             Timber.tag("AudioNormalization").d("Normalization enabled but no valid loudness data available - no normalization applied")
             return 1f
         }
@@ -3546,7 +3509,6 @@ class MusicService :
     }
 
     private fun skipOnError() {
-
         consecutivePlaybackErr += 2
         val nextWindowIndex = player.nextMediaItemIndex
 
@@ -4093,7 +4055,6 @@ class MusicService :
                     updateSongPreload()
                 }
             } finally {
-
                 if (initialLoadGeneration == initialQueueLoadGeneration) {
                     initialQueueLoadInProgress = false
                 }
@@ -4358,10 +4319,7 @@ class MusicService :
         abandonAudioFocus()
         closeAudioEffectSession()
         consecutivePlaybackErr = 0
-        // Per-media-id resolution caches grow one entry per unique track played and were never
-        // pruned, so a long listening session leaked them indefinitely. A full stop clears the
-        // queue and leaves no active track, so every entry is now stale — drop them here. They
-        // repopulate on the next resolve at no correctness cost.
+
         playbackUrlCache.clear()
         remotePlaybackTrackingUrlCache.clear()
         contentLengthCache.clear()
@@ -4440,11 +4398,7 @@ class MusicService :
                 .filterVideo(hideMusicVideos)
         if (allowedItems.isEmpty()) return
         suppressAutoPlayback = false
-        // "Add to queue" places songs right below the currently playing song
-        // instead of at the queue's tail: songs added one by one all land
-        // under the current song, so they play up next rather than being
-        // buried at the bottom. Shuffle mode gets the same next-up guarantee
-        // via the play-next shuffle order.
+
         val insertionIndex = if (player.mediaItemCount == 0) 0 else player.currentMediaItemIndex + 1
         val addQueueShuffleOrder =
             if (player.shuffleModeEnabled && player.mediaItemCount > 0) {
@@ -4545,11 +4499,7 @@ class MusicService :
 
     private fun readEqSettingsFromPrefs(prefs: Preferences): EqSettings {
         val levels = decodeBandLevelsMb(prefs[EqualizerBandLevelsMbKey])
-        // The "Enable audio effects" master switch governs every ported DSP
-        // effect (the band equalizer keeps its own switch). With it off the
-        // user cannot customise the effects and nothing is applied to any
-        // song - the stored per-effect values are preserved so flipping the
-        // switch back on restores exactly what was configured.
+
         val audioEffectsEnabled = prefs[EqualizerAudioEffectsEnabledKey] ?: false
         return EqSettings(
             enabled = prefs[EqualizerEnabledKey] ?: false,
@@ -4769,9 +4719,7 @@ class MusicService :
         processor: StereoPanAudioProcessor,
         settings: EqSettings,
     ) {
-        // Balance and 8D are independent effects: they no longer require the
-        // band-equalizer master switch to be on (the processor itself only
-        // activates for its own flags).
+
         processor.setBalance(settings.balance)
         processor.setRotation(
             enabled = settings.eightDEnabled,
@@ -4833,7 +4781,6 @@ class MusicService :
         reverb: EnvironmentalReverb,
         preset: EqReverbPreset,
     ) {
-        // Parameter values ported verbatim from SpatialFlow's AudioPlaybackService.
         runCatching {
             when (preset) {
                 EqReverbPreset.NONE -> {
@@ -5222,7 +5169,6 @@ class MusicService :
         }
 
     private suspend fun registerRemotePlaybackHistory(mediaId: String): Boolean {
-
         if (!dataStore.get(SyncPlaybackToYouTubeHistoryKey, true)) {
             Timber.tag("MusicService").d("Skipping remote YouTube history for %s (sync disabled)", mediaId)
             return false
@@ -5463,7 +5409,6 @@ class MusicService :
             reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
             player.repeatMode == REPEAT_MODE_OFF
         ) {
-
         }
 
         if (!suppressAutoPlayback &&
@@ -5577,7 +5522,6 @@ class MusicService :
                             .build()
                         val resolved = resolveMultiSourceDataSpec(dataSpec, mediaId, lowData, isPrefetch = true)
                         if (resolved != null) {
-
                             Timber.tag(TAG).d("Prefetch: lossless stream resolved for %s", mediaId)
                             return@runCatching
                         }
@@ -5634,7 +5578,6 @@ class MusicService :
             if (!isCrossfading || playbackState == Player.STATE_IDLE) {
                 cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
             } else if (playbackState == Player.STATE_ENDED) {
-
                 cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
             }
             if (playbackState == Player.STATE_ENDED &&
@@ -5647,7 +5590,6 @@ class MusicService :
                 onInfiniteQueueEnabled(currentQueue.infiniteQueueSeedMediaId())
             }
         } else if (playbackState == Player.STATE_READY) {
-
             if (sourceSwitchPending) {
                 sourceSwitchPending = false
                 sourceSwitchReassertJob?.cancel()
@@ -5662,9 +5604,7 @@ class MusicService :
                 applyEffectiveVolumeImmediately(sourceSwitchExpectedVolume)
                 ensureAudiblePlaybackVolume("source_switch_ready")
             }
-            // A seek's re-buffer has just completed. The reactive volume pipeline re-fired during
-            // BUFFERING->READY and may have pinned the primary player low; restore it now instead
-            // of waiting up to 15s for the audible-volume watchdog. Guarded + idempotent.
+
             if (pendingSeekVolumeReassert) {
                 pendingSeekVolumeReassert = false
                 seekVolumeReassertJob?.cancel()
@@ -5986,12 +5926,7 @@ class MusicService :
             if (!crossfadeHandoffInProgress) {
                 cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
             }
-            // A seek forces a re-buffer; the BUFFERING->READY transition re-fires the reactive
-            // volume pipeline (playerVolume x normalize x focus), which can pin the primary
-            // player's volume low AFTER the reset above already ran — the same re-fire the
-            // source-switch path guards against, but seeks had none, so the stream stayed silent
-            // until the 15s audible-volume watchdog. Reassert at the seek's READY (above) and,
-            // for an in-buffer seek that never leaves READY, once shortly after.
+
             pendingSeekVolumeReassert = true
             scheduleSeekVolumeReassert()
         }
@@ -6000,12 +5935,6 @@ class MusicService :
         }
     }
 
-    /**
-     * Fast-path recovery for a seek that stays within the buffered region: no BUFFERING->READY
-     * fires, so the STATE_READY seek hook never runs. [ensureAudiblePlaybackVolume] only restores
-     * a primary player that is muted but should be audible, and no-ops during a real crossfade, so
-     * this cannot introduce a spurious volume change.
-     */
     private fun scheduleSeekVolumeReassert() {
         seekVolumeReassertJob?.cancel()
         seekVolumeReassertJob =
@@ -6111,7 +6040,6 @@ class MusicService :
 
         val streamHttpFailure = findStreamHttpFailure(error)
         if (streamHttpFailure != null) {
-
             if (handleExtractorStreamHttpFailure(currentMediaId, isFullyDownloadedMedia, streamHttpFailure)) {
                 return
             }
@@ -6123,7 +6051,6 @@ class MusicService :
         }
 
         if (!isLocalMedia && isCacheCorruptionError(error, hasAnyCachedData)) {
-
             val mediaItemIndex = player.currentMediaItemIndex
             val resumePosition = player.currentPosition.coerceAtLeast(0L)
 
@@ -6155,13 +6082,11 @@ class MusicService :
             YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
 
             scope.launch(Dispatchers.IO) {
-
                 runCatching { playerCache.removeResource(currentMediaId) }
 
                 if (!isFullyDownloadedMedia || isOfflineDownloadCorrupt) {
                     runCatching { downloadCache.removeResource(currentMediaId) }
                     if (isOfflineDownloadCorrupt) {
-
                         for (sourcePrefix in listOf("qobuz:", "tidal:", "deezer:")) {
                             runCatching {
                                 downloadCache.removeResource("$sourcePrefix$currentMediaId")
@@ -6184,7 +6109,6 @@ class MusicService :
                         player.seekTo(mediaItemIndex, resumePosition)
                         player.prepare()
                     } else {
-
                         if (dataStore.get(AutoSkipNextOnErrorKey, false)) skipOnError() else stopOnError()
                     }
                 }
@@ -6286,7 +6210,6 @@ class MusicService :
                 codecRecoveryAttemptCount = attemptNumber
                 scope.launch(Dispatchers.Main) {
                     try {
-
                         if (attemptNumber > 1) {
                             kotlinx.coroutines.delay(400L)
                         }
@@ -6666,18 +6589,9 @@ class MusicService :
         val artists: List<String>,
         val album: String?,
         val durationMs: Long?,
-        /**
-         * ISRC of the wanted recording, when the queue item carried one (catalogue imports only).
-         * A source that can look up by ISRC uses it for an exact match and skips its text search.
-         */
+
         val isrc: String? = null,
-        /**
-         * When non-null, the Qobuz resolver skips its title/artist search and
-         * downloads this exact trackId. Set when the user picks a specific
-         * Qobuz track from the "Play from" source-search popup — the mediaId
-         * encodes the trackId as "qobuz:{trackId}" and [resolveMultiSourceDataSpec]
-         * extracts it into this field.
-         */
+
         val directQobuzTrackId: String? = null,
 
         val directQobuzBackupVideoId: String? = null,
@@ -6736,9 +6650,7 @@ class MusicService :
             song?.song?.albumName
                 ?: song?.album?.title
                 ?: queuedMetadata?.album?.title
-        // ISRC comes only from the in-memory queue metadata: the song table has no ISRC column, and
-        // it is only ever set for catalogue-sourced items (Spotify import), which is exactly where
-        // an exact-recording match beats a title/artist search.
+
         val isrc = queuedMetadata?.isrc?.takeIf { it.isNotBlank() }
         val durationMs =
             song?.song?.duration
@@ -6819,7 +6731,6 @@ class MusicService :
     fun refreshSourcesForSong(mediaId: String) {
         if (mediaId.isLocalMediaId() || mediaId.isTelegramMediaId()) return
         scope.launch(Dispatchers.IO) {
-
             evictDirectStreamCache(mediaId)
 
             runCatching {
@@ -6864,7 +6775,6 @@ class MusicService :
         qobuzTrackId: String?,
         qobuzBackupVideoId: String?,
     ) {
-
         if (source == AudioSourceType.QOBUZ && !qobuzTrackId.isNullOrBlank()) {
             QobuzAudioProvider.clearTransientCaches()
         }
@@ -6894,7 +6804,6 @@ class MusicService :
             }
         }
         if (player.currentMediaItem?.mediaId == mediaId) {
-
             val item = player.currentMediaItem ?: return
 
             val expectedVolume = currentEffectivePlayerVolume()
@@ -7051,7 +6960,6 @@ class MusicService :
                 isSourceEnabled(override)
         val chain =
             if (isDirectPick) {
-
                 listOfNotNull(override)
             } else when (override) {
                 null -> sourceResolutionChain()
@@ -7107,9 +7015,7 @@ class MusicService :
                             query,
                             trusted = overrideIsSourceOverride && override == AudioSourceType.APPLE,
                         )
-                    // Amazon serves CENC-protected fragmented MP4 and this fork ships no
-                    // decryption step (see AmazonEnabledKey in PreferenceKeys.kt), so there is
-                    // no provider to call here — always fall through to the next source.
+
                     AudioSourceType.AMAZON -> null
                     AudioSourceType.JIOSAAVN -> resolveJioSaavnStream(query)
                     AudioSourceType.YOUTUBE -> null
@@ -7120,7 +7026,6 @@ class MusicService :
             }
             val match =
                 if (overrideIsSourceOverride && source == override) {
-
                     Timber.tag("MusicService").i(
                         "Source %s ACCEPTED for \"%s\" via per-song override (skipping metadata gate) [%s]",
                         source.name, query.title, stream.label,
@@ -7202,7 +7107,6 @@ class MusicService :
         val refresh = dataStore.get(TidalRefreshTokenKey, "")
         val flow = dataStore.get(TidalAuthFlowKey, TidalAccountManager.FLOW_OAUTH)
         if (refresh.isBlank()) {
-
             if (token.isBlank()) markTidalNeedsRelogin()
             Timber.tag("MusicService").d("Tidal token expired/absent and no refresh token; account path unavailable")
             return token.ifBlank { null }
@@ -7432,7 +7336,6 @@ class MusicService :
                     try {
                         attempt(token, accountCountry)
                     } catch (e: Throwable) {
-
                         if (isTidalUnauthorized(e)) {
                             Timber.tag("MusicService").w("Tidal account 401 (possibly wrapped); refreshing token + retrying")
 
@@ -7499,8 +7402,7 @@ class MusicService :
                             title = query.title,
                             artists = query.artists,
                             album = query.album,
-                            // Tidal's resolver already scores an exact-ISRC hit above any text match
-                            // (see exactIsrc/exactIsrcOnly); it was only ever being handed null here.
+
                             isrc = query.isrc,
                             durationMs = query.durationMs,
                         ),
@@ -7586,9 +7488,6 @@ class MusicService :
 
     private fun resolveQobuzBackupStream(query: SourceQuery): DirectStream? {
 
-        // Refresh the user-configured resolver endpoints (Settings → Sources
-        // → Qobuz backup) so a mirror swap takes effect on the next song
-        // without a service restart.
         QobuzBackupProvider.configuredEndpoints =
             runCatching {
                 dataStore
@@ -7649,7 +7548,6 @@ class MusicService :
     }
 
     private fun resolveDeezerStream(query: SourceQuery): DirectStream? {
-
         if (!DeezerAudioProvider.hasAccounts()) {
             Timber.tag("MusicService").d("Deezer skip: no manual or pooled accounts available")
             return null
@@ -7699,7 +7597,6 @@ class MusicService :
     }
 
     private fun resolveJioSaavnStream(query: SourceQuery): DirectStream? {
-
         val quality = SaavnAudioQuality.fromStoredName(dataStore.get(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320.name))
         val qualityApiValue = quality.toApiValue()
         Timber.tag("MusicService").d("JioSaavn resolve start | quality=%s", qualityApiValue)
@@ -7864,7 +7761,6 @@ class MusicService :
                     mediaOkHttpClient.newCall(headRequest).execute().use { response ->
                         val len = response.header("Content-Length")?.toLongOrNull() ?: -1L
                         if (len > 0L) {
-
                             val backfilledBitrate = measuredBitrate(len, stream.matchedDurationMs)
                             val refreshed =
                                 runBlocking(Dispatchers.IO) {
@@ -8328,7 +8224,6 @@ class MusicService :
                 }
 
                 else -> {
-
                     val candidateKeys = cachedDataSpecCandidateKeys(mediaId)
                     val maxCachedLength =
                         candidateKeys.maxOfOrNull { key ->
@@ -8338,7 +8233,6 @@ class MusicService :
                                 if (spans.isEmpty()) {
                                     0L
                                 } else {
-
                                     val sortedSpans = spans.sortedBy { it.position }
                                     var total = 0L
                                     var cursor = dataSpec.position
@@ -8470,7 +8364,6 @@ class MusicService :
 
                     val created =
                         runCatching { FrameworkMediaDrm.newInstance(uuid) }.getOrNull()?.apply {
-
                             runCatching { setPropertyString("securityLevel", "L3") }
                                 .recoverCatching { setPropertyString("securityLevel", "3") }
                         }
@@ -8485,7 +8378,6 @@ class MusicService :
         private val devToken: String?,
         private val mediaToken: String,
     ) : MediaDrmCallback {
-
         private val provisionFallback = HttpMediaDrmCallback(null, OkHttpDataSource.Factory(mediaOkHttpClient))
 
         private fun fail(message: String): Nothing {
@@ -8572,13 +8464,10 @@ class MusicService :
             val normalizedScheme = dataSpec.uri.scheme?.lowercase(Locale.US)
             val selectedFactory =
                 if (normalizedScheme == "telegram") {
-
                     telegramFactory
                 } else if (normalizedScheme == DeezerCrypto.SCHEME) {
-
                     deezerFactory
                 } else if (normalizedScheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME) {
-
                     tidalProgressiveDashFactory
                 } else if (
                     normalizedScheme == "content" ||
@@ -8722,7 +8611,6 @@ class MusicService :
     private fun createRenderersFactory(stereoPanProcessor: StereoPanAudioProcessor) =
         object : DefaultRenderersFactory(this) {
             init {
-
                 setEnableDecoderFallback(true)
                 setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             }
@@ -9220,10 +9108,7 @@ class MusicService :
             castPlaybackRepository.releasePlayer(player)
         } catch (_: Exception) {
         }
-        // The sync worker is a child of scopeJob and may be cancelled at the
-        // receive below before it drains the service_destroy request. Stop the
-        // manager directly so the static holder drops its listener (which
-        // captures this@MusicService) even if that race is lost. Idempotent.
+
         try {
             DiscordPresenceManager.stop()
         } catch (_: Exception) {
@@ -9444,9 +9329,6 @@ class MusicService :
 
         const val SOURCE_SWITCH_VOLUME_REASSERT_MS = 250L
 
-        // Fast-path reassert for a seek that stays within the buffered region (no
-        // BUFFERING->READY, so the STATE_READY seek hook never fires). Covers the case the
-        // 15s audible-volume watchdog would otherwise be the only recovery for.
         const val SEEK_VOLUME_REASSERT_MS = 300L
         const val MIN_AUDIO_FOCUS_VOLUME_FACTOR = 0.2f
         const val MIN_AUDIO_NORMALIZATION_FACTOR = 0.25f

@@ -217,7 +217,6 @@ fun SpotifyHomeScreen(
                 }
             }
             is SpotifyHomeScreenState.Success -> {
-
                 val (homeCatalogueSwitchEnabled, _) =
                     rememberPreference(HomeCatalogueSwitchKey, defaultValue = false)
                 ExpressivePullToRefreshBox(

@@ -904,7 +904,6 @@ fun LibraryPinnedCollectionTile(
     subtitle: String? = null,
     accentColor: Color = MaterialTheme.colorScheme.primary,
 ) {
-
     val surfaceContainerHigh = MaterialTheme.colorScheme.surfaceContainerHigh
     val surfaceContainerLow = MaterialTheme.colorScheme.surfaceContainerLow
     val pinnedGradientBrush =
@@ -1404,7 +1403,6 @@ fun YouTubeListItem(
                 },
             badges = badges,
             thumbnailContent = {
-
                 val rowRatio =
                     item.thumbnailSourceRatio
                         ?.takeIf { it >= 4f / 3f }
@@ -2278,7 +2276,6 @@ private object Icon {
     ) {
         when (state) {
             STATE_COMPLETED -> {
-
                 var burstTrigger by remember { mutableStateOf<Any?>(null) }
                 var lastSeenState by remember { mutableStateOf<Int?>(null) }
                 LaunchedEffect(state) {

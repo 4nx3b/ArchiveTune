@@ -61,7 +61,6 @@ object AiLyricsRomanization {
     private const val SaveDebounceMs = 1_500L
 
     enum class RequestStatus {
-
         STARTED,
 
         ALREADY_CACHED,
@@ -86,7 +85,6 @@ object AiLyricsRomanization {
         val excludedLanguages: Set<String>,
         val config: AiServiceConfig,
     ) {
-
         val active: Boolean get() = enabled && config.canCallApi
 
         val configKey: String
@@ -353,7 +351,6 @@ object AiLyricsRomanization {
         requestKey: String,
         byLine: Map<String, String>,
     ) {
-
         _results.value = Result(sessionKey = requestKey, byLine = byLine)
     }
 

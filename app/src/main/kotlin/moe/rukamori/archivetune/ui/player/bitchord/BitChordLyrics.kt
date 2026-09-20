@@ -259,7 +259,6 @@ private fun SweptLyricLine(
     val sweep = Modifier.drawWithContent {
         val position = clock.longValue
         when {
-
             position >= line.endMs -> drawContent()
 
             position <= line.timeMs -> Unit
@@ -292,7 +291,6 @@ private fun SweptLyricLine(
 
                     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                     .drawWithContent {
-
                         val measured = layout ?: return@drawWithContent
                         val position = clock.longValue
                         glowAt(
@@ -436,7 +434,6 @@ internal fun CurrentLyricLine(
             .padding(vertical = 4.dp)
             .graphicsLayer {
                 if (!synced || instrumental) {
-
                     alpha = 0.5f
                     return@graphicsLayer
                 }

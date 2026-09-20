@@ -16,14 +16,6 @@ import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.isLowDataModeActive
 import java.util.Locale
 
-/**
- * Page-level canvas for playlist headers — the playlist twin of
- * AlbumViewModel's album-page canvas. Keyed on the first song of the
- * list (Apple Music's motion-artwork endpoint deliberately rejects
- * playlist ids, so playlists resolve through song identity instead)
- * and gated by the shared "Enable canvas in albums and playlists page"
- * toggle plus low-data mode.
- */
 internal suspend fun fetchPlaylistCanvasArtwork(
     context: Context,
     firstSongId: String?,

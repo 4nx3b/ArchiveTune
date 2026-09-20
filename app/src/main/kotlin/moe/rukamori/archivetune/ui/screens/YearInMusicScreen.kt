@@ -244,12 +244,6 @@ private fun YearInMusicRecapScreen(
                                 raw
                             }
 
-                        // Full-HD export: when the capture already meets the
-                        // 1080p floor the native pixels ship untouched (the
-                        // card fills the screen in capture mode, so its native
-                        // crop IS the full-screen image — no cover-fit upscale
-                        // that used to smear it); below the floor it enlarges
-                        // progressively instead of one big bilinear jump.
                         val fitted =
                             ComposeToImage.exportBitmapAtFhdFloor(source = cardBitmap)
                         val uri =

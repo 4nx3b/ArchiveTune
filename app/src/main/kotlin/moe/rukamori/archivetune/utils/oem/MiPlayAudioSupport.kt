@@ -16,7 +16,6 @@ object MiPlayAudioSupport {
 
     fun supportMiPlay(context: Context): Boolean {
         try {
-
             context.packageManager.getServiceInfo(
                 ComponentName(PACKAGE_NAME, SERVICE_NAME),
                 PackageManager.MATCH_ALL,

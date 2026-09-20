@@ -301,7 +301,6 @@ fun AddToPlaylistDialog(
             onDismissRequest = onDismiss,
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
-
             UnglassedDialogTheme {
             KeepStatusBarHiddenInDialog()
             BoxWithConstraints(

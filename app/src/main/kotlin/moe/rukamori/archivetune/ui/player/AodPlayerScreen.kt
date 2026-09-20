@@ -388,7 +388,6 @@ private fun AodSliderSection(
 
     Column(modifier = Modifier.fillMaxWidth()) {
         if (sliderStyle == SliderStyle.Standard) {
-
             Slider(
                 value = sliderValue,
                 onValueChange = { onSeek(it.toLong()) },

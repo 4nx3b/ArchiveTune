@@ -19,33 +19,24 @@ import java.io.ByteArrayOutputStream
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 
-/**
- * Message format for encoding/decoding
- */
 enum class MessageFormat {
-    JSON,      // DEPRECATED - will be removed in future versions
+    JSON,
     PROTOBUF
 }
 
-/**
- * Codec for encoding and decoding messages in different formats
- */
 class MessageCodec(
     var format: MessageFormat = MessageFormat.JSON,
     var compressionEnabled: Boolean = false
 ) {
     companion object {
         private const val TAG = "MessageCodec"
-        private const val COMPRESSION_THRESHOLD = 100 // Only compress if > 100 bytes
+        private const val COMPRESSION_THRESHOLD = 100
 
-        /**
-         * Detect message format by inspecting first byte
-         */
         fun detectMessageFormat(data: ByteArray): MessageFormat {
             if (data.isEmpty()) return MessageFormat.JSON
-            // JSON messages start with '{'
+
             if (data[0] == '{'.code.toByte()) return MessageFormat.JSON
-            // Protobuf messages have field tags
+
             return MessageFormat.PROTOBUF
         }
     }
@@ -55,9 +46,6 @@ class MessageCodec(
         isLenient = true
     }
 
-    /**
-     * Encode a message with the codec's format and compression settings
-     */
     fun encode(msgType: String, payload: Any?): ByteArray {
         return if (format == MessageFormat.PROTOBUF) {
             encodeProtobuf(msgType, payload)
@@ -66,9 +54,6 @@ class MessageCodec(
         }
     }
 
-    /**
-     * Decode a message, automatically detecting format
-     */
     fun decode(data: ByteArray): Pair<String, ByteArray> {
         val detectedFormat = detectMessageFormat(data)
 
@@ -79,9 +64,6 @@ class MessageCodec(
         }
     }
 
-    /**
-     * Encode message as JSON (DEPRECATED - will be removed in future versions)
-     */
     private fun encodeJson(msgType: String, payload: Any?): ByteArray {
         val msg = Message(
             type = msgType,
@@ -100,11 +82,7 @@ class MessageCodec(
         return data
     }
 
-    /**
-     * Decode JSON message (DEPRECATED - will be removed in future versions)
-     */
     private fun decodeJson(data: ByteArray): Pair<String, ByteArray> {
-        // Try to decompress if it looks compressed (gzip magic bytes)
         val actualData = if (compressionEnabled && data.size > 2 &&
                              data[0] == 0x1f.toByte() && data[1] == 0x8b.toByte()) {
             decompressData(data) ?: data
@@ -118,9 +96,6 @@ class MessageCodec(
         return Pair(msg.type, payloadBytes)
     }
 
-    /**
-     * Encode message using Protocol Buffers
-     */
     private fun encodeProtobuf(msgType: String, payload: Any?): ByteArray {
         var payloadBytes = byteArrayOf()
         var compressed = false
@@ -129,7 +104,6 @@ class MessageCodec(
             val protoMsg = toProtoMessage(payload)
             payloadBytes = protoMsg.toByteArray()
 
-            // Compress if enabled and payload is large enough
             if (compressionEnabled && payloadBytes.size > COMPRESSION_THRESHOLD) {
                 val compressedBytes = compressData(payloadBytes)
                 if (compressedBytes.size < payloadBytes.size) {
@@ -148,9 +122,6 @@ class MessageCodec(
         return envelope.toByteArray()
     }
 
-    /**
-     * Decode protobuf message
-     */
     private fun decodeProtobuf(data: ByteArray): Pair<String, ByteArray> {
         val envelope = Listentogether.Envelope.parseFrom(data)
 
@@ -163,9 +134,6 @@ class MessageCodec(
         return Pair(envelope.type, payloadBytes)
     }
 
-    /**
-     * Compress data using GZIP
-     */
     private fun compressData(data: ByteArray): ByteArray {
         val outputStream = ByteArrayOutputStream()
         GZIPOutputStream(outputStream).use { gzip ->
@@ -174,9 +142,6 @@ class MessageCodec(
         return outputStream.toByteArray()
     }
 
-    /**
-     * Decompress GZIP data
-     */
     private fun decompressData(data: ByteArray): ByteArray? {
         return try {
             val inputStream = ByteArrayInputStream(data)
@@ -189,9 +154,6 @@ class MessageCodec(
         }
     }
 
-    /**
-     * Convert Kotlin objects to protobuf messages
-     */
     private fun toProtoMessage(payload: Any): MessageLite {
         return when (payload) {
             is CreateRoomPayload -> Listentogether.CreateRoomPayload.newBuilder()
@@ -254,9 +216,6 @@ class MessageCodec(
         }
     }
 
-    /**
-     * Decode protobuf payload to Kotlin objects
-     */
     fun decodePayload(msgType: String, payloadBytes: ByteArray, format: MessageFormat): Any? {
         if (payloadBytes.isEmpty()) return null
 
@@ -267,9 +226,6 @@ class MessageCodec(
         }
     }
 
-    /**
-     * Decode JSON payload (DEPRECATED - will be removed in future versions)
-     */
     private fun decodeJsonPayload(msgType: String, payloadBytes: ByteArray): Any? {
         val payloadString = payloadBytes.decodeToString()
 
@@ -298,9 +254,6 @@ class MessageCodec(
         }
     }
 
-    /**
-     * Decode protobuf payload
-     */
     private fun decodeProtobufPayload(msgType: String, payloadBytes: ByteArray): Any? {
         return when (msgType) {
             MessageTypes.ROOM_CREATED -> {
@@ -417,8 +370,6 @@ class MessageCodec(
             else -> null
         }
     }
-
-    // Helper conversion functions
 
     private fun trackInfoToProto(track: TrackInfo): Listentogether.TrackInfo {
         return Listentogether.TrackInfo.newBuilder()

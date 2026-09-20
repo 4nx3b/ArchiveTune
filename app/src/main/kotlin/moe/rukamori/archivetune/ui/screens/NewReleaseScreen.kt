@@ -151,9 +151,7 @@ fun NewReleaseScreen(
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-
             if (isSearchActive || !glassHeader.liquidGlassActive) {
-
             AnimatedContent(
                 targetState = isSearchActive,
                 transitionSpec = {
@@ -213,7 +211,6 @@ fun NewReleaseScreen(
                                 .padding(top = 8.dp, bottom = 4.dp),
                     ) {}
                 } else {
-
                     LargeFlexibleTopAppBar(
                         title = {
                             Text(
@@ -234,7 +231,6 @@ fun NewReleaseScreen(
                             }
                         },
                         actions = {
-
                             IconButton(
                                 onClick = {
                                     isSelectionMode = !isSelectionMode
@@ -334,7 +330,6 @@ fun NewReleaseScreen(
                         selectedIds = selectedReleaseIds,
                         onReleaseClick = { album ->
                             if (isSelectionMode) {
-
                                 haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                 if (album.id in selectedReleaseIds) {
                                     selectedReleaseIds.remove(album.id)
@@ -511,9 +506,7 @@ fun NewReleaseScreen(
                 Column(
                     modifier = Modifier.padding(horizontal = 16.dp),
                 ) {
-                    // Count sits clear of the 28dp corner radius (24dp total
-                    // horizontal inset) and gets equal vertical padding above
-                    // and below its own line.
+
                     Text(
                         text = stringResource(R.string.selected_count, selectedReleaseIds.size),
                         style = MaterialTheme.typography.titleMedium,
@@ -902,7 +895,6 @@ private fun NewReleaseSectionHeader(
                 .padding(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-
             if (leadingIcon != null) {
                 Box(
                     modifier = Modifier
@@ -1000,13 +992,11 @@ private fun NewReleaseSummaryHeader(
                 .fillMaxWidth()
                 .padding(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 8.dp),
     ) {
-
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
-
             Box(
                 modifier = Modifier
                     .size(32.dp)

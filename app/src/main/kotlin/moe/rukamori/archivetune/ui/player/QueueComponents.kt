@@ -794,7 +794,6 @@ fun QueueCollapsedContentV3(
                         ),
                     ),
         ) {
-
             Box(
                 modifier =
                     Modifier

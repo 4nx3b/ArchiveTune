@@ -164,7 +164,6 @@ fun LibraryAlbumsScreen(
                         top = systemBarsTopPadding + AppBarHeight + LibraryHeaderContentPadding,
                     ),
         ) {
-
             Row(
                 modifier =
                     Modifier
@@ -378,7 +377,6 @@ fun LibraryAlbumsScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-
                     item(span = { GridItemSpan(4) }, key = "featured_album_card") {
                         featuredAlbum?.let { album ->
                             Box(
@@ -574,7 +572,6 @@ fun LibraryAlbumsScreen(
                     }
                 }
             } else {
-
                 LazyColumn(
                     contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = playerAwareBottomPadding),
                     verticalArrangement = Arrangement.spacedBy(12.dp),

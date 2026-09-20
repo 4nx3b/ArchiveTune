@@ -424,7 +424,7 @@ class MainActivity : ComponentActivity() {
                     playerConnection?.dispose()
                     playerConnection =
                         PlayerConnection(this@MainActivity, service, database, lifecycleScope)
-                    // Connect the Listen Together manager to the player
+
                     listenTogetherManager.setPlayerConnection(playerConnection)
                     playPendingDeepLinkQueueIfReady()
                     playPendingVoiceSearchIfReady()
@@ -518,23 +518,11 @@ class MainActivity : ComponentActivity() {
             service.clearResolvedSources(currentMediaId)
         }
 
-        // Every-launch background pool refresh — silent, throttled to one
-        // server fetch per 10 minutes so restarts never hammer the feed.
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching { PoolAccountManager.refreshForLaunch(this@MainActivity) }
         }
     }
 
-    /**
-     * Drops the current [PlayerConnection]. Safe to call repeatedly.
-     *
-     * unbindService() does NOT trigger onServiceDisconnected — Android only
-     * delivers that callback on a service crash — so every clean unbind path
-     * must dispose here, or the connection stays registered as a listener on
-     * the service's long-lived player and pins this Activity (plus its whole
-     * Compose tree) until the service itself dies. One leaked connection
-     * accumulates per background/foreground cycle without this.
-     */
     private fun disposePlayerConnection() {
         pendingAodModeJob?.cancel()
         pendingAodModeJob = null
@@ -577,8 +565,7 @@ class MainActivity : ComponentActivity() {
             safeUnbindMusicService()
             stopService(Intent(this, MusicService::class.java))
         }
-        // onStop's unbind already disposed; safety net for any path that
-        // reaches destruction with a live connection.
+
         disposePlayerConnection()
         safeUnbindMusicService()
     }
@@ -676,8 +663,6 @@ class MainActivity : ComponentActivity() {
             runCatching { downloadUtil.prewarmDownloadConnections() }
         }
 
-        // Listen Together: restores a persisted room session (reconnect flow)
-        // and wires preference observers before any screen renders.
         runCatching { listenTogetherManager.initialize() }
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
@@ -1003,10 +988,7 @@ class MainActivity : ComponentActivity() {
                                             .Builder(this@MainActivity)
                                             .data(song.thumbnailUrl)
                                             .allowHardware(false)
-                                            // Dominant-color extraction needs a
-                                            // thumbnail, not the full-res image —
-                                            // without this every track change
-                                            // decodes a multi-MB software bitmap.
+
                                             .size(
                                                 PlayerColorExtractor.Config.IMAGE_SIZE,
                                                 PlayerColorExtractor.Config.IMAGE_SIZE,
@@ -1146,7 +1128,7 @@ class MainActivity : ComponentActivity() {
                     val accountName by homeViewModel.accountName.collectAsStateWithLifecycle()
                     val networkBannerState by networkBannerViewModel.bannerState.collectAsStateWithLifecycle()
                     val hasUnreadNews by newsViewModel.hasUnreadNews.collectAsStateWithLifecycle()
-                    // Listen Together top-bar entry gate (vivi's pattern).
+
                     val (listenTogetherInTopBar) =
                         rememberPreference(
                             moe.rukamori.archivetune.constants.ListenTogetherInTopBarKey,
@@ -1358,12 +1340,6 @@ class MainActivity : ComponentActivity() {
                                 !active
                         }
 
-                    // SpatialFlow-style scroll-driven navbar behaviour: scrolling
-                    // down the page hides the bar completely and the mini player
-                    // smoothly takes over the freed space; scrolling back up
-                    // smoothly restores it. Reset whenever the destination
-                    // changes so a freshly opened tab always starts with the
-                    // bar visible.
                     var isNavBarHiddenByScroll by remember { mutableStateOf(false) }
                     LaunchedEffect(navBackStackEntry?.destination?.route) {
                         isNavBarHiddenByScroll = false
@@ -1378,10 +1354,7 @@ class MainActivity : ComponentActivity() {
                                     available: Offset,
                                     source: NestedScrollSource,
                                 ): Offset {
-                                    // Only real user gestures (drag or fling) drive the
-                                    // hide/show; programmatic scrolls (scroll-position
-                                    // restore on playlists, settings auto-scroll) must
-                                    // not touch the bar.
+
                                     if (source == NestedScrollSource.UserInput) {
                                         if (consumed.y < -navBarHideScrollThresholdPx) {
                                             isNavBarHiddenByScroll = true
@@ -1453,13 +1426,7 @@ class MainActivity : ComponentActivity() {
 
                     var glassPrewarmActive by remember { mutableStateOf(false) }
                     LaunchedEffect(Unit) {
-                        // Deferred past the cold-open window: the prewarm
-                        // compiles the AGSL vibrancy shader + blur RenderEffect
-                        // by drawing a backdrop for 450ms, which used to fire
-                        // two seconds in — exactly while the first home feed
-                        // was still rendering, janking the app's very first
-                        // interactions. 4.5s still warms the pipeline long
-                        // before a menu is ever opened.
+
                         delay(4500)
                         glassPrewarmActive = true
                         delay(450)
@@ -2148,9 +2115,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                 } else {
                                     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-                                    // Only the neutral frosted rail blurs — the tinted
-                                    // rail is a flat solid colour (tint wins if both
-                                    // flags are somehow stored on).
+
                                     val canRailBlur =
                                         navigationBarFrostedBlur && !navigationBarTintFrostedBlur &&
                                             navBarFrostedBackdrop != null && !isPreS
@@ -2161,9 +2126,7 @@ class MainActivity : ComponentActivity() {
                                         mutableStateOf(Offset.Zero)
                                     }
                                     val railDarkScheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
-                                    // Scheme-adaptive tinted rail — matches the tinted bar: light
-                                    // accent pastel in light mode, deep accent-tinted dark bar in
-                                    // dark mode, with the content polarity flipping with the scheme.
+
                                     val railTintedBaseColor =
                                         if (railDarkScheme) {
                                             lerp(Color.Black, MaterialTheme.colorScheme.primary, 0.30f)
@@ -2273,9 +2236,7 @@ class MainActivity : ComponentActivity() {
                                                         .drawBackdrop(
                                                             backdrop = liquidGlassBackdrop,
                                                             effects = {
-                                                                // Vividness boost; no lens here on purpose - the
-                                                                // rail's rectangle shape has no corner radii for
-                                                                // the refraction SDF.
+
                                                                 colorControls(saturation = 1.7f)
                                                                 blur(4f.dp.toPx())
                                                             },
@@ -2604,9 +2565,7 @@ class MainActivity : ComponentActivity() {
                                                                         navController.navigate(MusicRecognitionRoute)
                                                                     },
                                                                 ),
-                                                                // Listen Together — top-bar entry, gated
-                                                                // by the ListenTogetherInTopBarKey toggle
-                                                                // in its settings screen (vivi's pattern).
+
                                                                 if (listenTogetherInTopBar) {
                                                                     ProfileMenuItem(
                                                                         icon = R.drawable.diversity_listen_together,
@@ -2619,10 +2578,7 @@ class MainActivity : ComponentActivity() {
                                                                 } else {
                                                                     null
                                                                 },
-                                                                // Settings entry removed — the Home route's
-                                                                // top-end settings icon in liquid glass is
-                                                                // now the sole entry point, and it carries
-                                                                // the update-available badge.
+
                                                             ).filterNotNull(),
                                                             onDismiss = { profileMenuExpanded = false },
                                                         )
@@ -2913,17 +2869,7 @@ class MainActivity : ComponentActivity() {
                                                 isMiniPlayerPairedWithNavigation = areBottomBarsPaired,
                                                 onLyricsVisibilityChange = { isPlayerLyricsFullScreen = it },
                                                 navbarHiddenOffset = {
-                                                    // When the navigation bar slides away (route change or
-                                                    // scroll-to-hide), the collapsed mini player takes over the
-                                                    // freed space: it drifts down by exactly the bar's footprint
-                                                    // (bar height + its padding), keeping the system gesture
-                                                    // inset clear. Scaled by (1 - sheet progress) inside
-                                                    // BottomSheet so the expanded player is unaffected.
-                                                    // Only on routes whose collapsed bound still contains the
-                                                    // bar footprint — routes that hide the bar outright
-                                                    // (settings, playlists, active search) already exclude it
-                                                    // from the bound, so drifting again would shove the mini
-                                                    // player right off the screen.
+
                                                     if (shouldShowNavigationBar && !useRail) {
                                                         val hideFraction =
                                                             1f - (
@@ -3432,10 +3378,6 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        // Listen Together invite links: the share URL from the room screen
-        // (https://vivimusic-listen-together.onrender.com/listen?code=X) and
-        // the direct custom scheme (archivetune://listen?code=X) — joins the
-        // room with the stored username.
         val listenCode =
             uri.getQueryParameter("code")
                 ?: uri.getQueryParameter("room")

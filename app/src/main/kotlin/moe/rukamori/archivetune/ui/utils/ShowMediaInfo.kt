@@ -80,7 +80,6 @@ import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.innertube.models.MediaInfo
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -175,7 +174,6 @@ fun ShowMediaInfo(videoId: String) {
 
     val technicalDetails =
         buildList {
-
             currentFormat?.itag?.takeIf { it > 0 }?.toString()?.let { add(MediaInfoDetail(label = "Itag", value = it)) }
             currentFormat
                 ?.mimeType

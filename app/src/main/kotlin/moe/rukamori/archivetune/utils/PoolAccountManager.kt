@@ -84,15 +84,6 @@ object PoolAccountManager {
         val premium: Boolean,
     )
 
-    /**
-     * A shared Amazon Music subscriber credential. Modeled on [DeezerPoolAccount] rather than
-     * Tidal/Qobuz: no self-hosted proxy-instance tier, just one opaque per-account [session] blob
-     * (an Amazon Music web-session artifact) plus a [premium] flag for HD/Ultra HD entitlement.
-     *
-     * Nothing resolves audio with this yet — Amazon serves CENC-protected streams and this fork
-     * ships no decryption step (see AmazonEnabledKey in PreferenceKeys.kt) — but the pool plumbing
-     * is in place so a future AudioProvider only has to consume [amazonAccounts].
-     */
     data class AmazonPoolAccount(
         val id: Long?,
         val session: String,
@@ -143,9 +134,7 @@ object PoolAccountManager {
 
     private val poolBaseUrl: String?
         get() {
-            // Users routinely paste the full feed endpoint instead of the bare base URL; the client
-            // appends /api/accounts (with a legacy /api/sources fallback) itself, so a configured
-            // ".../api/sources" would 404 on every request while looking like a non-pool deployment.
+
             val raw = BuildConfig.SOURCE_PROVIDER_URL.trim()
             if (raw.isEmpty()) return null
             return raw
@@ -209,16 +198,6 @@ object PoolAccountManager {
         tidalCache.isNotEmpty() || qobuzCache.isNotEmpty() || deezerCache.isNotEmpty() ||
             appleMusicCache.isNotEmpty() || amazonCache.isNotEmpty()
 
-    /**
-     * True when every pooled service *that something can actually play* has at least one account.
-     *
-     * Deliberately excludes Amazon: no AudioProvider consumes [amazonCache] yet (this fork ships no
-     * CENC decryption step), so an empty Amazon cache is never "missing" anything a user can use.
-     * Folding it in here would mean any pool deployment slow to collect Amazon accounts — plausibly
-     * most of them, indefinitely — permanently downgrades every user from the 24h [refreshIntervalMs]
-     * to the 15-minute partial-pool one, hammering the server for a service nothing resolves through.
-     * Revisit this once an Amazon AudioProvider exists and eager discovery would actually help someone.
-     */
     private fun hasEveryService(): Boolean =
         tidalCache.isNotEmpty() && qobuzCache.isNotEmpty() && deezerCache.isNotEmpty() && appleMusicCache.isNotEmpty()
 
@@ -232,7 +211,6 @@ object PoolAccountManager {
         appContext = context.applicationContext
         withContext(Dispatchers.IO) {
             runCatching {
-
                 val passthrough: (String) -> String? = { raw -> raw }
                 cached(context, CACHE_TIDAL_KEY)?.takeIf { it.isNotBlank() }?.let {
                     tidalCache = parseTidal(JSONArray(it), passthrough)
@@ -262,12 +240,6 @@ object PoolAccountManager {
         }
     }
 
-    /**
-     * Every-launch background refresh: pulls fresh accounts from the server
-     * when the app is opened, throttled to one fetch per 10 minutes so
-     * rotations and quick activity restarts never hammer the feed. Silent —
-     * no UI surface, success or failure.
-     */
     suspend fun refreshForLaunch(context: Context): Boolean =
         withContext(Dispatchers.IO) {
             val now = System.currentTimeMillis()
@@ -296,7 +268,6 @@ object PoolAccountManager {
             }
 
             refreshMutex.withLock {
-
                 if (!force && hasAccounts() && System.currentTimeMillis() - lastRefreshAt < refreshIntervalMs()) {
                     return@withLock true
                 }
@@ -305,11 +276,9 @@ object PoolAccountManager {
                 }
                 val url = accountsUrl ?: legacySourcesUrl
                 if (url == null) {
-
                     lastFeedError = null
                     Timber.tag(TAG).d("No Source Pool URL configured; nothing to refresh")
                 } else {
-
                     val readKey = BuildConfig.SOURCE_PROVIDER_KEY
                     poolApiKey = readKey.ifBlank { null }
 
@@ -372,7 +341,6 @@ object PoolAccountManager {
         return try {
             client.newCall(builder.get().build()).execute().use { response ->
                 if (!response.isSuccessful) {
-
                     if (response.code == 401) {
                         Timber.tag(TAG).w(
                             "Pool account feed rejected the presented key (HTTP 401) — " +
@@ -390,12 +358,7 @@ object PoolAccountManager {
                 val deezer = parseDeezer(accountsArray(root, "deezer"), decryptor)
                 val apple = parseAppleMusic(accountsArray(root, "apple-music"), decryptor)
                 val amazon = parseAmazon(accountsArray(root, "amazon-music"), decryptor)
-                // Don't overwrite the in-memory cache with an empty list when the pool returns a
-                // 200 with a partial/empty response (rate-limit, transient server bug, captive-portal
-                // interception, malformed JSON). The user symptom is "Qobuz and other source
-                // providers disappear all of a sudden while playing songs" — and the only way to
-                // recover was force-stop + re-open. Only update the cache when at least one list is
-                // non-empty. Otherwise keep the previous (non-empty) cache so playback keeps working.
+
                 val allEmpty = tidal.isEmpty() && qobuz.isEmpty() && deezer.isEmpty() && apple.isEmpty() && amazon.isEmpty()
                 if (allEmpty && hasAccounts()) {
                     Timber

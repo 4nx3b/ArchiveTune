@@ -140,7 +140,6 @@ class LiquidGlassDragAnimation(
     val onDragStopped: LiquidGlassDragAnimation.() -> Unit,
     val onDrag: LiquidGlassDragAnimation.(size: IntSize, dragAmount: Offset) -> Unit,
 ) {
-
     private val valueAnimationSpec =
         spring(1f, 1000f, visibilityThreshold)
     private val velocityAnimationSpec =

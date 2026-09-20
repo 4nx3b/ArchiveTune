@@ -72,8 +72,6 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.util.Locale
 
-// Shared by every sort branch below that orders by a display name (song/album title, artist name
-// list): a fresh PRIMARY-strength Collator per branch was otherwise created from scratch each time.
 private fun <T> List<T>.sortedByCollated(keySelector: (T) -> String): List<T> {
     val collator = Collator.getInstance(Locale.getDefault())
     collator.strength = Collator.PRIMARY

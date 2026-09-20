@@ -96,7 +96,6 @@ fun PlaylistSuggestionsSection(
                 TextButton(
                     onClick = {
                         coroutineScope.launch {
-
                             val browseId =
                                 viewModel.playlist.value
                                     ?.playlist
@@ -135,7 +134,6 @@ fun PlaylistSuggestionsSection(
     Column(
         modifier = modifier.fillMaxWidth(),
     ) {
-
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -168,7 +166,6 @@ fun PlaylistSuggestionsSection(
                             onClick = {
                                 val songItem = item as? SongItem
                                 if (songItem != null) {
-
                                     songToCheck = songItem
                                     coroutineScope.launch {
                                         val isDuplicate =
@@ -184,7 +181,6 @@ fun PlaylistSuggestionsSection(
                                         if (isDuplicate) {
                                             showDuplicateDialog = true
                                         } else {
-
                                             val browseId =
                                                 viewModel.playlist.value
                                                     ?.playlist

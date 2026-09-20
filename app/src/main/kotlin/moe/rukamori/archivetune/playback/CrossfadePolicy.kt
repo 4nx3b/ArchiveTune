@@ -12,7 +12,6 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 object CrossfadePolicy {
-
     fun outgoingGain(progress: Float): Float {
         val clamped = progress.coerceIn(0f, 1f)
         return cos(clamped.toDouble() * (PI / 2.0)).toFloat()
