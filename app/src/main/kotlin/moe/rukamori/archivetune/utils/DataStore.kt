@@ -160,9 +160,15 @@ object PreferenceStore {
 operator fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>): T? {
     val snapshot = PreferenceStore.snapshot
     if (snapshot != null) return snapshot[key]
-    return runBlocking(Dispatchers.IO) {
-        withTimeoutOrNull(1500) { data.first()[key] }
-    }
+    // Wait on the single shared initial load instead of enqueuing another independent
+    // DataStore read per call. On a fresh launch dozens of these fire before the async
+    // snapshot lands; each cold `data.first()` used to queue its own read behind the
+    // others, serialising the main thread into multi-second startup jank.
+    val loaded =
+        runBlocking(Dispatchers.IO) {
+            withTimeoutOrNull(1500) { PreferenceStore.awaitSnapshot() }
+        }
+    return loaded?.get(key)
 }
 
 fun <T> DataStore<Preferences>.get(
