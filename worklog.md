@@ -3274,3 +3274,78 @@ Stage Summary:
   dead-code sweep, TikTok main lyrics on the enhanced lyrics library
   (animated/scrolling/translated/romanised, left-aligned), Meowery (Metrolist)
   Listen Together room code via per-server protobuf negotiation.
+
+---
+Task ID: 64
+Agent: main (Super Z)
+Task: Two user reports — (1) Listen Together chat should notify with a direct-reply action usable without opening the app; (2) video songs no longer play (blurred artwork instead) since the recent batch, and video songs must always play the real YouTube video, never a canvas substitute.
+
+Work Log:
+- Root-caused the video regression with two parallel Explore agents + direct
+  diff review: the "overlay" commits (0abc10a8c / 3c2a79b02 / f198d91ca /
+  6fb88abf6 / 9b42c9176) were exonerated — they only choreograph the
+  SpatialFlow floating artwork layer and hoist video control popups. The
+  actual regression is a810e8501 from the same Sep-20 batch: High-by-default
+  quality (ceiling = deviceMax = 4K) made heightCeiling > 1080 always true,
+  which SKIPS the SimpMusic extractor entirely (the one resolution path whose
+  NewPipe-harvested URLs survive bot-blocking), and 4K progressive streams
+  routinely blow the 10s first-frame hold → hasPlaybackFailed → every player
+  style renders the blurred artwork fallback while audio keeps playing
+  (exactly the reported symptom).
+- resolveVideoStreamUrl: SimpMusic is now always attempted. At ceilings
+  <= 1080p it early-returns as before; above 1080p it runs as a post-chain
+  last resort whenever the innertube chain produced nothing at 1080p-or-better
+  (its result seeds bestResult, markStreamUrlSuccessful skipped for
+  SimpMusic-sourced results to match the early-return behaviour).
+- New declareVideoFailure funnel unifies all three playback-time failure
+  paths (first-frame hold timeout, onPlayerError, 3-strike stuck-buffering
+  watchdog): one bounded recovery attempt (MaxVideoRecoveryAttempts=1)
+  re-resolves at a 1080p ceiling — which re-enables the SimpMusic early
+  return — before ever setting hasPlaybackFailed. Recovery resumes the main
+  audio hold immediately (audio never stalls past the original 10s), seeks
+  the recovered stream to the live audio position, and resets per videoId.
+- Recovery hardening: evicts the video's cached stream entries first (a
+  resolved URL that 403'd at playback is a poisoned cache success and would
+  be re-served at ceilings <= 1080p where the cache key is unchanged); the
+  isPlaying effect pauses instead of re-preparing the stale media item while
+  resolving (which would re-fire the old URL's error and kill recovery);
+  discards the recovered stream if terminal failure was declared
+  mid-resolution; resets with videoId change cancel the in-flight coroutine.
+- Verified the video-only requirement is already structurally enforced:
+  every canvas fetch/render gate carries !trackIsMusicVideo (V7+TikTok
+  shouldUseV7Canvas, artwork-style shouldUseArtworkCanvas, Thumbnail.kt,
+  and the pinned-canvas collector re-check), so Spotify/BetterLyrics canvas
+  can never substitute a YouTube music video in any player style — no code
+  change needed, documented in changelogs.
+- Listen Together chat notifications: incoming room chat from other users
+  now posts a MessagingStyle conversation notification on a stable id
+  (40001) with recent history (25-message ring buffer, 8 shown), a
+  RemoteInput reply action (FLAG_MUTABLE PendingIntent to
+  ListenTogetherActionReceiver) and a deep-link content intent
+  (navigate_to=listen_together/chat, works cold-start and onNewIntent).
+- Shade replies route via handleChatReplyFromNotification ->
+  sendChatMessage with a local echo (deduped against the server's own echo
+  by userId+text+5s timestamp window) and a silent re-post so the
+  conversation stays visible in the shade; unsendable replies (not in room /
+  protobuf server / blank) post a "Reply not delivered" notice; empty
+  replies consume the RemoteInput spinner by re-posting.
+- Suppression & lifecycle: chat screen visible (DisposableEffect ->
+  manager.setChatScreenVisible -> client flag) suppresses notifications,
+  markChatAsRead cancels the notification, blocked users never notify,
+  leaveRoom + KICKED clear history + notification, and a
+  ListenTogetherChatNotificationsKey toggle (default on) sits in
+  ListenTogetherSettings with the chat icon. Strings added to values/strings.
+- kotlin_balance_check.py clean on all 6 touched Kotlin files; brace/paren
+  balance verified. Committed 865e1de72, pushed to dev, CI monitoring
+  started (Build Pull Request + Build APKs + Nightly).
+- Also verified during this session: d0b8b86f2 (previous session's TikTok
+  single-line captions + R8-proof protobuf) — Build Pull Request SUCCESS,
+  Build APKs SUCCESS, Nightly in progress at commit time.
+
+Stage Summary:
+- dev @ 865e1de72: video songs get a guaranteed-working stream (SimpMusic
+  last resort + one 1080p recovery pass), Listen Together chat works from
+  the notification shade with direct replies.
+- Canvas-never-for-video confirmed already enforced by !trackIsMusicVideo
+  gates; documented for users in changelogs.md.
+- CI on 865e1de72 in flight at time of writing; to be monitored to green.
