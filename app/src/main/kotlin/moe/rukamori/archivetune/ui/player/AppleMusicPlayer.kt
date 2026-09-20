@@ -285,6 +285,9 @@ fun AppleMusicPlayerContent(
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
 ) {
+    // Lockstep the sharp hero canvas and the blurred backdrop copy of the same loop.
+    val canvasLoopSync = remember { CanvasLoopSync() }
+
     var queueOpen by remember { mutableStateOf(false) }
 
     var lyricsOpen by remember { mutableStateOf(false) }
@@ -715,6 +718,7 @@ fun AppleMusicPlayerContent(
                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                         visible = canvasVisibleForLyrics,
                         maxVideoEdgePx = AmCanvasBackdropMaxVideoEdgePx,
+                        loopSyncFollower = canvasLoopSync,
                         modifier =
                             Modifier
                                 .fillMaxWidth(1f / AmCanvasBackdropUpscale)
@@ -785,6 +789,7 @@ fun AppleMusicPlayerContent(
                         isMusicVideo = mediaMetadata.isMusicVideo,
                         landscape = true,
                         artworkCornerRadiusDp = artworkCornerRadiusDp,
+                        canvasLoopSync = canvasLoopSync,
                         modifier =
                             Modifier
                                 .fillMaxSize(),
@@ -925,6 +930,7 @@ fun AppleMusicPlayerContent(
                                     fullPlayerHeight = fullPlayerHeightForArtwork,
 
                                     artworkCornerRadiusDp = artworkCornerRadiusDp,
+                                    canvasLoopSync = canvasLoopSync,
                                     modifier =
                                         Modifier
                                             .fillMaxSize()
@@ -1139,6 +1145,7 @@ private fun AppleMusicSharpArtwork(
     fullPlayerHeight: Dp? = null,
 
     artworkCornerRadiusDp: Dp = 16.dp,
+    canvasLoopSync: CanvasLoopSync? = null,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current
@@ -1257,6 +1264,7 @@ private fun AppleMusicSharpArtwork(
                 fallbackUrl = canvasFallbackUrl,
                 isPlaying = isPlaying,
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                loopSyncLeader = canvasLoopSync,
                 modifier = Modifier.matchParentSize(),
             )
         }

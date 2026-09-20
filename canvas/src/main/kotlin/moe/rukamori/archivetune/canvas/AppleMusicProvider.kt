@@ -416,6 +416,121 @@ object AppleMusicProvider {
         return result
     }
 
+    /**
+     * The artist's OWN motion artwork — the looping video that only ever appears on
+     * the artist page (Apple Music `editorialVideo.motionArtistFullscreen16x9` /
+     * `motionArtistSquare1x1`). Distinct from any album canvas of the same artist.
+     */
+    suspend fun getByArtistName(
+        artist: String,
+        storefront: String = "us",
+    ): CanvasArtwork? {
+        if (artist.isBlank()) return null
+        val key = cacheKey("artist", artist, storefront)
+        cache[key]?.takeIf { it.expiresAtMs > System.currentTimeMillis() }?.let { return it.value }
+        val result = searchArtistMotion(artist, storefront)
+        cache[key] = CacheEntry(result, System.currentTimeMillis() + CACHE_TTL_MS)
+        return result
+    }
+
+    private suspend fun searchArtistMotion(
+        artist: String,
+        storefront: String,
+    ): CanvasArtwork? =
+        runCatching {
+            val effectiveStorefront = if (storefront == "us") resolveStorefront() else storefront
+            val searchUrl = "$AMP_BASE_URL/v1/catalog/$effectiveStorefront/search"
+            var token = ensureTokenFresh()
+            var response =
+                client.get(searchUrl) {
+                    header("Authorization", "Bearer $token")
+                    mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { mt -> header("Media-User-Token", mt) }
+                    header("Origin", "https://music.apple.com")
+                    header("Referer", "https://music.apple.com/")
+                    header("User-Agent", APPLE_MUSIC_WEB_UA)
+                    parameter("term", artist)
+                    parameter("types", "artists")
+                    parameter("limit", "5")
+                    parameter("extend", "editorialVideo")
+                }
+            if (response.status == HttpStatusCode.Unauthorized) {
+                Log.w("artist search returned 401 — force-refreshing token and retrying once")
+                token = refreshToken() ?: token
+                response =
+                    client.get(searchUrl) {
+                        header("Authorization", "Bearer $token")
+                        mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { mt -> header("Media-User-Token", mt) }
+                        header("Origin", "https://music.apple.com")
+                        header("Referer", "https://music.apple.com/")
+                        header("User-Agent", APPLE_MUSIC_WEB_UA)
+                        parameter("term", artist)
+                        parameter("types", "artists")
+                        parameter("limit", "5")
+                        parameter("extend", "editorialVideo")
+                    }
+            }
+            if (response.status != HttpStatusCode.OK) {
+                Log.w("artist search failed with status ${response.status}")
+                return@runCatching null
+            }
+
+            val data =
+                response.body<JsonObject>()["results"]
+                    ?.jsonObject
+                    ?.get("artists")
+                    ?.jsonObject
+                    ?.get("data")
+                    ?.jsonArray
+                    ?: return@runCatching null
+
+            for (item in data) {
+                val obj = item.jsonObject
+                val attributes = obj["attributes"]?.jsonObject ?: continue
+                val name = attributes["name"]?.jsonPrimitive?.contentOrNull ?: continue
+                if (!name.equals(artist, ignoreCase = true) && normalized(name) != normalized(artist)) continue
+
+                val ev = attributes["editorialVideo"]?.jsonObject ?: continue
+                val urls = extractArtistMotionUrls(ev) ?: continue
+                Log.d("found artist motion artwork for $name (id ${obj["id"]})")
+                return@runCatching CanvasArtwork(
+                    name = name,
+                    artist = name,
+                    albumId = obj["id"]?.jsonPrimitive?.contentOrNull,
+                    albumName = name,
+                    animated = urls.fullscreen,
+                    animatedVertical = urls.square,
+                    videoUrl = urls.square ?: urls.wide,
+                    videoUrlVertical = urls.square,
+                    provider = CanvasArtwork.PROVIDER_APPLE_MUSIC,
+                )
+            }
+            Log.d("no artist motion artwork for $artist")
+            null
+        }.onFailure {
+            if (it is CancellationException) throw it
+            Log.e(it, "error in searchArtistMotion for $artist")
+        }.getOrNull()
+
+    private fun extractArtistMotionUrls(ev: JsonObject): ArtistMotionUrls? {
+        fun JsonObject.videoUrl(): String? =
+            this["video"]?.jsonPrimitive?.contentOrNull
+                ?: this["videoUrl"]?.jsonPrimitive?.contentOrNull
+                ?: this["hlsUrl"]?.jsonPrimitive?.contentOrNull
+
+        val fullscreen =
+            ev["motionArtistFullscreen16x9"]?.jsonObject?.videoUrl()
+                ?: ev["motionArtistWide16x9"]?.jsonObject?.videoUrl()
+        val square = ev["motionArtistSquare1x1"]?.jsonObject?.videoUrl()
+        val wide = ev["motionArtistWide16x9"]?.jsonObject?.videoUrl()
+        if (fullscreen.isNullOrBlank() && square.isNullOrBlank() && wide.isNullOrBlank()) {
+            Log.d("artist editorialVideo present but no motion video: ${ev.keys}")
+            return null
+        }
+        return ArtistMotionUrls(fullscreen = fullscreen, square = square, wide = wide)
+    }
+
+    private fun normalized(value: String): String = value.trim().lowercase(Locale.ROOT)
+
     suspend fun diagnose(
         song: String,
         artist: String,
@@ -819,6 +934,12 @@ object AppleMusicProvider {
     private data class EditorialVideoUrls(
         val animated: String?,
         val animatedVertical: String?,
+    )
+
+    private data class ArtistMotionUrls(
+        val fullscreen: String?,
+        val square: String?,
+        val wide: String?,
     )
 
     private fun extractEditorialVideoUrls(ev: JsonObject): EditorialVideoUrls {
