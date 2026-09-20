@@ -41,6 +41,7 @@ val ListenTogetherSmartResyncKey = booleanPreferencesKey("listenTogetherSmartRes
 val ListenTogetherSyncVolumeKey = booleanPreferencesKey("listenTogetherSyncVolume")
 val ListenTogetherBlockedUsersKey = stringPreferencesKey("listenTogetherBlockedUsers")
 val ListenTogetherChatNotificationsKey = booleanPreferencesKey("listenTogetherChatNotifications")
+val ListenTogetherChatHistoryKey = stringPreferencesKey("listenTogetherChatHistory")
 
 val ListenTogetherUsernameKey = stringPreferencesKey("listenTogetherUsername")
 val ListenTogetherInTopBarKey = booleanPreferencesKey("listenTogetherInTopBar")

@@ -3,13 +3,38 @@
  * © Rukamori — github.com/rukamori
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
- * Ported from vivi-music (beta branch) ui/screens/CommentTogether.kt (GPL-3.0).
+ * Ported from vivi-music (beta branch) ui/screens/CommentTogether.kt (GPL-3.0),
+ * rebuilt with avatars, reactions, pins, edits, deletes, swipe-to-reply,
+ * typing indicators and per-username persistent history.
  */
 
 package moe.rukamori.archivetune.ui.screens
 
+import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -17,53 +42,71 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalListenTogetherManager
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.listentogether.ChatMessagePayload
 import moe.rukamori.archivetune.listentogether.RepliedMessage
-import androidx.compose.ui.text.*
-import androidx.compose.ui.text.style.TextDecoration
-import android.net.Uri
-import android.content.Intent
-import android.widget.Toast
-import androidx.compose.ui.platform.LocalContext
-import java.text.SimpleDateFormat
-import androidx.compose.animation.*
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CommentTogetherScreen(navController: NavController) {
+    val context = LocalContext.current
     val manager = LocalListenTogetherManager.current ?: return
     val messages by manager.chatMessages.collectAsState()
     val userId by manager.userId.collectAsState()
     val roomState by manager.roomState.collectAsState()
+    val typingUsers by manager.typingUsers.collectAsState()
     val windowInsets = LocalPlayerAwareWindowInsets.current
 
     var textInput by remember { mutableStateOf("") }
     var replyingTo by remember { mutableStateOf<ChatMessagePayload?>(null) }
+    var editingMessage by remember { mutableStateOf<ChatMessagePayload?>(null) }
+    var actionTarget by remember { mutableStateOf<MessageActionTarget?>(null) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
+
     val lazyListState = rememberLazyListState()
     val focusManager = LocalFocusManager.current
     val coroutineScope = rememberCoroutineScope()
+    val clipboardManager = LocalClipboardManager.current
 
     // While the chat screen is on top, the client suppresses chat-message
     // notifications (and the shade conversation is cancelled via markChatAsRead).
@@ -76,6 +119,32 @@ fun CommentTogetherScreen(navController: NavController) {
         manager.markChatAsRead()
         if (messages.isNotEmpty()) {
             lazyListState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
+    val latestPinned = messages.lastOrNull { it.pinned }
+
+    fun sendMessage() {
+        if (textInput.isBlank()) return
+        when {
+            editingMessage != null -> {
+                manager.editMessage(editingMessage!!, textInput.trim())
+                editingMessage = null
+                textInput = ""
+                focusManager.clearFocus()
+            }
+            replyingTo != null -> {
+                val replyData = RepliedMessage(replyingTo!!.username, replyingTo!!.message)
+                manager.sendChatMessage(textInput.trim(), replyData)
+                replyingTo = null
+                textInput = ""
+                focusManager.clearFocus()
+            }
+            else -> {
+                manager.sendChatMessage(textInput.trim())
+                textInput = ""
+                focusManager.clearFocus()
+            }
         }
     }
 
@@ -123,88 +192,118 @@ fun CommentTogetherScreen(navController: NavController) {
                     )
                     .padding(16.dp)
             ) {
+                // Reply / edit preview strip
                 AnimatedVisibility(
-                    visible = replyingTo != null,
+                    visible = replyingTo != null || editingMessage != null,
                     enter = expandVertically() + fadeIn(),
                     exit = shrinkVertically() + fadeOut()
                 ) {
-                    replyingTo?.let { replyMsg ->
-                        Surface(
+                    val replyMsg = replyingTo
+                    val editMsg = editingMessage
+                    Surface(
+                        modifier = Modifier
+                            .padding(bottom = 8.dp)
+                            .fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
                             modifier = Modifier
-                                .padding(bottom = 8.dp)
-                                .fillMaxWidth(),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(12.dp)
+                                .padding(8.dp)
+                                .height(IntrinsicSize.Min),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
+                            Box(
                                 modifier = Modifier
-                                    .padding(8.dp)
-                                    .height(IntrinsicSize.Min),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .fillMaxHeight()
+                                    .width(4.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(
+                                        if (editMsg != null) MaterialTheme.colorScheme.tertiary
+                                        else MaterialTheme.colorScheme.primary
+                                    )
+                            )
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 12.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxHeight()
-                                        .width(4.dp)
-                                        .clip(RoundedCornerShape(2.dp))
-                                        .background(MaterialTheme.colorScheme.primary)
+                                Text(
+                                    text = if (editMsg != null) {
+                                        stringResource(R.string.listen_together_chat_edit_message)
+                                    } else {
+                                        replyMsg?.username.orEmpty()
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (editMsg != null) MaterialTheme.colorScheme.tertiary
+                                    else MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
                                 )
-                                Column(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .padding(horizontal = 12.dp)
-                                ) {
-                                    Text(
-                                        text = replyMsg.username,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = replyMsg.message,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        maxLines = 1,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                Text(
+                                    text = editMsg?.message ?: replyMsg?.message.orEmpty(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            IconButton(onClick = {
+                                if (editingMessage != null) {
+                                    editingMessage = null
+                                    textInput = ""
                                 }
-                                IconButton(onClick = { replyingTo = null }) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.close),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
+                                replyingTo = null
+                            }) {
+                                Icon(
+                                    painter = painterResource(R.drawable.close),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
                             }
                         }
                     }
                 }
 
+                // Typing indicator with layered avatars
+                AnimatedVisibility(
+                    visible = typingUsers.isNotEmpty(),
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut(),
+                ) {
+                    TypingIndicatorRow(typingUsers = typingUsers)
+                }
+
                 ChatInputArea(
                     text = textInput,
-                    onTextChange = { textInput = it },
-                    onSend = {
-                        if (textInput.isNotBlank()) {
-                            val replyData = replyingTo?.let {
-                                RepliedMessage(it.username, it.message)
-                            }
-                            manager.sendChatMessage(textInput, replyData)
-                            textInput = ""
-                            replyingTo = null
-                            focusManager.clearFocus()
-                        }
-                    }
+                    onTextChange = { newText ->
+                        textInput = newText
+                        if (newText.isNotBlank()) manager.notifyTyping()
+                    },
+                    onSend = ::sendMessage
                 )
             }
         },
         contentWindowInsets = windowInsets
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .background(MaterialTheme.colorScheme.surface)
         ) {
-            if (messages.isEmpty()) {
+            latestPinned?.let { pinned ->
+                PinnedBanner(
+                    message = pinned,
+                    onUnpin = { manager.setPinned(pinned, false) },
+                    onJumpTo = {
+                        val index = messages.indexOfFirst { it.pinned && it.timestamp == pinned.timestamp && it.userId == pinned.userId }
+                        if (index >= 0) {
+                            coroutineScope.launch { lazyListState.animateScrollToItem(index) }
+                        }
+                    },
+                )
+            }
+
+            if (messages.isEmpty() && typingUsers.isEmpty()) {
                 EmptyChatPlaceholder()
             } else {
                 LazyColumn(
@@ -220,114 +319,60 @@ fun CommentTogetherScreen(navController: NavController) {
                         MessageItem(
                             message = message,
                             isMe = message.userId == userId,
-                            onReply = { replyingTo = it }
+                            myUsername = manager.currentUsername,
+                            onReply = { replyingTo = it },
+                            onLongPress = { pressed, bounds ->
+                                actionTarget = MessageActionTarget(pressed, bounds, pressed.userId == userId)
+                            },
+                            onToggleReaction = { msg, emoji ->
+                                manager.toggleReaction(msg, emoji)
+                            },
                         )
                     }
                 }
             }
         }
     }
-}
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-private fun MessageItem(
-    message: ChatMessagePayload,
-    isMe: Boolean,
-    onReply: (ChatMessagePayload) -> Unit
-) {
-    val alignment = if (isMe) Alignment.End else Alignment.Start
-    val bubbleColor = if (isMe) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-    val textColor = if (isMe) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-    val replyBgColor = if (isMe) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
+    // Anchored Instagram-style action popup (morph + liquid glass).
+    actionTarget?.let { target ->
+        MessageActionsPopup(
+            target = target,
+            myUsername = manager.currentUsername,
+            onReact = { emoji -> manager.toggleReaction(target.message, emoji) },
+            onOpenEmojiPicker = { showEmojiPicker = true },
+            onReply = { replyingTo = target.message },
+            onCopy = {
+                clipboardManager.setText(AnnotatedString(target.message.message))
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.listen_together_chat_message_copied),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            },
+            onEdit = {
+                editingMessage = target.message
+                replyingTo = null
+                textInput = target.message.message
+            },
+            onPinToggle = { manager.setPinned(target.message, !target.message.pinned) },
+            onDelete = { manager.deleteMessage(target.message) },
+            onDismiss = { actionTarget = null },
+        )
+    }
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = alignment
-    ) {
-        if (!isMe) {
-            Text(
-                text = message.username,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 12.dp, bottom = 4.dp)
-            )
-        }
-
-        Surface(
-            color = bubbleColor,
-            shape = RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = if (isMe) 16.dp else 4.dp,
-                bottomEnd = if (isMe) 4.dp else 16.dp
-            ),
-            tonalElevation = 2.dp,
-            modifier = Modifier
-                .widthIn(max = 280.dp)
-                .combinedClickable(
-                    onClick = {},
-                    onLongClick = { onReply(message) }
-                )
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                message.replyTo?.let { reply ->
-                    Surface(
-                        color = replyBgColor,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .padding(bottom = 6.dp)
-                            .fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .padding(8.dp)
-                                .height(IntrinsicSize.Min)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .width(3.dp)
-                                    .clip(RoundedCornerShape(1.5.dp))
-                                    .background(MaterialTheme.colorScheme.primary)
-                            )
-                            Column(modifier = Modifier.padding(start = 10.dp)) {
-                                Text(
-                                    text = reply.username,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1
-                                )
-                                Text(
-                                    text = formatMessageWithLinks(reply.message),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 2,
-                                    color = textColor.copy(alpha = 0.8f),
-                                    fontSize = 12.sp
-                                )
-                            }
-                        }
-                    }
+    // Full emoji picker for reactions with any emoji.
+    if (showEmojiPicker) {
+        EmojiPickerSheet(
+            onPick = { emoji ->
+                showEmojiPicker = false
+                actionTarget?.let { target ->
+                    manager.toggleReaction(target.message, emoji)
                 }
-
-                Spacer(modifier = Modifier.height(2.dp))
-
-                Text(
-                    text = formatMessageWithLinks(message.message),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = textColor
-                )
-
-                Text(
-                    text = formatTime(message.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = textColor.copy(alpha = 0.6f),
-                    textAlign = TextAlign.End,
-                    modifier = Modifier.align(Alignment.End).padding(top = 2.dp)
-                )
-            }
-        }
+                actionTarget = null
+            },
+            onDismiss = { showEmojiPicker = false },
+        )
     }
 }
 
@@ -398,7 +443,7 @@ private fun EmptyChatPlaceholder() {
                 .size(120.dp)
                 .clip(CircleShape)
                 .background(
-                    Brush.verticalGradient(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
                         listOf(
                             MaterialTheme.colorScheme.primaryContainer,
                             MaterialTheme.colorScheme.secondaryContainer
@@ -427,57 +472,4 @@ private fun EmptyChatPlaceholder() {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
-}
-
-@Composable
-private fun formatMessageWithLinks(text: String): AnnotatedString {
-    val context = LocalContext.current
-    val ytMusicRegex = Regex("(https?://music\\.youtube\\.com/[\\w\\-\\.\\?&=\\%/]*)")
-    val matches = ytMusicRegex.findAll(text)
-
-    if (matches.none()) return AnnotatedString(text)
-
-    return buildAnnotatedString {
-        var lastIdx = 0
-        for (match in matches) {
-            append(text.substring(lastIdx, match.range.first))
-
-            val url = match.value
-            val linkAnnotation = LinkAnnotation.Url(
-                url = url,
-                styles = TextLinkStyles(
-                    style = SpanStyle(
-                        color = MaterialTheme.colorScheme.primary,
-                        textDecoration = TextDecoration.Underline,
-                        fontWeight = FontWeight.Bold
-                    )
-                ),
-                linkInteractionListener = {
-                    try {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                            `package` = context.packageName
-                        }
-                        context.startActivity(intent)
-                        Toast.makeText(context, "Playing now", Toast.LENGTH_SHORT).show()
-                    } catch (e: Exception) {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                    }
-                }
-            )
-
-            withLink(linkAnnotation) {
-                append(url)
-            }
-
-            lastIdx = match.range.last + 1
-        }
-        if (lastIdx < text.length) {
-            append(text.substring(lastIdx))
-        }
-    }
-}
-
-private fun formatTime(timestamp: Long): String {
-    val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-    return sdf.format(Date(timestamp))
 }
