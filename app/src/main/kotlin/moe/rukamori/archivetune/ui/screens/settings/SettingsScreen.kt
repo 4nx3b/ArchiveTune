@@ -128,6 +128,9 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
             "lyrics_romanize_hindi", "lyrics_romanize_other",
         )
 
+        // Listen Together lives on its own settings leaf (no scrollTo support).
+        own("listen_together", "integration", "listen_together", "listen_together_screen")
+
         own("appearance", "lyrics", "lyrics_background_style")
         own("discord_experimental", "lyrics", "translate_lyrics", "enable_translator")
 
@@ -176,6 +179,7 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
             "content" -> "settings/content"
             "behavior" -> "settings/privacy"
             "integration" -> "settings/integration"
+            "listen_together" -> "settings/integrations/listen_together"
             "internet" -> "settings/internet"
             "storage" -> "settings/storage"
             "downloads" -> "settings/downloads"
@@ -203,6 +207,7 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
                 "po_token",
                 "account",
                 "logcat",
+                "listen_together",
             )
     return if (!supportsScroll || scrollKey.isNullOrBlank()) route else "$route?scrollTo=$scrollKey"
 }

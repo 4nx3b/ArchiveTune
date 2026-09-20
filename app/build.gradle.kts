@@ -35,6 +35,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.aboutlibraries.android)
+    alias(libs.plugins.protobufPlugin)
 }
 
 val localProperties = Properties()
@@ -378,6 +379,27 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
+// Protobuf codegen for the Listen Together wire protocol (app/src/main/proto/
+// listentogether.proto). Same configuration as vivi-music beta: protoc toolchain
+// pinned by the version catalog, lite runtimes for both java and kotlin builtins.
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:${libs.versions.protobuf.get()}"
+    }
+    generateProtoTasks {
+        all().forEach { task ->
+            task.builtins {
+                create("java") {
+                    option("lite")
+                }
+                create("kotlin") {
+                    option("lite")
+                }
+            }
+        }
+    }
+}
+
 dependencies {
     implementation(libs.guava)
     implementation(libs.coroutines.guava)
@@ -488,6 +510,10 @@ dependencies {
     implementation(libs.ktor.server.cio)
     implementation(libs.ktor.server.websockets)
     implementation(libs.ktor.server.content.negotiation)
+
+    // Listen Together wire protocol (protobuf lite runtimes)
+    implementation(libs.protobuf.javalite)
+    implementation(libs.protobuf.kotlin.lite)
 
     implementation(libs.timber)
     testImplementation(libs.junit)
