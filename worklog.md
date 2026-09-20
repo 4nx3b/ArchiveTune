@@ -3192,3 +3192,58 @@ Stage Summary:
   add-to-queue-after-current, AM queue full view, persisted 4K-default video
   quality with instant cache, settings-search live toggles + repaired
   autoscroll, and the 291-file cleanup pass. PR #226 awaiting CI + merge.
+
+---
+Task ID: 62
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Resume interrupted dead-code sweep + 2 new fixes — TikTok main lyrics
+rebuilt on the enhanced lyrics library, and the Metrolist server (The Meowery)
+never returning a room code.
+
+Work Log:
+- Finished the interrupted dead-code removal (previous session died
+  mid-edit leaving orphaned function bodies + stray commas in Items.kt and
+  Library.kt): removed SongGridItem/PlaylistGridItem/LibraryPinnedCollectionTile/
+  LibraryAlbumSpotlightCard/LibraryArtistSpotlightCard/LocalSongsGrid/
+  LibraryPlaylistFeatureCard orphans + playlistCountText/playlistPlaceholderIcon
+  helpers, LibraryArtistListItem/LibraryArtistGridItem/LibraryAlbumListItem/
+  LibraryPlaylistListItem, QueueCollapsedContentV1/V2, SettingsProfileHeader/
+  SettingsGroupCard/SettingsRow/SettingsSectionLabel/SettingsFlatItem, plus the
+  11 staged file deletions (PlaybackLogManager, LocalMixQueue, AudioQualityDialogs,
+  LibraryChromeComponents, Material3SettingsGroup, MeshBackdrop, SettingsAnchors,
+  YouTubeMusicLauncher, TidalCookieUtils, ExploreViewModel + anchor test);
+  pruned 31 now-unused imports; all removals verified reference-free (dd79b2d14).
+- TikTok lyrics root causes: the strip clocked itself off the TikTok screen's
+  sliderPositionProvider (null unless scrubbing → pinned at 0, so no word sweep
+  and no line transitions); romanisation only read the parse-time TTML
+  transliteration track; text was centred at a 20dp inset. Rebuilt the strip as
+  a compact LyricsEnhanced view (168dp, fading edges, white 18sp) — enhanced
+  lyrics library karaoke sweep + scroll-into-focus + slider-or-player position
+  with frame interpolation, translation AND romanisation via the global lyrics
+  pipelines; left-aligned at the song info's 16dp inset (matches the
+  "recently played" pill); gated on synced lyrics for the current song; the
+  TikTok-only Translation/Romanisation XOR picker removed from settings,
+  keys, strings, search index (c0e18ca9d).
+- Meowery room code root cause (verified against MetrolistGroup/metroserver
+  source cloned to /tmp/metrolist): metroserver is protobuf-only
+  (Decode → proto.Unmarshal, no JSON path), answers the JSON create_room with
+  a protobuf error envelope; the client reactively upgraded its codec to
+  protobuf but the consumed pending action was never retried → _roomState
+  stayed null → the 8-tile room code UI, toast and clipboard copy never fired.
+  Protos are field-compatible (metrolist adds revision/PongPayload/capabilities
+  fields the app ignores; UA policy allows okhttp by default). Fix:
+  ListenTogetherServer.protocol flag (JSON default, PROTOBUF for The Meowery),
+  connect() starts the codec in the server's own protocol (protobuf +
+  compression for Meowery — mirroring Metrolist's own MessageCodec(true)),
+  invalid_message-after-upgrade re-sends the pending create/join once in
+  protobuf (10s window), invite link derived from the selected server + link
+  button hidden for protobuf servers (no /listen web client — verified vivi
+  servers DO serve /listen), chat/avatar broadcast guarded with explicit
+  'not supported' logs (metroserver has no chat relay) (31ef54d64).
+- changelogs.md 16.0.3 follow-up section extended (db5463c84).
+
+Stage Summary:
+- dev @ db5463c84: dead code sweep (-3,295 lines), TikTok main lyrics on the
+  enhanced lyrics library (animated + scrolling + translation + romanisation,
+  left-aligned), Meowery/Metrolist room code fixed via per-server protocol
+  negotiation. CI monitoring next.
