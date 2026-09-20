@@ -35,14 +35,7 @@ fun FrostedHeaderPill(
     content: @Composable () -> Unit,
 ) {
     val pillShape = RoundedCornerShape(percent = 50)
-    // A "plain" header pill still upgrades to liquid glass whenever the global glass
-    // backdrop is active — that is what the settings submenus (and every other plain
-    // header) use: back button + title enclosed together in one glass pill, matching
-    // the Android Auto settings page, with no per-screen wiring required. When liquid
-    // glass is disabled (or below Android 12) the plain transparent pill stays.
-    val effectiveBackdrop = backdrop ?: if (plain) LocalLiquidGlassBackdrop.current else null
-    val renderPlain = plain && effectiveBackdrop == null
-    if (renderPlain) {
+    if (plain) {
         CompositionLocalProvider(LocalPlainHeaderPill provides true) {
             ProvideTextStyle(MaterialTheme.typography.titleLarge) {
                 Row(
@@ -53,13 +46,13 @@ fun FrostedHeaderPill(
                 }
             }
         }
-    } else if (effectiveBackdrop != null) {
+    } else if (backdrop != null) {
         Row(
             modifier =
                 modifier
                     .clip(pillShape)
                     .liquidGlass(
-                        backdrop = effectiveBackdrop,
+                        backdrop = backdrop,
                         shape = pillShape,
                         interactive = false,
                         blurRadius = LiquidGlassPillBlurRadius,

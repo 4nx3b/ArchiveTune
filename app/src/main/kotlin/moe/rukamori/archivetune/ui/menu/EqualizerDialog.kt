@@ -130,7 +130,6 @@ import moe.rukamori.archivetune.constants.AudioPlaybackSpeedKey
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedPitchMatchKey
 import moe.rukamori.archivetune.constants.EqualizerAudioEffectsEnabledKey
 import moe.rukamori.archivetune.playback.EqReverbPreset
-import moe.rukamori.archivetune.ui.component.EdgeToEdgeDialogWindow
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.EqualizerEffect
@@ -184,10 +183,8 @@ fun EqualizerDialog(
     Dialog(
         onDismissRequest = onDismiss,
 
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
-        EdgeToEdgeDialogWindow()
-        KeepStatusBarHiddenInDialog()
         EqualizerScreen(
             state = state,
             snackbarHostState = snackbarHostState,

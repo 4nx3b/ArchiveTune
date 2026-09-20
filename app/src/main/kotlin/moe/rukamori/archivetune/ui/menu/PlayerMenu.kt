@@ -83,6 +83,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
@@ -114,6 +115,7 @@ import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
+import moe.rukamori.archivetune.constants.QobuzBackupEndpointsKey
 import moe.rukamori.archivetune.qobuz.QobuzBackupProvider
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.DefaultDialog
@@ -129,6 +131,7 @@ import moe.rukamori.archivetune.ui.player.fetchCanvasArtworkForPlayback
 import moe.rukamori.archivetune.ui.player.hasAnyCanvasSource
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
+import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.parseSpeedDialPins
 import moe.rukamori.archivetune.audiosource.SongSourceOverride
@@ -1481,6 +1484,7 @@ private suspend fun searchOneSource(
     losslessLabel: String,
     deezerLabel: String,
     appleQualityLabel: String?,
+    context: android.content.Context,
 ): List<SourceSearchResult> =
     withContext(Dispatchers.IO) {
         when (source) {
@@ -1564,6 +1568,16 @@ private suspend fun searchOneSource(
             }
 
             AudioSourceType.QOBUZ_BACKUP -> {
+                // Refresh the user's mirror list so a freshly added endpoint is visible
+                // to the popup without waiting for a playback or health-check pass.
+                runCatching {
+                    QobuzBackupProvider.configuredEndpoints =
+                        context.dataStore.data.first()[QobuzBackupEndpointsKey]
+                            .orEmpty()
+                            .split('\n')
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                }
                 runCatching { QobuzBackupProvider.searchCandidates(query, limit = 8) }
                     .getOrDefault(emptyList())
                     .map { candidate ->
@@ -1714,6 +1728,7 @@ private fun SongSourceDialog(
                                     losslessLabel = losslessLabel,
                                     deezerLabel = deezerLabel,
                                     appleQualityLabel = appleQualityLabel,
+                                    context = context,
                                 )
                             }.getOrDefault(emptyList())
                         resultsBySource = resultsBySource + (source to results)

@@ -159,7 +159,9 @@ import androidx.compose.runtime.setValue
 
 private const val LYRIC_SYNC_LEAD_MS = 120L
 private const val LRC_LEAD_MS = LYRIC_SYNC_LEAD_MS
-private const val TTML_LEAD_MS = LYRIC_SYNC_LEAD_MS
+// Word-synced TTML timings (Musixmatch richsync, YouTube word sync) are exact —
+// advancing the clock for them only makes every word's karaoke fill finish early.
+private const val TTML_LEAD_MS = 0L
 private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 0L
 private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L
 private const val MANUAL_SCROLL_DEBOUNCE_MS = 50L

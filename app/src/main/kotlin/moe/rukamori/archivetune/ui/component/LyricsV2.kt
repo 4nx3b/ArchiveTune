@@ -394,6 +394,10 @@ fun LyricsV2(
     }
 
     val leadMs = if (isTtmlFormat) TTML_LEAD_MS else LRC_LEAD_MS
+    // The visual tuning offset compensates for LRC's coarse line-level timestamps;
+    // word-synced TTML timings (Musixmatch richsync, YouTube word sync) are exact, so
+    // advancing the clock for them only makes every word's sweep finish early.
+    val visualTuningMs = if (isTtmlFormat) 0L else LYRIC_VISUAL_TUNING_OFFSET_MS
     val currentPositionMsState = remember(lyrics) { mutableLongStateOf(0L) }
     var currentPositionMs by currentPositionMsState
     var playbackPositionMs by remember { mutableLongStateOf(0L) }
@@ -407,7 +411,7 @@ fun LyricsV2(
     var lastRawPositionMs by remember(lyrics) { mutableLongStateOf(0L) }
     var playbackResetTick by remember(lyrics) { mutableIntStateOf(0) }
 
-    LaunchedEffect(entriesWithWords, isSynced, leadMs, lyricsSyncOffset) {
+    LaunchedEffect(entriesWithWords, isSynced, leadMs, visualTuningMs, lyricsSyncOffset) {
         if (!isSynced || entriesWithWords.isEmpty()) return@LaunchedEffect
         val pollIntervalMs =
             when {
@@ -427,7 +431,7 @@ fun LyricsV2(
             lastRawPositionMs = rawPlayerPositionMs
 
             playbackPositionMs = (pos + lyricsSyncOffset.toLong()).coerceAtLeast(0L)
-            currentPositionMs = (playbackPositionMs + leadMs + LYRIC_VISUAL_TUNING_OFFSET_MS).coerceAtLeast(0L)
+            currentPositionMs = (playbackPositionMs + leadMs + visualTuningMs).coerceAtLeast(0L)
 
             currentLineIndex = findCurrentLineIndex(entriesWithWords, currentPositionMs, 0L)
             if (useFrameClock) {
@@ -1345,7 +1349,11 @@ private fun AnimatedWordV2(
     fillTransitionWidth: Float,
 ) {
     val wordStartMs = (word.startTime * 1000).toLong()
-    val wordEndMs = (word.endTime * 1000).toLong()
+    val rawWordEndMs = (word.endTime * 1000).toLong()
+    // Word-sync sources occasionally emit zero-length words (identical start/end,
+    // or a missing end). Floor the effective end so those words still sweep over the
+    // minimum duration instead of jumping from 0% to 100% in the completion tween.
+    val wordEndMs = if (rawWordEndMs > wordStartMs) rawWordEndMs else wordStartMs + MIN_SWEEP_MS
     val wordDuration = (wordEndMs - wordStartMs).coerceAtLeast(1L)
 
     val isWordComplete = currentPositionMs >= wordEndMs
@@ -1640,7 +1648,9 @@ internal fun SpotifyWord(
     isRtl: Boolean,
 ) {
     val wordStartMs = (word.startTime * 1000).toLong()
-    val wordEndMs = (word.endTime * 1000).toLong()
+    val rawWordEndMs = (word.endTime * 1000).toLong()
+    // Zero-length words sweep over the minimum duration instead of snapping.
+    val wordEndMs = if (rawWordEndMs > wordStartMs) rawWordEndMs else wordStartMs + MIN_SWEEP_MS
     val isWordComplete = currentPositionMs >= wordEndMs
     val isWordActive = currentPositionMs in wordStartMs until wordEndMs
 
