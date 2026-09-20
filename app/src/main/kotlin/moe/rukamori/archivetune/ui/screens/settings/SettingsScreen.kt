@@ -128,7 +128,6 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
             "lyrics_romanize_hindi", "lyrics_romanize_other",
         )
 
-        // Listen Together lives on its own settings leaf (no scrollTo support).
         own("listen_together", "integration", "listen_together", "listen_together_screen")
 
         own("appearance", "lyrics", "lyrics_background_style")
@@ -156,7 +155,6 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
     }
 
 private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): String? {
-
     val ownerKey = CROSS_PAGE_SCROLL_OWNERS["$parentKey/${scrollKey.orEmpty()}"] ?: parentKey
     val route =
         when (ownerKey) {
@@ -308,7 +306,6 @@ fun SettingsScreen(
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
         ) { _ ->
             Box(modifier = Modifier.fillMaxSize()) {
-
                 val playerAwareBottomPadding =
                     LocalPlayerAwareWindowInsets.current
                         .only(WindowInsetsSides.Bottom)
@@ -509,7 +506,6 @@ private fun BoxScope.SettingsHomeStyleHeader(
                 .padding(top = systemBarsTopPadding)
                 .height(AppBarHeight),
     ) {
-
         Text(
             text = stringResource(R.string.settings),
             color = MaterialTheme.colorScheme.onBackground,

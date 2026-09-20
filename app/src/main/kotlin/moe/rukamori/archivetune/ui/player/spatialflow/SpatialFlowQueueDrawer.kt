@@ -14,9 +14,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -295,7 +292,6 @@ fun SlidingQueueDrawer(
                             .padding(top = 16.dp, bottom = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-
                     Row(
                         modifier =
                             Modifier
@@ -304,7 +300,6 @@ fun SlidingQueueDrawer(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { onQueueExpandedChange(false) }) {
                                 Icon(

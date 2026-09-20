@@ -152,7 +152,6 @@ fun LibrarySpotifyPlaylistsScreen(
                     navController.navigate("library") { launchSingleTop = true }
                 }
             } catch (_: Exception) {
-
             }
         }
     }
@@ -356,14 +355,12 @@ fun LibrarySpotifyPlaylistsScreen(
                         playlist = playlist,
                         navController = navController,
                         onMenuClick = {
-
                             menuState.show {
                                 SpotifyPlaylistMenu(
                                     playlist = playlist,
                                     coroutineScope = coroutineScope,
                                     onDismiss = menuState::dismiss,
                                     onHide = {
-
                                         viewModel.toggleHiddenPlaylist(playlist.id)
                                     },
                                 )
@@ -452,7 +449,6 @@ fun LibrarySpotifyPlaylistsScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
-
                 Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                     androidx.compose.material3.IconButton(onClick = {
                         showSearchField = !showSearchField

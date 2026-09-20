@@ -16,7 +16,6 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
 object BitChordIcons {
-
     private const val STROKE = 2.2f
     private val stroke = SolidColor(Color.Black)
 
@@ -32,7 +31,6 @@ object BitChordIcons {
                 strokeLineCap = StrokeCap.Round,
                 strokeLineJoin = StrokeJoin.Round,
             ) {
-
                 moveTo(3.4f, 7.4f); lineTo(7f, 7.4f); lineTo(16.6f, 16.6f); lineTo(20.6f, 16.6f)
                 moveTo(18.1f, 14.1f); lineTo(20.6f, 16.6f); lineTo(18.1f, 19.1f)
 
@@ -98,7 +96,6 @@ object BitChordIcons {
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
-
             path(fill = stroke) {
                 moveTo(4.2f, 17.7f)
                 arcToRelative(2.9f, 2.5f, 0f, isMoreThanHalf = true, isPositiveArc = true, 5.8f, 0f)
@@ -158,7 +155,6 @@ object BitChordIcons {
                 strokeLineJoin = StrokeJoin.Round,
                 fill = if (filled) stroke else null,
             ) {
-
                 moveTo(12f, 20f)
                 curveTo(12f, 20f, 3.2f, 14.6f, 3.2f, 8.9f)
                 arcToRelative(4.5f, 4.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, 8.8f, -1.5f)

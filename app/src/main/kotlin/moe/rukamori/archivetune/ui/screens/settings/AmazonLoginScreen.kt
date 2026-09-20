@@ -49,19 +49,10 @@ const val AMAZON_LOGIN_ROUTE = "settings/amazon/login"
 
 private const val LOGIN_URL = "https://music.amazon.com"
 
-/** Cookies are read for this origin; both candidate cookies are set with `Domain=.amazon.com`, so
- *  they are visible from any amazon.com subdomain, including this one. */
 private const val COOKIE_ORIGIN = "https://www.amazon.com"
 
-/**
- * `at-main` is the persistent sign-in cookie; `sess-at-main` is its session-scoped sibling and is
- * what Amazon sets instead when the account was not "kept signed in" on this device. Either proves
- * a completed sign-in, so both are accepted, `at-main` first.
- */
 private val SESSION_COOKIE_NAMES = listOf("at-main", "sess-at-main")
 
-/** Below this length a captured value is obviously not a real session cookie, not a genuine one
- *  that happens to be short — real ones run to dozens of characters. */
 private const val MIN_SESSION_LENGTH = 16
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -70,16 +61,12 @@ fun AmazonLoginScreen(navController: NavController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // The cookie can still be present on several more completed navigations after it first
-    // appears, so without this guard each one would kick off its own verification.
     val handled = remember { AtomicBoolean(false) }
 
     fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
 
-    /** Pulls the session cookie out of the cookie jar. Read through [CookieManager] rather than
-     *  `document.cookie` because the cookie is HttpOnly and therefore invisible to JavaScript. */
     fun readSession(): String? {
         val cookieHeader = CookieManager.getInstance().getCookie(COOKIE_ORIGIN) ?: return null
         val cookies =
@@ -97,8 +84,7 @@ fun AmazonLoginScreen(navController: NavController) {
 
     fun finishLogin(session: String) {
         if (session.length < MIN_SESSION_LENGTH) {
-            // Present but clearly truncated/garbled — say so rather than silently waiting for
-            // another onPageFinished that would just read the same value again.
+
             handled.set(false)
             toast(context.getString(R.string.amazon_login_invalid_session))
             return
@@ -106,12 +92,9 @@ fun AmazonLoginScreen(navController: NavController) {
         scope.launch {
             context.dataStore.edit { prefs ->
                 prefs[AmazonSessionKey] = session
-                // The token itself never reaches the UI (see file header) — the settings row shows
-                // this generic label instead, mirroring how Deezer keeps the `arl` off-screen.
+
                 prefs[AmazonAccountNameKey] = context.getString(R.string.amazon_account_name_generic)
-                // Signing in is an explicit opt-in to the source, which defaults off; leaving it off
-                // would make a successful login look like it did nothing. This does not turn on
-                // playback — see AmazonSettings' notice — only metadata/catalogue resolution.
+
                 prefs[AmazonEnabledKey] = true
             }
             toast(context.getString(R.string.amazon_login_success))
@@ -131,9 +114,7 @@ fun AmazonLoginScreen(navController: NavController) {
                             view: WebView,
                             url: String?,
                         ) {
-                            // Checked on every completed navigation: Amazon's sign-in flow can land
-                            // on any of several pages (music.amazon.com, an interstitial, or back on
-                            // the Amazon retail domain) depending on account state.
+
                             val session = readSession() ?: return
                             if (!handled.compareAndSet(false, true)) return
                             finishLogin(session)
@@ -146,8 +127,7 @@ fun AmazonLoginScreen(navController: NavController) {
                     builtInZoomControls = true
                     displayZoomControls = false
                 }
-                // Clearing cookies first means an already-signed-in browser session cannot hand back
-                // a stale session for an account the user is trying to switch away from.
+
                 resetAuthWebViewSession(ctx, this, clearCookies = true) {
                     CookieManager.getInstance().setAcceptCookie(true)
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)

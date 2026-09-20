@@ -24,7 +24,6 @@ fun parseCreateChallenge(rawResponse: String): String {
 
     val challenge =
         if (outer.size > 1 && outer[1].jsonPrimitive.isString) {
-
             val decoded = descramble(outer[1].jsonPrimitive.content)
             json.parseToJsonElement(decoded).jsonArray
         } else {

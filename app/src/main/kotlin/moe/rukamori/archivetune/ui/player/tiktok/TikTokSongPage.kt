@@ -160,7 +160,6 @@ internal fun TikTokSongPage(
     val artworkRequest = rememberOfflineArtworkImageRequest(artworkModel)
 
     Box(modifier = Modifier.fillMaxSize().background(TIKTOK_EMPTY_BACKDROP)) {
-
         val videoState = LocalVideoArtworkState.current
         val videoShowing =
             isCurrentPage &&
@@ -235,7 +234,6 @@ internal fun TikTokSongPage(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-
                 BoxWithConstraints(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
@@ -317,7 +315,6 @@ internal fun TikTokSongPage(
                                             }
                                         },
                             ) {
-
                                 val artworkFallbackAlpha by animateFloatAsState(
                                     targetValue = if (canvasShowing || videoShowing) 0f else 1f,
                                     animationSpec = tween(300),
@@ -589,7 +586,6 @@ private fun TikTokSongInfo(
     Column(modifier = modifier) {
         val showChipRow = lyricsControlsVisible || !queueTitle.isNullOrBlank()
         if (showChipRow) {
-
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.height(TIKTOK_CAPTION_ROW_HEIGHT),

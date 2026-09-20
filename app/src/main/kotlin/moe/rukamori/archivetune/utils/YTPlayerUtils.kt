@@ -194,7 +194,6 @@ object YTPlayerUtils {
     private val simpMusicFailedUntil = ConcurrentHashMap<String, Long>()
 
     init {
-
         SimpStreamLog.sink =
             SimpStreamLog.Sink { level, tag, message, error ->
                 when (level) {
@@ -928,7 +927,6 @@ object YTPlayerUtils {
         val (cpn, response, mediaType) =
             result.getOrNull()
                 ?: run {
-
                     simpMusicFailedUntil[videoId] = System.currentTimeMillis() + SIMP_MUSIC_FAILURE_BACKOFF_MS
                     Timber.tag(logTag).w(
                         result.exceptionOrNull(),
@@ -1029,7 +1027,6 @@ object YTPlayerUtils {
     private fun withSimpMusicTrackingHosts(
         tracking: PlayerResponse.PlaybackTracking,
     ): PlayerResponse.PlaybackTracking {
-
         val videostatsPlayback = tracking.videostatsPlaybackUrl
         val atr = tracking.atrUrl
         val watchtime = tracking.videostatsWatchtimeUrl

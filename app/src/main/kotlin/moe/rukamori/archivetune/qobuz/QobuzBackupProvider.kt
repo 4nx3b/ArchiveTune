@@ -19,16 +19,6 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 object QobuzBackupProvider {
-    /**
-     * The original mirror (`mlc-ytify.kouzu.in`, a Vercel front for a
-     * ytify-based FLAC service) went dark in September 2026; the operator's
-     * current deployment lives at `mls.kouzu.in` (the updated default). The
-     * resolver therefore walks an ENDPOINT CHAIN: any live instance of the
-     * same `/api/stream` + `/api/search` API (the mirror operator's own
-     * deployment, a friend's, or a self-host) can be plugged in from
-     * Settings → Sources → Qobuz backup → "Backup resolver endpoints",
-     * one URL per line, no app update needed.
-     */
     private const val DEFAULT_ENDPOINT = "https://mls.kouzu.in"
 
     @Volatile
@@ -42,10 +32,6 @@ object QobuzBackupProvider {
         return (custom + DEFAULT_ENDPOINT).distinct()
     }
 
-    // Circuit breaker: an endpoint that failed three consecutive resolutions
-    // is skipped for ten minutes, so a dead mirror no longer adds a full
-    // HTTP round-trip to EVERY song's source chain (that is what made the
-    // backup both "not working" and slow). Any success resets the breaker.
     private const val FAILURE_THRESHOLD = 3
     private const val COOLDOWN_MS = 10 * 60 * 1000L
 
@@ -74,7 +60,6 @@ object QobuzBackupProvider {
         return endpointChain().filter { endpointAvailable(it, now) }
     }
 
-    /** The full endpoint chain (custom + default) for settings/diagnostics UI. */
     fun endpointList(): List<String> = endpointChain()
     private const val USER_AGENT = "ArchiveTune-Android"
     private const val SEARCH_CACHE_MS = 10 * 60 * 1000L
@@ -100,7 +85,6 @@ object QobuzBackupProvider {
 
         val isLossless: Boolean,
     ) {
-
         val thumbnailUrl: String
             get() = "https://i.ytimg.com/vi/$videoId/hqdefault.jpg"
     }
@@ -262,7 +246,6 @@ object QobuzBackupProvider {
         val bitDepth: Int? = null,
         val durationMs: Long? = null,
     ) {
-
         val label: String
             get() = if (isLossless) "Qobuz backup (lossless)" else "Qobuz backup (kouzu.in)"
     }

@@ -88,7 +88,6 @@ fun MeshBackdrop(
     blobAlpha: Float = 0.82f,
     scrim: Boolean = true,
 ) {
-
     val previous = remember { mutableStateOf(palette) }
     val target = remember { mutableStateOf(palette) }
     val fade = remember { Animatable(1f) }
@@ -220,7 +219,6 @@ private fun paletteOf(bitmap: Bitmap): List<Color> {
 
     val found =
         swatchesOf(Palette.from(bitmap)).ifEmpty {
-
             swatchesOf(Palette.from(bitmap).clearFilters())
         }
 

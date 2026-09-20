@@ -168,7 +168,6 @@ class LyricsHelper
         private suspend fun tryFetchWordSyncedFromPriorityProviders(
             mediaMetadata: MediaMetadata,
         ): LyricsResult? {
-
             val wordSyncCapable: List<LyricsProvider> =
                 listOf(
                     BetterLyricsProvider,
@@ -374,7 +373,6 @@ class LyricsHelper
         }
 
         suspend fun testAllProviders(): List<LyricsProviderTestResult> {
-
             val testTitle = "Shape of You"
             val testArtist = "Ed Sheeran"
             val testDuration = 233
@@ -384,13 +382,7 @@ class LyricsHelper
             return coroutineScope {
                 enabled.map { provider ->
                     async(Dispatchers.IO) {
-                        // A single probe is a flaky verdict: one slow DNS
-                        // lookup or a dropped connection reported a healthy
-                        // provider as "not working". Each provider now gets one
-                        // retry with a longer window before it is declared
-                        // broken, and only terminal verdicts (OK / NO_MATCH —
-                        // the API answered either way) are accepted from the
-                        // first attempt.
+
                         fun classify(result: Result<String>?): LyricsProviderTestOutcome =
                             when {
                                 result == null -> LyricsProviderTestOutcome.TIMEOUT

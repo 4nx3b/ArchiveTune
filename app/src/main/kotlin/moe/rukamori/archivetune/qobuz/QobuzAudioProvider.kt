@@ -167,7 +167,6 @@ object QobuzAudioProvider {
                 val request = builder.get().build()
                 healthClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
-
                         if (response.code == 401) {
                             Timber
                                 .tag("QobuzDiscovery")
@@ -263,7 +262,6 @@ object QobuzAudioProvider {
                 ?.trim()
                 .orEmpty()
                 .ifBlank {
-
                     runCatching { searchTrackId(normalized, "adele hello") }.getOrNull().orEmpty()
                 }
         if (trackId.isEmpty()) return TidalAudioProvider.InstanceHealth.UNREACHABLE
@@ -324,7 +322,6 @@ object QobuzAudioProvider {
 
         val available = backends.filterNot { isInstanceCoolingDown(it.id, now) }.ifEmpty { backends }
         for (backend in available) {
-
             val match = if (query.directTrackId != null) {
                 Match(
                     id = query.directTrackId,
@@ -348,7 +345,6 @@ object QobuzAudioProvider {
                 continue
             }
             if (download.isPreview) {
-
                 Timber.tag("Qobuz").w("%s returned preview-only; skipping", backend.label)
 
                 if (backend.isToken && backend.isPoolPremium && backend.poolId != null) {
@@ -384,7 +380,6 @@ object QobuzAudioProvider {
         query: String,
         limit: Int = 8,
     ): List<CandidateMetadata> {
-
         if (tokens.isEmpty()) {
             val poolTokens = runCatching {
                 moe.rukamori.archivetune.utils.PoolAccountManager.qobuzAccounts().map {
@@ -863,10 +858,8 @@ object QobuzAudioProvider {
 
     private fun extractQobuzThumbnail(albumObj: JSONObject?, item: JSONObject): String? {
         if (albumObj != null) {
-
             val imageVal = albumObj.opt("image")
             if (imageVal != null) {
-
                 if (imageVal is org.json.JSONArray) {
                     for (i in 0 until imageVal.length()) {
                         val imgObj = imageVal.optJSONObject(i)

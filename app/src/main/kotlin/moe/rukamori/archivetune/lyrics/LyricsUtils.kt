@@ -936,7 +936,6 @@ object LyricsUtils {
         val words = raw.filter { it.text.isNotBlank() }
         if (words.isEmpty()) return false
         if (words.size == 1) {
-
             val only = words.first()
             return (only.endTime - only.startTime) > 0.0
         }
@@ -963,7 +962,6 @@ object LyricsUtils {
                 kotlin.math.abs(startTimes[i] - expected) < tolerance
             }
             if (isEvenlyDistributed) {
-
                 val positiveDurations = durations.filter { it > 0.0 }
                 if (positiveDurations.size >= 3) {
                     val avg = positiveDurations.average()
@@ -971,7 +969,6 @@ object LyricsUtils {
                         val variance = positiveDurations.map { (it - avg) * (it - avg) }.average()
                         val stddev = kotlin.math.sqrt(variance)
                         if (stddev / avg < 0.1) {
-
                             return false
                         }
                     }
@@ -1082,13 +1079,11 @@ object LyricsUtils {
             }
 
             if (!consumed) {
-
                 val oneCharCandidate = katakana[i].toString()
                 val mappedOneChar = KANA_ROMAJI_MAP[oneCharCandidate]
                 if (mappedOneChar != null) {
                     romajiBuilder.append(mappedOneChar)
                 } else {
-
                     romajiBuilder.append(oneCharCandidate)
                 }
                 i += 1
@@ -1508,7 +1503,6 @@ object LyricsUtils {
         for (word in words) {
             val wordStart = lineText.indexOf(word, startIndex = scanOffset)
             if (wordStart < 0) {
-
                 result.add(null)
                 continue
             }
@@ -1553,7 +1547,6 @@ object LyricsUtils {
     }
 
     private fun looksJapanese(text: String): Boolean {
-
         if (
             text.any {
                 hasScript(it, UnicodeScript.HIRAGANA) ||

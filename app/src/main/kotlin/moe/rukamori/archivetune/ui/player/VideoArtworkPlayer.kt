@@ -136,15 +136,8 @@ private const val VideoSimpMusicAttemptTimeoutMs = 6000L
 
 private const val VideoLoadResumeDelayMs = 1000L
 
-/**
- * The WEB_REMIX player responses (the SimpMusic extractor and YouTube Music
- * web client) top out at 1080p — they can never satisfy a High-quality
- * request on a 4K-capable device, so >1080p ceilings must keep hunting down
- * the client chain instead of settling for the first success.
- */
 private const val WebRemixMaxVideoHeight = 1080
 
-/** Clients whose responses are known to cap at 1080p — demoted to the tail of the chain when a higher ceiling is requested. */
 private val LowCeilingVideoClientNames =
     setOf(
         "WEB_REMIX",
@@ -154,13 +147,6 @@ private val LowCeilingVideoClientNames =
         "WEB_EMBEDDED",
     )
 
-/**
- * In-memory cache of resolved video streams, keyed by videoId + quality
- * ceiling. A cached hit resolves instantly — re-visiting a video (queue
- * cycling, quality re-picks, sheet re-opens) never pays the extractor
- * round-trip again. Entries carry the resolution time and expire well
- * before YouTube's stream URLs do.
- */
 private const val VideoStreamInfoCacheMaxEntries = 16
 
 private const val VideoStreamInfoCacheValidityMs = 45 * 60 * 1000L
@@ -613,21 +599,17 @@ fun rememberVideoArtworkState(
         if (state.hasPlaybackFailed) {
             exoPlayer.pause()
         } else if (awaitingVideoReady) {
-
             if (isPlaying) {
                 resumeAudioAfterVideoReady = true
                 updatedOnRequestPauseMain()
             }
             exoPlayer.pause()
         } else if (state.isChangingQuality) {
-
             if (isPlaying) updatedOnRequestPauseMain()
             exoPlayer.pause()
         } else if (state.isResyncing) {
-
             exoPlayer.pause()
         } else if (updatedIsMainAudioBuffering) {
-
             exoPlayer.pause()
         } else {
             exoPlayer.setVideoPlayback(isPlaying)
@@ -781,7 +763,6 @@ fun rememberVideoArtworkState(
 
             val now = SystemClock.elapsedRealtime()
             if (state.lastSeekAtMs > 0L && now - state.lastSeekAtMs < VideoSeekSettlingTimeMs) {
-
                 if (state.currentSpeedCorrectionFactor != 1.0f) {
                     state.currentSpeedCorrectionFactor = 1.0f
                 }
@@ -840,7 +821,6 @@ fun rememberVideoArtworkState(
                     frozenKicks = 0
                 }
             } else if (!exoPlayer.playWhenReady) {
-
                 frozenCycles = 0
                 frozenKicks = 0
             }
@@ -848,20 +828,17 @@ fun rememberVideoArtworkState(
             prevAudioPos = mainPos
 
             if (absDrift > VideoHardResyncThresholdMs) {
-
                 Timber
                     .tag(VideoPlaybackLogTag)
                     .w("Hard resync: drift=${signedDrift}ms (main=$mainPos, video=$videoPos, playing=$shouldPlay)")
                 state.currentSpeedCorrectionFactor = 1.0f
                 val accepted = state.requestAutoResync(mainPos, shouldPlay)
                 if (!accepted) {
-
                     exoPlayer.seekTo(mainPos)
                     state.lastSeekAtMs = now
                     state.lastSurfaceReanchorAtMs = now
                 }
             } else if (absDrift > VideoSoftSeekDriftThresholdMs) {
-
                 Timber
                     .tag(VideoPlaybackLogTag)
                     .d("Re-anchor: drift=${signedDrift}ms (main=$mainPos, video=$videoPos)")
@@ -871,7 +848,6 @@ fun rememberVideoArtworkState(
 
                 state.lastSurfaceReanchorAtMs = now
             } else if (absDrift > VideoSyncIgnoreToleranceMs) {
-
                 val normalizedDrift =
                     (signedDrift.toFloat() / VideoSoftSeekDriftThresholdMs.toFloat())
                         .coerceIn(-1f, 1f)
@@ -885,7 +861,6 @@ fun rememberVideoArtworkState(
                     state.currentSpeedCorrectionFactor = targetFactor
                 }
             } else {
-
                 if (state.currentSpeedCorrectionFactor != 1.0f) {
                     state.currentSpeedCorrectionFactor = 1.0f
                 }
@@ -945,7 +920,6 @@ fun rememberVideoArtworkState(
                 }
 
                 override fun onRenderedFirstFrame() {
-
                     val wasAlreadyReady = state.isVideoReady
                     state.isVideoReady = true
                     state.bufferingRecoveries = 0
@@ -965,7 +939,6 @@ fun rememberVideoArtworkState(
                         val mainPos = currentPosition()
                         if (mainPos > 0) {
                             if (wasAlreadyReady) {
-
                                 if (state.kickRenderer(now)) {
                                     Timber
                                         .tag(VideoPlaybackLogTag)
@@ -993,7 +966,6 @@ fun rememberVideoArtworkState(
                     if (effectiveShouldPlay && !nothingToResume && !state.hasPlaybackFailed &&
                         exoPlayer.playerError == null
                     ) {
-
                         val resumeMainAudio =
                             (wasChangingQuality && state.wasPlayingBeforeQualityChange) ||
                                 (wasResync && wasPlayingBeforeResyncLocal) ||
@@ -1014,7 +986,6 @@ fun rememberVideoArtworkState(
                                     "(audio=$resumeMainAudio, video=true)",
                             )
                     } else if (!nothingToResume) {
-
                         state.pendingResumeAtMs = 0L
                         state.pendingResumeMainAudio = false
                         state.pendingResumeVideo = false
@@ -1131,14 +1102,12 @@ fun VideoArtworkSurface(
     )
 
     Box(modifier = modifier) {
-
         if (ambientMode && !thumbnailUrl.isNullOrBlank()) {
             VideoAmbientBackdrop(
                 thumbnailUrl = thumbnailUrl,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
-
             Box(
                 modifier =
                     Modifier
@@ -1276,7 +1245,6 @@ private fun pickVideoFormat(
         (streamingData.formats.orEmpty() + streamingData.adaptiveFormats.orEmpty())
             .asSequence()
             .filter {
-
                 val h = it.height
                 h != null && h > 0
             }
@@ -1285,7 +1253,6 @@ private fun pickVideoFormat(
             .toList()
 
     if (allVideoFormats.isEmpty()) {
-
         return (streamingData.formats.withUsableHeight() + streamingData.adaptiveFormats.withUsableHeight())
             .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
             .minByOrNull { it.height ?: Int.MAX_VALUE }
@@ -1386,19 +1353,6 @@ private suspend fun resolveVideoStreamUrl(
     val cacheKey = "$videoId|$heightCeiling"
     resolveVideoStreamInfoFromCache(cacheKey)?.let { return it }
 
-    // SimpMusic resolver first — the same machinery the audio path trusts
-    // (YTPlayerUtils.playerResponseForPlaybackOnce). It runs a WEB_REMIX player
-    // request and splices NewPipe-harvested URLs into the response by itag, so
-    // video formats come back with working URLs even when the direct innertube
-    // URLs are bot-blocked or 403'd — the failure mode that leaves the video
-    // surface stuck on the artwork fallback (a zoomed still) while audio keeps
-    // playing through the SimpMusic-resolved stream. Returns null on any
-    // failure so the per-client innertube chain below remains the fallback.
-    //
-    // WEB_REMIX responses cap at 1080p: when the requested ceiling is higher,
-    // the attempt is skipped outright — it can never satisfy the request, and
-    // its multi-second round-trip is the biggest single chunk of the video
-    // start latency the user waits through.
     var bestResult: VideoStreamInfo? = null
     if (heightCeiling <= WebRemixMaxVideoHeight) {
         resolveVideoStreamUrlViaSimpMusic(videoId, preferredHeight)?.let {
@@ -1425,11 +1379,7 @@ private suspend fun resolveVideoStreamUrl(
                 )
             }.let { ordered ->
                 if (heightCeiling > WebRemixMaxVideoHeight) {
-                    // Clients known to cap at 1080p can never satisfy a higher
-                    // request — demote them to the tail so the 4K-capable ones
-                    // answer first. They still run at the end and serve as the
-                    // best-effort fallback when the video itself tops out at
-                    // 1080p or below.
+
                     val (highCeiling, lowCeiling) =
                         ordered.partition { it.clientName !in LowCeilingVideoClientNames }
                     highCeiling + lowCeiling
@@ -1505,7 +1455,6 @@ private suspend fun resolveVideoStreamUrl(
         val streamInfo = result.getOrNull()
         if (streamInfo != null && streamInfo.streamUrl.isNotBlank()) {
             if ((streamInfo.selectedHeight ?: 0) >= heightCeiling) {
-                // Reached the requested ceiling — nothing better exists.
                 YTPlayerUtils.markStreamUrlSuccessful(streamInfo.streamUrl)
                 Timber
                     .tag(VideoPlaybackLogTag)
@@ -1513,10 +1462,7 @@ private suspend fun resolveVideoStreamUrl(
                 cacheResolvedVideoStreamInfo(cacheKey, streamInfo)
                 return streamInfo
             }
-            // The client worked but its catalogue stops below the requested
-            // ceiling (or the video itself maxes out there). Keep it as the
-            // best-so-far fallback and keep hunting for a higher rendition —
-            // this is NOT a client failure, so no failure marking.
+
             if ((streamInfo.selectedHeight ?: 0) > (bestResult?.selectedHeight ?: Int.MIN_VALUE)) {
                 bestResult = streamInfo
             }
@@ -1544,8 +1490,7 @@ private suspend fun resolveVideoStreamUrl(
     }
 
     if (bestResult != null) {
-        // The video (or every surviving client) tops out below the ceiling —
-        // the highest rendition found wins.
+
         YTPlayerUtils.markStreamUrlSuccessful(bestResult.streamUrl)
         Timber
             .tag(VideoPlaybackLogTag)

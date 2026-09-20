@@ -23,42 +23,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-/**
- * Anonymous Amazon Music catalogue search, modeled on [moe.rukamori.archivetune.applemusic.AppleMusicCatalog].
- *
- * Protocol (verified against the live service):
- *
- *  1. `GET https://music.amazon.com/config.json` hands out an anonymous device identity
- *     (`deviceId`, `sessionId`, `version`) plus a CSRF triple. The `csrf` field is polymorphic:
- *     it arrives either as a JSON object or as a *stringified Python dict with single quotes*
- *     (`{'token': '...', 'ts': 123, 'rnd': '...'}`) — the second form is not JSON, so config.json
- *     is parsed with org.json plus a regex fallback for that string form. The config is cached in
- *     memory for ~1 hour.
- *
- *  2. `POST https://na.web.skill.music.a2z.com/api/searchCatalogTracks` (eu.mesk… as fallback)
- *     with a text/plain JSON envelope: `{"keyword": q, "userHash": "{\"level\":\"LIBRARY_MEMBER\"}",
- *     "headers": "<stringified inner header object>"}`. The inner headers object carries the
- *     device identity, a fresh random request id and epoch-millis timestamp, and the CSRF triple.
- *     No account is required — the anonymous device token is enough, which is why this client
- *     never touches AmazonSessionKey. (A signed-in at-main cookie could be attached for
- *     region/personalization, but search works without it and this keeps the object context-free.)
- *
- * The response nests as `methods[0].template.widgets[0].items[]`; each item contributes a track
- * (title, artist, artwork, "<albumASIN>:<trackASIN>" storage key). **Duration is not present in
- * the initial response** — canary's API needed extra per-album calls to get it — so tracks are
- * mapped with duration 0 and no extra album calls are made.
- *
- * Items are mapped to [AppleMusicSearchItem.Track] — the exact item type the search UI already
- * renders and resolves for the Apple Music path (AppleMusicItemRow / AppleMusicPlaybackResolver
- * / queryText()), so Amazon results behave identically: tapping one resolves it through a
- * YouTube title/artist text search, exactly like an Apple Music result.
- *
- * First page only: the API exposes no pagination tokens, so [searchPage] returns an empty page
- * for any offset > 0 and `hasMore` is always false.
- *
- * Every failure degrades to empty results (runCatching, same as the Apple Music path) — a
- * catalogue hiccup must never surface as an error to the user.
- */
 object AmazonMusicCatalog {
     private const val CONFIG_URL = "https://music.amazon.com/config.json"
     private const val SEARCH_ENDPOINT_NA = "https://na.web.skill.music.a2z.com/api/searchCatalogTracks"
@@ -95,7 +59,6 @@ object AmazonMusicCatalog {
     @Volatile
     private var configFetchedAtMs = 0L
 
-    /** The anonymous device identity + CSRF triple from music.amazon.com/config.json. */
     private data class DeviceConfig(
         val deviceId: String,
         val sessionId: String,
@@ -105,17 +68,10 @@ object AmazonMusicCatalog {
         val csrfRndNonce: String,
     )
 
-    /** One page of catalogue results — the Amazon twin of AppleMusicCatalog.CatalogPage. */
     data class CatalogPage(
         val items: List<AppleMusicSearchItem.Track>,
         val hasMore: Boolean,
     )
-
-    // -------------------------------------------------------------------------
-    // kotlinx.serialization DTOs for the searchCatalogTracks response, in the
-    // same style as AppleMusicModels.kt: every field defaulted so the messy
-    // third-party envelope never breaks decoding.
-    // -------------------------------------------------------------------------
 
     @Serializable
     private data class CatalogSearchResponse(
@@ -143,8 +99,7 @@ object AmazonMusicCatalog {
         val secondaryText: String? = null,
         val image: String? = null,
         val iconButton: IconButtonValue? = null,
-        // secondaryLink.deeplink ("/artists/<artistASIN>/…") could yield the artist ASIN; the
-        // current mapping does not need it, the field stays for a future album/artist search.
+
         val secondaryLink: SecondaryLink? = null,
     )
 
@@ -160,7 +115,7 @@ object AmazonMusicCatalog {
 
     @Serializable
     private data class ObserverValue(
-        // "<albumASIN>:<trackASIN>" — used verbatim as the item id/key.
+
         val storageKey: String? = null,
     )
 
@@ -168,10 +123,6 @@ object AmazonMusicCatalog {
     private data class SecondaryLink(
         val deeplink: String? = null,
     )
-
-    // -------------------------------------------------------------------------
-    // Public API — signatures mirror AppleMusicCatalog's.
-    // -------------------------------------------------------------------------
 
     suspend fun searchTrackSuggestions(
         query: String,
@@ -193,7 +144,7 @@ object AmazonMusicCatalog {
         withContext(Dispatchers.IO) {
             val trimmed = query.trim()
             if (trimmed.isEmpty()) return@withContext CatalogPage(emptyList(), hasMore = false)
-            // First page only — the API hands out no pagination tokens.
+
             if (offset > 0) return@withContext CatalogPage(emptyList(), hasMore = false)
             val items =
                 runCatching { searchCatalogTracks(trimmed) }
@@ -201,10 +152,6 @@ object AmazonMusicCatalog {
                     .take(limit)
             CatalogPage(items = items, hasMore = false)
         }
-
-    // -------------------------------------------------------------------------
-    // Step 2 — the searchCatalogTracks call.
-    // -------------------------------------------------------------------------
 
     private suspend fun searchCatalogTracks(query: String): List<AppleMusicSearchItem.Track> {
         val config = freshConfig()
@@ -249,10 +196,6 @@ object AmazonMusicCatalog {
             }
         }.getOrNull()
 
-    /**
-     * The verified envelope: keyword + a stringified userHash + the stringified inner headers
-     * object (device identity, fresh request id / timestamp, CSRF triple).
-     */
     private fun buildRequestBody(
         query: String,
         config: DeviceConfig,
@@ -324,7 +267,7 @@ object AmazonMusicCatalog {
 
     private fun toTrack(item: CatalogItem): AppleMusicSearchItem.Track? {
         val title = item.primaryText?.text?.takeIf { it.isNotBlank() } ?: return null
-        // The storage key "<albumASIN>:<trackASIN>" is the only stable id this response offers.
+
         val trackId = item.iconButton?.observer?.storageKey?.takeIf { it.isNotBlank() } ?: return null
         return AppleMusicSearchItem.Track(
             id = trackId,
@@ -332,17 +275,12 @@ object AmazonMusicCatalog {
             artist = item.secondaryText.orEmpty(),
             album = null,
             artworkUrl = item.image,
-            // Duration is not in the initial response and fetching it would need extra
-            // per-album calls (canary hit the same wall) — mapped as unknown, never fetched.
+
             durationMs = 0L,
             viewUrl = null,
             explicit = false,
         )
     }
-
-    // -------------------------------------------------------------------------
-    // Step 1 — the device config (cached ~1h).
-    // -------------------------------------------------------------------------
 
     private suspend fun freshConfig(): DeviceConfig {
         cachedConfig?.let { cached ->
@@ -357,8 +295,7 @@ object AmazonMusicCatalog {
                 cachedConfig = fetched
                 configFetchedAtMs = System.currentTimeMillis()
             }
-            // A failed fetch falls back to the stale config rather than nothing: a stale CSRF
-            // triple is a better bet than refusing to search at all.
+
             fetched ?: cachedConfig ?: error("Amazon Music device config unavailable")
         }
     }
@@ -396,8 +333,7 @@ object AmazonMusicCatalog {
                         timestamp = csrf.optString("ts").takeIf { it.isNotBlank() } ?: return null,
                         rndNonce = csrf.optString("rnd").takeIf { it.isNotBlank() } ?: return null,
                     )
-                // The stringified-Python-dict form: {'token': '...', 'ts': 123, 'rnd': '...'}.
-                // Not valid JSON — regex it apart instead.
+
                 is String -> parseStringifiedCsrf(csrf) ?: return null
                 else -> return null
             }

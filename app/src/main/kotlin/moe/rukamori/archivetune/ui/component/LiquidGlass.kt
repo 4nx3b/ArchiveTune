@@ -102,7 +102,6 @@ class ThrottledLayerBackdrop internal constructor(
     val graphicsLayer: GraphicsLayer,
     internal val minIntervalMillis: Long,
 ) : Backdrop {
-
     override val isCoordinatesDependent: Boolean get() = true
 
     internal var layerCoordinates: LayoutCoordinates? by mutableStateOf(null)
@@ -115,7 +114,6 @@ class ThrottledLayerBackdrop internal constructor(
         val coordinates = coordinates ?: return
         val layerCoordinates = layerCoordinates ?: return
         withTransform({
-
             val offset =
                 try {
                     layerCoordinates.localPositionOf(coordinates)
@@ -171,7 +169,6 @@ private class ThrottledLayerBackdropElement(
 private class ThrottledLayerBackdropNode(
     var backdrop: ThrottledLayerBackdrop,
 ) : DrawModifierNode, GlobalPositionAwareModifierNode, Modifier.Node() {
-
     private var lastRecordUptimeMillis = 0L
 
     override fun onAttach() {
@@ -190,7 +187,6 @@ private class ThrottledLayerBackdropNode(
                 val previousDensity = drawContext.density
                 drawContext.density = density
                 try {
-
                     this@draw.drawContent()
                 } finally {
                     drawContext.density = previousDensity
@@ -226,7 +222,6 @@ fun Modifier.liquidGlass(
     baseColor: Color = Color.Unspecified,
     blurRadius: Dp = 8.dp,
 ): Modifier {
-
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
     return remember(backdrop, shape, interactive, baseColor, blurRadius, isDark) {
@@ -234,9 +229,7 @@ fun Modifier.liquidGlass(
             backdrop = backdrop,
             effects = {
                 val l = 0f
-                // SpatialFlow-style vividness: 1.7x saturation bleed instead of
-                // the stock 1.5x vibrancy, so the background colours move through
-                // the glass more visibly as the content scrolls behind it.
+
                 colorControls(saturation = 1.7f)
                 blur(
                     if (l > 0f) {
@@ -245,8 +238,7 @@ fun Modifier.liquidGlass(
                         blurRadius.toPx()
                     },
                 )
-                // More liquid: taller refraction band, ~25% stronger edge bend
-                // and the depth uniform enabled (same shader, no extra cost).
+
                 lens(
                     refractionHeight = 28f.dp.toPx(),
                     refractionAmount = size.minDimension / 3.2f,

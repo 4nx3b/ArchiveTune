@@ -51,7 +51,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SourceSettings(navController: NavController, scrollTo: String? = null) {
-
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -88,7 +87,6 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -114,7 +112,6 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                 .padding(top = topPadding)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
-
             PlaybackSourceSections(
                 navController = navController,
                 positions = positions,

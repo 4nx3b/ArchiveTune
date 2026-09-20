@@ -462,7 +462,6 @@ private fun CodeStep(
     onEditPhone: () -> Unit,
     onResend: () -> Unit,
 ) {
-
     var secondsLeft by remember(state) { mutableIntStateOf(if (state.canResend) state.resendTimeoutSeconds else 0) }
     LaunchedEffect(state) {
         while (secondsLeft > 0) {

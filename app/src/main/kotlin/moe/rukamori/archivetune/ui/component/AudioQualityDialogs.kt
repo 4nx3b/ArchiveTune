@@ -27,7 +27,6 @@ import androidx.compose.runtime.setValue
 enum class DownloadQualityChoice(
     val qobuzQuality: QobuzAudioQuality,
 ) {
-
     MAX(QobuzAudioQuality.MAX),
 
     HI_RES(QobuzAudioQuality.HI_RES),
@@ -36,7 +35,6 @@ enum class DownloadQualityChoice(
     ;
 
     companion object {
-
         fun forQobuzQuality(quality: QobuzAudioQuality): DownloadQualityChoice =
             entries.firstOrNull { it.qobuzQuality == quality } ?: LOSSLESS
     }
@@ -149,7 +147,6 @@ private val ExportFormat.titleRes: Int
         }
 
 fun exportFormatOptionsFor(sourceExtension: String?): List<ExportFormatOption> {
-
     val source = ExportFormat.forExtension(sourceExtension) ?: ExportFormat.M4A
 
     val options = mutableListOf(ExportFormatOption(source, enabled = true))

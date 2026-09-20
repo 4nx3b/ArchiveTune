@@ -287,7 +287,6 @@ fun LyricsEnhanced(
         }
     val showTranslations =
         remember(currentLyrics?.source, romanizationPreferences.showsRomanization) {
-
             currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value ||
                 romanizationPreferences.showsRomanization
         }
@@ -306,7 +305,6 @@ fun LyricsEnhanced(
             player.currentPosition < 500L &&
             restartTick > 0
         ) {
-
             restartTick++
         }
         lastPlaybackState = playbackState
@@ -409,9 +407,7 @@ fun LyricsEnhanced(
     }
 
     LaunchedEffect(lyricsEntries, romanizationPreferences, aiRomanizedLines, lyricsProviderLabel, composerFooterLabel, mediaMetadata?.id) {
-
         withContext(Dispatchers.Default) {
-
         fun publish(romanization: Map<Int, List<String?>>) {
             val previous = karaokeBuild
             val changesVisibleLines =
@@ -436,7 +432,6 @@ fun LyricsEnhanced(
 
         val toRomanize: List<Pair<Int, LyricsEntry>> =
             if (!romanizationPreferences.isEnabled) {
-
                 emptyList()
             } else {
                 lyricsEntries.mapIndexedNotNull { index, entry ->
@@ -605,7 +600,6 @@ fun LyricsEnhanced(
                         latestLeadMs.value + LYRIC_VISUAL_TUNING_OFFSET_MS)
                         .coerceIn(0L, Int.MAX_VALUE.toLong())
                 if (sliderPosition == null) {
-
                     delay(if (player.isPlaying) 50L else 100L)
                 } else {
                     withFrameNanos { }
@@ -813,7 +807,6 @@ fun LyricsEnhanced(
         }
     val plainLyrics =
         remember(lyricsEntries, isSynced, lyricsProviderLabel, composerFooterLabel) {
-
             val lyricItems =
                 if (isSynced) {
                     emptyList()
@@ -871,7 +864,6 @@ fun LyricsEnhanced(
                     if (text.isBlank()) {
                         null
                     } else {
-
                         val isMetadataLine = line.start < 0 || line.start >= 86_400_000
                         if (isMetadataLine) {
                             null
@@ -945,7 +937,6 @@ fun LyricsEnhanced(
 
                 .graphicsLayer { alpha = firstFocusAlpha.value },
     ) {
-
         when {
             lyrics == LYRICS_NOT_FOUND -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1023,7 +1014,6 @@ fun LyricsEnhanced(
                             .fillMaxSize()
                             .nestedScroll(nestedScrollConnection),
                 ) {
-
                     val lyricsViewportOffset =
                         remember(maxHeight) {
                             val proportional = maxHeight * 0.16f
@@ -1031,7 +1021,6 @@ fun LyricsEnhanced(
                         }
 
                     key(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
-
                         androidx.compose.runtime.CompositionLocalProvider(
                             androidx.compose.material3.LocalTextStyle provides phoneticTextStyle,
                         ) {
@@ -1495,7 +1484,6 @@ private suspend fun LazyListState.scrollLyricIntoFocus(
     val targetFocusPoint = viewportStart + (viewportHeight * LYRIC_FOCUS_TOP_ANCHOR_RATIO).roundToInt()
     val scrollDelta = itemFocusPoint - targetFocusPoint
     if (abs(scrollDelta) > LYRIC_FOCUS_MIN_SCROLL_PX) {
-
         val instantThreshold = (viewportHeight * LYRIC_FOCUS_INSTANT_SCROLL_RATIO).roundToInt()
         if (snap || (abs(scrollDelta) <= instantThreshold && !force)) {
             scrollBy(scrollDelta.toFloat())

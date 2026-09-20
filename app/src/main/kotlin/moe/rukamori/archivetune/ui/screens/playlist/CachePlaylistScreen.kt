@@ -259,7 +259,6 @@ fun CachePlaylistScreen(
             selection = false
         }
     } else {
-
         BackHandler {
             try {
                 if (!navController.popBackStack()) {
@@ -273,7 +272,6 @@ fun CachePlaylistScreen(
                         navController.navigate("library") { launchSingleTop = true }
                     }
                 } catch (_: Exception) {
-
                 }
             }
         }
@@ -335,7 +333,6 @@ fun CachePlaylistScreen(
     CompositionLocalProvider(
         LocalMiniPlayerDocked provides isListScrolling,
     ) {
-
     val headerHaze = rememberScreenHeaderHaze()
     Box(
         modifier =
@@ -382,7 +379,6 @@ fun CachePlaylistScreen(
                 }
             } else {
                 if (filteredSongs.isNotEmpty() && !isSearching) {
-
                     item(key = "header") {
                         AppleMusicPlaylistHero(
                             sectionLabel = cachedLabel,
@@ -410,7 +406,6 @@ fun CachePlaylistScreen(
                                 )
                             },
                             additionalActions = {
-
                                 MediaDetailAction(
                                     contentDescription = R.string.export_all_songs,
                                     contentColor = Color.White,
@@ -434,7 +429,6 @@ fun CachePlaylistScreen(
                 }
 
                 if (filteredSongs.isNotEmpty()) {
-
                     item(key = "sortHeader") {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -536,7 +530,6 @@ fun CachePlaylistScreen(
         )
 
         if (layerBackdropActive && !isSearching) {
-
             LiquidGlassActionPill(
                 backdrop = backdrop,
                 interactive = true,
@@ -587,7 +580,6 @@ fun CachePlaylistScreen(
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
                 if (selection) {
-
                     Box(
                         modifier = Modifier.size(48.dp),
                         contentAlignment = Alignment.Center,
@@ -638,7 +630,6 @@ fun CachePlaylistScreen(
                         )
                     }
                 } else {
-
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -748,7 +739,6 @@ fun CachePlaylistScreen(
                 }
             },
             navigationIcon = {
-
                 if (isSearching || selection || showTopBarTitle || !liquidGlassHeaderActive) {
                     IconButton(onClick = {
                         when {
@@ -780,7 +770,6 @@ fun CachePlaylistScreen(
                         )
                     }
                     if (!isSearching && !selection && !liquidGlassHeaderActive) {
-
                         Text(
                             text = stringResource(R.string.library),
                             color = MaterialTheme.colorScheme.onBackground,
@@ -842,7 +831,6 @@ fun CachePlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-
                     if (showTopBarTitle || !liquidGlassHeaderActive) {
                         androidx.compose.material3.IconButton(onClick = { isSearching = true }) {
                             Icon(

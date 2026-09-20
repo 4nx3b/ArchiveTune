@@ -239,7 +239,6 @@ fun PlayerMenu(
                             .map { it.trim() }
                             .filter { it.isNotEmpty() }
                     if (parts.size > 1) {
-
                         parts.map { name -> SplitArtist(name, artist) }
                     } else {
                         listOf(SplitArtist(artist.name, artist))
@@ -271,7 +270,6 @@ fun PlayerMenu(
                     result[artistId] = cached
                     value = result.toMap()
                 } else {
-
                     val fetched =
                         runCatching { YouTube.artist(artistId) }
                             .getOrNull()
@@ -362,7 +360,6 @@ fun PlayerMenu(
                 val source = result.source
                 val trackId = result.trackId
                 if (source != AudioSourceType.YOUTUBE && trackId.isNotBlank()) {
-
                     onSongSourceChange(
                         SongSourceOverride.withOverride(songSourceRaw, mediaMetadata.id, source),
                     )
@@ -413,7 +410,6 @@ fun PlayerMenu(
                         )
                     },
                     leadingContent = {
-
                         val thumbUrl =
                             splitArtist.originalArtist?.id?.let { id ->
                                 artistThumbnailsByKey[id]
@@ -494,11 +490,6 @@ fun PlayerMenu(
         )
     }
 
-    // "Canvas" source picker: choose which provider's canvas plays for the
-    // current song. The menu item only shows up when at least one integrated
-    // provider can serve it - instant playback-cache check first, then a
-    // provider probe bounded by a 4s timeout so a slow network can never hold
-    // the menu hostage.
     var showCanvasSourceDialog by rememberSaveable { mutableStateOf(false) }
     var canvasSources by remember(mediaMetadata.id) { mutableStateOf<List<CanvasSourceOption>>(emptyList()) }
     var canvasSourcesLoading by remember(mediaMetadata.id) { mutableStateOf(false) }
@@ -507,7 +498,6 @@ fun PlayerMenu(
         mutableStateOf(CanvasArtworkPlaybackCache.hasEntry(mediaMetadata.id))
     }
     LaunchedEffect(mediaMetadata.id, archiveTuneCanvasEnabled, spotifyCanvasAvailable, isCanvasArtworkRefetching) {
-        // Re-check the instant cache state first (covers post-refetch updates).
         if (CanvasArtworkPlaybackCache.hasEntry(mediaMetadata.id)) {
             canvasAvailable = true
             return@LaunchedEffect
@@ -590,9 +580,7 @@ fun PlayerMenu(
                 CanvasArtworkPlaybackCache.save(mediaMetadata.id, source.artwork)
             }
             if (saved) {
-                // Re-read the playable entry (local file URIs once the videos
-                // are on disk) and push it into the live render states so the
-                // playing canvas swaps right now, not on the next track change.
+
                 val playable =
                     withContext(Dispatchers.IO) {
                         CanvasArtworkPlaybackCache.getCachedOnlyFast(mediaMetadata.id)
@@ -610,12 +598,6 @@ fun PlayerMenu(
         }
     }
 
-    // Row click: make the chosen source's canvas the one that plays for this
-    // song (streams immediately, caches in the background) without forcing a
-    // full synchronous download. `replace` (not `put`) swaps any existing
-    // entry for the song — `put` would silently keep the previous source's
-    // artwork and the picker would appear to do nothing — and the published
-    // update makes the player re-render the artwork slot on the next frame.
     fun playCanvasSource(source: CanvasSourceOption) {
         showCanvasSourceDialog = false
         coroutineScope.launch {
@@ -635,8 +617,7 @@ fun PlayerMenu(
     if (showCanvasSourceDialog) {
         ListDialog(onDismiss = { showCanvasSourceDialog = false }) {
             item(key = "canvas_source_title") {
-                // Centered bold title (user request): the header is a plain
-                // centered label, not a ListItem row with a leading icon.
+
                 Box(
                     modifier =
                         Modifier
@@ -779,7 +760,6 @@ fun PlayerMenu(
                 bottom = 12.dp,
             ),
     ) {
-
         if (showSleepTimerSheet) {
             item {
                 AppleMusicSleepTimerSheet(
@@ -917,7 +897,6 @@ fun PlayerMenu(
                                 },
                             )
                             if (!isLocalMedia) {
-
                                 add(
                                     NewAction(
                                         icon = {
@@ -961,9 +940,6 @@ fun PlayerMenu(
             MenuSectionDivider()
         }
 
-        // "Canvas": pick which provider's canvas plays for the current song -
-        // shown whenever any integrated provider can serve it (see the
-        // availability probe above).
         if (
             !isLocalMedia &&
             isQueueTrigger != true &&
@@ -1423,7 +1399,6 @@ fun PlayerMenu(
     }
 }
 
-
 private fun AudioSourceType.sourceLabelRes(): Int =
     when (this) {
         AudioSourceType.TIDAL -> R.string.source_tidal
@@ -1443,8 +1418,7 @@ private fun AudioSourceType.sourceIconRes(): Int =
         AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
         AudioSourceType.APPLE -> R.drawable.provider_apple
-        // No dedicated Amazon Music mark ships in drawable/ yet; ic_music is the same stand-in
-        // PlaybackSourceSections uses for APPLE there.
+
         AudioSourceType.AMAZON -> R.drawable.ic_music
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
@@ -1659,9 +1633,6 @@ private suspend fun searchOneSource(
                     }
             }
 
-            // Amazon serves CENC-protected streams this fork ships no decryption step for (see
-            // AmazonEnabledKey in PreferenceKeys.kt), so there is no provider to search here —
-            // this fork's source-search dialog simply never gets Amazon results.
             AudioSourceType.AMAZON -> emptyList()
         }
     }
@@ -1876,7 +1847,6 @@ private fun SongSourceDialog(
                         ) {
                             items(results, key = { result -> "${result.source.name}:${result.trackId}" }) { result ->
                                 SourceSearchResultRow(result = result) {
-
                                     if (result.songItem != null) {
                                         onPlaySong(result.songItem)
                                     } else {
@@ -1890,7 +1860,6 @@ private fun SongSourceDialog(
                     }
                 }
             } else {
-
                 SongSourceRow(
                     iconRes = R.drawable.tune,
                     label = stringResource(R.string.play_from_automatic),

@@ -352,7 +352,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -374,7 +373,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 .padding(top = topPadding)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
-
             PreferenceGroup(
                 title = stringResource(R.string.settings_section_player_content),
             ) {
@@ -677,7 +675,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
-
                     var showCanvasCheckDialog by remember { mutableStateOf(false) }
                     Column(modifier = positions.modifierFor("canvas_check")) {
                         PreferenceEntry(

@@ -183,8 +183,6 @@ private val AppleMusicChipSize = 34.dp
 private val AppleMusicTransportIconSize = 48.dp
 private val AppleMusicPlayPauseIconSize = 80.dp
 
-// The loading spinner replaces the glyph visually; decoupled so the 80dp
-// play/pause glyph size does not balloon the indicator.
 private val AppleMusicPlayPauseSpinnerSize = 48.dp
 
 private val AppleMusicBottomIconSize = 26.dp
@@ -288,7 +286,6 @@ fun AppleMusicPlayerContent(
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
 ) {
-
     var queueOpen by remember { mutableStateOf(false) }
 
     var lyricsOpen by remember { mutableStateOf(false) }
@@ -399,7 +396,6 @@ fun AppleMusicPlayerContent(
             return@LaunchedEffect
         }
         if (lyricsOpen && !showLyricsPlayerControls) {
-
             return@LaunchedEffect
         }
         delay(autoHideDelayMs)
@@ -409,7 +405,6 @@ fun AppleMusicPlayerContent(
     var canvasVisibleForLyrics by remember { mutableStateOf(true) }
     LaunchedEffect(lyricsOpen) {
         if (lyricsOpen) {
-
             canvasVisibleForLyrics = true
             delay(AmLyricsBackdropMorphMs.toLong())
             canvasVisibleForLyrics = false
@@ -549,7 +544,6 @@ fun AppleMusicPlayerContent(
 
     val onMoreClick = {
         if (lyricsOpen) {
-
             showAnchoredLyricsMenu = true
         } else {
             menuState.show {
@@ -572,14 +566,12 @@ fun AppleMusicPlayerContent(
 
     val castAction = rememberCastPlayerMenuAction()
     val onOutputClick: () -> Unit = castAction?.onClick ?: {
-
         runCatching {
             context.startActivity(Intent("android.settings.panel.action.MEDIA_OUTPUT"))
         }
     }
 
     BoxWithConstraints(modifier = modifier) {
-
         BoxWithConstraints(
             modifier =
                 Modifier
@@ -615,7 +607,6 @@ fun AppleMusicPlayerContent(
         val context = LocalContext.current
         val imageLoader = context.imageLoader
         val preBlurredBitmap by produceState<Bitmap?>(null, artworkUrl) {
-
             if (!isPreS || artworkUrl.isNullOrBlank() || videoShowing || useCanvasBackdrop) {
                 value = null
                 return@produceState
@@ -643,16 +634,13 @@ fun AppleMusicPlayerContent(
         }
 
         if (!videoShowing) {
-
             val driftGraphicsLayer: GraphicsLayerScope.() -> Unit = {
-
                 val progress = lyricsBackdropProgress.value
 
                 val scale = AmCoverBlurScale + (AmLyricsBlurDriftScale - AmCoverBlurScale) * progress
                 scaleX = scale
                 scaleY = scale
                 if (progress > 0f) {
-
                     translationX = blurWander.xDp.floatValue * driftDpToPx * progress
                     translationY = blurWander.yDp.floatValue * driftDpToPx * progress
 
@@ -678,7 +666,6 @@ fun AppleMusicPlayerContent(
                 contentAlignment = Alignment.Center,
             ) {
                 if (isPreS && preBlurredBitmap != null) {
-
                     Image(
                         bitmap = preBlurredBitmap!!.asImageBitmap(),
                         contentDescription = null,
@@ -888,7 +875,6 @@ fun AppleMusicPlayerContent(
                 }
             }
         } else {
-
             Column(
                 modifier =
                     Modifier
@@ -910,7 +896,6 @@ fun AppleMusicPlayerContent(
                 BoxWithConstraints(
                     modifier = Modifier.weight(1f),
                 ) {
-
                 val topInset = LocalStableSystemBarsTopPadding.current
                 val miniHeaderHeight = AppleMusicMiniArtworkSize + 16.dp + topInset
                 SharedTransitionLayout(
@@ -919,7 +904,6 @@ fun AppleMusicPlayerContent(
                     AnimatedContent(
                         targetState = morphState,
                         transitionSpec = {
-
                             fadeIn(tween(600, easing = FastOutSlowInEasing)) togetherWith
                                 fadeOut(tween(600, easing = FastOutSlowInEasing))
                         },
@@ -927,7 +911,6 @@ fun AppleMusicPlayerContent(
                         label = "AppleMusicMorph",
                     ) { targetState ->
                         if (targetState == AppleMusicPlayerState.COVER) {
-
                             Box(modifier = Modifier.fillMaxSize()) {
                                 AppleMusicSharpArtwork(
                                     artworkRequest = artworkRequest,
@@ -972,14 +955,12 @@ fun AppleMusicPlayerContent(
                                 )
                             }
                         } else {
-
                             Box(
                                 modifier =
                                     Modifier
                                         .fillMaxSize()
                                         .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current)),
                             ) {
-
                                 Column(modifier = Modifier.fillMaxSize()) {
                                     AppleMusicMiniHeader(
                                         artworkRequest = artworkRequest,
@@ -1026,7 +1007,6 @@ fun AppleMusicPlayerContent(
                     enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
                     exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
                 ) {
-
                     Box(
                         modifier =
                             Modifier
@@ -1034,7 +1014,6 @@ fun AppleMusicPlayerContent(
                                 .height(maxHeight - miniHeaderHeight)
                                 .offset(y = miniHeaderHeight),
                     ) {
-
                         val lyricsHorizontalPadding = AppleMusicContentPadding - 16.dp
                         if (lyricsContentReady) {
                             when (lyricsMode) {
@@ -1175,7 +1154,6 @@ private fun AppleMusicSharpArtwork(
         modifier =
             modifier.then(
                 if (fadeBottom) {
-
                     Modifier
                         .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                         .drawWithContent {
@@ -1208,7 +1186,6 @@ private fun AppleMusicSharpArtwork(
                         .background(Color.Black),
             )
         } else if (immersiveExtendedCard) {
-
             BoxWithConstraints(modifier = Modifier.matchParentSize()) {
                 val horizontalPadding = if (maxWidth < 380.dp) 16.dp else 20.dp
                 val effectiveFullHeight = fullPlayerHeight ?: if (landscape) maxHeight else maxHeight / 0.55f
@@ -1366,7 +1343,6 @@ private fun AppleMusicControlsColumn(
                             val dragDelta = change.positionChange().y
 
                             if (!swipeActivated) {
-
                                 if (dragDelta < 0f) {
                                     accumulated += dragDelta
                                 }
@@ -1376,7 +1352,6 @@ private fun AppleMusicControlsColumn(
                                     change.consume()
                                 }
                             } else {
-
                                 if (dragDelta < 0f) {
                                     swipeUpAccumulated =
                                         (swipeUpAccumulated + dragDelta).coerceAtLeast(-swipeUpThreshold * 1.5f)
@@ -1394,7 +1369,6 @@ private fun AppleMusicControlsColumn(
 
         verticalArrangement = Arrangement.Bottom,
     ) {
-
     if (showTitleRow) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             PlayerTextBackdrop(
@@ -1484,14 +1458,6 @@ private fun AppleMusicControlsColumn(
 
     Spacer(Modifier.height(scrubberToTransportGap))
 
-    // vivi-music (beta) Player_V2 transport proportions, restored. The ported
-    // glyphs fill very different fractions of their 960-unit viewports (the
-    // chevrons span ~88% of the width, the play/pause glyph only ~41%), so the
-    // dp sizes are what must carry the reference's 5:3 ratio: 48dp skips vs an
-    // 80dp play/pause. At the previous 52dp/62dp the play/pause rendered
-    // visually smaller than the skips (25dp-wide pause bars next to 46dp-wide
-    // chevrons). Scaled down proportionally on short screens so the row keeps
-    // its footprint in compact/landscape heights.
     val transportIconSize =
         if (veryCompactHeight) 40.dp else if (compactHeight) 44.dp else AppleMusicTransportIconSize
     val playPauseIconSize =
@@ -1502,8 +1468,7 @@ private fun AppleMusicControlsColumn(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // vivi-music (beta) Player_v2 transport set: the exact play/pause,
-        // next and previous glyphs from vivi's new player style.
+
         AppleMusicTransportButton(
             iconRes = R.drawable.apple_skip_previous,
             enabled = canSkipPrevious,
@@ -1701,7 +1666,6 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                 .padding(horizontal = AppleMusicContentPadding, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-
         Box(
             modifier =
                 Modifier

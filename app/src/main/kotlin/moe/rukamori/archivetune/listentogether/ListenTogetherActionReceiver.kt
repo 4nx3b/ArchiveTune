@@ -23,7 +23,6 @@ class ListenTogetherActionReceiver : BroadcastReceiver() {
         val client = ListenTogetherClient.getInstance() ?: return
         val notifId = intent.getIntExtra(ListenTogetherClient.EXTRA_NOTIFICATION_ID, 0)
 
-        // Cancel the notification immediately
         NotificationManagerCompat.from(context).cancel(notifId)
 
         when (intent.action) {

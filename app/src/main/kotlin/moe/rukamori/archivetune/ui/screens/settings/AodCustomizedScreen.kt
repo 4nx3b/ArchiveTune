@@ -156,7 +156,6 @@ fun AodCustomizedScreen(
     navController: NavController,
     scrollTo: String? = null,
 ) {
-
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -880,7 +879,6 @@ private fun PreviewProgress(
     showTimeLabels: Boolean,
     sliderStyle: SliderStyle = SliderStyle.Standard,
 ) {
-
     var previewValue by remember { mutableFloatStateOf(0.46f) }
 
     Column(

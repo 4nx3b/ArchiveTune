@@ -35,12 +35,6 @@ import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.utils.listItemShape
 
-/**
- * A group of setting items styled exactly like WeatherMaster's SettingSection:
- * - No group title header
- * - Top curve, middle flat, bottom curve per item position
- * - Uses ListItem so icons auto-align: centered on title-only, top-aligned when description present
- */
 @Composable
 fun ExpressiveSettingGroup(
     title: String? = null,

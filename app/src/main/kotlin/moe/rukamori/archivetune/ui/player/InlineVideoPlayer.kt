@@ -130,11 +130,6 @@ val LocalVideoFullscreenState = compositionLocalOf {
 
 val LocalVideoArtworkState = compositionLocalOf<VideoArtworkState?> { null }
 
-/**
- * Whether the current video artwork failed to initialise — the player styles
- * that render InlineVideoPlayer read this to fall back to the artwork stack
- * (the self-contained styles can't see Player()'s local failure state).
- */
 val LocalVideoPlaybackFailed = compositionLocalOf { false }
 
 val LocalVideoPreferredHeight = compositionLocalOf<Int?> { null }
@@ -476,7 +471,6 @@ fun FullscreenVideoOverlay(
     }
 
     LaunchedEffect(controlsVisible, isUserSeeking, qualityMenuOpen, showOverflowSheet, isInPipMode) {
-
         if (isInPipMode) {
             controlsVisible = false
             return@LaunchedEffect
@@ -503,12 +497,10 @@ fun FullscreenVideoOverlay(
 
                             if (isInPipMode) return@detectTapGestures
                             if (showOverflowSheet) {
-
                                 scope.launch { sheetState.hide() }.invokeOnCompletion {
                                     if (!sheetState.isVisible) showOverflowSheet = false
                                 }
                             } else {
-
                                 controlsVisible = !controlsVisible
 
                                 gestureFeedback = null
@@ -597,7 +589,6 @@ fun FullscreenVideoOverlay(
                         onVerticalDrag = { change, dragAmount ->
                             val isLeftHalf = change.position.x < size.width / 2f
                             if (isLeftHalf && brightnessDragActive) {
-
                                 val delta = -dragAmount / 400f
                                 val next = (currentWindowBrightness(context) + delta).coerceIn(0f, 1f)
                                 applyWindowBrightness(context, next)
@@ -610,7 +601,6 @@ fun FullscreenVideoOverlay(
                             } else if (!isLeftHalf && volumeDragActive) {
                                 val maxVol = maxMediaVolume(context)
                                 if (maxVol > 0) {
-
                                     val delta = (-dragAmount / 150f) * maxVol
                                     val currentVol = audioManager(context)?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
                                     val next = (currentVol + delta).toInt().coerceIn(0, maxVol)
@@ -627,7 +617,6 @@ fun FullscreenVideoOverlay(
                     )
                 },
     ) {
-
         VideoArtworkSurface(
             state = state,
             resizeMode = effectiveResizeMode,
@@ -658,7 +647,6 @@ fun FullscreenVideoOverlay(
             modifier = Modifier.fillMaxSize(),
         ) {
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f))) {
-
                 headerMetadata?.let { meta ->
                     PlayerTextBackdrop(
                         textColor = Color.White,
@@ -712,7 +700,6 @@ fun FullscreenVideoOverlay(
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-
                     if (availableHeights.isNotEmpty()) {
                         Row(
                             modifier =
@@ -979,7 +966,6 @@ private fun VideoOverflowSheetContent(
                 .padding(horizontal = 24.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 text = stringResource(R.string.video_slider_style),
@@ -1204,7 +1190,6 @@ private fun currentWindowBrightness(context: Context): Float {
     val activity = context.findActivity() ?: return 0.5f
     val attrs = activity.window.attributes
     return if (attrs.screenBrightness == WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE) {
-
         val system =
             try {
                 Settings.System.getInt(activity.contentResolver, Settings.System.SCREEN_BRIGHTNESS)

@@ -21,7 +21,6 @@ import javax.inject.Inject
 class ListenTogetherViewModel @Inject constructor(
     private val manager: ListenTogetherManager
 ) : ViewModel() {
-
     val connectionState = manager.connectionState
     val roomState = manager.roomState
     val role = manager.role

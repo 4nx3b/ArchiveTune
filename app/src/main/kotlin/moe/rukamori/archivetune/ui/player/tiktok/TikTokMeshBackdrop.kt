@@ -186,7 +186,6 @@ private fun paletteOf(bitmap: Bitmap): List<Color> {
             .map { Color(it.rgb) }
 
     val found = swatchesOf(Palette.from(bitmap)).ifEmpty {
-
         swatchesOf(Palette.from(bitmap).clearFilters())
     }
 

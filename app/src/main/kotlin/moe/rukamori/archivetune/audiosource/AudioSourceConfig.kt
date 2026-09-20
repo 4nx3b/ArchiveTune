@@ -239,19 +239,9 @@ object TitleMatch {
         val prefix = a.zip(b).takeWhile { (left, right) -> left == right }.size.coerceAtMost(4)
         return jaro + prefix * 0.1 * (1.0 - jaro)
     }
-
 }
 
 object AudioSourceConfig {
-    /**
-     * The resolution chain. Deliberately does NOT list [AudioSourceType.AMAZON].
-     *
-     * Amazon serves CENC-protected fragmented MP4 and this fork ships no decryption step, so its
-     * resolver can only ever return null. Listing it here would put a guaranteed miss in front of
-     * every listener's chain — a wasted step on every track, for a source that cannot play. It
-     * belongs here the day a resolver exists, and not before; the account, pool and settings
-     * plumbing around it is complete and waiting.
-     */
     val DEFAULT_ORDER: List<AudioSourceType> =
         listOf(
             AudioSourceType.TIDAL,

@@ -201,7 +201,6 @@ fun AutoPlaylistScreen(
             wrappedSongs.forEach { it.isSelected = false }
         }
     } else {
-
         BackHandler {
             try {
                 if (!navController.popBackStack()) {
@@ -215,7 +214,6 @@ fun AutoPlaylistScreen(
                         navController.navigate("library") { launchSingleTop = true }
                     }
                 } catch (_: Exception) {
-
                 }
             }
         }
@@ -369,7 +367,6 @@ fun AutoPlaylistScreen(
     CompositionLocalProvider(
         LocalMiniPlayerDocked provides isListScrolling,
     ) {
-
     val headerHaze = rememberScreenHeaderHaze()
     Box(
         modifier =
@@ -415,7 +412,6 @@ fun AutoPlaylistScreen(
                 }
             } else {
                 if (!isSearching) {
-
                     item(
                         key = "header",
                         contentType = CONTENT_TYPE_HEADER,
@@ -471,7 +467,6 @@ fun AutoPlaylistScreen(
                                                 showRemoveDownloadDialog = true
                                             }
                                             is HeaderDownloadState.Partial -> {
-
                                                 if (headerState.paused) {
                                                     sendResumePausedDownloads(
                                                         context = context,
@@ -649,7 +644,6 @@ fun AutoPlaylistScreen(
         )
 
         if (layerBackdropActive && !isSearching) {
-
             LiquidGlassActionPill(
                 backdrop = backdrop,
                 interactive = true,
@@ -700,7 +694,6 @@ fun AutoPlaylistScreen(
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
                 if (selection) {
-
                     Box(
                         modifier = Modifier.size(48.dp),
                         contentAlignment = Alignment.Center,
@@ -747,7 +740,6 @@ fun AutoPlaylistScreen(
                         )
                     }
                 } else {
-
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -852,9 +844,7 @@ fun AutoPlaylistScreen(
                 }
             },
             navigationIcon = {
-
                 if (isSearching || selection || showTopBarTitle || !liquidGlassHeaderActive) {
-
                     if (!isSearching && !selection && !liquidGlassHeaderActive) {
                         FrostedHeaderPill {
                             IconButton(
@@ -956,7 +946,6 @@ fun AutoPlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-
                     if (showTopBarTitle || !liquidGlassHeaderActive) {
                         androidx.compose.material3.IconButton(
                             onClick = { isSearching = true },

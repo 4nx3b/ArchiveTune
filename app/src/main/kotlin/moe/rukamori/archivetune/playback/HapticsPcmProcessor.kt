@@ -20,7 +20,6 @@ import kotlin.math.abs
 class HapticsPcmProcessor(
     private val engineProvider: () -> SpatialFlowHapticEngine?,
 ) : BaseAudioProcessor() {
-
     private var subBassFilterState = 0f
     private var bassFilterState = 0f
     private var midFilterState = 0f

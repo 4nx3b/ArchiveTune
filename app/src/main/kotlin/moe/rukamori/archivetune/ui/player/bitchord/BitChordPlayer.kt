@@ -39,8 +39,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -335,15 +333,7 @@ fun BitChordPlayerContent(
     isLoading: Boolean,
     canSkipPrevious: Boolean,
     canSkipNext: Boolean,
-    /**
-     * Read as late as possible, never in this composable's own body.
-     *
-     * Taking the position as a plain `Long` meant this whole scope was invalidated by every tick of
-     * the ~100ms poll, for the sake of three leaves that actually use it. Each of those now reads
-     * through the provider inside its own composable, so a tick invalidates the scrubber, the lyric
-     * line and the previous button rather than the entire player. The same shape AppleMusicPlayer
-     * already uses, fed by the same remembered lambda in Player.kt.
-     */
+
     positionProvider: () -> Long,
     duration: Long,
     playerConnection: PlayerConnection,
@@ -506,8 +496,6 @@ fun BitChordPlayerContent(
 
     var pendingSeek by remember { mutableStateOf<Float?>(null) }
 
-    // A lambda, not a value: each consumer below invokes it inside its own scope (the slider inside
-    // draw), so a position tick lands there instead of invalidating this whole composable.
     val shownFraction: () -> Float = {
         when {
             scrubbing -> scrubValue
@@ -517,9 +505,6 @@ fun BitChordPlayerContent(
         }
     }
 
-    // Collected rather than keyed on the position: keying restarted this effect on every tick of
-    // the poll, so a coroutine was cancelled and relaunched ten times a second for as long as the
-    // player was open, to check a condition that is only ever true just after a scrub.
     LaunchedEffect(duration, pendingSeek) {
         if (pendingSeek == null) return@LaunchedEffect
         snapshotFlow { positionProvider() }.collect { position ->
@@ -619,9 +604,6 @@ fun BitChordPlayerContent(
 
     val meshColors = rememberArtworkColors(artUrl)
 
-    // Lyrics background style: BitChord's mesh stays the player's own look;
-    // while the lyrics panel is open a non-DEFAULT style takes over the
-    // background (same option set the shared lyrics screen honours).
     val lyricsBackgroundStylePref by rememberEnumPreference(LyricsBackgroundStyleKey, LyricsBackgroundStyle.DEFAULT)
     val playerBackgroundStylePref by rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.DEFAULT)
     val resolvedLyricsBackground = lyricsBackgroundStylePref.resolveFor(playerBackgroundStylePref)
@@ -639,7 +621,6 @@ fun BitChordPlayerContent(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-
         if (lyricsUseStyledBackground) {
             StyledLyricsBackground(
                 style = resolvedLyricsBackground,
@@ -732,7 +713,6 @@ fun BitChordPlayerContent(
                         onDragStart = { total = 0f },
                         onDragCancel = { swipeOffset = 0f },
                         onDragEnd = {
-
                             when {
                                 total <= -swipeThreshold && canSkipNext -> {
                                     haptics.play(Haptic.SkipNext)
@@ -754,7 +734,6 @@ fun BitChordPlayerContent(
                 },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -778,7 +757,6 @@ fun BitChordPlayerContent(
                     .onGloballyPositioned { dismissBandSpace.value = it }
                     .pointerInput(Unit) {
                         awaitEachGesture {
-
                             val down = awaitFirstDown(requireUnconsumed = false)
                             val space = dismissBandSpace.value
                             val y = space
@@ -836,7 +814,6 @@ fun BitChordPlayerContent(
                     .fillMaxWidth()
                     .padding(top = ART_BOX_TOP_PAD, bottom = 18.dp),
             ) {
-
                 val roomy = maxHeight + if (lyricsOpen) 0.dp else controlSpread
 
                 val wantArt = minOf(maxWidth, roomy - ART_TITLE_GAP - HEADER_HEIGHT)
@@ -893,7 +870,6 @@ fun BitChordPlayerContent(
 
                         .onGloballyPositioned { dismissBandTop = it.boundsInRoot().top }
                         .graphicsLayer {
-
                             val idle = artScale + (1f - artScale) * p
                             scaleX = idle
                             scaleY = idle
@@ -912,7 +888,6 @@ fun BitChordPlayerContent(
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
-
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -992,7 +967,6 @@ fun BitChordPlayerContent(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
-
                         val titleSize = lerp(20.sp, 16.sp, p)
                         Text(
                             text = mediaMetadata.title,
@@ -1054,7 +1028,6 @@ fun BitChordPlayerContent(
                 }
 
                 if (lyricsOpen) {
-
                     val panelModifier = Modifier
                         .fillMaxSize()
                         .padding(top = HEADER_HEIGHT + 10.dp)
@@ -1067,11 +1040,7 @@ fun BitChordPlayerContent(
                     val latestScrubbing = rememberUpdatedState(scrubbing)
                     val latestDuration = rememberUpdatedState(duration)
                     val lyricsPositionProvider = remember {
-                        // The shown fraction used to arrive as a value from an
-                        // updated state up here; evaluating it in composition
-                        // would now put the position read straight back in the
-                        // player's own body whenever the lyrics panel is open,
-                        // so it is evaluated inside the provider instead.
+
                         {
                             if (latestScrubbing.value) {
                                 val shown = shownFraction()
@@ -1128,7 +1097,6 @@ fun BitChordPlayerContent(
                             onRemove = { index -> player.removeMediaItem(index) },
                             onMove = { from, to -> player.moveMediaItem(from, to) },
                             onClear = {
-
                                 val size = player.mediaItemCount
                                 for (i in (size - 1) downTo (queueIndex + 1)) {
                                     player.removeMediaItem(i)
@@ -1149,7 +1117,6 @@ fun BitChordPlayerContent(
                     .fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1197,7 +1164,6 @@ fun BitChordPlayerContent(
                     scrubValue = it
                 },
                 onValueChangeFinished = {
-
                     haptics.play(Haptic.Select)
                     pendingSeek = scrubValue
                     onSeekFraction(scrubValue)
@@ -1222,7 +1188,6 @@ fun BitChordPlayerContent(
             }
 
             if (!lyricsOpen) {
-
             Spacer(Modifier.height(14.dp + controlSpread / 2))
 
             Row(
@@ -1237,7 +1202,6 @@ fun BitChordPlayerContent(
                 )
 
                 if (isLoading) {
-
                     Box(Modifier.size(74.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(
                             color = Color.White,
@@ -1372,7 +1336,6 @@ private suspend fun AwaitPointerEventScope.dragQueueIn(
     onHold: (Boolean) -> Unit,
     onSettle: (Boolean) -> Unit,
 ) {
-
     if (travel < 1f) return
 
     var pulled = 0f
@@ -1541,7 +1504,6 @@ private fun formatTime(ms: Long): String {
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 private object OverlayBack {
-
     fun register(view: View, onBack: () -> Unit): Any? {
         val dispatcher = view.findOnBackInvokedDispatcher() ?: return null
         val callback = OnBackInvokedCallback { onBack() }
@@ -1558,13 +1520,6 @@ private object OverlayBack {
     }
 }
 
-/**
- * The elapsed/remaining pair under the scrubber.
- *
- * Its own composable purely so the position read is scoped here: these two labels change once a
- * second, and reading the position for them in the player's body invalidated the entire player ten
- * times a second instead.
- */
 @Composable
 private fun BitChordScrubTimes(
     shownFraction: () -> Float,
@@ -1588,12 +1543,6 @@ private fun BitChordScrubTimes(
     }
 }
 
-/**
- * The back glyph, in its own composable so its position read is scoped here.
- *
- * A value-returning @Composable would not have done: Compose does not make those restartable, so
- * the read would have landed in the caller and invalidated the whole player anyway.
- */
 @Composable
 private fun BitChordPreviousGlyph(
     positionProvider: () -> Long,
@@ -1605,19 +1554,12 @@ private fun BitChordPreviousGlyph(
         contentDescription = "Previous",
         size = 46.dp,
         onClick = onClick,
-        // Lit whenever back has something to do — either a track to step to, or enough elapsed for
-        // it to restart this one.
+
         enabled = canSkipPrevious || positionProvider() > BACK_RESTARTS_AFTER_MS,
         haptic = Haptic.SkipPrevious,
     )
 }
 
-/**
- * The one-line lyric strip, wrapped so the position read is scoped here rather than in the player.
- *
- * The nudge by the sync offset happens inside for the same reason: computing it in the caller would
- * have put the read straight back where it was.
- */
 @Composable
 private fun BitChordCurrentLyric(
     lines: List<LyricLine>,

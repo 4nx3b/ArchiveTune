@@ -211,11 +211,6 @@ object ComposeToImage {
         return out
     }
 
-    /**
-     * Progressive (step) scaling — every resize is at most [step] so the
-     * bilinear filter never smears a big jump into mush. Used when the
-     * year-in-music export must be enlarged to the full-HD floor.
-     */
     private fun stepScaleBitmap(
         source: Bitmap,
         targetWidth: Int,
@@ -234,13 +229,6 @@ object ComposeToImage {
         return current
     }
 
-    /**
-     * Full-HD share export for the year-in-music cards: keeps the card's
-     * native pixels whenever the screen already offers at least an FHD canvas
-     * (no upscaling at all — zero quality loss), and only when the capture
-     * falls short of the floor enlarges it progressively (small bilinear
-     * steps instead of one smearing jump).
-     */
     fun exportBitmapAtFhdFloor(
         source: Bitmap,
         minLongSide: Int = 1920,
@@ -250,7 +238,6 @@ object ComposeToImage {
         val longSide = maxOf(safeSource.width, safeSource.height)
         val shortSide = minOf(safeSource.width, safeSource.height)
         if (longSide >= minLongSide && shortSide >= minShortSide) {
-            // Already at or above the floor — ship the native pixels untouched.
             return safeSource
         }
         val longTarget = maxOf(minLongSide, longSide)

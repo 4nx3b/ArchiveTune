@@ -13,7 +13,6 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecDecoderException
 import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
 
 internal fun isRecoverableMediaCodecStateError(error: PlaybackException): Boolean {
-
     val isDecodingErrorCode =
         error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
             error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||

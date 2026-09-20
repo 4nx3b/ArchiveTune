@@ -278,7 +278,6 @@ fun BackupAndRestore(
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -363,7 +362,6 @@ fun BackupAndRestore(
                 onCustomDateSelected = viewModel::onGoogleDriveSyncCustomDateSelected,
                 onCustomDateDismissed = viewModel::onGoogleDriveSyncCustomDateDismissed,
                 onRemoteFolderClick = {
-
                     showGDriveFolderPickerHelp = true
                 },
                 onClearFolderClick = viewModel::onGoogleDriveSyncRemoteFolderCleared,
@@ -773,14 +771,12 @@ private fun GoogleDriveSyncSection(
     onSyncNowClick: () -> Unit,
     positions: PreferencePositions,
 ) {
-
     val folderConfigured = data.remoteFolderName != null
     val providerLabel = data.remoteFolderUri?.let { providerLabelForUri(it) }
     PreferenceGroup(
         modifier = positions.modifierFor("google_drive_sync"),
         title = stringResource(R.string.google_drive_sync),
     ) {
-
         item {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -1142,7 +1138,6 @@ private fun providerLabelForUri(uriString: String): String? {
     return when {
         labelRes != null -> stringResource(labelRes)
         authority in LOCAL_STORAGE_AUTHORITIES -> {
-
             stringResource(R.string.google_drive_sync_provider_local) +
                 " " + stringResource(R.string.google_drive_sync_provider_suffix_local)
         }

@@ -90,7 +90,6 @@ internal class BlurWanderDrift(
     }
 
     internal companion object {
-
         const val WanderRadiusDp = 120f
 
         private const val WanderSpeedDpPerSecond = 26f

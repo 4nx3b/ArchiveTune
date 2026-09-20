@@ -292,7 +292,6 @@ class StatsViewModel
                 )
 
         init {
-
             viewModelScope.launch(Dispatchers.IO) {
                 mostPlayedArtists.collect { artists ->
                     artists

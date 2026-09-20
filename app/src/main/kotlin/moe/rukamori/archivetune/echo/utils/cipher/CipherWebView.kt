@@ -110,7 +110,6 @@ class CipherWebView private constructor(
         }
 
         webView.webViewClient = object : WebViewClient() {
-
             @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.O)
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 Timber.tag(TAG).e(
@@ -139,7 +138,6 @@ class CipherWebView private constructor(
         initContinuation.also { initContinuation = null }
 
     private inline fun <T> T.resumeSafely(block: (T) -> Unit) {
-
         runCatching { block(this) }
     }
 
@@ -419,7 +417,6 @@ function discoverAndInit() {
                 }
             }
         } catch (e: TimeoutCancellationException) {
-
             Timber.tag(TAG).e("Sig deobfuscation timed out after ${EVAL_TIMEOUT_MS}ms — treating renderer as gone")
             failAsRendererGone("Sig deobfuscation timed out after ${EVAL_TIMEOUT_MS}ms")
         }
@@ -557,7 +554,6 @@ function discoverAndInit() {
             val exports = buildList {
                 val sigJsExpr = sigInfo?.jsExpression
                 if (sigJsExpr != null) {
-
                     val expr = sigJsExpr.replace("INPUT", "sig")
                     Timber.tag(TAG).d("Sig: expression-based export: $expr")
                     add("window._cipherSigFunc = function(sig) { try { return $expr; } catch(e) { return null; } };")
@@ -585,7 +581,6 @@ function discoverAndInit() {
                 }
                 val nJsExpr = nFuncInfo?.jsExpression
                 if (nJsExpr != null) {
-
                     val expr = nJsExpr.replace("INPUT", "n")
                     Timber.tag(TAG).d("N: expression-based export: ${expr.take(80)}")
                     add("window._nTransformFunc = function(n) { try { return $expr; } catch(e) { return n; } };")
@@ -664,7 +659,6 @@ function discoverAndInit() {
                 destroyQuietly(created)
                 throw CipherRendererGoneException("CipherWebView init timed out after ${CREATE_TIMEOUT_MS}ms")
             } catch (e: Exception) {
-
                 destroyQuietly(created)
                 throw e
             }

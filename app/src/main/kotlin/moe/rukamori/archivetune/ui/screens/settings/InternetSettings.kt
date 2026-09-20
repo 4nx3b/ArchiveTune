@@ -69,9 +69,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.*
 import moe.rukamori.archivetune.innertube.YouTube
-import moe.rukamori.archivetune.ui.component.*
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.ProxyUtils
 import moe.rukamori.archivetune.utils.dataStore
@@ -231,7 +229,6 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -287,7 +284,6 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                             onYtMusicRegionChange(newValue)
 
                             scope.launch {
-
                                 withContext(Dispatchers.IO) {
                                     context.dataStore.edit { it.remove(VisitorDataKey) }
                                 }

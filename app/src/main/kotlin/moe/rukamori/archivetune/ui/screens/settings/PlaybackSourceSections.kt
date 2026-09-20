@@ -129,8 +129,7 @@ private fun AudioSourceType.iconRes(): Int =
         AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
         AudioSourceType.APPLE -> R.drawable.ic_music
-        // No dedicated Amazon Music mark ships in drawable/ yet; ic_music is the same
-        // stand-in APPLE uses above for the same reason.
+
         AudioSourceType.AMAZON -> R.drawable.ic_music
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
@@ -243,14 +242,6 @@ internal fun PlaybackSourceSections(
             AudioSourceConfig.parseOrder(sourceOrderRaw.ifBlank { null })
         }
 
-    // The picker offers EVERY source, including ones the default resolution chain deliberately
-    // leaves out (Amazon — AudioSourceConfig.DEFAULT_ORDER does not list it because its stream
-    // resolver returns null until a decryption step exists, so a default-listing would put a
-    // guaranteed miss in front of every listener's chain). Sources missing from the stored order
-    // are offered just before the YouTube fallback: a fresh install shows DEFAULT_ORDER plus the
-    // resolver-less sources at the bottom, and a user who drags Amazon up opts into the miss-and-
-    // fall-through behavior explicitly (isEnabled(AMAZON) still gates the real resolution chain,
-    // so an untouched toggle keeps Amazon out of playback entirely).
     val dialogOrder =
         remember(sourceOrder) {
             val missing = AudioSourceType.entries.filterNot { it in sourceOrder }
@@ -714,10 +705,6 @@ internal fun PlaybackSourceSections(
         }
     }
 
-    // Amazon Music: account + pool plumbing exists, but no stream resolver — Amazon serves
-    // CENC-protected fragmented MP4 and this fork ships no decryption step (see AmazonEnabledKey
-    // in PreferenceKeys.kt). The toggle only opts into the source being orderable/checked; the
-    // Integration screen carries the sign-in and the full "this can't play yet" notice.
     PreferenceGroup(title = stringResource(R.string.source_amazon)) {
         item {
             SwitchPreference(
@@ -794,9 +781,6 @@ private fun SourceCheckRow(
     var checking by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<SourceCheckResult?>(null) }
 
-    // The last verdict per source lives in the service's StateFlow, so the
-    // inline status survives navigation and recomposition instead of being a
-    // one-shot dialog the user can never see again.
     val cachedResults by SourceCheckService.results.collectAsStateWithLifecycle()
     val cached = cachedResults[source]
 

@@ -64,9 +64,6 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Connection state for the Listen Together feature
- */
 enum class ConnectionState {
     DISCONNECTED,
     CONNECTING,
@@ -75,18 +72,12 @@ enum class ConnectionState {
     ERROR
 }
 
-/**
- * Room role for the current user
- */
 enum class RoomRole {
     HOST,
     GUEST,
     NONE
 }
 
-/**
- * Log entry for debugging
- */
 data class LogEntry(
     val timestamp: String,
     val level: LogLevel,
@@ -101,25 +92,17 @@ enum class LogLevel {
     DEBUG
 }
 
-/**
- * Pending action to execute when connected
- */
 sealed class PendingAction {
     data class CreateRoom(val username: String) : PendingAction()
     data class JoinRoom(val roomCode: String, val username: String) : PendingAction()
 }
 
-/**
- * Event types for the Listen Together client
- */
 sealed class ListenTogetherEvent {
-    // Connection events
     data class Connected(val userId: String) : ListenTogetherEvent()
     data object Disconnected : ListenTogetherEvent()
     data class ConnectionError(val error: String) : ListenTogetherEvent()
     data class Reconnecting(val attempt: Int, val maxAttempts: Int) : ListenTogetherEvent()
 
-    // Room events
     data class RoomCreated(val roomCode: String, val userId: String) : ListenTogetherEvent()
     data class JoinRequestReceived(val userId: String, val username: String) : ListenTogetherEvent()
     data class JoinApproved(val roomCode: String, val userId: String, val state: RoomState) : ListenTogetherEvent()
@@ -132,25 +115,18 @@ sealed class ListenTogetherEvent {
     data class UserReconnected(val userId: String, val username: String) : ListenTogetherEvent()
     data class UserDisconnected(val userId: String, val username: String) : ListenTogetherEvent()
 
-    // Playback events
     data class PlaybackSync(val action: PlaybackActionPayload) : ListenTogetherEvent()
     data class BufferWait(val trackId: String, val waitingFor: List<String>) : ListenTogetherEvent()
     data class BufferComplete(val trackId: String) : ListenTogetherEvent()
     data class SyncStateReceived(val state: SyncStatePayload) : ListenTogetherEvent()
 
-    // Error events
     data class ServerError(val code: String, val message: String) : ListenTogetherEvent()
 
-    // Chat events
     data class ChatMessageReceived(val payload: ChatMessagePayload) : ListenTogetherEvent()
 
-    // Internal state actions
     data class LocalSuggestionApproved(val payload: SuggestionReceivedPayload) : ListenTogetherEvent()
 }
 
-/**
- * WebSocket client for Listen Together feature
- */
 @Singleton
 class ListenTogetherClient @Inject constructor(
     private val context: Context
@@ -158,18 +134,15 @@ class ListenTogetherClient @Inject constructor(
     companion object {
         private const val TAG = "ListenTogether"
         private val DEFAULT_SERVER_URL = ListenTogetherServers.defaultServerUrl
-        private const val MAX_RECONNECT_ATTEMPTS = 15  // Increased from 5 to 15
-        private const val INITIAL_RECONNECT_DELAY_MS = 1000L  // Start at 1 second
-        private const val MAX_RECONNECT_DELAY_MS = 120000L  // Cap at 2 minutes
+        private const val MAX_RECONNECT_ATTEMPTS = 15
+        private const val INITIAL_RECONNECT_DELAY_MS = 1000L
+        private const val MAX_RECONNECT_DELAY_MS = 120000L
         private const val PING_INTERVAL_MS = 25000L
         private const val MAX_LOG_ENTRIES = 500
-        private const val SESSION_GRACE_PERIOD_MS = 10 * 60 * 1000L  // 10 minutes
+        private const val SESSION_GRACE_PERIOD_MS = 10 * 60 * 1000L
 
-        // Notification constants
         private const val NOTIFICATION_CHANNEL_ID = "listen_together_channel"
-        // PORT-NOTE: action strings renamed from vivi's package to ArchiveTune's
-        // application id — they are matched only between this client and the
-        // ListenTogetherActionReceiver, so the rename is behaviour-neutral.
+
         const val ACTION_APPROVE_JOIN = "moe.rukamori.archivetune.LISTEN_TOGETHER_APPROVE_JOIN"
         const val ACTION_REJECT_JOIN = "moe.rukamori.archivetune.LISTEN_TOGETHER_REJECT_JOIN"
         const val ACTION_APPROVE_SUGGESTION = "moe.rukamori.archivetune.LISTEN_TOGETHER_APPROVE_SUGGESTION"
@@ -188,10 +161,8 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    // Initialize scope early before init block since it's used in observeNetworkChanges()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // State flows - initialized before init block to avoid NullPointerException when accessing log()
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
@@ -210,26 +181,18 @@ class ListenTogetherClient @Inject constructor(
     private val _bufferingUsers = MutableStateFlow<List<String>>(emptyList())
     val bufferingUsers: StateFlow<List<String>> = _bufferingUsers.asStateFlow()
 
-    // Suggestions: pending items visible to host
     private val _pendingSuggestions = MutableStateFlow<List<SuggestionReceivedPayload>>(emptyList())
     val pendingSuggestions: StateFlow<List<SuggestionReceivedPayload>> = _pendingSuggestions.asStateFlow()
 
-    // Blocked usernames (internal list for privacy)
     private val _blockedUsernames = MutableStateFlow<Set<String>>(emptySet())
     val blockedUsernames: StateFlow<Set<String>> = _blockedUsernames.asStateFlow()
 
     private val _logs = MutableStateFlow<List<LogEntry>>(emptyList())
     val logs: StateFlow<List<LogEntry>> = _logs.asStateFlow()
 
-    // Event flow
     private val _events = MutableSharedFlow<ListenTogetherEvent>()
     val events: SharedFlow<ListenTogetherEvent> = _events.asSharedFlow()
 
-
-
-    /**
-     * Observe network changes to trigger reconnections
-     */
     private fun observeNetworkChanges() {
         scope.launch {
             try {
@@ -240,13 +203,12 @@ class ListenTogetherClient @Inject constructor(
 
                     if (available && !previous) {
                         log(LogLevel.INFO, "Network restored, checking if reconnection needed")
-                        // Reset attempts when network is restored to allow a fresh set of retries
+
                         if (_connectionState.value == ConnectionState.ERROR ||
                             _connectionState.value == ConnectionState.DISCONNECTED) {
-
                             if (sessionToken != null || _roomState.value != null || pendingAction != null) {
                                 log(LogLevel.INFO, "Network restored, triggering reconnection")
-                                reconnectAttempts = 0 // Reset attempts for a fresh start
+                                reconnectAttempts = 0
                                 connect()
                             }
                         }
@@ -260,9 +222,6 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    /**
-     * Load persisted session information from storage
-     */
     private fun loadPersistedSession() {
         try {
             val token = context.dataStore.get(ListenTogetherSessionTokenKey, "")
@@ -271,7 +230,6 @@ class ListenTogetherClient @Inject constructor(
             val isHost = context.dataStore.get(ListenTogetherIsHostKey, false)
             val timestamp = context.dataStore.get(ListenTogetherSessionTimestampKey, 0L)
 
-            // Check if session is still valid (within grace period)
             if (token.isNotEmpty() && roomCode.isNotEmpty() &&
                 (System.currentTimeMillis() - timestamp < SESSION_GRACE_PERIOD_MS)) {
                 sessionToken = token
@@ -288,13 +246,9 @@ class ListenTogetherClient @Inject constructor(
             log(LogLevel.ERROR, "Failed to load persisted session", e.message)
         }
 
-        // Also load blocked usernames
         loadBlockedUsernames()
     }
 
-    /**
-     * Load blocked usernames from storage
-     */
     private fun loadBlockedUsernames() {
         try {
             val blockedJson = context.dataStore.get(ListenTogetherBlockedUsersKey, "")
@@ -310,9 +264,6 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    /**
-     * Save blocked usernames to storage
-     */
     private suspend fun saveBlockedUsernames() {
         try {
             val blockedJson = json.encodeToString(_blockedUsernames.value.toList())
@@ -324,9 +275,6 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    /**
-     * Save current session information to persistent storage
-     */
     private fun savePersistedSession() {
         try {
             scope.launch {
@@ -345,9 +293,6 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    /**
-     * Clear persisted session information
-     */
     private fun clearPersistedSession() {
         try {
             scope.launch {
@@ -369,34 +314,26 @@ class ListenTogetherClient @Inject constructor(
         encodeDefaults = true
     }
 
-    // Message codec - starts with JSON (DEPRECATED) for backward compatibility
-    // Automatically upgrades to Protobuf when supported
     private val codec = MessageCodec(MessageFormat.JSON, false)
 
     private var webSocket: WebSocket? = null
     private var pingJob: Job? = null
     private var reconnectAttempts = 0
 
-    // Session info for reconnection
     private var sessionToken: String? = null
     private var storedUsername: String? = null
     private var storedRoomCode: String? = null
     private var wasHost: Boolean = false
     private var sessionStartTime: Long = 0
 
-    // Pending actions to execute when connected
     private var pendingAction: PendingAction? = null
 
-    // Wake lock to keep connection alive when in a room
     private var wakeLock: PowerManager.WakeLock? = null
 
-    // Track notification IDs for join requests to dismiss them from both UI and notification actions
     private val joinRequestNotifications = mutableMapOf<String, Int>()
 
-    // Track notification IDs for suggestions to dismiss them similarly
     private val suggestionNotifications = mutableMapOf<String, Int>()
 
-    // Network connectivity monitoring - use lazy to avoid initialization order issues
     private val connectivityObserver: NetworkConnectivityObserver? by lazy {
         try {
             NetworkConnectivityObserver(context)
@@ -421,7 +358,7 @@ class ListenTogetherClient @Inject constructor(
     init {
         setInstance(this)
         ensureNotificationChannel()
-        // Load persisted session info asynchronously after construction to avoid calling log() before flows are initialized
+
         CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
             loadPersistedSession()
             observeNetworkChanges()
@@ -430,7 +367,7 @@ class ListenTogetherClient @Inject constructor(
 
     private fun getServerUrl(): String {
         val savedUrl = context.dataStore.get(ListenTogetherServerUrlKey, DEFAULT_SERVER_URL)
-        // If the saved URL is no longer in our list (e.g. Meowery was removed), revert to ViviMusic default
+
         return if (ListenTogetherServers.findByUrl(savedUrl) != null) {
             savedUrl
         } else {
@@ -438,13 +375,10 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    /**
-     * Calculate exponential backoff delay with jitter
-     */
     private fun calculateBackoffDelay(attempt: Int): Long {
         val exponentialDelay = INITIAL_RECONNECT_DELAY_MS * (2 shl (minOf(attempt - 1, 4)))
         val cappedDelay = minOf(exponentialDelay, MAX_RECONNECT_DELAY_MS)
-        // Add 0-20% jitter to prevent thundering herd
+
         val jitter = (cappedDelay * 0.2 * Math.random()).toLong()
         return cappedDelay + jitter
     }
@@ -467,9 +401,6 @@ class ListenTogetherClient @Inject constructor(
         _logs.value = emptyList()
     }
 
-    /**
-     * Connect to the Listen Together server
-     */
     fun connect() {
         if (_connectionState.value == ConnectionState.CONNECTED ||
             _connectionState.value == ConnectionState.CONNECTING) {
@@ -477,7 +408,6 @@ class ListenTogetherClient @Inject constructor(
             return
         }
 
-        // Clean up previous websocket to prevent memory leaks and duplicate events
         try {
             webSocket?.cancel()
             webSocket = null
@@ -489,7 +419,6 @@ class ListenTogetherClient @Inject constructor(
         val serverUrl = getServerUrl()
         log(LogLevel.INFO, "Connecting to server", serverUrl)
 
-        // Custom Node.js servers expect JSON without compression
         codec.format = MessageFormat.JSON
         codec.compressionEnabled = false
 
@@ -504,23 +433,19 @@ class ListenTogetherClient @Inject constructor(
                 reconnectAttempts = 0
                 startPingJob()
 
-                // Try to reconnect to previous session if we have a valid token
                 if (sessionToken != null && storedRoomCode != null) {
                     log(LogLevel.INFO, "Attempting to reconnect to previous session", "Room: $storedRoomCode")
                     sendMessage(MessageTypes.RECONNECT, ReconnectPayload(sessionToken!!))
                 } else {
-                    // Execute any pending action
                     executePendingAction()
                 }
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                // Handle text messages (JSON - DEPRECATED)
                 handleMessage(text.toByteArray())
             }
 
             override fun onMessage(webSocket: WebSocket, bytes: okio.ByteString) {
-                // Handle binary messages (Protobuf)
                 handleMessage(bytes.toByteArray())
             }
 
@@ -558,19 +483,15 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    /**
-     * Disconnect from the server
-     */
     fun disconnect() {
         log(LogLevel.INFO, "Disconnecting from server")
-        releaseWakeLock() // Release wake lock when disconnecting
+        releaseWakeLock()
         pingJob?.cancel()
         pingJob = null
         webSocket?.close(1000, "User disconnected")
         webSocket = null
         _connectionState.value = ConnectionState.DISCONNECTED
 
-        // Clear session and state on explicit disconnect
         sessionToken = null
         storedRoomCode = null
         storedUsername = null
@@ -581,7 +502,6 @@ class ListenTogetherClient @Inject constructor(
         _pendingJoinRequests.value = emptyList()
         _bufferingUsers.value = emptyList()
 
-        // Clear from persistent storage
         clearPersistedSession()
         reconnectAttempts = 0
 
@@ -604,14 +524,12 @@ class ListenTogetherClient @Inject constructor(
             val powerManager = context.getSystemService<PowerManager>()
             wakeLock = powerManager?.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
-                // PORT-NOTE: wake-lock tag renamed from vivimusic:ListenTogether to
-                // ArchiveTune's app tag.
+
                 "archivetune:ListenTogether"
             )
         }
         if (wakeLock?.isHeld == false) {
-            // Acquire with timeout of 10 minutes instead of 30 to reduce battery drain
-            // Will be re-acquired if still in room and receiving messages
+
             wakeLock?.acquire(10 * 60 * 1000L)
             log(LogLevel.DEBUG, "Wake lock acquired")
         }
@@ -646,7 +564,6 @@ class ListenTogetherClient @Inject constructor(
     private fun showJoinRequestNotification(payload: JoinRequestPayload) {
         val notifId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
 
-        // Store notification ID for this user so we can dismiss it from UI actions
         joinRequestNotifications[payload.userId] = notifId
 
         val approveIntent = Intent(context, ListenTogetherActionReceiver::class.java).apply {
@@ -683,7 +600,6 @@ class ListenTogetherClient @Inject constructor(
     private fun showSuggestionNotification(payload: SuggestionReceivedPayload) {
         val notifId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
 
-        // Store notification ID for this suggestion so we can dismiss it from UI actions
         suggestionNotifications[payload.suggestionId] = notifId
 
         val approveIntent = Intent(context, ListenTogetherActionReceiver::class.java).apply {
@@ -720,13 +636,10 @@ class ListenTogetherClient @Inject constructor(
         pingJob?.cancel()
         pingJob = null
 
-        // Don't clear room state - we might reconnect
-        // Only update connection state
         _connectionState.value = ConnectionState.DISCONNECTED
         _pendingJoinRequests.value = emptyList()
         _bufferingUsers.value = emptyList()
 
-        // If we have a session, try to reconnect
         if (sessionToken != null && _roomState.value != null) {
             log(LogLevel.INFO, "Connection lost, will attempt to reconnect")
             handleConnectionFailure(Exception("Connection lost"))
@@ -739,7 +652,6 @@ class ListenTogetherClient @Inject constructor(
         pingJob?.cancel()
         pingJob = null
 
-        // Always try to reconnect if we have a session token or pending action
         val shouldReconnect = sessionToken != null || _roomState.value != null || pendingAction != null
 
         if (!isNetworkAvailable) {
@@ -762,7 +674,6 @@ class ListenTogetherClient @Inject constructor(
                 _events.emit(ListenTogetherEvent.Reconnecting(reconnectAttempts, MAX_RECONNECT_ATTEMPTS))
                 delay(delayMs)
 
-                // Check if we're still supposed to be reconnecting
                 if (_connectionState.value == ConnectionState.RECONNECTING || _connectionState.value == ConnectionState.DISCONNECTED) {
                     log(LogLevel.INFO, "Reconnecting after backoff", "Delay was ${delaySeconds}s")
                     connect()
@@ -771,7 +682,6 @@ class ListenTogetherClient @Inject constructor(
         } else {
             _connectionState.value = ConnectionState.ERROR
 
-            // If we had a session, notify user but keep session data for manual retry
             if (sessionToken != null) {
                 log(LogLevel.ERROR, "Reconnection failed",
                     "Max attempts reached, but session preserved for manual reconnect")
@@ -781,7 +691,6 @@ class ListenTogetherClient @Inject constructor(
                     ))
                 }
             } else {
-                // No session, so clear everything
                 sessionToken = null
                 storedRoomCode = null
                 storedUsername = null
@@ -800,7 +709,6 @@ class ListenTogetherClient @Inject constructor(
         log(LogLevel.DEBUG, "Received message", "${data.size} bytes")
 
         try {
-            // Detect format and auto-upgrade codec if needed
             val detectedFormat = MessageCodec.detectMessageFormat(data)
             if (detectedFormat == MessageFormat.PROTOBUF && codec.format == MessageFormat.JSON) {
                 codec.format = MessageFormat.PROTOBUF
@@ -808,7 +716,6 @@ class ListenTogetherClient @Inject constructor(
                 log(LogLevel.INFO, "Upgraded to Protobuf", "with compression")
             }
 
-            // Decode message
             val (msgType, payloadBytes) = codec.decode(data)
 
             when (msgType) {
@@ -832,13 +739,12 @@ class ListenTogetherClient @Inject constructor(
                         volume = 1f
                     )
 
-                    // Save session to persistent storage
                     savePersistedSession()
 
-                    acquireWakeLock() // Keep connection alive while in room
+                    acquireWakeLock()
                     log(LogLevel.INFO, "Room created", "Code: ${payload.roomCode}")
                     scope.launch { _events.emit(ListenTogetherEvent.RoomCreated(payload.roomCode, payload.userId)) }
-                    // Global toast for room creation so the host sees it regardless of UI
+
                     scope.launch(Dispatchers.Main) {
                         Toast.makeText(
                             context,
@@ -851,10 +757,9 @@ class ListenTogetherClient @Inject constructor(
                 MessageTypes.JOIN_REQUEST -> {
                     val payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? JoinRequestPayload ?: return
 
-                    // Check if user is blocked
                     if (isUserBlocked(payload.username)) {
                         log(LogLevel.INFO, "Join request from blocked user ignored", "User: ${payload.username}")
-                        // Silently reject blocked users
+
                         rejectJoin(payload.userId, "You are blocked")
                         return
                     }
@@ -862,16 +767,13 @@ class ListenTogetherClient @Inject constructor(
                     _pendingJoinRequests.value += payload
                     log(LogLevel.INFO, "Join request received", "User: ${payload.username}")
 
-                    // Check if auto-approval is enabled
                     val autoApprovalEnabled = context.dataStore.get(ListenTogetherAutoApprovalKey, false)
 
                     if (_role.value == RoomRole.HOST) {
                         if (autoApprovalEnabled) {
-                            // Automatically approve the join request
                             log(LogLevel.INFO, "Auto-approving join request", "User: ${payload.username}")
                             approveJoin(payload.userId)
                         } else {
-                            // Notify host with Approve/Reject actions
                             if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                                 showJoinRequestNotification(payload)
                             }
@@ -891,10 +793,9 @@ class ListenTogetherClient @Inject constructor(
 
                     _roomState.value = payload.state
 
-                    // Save session to persistent storage
                     savePersistedSession()
 
-                    acquireWakeLock() // Keep connection alive while in room
+                    acquireWakeLock()
                     log(LogLevel.INFO, "Joined room", "Code: ${payload.roomCode}")
                     scope.launch { _events.emit(ListenTogetherEvent.JoinApproved(payload.roomCode, payload.userId, payload.state)) }
                 }
@@ -912,7 +813,6 @@ class ListenTogetherClient @Inject constructor(
                     )
                     _pendingJoinRequests.value = _pendingJoinRequests.value.filter { it.userId != payload.userId }
 
-                    // Dismiss notification if it exists
                     joinRequestNotifications.remove(payload.userId)?.let { notifId ->
                         NotificationManagerCompat.from(context).cancel(notifId)
                     }
@@ -941,7 +841,6 @@ class ListenTogetherClient @Inject constructor(
                     if (payload.newHostId == _userId.value) {
                         _role.value = RoomRole.HOST
                     } else if (_role.value == RoomRole.HOST) {
-                        // Lost host role
                         _role.value = RoomRole.GUEST
                     }
                     log(LogLevel.INFO, "Host changed", "New host: ${payload.newHostName}")
@@ -951,7 +850,7 @@ class ListenTogetherClient @Inject constructor(
                 MessageTypes.KICKED -> {
                     val payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? KickedPayload ?: return
                     log(LogLevel.WARNING, "Kicked from room", payload.reason)
-                    releaseWakeLock() // Release wake lock when kicked
+                    releaseWakeLock()
                     sessionToken = null
                     _roomState.value = null
                     _role.value = RoomRole.NONE
@@ -962,7 +861,6 @@ class ListenTogetherClient @Inject constructor(
                     val payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? PlaybackActionPayload ?: return
                     log(LogLevel.DEBUG, "Playback sync", "Action: ${payload.action}")
 
-                    // Update room state based on action
                     when (payload.action) {
                         PlaybackActions.PLAY -> {
                             _roomState.value = _roomState.value?.copy(
@@ -1042,9 +940,8 @@ class ListenTogetherClient @Inject constructor(
 
                 MessageTypes.SUGGESTION_RECEIVED -> {
                     val payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? SuggestionReceivedPayload ?: return
-                    // Only host should receive suggestions
+
                     if (_role.value == RoomRole.HOST) {
-                        // Check if user is blocked
                         if (isUserBlocked(payload.fromUsername)) {
                             log(LogLevel.INFO, "Suggestion from blocked user ignored", "User: ${payload.fromUsername}")
                             return
@@ -1052,7 +949,7 @@ class ListenTogetherClient @Inject constructor(
 
                         _pendingSuggestions.value += payload
                         log(LogLevel.INFO, "Suggestion received", "${payload.fromUsername}: ${payload.trackInfo.title}")
-                        // Show immediate in-app Toast so the host always sees it
+
                         scope.launch(Dispatchers.Main) {
                             Toast.makeText(
                                 context,
@@ -1060,7 +957,7 @@ class ListenTogetherClient @Inject constructor(
                                 Toast.LENGTH_LONG
                             ).show()
                         }
-                        // Also try the actionable system notification if permission granted
+
                         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                             showSuggestionNotification(payload)
                         }
@@ -1071,44 +968,37 @@ class ListenTogetherClient @Inject constructor(
                     val payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? SuggestionApprovedPayload ?: return
                     log(LogLevel.INFO, "Suggestion approved", payload.trackInfo.title)
 
-                    // Dismiss notification if it exists (for host who approved via another device/modal)
                     suggestionNotifications.remove(payload.suggestionId)?.let { notifId ->
                         NotificationManagerCompat.from(context).cancel(notifId)
                     }
 
-                    // For guests, optionally notify via events; UI can react if needed
                 }
 
                 MessageTypes.SUGGESTION_REJECTED -> {
                     val payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? SuggestionRejectedPayload ?: return
                     log(LogLevel.WARNING, "Suggestion rejected", payload.reason ?: "")
 
-                    // Dismiss notification if it exists
                     suggestionNotifications.remove(payload.suggestionId)?.let { notifId ->
                         NotificationManagerCompat.from(context).cancel(notifId)
                     }
 
-                    // For guests, optionally notify via events
                 }
 
                 MessageTypes.ERROR -> {
                     val payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? ErrorPayload ?: return
                     log(LogLevel.ERROR, "Server error", "${payload.code}: ${payload.message}")
 
-                    // Handle specific error cases
                     when (payload.code) {
                         "session_not_found" -> {
-                            // Session expired on server, try to rejoin the room
                             if (storedRoomCode != null && storedUsername != null && !wasHost) {
                                 log(LogLevel.WARNING, "Session expired on server",
                                     "Attempting automatic rejoin to room: $storedRoomCode")
-                                // Try rejoining as a guest
+
                                 scope.launch {
-                                    delay(500) // Small delay before rejoin attempt
+                                    delay(500)
                                     joinRoom(storedRoomCode!!, storedUsername!!)
                                 }
                             } else if (storedRoomCode != null && storedUsername != null) {
-                                // Host session expired - would need to create new room
                                 log(LogLevel.WARNING, "Host session expired",
                                     "Room: $storedRoomCode - manual intervention may be needed")
                                 clearPersistedSession()
@@ -1134,15 +1024,13 @@ class ListenTogetherClient @Inject constructor(
                     _role.value = if (payload.isHost) RoomRole.HOST else RoomRole.GUEST
                     _roomState.value = payload.state
 
-                    // Update persisted session info
                     wasHost = payload.isHost
                     sessionStartTime = System.currentTimeMillis()
                     savePersistedSession()
 
-                    // Reset reconnection attempts on successful reconnection
                     reconnectAttempts = 0
 
-                    acquireWakeLock() // Re-acquire wake lock after reconnection
+                    acquireWakeLock()
                     log(LogLevel.INFO, "Successfully reconnected to room",
                         "Code: ${payload.roomCode}, isHost: ${payload.isHost}, attempt was $reconnectAttempts")
                     scope.launch { _events.emit(ListenTogetherEvent.Reconnected(payload.roomCode, payload.userId, payload.state, payload.isHost)) }
@@ -1150,7 +1038,7 @@ class ListenTogetherClient @Inject constructor(
 
                 MessageTypes.USER_RECONNECTED -> {
                     val payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? UserReconnectedPayload ?: return
-                    // Mark user as connected in the room state
+
                     _roomState.value = _roomState.value?.copy(
                         users = _roomState.value!!.users.map { user ->
                             if (user.userId == payload.userId) user.copy(isConnected = true) else user
@@ -1162,7 +1050,7 @@ class ListenTogetherClient @Inject constructor(
 
                 MessageTypes.USER_DISCONNECTED -> {
                     val payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? UserDisconnectedPayload ?: return
-                    // Mark user as disconnected in the room state
+
                     _roomState.value = _roomState.value?.copy(
                         users = _roomState.value!!.users.map { user ->
                             if (user.userId == payload.userId) user.copy(isConnected = false) else user
@@ -1175,7 +1063,6 @@ class ListenTogetherClient @Inject constructor(
                 MessageTypes.CHAT -> {
                     var payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? ChatMessagePayload ?: return
 
-                    // Universal Fix: Extract embedded reply if present
                     if (payload.message.startsWith("\u200B[RPLY:")) {
                         try {
                             val endIdx = payload.message.indexOf("]\u200B")
@@ -1225,14 +1112,7 @@ class ListenTogetherClient @Inject constructor(
         sendMessage<Unit>(type, null)
     }
 
-    // Public API methods
-
-    /**
-     * Create a new listening room.
-     * If not connected, will queue the action and connect first.
-     */
     fun createRoom(username: String) {
-        // Clear any existing session to ensure we create a new room instead of reconnecting
         clearPersistedSession()
         sessionToken = null
         storedRoomCode = null
@@ -1250,16 +1130,11 @@ class ListenTogetherClient @Inject constructor(
                 _connectionState.value == ConnectionState.ERROR) {
                 connect()
             }
-            // If CONNECTING or RECONNECTING, the action will be executed when connected
+
         }
     }
 
-    /**
-     * Join an existing room.
-     * If not connected, will queue the action and connect first.
-     */
     fun joinRoom(roomCode: String, username: String) {
-        // Clear any existing session to ensure we join the new room instead of reconnecting
         clearPersistedSession()
         sessionToken = null
         storedRoomCode = null
@@ -1277,17 +1152,13 @@ class ListenTogetherClient @Inject constructor(
                 _connectionState.value == ConnectionState.ERROR) {
                 connect()
             }
-            // If CONNECTING or RECONNECTING, the action will be executed when connected
+
         }
     }
 
-    /**
-     * Leave the current room
-     */
     fun leaveRoom() {
         sendMessageNoPayload(MessageTypes.LEAVE_ROOM)
 
-        // Clear session info on intentional leave
         sessionToken = null
         storedRoomCode = null
         storedUsername = null
@@ -1298,15 +1169,11 @@ class ListenTogetherClient @Inject constructor(
         _pendingJoinRequests.value = emptyList()
         _bufferingUsers.value = emptyList()
 
-        // Clear from persistent storage
         clearPersistedSession()
 
         releaseWakeLock()
     }
 
-    /**
-     * Approve a join request (host only)
-     */
     fun approveJoin(userId: String) {
         if (_role.value != RoomRole.HOST) {
             log(LogLevel.ERROR, "Cannot approve join", "Not host")
@@ -1314,15 +1181,11 @@ class ListenTogetherClient @Inject constructor(
         }
         sendMessage(MessageTypes.APPROVE_JOIN, ApproveJoinPayload(userId))
 
-        // Dismiss notification immediately when approved from UI
         joinRequestNotifications.remove(userId)?.let { notifId ->
             NotificationManagerCompat.from(context).cancel(notifId)
         }
     }
 
-    /**
-     * Reject a join request (host only)
-     */
     fun rejectJoin(userId: String, reason: String? = null) {
         if (_role.value != RoomRole.HOST) {
             log(LogLevel.ERROR, "Cannot reject join", "Not host")
@@ -1331,15 +1194,11 @@ class ListenTogetherClient @Inject constructor(
         sendMessage(MessageTypes.REJECT_JOIN, RejectJoinPayload(userId, reason))
         _pendingJoinRequests.value = _pendingJoinRequests.value.filter { it.userId != userId }
 
-        // Dismiss notification immediately when rejected from UI
         joinRequestNotifications.remove(userId)?.let { notifId ->
             NotificationManagerCompat.from(context).cancel(notifId)
         }
     }
 
-    /**
-     * Kick a user from the room (host only)
-     */
     fun kickUser(userId: String, reason: String? = null) {
         if (_role.value != RoomRole.HOST) {
             log(LogLevel.ERROR, "Cannot kick user", "Not host")
@@ -1348,9 +1207,6 @@ class ListenTogetherClient @Inject constructor(
         sendMessage(MessageTypes.KICK_USER, KickUserPayload(userId, reason))
     }
 
-    /**
-     * Transfer host role to another user (host only)
-     */
     fun transferHost(newHostId: String) {
         if (_role.value != RoomRole.HOST) {
             log(LogLevel.ERROR, "Cannot transfer host", "Not host")
@@ -1359,9 +1215,6 @@ class ListenTogetherClient @Inject constructor(
         sendMessage(MessageTypes.TRANSFER_HOST, TransferHostPayload(newHostId))
     }
 
-    /**
-     * Send a playback action (host only)
-     */
     fun sendPlaybackAction(
         action: String,
         trackId: String? = null,
@@ -1382,16 +1235,12 @@ class ListenTogetherClient @Inject constructor(
         )
     }
 
-    /**
-     * Send a chat message to the room
-     */
     fun sendChatMessage(message: String, replyTo: RepliedMessage? = null) {
         if (!isInRoom) {
             log(LogLevel.ERROR, "Cannot send chat message", "Not in room")
             return
         }
 
-        // Universal Fix: Embed reply metadata into message string
         val finalMessage = if (replyTo != null) {
             val metadata = "${replyTo.username}|${replyTo.message}"
             val encoded = Base64.encodeToString(metadata.toByteArray(), Base64.NO_WRAP)
@@ -1403,16 +1252,10 @@ class ListenTogetherClient @Inject constructor(
         sendMessage(MessageTypes.CHAT, ChatPayload(finalMessage, replyTo))
     }
 
-    /**
-     * Signal that buffering is complete for the current track
-     */
     fun sendBufferReady(trackId: String) {
         sendMessage(MessageTypes.BUFFER_READY, BufferReadyPayload(trackId))
     }
 
-    /**
-     * Suggest a track to the host (guest only)
-     */
     fun suggestTrack(trackInfo: TrackInfo) {
         if (!isInRoom) {
             log(LogLevel.ERROR, "Cannot suggest track", "Not in room")
@@ -1428,37 +1271,27 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    /**
-     * Approve a suggestion (host only)
-     */
     fun approveSuggestion(suggestionId: String) {
         if (_role.value != RoomRole.HOST) {
             log(LogLevel.ERROR, "Cannot approve suggestion", "Not host")
             return
         }
 
-        // Find the suggestion before removing it
         val suggestion = _pendingSuggestions.value.find { it.suggestionId == suggestionId }
 
         sendMessage(MessageTypes.APPROVE_SUGGESTION, ApproveSuggestionPayload(suggestionId))
 
-        // Emit internal event so manager can update local player
         if (suggestion != null) {
             scope.launch { _events.emit(ListenTogetherEvent.LocalSuggestionApproved(suggestion)) }
         }
 
-        // Remove locally from pending list
         _pendingSuggestions.value = _pendingSuggestions.value.filter { it.suggestionId != suggestionId }
 
-        // Dismiss notification immediately when approved from UI
         suggestionNotifications.remove(suggestionId)?.let { notifId ->
             NotificationManagerCompat.from(context).cancel(notifId)
         }
     }
 
-    /**
-     * Reject a suggestion (host only)
-     */
     fun rejectSuggestion(suggestionId: String, reason: String? = null) {
         if (_role.value != RoomRole.HOST) {
             log(LogLevel.ERROR, "Cannot reject suggestion", "Not host")
@@ -1467,15 +1300,11 @@ class ListenTogetherClient @Inject constructor(
         sendMessage(MessageTypes.REJECT_SUGGESTION, RejectSuggestionPayload(suggestionId, reason))
         _pendingSuggestions.value = _pendingSuggestions.value.filter { it.suggestionId != suggestionId }
 
-        // Dismiss notification immediately when rejected from UI
         suggestionNotifications.remove(suggestionId)?.let { notifId ->
             NotificationManagerCompat.from(context).cancel(notifId)
         }
     }
 
-    /**
-     * Request current playback state from server (for guest re-sync)
-     */
     fun requestSync() {
         if (_roomState.value == null) {
             log(LogLevel.ERROR, "Cannot request sync", "Not in room")
@@ -1485,21 +1314,16 @@ class ListenTogetherClient @Inject constructor(
         sendMessageNoPayload(MessageTypes.REQUEST_SYNC)
     }
 
-    /**
-     * Block a user permanently (internal list). Prevents their join requests and suggestions from appearing.
-     */
     fun blockUser(username: String) {
         val updated = _blockedUsernames.value.toMutableSet()
         updated.add(username)
         _blockedUsernames.value = updated
 
-        // Filter out blocked users from pending requests and suggestions
         _pendingJoinRequests.value = _pendingJoinRequests.value
             .filter { it.username !in _blockedUsernames.value }
         _pendingSuggestions.value = _pendingSuggestions.value
             .filter { it.fromUsername !in _blockedUsernames.value }
 
-        // Save to storage
         scope.launch {
             saveBlockedUsernames()
         }
@@ -1507,15 +1331,11 @@ class ListenTogetherClient @Inject constructor(
         log(LogLevel.INFO, "User blocked", username)
     }
 
-    /**
-     * Unblock a previously blocked user
-     */
     fun unblockUser(username: String) {
         val updated = _blockedUsernames.value.toMutableSet()
         updated.remove(username)
         _blockedUsernames.value = updated
 
-        // Save to storage
         scope.launch {
             saveBlockedUsernames()
         }
@@ -1523,29 +1343,17 @@ class ListenTogetherClient @Inject constructor(
         log(LogLevel.INFO, "User unblocked", username)
     }
 
-    /**
-     * Check if a user is blocked
-     */
     fun isUserBlocked(username: String): Boolean = username in _blockedUsernames.value
 
-    /**
-     * Check if currently in a room
-     */
     val isInRoom: Boolean
         get() = _roomState.value != null
 
-    /**
-     * Check if current user is host
-     */
     val isHost: Boolean
         get() = _role.value == RoomRole.HOST
 
-    /**
-     * Force reconnection to server (useful for manual recovery)
-     */
     fun forceReconnect() {
         log(LogLevel.INFO, "Forcing reconnection to server")
-        reconnectAttempts = 0  // Reset attempts to retry from start
+        reconnectAttempts = 0
 
         if (webSocket != null) {
             try {
@@ -1558,27 +1366,17 @@ class ListenTogetherClient @Inject constructor(
 
         _connectionState.value = ConnectionState.DISCONNECTED
 
-        // Attempt connection with reset backoff
         scope.launch {
             delay(500)
             connect()
         }
     }
 
-    /**
-     * Check if there's a persisted session available for recovery
-     */
     val hasPersistedSession: Boolean
         get() = sessionToken != null && storedRoomCode != null
 
-    /**
-     * Get the persisted room code if available
-     */
     fun getPersistedRoomCode(): String? = storedRoomCode
 
-    /**
-     * Get current session age in milliseconds
-     */
     fun getSessionAge(): Long = if (sessionStartTime > 0) {
         System.currentTimeMillis() - sessionStartTime
     } else {

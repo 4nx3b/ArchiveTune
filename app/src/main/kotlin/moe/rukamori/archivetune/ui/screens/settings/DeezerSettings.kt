@@ -103,7 +103,6 @@ fun DeezerSettings(
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -145,7 +144,6 @@ fun DeezerSettings(
                             description = stringResource(R.string.deezer_signed_in_as, accountName),
                             icon = { Icon(painterResource(R.drawable.logout), null) },
                             onClick = {
-
                                 onArlChange("")
                                 onAccountNameChange("")
                                 onPremiumChange(false)

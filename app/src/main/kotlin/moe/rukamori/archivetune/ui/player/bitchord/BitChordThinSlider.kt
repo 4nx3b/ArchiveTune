@@ -44,10 +44,7 @@ import androidx.compose.runtime.setValue
 
 @Composable
 fun ThinSlider(
-    /**
-     * Called from the draw scope, never read during composition. The played width is the only thing
-     * the position affects here, so a tick repaints this slider instead of recomposing it.
-     */
+
     valueProvider: () -> Float,
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier,

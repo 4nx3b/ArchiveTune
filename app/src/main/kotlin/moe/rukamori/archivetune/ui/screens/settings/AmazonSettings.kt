@@ -186,7 +186,7 @@ fun AmazonSettings(
                 Modifier
                     .padding(top = topPadding)
                     .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
-                    // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                     .then(positions.containerModifier())
                     .verticalScroll(scrollState)
                     .hazeSource(headerHaze)
@@ -220,11 +220,7 @@ fun AmazonSettings(
                                 description = stringResource(R.string.amazon_signed_in_as, accountName),
                                 icon = { Icon(painterResource(R.drawable.logout), null) },
                                 onClick = {
-                                    // Clearing the session is what actually signs out; a collector
-                                    // elsewhere observes it and drops the provider's session. Name and
-                                    // the premium flag are display/ordering state only. AmazonEnabledKey
-                                    // is left alone, mirroring Deezer — a pool account can keep the
-                                    // source usable even after a personal sign-in ends.
+
                                     onSessionChange("")
                                     onAccountNameChange("")
                                     onPremiumChange(false)
@@ -299,11 +295,6 @@ fun AmazonSettings(
     }
 }
 
-/**
- * The mandatory "this doesn't play yet" notice. Uses the error container rather than a neutral one
- * — this is a hard limitation, not a tip, and it needs to read as one at a glance from the top of
- * the screen before anyone taps sign-in expecting a working source.
- */
 @Composable
 private fun AmazonPlaybackNoticeCard(modifier: Modifier = Modifier) {
     Card(

@@ -102,7 +102,6 @@ class CreatePlaylistViewModel
                         if (options.isSignedIn != optimistic.isSignedIn ||
                             options.isSyncEnabled != optimistic.isSyncEnabled
                         ) {
-
                             updateData {
                                 it.copy(
                                     isSignedIn = options.isSignedIn,
@@ -113,7 +112,6 @@ class CreatePlaylistViewModel
                     } catch (error: CancellationException) {
                         throw error
                     } catch (_: Exception) {
-
                     }
                 }
         }

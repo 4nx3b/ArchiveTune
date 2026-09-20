@@ -12,7 +12,6 @@ data class QobuzToken(
     val subscription: String = "",
     val poolId: Long? = null,
 ) {
-
     val id: String get() = token.take(12)
 
     fun toJson(): JSONObject =

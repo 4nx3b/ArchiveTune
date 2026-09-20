@@ -7,9 +7,7 @@
 
 package moe.rukamori.archivetune.discord
 
-import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import okhttp3.*
 import org.json.JSONArray
 import org.json.JSONObject
 import timber.log.Timber

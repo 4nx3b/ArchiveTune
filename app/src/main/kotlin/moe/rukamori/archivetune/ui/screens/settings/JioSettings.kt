@@ -103,7 +103,6 @@ fun JioSettings(
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -124,7 +123,6 @@ fun JioSettings(
                 .padding(top = topPadding)
                 .padding(bottom = playerAwareBottomPadding + 16.dp),
         ) {
-
             PreferenceGroup(title = stringResource(R.string.jiosaavn_integration)) {
                 item {
                     Text(

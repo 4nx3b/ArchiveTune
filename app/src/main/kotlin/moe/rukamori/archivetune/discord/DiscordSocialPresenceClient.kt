@@ -7,7 +7,6 @@
 
 package moe.rukamori.archivetune.discord
 
-import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray

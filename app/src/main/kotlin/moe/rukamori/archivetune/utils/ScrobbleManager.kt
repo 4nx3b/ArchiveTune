@@ -70,7 +70,6 @@ class ScrobbleManager(
     }
 
     fun onSongStop() {
-
         flushPendingScrobbleIfNeeded()
         stopScrobbleTimer()
         songStarted = false
@@ -84,7 +83,6 @@ class ScrobbleManager(
         val resolvedDuration = duration?.toInt()?.div(1000) ?: metadata.duration
 
         if (resolvedDuration <= minSongDuration) {
-
             currentMetadata = metadata
             currentThresholdMillis = 0L
             scrobbleTimerRunning = false
@@ -126,7 +124,6 @@ class ScrobbleManager(
     }
 
     private fun resumeScrobbleTimer(metadata: MediaMetadata) {
-
         if (scrobbleTimerRunning) return
         if (scrobbleRemainingMillis <= 0) return
 
@@ -156,7 +153,6 @@ class ScrobbleManager(
     private fun flushPendingScrobbleIfNeeded() {
         val metadata = currentMetadata ?: return
         if (currentThresholdMillis <= 0L) {
-
             currentMetadata = null
             currentThresholdMillis = 0L
             return
@@ -166,11 +162,9 @@ class ScrobbleManager(
 
             val totalElapsed = (currentThresholdMillis - scrobbleRemainingMillis) + elapsed
             if (totalElapsed >= currentThresholdMillis) {
-
                 scrobbleSong(metadata)
             }
         } else if (!scrobbleTimerRunning && scrobbleRemainingMillis <= 0L) {
-
         }
 
         scrobbleJob?.cancel()
@@ -183,7 +177,6 @@ class ScrobbleManager(
     }
 
     private fun sameSong(a: MediaMetadata, b: MediaMetadata): Boolean {
-
         if (a.id == b.id) return true
         if (a.title == b.title &&
             a.artists.size == b.artists.size &&

@@ -202,9 +202,6 @@ object AppModule {
             )
         }
 
-    // Listen Together (ported from vivi-music beta). ListenTogetherManager itself is
-    // @Singleton @Inject-constructed from (ListenTogetherClient, @ApplicationContext
-    // Context), so it needs no explicit provider — only the client does.
     @Singleton
     @Provides
     fun provideListenTogetherClient(

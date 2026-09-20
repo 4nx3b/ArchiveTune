@@ -14,11 +14,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
-/**
- * Message types for Listen Together protocol
- */
 object MessageTypes {
-    // Client -> Server
     const val CREATE_ROOM = "create_room"
     const val JOIN_ROOM = "join_room"
     const val LEAVE_ROOM = "leave_room"
@@ -36,7 +32,6 @@ object MessageTypes {
     const val APPROVE_SUGGESTION = "approve_suggestion"
     const val REJECT_SUGGESTION = "reject_suggestion"
 
-    // Server -> Client
     const val ROOM_CREATED = "room_created"
     const val JOIN_REQUEST = "join_request"
     const val JOIN_APPROVED = "join_approved"
@@ -59,9 +54,6 @@ object MessageTypes {
     const val SUGGESTION_REJECTED = "suggestion_rejected"
 }
 
-/**
- * Playback action types
- */
 object PlaybackActions {
     const val PLAY = "play"
     const val PAUSE = "pause"
@@ -76,32 +68,23 @@ object PlaybackActions {
     const val SET_VOLUME = "set_volume"
 }
 
-/**
- * Base message structure
- */
 @Serializable
 data class Message(
     val type: String,
     val payload: JsonElement? = null
 )
 
-/**
- * Track information
- */
 @Serializable
 data class TrackInfo(
     val id: String,
     val title: String,
     val artist: String,
     val album: String? = null,
-    val duration: Long, // milliseconds
+    val duration: Long,
     val thumbnail: String? = null,
     @SerialName("suggested_by") val suggestedBy: String? = null
 )
 
-/**
- * User information
- */
 @Serializable
 data class UserInfo(
     @SerialName("user_id") val userId: String,
@@ -113,9 +96,6 @@ data class UserInfo(
     val cleanUsername: String get() = username
 }
 
-/**
- * Room state
- */
 @Serializable
 data class RoomState(
     @SerialName("room_code") val roomCode: String,
@@ -123,13 +103,11 @@ data class RoomState(
     val users: List<UserInfo>,
     @SerialName("current_track") val currentTrack: TrackInfo? = null,
     @SerialName("is_playing") val isPlaying: Boolean,
-    val position: Long, // milliseconds
-    @SerialName("last_update") val lastUpdate: Long, // unix timestamp ms
+    val position: Long,
+    @SerialName("last_update") val lastUpdate: Long,
     val volume: Float = 1f,
     val queue: List<TrackInfo> = emptyList()
 )
-
-// Request payloads
 
 @Serializable
 data class CreateRoomPayload(
@@ -159,7 +137,7 @@ data class RejectJoinPayload(
 data class PlaybackActionPayload(
     val action: String,
     @SerialName("track_id") val trackId: String? = null,
-    val position: Long? = null, // milliseconds
+    val position: Long? = null,
     @SerialName("track_info") val trackInfo: TrackInfo? = null,
     @SerialName("insert_next") val insertNext: Boolean? = null,
     val queue: List<TrackInfo>? = null,
@@ -196,8 +174,6 @@ data class RepliedMessage(
     val message: String
 )
 
-// Suggestions payloads
-
 @Serializable
 data class SuggestTrackPayload(
     @SerialName("track_info") val trackInfo: TrackInfo
@@ -233,8 +209,6 @@ data class SuggestionRejectedPayload(
     @SerialName("suggestion_id") val suggestionId: String,
     val reason: String? = null
 )
-
-// Response payloads
 
 @Serializable
 data class RoomCreatedPayload(
@@ -315,9 +289,6 @@ data class KickedPayload(
     val reason: String
 )
 
-/**
- * Sync state payload - sent to guest when they request current state
- */
 @Serializable
 data class SyncStatePayload(
     @SerialName("current_track") val currentTrack: TrackInfo?,
@@ -327,8 +298,6 @@ data class SyncStatePayload(
     val queue: List<TrackInfo>? = null,
     val volume: Float? = null
 )
-
-// Reconnection payloads
 
 @Serializable
 data class ReconnectPayload(

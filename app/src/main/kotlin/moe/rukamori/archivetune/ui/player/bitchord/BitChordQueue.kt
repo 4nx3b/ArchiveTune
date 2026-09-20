@@ -315,7 +315,6 @@ private class QueueDragState(private val listState: LazyListState) {
         items: List<LazyListItemInfo>,
         dragged: LazyListItemInfo,
     ): LazyListItemInfo? {
-
         val target = items
             .filter { it.index in lazyRange && it.index != dragged.index }
             .minByOrNull { abs((it.offset + it.size / 2f) - heldCenter) }
@@ -388,7 +387,6 @@ private fun InlineQueueRow(
     onDrag: (Float) -> Unit = {},
     onDragEnd: () -> Unit = {},
 ) {
-
     val heldOnDispose by rememberUpdatedState(dragging)
     val endDrag by rememberUpdatedState(onDragEnd)
     DisposableEffect(Unit) {

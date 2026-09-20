@@ -72,15 +72,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton as MaterialIconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -96,8 +92,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.onFocusChanged
@@ -108,7 +102,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import moe.rukamori.archivetune.LocalListenTogetherManager
@@ -158,9 +151,9 @@ fun ListenTogetherScreen(
 
     val (listenTogetherInTopBar) = rememberPreference(ListenTogetherInTopBarKey, defaultValue = true)
     val shouldShowTopBar = showTopBar || listenTogetherInTopBar
-    
+
     val (listenTogetherAvatarIndex) = rememberPreference(ListenTogetherAvatarIndexKey, 0)
-    
+
     var savedUsername by rememberPreference(ListenTogetherUsernameKey, "")
     val roomCodeInput by viewModel.roomCodeInput.collectAsState()
     val usernameInput by viewModel.usernameInput.collectAsState()
@@ -195,7 +188,6 @@ fun ListenTogetherScreen(
     val isInRoom = listenTogetherManager.isInRoom
     val isHost = roomState?.hostId == userId
 
-    // User action menu dialog
     if (selectedUserForMenu != null && selectedUsername != null) {
         UserActionDialog(
             username = selectedUsername ?: "",
@@ -233,10 +225,10 @@ fun ListenTogetherScreen(
     val lazyListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
-    
+
     val backStackEntry by navController.currentBackStackEntryAsState()
     val scrollToTop = backStackEntry?.savedStateHandle?.getStateFlow("scrollToTop", false)?.collectAsState()
-    
+
     LaunchedEffect(scrollToTop?.value) {
         if (scrollToTop?.value == true) {
             lazyListState.animateScrollToItem(0)
@@ -258,12 +250,10 @@ fun ListenTogetherScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Header (always visible)
         item {
             HeaderSection()
         }
 
-        // Connection status card
         item {
             ConnectionStatusCard(
                 connectionState = connectionState,
@@ -285,7 +275,6 @@ fun ListenTogetherScreen(
             }
         }
 
-        // Join/Create section (always visible, morphs based on state)
         item {
             JoinCreateRoomSection(
                 usernameInput = usernameInput,
@@ -349,10 +338,9 @@ fun ListenTogetherScreen(
             )
         }
 
-        // Room details (visible when in a room)
         if (isInRoom) {
             roomState?.let { room ->
-                // Room status (copy/share/chat actions)
+
                 item {
                     RoomStatusCard(
                         roomCode = room.roomCode,
@@ -363,7 +351,6 @@ fun ListenTogetherScreen(
                     )
                 }
 
-                // Connected users
                 val connectedUsers = room.users.filter { it.isConnected }
                 val currentUserIdValue = userId ?: ""
                 item {
@@ -380,7 +367,6 @@ fun ListenTogetherScreen(
                     )
                 }
 
-                // Pending join requests (host only)
                 if (isHost && pendingJoinRequests.isNotEmpty()) {
                     item {
                         PendingJoinRequestsSection(
@@ -391,7 +377,6 @@ fun ListenTogetherScreen(
                     }
                 }
 
-                // Pending suggestions (host only)
                 if (isHost && pendingSuggestions.isNotEmpty()) {
                     item {
                         PendingSuggestionsSection(
@@ -404,7 +389,6 @@ fun ListenTogetherScreen(
             }
         }
 
-        // Settings link
         item {
             ExpressiveSettingGroup(
                 items = listOf(
@@ -477,12 +461,10 @@ private fun NotConfiguredContent() {
 
 @Composable
 private fun HeaderSection() {
-
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Left side: large icon
         Box(
             modifier = Modifier
                 .size(80.dp)
@@ -500,7 +482,6 @@ private fun HeaderSection() {
 
         Spacer(modifier = Modifier.width(16.dp))
 
-        // Right side: title + subtitle
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.Center
@@ -557,7 +538,6 @@ private fun ConnectionStatusCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Top area: Text on left, Icon on right
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -576,8 +556,8 @@ private fun ConnectionStatusCard(
                         fontWeight = FontWeight.Bold,
                         color = iconTint
                     )
-                    
-                    if (connectionState == ConnectionState.CONNECTING || 
+
+                    if (connectionState == ConnectionState.CONNECTING ||
                         connectionState == ConnectionState.RECONNECTING) {
                         Spacer(modifier = Modifier.height(12.dp))
                         LinearProgressIndicator(
@@ -588,7 +568,7 @@ private fun ConnectionStatusCard(
                         )
                     }
                 }
-                
+
                 Box(
                     modifier = Modifier
                         .size(40.dp)
@@ -610,8 +590,7 @@ private fun ConnectionStatusCard(
                     )
                 }
             }
-            
-            // Bottom Actions
+
             if (connectionState == ConnectionState.DISCONNECTED || connectionState == ConnectionState.ERROR) {
                 Surface(
                     onClick = onConnect,
@@ -683,7 +662,6 @@ private fun RoomStatusCard(
     navController: NavController,
     unreadMessageCount: Int
 ) {
-    // Action Row without the bulky card background
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -691,21 +669,16 @@ private fun RoomStatusCard(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
 
-            // Action Row
-            // PORT-NOTE: vivi's public Listen Together server share URL, kept verbatim — the
-            // link only needs to resolve for humans pasting it; joining happens by room code.
             val inviteLink = remember(roomCode) {
                 "https://vivimusic-listen-together.onrender.com/listen?code=$roomCode"
             }
-            
-            // Fixed width for equal sizing horizontally
+
             val modifier = Modifier.weight(1f)
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // Chat Action
                 FilledTonalButton(
                     onClick = { navController.navigate("listen_together/chat") },
                     colors = ButtonDefaults.filledTonalButtonColors(
@@ -741,7 +714,6 @@ private fun RoomStatusCard(
                     )
                 }
 
-                // Copy Link Action
                 FilledTonalButton(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -772,7 +744,6 @@ private fun RoomStatusCard(
                     )
                 }
 
-                // Copy Code Action
                 FilledTonalButton(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -882,7 +853,7 @@ private fun UserAvatar(
                 ) {
                     val resolvedAvatarIndex = user.avatarIndex
                     val avatarOptions = remember { listOf(R.drawable.person, R.drawable.man, R.drawable.woman, R.drawable.man_1, R.drawable.man_2, R.drawable.man_3, R.drawable.man_4, R.drawable.man_5, R.drawable.man_6, R.drawable.woman_1, R.drawable.woman_2, R.drawable.woman_3, R.drawable.woman_4, R.drawable.luxury_women) }
-                    
+
                     if (resolvedAvatarIndex == 0) {
                         Text(
                             text = user.cleanUsername.take(1).uppercase(),
@@ -992,7 +963,7 @@ private fun PendingJoinRequestsSection(
                 ) {
                     val resolvedAvatarIndex = request.avatarIndex
                     val avatarOptions = remember { listOf(R.drawable.person, R.drawable.man, R.drawable.woman, R.drawable.man_1, R.drawable.man_2, R.drawable.man_3, R.drawable.man_4, R.drawable.man_5, R.drawable.man_6, R.drawable.woman_1, R.drawable.woman_2, R.drawable.woman_3, R.drawable.woman_4, R.drawable.luxury_women) }
-                    
+
                     Surface(
                         modifier = Modifier.size(40.dp),
                         shape = CircleShape,
@@ -1145,7 +1116,7 @@ private fun JoinCreateRoomSection(
 ) {
     val avatarIndex by rememberPreference(ListenTogetherAvatarIndexKey, 0)
     val avatarOptions = remember { listOf(R.drawable.person, R.drawable.man, R.drawable.woman, R.drawable.man_1, R.drawable.man_2, R.drawable.man_3, R.drawable.man_4, R.drawable.man_5, R.drawable.man_6, R.drawable.woman_1, R.drawable.woman_2, R.drawable.woman_3, R.drawable.woman_4, R.drawable.luxury_women) }
-    
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -1178,7 +1149,6 @@ private fun JoinCreateRoomSection(
                 label = "usernameIconTint"
             )
 
-            // Username input — read-only when in room
             OutlinedTextField(
                 value = if (isInRoom) (usernameInput.takeIf { it.isNotBlank() } ?: savedUsername) else usernameInput,
                 onValueChange = if (isInRoom) { _ -> } else onUsernameChange,
@@ -1236,8 +1206,6 @@ private fun JoinCreateRoomSection(
                     .onFocusChanged { if (it.isFocused && !isInRoom) onFieldFocused() }
             )
 
-
-            // Room code label
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.align(Alignment.Start)
@@ -1256,18 +1224,16 @@ private fun JoinCreateRoomSection(
                 )
             }
 
-            // OTP boxes — editable when not in room, read-only display when in room
             if (isInRoom) {
-                // Staggered one-by-one reveal animation when room code arrives
-                // We utilize isFirstFrame to detect if we're instantly entering an already-connected state, silencing the animation
+
                 val isFirstFrame = remember { mutableStateOf(true) }
                 DisposableEffect(Unit) {
                     isFirstFrame.value = false
                     onDispose { }
                 }
 
-                var revealedCount by rememberSaveable(activeRoomCode) { 
-                    mutableStateOf(if (isFirstFrame.value && activeRoomCode.isNotBlank()) activeRoomCode.length else 0) 
+                var revealedCount by rememberSaveable(activeRoomCode) {
+                    mutableStateOf(if (isFirstFrame.value && activeRoomCode.isNotBlank()) activeRoomCode.length else 0)
                 }
 
                 LaunchedEffect(activeRoomCode) {
@@ -1335,7 +1301,6 @@ private fun JoinCreateRoomSection(
                     }
                 }
             } else {
-                // Editable OTP input
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
@@ -1410,7 +1375,7 @@ private fun JoinCreateRoomSection(
 
                     AnimatedVisibility(visible = roomCodeInput.isNotBlank()) {
                         androidx.compose.material3.FilledIconButton(
-                            onClick = { 
+                            onClick = {
                                 onRoomCodeChange("")
                                 onCancelJoin()
                             },
@@ -1426,7 +1391,6 @@ private fun JoinCreateRoomSection(
                 }
             }
 
-            // Waiting for approval indicator (only when not in room)
             AnimatedVisibility(
                 visible = isJoiningRoom && !isInRoom,
                 enter = fadeIn() + slideInVertically(),
@@ -1461,7 +1425,6 @@ private fun JoinCreateRoomSection(
                 }
             }
 
-            // Error message
             AnimatedVisibility(
                 visible = joinErrorMessage != null && !isInRoom,
                 enter = fadeIn() + slideInVertically(),
@@ -1497,7 +1460,6 @@ private fun JoinCreateRoomSection(
                 }
             }
 
-            // Action buttons — morph between Create/Join and Leave Room
             if (isInRoom) {
                 Button(
                     onClick = onLeaveRoom,
@@ -1519,7 +1481,6 @@ private fun JoinCreateRoomSection(
                 val hasUsername = usernameInput.trim().isNotBlank() || savedUsername.isNotBlank()
                 val hasRoomCode = roomCodeInput.length == 8
 
-                // Morphing Create/Join Button
                 AnimatedVisibility(visible = hasUsername) {
                     val containerColor by animateColorAsState(
                         targetValue = if (hasRoomCode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
@@ -1572,7 +1533,6 @@ private fun JoinCreateRoomSection(
     }
 }
 
-
 @Composable
 private fun UserActionDialog(
     username: String,
@@ -1612,7 +1572,6 @@ private fun UserActionDialog(
         Column(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Kick button
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1647,7 +1606,6 @@ private fun UserActionDialog(
                 }
             }
 
-            // Permanently kick button
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1681,7 +1639,6 @@ private fun UserActionDialog(
                 }
             }
 
-            // Transfer ownership button
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()

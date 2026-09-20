@@ -85,7 +85,6 @@ sealed interface SpotifyHomeAction {
 class SpotifyHomeViewModel @Inject constructor(
     private val repository: SpotifyLibraryRepository,
 ) : ViewModel() {
-
     private val _screenState = MutableStateFlow<SpotifyHomeScreenState>(SpotifyHomeScreenState.Loading)
     val screenState: StateFlow<SpotifyHomeScreenState> = _screenState.asStateFlow()
 
@@ -184,7 +183,6 @@ class SpotifyHomeViewModel @Inject constructor(
         cancelSelection()
         _screenState.value = SpotifyHomeScreenState.Loading
         loadJob = viewModelScope.launch(Dispatchers.IO) {
-
             try {
                 val session = repository.restoreSession()
                 if (!session.isAuthenticated) {

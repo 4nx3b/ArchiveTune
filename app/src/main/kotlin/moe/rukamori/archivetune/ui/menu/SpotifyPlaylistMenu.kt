@@ -84,7 +84,6 @@ fun SpotifyPlaylistMenu(
     val onPlay: () -> Unit = {
         onDismiss()
         coroutineScope.launch {
-
             viewModel.ensureAccessToken()
             playerConnection.playQueue(SpotifyPlaylistQueue(playlistId = playlistId, title = playlistName))
         }

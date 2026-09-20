@@ -211,7 +211,6 @@ class LogcatViewModel
             )
 
         init {
-
             viewModelScope.launch {
                 val persisted = appContext.dataStore.data.first()[LogcatPausedKey] ?: false
                 if (paused.value != persisted) paused.value = persisted

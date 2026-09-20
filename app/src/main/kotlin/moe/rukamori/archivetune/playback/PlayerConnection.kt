@@ -418,13 +418,6 @@ class PlayerConnection(
         }
     }
 
-    /**
-     * Pushes a freshly pinned canvas (the "Choose Canvas source" picker's
-     * selection) straight into every live canvas render state. The player
-     * sheet's and the full-player thumbnail's collectors apply the artwork on
-     * the next frame, so the visible canvas swaps immediately instead of
-     * waiting for the next track change or a manual refetch.
-     */
     internal fun publishCanvasArtworkUpdate(
         mediaId: String,
         artwork: CanvasArtwork,
@@ -528,7 +521,6 @@ class PlayerConnection(
             }
 
             isRecoverableMediaCodecStateError(playbackError) -> {
-
             }
 
             playbackError !== dismissedPlaybackError -> {
@@ -563,7 +555,6 @@ class PlayerConnection(
     }
 
     private companion object {
-
         const val TELEGRAM_FORMAT_REFINE_ATTEMPTS = 10
         const val TELEGRAM_FORMAT_REFINE_INTERVAL_MS = 1_500L
     }

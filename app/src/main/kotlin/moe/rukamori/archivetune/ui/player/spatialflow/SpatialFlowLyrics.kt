@@ -326,7 +326,6 @@ internal fun SpatialFlowLyricsOverlay(
                     .navigationBarsPadding()
                     .padding(vertical = 12.dp),
         ) {
-
             Row(
                 modifier =
                     Modifier
@@ -336,8 +335,6 @@ internal fun SpatialFlowLyricsOverlay(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-
-                // Overflow (lyrics menu) lives on the leading side.
                 IconButton(
                     onClick = { showLyricsMenu = true },
                     modifier =
@@ -410,9 +407,6 @@ internal fun SpatialFlowLyricsOverlay(
                     )
                 }
 
-                // Dismiss (X) sits alone at the far-right margin as a plain
-                // glyph, mirroring the leading 48dp menu slot so the title
-                // stays dead-centre on the screen.
                 IconButton(
                     onClick = onDismiss,
                     modifier = Modifier.size(48.dp),
@@ -674,9 +668,7 @@ private fun SpatialFlowLyricLineItem(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth(),
         ) {
-
             Box(modifier = Modifier.fillMaxWidth()) {
-
                 Text(
                     text = line.text,
                     style = mainTextStyle,
@@ -758,13 +750,10 @@ private fun DrawScope.eraseFutureText(
             }
 
         if (charProgress >= 0.99f) {
-
         } else if (charProgress < 0.01f) {
-
             val path = charPaths[charIndex]
             drawPath(path, color = Color.Black, blendMode = BlendMode.DstOut)
         } else {
-
             val path = charPaths[charIndex]
             val box = layout.getBoundingBox(charIndex)
 
@@ -804,7 +793,6 @@ private fun calculateCharProgress(
     span: WordCharSpan,
     pos: Long,
 ): Float {
-
     val wordStartMs = (span.word.startTime * 1000.0).toLong()
     val wordEndMs = (span.word.endTime * 1000.0).toLong().coerceAtLeast(wordStartMs + 120L)
 
@@ -915,13 +903,6 @@ private const val SfLyricsBlurRestScale = 1.2f
 private const val SfLyricsBlurDriftScale = 2.4f
 private val SfLyricsBlurRadius = 64.dp
 
-/**
- * LRU for the pre-blurred lyrics backdrop bitmaps. [SpatialFlowPlayerContent]
- * pre-warms this cache the moment a song's artwork is known, so the very
- * first frame of the lyrics overlay already composes against a ready bitmap
- * instead of flashing the opaque palette fill while the async blur lands
- * (the "solid color for a split second" the reveal used to show).
- */
 internal object SfLyricsBlurBitmapCache {
     private const val MAX_ENTRIES = 4
 
@@ -1003,8 +984,7 @@ private fun SpatialFlowLyricsMovingBlur(
             }
 
         if (artUrl != null) {
-            // Synchronous cache read first: a pre-warmed bitmap composes on the
-            // overlay's FIRST frame, so the reveal never shows the flat fill.
+
             var preBlurredBitmap by remember(artUrl) {
                 mutableStateOf(SfLyricsBlurBitmapCache.get(artUrl))
             }

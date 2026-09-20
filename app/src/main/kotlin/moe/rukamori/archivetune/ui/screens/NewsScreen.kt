@@ -141,7 +141,6 @@ fun NewsScreen(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-
             if (isSearchActive || !glassHeader.liquidGlassActive) {
             AnimatedContent(
                 targetState = isSearchActive,
@@ -202,7 +201,6 @@ fun NewsScreen(
                                 .padding(top = 8.dp, bottom = 4.dp),
                     ) {}
                 } else {
-
                     LargeFlexibleTopAppBar(
                         title = {
                             Text(
