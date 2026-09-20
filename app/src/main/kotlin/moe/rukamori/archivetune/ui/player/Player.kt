@@ -3086,6 +3086,8 @@ private fun V7PlayerBackdrop(
     val canvasStatic = canvasStaticUrl?.takeIf { it.isNotBlank() }
     val coverArtworkUrl = thumbnailUrl?.takeIf { it.isNotBlank() }
     val hasCanvas = !canvasPrimary.isNullOrBlank() || !canvasFallback.isNullOrBlank()
+    // Lockstep the sharp stage canvas and the blurred backdrop copy of the same loop.
+    val canvasLoopSync = remember { CanvasLoopSync() }
 
     val sharpArtworkUrl = if (hasCanvas) (canvasStatic ?: coverArtworkUrl) else (coverArtworkUrl ?: canvasStatic)
     val backdropArtworkUrl = coverArtworkUrl ?: canvasStatic
@@ -3302,6 +3304,7 @@ private fun V7PlayerBackdrop(
                         fallbackUrl = canvasFallback,
                         isPlaying = isPlaying,
                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                        loopSyncFollower = canvasLoopSync,
                         modifier =
                             Modifier
                                 .fillMaxWidth(1f / V7CanvasBackdropUpscale)
@@ -3371,6 +3374,7 @@ private fun V7PlayerBackdrop(
                         fallbackUrl = backdrop.canvasFallbackUrl,
                         isPlaying = isPlaying,
                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                        loopSyncLeader = canvasLoopSync,
                         modifier = canvasStageModifier,
                     )
                 }

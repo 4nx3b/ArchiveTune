@@ -55,7 +55,27 @@ import androidx.compose.runtime.setValue
 private const val CanvasPlaybackStallCheckIntervalMs = 1_000L
 private const val CanvasPlaybackStallTimeoutMs = 5_000L
 
+private const val CanvasSyncPublishIntervalMs = 500L
+private const val CanvasSyncCheckIntervalMs = 1_000L
+private const val CanvasSyncDriftThresholdMs = 350L
+
 val LocalPlayerSheetVisible = staticCompositionLocalOf { true }
+
+/**
+ * Keeps two [CanvasArtworkPlayer] instances rendering the same loop in lockstep — the
+ * sharp hero canvas on top and the heavily blurred backdrop copy behind the player
+ * controls (Apple Music / V7 / SpatialFlow styles). Each instance owns its own
+ * ExoPlayer, so without a handshake they start at independent times and drift apart
+ * with every loop; the leader publishes its position and the follower re-seeks when
+ * the drift exceeds the threshold.
+ */
+class CanvasLoopSync {
+    @Volatile
+    var leaderSource: String? = null
+
+    @Volatile
+    var leaderPositionMs: Long = Long.MIN_VALUE
+}
 
 @Composable
 fun CanvasArtworkPlayer(
@@ -70,6 +90,10 @@ fun CanvasArtworkPlayer(
     maxVideoEdgePx: Int? = null,
 
     onPlaybackAvailabilityChange: ((available: Boolean) -> Unit)? = null,
+
+    loopSyncLeader: CanvasLoopSync? = null,
+
+    loopSyncFollower: CanvasLoopSync? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -205,6 +229,40 @@ fun CanvasArtworkPlayer(
     LaunchedEffect(contentVisible) {
         if (contentVisible) {
             isVideoReady = false
+        }
+    }
+
+    // Publish this instance's playback position for the blurred backdrop twin.
+    if (loopSyncLeader != null) {
+        LaunchedEffect(exoPlayer, currentUrl) {
+            while (isActive) {
+                loopSyncLeader.leaderSource = currentUrl
+                loopSyncLeader.leaderPositionMs = exoPlayer.currentPosition
+                delay(CanvasSyncPublishIntervalMs)
+            }
+        }
+    }
+
+    // Align this instance to the sharp twin's position whenever they drift apart.
+    if (loopSyncFollower != null) {
+        LaunchedEffect(exoPlayer, currentUrl, hasPlaybackFailed) {
+            while (isActive) {
+                if (
+                    !hasPlaybackFailed &&
+                    exoPlayer.playbackState == Player.STATE_READY &&
+                    exoPlayer.playerError == null
+                ) {
+                    val target = loopSyncFollower.leaderPositionMs
+                    if (
+                        target != Long.MIN_VALUE &&
+                        loopSyncFollower.leaderSource == currentUrl &&
+                        kotlin.math.abs(exoPlayer.currentPosition - target) > CanvasSyncDriftThresholdMs
+                    ) {
+                        exoPlayer.seekTo(target.coerceAtLeast(0L))
+                    }
+                }
+                delay(CanvasSyncCheckIntervalMs)
+            }
         }
     }
 

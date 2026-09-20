@@ -94,6 +94,7 @@ import androidx.media3.exoplayer.offline.Download
 import androidx.media3.ui.AspectRatioFrameLayout
 import kotlinx.coroutines.delay
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
+import moe.rukamori.archivetune.ui.player.CanvasLoopSync
 import moe.rukamori.archivetune.ui.player.LocalVideoSelectedHeight
 import moe.rukamori.archivetune.ui.player.LocalVideoAvailableHeights
 import moe.rukamori.archivetune.ui.player.LocalVideoOnPreferredHeightChange
@@ -184,6 +185,8 @@ fun SpatialFlowPlayerContent(
 
     val isDark = appIsDark
     val canvasAvailable = !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
+    // Lockstep the sharp stage canvas and the blurred backdrop copy of the same loop.
+    val canvasLoopSync = remember { CanvasLoopSync() }
 
     val videoState = LocalVideoArtworkState.current
     val videoPlaybackFailed = LocalVideoPlaybackFailed.current
@@ -408,6 +411,7 @@ fun SpatialFlowPlayerContent(
                         visible = canvasSurfacesForLyrics,
                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                         maxVideoEdgePx = SfCanvasBackdropMaxVideoEdgePx,
+                        loopSyncFollower = canvasLoopSync,
                         modifier =
                             Modifier
                                 .fillMaxWidth(1f / SfCanvasBackdropUpscale)
@@ -450,6 +454,7 @@ fun SpatialFlowPlayerContent(
                     isPlaying = isPlaying && canvasPlayingForLyrics,
                     visible = canvasSurfacesForLyrics,
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                    loopSyncLeader = canvasLoopSync,
                     modifier = Modifier.matchParentSize(),
                 )
             }

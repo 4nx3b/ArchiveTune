@@ -37,7 +37,9 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.artist.ArtistBlockRequest
 import moe.rukamori.archivetune.artist.ObserveArtistBlockedUseCase
 import moe.rukamori.archivetune.artist.SetArtistBlockedUseCase
+import moe.rukamori.archivetune.canvas.AppleMusicProvider
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
+import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.db.MusicDatabase
@@ -52,7 +54,9 @@ import moe.rukamori.archivetune.innertube.models.filterVideo
 import moe.rukamori.archivetune.innertube.pages.ArtistPage
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
+import moe.rukamori.archivetune.utils.isLowDataModeActive
 import moe.rukamori.archivetune.utils.reportException
+import java.util.Locale
 import javax.inject.Inject
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -229,6 +233,26 @@ class ArtistViewModel
 
         private suspend fun fetchArtistCanvas(page: ArtistPage) {
             val artistName = page.artist.title.takeIf { it.isNotBlank() } ?: return
+
+            // The artist's OWN motion artwork first — the looping video that only ever
+            // appears on the artist page. Only when the artist has none do we fall back
+            // to the canvas of the artist's top song (which resolves through an album
+            // editorial video and is effectively "a random album canvas").
+            val artistCanvas =
+                runCatching {
+                    if (context.dataStore.get(AlbumCanvasEnabledKey, true) && !context.isLowDataModeActive()) {
+                        val country = Locale.getDefault().country
+                        val storefront = if (country.length == 2) country.lowercase(Locale.ROOT) else "us"
+                        AppleMusicProvider.getByArtistName(artistName, storefront)
+                    } else {
+                        null
+                    }
+                }.getOrNull()
+            if (artistCanvas != null) {
+                canvasArtwork.value = artistCanvas
+                return
+            }
+
             val topSong =
                 page.sections
                     .asSequence()
