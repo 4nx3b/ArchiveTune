@@ -3247,3 +3247,30 @@ Stage Summary:
   enhanced lyrics library (animated + scrolling + translation + romanisation,
   left-aligned), Meowery/Metrolist room code fixed via per-server protocol
   negotiation. CI monitoring next.
+
+---
+Task ID: 63
+Agent: Super Z (main agent, session web-e130fa90)
+Task: CI verification of the session's commits (task 62 batch + repair round).
+
+Work Log:
+- Round 1 (54d52f4a0): all three workflows red — 30+ compile errors from two
+  sources: the dead-code staging had removed two live files
+  (Material3SettingsGroup.kt / MeshBackdrop.kt — filename-matched instead of
+  symbol-matched), and the previous session's five never-CI'd commits carried
+  their own errors (non-exhaustive LYRICS/CANVAS whens, undeclared context in
+  SongSourceDialog, ByteArray-as-Bitmap produceState, AOD import + preview
+  branches, missing playlist_local drawable).
+- Round 2 (a3180c178): both files restored from 9b42c9176, the other nine
+  deletions re-audited symbol-by-symbol (confirmed dead), all fallout fixed,
+  upstream rukamori/dev consulted for the AOD preview branches + drawable.
+- Full resource-reference sweep (all R.drawable.* / R.string.* in app sources
+  vs res/) — clean; the android.R.string.ok hits were false positives.
+- Monitored to completion: Build Pull Request (compile+test+lint) SUCCESS,
+  Build APKs SUCCESS, Nightly (canary) SUCCESS — all 8 matrix jobs green.
+
+Stage Summary:
+- dev fully green at a3180c178. PR #226 carries the whole session: completed
+  dead-code sweep, TikTok main lyrics on the enhanced lyrics library
+  (animated/scrolling/translated/romanised, left-aligned), Meowery (Metrolist)
+  Listen Together room code via per-server protobuf negotiation.
