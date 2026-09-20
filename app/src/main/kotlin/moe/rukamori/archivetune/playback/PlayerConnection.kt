@@ -449,11 +449,6 @@ class PlayerConnection(
     }
 
     fun seekToNext() {
-        val state = service.togetherSessionState.value as? moe.rukamori.archivetune.together.TogetherSessionState.Joined
-        if (state?.role is moe.rukamori.archivetune.together.TogetherRole.Guest) {
-            service.requestTogetherControl(moe.rukamori.archivetune.together.ControlAction.SkipNext)
-            return
-        }
         service.prepareForManualSkip()
         player.seekToNext()
         player.prepare()
@@ -461,11 +456,6 @@ class PlayerConnection(
     }
 
     fun seekToPrevious() {
-        val state = service.togetherSessionState.value as? moe.rukamori.archivetune.together.TogetherSessionState.Joined
-        if (state?.role is moe.rukamori.archivetune.together.TogetherRole.Guest) {
-            service.requestTogetherControl(moe.rukamori.archivetune.together.ControlAction.SkipPrevious)
-            return
-        }
         service.prepareForManualSkip()
         player.seekToPrevious()
         player.prepare()
