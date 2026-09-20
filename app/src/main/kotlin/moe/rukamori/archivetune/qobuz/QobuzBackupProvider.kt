@@ -76,7 +76,6 @@ object QobuzBackupProvider {
 
     /** The full endpoint chain (custom + default) for settings/diagnostics UI. */
     fun endpointList(): List<String> = endpointChain()
- (fix(sources+queue+video+settings): 4-item batch — lossless API host, add-to-queue position, AM queue full view, video quality High=4K + persistence, settings search toggles + autoscroll anchors)
     private const val USER_AGENT = "ArchiveTune-Android"
     private const val SEARCH_CACHE_MS = 10 * 60 * 1000L
 
