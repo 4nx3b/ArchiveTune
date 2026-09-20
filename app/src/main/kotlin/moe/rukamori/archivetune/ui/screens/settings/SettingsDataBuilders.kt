@@ -86,7 +86,7 @@ import moe.rukamori.archivetune.constants.UseSystemFontKey
 import moe.rukamori.archivetune.constants.WakelockKey
 import moe.rukamori.archivetune.constants.AllowAgeRestrictedKey
 import moe.rukamori.archivetune.constants.AodArtworkGlowKey
-import moe.rukamori.archivetune.constants.AodAutoOnScreenDimKey
+import moe.rukamori.archivetune.constants.AodAutoStartScreenOffKey
 import moe.rukamori.archivetune.constants.AodShowAlbumKey
 import moe.rukamori.archivetune.constants.AodShowArtistKey
 import moe.rukamori.archivetune.constants.AodShowControlsKey
@@ -280,7 +280,7 @@ fun buildSettingsGroups(
                 SettingsChild("Slider style", "aod_customize_slider_style", listOf("aod slider", "aod slider style", "aod progress style")),
                 SettingsChild("Artwork glow", "aod_customize_artwork_glow", listOf("aod glow", "artwork glow", "aod artwork glow", "ambient glow")) { SearchResultSwitch(AodArtworkGlowKey, true) },
                 SettingsChild("Control style", "aod_customize_control_style", listOf("aod control style", "aod button style")),
-                SettingsChild("Enter AOD when screen dims", "aod_customize_auto_on_screen_dim", listOf("auto aod", "aod on dim", "automatic aod", "screen dim aod")) { SearchResultSwitch(AodAutoOnScreenDimKey, false) },
+                SettingsChild("Display AOD when screen turns off", "aod_customize_auto_start_screen_off", listOf("auto aod", "aod screen off", "automatic aod", "screen dim aod")) { SearchResultSwitch(AodAutoStartScreenOffKey, true) },
             ),
         )
 
