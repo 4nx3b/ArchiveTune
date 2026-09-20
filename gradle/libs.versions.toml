@@ -89,7 +89,7 @@ haze = "1.7.2"
 # Protobuf — Listen Together wire protocol (ported from vivi-music beta, which
 # pins these exact versions: javalite runtime + com.google.protobuf Gradle plugin).
 protobuf = "4.33.5"
-protobufPlugin = "0.9.6"
+protobufPlugin = "0.10.0"
 
 
 [libraries]
