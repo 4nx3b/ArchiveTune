@@ -49,6 +49,57 @@ original app.
   center control is dominant again, scaled down proportionally on
   compact-height screens so the row keeps its footprint in landscape
 
+## Fixes (16.0.3 follow-up)
+
+- The artist page's overflow menu renders like every other menu: flat rows
+  with dividers between Share / Copy link / Block artist instead of
+  Material-Expressive segmented blocks, and the trailing 24dp of dead space
+  is gone
+- The artist page plays its animated canvas: the hero resolves Apple Music /
+  Spotify canvas from the artist's top song exactly like album and community
+  playlist pages, behind the same gradient — gated by the renamed "Enable
+  canvas in album, playlist and artist page" toggle
+- The artist page's play / shuffle / radio / + row is centred as a whole
+  cluster (equal margins both sides) and no longer scrolls horizontally
+- The collective Albums / Singles / EPs / Songs lists carry a liquid glass
+  header pill (back + title) over a transparent, haze-washed background like
+  the home page; every settings submenu gets the same glass pill treatment
+  via the shared header component, and the equalizer page now paints behind
+  the status bar
+- The queue opens from the player, not the system navigation bar: tapping
+  the collapsed hint strip is a no-op, and the Apple Music style's queue
+  button and swipe-up open the style's own inline queue instead of the old
+  bottom sheet
+- The TikTok player style gains optional current-line lyrics on the main
+  screen ("Show lyrics on main player", Appearance → Player): the active
+  line with a word-timed karaoke sweep and animated line transitions, plus a
+  secondary line that shows either the translation or the romanisation —
+  only one of the two, chosen in the same place
+- Audio no longer dies around Bluetooth reconnects: a transient-can-duck
+  focus loss ducks to 20% instead of pausing mid-song, and a crossfade
+  promotion no longer un-pauses after you (or a focus loss) paused during
+  the fade, nor plays without audio focus at all
+- The Qobuz backup resolver heals stored endpoints: http:// entries are
+  upgraded to https (cleartext can never pass the network policy) and the
+  dead mlc-ytify.kouzu.in host is migrated to mls.kouzu.in
+- Canvas lookups stop hammering Apple Music and Spotify: a song that
+  resolves to no canvas is cached as a negative result for 10 minutes
+  instead of re-querying every time the UI asks (Spotify 429 spam gone)
+- The Apple Music source no longer falls back to opus when the stored dev
+  token expires: the token chain checks JWT expiry and falls back to the
+  scraped web token for the search, the stream build and the Widevine
+  licence call; an account (personal or pool) is all the source needs
+- Fresh launches drop their first-seconds jank: cold-start preference reads
+  share one DataStore initial load instead of queueing a blocking read each
+- The Meowery (Metrolist community server) joins the Listen Together server
+  list, and the Listen Together entry leaves the settings home page (the
+  top-bar entry stays)
+- Amazon Music and QQ Music join the source chain (ported from the canary
+  branch): a real Amazon Web API resolver with per-track Widevine licensing,
+  and a partner-gated QQ Music source that stays inert without Tencent
+  partner credentials; the source pool refreshes every five hours instead of
+  every fifteen minutes and the settings refresh row respects that interval
+
 ## Podcasts
 
 - **Podcasts, ported from upstream**: search a show and it appears as its own
