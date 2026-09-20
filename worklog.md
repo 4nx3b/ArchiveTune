@@ -3152,3 +3152,43 @@ Stage Summary:
   screen, settings) + entry points (settings item, top-bar profile entry,
   invite deep links). CI is the compile gate for the protobuf codegen and
   the Kotlin adaptations. (feat(together): port vivi-music beta's Listen Together — complete replacement)
+
+---
+Task ID: 60
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 6-item batch — vivi Listen Together port (remove old + port everything),
+lossless API host, queue fixes, 4K video quality + persistence, settings
+search toggles + autoscroll, dead code/comment cleanup, PR dev→main.
+
+Work Log:
+- Discovered local clone was stale at 0a6062248 while origin/dev had advanced
+  30+ commits (tasks 47-59: Apple provider merge, canary port pool, 16.0
+  release, 5-fix batches). All local work rebased onto af00ef000 with
+  conflict resolution (Qobuz endpoint chain kept + default URL swapped;
+  MediaMetadata gained isPodcast+isrc+suggestedBy; profile-menu/service
+  connection merges).
+- T1 executed in 4 phases: T1-A subagent removed the old implementation
+  (48 files, -9,383 lines); T1-B subagent ported the 6 core files + proto +
+  build wiring (protobuf 0.9.6 initially); T1-C subagent ported the 3 UI
+  screens + ViewModel + components + 31 drawables + strings + nav routes;
+  main agent did the integration (MainActivity manager wiring + deep links,
+  manifest filters, settings index + routes, MusicService crossfade gate,
+  profile-menu entry).
+- CI round 1: ALL APK jobs failed at configuration — protobuf plugin 0.9.6
+  casts the android extension to legacy BaseExtension, removed in AGP 9.2.1.
+  Bumped to the AGP-9-compatible 0.10.0.
+- CI round 2: Kotlin compile errors — three fallout classes: (a) the cleanup
+  pass's import remover mis-lexed wildcard imports (regex captured the
+  package name, removed import x.y.* as 'unused') — 16 files restored;
+  (b) stray rebase-artifact lines (commit subjects pasted as code) in
+  SourceCheckService + QobuzBackupProvider — removed; (c) the remote's new
+  AMAZON SourceCheckRow call missed the positions parameter — fixed.
+- CI round 3 (d16939f63): ALL 11 check-runs green.
+- PR #226 opened (dev → main) with the full summary; monitoring its CI.
+
+Stage Summary:
+- dev carries: the vivi Listen Together port (protobuf wire protocol,
+  WebSocket client, manager, full UI, entry points), mls.kouzu.in default,
+  add-to-queue-after-current, AM queue full view, persisted 4K-default video
+  quality with instant cache, settings-search live toggles + repaired
+  autoscroll, and the 291-file cleanup pass. PR #226 awaiting CI + merge.
