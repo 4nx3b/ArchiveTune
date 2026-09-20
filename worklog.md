@@ -2970,3 +2970,86 @@ Work Log:
 Stage Summary:
 - PR #225 carries the 5-fix batch + the transport-ratio fix, CI-green,
   awaiting merge instructions.
+Task ID: T1-A
+Agent: general-purpose subagent (session web-e130fa90)
+Task: Remove the current Listen Together implementation from ArchiveTune
+
+Work Log:
+- Surveyed every "together" hit repo-wide first: the real feature refs were
+  confined to together/ (14 files), MusicTogetherViewModel.kt,
+  MusicTogetherScreen.kt, MusicService.kt (~780 refs), PlayerConnection.kt,
+  MainActivity.kt, AndroidManifest deep link, NavigationBuilder route,
+  SettingsScreen/SettingsDataBuilders search entries, MiniPlayer(Kt/
+  Components) together chip colors, Queue.kt guest lock/click paths, strings
+  (93 named keys), and 12 PreferenceKeys. All other hits are the Compose
+  `togetherWith` animation API, plain-English comments, or two badly-named
+  generic strings (see below).
+- git rm'd together/ package, MusicTogetherViewModel.kt,
+  MusicTogetherScreen.kt (16 files).
+- MusicService.kt: removed the together imports; the 219-line property
+  block (togetherSessionState flow, 24 together* fields, TogetherPendingGuestControl,
+  showTogetherNotice / participant / inactivity notifications, inactivity
+  scheduler, client-id helper); the 1979-line contiguous block from
+  startTogetherHost() through getLocalIpv4Address() (LAN host/join, public
+  host/join, all event handlers, control/add-track request paths, room
+  state build/apply, heartbeat, stopTogetherInternal); together checks in
+  scheduleStopIfIdle + onCreate TOGETHER notification channel; reworked
+  the crossfade combine(dataStore, togetherSessionState) back to a plain
+  dataStore.data.map (crossfade now simply follows the preference);
+  isTogetherGuestSession() + its 2 gates; guest early-return blocks in
+  playQueue / startRadioSeamlessly / playNext / addToQueue (functions are
+  now plain local implementations); guest echo-suppression blocks in
+  onMediaItemTransition / onEvents / onShuffleModeEnabledChanged /
+  onRepeatModeChanged; stopTogetherInternal call in onDestroy; the
+  host-session branch of onTaskRemoved (kept the stopMusicOnTaskClear
+  behavior verbatim, dropped the now-dead
+  shouldStopServiceOnTaskRemoved companion helper); TOGETHER_* companion
+  constants. Net -2764 lines.
+- PlayerConnection.kt: seekToNext/seekToPrevious are plain local skips now.
+- MainActivity.kt: pendingTogetherJoinLink + joinPendingTogetherIfReady()
+  + its onServiceConnected hook, the archivetune://together deep-link
+  branch, and the Listen Together ProfileMenuItem removed (comment fixed).
+- AndroidManifest.xml: removed the archivetune://together intent filter.
+- NavigationBuilder.kt: settings/music_together composable + import.
+- SettingsScreen.kt: music_together route mapping + supportsScroll
+  exclusion entry (CROSS_PAGE_SCROLL_OWNERS had no together entries).
+- SettingsDataBuilders.kt: musicTogether SettingsItem + its group slot.
+- MiniPlayerComponents.kt / MiniPlayer.kt: together chip + togetherContainer
+  / togetherContent color slots removed from MiniPlayerContentColors and
+  all three color variants.
+- Queue.kt: togetherForcesLock/effectiveLocked removed (usages now use the
+  plain `locked` state), onLockClick simplified, guest seek-to-track branch
+  in queue item click replaced by the direct local seekToDefaultPosition.
+- PreferenceKeys.kt: 12 Together* keys removed (all became unreferenced).
+- strings.xml (default + 18 translated files, 1321 lines total): removed
+  all together_*/music_together feature strings plus the 10 together-only
+  generic ones (start_session, join_session, session_link, session_code,
+  invalid_link, invalid_code, network_unavailable, leave, join, joined) —
+  each verified unreferenced after the code removals. KEPT
+  `together_online` ("Online", used by ArtistScreen's local/online filter
+  chip) and `together_connected` ("Connected", used by the Cast route
+  picker in the gms source set) because they are unrelated features that
+  merely carry awkward names, and shared strings still referenced by other
+  code (not_allowed, add_current_song, copy_link, loading, connecting,
+  dismiss, got_it, share, copied, error_unknown, app_name) stay too.
+- DI checked: no together providers/bindings existed; no MusicTogether
+  classes lived outside together/.
+
+Stage Summary:
+- 16 files deleted, 15 code files modified, 19 resource files cleaned;
+  4099 deletions / 159 insertions. worklog.md/changelogs.md untouched.
+- Verification: grep for moe.rukamori.archivetune.together / MusicTogether
+  / all removed service+view APIs = 0 hits across every source set
+  (main/gms/debug/foss/tv/test); remaining case-insensitive "together"
+  hits in Kotlin are only the Compose togetherWith API and unrelated
+  comments/placeholder copy; manifest + res have zero together traces
+  outside the two keeper strings; R.string.music_together = 0 refs;
+  scripts/kotlin_balance_check.py (project lexer) reports all 10 edited
+  Kotlin files balanced, and a before/after delimiter-count diff is
+  identical (all 0/0/0); every edited XML parses.
+- Deliberate keeps for the port: drawables player_all_inclusive /
+  multi_user / ic_share are now unreferenced but left in res/ (generic
+  names, no together text); strings together_online / together_connected
+  kept as above (grep for R.string.together* in main/kotlin returns 1 —
+  ArtistScreen's together_online, the unrelated "Online" filter label).
+  CI must confirm the compile since no gradle is available here. (feat(together)!: remove the current Listen Together implementation entirely)
