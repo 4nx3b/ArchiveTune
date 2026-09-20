@@ -55,9 +55,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -102,6 +102,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.CONTENT_TYPE_ALBUM
 import moe.rukamori.archivetune.constants.CONTENT_TYPE_ARTIST
@@ -138,6 +139,7 @@ import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailIconAction
 import moe.rukamori.archivetune.ui.component.MediaDetailPrimaryActions
+import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.ui.component.NavigationTitle
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
@@ -189,6 +191,8 @@ fun ArtistScreen(
     val loadedLibrarySongs by viewModel.librarySongs.collectAsStateWithLifecycle()
     val loadedLibraryAlbums by viewModel.libraryAlbums.collectAsStateWithLifecycle()
     val blockState by viewModel.blockState.collectAsStateWithLifecycle()
+    val canvasArtwork by viewModel.canvasArtwork.collectAsStateWithLifecycle()
+    val artistCanvasEnabled by rememberPreference(key = AlbumCanvasEnabledKey, defaultValue = true)
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
 
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
@@ -483,6 +487,21 @@ fun ArtistScreen(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                        }
+
+                        val heroCanvasPrimaryUrl =
+                            (canvasArtwork?.animated ?: canvasArtwork?.videoUrl)?.takeIf { artistCanvasEnabled }
+                        val heroCanvasFallbackUrl =
+                            canvasArtwork?.videoUrl?.takeIf { artistCanvasEnabled }
+                        if (!heroCanvasPrimaryUrl.isNullOrBlank() || !heroCanvasFallbackUrl.isNullOrBlank()) {
+                            moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer(
+                                primaryUrl = heroCanvasPrimaryUrl,
+                                fallbackUrl = heroCanvasFallbackUrl,
+                                isPlaying = true,
+                                visible = !lyricsFullScreen,
+                                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                                modifier = Modifier.matchParentSize(),
+                            )
                         }
 
                         Box(
@@ -1233,28 +1252,23 @@ private fun ArtistOverflowMenu(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+                .padding(bottom = 12.dp),
     ) {
         ArtistOverflowMenuItem(
             text = stringResource(R.string.share),
             iconRes = R.drawable.share,
-            index = 0,
-            count = ArtistOverflowMenuItemCount,
             onClick = { onAction(ArtistAction.Share) },
         )
+        MenuSectionDivider()
         ArtistOverflowMenuItem(
             text = stringResource(R.string.copy_link),
             iconRes = R.drawable.copy,
-            index = 1,
-            count = ArtistOverflowMenuItemCount,
             onClick = { onAction(ArtistAction.CopyLink) },
         )
+        MenuSectionDivider()
         ArtistOverflowMenuItem(
             text = stringResource(if (isBlocked) R.string.unblock_artist else R.string.block_artist),
             iconRes = R.drawable.block,
-            index = 2,
-            count = ArtistOverflowMenuItemCount,
             enabled = blockActionEnabled,
             onClick = { onAction(ArtistAction.ToggleBlock) },
         )
@@ -1265,37 +1279,33 @@ private fun ArtistOverflowMenu(
 private fun ArtistOverflowMenuItem(
     text: String,
     iconRes: Int,
-    index: Int,
-    count: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    SegmentedListItem(
-        onClick = onClick,
-        enabled = enabled,
-        shapes = ListItemDefaults.segmentedShapes(index = index, count = count),
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .heightIn(min = 56.dp),
-        colors =
-            ListItemDefaults.segmentedColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+    val contentAlpha = if (enabled) 1f else 0.5f
+    ListItem(
+        headlineContent = {
+            Text(
+                text = text,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
+            )
+        },
         leadingContent = {
             Icon(
                 painter = painterResource(iconRes),
                 contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
             )
         },
-    ) {
-        Text(text = text)
-    }
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp),
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        tonalElevation = 0.dp,
+    )
 }
 
-private const val ArtistOverflowMenuItemCount = 3
 private const val ArtistHeroArtworkSizePx = 1200
 private const val ArtistReleaseArtworkSizePx = 320
 private val ArtistHeroArtworkSizeBuckets = listOf(ArtistHeroArtworkSizePx)
@@ -1357,6 +1367,7 @@ private fun ArtistPrimaryActions(
         modifier = modifier,
         thumbnailUrl = thumbnailUrl,
         useBlurredPlayButton = useBlurredPlayButton,
+        allowHorizontalScroll = false,
     )
 }
 
