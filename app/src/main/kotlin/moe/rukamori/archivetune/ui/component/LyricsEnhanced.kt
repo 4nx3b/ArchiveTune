@@ -85,6 +85,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -92,9 +93,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -1808,14 +1813,20 @@ private fun buildLineSyncedLrcLine(
 }
 
 /**
- * Renders exactly one karaoke line cluster — the main line with its word-timed
- * sweep, the per-word phonetic (romanisation) above it and the translation
- * below it — using the enhanced lyrics library's own [KaraokeLyricsView] so the
- * word sweep, gradient fill and text layouts stay identical to the full player.
+ * Renders exactly one karaoke line cluster — the joined phonetic (romanisation)
+ * row above, the main line with its per-word colour sweep and the translation
+ * row(s) below — as a compact custom renderer.
  *
- * A [LazyListState] is created per target line inside [AnimatedContent] so the
- * outgoing and incoming line clusters never share a list state during the
- * cross-fade transition.
+ * Deliberately NOT the library's [KaraokeLyricsView]: that view draws a
+ * permanent vertical fading-edge mask over its whole viewport (a 20dp fade-in
+ * at the top and a 100dp fade-out at the bottom, applied with DstIn over
+ * everything). In the 140–170dp TikTok strip that mask dominates — a long line
+ * that wraps onto a second row pushes that row (and the translation) into the
+ * ramp and visibly fades "the more line there is". This renderer clips nothing
+ * and fades nothing, so wrapped lines stay fully opaque.
+ *
+ * [AnimatedContent] handles the line-change cross-fade; its content is
+ * bottom-aligned so the cluster sits directly above the song-info block.
  */
 @Composable
 private fun SingleActiveKaraokeLine(
@@ -1838,31 +1849,181 @@ private fun SingleActiveKaraokeLine(
                     initialOffsetY = { it / 5 },
                 )).togetherWith(fadeOut(tween(durationMillis = 160, easing = LinearEasing)))
         },
+        contentAlignment = Alignment.BottomStart,
         label = "single-active-lyric-line",
         modifier = modifier,
     ) { line ->
-        val lineListState = remember(line) { LazyListState() }
         if (line != null) {
-            KaraokeLyricsView(
-                listState = lineListState,
-                lyrics = SyncedLyrics(listOf(line)),
+            SingleActiveLineCluster(
+                line = line,
                 currentPosition = currentPosition,
-                onLineClicked = onLineClick,
-                onLinePressed = {},
                 textColor = textColor,
-                normalLineTextStyle = normalTextStyle,
-                accompanimentLineTextStyle = accompanimentTextStyle,
+                normalTextStyle = normalTextStyle,
+                accompanimentTextStyle = accompanimentTextStyle,
                 phoneticTextStyle = phoneticTextStyle,
-                blendMode = BlendMode.SrcOver,
-                useBlurEffect = false,
                 showTranslation = showTranslation,
-                showPhonetic = true,
-                offset = 0.dp,
-                keepAliveZone = 8.dp,
+                onLineClick = onLineClick,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
             Box(modifier = Modifier.fillMaxSize())
         }
     }
+}
+
+/** The one-line cluster itself; the karaoke sweep recomposes only this Text. */
+@Composable
+private fun SingleActiveLineCluster(
+    line: ISyncedLine,
+    currentPosition: () -> Int,
+    textColor: Color,
+    normalTextStyle: TextStyle,
+    accompanimentTextStyle: TextStyle,
+    phoneticTextStyle: TextStyle,
+    showTranslation: Boolean,
+    onLineClick: (ISyncedLine) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+            modifier.clickable(
+                enabled = line.start > 0,
+            ) { onLineClick(line) },
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        when (line) {
+            is KaraokeLine -> {
+                (line as? KaraokeLine.MainKaraokeLine)?.accompanimentLines?.forEach { accompaniment ->
+                    val accompanimentText = (accompaniment as? KaraokeLine)?.syllables?.joinSyllableContents().orEmpty()
+                    if (accompanimentText.isNotBlank()) {
+                        Text(
+                            text = accompanimentText,
+                            style = accompanimentTextStyle,
+                            color = textColor.copy(alpha = 0.45f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+
+                val phonetic = line.syllables.mapNotNull { it.phonetic?.trim() }.filter { it.isNotEmpty() }.joinToString(" ")
+                if (phonetic.isNotEmpty()) {
+                    Text(
+                        text = phonetic,
+                        style = phoneticTextStyle,
+                        color = textColor.copy(alpha = 0.75f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                KaraokeSweepText(
+                    syllables = line.syllables,
+                    currentPosition = currentPosition,
+                    textColor = textColor,
+                    textStyle = normalTextStyle,
+                )
+
+                if (showTranslation) {
+                    TranslationStack(
+                        translation = line.translation,
+                        textColor = textColor,
+                        phoneticTextStyle = phoneticTextStyle,
+                    )
+                }
+            }
+
+            else -> {
+                // Plain line-synced lyrics: no word timing — the whole active
+                // line renders bright, with romanisation/translation stacked.
+                Text(
+                    text = line.lineText(),
+                    style = normalTextStyle,
+                    color = textColor,
+                )
+                if (showTranslation) {
+                    TranslationStack(
+                        translation = (line as? SyncedLine)?.translation,
+                        textColor = textColor,
+                        phoneticTextStyle = phoneticTextStyle,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Word-timed karaoke sweep: each syllable's colour interpolates from the
+ * dimmed rest colour to the full text colour across its own [start, end]. */
+@Composable
+private fun KaraokeSweepText(
+    syllables: List<KaraokeSyllable>,
+    currentPosition: () -> Int,
+    textColor: Color,
+    textStyle: TextStyle,
+) {
+    val position = currentPosition()
+    val unsungColor = textColor.copy(alpha = 0.45f)
+    val annotated = buildAnnotatedString {
+        syllables.forEachIndexed { index, syllable ->
+            val span = (syllable.end - syllable.start).coerceAtLeast(1)
+            val progress = ((position - syllable.start).toFloat() / span).coerceIn(0f, 1f)
+            val color = lerp(unsungColor, textColor, progress)
+            withStyle(SpanStyle(color = color)) {
+                append(syllable.content)
+                val next = syllables.getOrNull(index + 1)
+                if (next != null && needsLatinWordGap(syllable.content, next.content)) {
+                    append(" ")
+                }
+            }
+        }
+    }
+    Text(text = annotated, style = textStyle)
+}
+
+/** Romanisation and/or translation rows stacked under the main line. The
+ * compact LRC path packs them as "romanised\ntranslation". */
+@Composable
+private fun TranslationStack(
+    translation: String?,
+    textColor: Color,
+    phoneticTextStyle: TextStyle,
+) {
+    if (translation.isNullOrBlank()) return
+    translation
+        .split('\n')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .forEach { row ->
+            Text(
+                text = row,
+                style = phoneticTextStyle,
+                color = textColor.copy(alpha = 0.85f),
+            )
+        }
+}
+
+/** A separating space only between Latin-script words — CJK syllables join
+ * seamlessly, exactly like the source lines. */
+private fun needsLatinWordGap(previous: String, next: String): Boolean {
+    val prevTail = previous.lastOrNull()
+    val nextHead = next.firstOrNull()
+    return isLatinWordChar(prevTail) && isLatinWordChar(nextHead)
+}
+
+private fun isLatinWordChar(ch: Char?): Boolean {
+    if (ch == null) return false
+    return ch in 'a'..'z' || ch in 'A'..'Z' || ch in '0'..'9' || ch == '\'' || ch == ','
+}
+
+private fun List<KaraokeSyllable>.joinSyllableContents(): String {
+    val builder = StringBuilder()
+    forEachIndexed { index, syllable ->
+        builder.append(syllable.content)
+        val next = getOrNull(index + 1)
+        if (next != null && needsLatinWordGap(syllable.content, next.content)) {
+            builder.append(' ')
+        }
+    }
+    return builder.toString()
 }

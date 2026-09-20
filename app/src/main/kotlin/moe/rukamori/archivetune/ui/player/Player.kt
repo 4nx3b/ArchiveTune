@@ -1139,6 +1139,10 @@ fun BottomSheetPlayer(
                 }
             },
             isMainAudioBuffering = playbackState == STATE_BUFFERING,
+            // True audio readiness — the both-streams barrier gates the video's
+            // (and the delayed resume's) start on the audio having actually
+            // loaded, not merely on "not currently buffering".
+            mainAudioReady = playbackState == STATE_READY,
         )
 
     CompositionLocalProvider(
