@@ -29,7 +29,7 @@ class ListenTogetherActionReceiver : BroadcastReceiver() {
             // re-posted from the client with the new message), so they bypass
             // the blanket cancel below.
             ListenTogetherClient.ACTION_REPLY_CHAT -> {
-                val remoteInput = RemoteInput.getResultsFor(intent)
+                val remoteInput = RemoteInput.getResultsFrom(intent)
                 client.handleChatReplyFromNotification(
                     remoteInput?.getCharSequence(ListenTogetherClient.KEY_TEXT_REPLY)
                 )
