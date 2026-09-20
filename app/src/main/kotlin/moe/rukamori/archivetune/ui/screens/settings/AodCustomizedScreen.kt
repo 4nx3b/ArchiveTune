@@ -110,6 +110,7 @@ import moe.rukamori.archivetune.constants.AodShowTimeLabelsKey
 import moe.rukamori.archivetune.constants.AodSliderStyleKey
 import moe.rukamori.archivetune.constants.AodTextAlignment
 import moe.rukamori.archivetune.constants.AodTextAlignmentKey
+import moe.rukamori.archivetune.constants.AodTouchLockEnabledKey
 import moe.rukamori.archivetune.constants.AodThumbnailShape
 import moe.rukamori.archivetune.constants.AodThumbnailShapeKey
 import moe.rukamori.archivetune.constants.AodThumbnailShapeRotationKey
@@ -1452,6 +1453,38 @@ private fun Modifier.aodPreviewBackground(
                                 accentColor.copy(alpha = 0.28f * alpha),
                                 Color.Black,
                                 Color(0xFF101010),
+                            ),
+                    )
+                }
+
+                AodBackgroundStyle.ADAPTIVE_ART -> {
+                    Brush.verticalGradient(
+                        colors =
+                            listOf(
+                                accentColor.copy(alpha = 0.32f * alpha),
+                                accentColor.copy(alpha = 0.12f * alpha),
+                                Color.Black,
+                            ),
+                    )
+                }
+
+                AodBackgroundStyle.FROSTED_WALLPAPER -> {
+                    Brush.linearGradient(
+                        colors =
+                            listOf(
+                                Color(0xFF1E1E24).copy(alpha = 0.60f * alpha),
+                                Color.Black,
+                            ),
+                    )
+                }
+
+                AodBackgroundStyle.ADAPTIVE_FROSTED -> {
+                    Brush.linearGradient(
+                        colors =
+                            listOf(
+                                accentColor.copy(alpha = 0.30f * alpha),
+                                Color(0xFF121216),
+                                Color.Black,
                             ),
                     )
                 }
