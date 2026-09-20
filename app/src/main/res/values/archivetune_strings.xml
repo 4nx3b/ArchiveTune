@@ -701,6 +701,12 @@
     <string name="backup_category_settings_desc">Appearance, playback &amp; preferences</string>
     <string name="backup_category_account">Account Details</string>
     <string name="backup_category_account_desc">YouTube, Spotify, Last.fm, Libre.fm, Discord &amp; proxy credentials</string>
+    <string name="backup_category_lyrics">Lyrics</string>
+    <string name="backup_category_lyrics_desc">Saved, chosen &amp; translated lyrics cache</string>
+    <string name="backup_category_canvas">Canvas</string>
+    <string name="backup_category_canvas_desc">Cached canvas video artwork</string>
+    <string name="backup_step_export_lyrics">Exporting lyrics</string>
+    <string name="restore_step_restoring_lyrics">Restoring lyrics</string>
     <string name="internal_service">Internal Service</string>
     <string name="external_service">External Service</string>
     <string name="restore_invalid_file">The selected file is not a valid backup archive.</string>
