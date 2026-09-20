@@ -342,6 +342,7 @@ public fun MediaDetailPrimaryActions(
 
     thumbnailUrl: String? = null,
     useBlurredPlayButton: Boolean = false,
+    allowHorizontalScroll: Boolean = true,
 ) {
     val secondaryButtonColors =
         IconButtonDefaults.filledTonalIconButtonColors(
@@ -354,20 +355,22 @@ public fun MediaDetailPrimaryActions(
     val actionScrollMaxValue = actionScrollState.maxValue
     val density = LocalDensity.current
 
-    LaunchedEffect(actionScrollMaxValue) {
-        if (
-            actionScrollMaxValue > 0 &&
-            actionScrollMaxValue != Int.MAX_VALUE &&
-            actionScrollState.value == 0
-        ) {
-            val overflowDp = with(density) { actionScrollMaxValue.toDp() }
-            val target =
-                if (overflowDp < 80.dp) {
-                    actionScrollMaxValue
-                } else {
-                    actionScrollMaxValue / 2
-                }
-            actionScrollState.scrollTo(target)
+    if (allowHorizontalScroll) {
+        LaunchedEffect(actionScrollMaxValue) {
+            if (
+                actionScrollMaxValue > 0 &&
+                actionScrollMaxValue != Int.MAX_VALUE &&
+                actionScrollState.value == 0
+            ) {
+                val overflowDp = with(density) { actionScrollMaxValue.toDp() }
+                val target =
+                    if (overflowDp < 80.dp) {
+                        actionScrollMaxValue
+                    } else {
+                        actionScrollMaxValue / 2
+                    }
+                actionScrollState.scrollTo(target)
+            }
         }
     }
 
@@ -379,14 +382,20 @@ public fun MediaDetailPrimaryActions(
     ) {
         val actionViewportWidth = maxWidth
 
-        Row(
-            modifier =
+        val actionRowModifier =
+            if (allowHorizontalScroll) {
                 Modifier
                     .fillMaxWidth()
                     .fadingEdge(horizontal = MediaDetailActionEdgeFade)
                     .horizontalScroll(actionScrollState)
-                    .padding(horizontal = MediaDetailActionHorizontalPadding),
-        ) {
+                    .padding(horizontal = MediaDetailActionHorizontalPadding)
+            } else {
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = MediaDetailActionHorizontalPadding)
+            }
+
+        Row(modifier = actionRowModifier) {
             MediaDetailBalancedActionLayout(
                 actionRowScope = this,
                 modifier = Modifier.widthIn(min = actionViewportWidth),
@@ -524,12 +533,18 @@ private fun MediaDetailBalancedActionLayout(
         val rightActionsWidth =
             rightActions.sumOf { it.width } +
                 actionSpacing * (rightActions.size - 1).coerceAtLeast(0)
+        val sideSpacing = if (leftActions.isEmpty() && rightActions.isEmpty()) 0 else actionSpacing
         val balancedContentWidth =
             if (playAction == null) {
                 centeredContentWidth
             } else {
-                val sideSpacing = if (leftActions.isEmpty() && rightActions.isEmpty()) 0 else actionSpacing
                 playAction.width + 2 * (maxOf(leftActionsWidth, rightActionsWidth) + sideSpacing)
+            }
+        val clusterWidth =
+            if (playAction == null) {
+                centeredContentWidth
+            } else {
+                leftActionsWidth + rightActionsWidth + playAction.width + 2 * sideSpacing
             }
         val layoutWidth =
             if (constraints.hasBoundedWidth) {
@@ -558,7 +573,16 @@ private fun MediaDetailBalancedActionLayout(
                 return@layout
             }
 
-            val playActionX = (layoutWidth - playAction.width) / 2
+            val playActionX =
+                if (clusterWidth <= layoutWidth) {
+                    // Center the whole cluster so the empty space is equal on both sides —
+                    // with an asymmetric action set (artist: shuffle/radio vs +) a
+                    // play-button-centered placement pushes the group off-center.
+                    val clusterStart = (layoutWidth - clusterWidth) / 2
+                    clusterStart + leftActionsWidth + sideSpacing
+                } else {
+                    (layoutWidth - playAction.width) / 2
+                }
             var leftActionX = playActionX - actionSpacing - leftActionsWidth
             var rightActionX = playActionX + playAction.width + actionSpacing
 
