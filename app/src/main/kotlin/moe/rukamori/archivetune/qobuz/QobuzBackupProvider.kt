@@ -24,11 +24,20 @@ object QobuzBackupProvider {
     @Volatile
     var configuredEndpoints: List<String> = emptyList()
 
+    private fun normalizeEndpoint(raw: String): String {
+        // The app's network security policy blocks cleartext, so an http:// entry can
+        // never succeed — upgrade it to https instead of burning a failure + cooldown.
+        val https = if (raw.startsWith("http://")) "https://" + raw.removePrefix("http://") else raw
+        // The old community mirror host went dark (DNS removed); it serves the same
+        // API as the default endpoint, so heal stored references to the live host.
+        return https.replace("mlc-ytify.kouzu.in", "mls.kouzu.in")
+    }
+
     private fun endpointChain(): List<String> {
         val custom =
             configuredEndpoints
-                .map { it.trim().trimEnd('/') }
-                .filter { it.startsWith("http") }
+                .map { normalizeEndpoint(it.trim().trimEnd('/')) }
+                .filter { it.startsWith("https://") }
         return (custom + DEFAULT_ENDPOINT).distinct()
     }
 

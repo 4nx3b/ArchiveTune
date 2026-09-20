@@ -5,7 +5,8 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
  * Listen Together public server list — ported from vivi-music (beta branch),
- * vivi-music's listentogether.ListenTogetherServers (GPL-3.0).
+ * vivi-music's listentogether.ListenTogetherServers (GPL-3.0), plus the
+ * Metrolist project's community server (metrolistgroup/metrolist, GPL-3.0).
  */
 
 package moe.rukamori.archivetune.listentogether
@@ -35,6 +36,12 @@ object ListenTogetherServers {
             "url": "wss://vivimusic-listen-together.onrender.com",
             "location": "USA",
             "operator": "Vividh"
+          },
+          {
+            "name": "The Meowery",
+            "url": "wss://metroserverx.meowery.eu/ws",
+            "location": "Poland",
+            "operator": "Nyx"
           }
         ]
     """
