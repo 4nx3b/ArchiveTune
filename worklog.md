@@ -3053,3 +3053,102 @@ Stage Summary:
   kept as above (grep for R.string.together* in main/kotlin returns 1 —
   ArtistScreen's together_online, the unrelated "Online" filter label).
   CI must confirm the compile since no gradle is available here. (feat(together)!: remove the current Listen Together implementation entirely)
+  CI must confirm the compile since no gradle is available here.
+
+---
+Task ID: T1-B
+Agent: general-purpose subagent (session web-e130fa90)
+Task: Port vivi-music Listen Together core into ArchiveTune
+
+Work Log:
+- Read the full vivi-beta listentogether package (Protocol, MessageCodec, ListenTogetherClient, ListenTogetherManager, ListenTogetherServers, ListenTogetherActionReceiver, listentogether.proto, NetworkConnectivityObserver) before porting; verified every ArchiveTune counterpart symbol by grep (PlayerConnection members, MusicService.queueTitle/playerVolume, extensions currentMetadata/metadata/toMediaItem, models SongItem.toMediaMetadata, YouTubeQueue constructor, YouTube.queue — used by MainActivity.kt:3713 + SongMenu.kt:1441, dataStore/get extensions, R.drawable.share).
+- Created package moe.rukamori.archivetune.listentogether with 6 ported Kotlin files (all vivi feature logic kept verbatim: room create/join approval, chat w/ embedded-reply Base64 protocol, track suggestions, host transfer, kick, block-list, buffer-wait sync, smart resync, volume sync, heartbeat, exponential-backoff reconnect w/ wake lock + network observer, actionable notifications) — only package/imports/constants/action-strings/wake-lock-tag changed, each marked with PORT-NOTE.
+- Copied listentogether.proto with package + java_package renamed to moe.rukamori.archivetune.listentogether.proto (java_outer_classname Listentogether, java_multiple_files false kept).
+- NetworkConnectivityObserver: ArchiveTune ALREADY ships an API-identical class in moe.rukamori.archivetune.utils (same networkStatus flow + isCurrentlyConnected; its onLost re-checks real connectivity instead of emitting false). Reverted an accidental overwrite; the vivi copy is NOT needed and the Client compiles against the existing class unchanged.
+- PlayerConnection adaptations in the Manager (vivi's ExoPlayer-typed member vs ArchiveTune's Player interface — no cast needed, all used members are interface-level): removed shouldBlockPlaybackChanges / allowInternalSync / onSkipPrevious / onSkipNext / onRestartSong hook wiring (ArchiveTune's PlayerConnection has no such hooks; host skip/seek broadcasting remains covered by the ported playerListener), connection.play()/pause()/seekTo() replaced with direct player calls + a Player.playForSync() helper replicating vivi's prepare-if-idle + playWhenReady branch, mute save/restore (isMuted/setMuted) became documented no-ops since ArchiveTune has no mute surface (vivi's own updateGuestMuteState had already degraded to a no-op).
+- MediaMetadata: added additive defaulted field suggestedBy: String? = null (vivi parity) so suggestion attribution survives TrackInfo->MediaMetadata->MediaItem round-trips; verified no positional constructions/destructuring exist anywhere in the app.
+- ForkPreferenceKeys.kt: added the 11 ListenTogether* keys with vivi's exact names/types (ServerUrl/UserId/RoomCode/SessionToken string, SessionTimestamp long, IsHost/AutoApproval/SmartResync/SyncVolume boolean, AvatarIndex int, BlockedUsers string — the last one is required by the Client's block-list persistence even though the task brief didn't list it).
+- DI: added provideListenTogetherClient(@ApplicationContext) to AppModule (Manager is @Singleton @Inject-constructed from Client+Context, needs no provider; nothing injects the Manager yet — integrator's next phase).
+- AndroidManifest: registered .listentogether.ListenTogetherActionReceiver (exported=false) after the MediaButtonReceiver; POST_NOTIFICATIONS already declared.
+- strings.xml: ported the full listen_together* family (48 strings incl. notification channel, join-request/suggestion notifications, room-created toast, smart-resync/sync-volume/auto-approval settings copy) + approve/reject from vivi; verified zero duplicate names across values/*.xml and XML well-formedness.
+- Build wiring (ArchiveTune had no protobuf): libs.versions.toml gained protobuf=4.33.5 + protobufPlugin=0.9.6 versions, protobuf-javalite/protobuf-kotlin-lite libraries and the protobufPlugin plugin entry; app/build.gradle.kts gained alias(libs.plugins.protobufPlugin), the protobuf{} block copied shape-for-shape from vivi (protoc from catalog version, java+kotlin lite builtins) after ksp{}, and the two protobuf implementation deps after the ktor block; root build.gradle.kts gained alias(libs.plugins.protobufPlugin) apply false (mirrors vivi's root declaration).
+- Verification: scripts/kotlin_balance_check.py reports all ported + edited Kotlin files balanced; grep for com.music.vivi|com.music.innertube inside listentogether/ = 0 hits; tomllib parses the catalog (no duplicate keys); gradle brace-balance OK; manifest + strings.xml parse; diffed every ported file against its vivi original (after mechanical package substitution) and reviewed every hunk — Client/Servers/Codec/Protocol/proto diffs are header/whitespace/import-only, Manager diffs are exactly the documented PlayerConnection adaptations.
+
+Stage Summary:
+- Files created: app/src/main/proto/listentogether.proto (200), listentogether/{Protocol 356, MessageCodec 489, ListenTogetherClient 1587, ListenTogetherManager 1741, ListenTogetherServers 52, ListenTogetherActionReceiver 56}.
+- Files modified: models/MediaMetadata.kt (+suggestedBy), constants/ForkPreferenceKeys.kt (+11 keys), di/AppModule.kt (+client provider), AndroidManifest.xml (+receiver), res/values/strings.xml (+50 strings), gradle/libs.versions.toml + app/build.gradle.kts + root build.gradle.kts (protobuf wiring).
+- NetworkConnectivityObserver NOT copied — existing ArchiveTune class already provides the identical API in the same package.
+- All vivi features preserved verbatim; every cross-codebase divergence is annotated with a PORT-NOTE (13 in the Manager, 2 in the Client, 1 in MediaMetadata).
+- Not wired into MusicService/MainActivity yet (per plan — integrator phase): ListenTogetherManager.setPlayerConnection(playerConnection) must be called from MainActivity's ServiceConnection (vivi pattern: on connect after PlayerConnection creation, null on disconnect) and the Manager injected where UI needs it.
+- No gradle available in this workspace — CI must confirm the compile (proto codegen + AGP 9.2.1/protobuf-plugin 0.9.6 combination).
+
+---
+Task ID: T1-C
+Agent: general-purpose subagent (session web-e130fa90)
+Task: Port vivi-music Listen Together UI into ArchiveTune
+
+Work Log:
+- Read the 4 vivi UI sources in full (ListenTogetherScreen 1717L, ListenTogetherSettings 895L, CommentTogether 471L, ListenTogetherViewModel 124L) plus every vivi component they reference (ExpressiveSettingGroup, AvatarBottomSheet, custom IconButton, Material3SettingsItem/Group, DefaultDialog, listItemShape) and grep-verified every ArchiveTune counterpart symbol before porting: LocalPlayerAwareWindowInsets (MainActivity.kt:3932), ui.utils.backToMain, utils.rememberPreference (MutableState variant — vivi's destructuring + `by` usages both valid), constants.AppBarHeight (Dimensions.kt), DefaultDialog (identical named-param surface), custom IconButton(onClick, onLongClick) — already present in ArchiveTune with the same signature, MaterialShapes/toShape, project-wide opt-ins for ExperimentalMaterial3Api/ExpressiveApi (so vivi's marker-annotated UserAvatar needs no caller OptIn), ListenTogetherManager's full UI-facing API and all payload/event/enums (UserInfo/JoinRequestPayload/SuggestionReceivedPayload/ChatMessagePayload/RepliedMessage/RoomState/TrackInfo/ListenTogetherServers/LogEntry/LogLevel/RoomRole — all StateFlows where collectAsState() is called).
+- Ported the 4 screens verbatim (feature-complete: connection card, OTP-style room-code input w/ staggered reveal animation, join/create morph button, waiting-for-approval + error banners, clipboard room-copy on create, room status row (chat/copy-link/copy-code), connected-user avatars w/ host crown + Cookie4Sided shape, host-only join-request approve/reject rows, suggestion approve/reject rows, user-action dialog (kick / block+kick / transfer host), settings link; chat screen with replies, YT Music link detection, unread-badge clearing; settings screen with server chooser + custom URL, username dialog, avatar picker, blocked-users dialog, auto-approval/volume-sync/smart-resync switches, log viewer with clipboard export). Only changes beyond mechanical package/import substitution: license headers, package drop of `.integrations`, removal of vivi's dead commented-out R.string.together title line, removal of an unused listItemShape import, and one PORT-NOTE on the verbatim vivi invite-link URL.
+- Created LocalListenTogetherManager.kt (staticCompositionLocalOf<ListenTogetherManager?> { null }) as its own file — MainActivity's CompositionLocalProvider wiring intentionally left to the integrator.
+- ExpressiveSettingGroup: NOT in ArchiveTune — ported vivi's component into ui/component (option a; its only missing dependency was listItemShape). Material3SettingsItem: ArchiveTune's data class had only 7 of vivi's 12 fields — extended it additively with the 5 missing fields (leadingContent, tintIcon, iconShape, enabled, isExternalLink — all defaulted after the existing fields so the class is otherwise untouched and no call sites existed to break).
+- listItemShape: vivi builds it from racra's AbsoluteSmoothCornerShape library which ArchiveTune does not depend on — ported the util into utils/ListItemShape.kt with plain RoundedCornerShape preserving the exact first/middle/last/single positional corner logic and radius (PORT-NOTE documents the squircle→rounded substitution).
+- AvatarBottomSheet: ported vivi's component into ui/component unchanged (deps are all stock material3).
+- ForkPreferenceKeys.kt: added the 2 UI-side keys missing from T1-B's set with vivi's exact names/types — ListenTogetherUsernameKey (stringPreferencesKey "listenTogetherUsername"), ListenTogetherInTopBarKey (booleanPreferencesKey "listenTogetherInTopBar").
+- Drawables: diffed the 44 distinct R.drawable refs in the ported files against ArchiveTune's res — 31 vivi-specific files copied (18 vector XMLs: diversity_listen_together, cloud_lock/off_listentogether, connecting_server, server_error, join_listen, group, group_outlined, group_add, crown, chat_msg, send_chat, content_copy, cloud, key, bug_report, info(none — existed), hyper_link, automation_slow_connecttion (vivi's typo preserved), plus 12 avatar bitmaps + woman_4.jpg); arrow_back/add/check/close/done/error/link/lock/logout/person/queue_music/volume_up already existed. Verified no name collisions in the gms/debug/tv source sets and all XMLs parse.
+- Strings: cross-checked all 79 app-string refs (framework android.R.string cancel/ok excluded) — 46 already present (T1-B's 48 listen_together* family minus unused, plus approve/reject/reset/settings/username/copied_to_clipboard/copy_link); ported the 33 missing from vivi's values/vivi_strings.xml into values/strings.xml ONLY (comments=Chat, connect, connected_users, copy_code, create, create_room, creating_room, disconnect, enter_username, error_username_empty, host_label, invalid_room_code, join, join_request_denied, join_room, joining_room(%s), kick_user(+desc), leave_room, manage_user, not_set, pending_suggestions, permanently_kick_user(+desc), room_code, send, transfer_ownership(+desc), type_message, unblock, user_blocked_by_host, waiting_for_approval, you_label) — `copy` already existed in archivetune_strings.xml so not duplicated; vivi's `together` string was only referenced from a comment and was not ported; verified zero duplicate names across ALL values/*.xml and no collisions in other source sets.
+- NavigationBuilder.kt: added 4 leaf routes — composable("listen_together") + composable(route="listen_together_from_topbar") (ListenTogetherScreen w/ showTopBar false/true, mirroring vivi lines 120-128, placed after the Library route) and composable("listen_together/chat") (CommentTogetherScreen), plus composable(route="settings/integrations/listen_together") { ListenTogetherSettings(navController, scrollBehavior) } (vivi's line 445-448 shape; scrollBehavior is in navigationBuilder's existing signature; ListenTogetherSettings keeps vivi's (navController, scrollBehavior, viewModel) signature). ListenTogetherScreen/CommentTogetherScreen are same-package so only the settings import was added. No other routes touched.
+
+Stage Summary:
+- Files created (8): LocalListenTogetherManager.kt (20), viewmodels/ListenTogetherViewModel.kt (127), utils/ListItemShape.kt (40), ui/component/ExpressiveSettingGroup.kt (155), ui/component/AvatarBottomSheet.kt (102), ui/screens/ListenTogetherScreen.kt (1720), ui/screens/CommentTogether.kt (474), ui/screens/settings/ListenTogetherSettings.kt (898).
+- Files modified (4): ui/component/Material3SettingsGroup.kt (+5 defaulted Material3SettingsItem fields), constants/ForkPreferenceKeys.kt (+2 keys), ui/screens/NavigationBuilder.kt (+4 routes +1 import), res/values/strings.xml (+33 strings).
+- Resources: 31 drawables copied from vivi (18 vector XML + 13 avatar bitmaps incl. woman_4.jpg).
+- Vivi→ArchiveTune adaptations: ExpressiveSettingGroup ported; AvatarBottomSheet ported; listItemShape ported with RoundedCornerShape (smooth-corner lib absent); Material3SettingsItem extended; vivi's custom IconButton/DefaultDialog/rememberPreference/backToMain/AppBarHeight/LocalPlayerAwareWindowInsets all matched 1:1 with no call-site changes; settings screen package flattened (no .integrations subdir); hiltViewModel import paths kept (both artifacts present in ArchiveTune).
+- Verification: scripts/kotlin_balance_check.py reports all 11 created/modified Kotlin files balanced; grep for com.music.vivi|com.music.innertube across the new files = 0; automated cross-check resolves all 76 R.string refs and all 44 R.drawable refs (incl. the 14-avatar list) against merged resources; all 122 project-internal imports symbol-checked (2 false-negatives manually confirmed: extension fun backToMain, generic fun <T> rememberPreference); strings.xml parses, zero duplicate names repo-wide in the default locale and other source sets; NavigationBuilder/Manifest untouched beyond the 4 routes; each ported string verified uniquely defined in vivi's values/.
+- Deliberately NOT wired (integrator phase): MainActivity CompositionLocalProvider for LocalListenTogetherManager, MainActivity ServiceConnection setPlayerConnection(playerConnection) on service connect / null on disconnect, settings search index entry (SettingsDataBuilders + SettingsScreen "listen_together" route mapping), top-bar/navigation entry point to the "listen_together"(_from_topbar) routes gated by ListenTogetherInTopBarKey, MusicService crossfade re-gating on the session state, and optionally the https invite-URL deep link + pending-join handling (vivi's RoomStatusCard copies a vivimusic-listen-together.onrender.com/listen?code=… link that currently only resolves inside vivi; joining in ArchiveTune is via the room-code field).
+- No gradle available in this workspace — CI must confirm the compile (largest risk: compose 1.11.4 → 1.12.0-beta02 API drift, all spot-checked as stable in both).
+
+---
+Task ID: T1-D
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Listen Together port — final integration (phase D of the vivi-music beta
+port; T1-A removed the old implementation, T1-B ported the core engine,
+T1-C ported the UI)
+
+Work Log:
+- MainActivity: ListenTogetherManager @Inject; setPlayerConnection wired into
+  the service connection (attach on connect, null on disconnect — vivi's
+  pattern); manager.initialize() in onCreate; LocalListenTogetherManager
+  provided in the root CompositionLocalProvider; deep-link branch in
+  handleDeepLinkIntent for the invite URL (onrender.com/listen?code=X) and
+  archivetune://listen?code=X — joins with the stored username (Guest
+  fallback).
+- AndroidManifest: two VIEW intent filters for the invite links (https host +
+  custom scheme).
+- Settings: a top-level "Listen Together" SettingsItem (diversity icon,
+  "Listen with friends") navigating to the listen_together route; integration
+  section children (listen_together + listen_together_screen) with the
+  volume-sync SearchResultSwitch; route mapping + CROSS_PAGE owner +
+  supportsScroll exclusion (the LT settings leaf has no scrollTo support).
+- MusicService: ListenTogetherManager injected; crossfade config now
+  combine()'d with the manager's roomState — crossfade disables while in a
+  room (vivi parity, guests need deterministic track starts).
+- Profile menu (top bar): Listen Together entry gated by
+  ListenTogetherInTopBarKey (default on), navigating to the from-topbar
+  variant of the room screen.
+- Static verification (scripts/verify_lt_port.py): all ported+edited files
+  balanced (MessageCodec/ListenTogetherScreen deltas match vivi's originals —
+  string-template artifacts of the checker, not real imbalance); XML parses;
+  zero com.music.vivi/innertube references; every R.string/R.drawable
+  resolves (missing-list false positives: android.R.string.ok + strings
+  defined in archivetune_strings.xml); proto file present; TOML + gradle
+  protobuf wiring present.
+
+Stage Summary:
+- The vivi-music beta Listen Together is fully integrated: protobuf wire
+  protocol + WebSocket client + manager bridge, room create/join/approval,
+  chat, suggestions, host transfer, kick/block, buffer-wait sync, smart
+  resync, volume sync, reconnect, notifications; UI (room screen, chat
+  screen, settings) + entry points (settings item, top-bar profile entry,
+  invite deep links). CI is the compile gate for the protobuf codegen and
+  the Kotlin adaptations. (feat(together): port vivi-music beta's Listen Together — complete replacement)

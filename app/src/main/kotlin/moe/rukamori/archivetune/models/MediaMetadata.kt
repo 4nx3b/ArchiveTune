@@ -47,6 +47,11 @@ data class MediaMetadata(
      * serialized before this field existed still deserialize (serialVersionUID stays 1L).
      */
     val isrc: String? = null,
+    // PORT-NOTE: Listen Together attribution — ported from vivi-music's MediaMetadata
+    // (suggestedBy: String? = null). Carries who suggested a queued track so the queue
+    // can show "suggested by X". Additive defaulted field: existing constructors,
+    // copy() calls and componentN order are unaffected.
+    val suggestedBy: String? = null,
 ) : Serializable {
     companion object {
         private const val serialVersionUID = 1L
