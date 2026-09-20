@@ -71,6 +71,11 @@ internal suspend fun resolveCanvasArtworkForPlayback(
 
     val preferArchiveTuneCanvasFirst = CanvasProviderPriority.preferArchiveTuneCanvasFirst
 
+    if (allowNetwork && CanvasResolutionMissCache.isRecentlyMissed(mediaId, requireVertical)) {
+        Timber.tag(CanvasArtworkLogTag).d("Skipping canvas lookup for %s — negative result is still fresh", mediaId)
+        return null
+    }
+
     val cachedArtwork =
         withContext(Dispatchers.IO) {
             CanvasArtworkPlaybackCache.getCachedOnlyFast(mediaId)
@@ -102,7 +107,7 @@ internal suspend fun resolveCanvasArtworkForPlayback(
                     )
                 if (upgraded != null) {
                     Timber.tag(CanvasArtworkLogTag).d("Upgrading cached Spotify canvas to ArchiveTune canvas for %s", mediaId)
-                    return CanvasArtworkPlaybackCache.put(mediaId, upgraded)
+                    return CanvasArtworkPlaybackCache.put(mediaId, upgraded).also { CanvasResolutionMissCache.clear(mediaId) }
                 }
                 CanvasProviderPriority.markUpgradeAttemptFailed(mediaId)
             }
@@ -132,7 +137,7 @@ internal suspend fun resolveCanvasArtworkForPlayback(
                 )
             if (fetchedFirst != null) {
                 Timber.tag(CanvasArtworkLogTag).d("ArchiveTune canvas resolved first for %s", mediaId)
-                return@withContext CanvasArtworkPlaybackCache.put(mediaId, fetchedFirst)
+                return@withContext CanvasArtworkPlaybackCache.put(mediaId, fetchedFirst).also { CanvasResolutionMissCache.clear(mediaId) }
             }
 
             if (trySpotifyCanvas && strictIdentity) {
@@ -149,11 +154,12 @@ internal suspend fun resolveCanvasArtworkForPlayback(
                     }.getOrNull()
                 if (spotifyFallback != null && spotifyFallback.hasRequiredCanvasVariant(requireVertical)) {
                     Timber.tag(CanvasArtworkLogTag).d("Spotify Canvas fallback resolved for %s", mediaId)
-                    return@withContext CanvasArtworkPlaybackCache.put(mediaId, spotifyFallback)
+                    return@withContext CanvasArtworkPlaybackCache.put(mediaId, spotifyFallback).also { CanvasResolutionMissCache.clear(mediaId) }
                 }
             }
 
             Timber.tag(CanvasArtworkLogTag).d("No playable canvas resolved for %s", mediaId)
+            CanvasResolutionMissCache.markMissed(mediaId, requireVertical)
             return@withContext null
         }
 
@@ -172,7 +178,7 @@ internal suspend fun resolveCanvasArtworkForPlayback(
                 }.getOrNull()
             if (spotifyCanvas != null && spotifyCanvas.hasRequiredCanvasVariant(requireVertical)) {
                 Timber.tag(CanvasArtworkLogTag).d("Spotify Canvas resolved for %s", mediaId)
-                return@withContext CanvasArtworkPlaybackCache.put(mediaId, spotifyCanvas)
+                return@withContext CanvasArtworkPlaybackCache.put(mediaId, spotifyCanvas).also { CanvasResolutionMissCache.clear(mediaId) }
             }
         }
 
@@ -188,10 +194,11 @@ internal suspend fun resolveCanvasArtworkForPlayback(
 
         if (fetched == null) {
             Timber.tag(CanvasArtworkLogTag).d("No playable canvas resolved for %s", mediaId)
+            CanvasResolutionMissCache.markMissed(mediaId, requireVertical)
             return@withContext null
         }
 
-        CanvasArtworkPlaybackCache.put(mediaId, fetched)
+        CanvasArtworkPlaybackCache.put(mediaId, fetched).also { CanvasResolutionMissCache.clear(mediaId) }
     }
 }
 
@@ -242,6 +249,7 @@ internal suspend fun hasAnyCanvasSource(
 ): Boolean {
     if (mediaId.isBlank()) return false
     if (CanvasArtworkPlaybackCache.hasEntry(mediaId)) return true
+    if (CanvasResolutionMissCache.isRecentlyMissed(mediaId, requireVertical = false)) return false
 
     val strictIdentity = !(mediaId.isTelegramMediaId() || mediaId.isLocalMediaId())
 
@@ -270,6 +278,7 @@ internal suspend fun hasAnyCanvasSource(
         if (spotify != null && !spotify.preferredAnimationUrl.isNullOrBlank()) return true
     }
 
+    CanvasResolutionMissCache.markMissed(mediaId, requireVertical = false)
     return false
 }
 
@@ -295,7 +304,7 @@ internal suspend fun refetchCanvasArtworkForPlayback(
                 albumTitle = albumTitle,
             ) ?: return@withContext null
 
-        CanvasArtworkPlaybackCache.replace(mediaId, fetched)
+        CanvasArtworkPlaybackCache.replace(mediaId, fetched).also { CanvasResolutionMissCache.clear(mediaId) }
     }
 }
 
@@ -365,4 +374,32 @@ private fun normalizeCanvasArtistName(raw: String): String {
             .orEmpty()
 
     return first.replace(Regex("\\s+"), " ").trim()
+}
+
+/**
+ * Short-lived negative-result cache for canvas resolution. Without it a song that
+ * resolves to no canvas is re-queried against Apple Music + Spotify every time the
+ * UI re-requests artwork (observed every ~2-4 minutes while playing), which burns
+ * the Spotify REST quota with 429s and keeps the AMP search busy for nothing.
+ */
+internal object CanvasResolutionMissCache {
+    private const val TTL_MS = 10 * 60 * 1000L
+    private val misses = ConcurrentHashMap<String, Long>()
+
+    private fun key(mediaId: String, requireVertical: Boolean) = "$mediaId|v$requireVertical"
+
+    fun isRecentlyMissed(mediaId: String, requireVertical: Boolean): Boolean {
+        val markedAtMs = misses[key(mediaId, requireVertical)] ?: return false
+        val fresh = System.currentTimeMillis() - markedAtMs < TTL_MS
+        if (!fresh) misses.remove(key(mediaId, requireVertical))
+        return fresh
+    }
+
+    fun markMissed(mediaId: String, requireVertical: Boolean) {
+        misses[key(mediaId, requireVertical)] = System.currentTimeMillis()
+    }
+
+    fun clear(mediaId: String) {
+        misses.keys.removeAll { it.substringBeforeLast("|v") == mediaId }
+    }
 }

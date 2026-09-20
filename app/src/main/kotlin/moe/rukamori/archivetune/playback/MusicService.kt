@@ -2954,7 +2954,14 @@ class MusicService :
         val outgoingPlayer = localPlayer
         val oldSessionPlayer = player
 
-        val shouldKeepPlaying = crossfadePlaybackRequested || incomingPlayer.playWhenReady || oldSessionPlayer.playWhenReady
+        // The user's live playback intent: crossfadePlaybackRequested is kept in sync by
+        // onPlayWhenReadyChanged for every non-end-of-item pause (user tap or audio-focus
+        // loss), even while the handoff is swapping the session player, so a pause that
+        // lands mid-promotion is no longer overridden by a stale capture. The old
+        // end-of-item auto-pause keeps it true, letting the incoming take over seamlessly.
+        // Playback is also not forced without audio focus — the focus-GAIN handler resumes
+        // via wasPlayingBeforeAudioFocusLoss when the system returns it.
+        val shouldKeepPlaying = crossfadePlaybackRequested && hasAudioFocusForPlayback()
         crossfadeHandoffInProgress = true
         return try {
             incomingPlayer.removeListener(secondaryCrossfadeListener)
@@ -3252,7 +3259,12 @@ class MusicService :
 
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                 hasAudioFocus = false
-                pauseForAudioFocusLoss(resumeWhenFocusReturns = true)
+                // Duck instead of pausing: transient-can-duck losses arrive for route
+                // changes (Bluetooth reconnects, assistant beeps) where stopping playback
+                // mid-song — and then racing a crossfade promotion that force-resumes —
+                // reads as "the app muted itself". Lowering the focus volume factor keeps
+                // the stream alive at 20% and GAIN restores it.
+                audioFocusVolumeFactor.value = MIN_AUDIO_FOCUS_VOLUME_FACTOR
 
                 lastAudioFocusState = focusChange
             }
@@ -5631,14 +5643,22 @@ class MusicService :
         reason: Int,
     ) {
         super.onPlayWhenReadyChanged(playWhenReady, reason)
+        val isEndOfOutgoingItemPause =
+            !playWhenReady &&
+                reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM &&
+                localPlayer.pauseAtEndOfMediaItems
+        if (isCrossfading || crossfadeHandoffInProgress) {
+            // Track the live playback intent across the whole crossfade — including the
+            // promotion window where the session player is being swapped and the secondary
+            // is already detached. Previously a pause landing in that window was silently
+            // dropped and the freshly promoted player un-paused itself.
+            if (!isEndOfOutgoingItemPause) {
+                crossfadePlaybackRequested = playWhenReady
+            }
+        }
         secondaryCrossfadePlayer?.let { secondaryPlayer ->
             if (isCrossfading) {
-                val isEndOfOutgoingItemPause =
-                    !playWhenReady &&
-                        reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM &&
-                        localPlayer.pauseAtEndOfMediaItems
                 if (!isEndOfOutgoingItemPause) {
-                    crossfadePlaybackRequested = playWhenReady
                     secondaryPlayer.playWhenReady = crossfadePlaybackRequested
                     if (crossfadePlaybackRequested) {
                         secondaryPlayer.play()
@@ -7193,10 +7213,13 @@ class MusicService :
         query: SourceQuery,
         trusted: Boolean = false,
     ): DirectStream? {
-        if (AppleMusicAudioProvider.mediaUserToken() == null || AppleMusicAudioProvider.devToken() == null) {
+        // Media-user-token (personal or pool) is mandatory; the dev token is not — the
+        // audio provider falls back to the scraped web token, so an expired/missing
+        // user dev token must not short-circuit the source into the YouTube fallback.
+        if (AppleMusicAudioProvider.mediaUserToken() == null) {
             Timber
                 .tag("MusicService")
-                .d("Apple Music source: missing tokens (sign in via Settings → Apple Music)")
+                .d("Apple Music source: no account (sign in via Settings → Apple Music or add a pool account)")
             return null
         }
         val appleQuality = parseAppleMusicQuality()
@@ -8354,7 +8377,7 @@ class MusicService :
 
     private fun buildAppleDrmSessionManager(track: AppleTrackDrmInfo): DrmSessionManager? {
         val mediaToken = AppleMusicAudioProvider.mediaUserToken() ?: return null
-        val devToken = AppleMusicAudioProvider.devToken()
+        val devToken = AppleMusicAudioProvider.usableDevToken()
         val callback = AppleLicenseCallback(track, devToken, mediaToken)
         return DefaultDrmSessionManager
             .Builder()
