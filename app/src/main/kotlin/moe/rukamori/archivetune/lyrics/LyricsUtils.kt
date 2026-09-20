@@ -625,6 +625,11 @@ object LyricsUtils {
                     providerRomanizedWords = line.providerRomanizedWords,
                     providerRomanizedLanguage = line.providerRomanizedLanguage,
                     providerTranslationText = line.providerTranslationText,
+                    // Line-end bounds let findCurrentLineIndex keep the highlight on a
+                    // line until its own end instead of only until the next line starts.
+                    durationMs = ((line.endTime - line.startTime) * scale * 1000.0)
+                        .toLong()
+                        .coerceAtLeast(0L),
                 )
             }.sorted()
     }

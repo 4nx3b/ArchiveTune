@@ -163,9 +163,12 @@ fun InlineVideoControlsPill(
     availableHeights: List<Int> = LocalVideoAvailableHeights.current,
     selectedHeight: Int? = LocalVideoSelectedHeight.current,
     modifier: Modifier = Modifier,
+    qualityMenuOpen: Boolean? = null,
+    onQualityMenuOpenChange: ((Boolean) -> Unit)? = null,
 ) {
     val fullscreenHolder = LocalVideoFullscreenState.current
-    var qualityMenuOpen by remember { mutableStateOf(false) }
+    var internalQualityMenuOpen by remember { mutableStateOf(false) }
+    val setMenuOpen: (Boolean) -> Unit = onQualityMenuOpenChange ?: { internalQualityMenuOpen = it }
 
     Row(
         modifier =
@@ -179,7 +182,7 @@ fun InlineVideoControlsPill(
     ) {
         if (availableHeights.size > 1) {
             IconButton(
-                onClick = { qualityMenuOpen = true },
+                onClick = { setMenuOpen(true) },
                 modifier = Modifier.size(40.dp),
             ) {
                 Icon(
@@ -204,13 +207,13 @@ fun InlineVideoControlsPill(
         }
     }
 
-    if (qualityMenuOpen) {
+    if (qualityMenuOpen == null && internalQualityMenuOpen) {
         VideoQualitySheet(
             preferredHeight = preferredHeight,
             availableHeights = availableHeights,
             selectedHeight = selectedHeight,
             onPreferredHeightChange = onPreferredHeightChange,
-            onDismissRequest = { qualityMenuOpen = false },
+            onDismissRequest = { internalQualityMenuOpen = false },
         )
     }
 }
@@ -243,6 +246,7 @@ fun InlineVideoPlayer(
 
     if (!isFullscreen) {
         var controlsVisible by remember { mutableStateOf(false) }
+        var qualityMenuOpen by remember { mutableStateOf(false) }
         val fallbackPlayingFlow = remember { kotlinx.coroutines.flow.MutableStateFlow(false) }
         val isPlaying by (playerConnection?.isPlaying ?: fallbackPlayingFlow)
             .collectAsStateWithLifecycle()
@@ -262,8 +266,8 @@ fun InlineVideoPlayer(
                 ),
         ) {
             if (controlsOnTap) {
-                LaunchedEffect(controlsVisible, isPlaying) {
-                    if (controlsVisible && isPlaying) {
+                LaunchedEffect(controlsVisible, isPlaying, qualityMenuOpen) {
+                    if (controlsVisible && isPlaying && !qualityMenuOpen) {
                         kotlinx.coroutines.delay(INLINE_VIDEO_CONTROLS_AUTO_HIDE_MS)
                         controlsVisible = false
                     }
@@ -345,6 +349,8 @@ fun InlineVideoPlayer(
                         availableHeights = availableHeights,
                         selectedHeight = selectedHeight,
                         modifier = Modifier.padding(8.dp),
+                        qualityMenuOpen = qualityMenuOpen,
+                        onQualityMenuOpenChange = { qualityMenuOpen = it },
                     )
                 }
             } else if (showControls) {
@@ -357,6 +363,18 @@ fun InlineVideoPlayer(
                         Modifier
                             .align(Alignment.TopEnd)
                             .padding(8.dp),
+                )
+            }
+
+            // The quality sheet is hoisted out of the auto-hiding controls layer so it
+            // survives the controls fade-out timer instead of being disposed with it.
+            if (qualityMenuOpen) {
+                VideoQualitySheet(
+                    preferredHeight = preferredHeight,
+                    availableHeights = availableHeights,
+                    selectedHeight = selectedHeight,
+                    onPreferredHeightChange = onPreferredHeightChange,
+                    onDismissRequest = { qualityMenuOpen = false },
                 )
             }
         }
@@ -470,12 +488,12 @@ fun FullscreenVideoOverlay(
         }
     }
 
-    LaunchedEffect(controlsVisible, isUserSeeking, qualityMenuOpen, showOverflowSheet, isInPipMode) {
+    LaunchedEffect(controlsVisible, isUserSeeking, qualityMenuOpen, aspectRatioMenuOpen, showOverflowSheet, isInPipMode) {
         if (isInPipMode) {
             controlsVisible = false
             return@LaunchedEffect
         }
-        if (controlsVisible && !isUserSeeking && !qualityMenuOpen && !showOverflowSheet) {
+        if (controlsVisible && !isUserSeeking && !qualityMenuOpen && !aspectRatioMenuOpen && !showOverflowSheet) {
             kotlinx.coroutines.delay(FullscreenControlsAutoHideMs)
             controlsVisible = false
         }
@@ -641,7 +659,7 @@ fun FullscreenVideoOverlay(
         }
 
         AnimatedVisibility(
-            visible = controlsVisible && !showOverflowSheet && !isInPipMode,
+            visible = controlsVisible && !showOverflowSheet && !qualityMenuOpen && !aspectRatioMenuOpen && !isInPipMode,
             enter = fadeIn(animationSpec = tween(200)),
             exit = fadeOut(animationSpec = tween(200)),
             modifier = Modifier.fillMaxSize(),

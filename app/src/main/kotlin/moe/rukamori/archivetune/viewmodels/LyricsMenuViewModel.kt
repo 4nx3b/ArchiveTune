@@ -307,6 +307,10 @@ class LyricsMenuViewModel
                                 return@launch
                             }
                         }
+                        // Snapshot the pre-translation row at REQUEST time so undo always
+                        // restores the lyrics the translation was started from — even if
+                        // the lyrics source is switched while the request is in flight.
+                        captureLyricsBeforeTranslation(mediaMetadata.id)
                         Log.d(
                             TAG,
                             "AI translate start: song=${mediaMetadata.title} automatic=$isAutomatic " +
@@ -337,6 +341,7 @@ class LyricsMenuViewModel
                         saveTranslatedLyrics(
                             mediaId = mediaMetadata.id,
                             lyrics = usableLyrics,
+                            submittedLyrics = lyrics,
                         )
                         Log.d(TAG, "AI translate success: song=${mediaMetadata.title} automatic=$isAutomatic")
                         if (!isAutomatic) {
@@ -404,16 +409,31 @@ class LyricsMenuViewModel
                 )
         }
 
-        private suspend fun saveTranslatedLyrics(mediaId: String, lyrics: String) {
-            captureLyricsBeforeTranslation(mediaId)
+        private suspend fun saveTranslatedLyrics(
+            mediaId: String,
+            lyrics: String,
+            submittedLyrics: String,
+        ) {
+            // The lyrics source may have been switched while the AI request was in
+            // flight (e.g. from unsynced YouTube lyrics to a synced provider). The
+            // finished translation describes the OLD lyrics and must never clobber
+            // the newer row — discard it instead.
+            val current = database.withTransaction { getLyricsById(mediaId) }
+            if (current?.lyrics != submittedLyrics) {
+                Log.d(
+                    TAG,
+                    "AI translate result discarded: lyrics row changed while translating " +
+                        "(song id=$mediaId)",
+                )
+                _aiTranslationEvents.tryEmit(context.getString(R.string.translation_discarded))
+                return
+            }
 
             val snapshotMatch = _translationUndo.value?.takeIf { it.mediaId == mediaId }
             val preservedProviderName =
                 snapshotMatch?.providerName?.takeIf { it.isNotBlank() }
-                    ?: database
-                        .withTransaction { getLyricsById(mediaId) }
-                        ?.providerName
-                        .orEmpty()
+                    ?: current?.providerName
+                    .orEmpty()
             database.query {
                 replaceLyrics(
                     id = mediaId,

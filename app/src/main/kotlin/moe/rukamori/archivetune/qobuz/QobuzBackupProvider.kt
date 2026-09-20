@@ -166,21 +166,32 @@ object QobuzBackupProvider {
         limit: Int,
     ): List<Candidate> {
         for (base in activeEndpoints()) {
-            val candidates = fetchSearchFrom(base, query, limit)
-            if (candidates.isNotEmpty()) {
-                recordSuccess(base)
-                return candidates
+            when (val candidates = fetchSearchFrom(base, query, limit)) {
+                // null = transport-level failure (HTTP error / exception / non-JSON body)
+                null -> recordFailure(base)
+                else -> {
+                    // A healthy response must never poison the circuit breaker — an
+                    // empty result simply means the track is not in this mirror's
+                    // catalog, so the endpoint stays warm and the next endpoints and
+                    // query variants still get a chance to answer.
+                    recordSuccess(base)
+                    if (candidates.isNotEmpty()) return candidates
+                }
             }
-            recordFailure(base)
         }
         return emptyList()
     }
 
+    /**
+     * @return null when the endpoint could not be reached or answered with a non-JSON
+     *         body (a real failure for the circuit breaker); an empty list when the
+     *         endpoint is healthy but has no matches for the query.
+     */
     private fun fetchSearchFrom(
         base: String,
         query: String,
         limit: Int,
-    ): List<Candidate> {
+    ): List<Candidate>? {
         val url =
             "$base/api/search"
                 .toHttpUrl()
@@ -206,21 +217,21 @@ object QobuzBackupProvider {
                         query,
                         response.code,
                     )
-                    return@use emptyList()
+                    return@use null
                 }
                 parseSearchResponse(response.body?.string().orEmpty(), limit)
             }
         }.onFailure { error ->
             Timber.tag("QobuzBackup").d(error, "search \"%s\" failed", query)
-        }.getOrDefault(emptyList())
+        }.getOrDefault(null)
     }
 
     private fun parseSearchResponse(
         body: String,
         limit: Int,
-    ): List<Candidate> {
-        if (body.isBlank()) return emptyList()
-        val array = runCatching { JSONArray(body) }.getOrNull() ?: return emptyList()
+    ): List<Candidate>? {
+        if (body.isBlank()) return null
+        val array = runCatching { JSONArray(body) }.getOrNull() ?: return null
         val out = mutableListOf<Candidate>()
         for (index in 0 until array.length()) {
             if (out.size >= limit) break

@@ -90,7 +90,12 @@ import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
 import moe.rukamori.archivetune.ui.player.InlineVideoControlsPill
 import moe.rukamori.archivetune.ui.player.InlineVideoPlayer
 import moe.rukamori.archivetune.ui.player.LocalVideoArtworkState
+import moe.rukamori.archivetune.ui.player.LocalVideoAvailableHeights
 import moe.rukamori.archivetune.ui.player.LocalVideoFullscreenState
+import moe.rukamori.archivetune.ui.player.LocalVideoOnPreferredHeightChange
+import moe.rukamori.archivetune.ui.player.LocalVideoPreferredHeight
+import moe.rukamori.archivetune.ui.player.LocalVideoSelectedHeight
+import moe.rukamori.archivetune.ui.player.VideoQualitySheet
 import moe.rukamori.archivetune.ui.player.isLoadingState
 import moe.rukamori.archivetune.ui.player.rememberOfflineArtworkImageRequest
 import moe.rukamori.archivetune.ui.utils.getNextFallbackUrl
@@ -172,6 +177,7 @@ internal fun TikTokSongPage(
         val videoLoading = videoState != null && isLoadingState(videoState)
 
         var videoControlsVisible by remember(pageMetadata.id) { mutableStateOf(false) }
+        var videoQualityMenuOpen by remember(pageMetadata.id) { mutableStateOf(false) }
 
         val meshColors = rememberTikTokArtworkColors(pageMetadata.thumbnailUrl)
         TikTokMeshBackdrop(
@@ -439,8 +445,8 @@ internal fun TikTokSongPage(
         }
 
         if (videoShowing && !videoFullscreenHolder.isFullscreen) {
-            LaunchedEffect(videoControlsVisible, isPlaying) {
-                if (videoControlsVisible && isPlaying) {
+            LaunchedEffect(videoControlsVisible, isPlaying, videoQualityMenuOpen) {
+                if (videoControlsVisible && isPlaying && !videoQualityMenuOpen) {
                     kotlinx.coroutines.delay(TIKTOK_VIDEO_CONTROLS_AUTO_HIDE_MS)
                     videoControlsVisible = false
                 }
@@ -498,10 +504,24 @@ internal fun TikTokSongPage(
                                             end = TIKTOK_VIDEO_CONTROLS_END_CLEARANCE,
                                             bottom = 8.dp,
                                         ),
+                                qualityMenuOpen = videoQualityMenuOpen,
+                                onQualityMenuOpenChange = { videoQualityMenuOpen = it },
                             )
                         }
                     }
                 }
+            }
+
+            // The quality sheet lives outside the auto-hiding controls layer so it
+            // survives the controls fade-out timer instead of being disposed with it.
+            if (videoQualityMenuOpen) {
+                VideoQualitySheet(
+                    preferredHeight = LocalVideoPreferredHeight.current,
+                    availableHeights = LocalVideoAvailableHeights.current,
+                    selectedHeight = LocalVideoSelectedHeight.current,
+                    onPreferredHeightChange = LocalVideoOnPreferredHeightChange.current,
+                    onDismissRequest = { videoQualityMenuOpen = false },
+                )
             }
         }
 
