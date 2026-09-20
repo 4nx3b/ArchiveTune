@@ -512,7 +512,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(
-                modifier = positions.modifierFor("dynamic_theme"),
+                modifier = positions.modifierFor("dynamic_theme", "color_source"),
                 title = stringResource(R.string.theme),
             ) {
                 item {
@@ -575,7 +575,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 item(visible = !dynamicTheme || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
                     Column(modifier = positions.modifierFor("color_palette")) {
                         PreferenceEntry(
-                            modifier = positions.modifierFor("palette_picker"),
+                            modifier = positions.modifierFor("palette_picker", "theme_creator"),
                             title = { Text(stringResource(R.string.color_palette)) },
                             description = stringResource(R.string.customize_theme_colors),
                             icon = { Icon(painterResource(R.drawable.format_paint), null) },
@@ -720,7 +720,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                     item {
                         PreferenceEntry(
-                            modifier = positions.modifierFor("backdrop_blur_amount"),
+                            modifier = positions.modifierFor("backdrop_blur", "backdrop_blur_amount"),
                             title = { Text(stringResource(R.string.backdrop_blur_amount)) },
                             description = stringResource(R.string.backdrop_blur_amount_value, backdropBlurAmount),
                             icon = { Icon(painterResource(R.drawable.blur_on), null) },
@@ -1003,9 +1003,11 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
-                    ThumbnailCornerRadiusSelectorButton(
-                        onRadiusSelected = {},
-                    )
+                    Column(modifier = positions.modifierFor("thumbnail_corner_radius")) {
+                        ThumbnailCornerRadiusSelectorButton(
+                            onRadiusSelected = {},
+                        )
+                    }
                 }
 
                 item {

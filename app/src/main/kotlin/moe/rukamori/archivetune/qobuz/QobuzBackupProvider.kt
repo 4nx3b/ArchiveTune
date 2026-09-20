@@ -20,17 +20,16 @@ import java.util.concurrent.atomic.AtomicInteger
 
 object QobuzBackupProvider {
     /**
-     * The community mirror this source shipped against
-     * (`mlc-ytify.kouzu.in`, a Vercel front for a ytify-based FLAC service)
-     * went dark in September 2026 — the Vercel deployment now serves a
-     * Hugging Face 404 page, and the HF space behind it is deleted. The
+     * The original mirror (`mlc-ytify.kouzu.in`, a Vercel front for a
+     * ytify-based FLAC service) went dark in September 2026; the operator's
+     * current deployment lives at `mls.kouzu.in` (the updated default). The
      * resolver therefore walks an ENDPOINT CHAIN: any live instance of the
      * same `/api/stream` + `/api/search` API (the mirror operator's own
      * deployment, a friend's, or a self-host) can be plugged in from
      * Settings → Sources → Qobuz backup → "Backup resolver endpoints",
      * one URL per line, no app update needed.
      */
-    private const val DEFAULT_ENDPOINT = "https://mlc-ytify.kouzu.in"
+    private const val DEFAULT_ENDPOINT = "https://mls.kouzu.in"
 
     @Volatile
     var configuredEndpoints: List<String> = emptyList()
@@ -77,7 +76,7 @@ object QobuzBackupProvider {
 
     /** The full endpoint chain (custom + default) for settings/diagnostics UI. */
     fun endpointList(): List<String> = endpointChain()
-
+ (fix(sources+queue+video+settings): 4-item batch — lossless API host, add-to-queue position, AM queue full view, video quality High=4K + persistence, settings search toggles + autoscroll anchors)
     private const val USER_AGENT = "ArchiveTune-Android"
     private const val SEARCH_CACHE_MS = 10 * 60 * 1000L
 

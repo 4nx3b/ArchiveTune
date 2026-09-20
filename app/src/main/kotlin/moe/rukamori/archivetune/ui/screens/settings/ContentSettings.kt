@@ -270,7 +270,7 @@ fun ContentSettings(
 
             item {
                 SwitchPreference(
-                    modifier = positions.modifierFor("hide_video"),
+                    modifier = positions.modifierFor("hide_video", "enable_video"),
                     title = { Text(stringResource(R.string.hide_video)) },
                     icon = { Icon(painterResource(R.drawable.slow_motion_video), null) },
                     checked = hideVideo,

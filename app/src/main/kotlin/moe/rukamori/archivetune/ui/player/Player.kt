@@ -171,6 +171,7 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
+import moe.rukamori.archivetune.constants.VideoQualityPreferredHeightKey
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.ShowCodecOnPlayerKey
 import moe.rukamori.archivetune.constants.SpotifyCanvasKey
@@ -1132,7 +1133,14 @@ fun BottomSheetPlayer(
         mediaMetadata
             ?.takeIf { enableVideoPlayback && it.isMusicVideo == true && !it.id.isLocalMediaId() }
             ?.id
-    var videoPreferredHeight by rememberSaveable { mutableStateOf<Int?>(null) }
+    // Persisted video quality: 0 = Auto, -1 = Data saver, -2 = High, >0 = exact
+    // height. Defaults to High — every fresh open streams the maximum quality the
+    // device can decode (4K where the video offers it) — and manual picks stick
+    // across restarts instead of resetting to Auto/1080p.
+    var videoQualityStored by rememberPreference(VideoQualityPreferredHeightKey, VideoQualityPreference.HIGH_QUALITY)
+    var videoPreferredHeight by remember(videoQualityStored) {
+        mutableStateOf(VideoQualityPreference.toPreferredHeight(videoQualityStored))
+    }
     var videoAvailableHeights by remember { mutableStateOf<List<Int>>(emptyList()) }
 
     var videoSelectedHeight by remember { mutableStateOf<Int?>(null) }
@@ -1172,7 +1180,7 @@ fun BottomSheetPlayer(
         LocalVideoArtworkState provides videoState,
         LocalVideoPlaybackFailed provides videoPlaybackFailed,
         LocalVideoPreferredHeight provides videoPreferredHeight,
-        LocalVideoOnPreferredHeightChange provides { videoPreferredHeight = it },
+        LocalVideoOnPreferredHeightChange provides { videoQualityStored = VideoQualityPreference.toStoredQuality(it) },
         LocalVideoAvailableHeights provides videoAvailableHeights,
         LocalVideoSelectedHeight provides videoSelectedHeight,
     ) {
@@ -1856,7 +1864,7 @@ fun BottomSheetPlayer(
                             InlineVideoPlayer(
                                 state = videoState,
                                 preferredHeight = videoPreferredHeight,
-                                onPreferredHeightChange = { videoPreferredHeight = it },
+                                onPreferredHeightChange = { videoQualityStored = VideoQualityPreference.toStoredQuality(it) },
                                 availableHeights = videoAvailableHeights,
                                 selectedHeight = videoSelectedHeight,
                                 controlsOnTap = true,
@@ -2405,7 +2413,7 @@ fun BottomSheetPlayer(
                             InlineVideoPlayer(
                                 state = videoState,
                                 preferredHeight = videoPreferredHeight,
-                                onPreferredHeightChange = { videoPreferredHeight = it },
+                                onPreferredHeightChange = { videoQualityStored = VideoQualityPreference.toStoredQuality(it) },
                                 availableHeights = videoAvailableHeights,
                                 selectedHeight = videoSelectedHeight,
                                 controlsOnTap = true,
@@ -2892,7 +2900,7 @@ fun BottomSheetPlayer(
                 FullscreenVideoOverlay(
                     state = vs,
                     preferredHeight = videoPreferredHeight,
-                    onPreferredHeightChange = { videoPreferredHeight = it },
+                    onPreferredHeightChange = { videoQualityStored = VideoQualityPreference.toStoredQuality(it) },
                     availableHeights = videoAvailableHeights,
                     selectedHeight = videoSelectedHeight,
                     onDismiss = { videoFullscreenHolder.isFullscreen = false },

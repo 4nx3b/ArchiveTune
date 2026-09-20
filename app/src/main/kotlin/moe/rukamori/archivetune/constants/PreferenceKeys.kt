@@ -1477,6 +1477,8 @@ val VideoAmbientModeKey = booleanPreferencesKey("videoAmbientMode")
 
 val VideoPlaybackSpeedKey = floatPreferencesKey("videoPlaybackSpeed")
 
+val VideoQualityPreferredHeightKey = intPreferencesKey("videoQualityPreferredHeight")
+
 enum class VideoAspectRatio {
     FIT,
     CROP,

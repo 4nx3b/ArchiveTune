@@ -86,6 +86,43 @@ import moe.rukamori.archivetune.constants.TidalEnabledKey
 import moe.rukamori.archivetune.constants.TranslateLyricsKey
 import moe.rukamori.archivetune.constants.UseSystemFontKey
 import moe.rukamori.archivetune.constants.WakelockKey
+import moe.rukamori.archivetune.constants.AllowAgeRestrictedKey
+import moe.rukamori.archivetune.constants.AodArtworkGlowKey
+import moe.rukamori.archivetune.constants.AodAutoOnScreenDimKey
+import moe.rukamori.archivetune.constants.AodShowAlbumKey
+import moe.rukamori.archivetune.constants.AodShowArtistKey
+import moe.rukamori.archivetune.constants.AodShowControlsKey
+import moe.rukamori.archivetune.constants.AodShowExitButtonKey
+import moe.rukamori.archivetune.constants.AodShowLyricsKey
+import moe.rukamori.archivetune.constants.AodShowProgressKey
+import moe.rukamori.archivetune.constants.AodShowThumbnailKey
+import moe.rukamori.archivetune.constants.AodShowTimeLabelsKey
+import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
+import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.DeezerEnabledKey
+import moe.rukamori.archivetune.constants.EnableDnsOverHttpsKey
+import moe.rukamori.archivetune.constants.EnableMusixmatchExperimentalKey
+import moe.rukamori.archivetune.constants.HideCachedCardKey
+import moe.rukamori.archivetune.constants.HideLikedSongsCardKey
+import moe.rukamori.archivetune.constants.HideLocalFilesCardKey
+import moe.rukamori.archivetune.constants.HideOfflineCardKey
+import moe.rukamori.archivetune.constants.HideTop50CardKey
+import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
+import moe.rukamori.archivetune.constants.LyricsLineBlurKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeChineseKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeHindiKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeJapaneseKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeKoreanKey
+import moe.rukamori.archivetune.constants.MinimalHomeModeKey
+import moe.rukamori.archivetune.constants.NavigationBarTintFrostedBlurKey
+import moe.rukamori.archivetune.constants.QobuzBackupEnabledKey
+import moe.rukamori.archivetune.constants.QobuzEnabledKey
+import moe.rukamori.archivetune.constants.ShowTagsInLibraryKey
+import moe.rukamori.archivetune.constants.StreamBypassProxyKey
+import moe.rukamori.archivetune.constants.SwipeThumbnailKey
+import moe.rukamori.archivetune.constants.TabletModeEnabledKey
+import moe.rukamori.archivetune.constants.TidalAccountFirstKey
+import moe.rukamori.archivetune.constants.TidalAnimatedCoversEnabledKey
 import moe.rukamori.archivetune.utils.rememberPreference
 
 @Composable
@@ -152,7 +189,7 @@ fun buildSettingsGroups(
                 SettingsChild("Color source", "color_source", listOf("color source", "color", "dynamic color", "material you")),
                 SettingsChild("App icon", "app_icon", listOf("icon", "app icon", "icon pack", "launcher icon")),
                 SettingsChild("Disable blur", "disable_blur", listOf("blur", "disable blur", "no blur", "performance")) { SearchResultSwitch(DisableBlurKey, false) },
-                SettingsChild("Blur intensity", "blur_intensity", listOf("blur intensity", "blur amount", "blur level", "blur radius")),
+                SettingsChild("Blur intensity", "blur_intensity", listOf("blur intensity", "blur amount", "blur level", "blur radius")) { SearchResultSwitch(BackdropEnabledKey, true) },
                 SettingsChild("Backdrop blur", "backdrop_blur", listOf("backdrop", "backdrop blur", "background blur", "frosted")) { SearchResultSwitch(BackdropEnabledKey, false) },
                 SettingsChild("Font preference", "font_preference", listOf("font", "font style", "typography")),
                 SettingsChild("Use system font", "use_system_font", listOf("system font", "default font", "roboto")) { SearchResultSwitch(UseSystemFontKey, false) },
@@ -180,16 +217,14 @@ fun buildSettingsGroups(
                 SettingsChild("Navigation bar customization", "navigation_bar_settings", listOf("navigation bar", "nav bar dimensions", "nav bar opacity", "nav bar width", "nav bar height", "nav bar corner radius", "nav bar label spacing")),
                 SettingsChild("Hide scrollbar", "hide_scrollbar", listOf("scrollbar", "scroll bar", "hide scroll", "no scrollbar")) { SearchResultSwitch(HideScrollbarKey, false) },
                 SettingsChild("Default open tab", "default_open_tab", listOf("default tab", "home tab", "start page", "open tab")),
-                SettingsChild("Grid layout", "grid_layout", listOf("grid", "layout", "list view", "artist grid")),
                 SettingsChild("Show home category chips", "show_home_category_chips", listOf("home chips", "category chips", "home category", "chips")) { SearchResultSwitch(ShowHomeCategoryChipsKey, false) },
                 SettingsChild("Language", "app_language", listOf("language", "app language", "locale")),
                 SettingsChild("UI scale", "ui_scale", listOf("ui scale", "scale", "zoom", "interface size", "display size", "bigger", "smaller")),
                 SettingsChild("Custom font", "custom_font", listOf("custom font", "font file", "typeface", "own font")),
                 SettingsChild("Backdrop blur amount", "backdrop_blur_amount", listOf("backdrop blur amount", "backdrop intensity", "background blur amount")),
                 SettingsChild("Customized background", "customized_background", listOf("customized background", "custom background", "background image", "wallpaper")),
-                SettingsChild("Tablet mode", "tablet_mode", listOf("tablet mode", "tablet", "large screen", "landscape layout")),
-                SettingsChild("Minimal mode", "minimal_home_mode", listOf("minimal mode", "minimal home", "simple home", "clean home")),
-                SettingsChild("Change default library chip", "default_lib_chips", listOf("library chip", "default chip", "library filter", "default library tab")),
+                SettingsChild("Tablet mode", "tablet_mode", listOf("tablet mode", "tablet", "large screen", "landscape layout")) { SearchResultSwitch(TabletModeEnabledKey, false) },
+                SettingsChild("Minimal mode", "minimal_home_mode", listOf("minimal mode", "minimal home", "simple home", "clean home")) { SearchResultSwitch(MinimalHomeModeKey, false) },
                 SettingsChild("Liquid Glass effects", "liquid_glass_effects", listOf("liquid glass", "glass effects", "header glass", "mini player glass")),
                 SettingsChild("Theme creator", "theme_creator", listOf("theme creator", "create theme", "custom theme", "make theme")),
                 SettingsChild("Palette picker", "palette_picker", listOf("palette picker", "pick palette", "choose palette", "custom palette")),
@@ -209,12 +244,12 @@ fun buildSettingsGroups(
             hidden = true,
             children = listOf(
                 SettingsChild("Show home category chips", "show_home_category_chips", listOf("home chips", "category chips", "home category", "chips")) { SearchResultSwitch(ShowHomeCategoryChipsKey, false) },
-                SettingsChild("Show tags in library", "show_tags_in_library", listOf("tags", "library tags", "show tags")),
-                SettingsChild("Hide Liked songs card", "hide_liked_songs_card", listOf("hide liked songs", "liked songs card", "favourites card", "hide card")),
-                SettingsChild("Hide Offline card", "hide_offline_card", listOf("hide offline", "offline card", "downloaded card", "hide card")),
-                SettingsChild("Hide Cached card", "hide_cached_card", listOf("hide cached", "cached card", "cache card", "hide card")),
-                SettingsChild("Hide Local Files card", "hide_local_files_card", listOf("hide local files", "local files card", "local card", "hide card")),
-                SettingsChild("Hide My top 50 card", "hide_top50_card", listOf("hide top 50", "top 50 card", "my top 50", "hide card")),
+                SettingsChild("Show tags in library", "show_tags_in_library", listOf("tags", "library tags", "show tags")) { SearchResultSwitch(ShowTagsInLibraryKey, false) },
+                SettingsChild("Hide Liked songs card", "hide_liked_songs_card", listOf("hide liked songs", "liked songs card", "favourites card", "hide card")) { SearchResultSwitch(HideLikedSongsCardKey, false) },
+                SettingsChild("Hide Offline card", "hide_offline_card", listOf("hide offline", "offline card", "downloaded card", "hide card")) { SearchResultSwitch(HideOfflineCardKey, false) },
+                SettingsChild("Hide Cached card", "hide_cached_card", listOf("hide cached", "cached card", "cache card", "hide card")) { SearchResultSwitch(HideCachedCardKey, false) },
+                SettingsChild("Hide Local Files card", "hide_local_files_card", listOf("hide local files", "local files card", "local card", "hide card")) { SearchResultSwitch(HideLocalFilesCardKey, false) },
+                SettingsChild("Hide My top 50 card", "hide_top50_card", listOf("hide top 50", "top 50 card", "my top 50", "hide card")) { SearchResultSwitch(HideTop50CardKey, false) },
             ),
         )
 
@@ -229,22 +264,22 @@ fun buildSettingsGroups(
             onClick = { navController.navigate("settings/appearance/aod_customized") },
             hidden = true,
             children = listOf(
-                SettingsChild("Show thumbnail", "aod_customize_show_thumbnail", listOf("aod thumbnail", "always on display artwork", "aod cover", "aod show thumbnail")),
-                SettingsChild("Show artist", "aod_customize_show_artist", listOf("aod artist", "always on display artist", "aod show artist")),
-                SettingsChild("Show album", "aod_customize_show_album", listOf("aod album", "always on display album", "aod show album")),
-                SettingsChild("Show progress", "aod_customize_show_progress", listOf("aod progress", "aod progress bar", "always on display progress")),
-                SettingsChild("Show time labels", "aod_customize_show_time_labels", listOf("aod time", "aod timestamps", "aod time labels", "always on display time")),
-                SettingsChild("Show controls", "aod_customize_show_controls", listOf("aod controls", "aod buttons", "always on display controls")),
-                SettingsChild("Show exit button", "aod_customize_show_exit_button", listOf("aod exit", "aod close button", "leave aod")),
-                SettingsChild("Show lyrics", "aod_customize_show_lyrics", listOf("aod lyrics", "always on display lyrics", "aod show lyrics")),
+                SettingsChild("Show thumbnail", "aod_customize_show_thumbnail", listOf("aod thumbnail", "always on display artwork", "aod cover", "aod show thumbnail")) { SearchResultSwitch(AodShowThumbnailKey, true) },
+                SettingsChild("Show artist", "aod_customize_show_artist", listOf("aod artist", "always on display artist", "aod show artist")) { SearchResultSwitch(AodShowArtistKey, true) },
+                SettingsChild("Show album", "aod_customize_show_album", listOf("aod album", "always on display album", "aod show album")) { SearchResultSwitch(AodShowAlbumKey, false) },
+                SettingsChild("Show progress", "aod_customize_show_progress", listOf("aod progress", "aod progress bar", "always on display progress")) { SearchResultSwitch(AodShowProgressKey, true) },
+                SettingsChild("Show time labels", "aod_customize_show_time_labels", listOf("aod time", "aod timestamps", "aod time labels", "always on display time")) { SearchResultSwitch(AodShowTimeLabelsKey, true) },
+                SettingsChild("Show controls", "aod_customize_show_controls", listOf("aod controls", "aod buttons", "always on display controls")) { SearchResultSwitch(AodShowControlsKey, true) },
+                SettingsChild("Show exit button", "aod_customize_show_exit_button", listOf("aod exit", "aod close button", "leave aod")) { SearchResultSwitch(AodShowExitButtonKey, true) },
+                SettingsChild("Show lyrics", "aod_customize_show_lyrics", listOf("aod lyrics", "always on display lyrics", "aod show lyrics")) { SearchResultSwitch(AodShowLyricsKey, true) },
                 SettingsChild("Background style", "aod_customize_background_style", listOf("aod background", "aod background style", "always on display background")),
                 SettingsChild("Accent style", "aod_customize_accent_style", listOf("aod accent", "aod accent style", "aod color")),
                 SettingsChild("Content position", "aod_customize_content_position", listOf("aod position", "aod content position", "aod layout")),
                 SettingsChild("Text alignment", "aod_customize_text_alignment", listOf("aod text alignment", "aod align", "aod centre", "aod center")),
                 SettingsChild("Slider style", "aod_customize_slider_style", listOf("aod slider", "aod slider style", "aod progress style")),
-                SettingsChild("Artwork glow", "aod_customize_artwork_glow", listOf("aod glow", "artwork glow", "aod artwork glow", "ambient glow")),
+                SettingsChild("Artwork glow", "aod_customize_artwork_glow", listOf("aod glow", "artwork glow", "aod artwork glow", "ambient glow")) { SearchResultSwitch(AodArtworkGlowKey, true) },
                 SettingsChild("Control style", "aod_customize_control_style", listOf("aod control style", "aod button style")),
-                SettingsChild("Enter AOD when screen dims", "aod_customize_auto_on_screen_dim", listOf("auto aod", "aod on dim", "automatic aod", "screen dim aod")),
+                SettingsChild("Enter AOD when screen dims", "aod_customize_auto_on_screen_dim", listOf("auto aod", "aod on dim", "automatic aod", "screen dim aod")) { SearchResultSwitch(AodAutoOnScreenDimKey, false) },
             ),
         )
 
@@ -261,7 +296,7 @@ fun buildSettingsGroups(
             children = listOf(
                 SettingsChild("Navigation bar style", "navigation_bar_style", listOf("navigation bar style", "nav bar style", "bottom bar style")),
                 SettingsChild("Frosted navigation bar", "navigation_bar_frosted_blur", listOf("frosted nav", "frosted navigation", "frosted blur")) { SearchResultSwitch(NavigationBarFrostedBlurKey, false) },
-                SettingsChild("Tint navigation bar", "navigation_bar_tint_frosted_blur", listOf("tint", "tint nav bar", "tinted nav bar", "coloured nav bar")),
+                SettingsChild("Tint frosted navigation bar", "navigation_bar_tint_frosted_blur", listOf("tint frosted", "tint nav bar", "frosted tint", "coloured nav bar")) { SearchResultSwitch(NavigationBarTintFrostedBlurKey, false) },
                 SettingsChild("Liquid Glass navigation bar", "liquid_glass_nav_bar", listOf("liquid glass nav", "glass navigation", "liquid nav")) { SearchResultSwitch(LiquidGlassNavBarEnabledKey, false) },
                 SettingsChild("Hide labels in navigation bar", "hide_navigation_bar_labels", listOf("hide labels", "navigation labels", "nav labels", "icons only")) { SearchResultSwitch(HideNavigationBarLabelsKey, false) },
                 SettingsChild("Navigation bar dimensions", "navigation_bar_dimensions", listOf("nav bar height", "nav bar width", "nav bar opacity", "nav bar corner radius", "nav bar label spacing", "nav bar size")),
@@ -304,27 +339,27 @@ fun buildSettingsGroups(
                 SettingsChild("Manage playlist tags", "manage_playlist_tags", listOf("playlist tags", "tag management", "organize playlists")),
                 SettingsChild("Artwork priority", "artwork_priority", listOf("artwork priority", "artwork order", "cover priority", "artwork provider order", "artwork source order")),
                 SettingsChild("Preferred sources", "preferred_sources", listOf("preferred sources", "source priority", "source order", "audio source order", "which source first")),
-                SettingsChild("Auto choose playback client", "auto_choose_playback_client", listOf("auto choose client", "playback client auto", "automatic client", "client selection")),
+                SettingsChild("Auto choose playback client", "auto_choose_playback_client", listOf("auto choose client", "playback client auto", "automatic client", "client selection")) { SearchResultSwitch(AutoChoosePlaybackClientKey, true) },
                 SettingsChild("Playback client", "player_stream_client", listOf("playback client", "stream client", "player client", "innertube client", "android vr", "ios client", "web client")),
-                SettingsChild("Skip gapless albums", "crossfade_gapless_title", listOf("skip gapless albums", "gapless album", "gapless")),
-                SettingsChild("Progressive seek", "seek_seconds_addup", listOf("progressive seek", "seek add up", "seek accumulate", "double tap seek")),
-                SettingsChild("Enable swipe to change song", "enable_swipe_thumbnail", listOf("swipe thumbnail", "swipe to change song", "swipe artwork", "swipe track")),
+                SettingsChild("Skip gapless albums", "crossfade_gapless_title", listOf("skip gapless albums", "gapless album", "gapless")) { SearchResultSwitch(CrossfadeGaplessKey, true) },
+                SettingsChild("Progressive seek", "seek_seconds_addup", listOf("progressive seek", "seek add up", "seek accumulate", "double tap seek")) { SearchResultSwitch(SeekExtraSeconds, false) },
+                SettingsChild("Enable swipe to change song", "enable_swipe_thumbnail", listOf("swipe thumbnail", "swipe to change song", "swipe artwork", "swipe track")) { SearchResultSwitch(SwipeThumbnailKey, true) },
                 SettingsChild("Mini player swipe sensitivity", "swipe_sensitivity", listOf("swipe sensitivity", "mini player swipe", "gesture sensitivity")),
                 SettingsChild("Check source", "check_source", listOf("check source", "source health", "test source", "source diagnostics", "verify source", "source status")),
                 SettingsChild("Spotify catalog", "spotify_catalog_source", listOf("spotify catalog", "spotify metadata", "spotify source")),
-                SettingsChild("Enable Tidal source", "tidal_enable", listOf("tidal", "enable tidal", "tidal source", "lossless", "hifi")),
-                SettingsChild("Use my Tidal account first", "tidal_account_first", listOf("tidal account first", "my tidal account", "prefer my account")),
+                SettingsChild("Enable Tidal source", "tidal_enable", listOf("tidal", "enable tidal", "tidal source", "lossless", "hifi")) { SearchResultSwitch(TidalEnabledKey, true) },
+                SettingsChild("Use my Tidal account first", "tidal_account_first", listOf("tidal account first", "my tidal account", "prefer my account")) { SearchResultSwitch(TidalAccountFirstKey, true) },
                 SettingsChild("Tidal audio quality", "tidal_audio_quality", listOf("tidal quality", "tidal audio quality", "tidal hifi", "tidal max", "mqa")),
-                SettingsChild("Tidal animated covers", "tidal_animated_covers", listOf("tidal animated covers", "tidal canvas", "tidal video cover", "animated cover")),
+                SettingsChild("Tidal animated covers", "tidal_animated_covers", listOf("tidal animated covers", "tidal canvas", "tidal video cover", "animated cover")) { SearchResultSwitch(TidalAnimatedCoversEnabledKey, false) },
                 SettingsChild("Manage Tidal instances", "tidal_manage_instances", listOf("tidal instances", "tidal server", "tidal endpoint", "manage instances")),
-                SettingsChild("Enable Qobuz source", "qobuz_enable", listOf("qobuz", "enable qobuz", "qobuz source", "hi-res", "flac")),
+                SettingsChild("Enable Qobuz source", "qobuz_enable", listOf("qobuz", "enable qobuz", "qobuz source", "hi-res", "flac")) { SearchResultSwitch(QobuzEnabledKey, false) },
                 SettingsChild("Qobuz audio quality", "qobuz_audio_quality", listOf("qobuz quality", "qobuz audio quality", "hi-res", "flac", "cd quality", "24 bit")),
-                SettingsChild("Enable Qobuz backup server", "qobuz_backup_enable", listOf("qobuz backup", "backup server", "qobuz backup server", "lossless backup", "fallback server", "kouzu")),
+                SettingsChild("Enable Qobuz backup server", "qobuz_backup_enable", listOf("qobuz backup", "backup server", "qobuz backup server", "lossless backup", "fallback server", "kouzu")) { SearchResultSwitch(QobuzBackupEnabledKey, false) },
                 SettingsChild("Backup resolver endpoints", "qobuz_backup_endpoints", listOf("qobuz backup endpoints", "backup mirror", "backup url", "resolver endpoint", "mirror list", "kouzu")),
                 SettingsChild("Manage Qobuz instances", "qobuz_manage_instances", listOf("qobuz instances", "qobuz server", "qobuz endpoint", "manage instances")),
-                SettingsChild("Enable Deezer source", "deezer_enable", listOf("deezer", "enable deezer", "deezer source", "flac")),
+                SettingsChild("Enable Deezer source", "deezer_enable", listOf("deezer", "enable deezer", "deezer source", "flac")) { SearchResultSwitch(DeezerEnabledKey, false) },
                 SettingsChild("Deezer audio quality", "deezer_audio_quality", listOf("deezer quality", "deezer audio quality", "deezer flac")),
-                SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("jiosaavn", "jio saavn", "saavn", "enable jiosaavn", "indian music")),
+                SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("jiosaavn", "jio saavn", "saavn", "enable jiosaavn", "indian music")) { SearchResultSwitch(JioSaavnEnabledKey, false) },
                 SettingsChild("JioSaavn audio quality", "jiosaavn_audio_quality", listOf("jiosaavn quality", "saavn quality", "jiosaavn audio quality")),
                 SettingsChild("Enable Amazon Music source", "amazon_enable", listOf("amazon", "amazon music", "enable amazon", "amazon source", "amazon hd")),
             ),
@@ -341,7 +376,7 @@ fun buildSettingsGroups(
             onClick = { navController.navigate("settings/jiosaavn") },
             hidden = true,
             children = listOf(
-                SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("enable jiosaavn", "jiosaavn source", "turn on jiosaavn")),
+                SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("enable jiosaavn", "jiosaavn source", "turn on jiosaavn")) { SearchResultSwitch(JioSaavnEnabledKey, false) },
                 SettingsChild("JioSaavn audio quality", "jiosaavn_audio_quality", listOf("jiosaavn quality", "saavn audio quality", "jiosaavn bitrate")),
                 SettingsChild("JioSaavn credit", "jiosaavn_credit", listOf("jiosaavn credit", "vivimusic", "jiosaavn about")),
             ),
@@ -378,7 +413,7 @@ fun buildSettingsGroups(
             children = listOf(
                 SettingsChild("Sign in to Deezer", "deezer_login", listOf("deezer login", "deezer sign in", "connect deezer", "deezer arl")),
                 SettingsChild("Sign out of Deezer", "deezer_sign_out", listOf("deezer logout", "deezer sign out", "disconnect deezer")),
-                SettingsChild("Enable Deezer source", "deezer_enable", listOf("enable deezer", "deezer source", "turn on deezer")),
+                SettingsChild("Enable Deezer source", "deezer_enable", listOf("enable deezer", "deezer source", "turn on deezer")) { SearchResultSwitch(DeezerEnabledKey, false) },
                 SettingsChild("Deezer audio quality", "deezer_audio_quality", listOf("deezer quality", "deezer audio quality", "deezer flac")),
             ),
         )
@@ -415,16 +450,15 @@ fun buildSettingsGroups(
             children = listOf(
                 SettingsChild("Lyrics provider", "lyrics_provider", listOf("lyrics provider", "source", "lrclib", "kugou", "netease", "musixmatch", "betterlyrics", "portato", "youlyplus", "unison")),
 
-                SettingsChild("Show lyrics", "show_lyrics", listOf("show lyrics", "display lyrics", "lyrics toggle", "lyrics show")) { SearchResultSwitch(ShowLyricsKey, false) },
                 SettingsChild("Translate lyrics", "translate_lyrics", listOf("translate", "translation", "lyrics translation")) { SearchResultSwitch(TranslateLyricsKey, false) },
                 SettingsChild("Enable translator", "enable_translator", listOf("translator", "translation engine", "lyrics translator")) { SearchResultSwitch(EnableTranslatorKey, false) },
                 SettingsChild("Lyrics font size", "lyrics_font_size", listOf("font size", "lyrics size", "text size", "lyrics text size")),
                 SettingsChild("Lyrics line spacing", "lyrics_line_spacing", listOf("line spacing", "lyrics spacing", "lyrics line gap", "lyrics padding")),
-                SettingsChild("Lyrics line blur", "lyrics_line_blur", listOf("lyrics blur", "line blur", "focus blur")),
-                SettingsChild("Lyrics romanize Japanese", "lyrics_romanize_japanese", listOf("romanize", "japanese", "romaji", "furigana")),
-                SettingsChild("Lyrics romanize Korean", "lyrics_romanize_korean", listOf("romanize", "korean", "romanization")),
-                SettingsChild("Lyrics romanize Chinese", "lyrics_romanize_chinese", listOf("romanize", "chinese", "pinyin")),
-                SettingsChild("Lyrics romanize Hindi", "lyrics_romanize_hindi", listOf("romanize", "hindi", "devanagari")),
+                SettingsChild("Lyrics line blur", "lyrics_line_blur", listOf("lyrics blur", "line blur", "focus blur")) { SearchResultSwitch(LyricsLineBlurKey, false) },
+                SettingsChild("Lyrics romanize Japanese", "lyrics_romanize_japanese", listOf("romanize", "japanese", "romaji", "furigana")) { SearchResultSwitch(LyricsRomanizeJapaneseKey, false) },
+                SettingsChild("Lyrics romanize Korean", "lyrics_romanize_korean", listOf("romanize", "korean", "romanization")) { SearchResultSwitch(LyricsRomanizeKoreanKey, true) },
+                SettingsChild("Lyrics romanize Chinese", "lyrics_romanize_chinese", listOf("romanize", "chinese", "pinyin")) { SearchResultSwitch(LyricsRomanizeChineseKey, true) },
+                SettingsChild("Lyrics romanize Hindi", "lyrics_romanize_hindi", listOf("romanize", "hindi", "devanagari")) { SearchResultSwitch(LyricsRomanizeHindiKey, true) },
                 SettingsChild("Lyrics romanize other languages", "lyrics_romanize_other", listOf("romanize", "other languages", "arabic", "thai", "cyrillic")),
                 SettingsChild("Lyrics click to seek", "lyrics_click", listOf("click lyrics", "tap lyrics", "seek lyrics")) { SearchResultSwitch(LyricsClickKey, false) },
                 SettingsChild("Lyrics auto-scroll", "lyrics_scroll", listOf("scroll", "auto scroll", "lyrics scroll")) { SearchResultSwitch(LyricsScrollKey, true) },
@@ -446,9 +480,7 @@ fun buildSettingsGroups(
                 SettingsChild("Providers", "providers", listOf("lyrics providers", "providers", "lyrics sources", "which lyrics provider")),
                 SettingsChild("Romanization", "romanization", listOf("romanization", "romanisation", "romanize", "romaji", "transliteration")),
                 SettingsChild("Language packs", "language_packs", listOf("language pack", "language packs", "romanization data", "dictionary")),
-                SettingsChild("Enable Tidal lyrics", "enable_tidal_lyrics", listOf("tidal lyrics", "enable tidal lyrics", "tidal lyric provider")),
-                SettingsChild("Enable Deezer lyrics", "enable_deezer_lyrics", listOf("deezer lyrics", "enable deezer lyrics", "deezer lyric provider")),
-                SettingsChild("Musixmatch (experimental)", "enable_musixmatch_experimental", listOf("musixmatch", "musixmatch experimental", "musixmatch lyrics")),
+                SettingsChild("Musixmatch (experimental)", "enable_musixmatch_experimental", listOf("musixmatch", "musixmatch experimental", "musixmatch lyrics")) { SearchResultSwitch(EnableMusixmatchExperimentalKey, false) },
                 SettingsChild("Lyrics text size", "lyrics_text_size", listOf("lyrics text size", "lyrics font size", "lyrics size", "bigger lyrics")),
             ),
         )
@@ -472,9 +504,7 @@ fun buildSettingsGroups(
                 SettingsChild("Enable KuGou lyrics provider", "enable_kugou", listOf("kugou", "kugou lyrics", "chinese lyrics")),
                 SettingsChild("Enable Unison lyrics", "enable_unison_lyrics", listOf("unison", "unison lyrics")),
 
-                SettingsChild("Enable Tidal lyrics", "enable_tidal_lyrics", listOf("tidal lyrics", "enable tidal lyrics")),
-                SettingsChild("Enable Deezer lyrics", "enable_deezer_lyrics", listOf("deezer lyrics", "enable deezer lyrics")),
-                SettingsChild("Musixmatch (experimental)", "enable_musixmatch_experimental", listOf("musixmatch", "musixmatch experimental")),
+                SettingsChild("Musixmatch (experimental)", "enable_musixmatch_experimental", listOf("musixmatch", "musixmatch experimental")) { SearchResultSwitch(EnableMusixmatchExperimentalKey, false) },
                 SettingsChild("Preferred lyrics provider", "set_first_lyrics_provider", listOf("preferred lyrics provider", "first lyrics provider", "lyrics priority")),
             ),
         )
@@ -490,10 +520,10 @@ fun buildSettingsGroups(
             onClick = { navController.navigate("settings/lyrics/romanisation") },
             hidden = true,
             children = listOf(
-                SettingsChild("Romanize japanese lyrics", "lyrics_romanize_japanese", listOf("romanize japanese", "romaji", "furigana", "japanese lyrics")),
-                SettingsChild("Romanize korean lyrics", "lyrics_romanize_korean", listOf("romanize korean", "hangul", "korean lyrics")),
-                SettingsChild("Romanize chinese lyrics", "lyrics_romanize_chinese", listOf("romanize chinese", "pinyin", "chinese lyrics")),
-                SettingsChild("Romanize hindi lyrics", "lyrics_romanize_hindi", listOf("romanize hindi", "devanagari", "hindi lyrics")),
+                SettingsChild("Romanize japanese lyrics", "lyrics_romanize_japanese", listOf("romanize japanese", "romaji", "furigana", "japanese lyrics")) { SearchResultSwitch(LyricsRomanizeJapaneseKey, false) },
+                SettingsChild("Romanize korean lyrics", "lyrics_romanize_korean", listOf("romanize korean", "hangul", "korean lyrics")) { SearchResultSwitch(LyricsRomanizeKoreanKey, true) },
+                SettingsChild("Romanize chinese lyrics", "lyrics_romanize_chinese", listOf("romanize chinese", "pinyin", "chinese lyrics")) { SearchResultSwitch(LyricsRomanizeChineseKey, true) },
+                SettingsChild("Romanize hindi lyrics", "lyrics_romanize_hindi", listOf("romanize hindi", "devanagari", "hindi lyrics")) { SearchResultSwitch(LyricsRomanizeHindiKey, true) },
                 SettingsChild("Romanize other non-latin lyrics", "lyrics_romanize_other_languages", listOf("romanize other", "arabic", "thai", "cyrillic", "other languages")),
             ),
         )
@@ -513,8 +543,7 @@ fun buildSettingsGroups(
                 SettingsChild("Hide video", "hide_video", listOf("video", "hide video", "music video", "mv")) { SearchResultSwitch(HideVideoKey, false) },
                 SettingsChild("Enable video", "enable_video", listOf("video", "music video", "mv", "enable video")),
                 SettingsChild("Quick picks", "quick_picks", listOf("quick picks", "quick mix", "smart mix", "recommendations")),
-                SettingsChild("Progressive playback", "progressive_playback", listOf("progressive", "gapless", "seamless")),
-                SettingsChild("Allow age-restricted content", "allow_age_restricted", listOf("age restricted", "allow age restricted", "mature content", "18+", "restricted")),
+                SettingsChild("Allow age-restricted content", "allow_age_restricted", listOf("age restricted", "allow age restricted", "mature content", "18+", "restricted")) { SearchResultSwitch(AllowAgeRestrictedKey, false) },
                 SettingsChild("Playlist recommendation source", "you_might_like_source", listOf("recommendation source", "you might like", "playlist recommendation", "suggestions source")),
                 SettingsChild("AI content filter", "ai_content_filter", listOf("ai content filter", "ai filter", "ai generated", "aislist", "filter ai music")),
                 SettingsChild("Hide AI-generated content", "ai_content_filter_hide", listOf("hide ai generated", "hide ai music", "ai content hide", "block ai")),
@@ -549,11 +578,9 @@ fun buildSettingsGroups(
                 SettingsChild("Clear listen history", "clear_listen_history", listOf("clear history", "delete history", "reset history")),
                 SettingsChild("Pause search history", "pause_search_history", listOf("pause search", "stop search history", "private search")) { SearchResultSwitch(PauseSearchHistoryKey, false) },
                 SettingsChild("Clear search history", "clear_search_history", listOf("clear search", "delete search", "reset search")),
-                SettingsChild("Sync playback to YouTube history", "sync_yt_history", listOf("youtube history", "sync history", "playback history")) { SearchResultSwitch(SyncPlaybackToYouTubeHistoryKey, false) },
                 SettingsChild("Haptics", "haptics", listOf("haptic", "vibration", "haptic feedback", "vibrate")) { SearchResultSwitch(EnableHapticFeedbackKey, true) },
                 SettingsChild("Disable screenshot", "disable_screenshot", listOf("screenshot", "screen capture", "privacy", "no screenshot")) { SearchResultSwitch(DisableScreenshotKey, false) },
-                SettingsChild("Network metered", "network_metered", listOf("metered", "mobile data", "cellular", "data saver")) { SearchResultSwitch(NetworkMeteredKey, false) },
-                SettingsChild("Show tags in library", "show_tags_in_library", listOf("tags", "library tags", "show tags")),
+                SettingsChild("Show tags in library", "show_tags_in_library", listOf("tags", "library tags", "show tags")) { SearchResultSwitch(ShowTagsInLibraryKey, false) },
                 SettingsChild("Low data mode", "low_data_mode", listOf("low data", "data saver", "save data", "metered", "data mode")) { SearchResultSwitch(LowDataModeKey, true) },
                 SettingsChild("Force high refresh rate", "force_high_refresh_rate", listOf("refresh rate", "high refresh", "120hz", "90hz", "smooth")) { SearchResultSwitch(ForceHighRefreshRateKey, false) },
                 SettingsChild("Open supported links by default", "open_supported_links", listOf("open links", "supported links", "default links", "deep link", "default browser app")),
@@ -696,7 +723,7 @@ fun buildSettingsGroups(
             onClick = { navController.navigate("settings/qobuz") },
             hidden = true,
             children = listOf(
-                SettingsChild("Enable Qobuz source", "qobuz_enable", listOf("enable qobuz", "qobuz source", "turn on qobuz")),
+                SettingsChild("Enable Qobuz source", "qobuz_enable", listOf("enable qobuz", "qobuz source", "turn on qobuz")) { SearchResultSwitch(QobuzEnabledKey, false) },
                 SettingsChild("Qobuz audio quality", "qobuz_audio_quality", listOf("qobuz quality", "hi-res", "flac", "cd quality", "24 bit")),
                 SettingsChild("Sign in with Qobuz (web)", "qobuz_login_web", listOf("qobuz login", "qobuz sign in", "qobuz web login", "connect qobuz")),
                 SettingsChild("Add tokens (paste)", "qobuz_add_tokens", listOf("add qobuz tokens", "qobuz token", "app secret", "app id", "paste tokens")),
@@ -749,7 +776,7 @@ fun buildSettingsGroups(
                 SettingsChild("AI model", "ai_model", listOf("model", "ai model", "gpt", "gemini model", "claude model")),
                 SettingsChild("Test API", "ai_test_api", listOf("test", "test api", "verify", "test connection", "ai test")),
                 SettingsChild("Hide AI mix", "hide_ai_mix", listOf("hide ai", "ai mix", "smart mix", "hide mix")) { SearchResultSwitch(HideAiMixKey, false) },
-                SettingsChild("Automatic translation", "auto_translate_lyrics", listOf("automatic translation", "auto translate", "auto translate lyrics", "translate automatically")),
+                SettingsChild("Automatic translation", "auto_translate_lyrics", listOf("automatic translation", "auto translate", "auto translate lyrics", "translate automatically")) { SearchResultSwitch(AutoTranslateLyricsKey, false) },
                 SettingsChild("Don't auto translate these languages", "auto_translate_excluded_languages", listOf("excluded languages", "skip translation", "do not translate", "translation exclusions")),
                 SettingsChild("Target language", "translate_language", listOf("target language", "translate to", "translation language")),
                 SettingsChild("Translation mode", "translate_mode", listOf("translation mode", "translate mode", "translation style")),
@@ -777,9 +804,9 @@ fun buildSettingsGroups(
                 SettingsChild("Proxy type", "proxy_type", listOf("proxy type", "socks5", "http proxy type", "proxy protocol")),
                 SettingsChild("Proxy username", "proxy_username", listOf("proxy username", "proxy auth", "proxy credentials", "proxy login")),
                 SettingsChild("Proxy password", "proxy_password", listOf("proxy password", "proxy auth", "proxy credentials", "proxy secret")),
-                SettingsChild("Bypass proxy for streams", "stream_bypass_proxy", listOf("bypass proxy", "stream proxy", "stream bypass", "skip proxy for streams")),
+                SettingsChild("Bypass proxy for streams", "stream_bypass_proxy", listOf("bypass proxy", "stream proxy", "stream bypass", "skip proxy for streams")) { SearchResultSwitch(StreamBypassProxyKey, false) },
                 SettingsChild("Test proxy connection", "test_proxy", listOf("test proxy", "verify proxy", "check proxy", "proxy test")),
-                SettingsChild("DNS over HTTPS", "dns_over_https", listOf("dns", "dns over https", "doh", "encrypted dns", "secure dns")),
+                SettingsChild("DNS over HTTPS", "dns_over_https", listOf("dns", "dns over https", "doh", "encrypted dns", "secure dns")) { SearchResultSwitch(EnableDnsOverHttpsKey, false) },
                 SettingsChild("DNS provider", "dns_provider", listOf("dns provider", "dns server", "dns resolver", "dns service")),
                 SettingsChild("DNS custom URL", "dns_custom_url", listOf("dns custom url", "custom dns", "dns endpoint", "dns url")),
                 SettingsChild("IP rotation", "ip_rotation", listOf("ip rotation", "rotate ip", "ip pool", "ip cycling")),

@@ -479,7 +479,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             PreferenceGroup(
-                modifier = positions.modifierFor("discord_account"),
+                modifier = positions.modifierFor("discord_account", "discord_experimental"),
                 title = stringResource(R.string.account),
             ) {
                 item {

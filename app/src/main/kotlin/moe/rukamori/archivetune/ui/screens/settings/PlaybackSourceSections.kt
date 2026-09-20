@@ -510,7 +510,7 @@ internal fun PlaybackSourceSections(
         }
 
         item {
-            SourceCheckRow(source = AudioSourceType.TIDAL)
+            SourceCheckRow(source = AudioSourceType.TIDAL, positions = positions)
         }
     }
 
@@ -555,7 +555,7 @@ internal fun PlaybackSourceSections(
         }
 
         item {
-            SourceCheckRow(source = AudioSourceType.QOBUZ)
+            SourceCheckRow(source = AudioSourceType.QOBUZ, positions = positions)
         }
     }
 
@@ -585,7 +585,7 @@ internal fun PlaybackSourceSections(
         }
 
         item {
-            SourceCheckRow(source = AudioSourceType.QOBUZ_BACKUP)
+            SourceCheckRow(source = AudioSourceType.QOBUZ_BACKUP, positions = positions)
         }
     }
 
@@ -675,7 +675,7 @@ internal fun PlaybackSourceSections(
         }
 
         item {
-            SourceCheckRow(source = AudioSourceType.APPLE)
+            SourceCheckRow(source = AudioSourceType.APPLE, positions = positions)
         }
     }
 
@@ -710,7 +710,7 @@ internal fun PlaybackSourceSections(
         }
 
         item {
-            SourceCheckRow(source = AudioSourceType.DEEZER)
+            SourceCheckRow(source = AudioSourceType.DEEZER, positions = positions)
         }
     }
 
@@ -779,13 +779,16 @@ internal fun PlaybackSourceSections(
         }
 
         item {
-            SourceCheckRow(source = AudioSourceType.JIOSAAVN)
+            SourceCheckRow(source = AudioSourceType.JIOSAAVN, positions = positions)
         }
     }
 }
 
 @Composable
-private fun SourceCheckRow(source: AudioSourceType) {
+private fun SourceCheckRow(
+    source: AudioSourceType,
+    positions: PreferencePositions,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var checking by remember { mutableStateOf(false) }
@@ -798,6 +801,7 @@ private fun SourceCheckRow(source: AudioSourceType) {
     val cached = cachedResults[source]
 
     PreferenceEntry(
+        modifier = positions.modifierFor("check_source"),
         title = { Text(stringResource(R.string.check_source)) },
         description =
             if (cached == null) {
