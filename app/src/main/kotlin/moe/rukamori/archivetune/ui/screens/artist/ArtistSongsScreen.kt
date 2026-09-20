@@ -10,6 +10,7 @@ package moe.rukamori.archivetune.ui.screens.artist
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -38,7 +39,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -57,6 +60,9 @@ import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.ui.component.HideOnScrollFAB
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.screens.GlassScreenHeaderOverlay
+import moe.rukamori.archivetune.ui.screens.glassHeaderSource
+import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
@@ -96,12 +102,29 @@ fun ArtistSongsScreen(
     val songs by viewModel.songs.collectAsStateWithLifecycle()
     val lazyListState = rememberLazyListState()
 
+    val glassHeader = rememberGlassScreenHeader()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+    val baseContentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
+    val listContentPadding =
+        PaddingValues(
+            start = baseContentPadding.calculateStartPadding(LocalLayoutDirection.current),
+            top =
+                if (glassHeader.liquidGlassActive) {
+                    systemBarsTopPadding + 72.dp
+                } else {
+                    baseContentPadding.calculateTopPadding()
+                },
+            end = baseContentPadding.calculateEndPadding(LocalLayoutDirection.current),
+            bottom = baseContentPadding.calculateBottomPadding(),
+        )
+
     Box(
         modifier = Modifier.fillMaxSize(),
     ) {
         LazyColumn(
             state = lazyListState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+            contentPadding = listContentPadding,
+            modifier = Modifier.glassHeaderSource(glassHeader),
         ) {
             item(
                 key = "header",
@@ -194,23 +217,32 @@ fun ArtistSongsScreen(
             }
         }
 
-        TopAppBar(
-            windowInsets =
-                WindowInsets(top = LocalStableSystemBarsTopPadding.current)
-                    .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
-            title = { Text(artist?.artist?.name.orEmpty()) },
-            navigationIcon = {
-                IconButton(
-                    onClick = navController::navigateUp,
-                    onLongClick = navController::backToMain,
-                ) {
-                    Icon(
-                        painterResource(R.drawable.arrow_back),
-                        contentDescription = null,
-                    )
-                }
-            },
-        )
+        if (glassHeader.liquidGlassActive) {
+            GlassScreenHeaderOverlay(
+                header = glassHeader,
+                title = stringResource(R.string.songs),
+                onBack = navController::navigateUp,
+                onBackLongClick = navController::backToMain,
+            )
+        } else {
+            TopAppBar(
+                windowInsets =
+                    WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                        .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
+                title = { Text(artist?.artist?.name.orEmpty()) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
+            )
+        }
 
         HideOnScrollFAB(
             lazyListState = lazyListState,
