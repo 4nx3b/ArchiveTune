@@ -145,6 +145,12 @@ class ListenTogetherClient @Inject constructor(
         private const val MAX_LOG_ENTRIES = 500
         private const val SESSION_GRACE_PERIOD_MS = 10 * 60 * 1000L
 
+        // How long after sending a create/join an invalid_message reply is still
+        // considered a rejection of that action (and worth a protobuf retry), and
+        // how long to wait before re-sending it.
+        private const val ROOM_ACTION_RETRY_WINDOW_MS = 10_000L
+        private const val ROOM_ACTION_RETRY_DELAY_MS = 250L
+
         private const val NOTIFICATION_CHANNEL_ID = "listen_together_channel"
 
         const val ACTION_APPROVE_JOIN = "moe.rukamori.archivetune.LISTEN_TOGETHER_APPROVE_JOIN"
@@ -332,6 +338,10 @@ class ListenTogetherClient @Inject constructor(
 
     private var pendingAction: PendingAction? = null
 
+    private var lastRoomAction: PendingAction? = null
+    private var lastRoomActionFormat: MessageFormat? = null
+    private var lastRoomActionSentAtMs: Long = 0
+
     private var wakeLock: PowerManager.WakeLock? = null
 
     private val joinRequestNotifications = mutableMapOf<String, Int>()
@@ -423,8 +433,13 @@ class ListenTogetherClient @Inject constructor(
         val serverUrl = getServerUrl()
         log(LogLevel.INFO, "Connecting to server", serverUrl)
 
-        codec.format = MessageFormat.JSON
-        codec.compressionEnabled = false
+        // metroserver (The Meowery) is protobuf-only and answers JSON frames with
+        // an invalid_message error, so start the codec in the server's own protocol.
+        val serverProtocol = ListenTogetherServers.findByUrl(serverUrl)?.protocol ?: ListenTogetherProtocol.JSON
+        codec.format =
+            if (serverProtocol == ListenTogetherProtocol.PROTOBUF) MessageFormat.PROTOBUF else MessageFormat.JSON
+        codec.compressionEnabled = serverProtocol == ListenTogetherProtocol.PROTOBUF
+        log(LogLevel.INFO, "Codec configured", "${codec.format.name}, compression=${codec.compressionEnabled}")
 
         val request = Request.Builder()
             .url(serverUrl)
@@ -473,17 +488,48 @@ class ListenTogetherClient @Inject constructor(
     private fun executePendingAction() {
         val action = pendingAction ?: return
         pendingAction = null
+        executeRoomAction(action)
+    }
 
+    private fun executeRoomAction(action: PendingAction) {
         val avatarIndex = context.dataStore.get(ListenTogetherAvatarIndexKey, 0)
         when (action) {
             is PendingAction.CreateRoom -> {
                 log(LogLevel.INFO, "Executing pending create room", action.username)
+                lastRoomAction = action
+                lastRoomActionFormat = codec.format
+                lastRoomActionSentAtMs = System.currentTimeMillis()
                 sendMessage(MessageTypes.CREATE_ROOM, CreateRoomPayload(action.username, avatarIndex))
             }
             is PendingAction.JoinRoom -> {
                 log(LogLevel.INFO, "Executing pending join room", "${action.roomCode} as ${action.username}")
+                lastRoomAction = action
+                lastRoomActionFormat = codec.format
+                lastRoomActionSentAtMs = System.currentTimeMillis()
                 sendMessage(MessageTypes.JOIN_ROOM, JoinRoomPayload(action.roomCode.uppercase(), action.username, avatarIndex))
             }
+        }
+    }
+
+    /**
+     * Safety net for servers whose protocol was misconfigured or unknown: if the
+     * create/join was sent as JSON but the server answered in protobuf (the
+     * reactive upgrade in [handleMessage] already flipped the codec), re-send the
+     * same action once in protobuf so the room code still arrives.
+     */
+    private fun maybeRetryRoomActionAfterProtocolUpgrade() {
+        val action = lastRoomAction ?: return
+        lastRoomAction = null
+
+        val sentAsJson = lastRoomActionFormat == MessageFormat.JSON
+        val nowUpgraded = codec.format == MessageFormat.PROTOBUF
+        val recent = System.currentTimeMillis() - lastRoomActionSentAtMs < ROOM_ACTION_RETRY_WINDOW_MS
+        if (!sentAsJson || !nowUpgraded || !recent) return
+
+        log(LogLevel.WARNING, "Create/join was rejected as JSON after a protobuf upgrade", "Retrying in protobuf")
+        scope.launch {
+            delay(ROOM_ACTION_RETRY_DELAY_MS)
+            executeRoomAction(action)
         }
     }
 
@@ -725,6 +771,7 @@ class ListenTogetherClient @Inject constructor(
             when (msgType) {
                 MessageTypes.ROOM_CREATED -> {
                     val payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? RoomCreatedPayload ?: return
+                    lastRoomAction = null
                     _userId.value = payload.userId
                     _role.value = RoomRole.HOST
                     sessionToken = payload.sessionToken
@@ -788,6 +835,7 @@ class ListenTogetherClient @Inject constructor(
 
                 MessageTypes.JOIN_APPROVED -> {
                     val payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? JoinApprovedPayload ?: return
+                    lastRoomAction = null
                     _userId.value = payload.userId
                     _role.value = RoomRole.GUEST
                     sessionToken = payload.sessionToken
@@ -1007,6 +1055,11 @@ class ListenTogetherClient @Inject constructor(
                     log(LogLevel.ERROR, "Server error", "${payload.code}: ${payload.message}")
 
                     when (payload.code) {
+                        "invalid_message" -> {
+                            // The server could not parse our frame — typically a JSON
+                            // create/join sent to a protobuf-only server.
+                            maybeRetryRoomActionAfterProtocolUpgrade()
+                        }
                         "session_not_found" -> {
                             if (storedRoomCode != null && storedUsername != null && !wasHost) {
                                 log(LogLevel.WARNING, "Session expired on server",
@@ -1267,6 +1320,13 @@ class ListenTogetherClient @Inject constructor(
             return
         }
 
+        // metroserver (The Meowery) has no chat relay; its codec is protobuf-only
+        // and ChatPayload has no protobuf mapping, so say so instead of throwing.
+        if (codec.format == MessageFormat.PROTOBUF) {
+            log(LogLevel.WARNING, "Chat is not supported by this server", null)
+            return
+        }
+
         val finalMessage = if (replyTo != null) {
             val metadata = "${replyTo.username}|${replyTo.message}"
             val encoded = Base64.encodeToString(metadata.toByteArray(), Base64.NO_WRAP)
@@ -1286,6 +1346,10 @@ class ListenTogetherClient @Inject constructor(
     fun sendCustomAvatar(bytes: ByteArray) {
         if (!isInRoom) {
             log(LogLevel.ERROR, "Cannot broadcast custom avatar", "Not in room")
+            return
+        }
+        if (codec.format == MessageFormat.PROTOBUF) {
+            log(LogLevel.WARNING, "Custom avatars are not supported by this server", null)
             return
         }
         sendMessage(
