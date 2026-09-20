@@ -409,7 +409,11 @@ fun Queue(
         state = state,
         backgroundColor = Color.Unspecified,
         modifier = modifier,
-        onCollapsedContentClick = openQueue,
+        // Tapping the collapsed hint strip over the navigation bar must be a no-op:
+        // the queue opens only from the player style's own queue controls (or the
+        // swipe-up gesture, which routes to the style's inline queue). Passing an
+        // explicit no-op — a null would fall back to expanding this old sheet.
+        onCollapsedContentClick = {},
         collapsedContent = {
             when (playerDesignStyle) {
                 PlayerDesignStyle.V5 -> {
