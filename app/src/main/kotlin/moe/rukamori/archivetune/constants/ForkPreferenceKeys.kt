@@ -41,3 +41,17 @@ val ListenTogetherBlockedUsersKey = stringPreferencesKey("listenTogetherBlockedU
 
 val ListenTogetherUsernameKey = stringPreferencesKey("listenTogetherUsername")
 val ListenTogetherInTopBarKey = booleanPreferencesKey("listenTogetherInTopBar")
+
+val TikTokMainLyricsEnabledKey = booleanPreferencesKey("tiktokMainLyricsEnabled")
+val TikTokMainLyricsSecondaryKey = stringPreferencesKey("tiktokMainLyricsSecondary")
+
+enum class TikTokLyricsSecondary {
+    TRANSLATION,
+    ROMANIZATION,
+}
+
+fun TikTokLyricsSecondary.toDisplayLabel(): String =
+    when (this) {
+        TikTokLyricsSecondary.TRANSLATION -> "Translation"
+        TikTokLyricsSecondary.ROMANIZATION -> "Romanisation"
+    }

@@ -386,6 +386,19 @@ internal fun TikTokSongPage(
                 }
             }
 
+            if (!immersive && isCurrentPage && !lyricsOpen) {
+                TikTokCurrentLyricLine(
+                    playerConnection = playerConnection,
+                    positionProvider = sliderPositionProvider,
+                    lyricsSyncOffset = lyricsSyncOffset,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp)
+                            .padding(bottom = 4.dp),
+                )
+            }
+
             if (!immersive) {
                 TikTokSongInfo(
                     pageMetadata = pageMetadata,

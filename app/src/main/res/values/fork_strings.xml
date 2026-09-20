@@ -120,8 +120,8 @@
     <string name="lastfm_player_unavailable">Player not ready. Try again in a moment.</string>
 
     <string name="album_page">Album page</string>
-    <string name="album_canvas_enabled">Enable canvas in album and playlist page</string>
-    <string name="album_canvas_enabled_desc">Play the looping motion artwork behind the album and playlist headers, the way Apple Music does. Turn off to always show the static cover.</string>
+    <string name="album_canvas_enabled">Enable canvas in album, playlist and artist page</string>
+    <string name="album_canvas_enabled_desc">Play the looping motion artwork behind the album, playlist and artist headers, the way Apple Music does. Turn off to always show the static cover.</string>
 
     <string name="source_qobuz_backup_search_hint">Search the kouzu.in backup catalogue</string>
 
@@ -173,3 +173,10 @@
     <string name="sponsor_block_subscription_reminders">Subscription reminders</string>
     <string name="sponsor_block_hooks">Hook/Greetings</string>
 </resources>
+
+    <string name="tiktok_main_lyrics">Show lyrics on main player</string>
+    <string name="tiktok_main_lyrics_desc">Display the current line with karaoke animation and line scroll on the TikTok player screen</string>
+    <string name="tiktok_main_lyrics_secondary">Secondary lyrics line</string>
+    <string name="tiktok_main_lyrics_secondary_desc">Choose whether the second line under the current lyric shows the translation or the romanisation — only one can be shown at a time</string>
+    <string name="tiktok_lyrics_secondary_translation">Translation</string>
+    <string name="tiktok_lyrics_secondary_romanization">Romanisation</string>

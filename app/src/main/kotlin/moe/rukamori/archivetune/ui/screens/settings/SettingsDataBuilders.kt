@@ -22,6 +22,7 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
+import moe.rukamori.archivetune.constants.TikTokMainLyricsEnabledKey
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.SpotifyCanvasKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
@@ -169,16 +170,6 @@ fun buildSettingsGroups(
             keywords = listOf("stats", "statistics", "listening", "history", "top", "most played", "time"),
             onClick = { navController.navigate("stats") },
         )
-    val listenTogether =
-        SettingsItem(
-            key = "listen_together",
-            icon = painterResource(R.drawable.diversity_listen_together),
-            title = stringResource(R.string.listen_together),
-            subtitle = stringResource(R.string.setting_listen_together_desc),
-            accentColor = MaterialTheme.colorScheme.primary,
-            keywords = listOf("listen together", "room", "shared playback", "sync playback", "listen party", "group listening", "chat", "friends"),
-            onClick = { navController.navigate("listen_together") },
-        )
     val appearance =
         SettingsItem(
             key = "appearance",
@@ -203,8 +194,10 @@ fun buildSettingsGroups(
                 SettingsChild("Use system font", "use_system_font", listOf("system font", "default font", "roboto")) { SearchResultSwitch(UseSystemFontKey, false) },
                 SettingsChild("Thumbnail corner radius", "thumbnail_corner_radius", listOf("thumbnail corner", "corner radius", "rounded thumbnail", "thumbnail shape")),
                 SettingsChild("Crop thumbnail to square", "crop_thumbnail_to_square", listOf("crop thumbnail", "square thumbnail", "thumbnail crop")) { SearchResultSwitch(CropThumbnailToSquareKey, false) },
-                SettingsChild("Enable canvas in album and playlist page", "album_canvas_enabled", listOf("album canvas", "playlist canvas", "canvas in album", "canvas in playlist", "canvas page", "motion artwork", "animated cover", "album header video", "playlist header video")) { SearchResultSwitch(AlbumCanvasEnabledKey, true) },
+                SettingsChild("Enable canvas in album, playlist and artist page", "album_canvas_enabled", listOf("album canvas", "playlist canvas", "artist canvas", "canvas in album", "canvas in playlist", "canvas in artist", "canvas page", "motion artwork", "animated cover", "album header video", "playlist header video", "artist header video")) { SearchResultSwitch(AlbumCanvasEnabledKey, true) },
                 SettingsChild("Player design style", "player_design_style", listOf("player design", "player layout", "player style")),
+                SettingsChild("Show lyrics on main player (TikTok)", "tiktok_main_lyrics", listOf("tiktok lyrics", "main player lyrics", "current line lyrics", "karaoke line", "tiktok player")) { SearchResultSwitch(TikTokMainLyricsEnabledKey, false) },
+                SettingsChild("Secondary lyrics line (TikTok)", "tiktok_main_lyrics_secondary", listOf("tiktok translation", "tiktok romanisation", "tiktok romanization", "secondary lyrics line", "lyrics translation or romanisation")),
                 SettingsChild("Player background style", "player_background_style", listOf("player background", "player bg", "background style")),
                 SettingsChild("Lyrics background style", "lyrics_background_style", listOf("lyrics background", "lyrics bg")),
                 SettingsChild("Mini player background style", "mini_player_background_style", listOf("mini player", "mini player background")),
@@ -1030,7 +1023,7 @@ fun buildSettingsGroups(
     return listOf(
         SettingsGroup(
             title = stringResource(R.string.settings),
-            items = listOf(account, stats, listenTogether),
+            items = listOf(account, stats),
         ),
         SettingsGroup(
             title = stringResource(R.string.settings_section_player_content),

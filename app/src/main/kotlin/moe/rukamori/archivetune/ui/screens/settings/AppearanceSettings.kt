@@ -100,6 +100,9 @@ import moe.rukamori.archivetune.constants.PlayerButtonsStyle
 import moe.rukamori.archivetune.constants.PlayerButtonsStyleKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
+import moe.rukamori.archivetune.constants.TikTokLyricsSecondary
+import moe.rukamori.archivetune.constants.TikTokMainLyricsEnabledKey
+import moe.rukamori.archivetune.constants.TikTokMainLyricsSecondaryKey
 import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
@@ -163,6 +166,16 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         rememberEnumPreference(
             PlayerDesignStyleKey,
             defaultValue = PlayerDesignStyle.V4,
+        )
+    val (tikTokMainLyrics, onTikTokMainLyricsChange) =
+        rememberPreference(
+            TikTokMainLyricsEnabledKey,
+            defaultValue = false,
+        )
+    val (tikTokLyricsSecondary, onTikTokLyricsSecondaryChange) =
+        rememberEnumPreference(
+            TikTokMainLyricsSecondaryKey,
+            defaultValue = TikTokLyricsSecondary.TRANSLATION,
         )
     val (_, onAppleMusicExperienceChange) =
         rememberPreference(
@@ -826,6 +839,41 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                 }
                             },
                         )
+                    }
+                }
+
+                if (playerDesignStyle == PlayerDesignStyle.TIKTOK) {
+                    item {
+                        Column(modifier = positions.modifierFor("tiktok_main_lyrics")) {
+                            SwitchPreference(
+                                title = { Text(stringResource(R.string.tiktok_main_lyrics)) },
+                                description = stringResource(R.string.tiktok_main_lyrics_desc),
+                                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                                checked = tikTokMainLyrics,
+                                onCheckedChange = onTikTokMainLyricsChange,
+                            )
+                        }
+                    }
+                    if (tikTokMainLyrics) {
+                        item {
+                            Column(modifier = positions.modifierFor("tiktok_main_lyrics_secondary")) {
+                                EnumListPreference(
+                                    title = { Text(stringResource(R.string.tiktok_main_lyrics_secondary)) },
+                                    description = stringResource(R.string.tiktok_main_lyrics_secondary_desc),
+                                    icon = { Icon(painterResource(R.drawable.translate), null) },
+                                    selectedValue = tikTokLyricsSecondary,
+                                    onValueSelected = onTikTokLyricsSecondaryChange,
+                                    valueText = {
+                                        when (it) {
+                                            TikTokLyricsSecondary.TRANSLATION ->
+                                                stringResource(R.string.tiktok_lyrics_secondary_translation)
+                                            TikTokLyricsSecondary.ROMANIZATION ->
+                                                stringResource(R.string.tiktok_lyrics_secondary_romanization)
+                                        }
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
 
