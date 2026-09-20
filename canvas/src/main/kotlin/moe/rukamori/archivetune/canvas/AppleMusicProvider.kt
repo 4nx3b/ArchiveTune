@@ -138,6 +138,15 @@ object AppleMusicProvider {
      */
     suspend fun currentDevToken(): String? = ensureTokenFresh()?.trim()?.takeIf { it.isNotBlank() }
 
+    /** Non-suspend access to the last scraped web token, when it is still unexpired. */
+    fun cachedScrapedDevToken(): String? {
+        val token = appleMusicToken.trim()
+        if (token.isBlank()) return null
+        val expSec = appleMusicTokenExpAtSec
+        if (expSec != 0L && expSec <= System.currentTimeMillis() / 1000L) return null
+        return token
+    }
+
     suspend fun refreshToken(): String? =
         tokenRefreshMutex.withLock {
             appleMusicTokenLastRefreshAtMs = System.currentTimeMillis()
@@ -154,7 +163,12 @@ object AppleMusicProvider {
 
     private suspend fun ensureTokenFresh(): String {
         devTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { userDevToken ->
-            return userDevToken
+            val expSec = decodeJwtExpSec(userDevToken)
+            val nowSec = System.currentTimeMillis() / 1000L
+            if (expSec == 0L || expSec > nowSec) {
+                return userDevToken
+            }
+            Log.w("Apple Music user dev token expired (exp=${expSec}s) — falling back to the refreshed web token")
         }
         val nowSec = System.currentTimeMillis() / 1000L
         val isExpired = appleMusicTokenExpAtSec == 0L || appleMusicTokenExpAtSec <= nowSec

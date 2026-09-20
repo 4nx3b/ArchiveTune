@@ -101,9 +101,35 @@ object AppleMusicAudioProvider {
 
     fun devToken(): String? = AppleMusicProvider.devTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }
 
+    /**
+     * A dev token that is actually usable: the user's stored token while unexpired,
+     * otherwise the last scraped web token. An expired user token used to flow into the
+     * search, the stream build AND the Widevine licence callback — every call 401'd and
+     * the source fell back to YouTube opus even with a logged-in account and pool accounts.
+     */
+    fun usableDevToken(): String? {
+        val userToken = devToken()
+        if (userToken != null) {
+            val expSec = devTokenExpSec(userToken)
+            val nowSec = System.currentTimeMillis() / 1000L
+            if (expSec == 0L || expSec > nowSec) return userToken
+        }
+        AppleMusicProvider.cachedScrapedDevToken()?.let { return it }
+        return userToken
+    }
+
+    private fun devTokenExpSec(jwt: String): Long =
+        runCatching {
+            val payload = jwt.split(".").getOrNull(1) ?: return@runCatching 0L
+            val normalized = payload.replace('-', '+').replace('_', '/')
+            val padded = normalized + "=".repeat((4 - normalized.length % 4) % 4)
+            val json = String(java.util.Base64.getDecoder().decode(padded))
+            """"exp"\s*:\s*(\d+)""".toRegex().find(json)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+        }.getOrDefault(0L)
+
     fun mediaUserToken(): String? = AppleMusicProvider.mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }
 
-    fun isAvailable(): Boolean = devToken() != null && mediaUserToken() != null
+    fun isAvailable(): Boolean = usableDevToken() != null && mediaUserToken() != null
 
     suspend fun verifyTokens(
         mediaToken: String,
@@ -152,7 +178,7 @@ object AppleMusicAudioProvider {
         withContext(Dispatchers.IO) {
             if (query.isBlank()) return@withContext emptyList()
             val devToken =
-                devToken() ?: AppleMusicProvider.currentDevToken() ?: return@withContext emptyList()
+                usableDevToken() ?: AppleMusicProvider.currentDevToken() ?: return@withContext emptyList()
             var ringEntries = accountRing()
             if (ringEntries.isEmpty()) {
                 ringEntries = listOf(RingEntry("", null))
