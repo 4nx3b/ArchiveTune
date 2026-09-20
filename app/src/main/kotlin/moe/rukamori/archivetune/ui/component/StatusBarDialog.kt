@@ -18,6 +18,25 @@ import androidx.core.view.WindowInsetsControllerCompat
 
 val LocalImmersiveStatusBarsHidden = compositionLocalOf { false }
 
+/**
+ * Makes a Compose [Dialog] window draw edge-to-edge behind the system bars, mirroring the
+ * activity's `WindowCompat.setDecorFitsSystemWindows(window, false)`. Dialog windows do not
+ * inherit that flag, so without this the dialog's `fillMaxSize()` background stops at the
+ * status bar and the strip shows the dimmed activity instead of the dialog surface.
+ * The content is expected to apply its own `statusBarsPadding()`/`navigationBarsPadding()`.
+ */
+@Composable
+fun EdgeToEdgeDialogWindow() {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val dialogWindow = (view.parent as? DialogWindowProvider)?.window
+        if (dialogWindow != null) {
+            WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
+        }
+        onDispose { }
+    }
+}
+
 @Composable
 fun KeepStatusBarHiddenInDialog() {
     val hidden = LocalImmersiveStatusBarsHidden.current

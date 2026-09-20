@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -45,7 +46,9 @@ import androidx.compose.runtime.toMutableStateList
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -60,6 +63,9 @@ import moe.rukamori.archivetune.constants.GridThumbnailHeight
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LibraryAlbumGridItem
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.screens.GlassScreenHeaderOverlay
+import moe.rukamori.archivetune.ui.screens.glassHeaderSource
+import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.viewmodels.ArtistAlbumsViewModel
 import androidx.compose.runtime.getValue
@@ -102,13 +108,30 @@ fun ArtistAlbumsScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
 
+    val glassHeader = rememberGlassScreenHeader()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+    val baseContentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
+    val gridContentPadding =
+        PaddingValues(
+            start = baseContentPadding.calculateStartPadding(LocalLayoutDirection.current),
+            top =
+                if (glassHeader.liquidGlassActive) {
+                    systemBarsTopPadding + 72.dp
+                } else {
+                    baseContentPadding.calculateTopPadding()
+                },
+            end = baseContentPadding.calculateEndPadding(LocalLayoutDirection.current),
+            bottom = baseContentPadding.calculateBottomPadding(),
+        )
+
     Box(
         modifier = Modifier.fillMaxSize(),
     ) {
         LazyVerticalGrid(
             state = lazyGridState,
             columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+            contentPadding = gridContentPadding,
+            modifier = Modifier.glassHeaderSource(glassHeader),
         ) {
             item(
                 key = "header",
@@ -146,24 +169,33 @@ fun ArtistAlbumsScreen(
             }
         }
 
-        TopAppBar(
-            windowInsets =
-                WindowInsets(top = LocalStableSystemBarsTopPadding.current)
-                    .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
-            title = { Text(artist?.artist?.name.orEmpty()) },
-            navigationIcon = {
-                IconButton(
-                    onClick = navController::navigateUp,
-                    onLongClick = navController::backToMain,
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.arrow_back),
-                        contentDescription = null,
-                    )
-                }
-            },
-            scrollBehavior = scrollBehavior,
-        )
+        if (glassHeader.liquidGlassActive) {
+            GlassScreenHeaderOverlay(
+                header = glassHeader,
+                title = stringResource(R.string.albums),
+                onBack = navController::navigateUp,
+                onBackLongClick = navController::backToMain,
+            )
+        } else {
+            TopAppBar(
+                windowInsets =
+                    WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                        .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
+                title = { Text(artist?.artist?.name.orEmpty()) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
+                scrollBehavior = scrollBehavior,
+            )
+        }
 
         SnackbarHost(
             hostState = snackbarHostState,

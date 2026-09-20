@@ -10,9 +10,13 @@ package moe.rukamori.archivetune.ui.screens.artist
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.systemBars
@@ -33,9 +37,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -65,13 +71,18 @@ import moe.rukamori.archivetune.innertube.pages.ArtistItemsPageLayout
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
+import moe.rukamori.archivetune.ui.component.AppIconButton
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import moe.rukamori.archivetune.ui.component.shimmer.GridItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
+import moe.rukamori.archivetune.ui.screens.GlassScreenHeaderOverlay
+import moe.rukamori.archivetune.ui.screens.glassHeaderSource
+import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
 import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeArtistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubePlaylistMenu
@@ -101,6 +112,22 @@ fun ArtistItemsScreen(
     val itemsPage by viewModel.itemsPage.collectAsStateWithLifecycle()
     val itemsLayout by viewModel.itemsLayout.collectAsStateWithLifecycle()
 
+    val glassHeader = rememberGlassScreenHeader()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+    val baseContentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
+    val contentPadding =
+        PaddingValues(
+            start = baseContentPadding.calculateStartPadding(LocalLayoutDirection.current),
+            top =
+                if (glassHeader.liquidGlassActive) {
+                    systemBarsTopPadding + 72.dp
+                } else {
+                    baseContentPadding.calculateTopPadding()
+                },
+            end = baseContentPadding.calculateEndPadding(LocalLayoutDirection.current),
+            bottom = baseContentPadding.calculateBottomPadding(),
+        )
+
     LaunchedEffect(lazyListState) {
         snapshotFlow {
             lazyListState.layoutInfo.visibleItemsInfo.any { it.key == "loading" }
@@ -119,18 +146,24 @@ fun ArtistItemsScreen(
         }
     }
 
-    if (itemsPage == null) {
-        ShimmerHost(
-            modifier = Modifier.windowInsetsPadding(LocalPlayerAwareWindowInsets.current),
-        ) {
-            repeat(8) {
-                ListItemPlaceHolder()
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (itemsPage == null) {
+            ShimmerHost(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .glassHeaderSource(glassHeader)
+                        .windowInsetsPadding(LocalPlayerAwareWindowInsets.current),
+            ) {
+                repeat(8) {
+                    ListItemPlaceHolder()
+                }
             }
-        }
-    } else if (itemsLayout == ArtistItemsPageLayout.LIST && itemsPage?.items?.firstOrNull() is SongItem) {
+        } else if (itemsLayout == ArtistItemsPageLayout.LIST && itemsPage?.items?.firstOrNull() is SongItem) {
         LazyColumn(
             state = lazyListState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+            contentPadding = contentPadding,
+            modifier = Modifier.fillMaxSize().glassHeaderSource(glassHeader),
         ) {
             items(
                 items = itemsPage?.items.orEmpty().distinctBy { it.id },
@@ -260,7 +293,8 @@ fun ArtistItemsScreen(
         LazyVerticalGrid(
             state = lazyGridState,
             columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+            contentPadding = contentPadding,
+            modifier = Modifier.fillMaxSize().glassHeaderSource(glassHeader),
         ) {
             items(
                 items = itemsPage?.items.orEmpty().distinctBy { it.id },
@@ -371,60 +405,119 @@ fun ArtistItemsScreen(
         }
     }
 
-    TopAppBar(
-        windowInsets =
-            WindowInsets(top = LocalStableSystemBarsTopPadding.current)
-                .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
-        title = { Text(title) },
-        navigationIcon = {
-            IconButton(
-                onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
-            ) {
-                Icon(
-                    painterResource(R.drawable.arrow_back),
-                    contentDescription = null,
-                )
-            }
-        },
-        actions = {
-            val songs = itemsPage?.items.orEmpty().filterIsInstance<SongItem>()
-            if (songs.isNotEmpty()) {
-                IconButton(
-                    onClick = {
-                        playerConnection.playQueue(
-                            ListQueue(
-                                title = title,
-                                items = songs.map { it.toMediaItem() },
-                            ),
+        if (glassHeader.liquidGlassActive) {
+            GlassScreenHeaderOverlay(
+                header = glassHeader,
+                title = title,
+                onBack = navController::navigateUp,
+                onBackLongClick = navController::backToMain,
+                trailing = {
+                    val songs = itemsPage?.items.orEmpty().filterIsInstance<SongItem>()
+                    if (songs.isNotEmpty()) {
+                        Box(
+                            modifier = Modifier.size(48.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            AppIconButton(
+                                onClick = {
+                                    playerConnection.playQueue(
+                                        ListQueue(
+                                            title = title,
+                                            items = songs.map { it.toMediaItem() },
+                                        ),
+                                    )
+                                },
+                                onLongClick = {},
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.play),
+                                    contentDescription = null,
+                                    tint = liquidGlassContentColor(),
+                                )
+                            }
+                        }
+                        Box(
+                            modifier = Modifier.size(48.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            AppIconButton(
+                                onClick = {
+                                    playerConnection.playQueue(
+                                        ListQueue(
+                                            title = title,
+                                            items = songs.shuffled().map { it.toMediaItem() },
+                                        ),
+                                    )
+                                },
+                                onLongClick = {},
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.shuffle),
+                                    contentDescription = null,
+                                    tint = liquidGlassContentColor(),
+                                )
+                            }
+                        }
+                    }
+                },
+            )
+        } else {
+            TopAppBar(
+                windowInsets =
+                    WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                        .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
+                title = { Text(title) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
                         )
-                    },
-                    onLongClick = {},
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.play),
-                        contentDescription = null,
-                    )
-                }
-                IconButton(
-                    onClick = {
-                        playerConnection.playQueue(
-                            ListQueue(
-                                title = title,
-                                items = songs.shuffled().map { it.toMediaItem() },
-                            ),
-                        )
-                    },
-                    onLongClick = {},
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.shuffle),
-                        contentDescription = null,
-                    )
-                }
-            }
-        },
-    )
+                    }
+                },
+                actions = {
+                    val songs = itemsPage?.items.orEmpty().filterIsInstance<SongItem>()
+                    if (songs.isNotEmpty()) {
+                        IconButton(
+                            onClick = {
+                                playerConnection.playQueue(
+                                    ListQueue(
+                                        title = title,
+                                        items = songs.map { it.toMediaItem() },
+                                    ),
+                                )
+                            },
+                            onLongClick = {},
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.play),
+                                contentDescription = null,
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                playerConnection.playQueue(
+                                    ListQueue(
+                                        title = title,
+                                        items = songs.shuffled().map { it.toMediaItem() },
+                                    ),
+                                )
+                            },
+                            onLongClick = {},
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.shuffle),
+                                contentDescription = null,
+                            )
+                        }
+                    }
+                },
+            )
+        }
+    }
 }
 
 private val YTItem.contentKey: String
