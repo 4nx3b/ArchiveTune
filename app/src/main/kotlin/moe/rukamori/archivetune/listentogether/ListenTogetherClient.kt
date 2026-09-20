@@ -28,6 +28,7 @@ import androidx.core.content.getSystemService
 import androidx.datastore.preferences.core.edit
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenTogetherAutoApprovalKey
+import moe.rukamori.archivetune.constants.ListenTogetherSuggestionAutoApproveKey
 import moe.rukamori.archivetune.constants.ListenTogetherAvatarIndexKey
 import moe.rukamori.archivetune.constants.ListenTogetherBlockedUsersKey
 import moe.rukamori.archivetune.constants.ListenTogetherIsHostKey
@@ -124,7 +125,10 @@ sealed class ListenTogetherEvent {
 
     data class ChatMessageReceived(val payload: ChatMessagePayload) : ListenTogetherEvent()
 
-    data class LocalSuggestionApproved(val payload: SuggestionReceivedPayload) : ListenTogetherEvent()
+    data class LocalSuggestionApproved(
+        val payload: SuggestionReceivedPayload,
+        val playImmediately: Boolean = false,
+    ) : ListenTogetherEvent()
 }
 
 @Singleton
@@ -947,6 +951,20 @@ class ListenTogetherClient @Inject constructor(
                             return
                         }
 
+                        // Auto-approved suggestions take effect right away (the suggesting
+                        // guest has usually already changed their local track), while
+                        // manually approved ones are enqueued for the host to time.
+                        val suggestionAutoApprove =
+                            context.dataStore.get(ListenTogetherSuggestionAutoApproveKey, true)
+                        if (suggestionAutoApprove) {
+                            log(LogLevel.INFO, "Auto-approving suggestion", "${payload.fromUsername}: ${payload.trackInfo.title}")
+                            sendMessage(MessageTypes.APPROVE_SUGGESTION, ApproveSuggestionPayload(payload.suggestionId))
+                            scope.launch {
+                                _events.emit(ListenTogetherEvent.LocalSuggestionApproved(payload, playImmediately = true))
+                            }
+                            return
+                        }
+
                         _pendingSuggestions.value += payload
                         log(LogLevel.INFO, "Suggestion received", "${payload.fromUsername}: ${payload.trackInfo.title}")
 
@@ -1062,6 +1080,14 @@ class ListenTogetherClient @Inject constructor(
 
                 MessageTypes.CHAT -> {
                     var payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? ChatMessagePayload ?: return
+
+                    // Custom profile pictures piggyback on the chat relay: a
+                    // magic-prefixed base64 payload that never renders as a chat bubble.
+                    ListenTogetherAvatar.decodeAvatarBroadcast(payload.message)?.let { avatarBytes ->
+                        _customAvatars.value = _customAvatars.value + (payload.userId to avatarBytes)
+                        log(LogLevel.INFO, "Custom avatar received", "From: ${payload.username} (${avatarBytes.size} bytes)")
+                        return
+                    }
 
                     if (payload.message.startsWith("\u200B[RPLY:")) {
                         try {
@@ -1252,6 +1278,22 @@ class ListenTogetherClient @Inject constructor(
         sendMessage(MessageTypes.CHAT, ChatPayload(finalMessage, replyTo))
     }
 
+    private val _customAvatars = kotlinx.coroutines.flow.MutableStateFlow<Map<String, ByteArray>>(emptyMap())
+
+    /** Custom profile pictures received from other room members, keyed by user id. */
+    val customAvatars: kotlinx.coroutines.flow.StateFlow<Map<String, ByteArray>> = _customAvatars.asStateFlow()
+
+    fun sendCustomAvatar(bytes: ByteArray) {
+        if (!isInRoom) {
+            log(LogLevel.ERROR, "Cannot broadcast custom avatar", "Not in room")
+            return
+        }
+        sendMessage(
+            MessageTypes.CHAT,
+            ChatPayload(ListenTogetherAvatar.encodeAvatarBroadcast(bytes), null),
+        )
+    }
+
     fun sendBufferReady(trackId: String) {
         sendMessage(MessageTypes.BUFFER_READY, BufferReadyPayload(trackId))
     }
@@ -1271,7 +1313,7 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    fun approveSuggestion(suggestionId: String) {
+    fun approveSuggestion(suggestionId: String, playImmediately: Boolean = false) {
         if (_role.value != RoomRole.HOST) {
             log(LogLevel.ERROR, "Cannot approve suggestion", "Not host")
             return
@@ -1282,7 +1324,7 @@ class ListenTogetherClient @Inject constructor(
         sendMessage(MessageTypes.APPROVE_SUGGESTION, ApproveSuggestionPayload(suggestionId))
 
         if (suggestion != null) {
-            scope.launch { _events.emit(ListenTogetherEvent.LocalSuggestionApproved(suggestion)) }
+            scope.launch { _events.emit(ListenTogetherEvent.LocalSuggestionApproved(suggestion, playImmediately)) }
         }
 
         _pendingSuggestions.value = _pendingSuggestions.value.filter { it.suggestionId != suggestionId }
