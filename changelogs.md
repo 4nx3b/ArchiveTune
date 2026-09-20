@@ -51,6 +51,31 @@ original app.
 
 ## Fixes (16.0.3 follow-up)
 
+- The TikTok player's main lyrics strip is rebuilt on the enhanced lyrics
+  library: it now word-sweeps, scrolls line by line, and shows translation
+  and romanisation together (following the global lyrics preferences,
+  provider/on-device/AI romanisation included). The old single-line
+  implementation read the scrub-only slider position — null during normal
+  playback — so its clock was pinned at zero and nothing ever animated, and
+  romanisation could only ever come from a TTML transliteration track. The
+  strip is also left-aligned with the song info and its "recently played"
+  pill at the same 16dp inset (was: centred at 20dp)
+- The Metrolist server (The Meowery) finally hands out a room code: it is a
+  protobuf-only metroserver, but the client always opened the socket speaking
+  JSON, so the create_room frame was rejected and the pending action was
+  never re-sent after the codec's reactive protobuf upgrade. The server list
+  now knows each server's protocol and the client speaks protobuf (with
+  compression) to The Meowery from the first frame; an invalid_message reply
+  after a JSON→protobuf upgrade also re-sends the pending create/join once.
+  The invite link follows the selected server instead of a hardcoded vivi
+  host, and the "Copy link" button hides on servers without a web client
+- Dead code sweep: 11 orphaned files and 17 unused composables/helpers
+  removed (PlaybackLogManager, LocalMixQueue, AudioQualityDialogs,
+  LibraryChromeComponents, Material3SettingsGroup, MeshBackdrop,
+  SettingsAnchors, YouTubeMusicLauncher, TidalCookieUtils, ExploreViewModel,
+  the V1/V2 collapsed queue cards, the unused grid-item and spotlight-card
+  variants, the deprecated settings components), ~3.3k lines gone
+
 - The artist page's overflow menu renders like every other menu: flat rows
   with dividers between Share / Copy link / Block artist instead of
   Material-Expressive segmented blocks, and the trailing 24dp of dead space
