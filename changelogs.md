@@ -51,6 +51,20 @@ original app.
 
 ## Fixes (16.0.3 follow-up)
 
+- The TikTok lyrics strip now reads like a caption, not a scroll view: only the
+  active line is ever composed — bigger (24sp) and bolder — with its per-word
+  romanisation above it and its translation below it, driven by the enhanced
+  lyrics library's word-timed sweep and a fade-and-slide transition between
+  lines. Previous and upcoming lines no longer appear at all, and the strip
+  shrank from 168dp to 140dp, returning the difference to the artwork
+- The Metrolist server (The Meowery) actually hands out a room code in release
+  builds: protobuf-javalite 4.x resolves every generated message's fields by
+  NAME through reflection (MessageSchema + getDeclaredField("username_") +
+  Unsafe offsets), so once R8 renamed those fields the create_room frame could
+  never be encoded — "Field username_ for r8.ox5 not found" — and no room code
+  arrived (debug builds aren't minified, which is why it only showed up in
+  installed APKs). The listentogether package (generated proto classes
+  included) is now excluded from obfuscation, mirroring vivi-music's rules
 - The TikTok player's main lyrics strip is rebuilt on the enhanced lyrics
   library: it now word-sweeps, scrolls line by line, and shows translation
   and romanisation together (following the global lyrics preferences,
