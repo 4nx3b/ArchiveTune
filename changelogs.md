@@ -51,6 +51,30 @@ original app.
 
 ## Fixes (16.0.3 follow-up)
 
+- Video songs play again. The High-by-default video quality (added with the
+  4K persistence change) skipped the SimpMusic extractor whenever the ceiling
+  rose above 1080p — removing the exact path whose NewPipe-harvested URLs
+  survive YouTube's bot-blocking — and 4K streams regularly blew the 10-second
+  first-frame deadline, so every video song silently fell back to the blurred
+  artwork while the audio kept playing. Resolution now always keeps the
+  SimpMusic extractor as a last resort below the requested ceiling, and any
+  playback-time failure (403'd URL, first-frame timeout, stuck buffering)
+  first re-resolves the stream at 1080p before ever giving up — a video song
+  degrades to 1080p instead of dying into artwork. Poisoned stream-URL cache
+  entries are evicted on recovery so the same dead URL can't be handed back
+- Listen Together chat now reaches you outside the app: every room message
+  from someone else posts a conversation notification (MessagingStyle, recent
+  history included) with a direct-reply action — type in the shade and it goes
+  straight to the room, no app launch needed. Replies sent from the shade echo
+  into the conversation, the chat screen suppresses (and cancels) the
+  notification while it's open, leaving the room or getting kicked clears it,
+  and blocked users never notify. Toggle: Settings → Integrations → Listen
+  Together → "Chat message notifications"
+- Video tracks are guaranteed the real YouTube video: canvas (Spotify or
+  ArchiveTune) resolution is hard-gated off for music-video tracks in every
+  player style, so a canvas can never substitute for the video — a video song
+  only ever plays its YouTube stream (or, if that truly can't be resolved,
+  falls back to plain artwork — never canvas)
 - The TikTok lyrics strip now reads like a caption, not a scroll view: only the
   active line is ever composed — bigger (24sp) and bolder — with its per-word
   romanisation above it and its translation below it, driven by the enhanced

@@ -40,6 +40,7 @@ val ListenTogetherCustomAvatarUriKey = stringPreferencesKey("listenTogetherCusto
 val ListenTogetherSmartResyncKey = booleanPreferencesKey("listenTogetherSmartResync")
 val ListenTogetherSyncVolumeKey = booleanPreferencesKey("listenTogetherSyncVolume")
 val ListenTogetherBlockedUsersKey = stringPreferencesKey("listenTogetherBlockedUsers")
+val ListenTogetherChatNotificationsKey = booleanPreferencesKey("listenTogetherChatNotifications")
 
 val ListenTogetherUsernameKey = stringPreferencesKey("listenTogetherUsername")
 val ListenTogetherInTopBarKey = booleanPreferencesKey("listenTogetherInTopBar")

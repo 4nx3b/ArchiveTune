@@ -36,6 +36,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -134,6 +135,13 @@ private const val VideoClientAttemptTimeoutMs = 8000L
 
 private const val VideoSimpMusicAttemptTimeoutMs = 6000L
 
+/**
+ * How many times a failing video stream is re-resolved (at a 1080p ceiling, which
+ * re-enables the SimpMusic extractor's early-return path) before the player gives
+ * up and falls back to the artwork.
+ */
+private const val MaxVideoRecoveryAttempts = 1
+
 private const val VideoLoadResumeDelayMs = 1000L
 
 private const val WebRemixMaxVideoHeight = 1080
@@ -172,6 +180,17 @@ private fun cacheResolvedVideoStreamInfo(
             val eldest = videoStreamInfoCache.keys.firstOrNull() ?: break
             videoStreamInfoCache.remove(eldest)
         }
+    }
+}
+
+/**
+ * Drops every cached stream for a video. Used when a resolved URL dies at
+ * playback time: the cached "success" is poisoned, and a recovery attempt
+ * must never be served the same dead URL straight back out of the cache.
+ */
+private fun evictResolvedVideoStreamInfoForVideo(videoId: String) {
+    synchronized(videoStreamInfoCache) {
+        videoStreamInfoCache.keys.removeAll { it.startsWith("$videoId|") }
     }
 }
 
@@ -398,6 +417,9 @@ fun rememberVideoArtworkState(
     var lastLoadedStreamUrl by remember { mutableStateOf<String?>(null) }
     var lastLoadedCaptionTrack by remember { mutableStateOf<PlayerResponse.CaptionTrack?>(null) }
 
+    var videoRecoveryAttempts by remember { mutableStateOf(0) }
+    var videoRecoveryRequests by remember { mutableIntStateOf(0) }
+
     fun beginAudioHold() {
         if (!updatedHoldAudioUntilVideoReady) return
         if (awaitingVideoReady) return
@@ -423,6 +445,44 @@ fun rememberVideoArtworkState(
         Timber
             .tag(VideoPlaybackLogTag)
             .d("Video ready — clearing hold flag (resume scheduled=${!resumeMainAudio})")
+    }
+
+    /**
+     * Single funnel for every playback-time video failure (first-frame hold
+     * timeout, ExoPlayer errors, stuck buffering). Before falling back to the
+     * artwork, one recovery attempt re-resolves the stream at a 1080p ceiling —
+     * that ceiling re-enables the SimpMusic extractor, whose NewPipe-harvested
+     * URLs survive the bot-blocking that 403s plain innertube URLs, so a video
+     * song degrades to 1080p instead of dying into a blurred artwork.
+     */
+    fun declareVideoFailure(reason: String) {
+        if (state.hasPlaybackFailed) return
+        state.isVideoReady = false
+        state.isChangingQuality = false
+        state.isResyncing = false
+        state.bufferingStartedAtMs = 0L
+        releaseAudioHold(resumeMainAudio = true)
+
+        if (videoRecoveryAttempts < MaxVideoRecoveryAttempts) {
+            videoRecoveryAttempts += 1
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .w("Video failing for $videoId ($reason) — re-resolving at a 1080p ceiling")
+            videoRecoveryRequests += 1
+            return
+        }
+
+        Timber
+            .tag(VideoPlaybackLogTag)
+            .w("Video playback failed for $videoId ($reason) — falling back to artwork")
+        state.hasPlaybackFailed = true
+        exoPlayer.stop()
+
+        state.pendingResumeAtMs = 0L
+        state.pendingResumeMainAudio = false
+        state.pendingResumeVideo = false
+
+        updatedOnPlaybackFailed()
     }
 
     LaunchedEffect(
@@ -470,6 +530,9 @@ fun rememberVideoArtworkState(
 
         lastLoadedStreamUrl = null
         lastLoadedCaptionTrack = null
+
+        videoRecoveryAttempts = 0
+        videoRecoveryRequests = 0
 
         beginAudioHold()
 
@@ -611,6 +674,10 @@ fun rememberVideoArtworkState(
             exoPlayer.pause()
         } else if (updatedIsMainAudioBuffering) {
             exoPlayer.pause()
+        } else if (state.isResolvingUrl) {
+            // A stream is being (re-)resolved — preparing here would reload the
+            // failing media item and re-fire its error mid-recovery.
+            exoPlayer.pause()
         } else {
             exoPlayer.setVideoPlayback(isPlaying)
         }
@@ -635,15 +702,48 @@ fun rememberVideoArtworkState(
         if (awaitingVideoReady && !state.isVideoReady) {
             Timber
                 .tag(VideoPlaybackLogTag)
-                .w("Video not ready within ${VideoReadyHoldTimeoutMs}ms — falling back to artwork")
+                .w("Video not ready within ${VideoReadyHoldTimeoutMs}ms")
+            declareVideoFailure("first frame not ready within ${VideoReadyHoldTimeoutMs}ms")
+        }
+    }
+
+    LaunchedEffect(videoRecoveryRequests) {
+        if (videoRecoveryRequests == 0) return@LaunchedEffect
+        if (state.hasPlaybackFailed) return@LaunchedEffect
+
+        val recoveryCeiling = maxVideoHeightFor(updatedPreferredHeight)
+        val recoveryPreferredHeight =
+            if (recoveryCeiling > WebRemixMaxVideoHeight) null else updatedPreferredHeight
+
+        exoPlayer.stop()
+        state.streamUrl = null
+        state.isVideoReady = false
+        state.bufferingStartedAtMs = 0L
+        state.bufferingRecoveries = 0
+        state.isResolvingUrl = true
+
+        // The previously resolved URL may be cached (a "success" that 403'd at
+        // playback) — evict it so the recovery actually fetches a fresh stream.
+        evictResolvedVideoStreamInfoForVideo(videoId)
+
+        val recovered =
+            withContext(Dispatchers.IO) {
+                resolveVideoStreamUrl(videoId, recoveryPreferredHeight)
+            }
+        state.isResolvingUrl = false
+
+        if (recovered != null && !state.hasPlaybackFailed && recovered.streamUrl.isNotBlank()) {
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .i("Recovered video stream for $videoId at ${recovered.selectedHeight}p after a failure")
+            state.captionTracks = recovered.captionTracks
+            updatedOnStreamResolved(recovered)
+            state.streamUrl = recovered.streamUrl
+        } else {
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .w("Video recovery resolution failed for $videoId — falling back to artwork")
             state.hasPlaybackFailed = true
-            exoPlayer.stop()
-            releaseAudioHold(resumeMainAudio = true)
-
-            state.pendingResumeAtMs = 0L
-            state.pendingResumeMainAudio = false
-            state.pendingResumeVideo = false
-
             updatedOnPlaybackFailed()
         }
     }
@@ -732,15 +832,9 @@ fun rememberVideoArtworkState(
                     if (state.bufferingRecoveries >= 3) {
                         Timber
                             .tag(VideoPlaybackLogTag)
-                            .w("Video stuck in BUFFERING for ${bufferingForMs}ms after ${state.bufferingRecoveries - 1} recoveries — falling back to artwork")
+                            .w("Video stuck in BUFFERING for ${bufferingForMs}ms after ${state.bufferingRecoveries - 1} recoveries")
                         state.bufferingStartedAtMs = 0L
-                        state.hasPlaybackFailed = true
-                        exoPlayer.stop()
-                        releaseAudioHold(resumeMainAudio = true)
-                        state.pendingResumeAtMs = 0L
-                        state.pendingResumeMainAudio = false
-                        state.pendingResumeVideo = false
-                        updatedOnPlaybackFailed()
+                        declareVideoFailure("stuck buffering for ${bufferingForMs}ms")
                     } else {
                         val mainPos = currentPosition()
                         Timber
@@ -891,13 +985,7 @@ fun rememberVideoArtworkState(
             object : Player.Listener {
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                     Timber.tag(VideoPlaybackLogTag).w(error, "Video playback failed for $videoId")
-                    state.hasPlaybackFailed = true
-                    state.isVideoReady = false
-                    state.isChangingQuality = false
-                    state.isResyncing = false
-                    state.bufferingStartedAtMs = 0L
-                    releaseAudioHold(resumeMainAudio = true)
-                    updatedOnPlaybackFailed()
+                    declareVideoFailure("player error ${error.errorCodeName}")
                 }
 
                 override fun onCues(cueGroup: CueGroup) {
@@ -1354,7 +1442,10 @@ private suspend fun resolveVideoStreamUrl(
     resolveVideoStreamInfoFromCache(cacheKey)?.let { return it }
 
     var bestResult: VideoStreamInfo? = null
+    var bestResultFromSimpMusic = false
+    var simpMusicAttempted = false
     if (heightCeiling <= WebRemixMaxVideoHeight) {
+        simpMusicAttempted = true
         resolveVideoStreamUrlViaSimpMusic(videoId, preferredHeight)?.let {
             cacheResolvedVideoStreamInfo(cacheKey, it)
             return it
@@ -1489,9 +1580,32 @@ private suspend fun resolveVideoStreamUrl(
         }
     }
 
+    // The innertube chain could not fully satisfy the ceiling. If nothing
+    // playable at 1080p-or-better came out of it, the SimpMusic extractor is
+    // the last resort: its NewPipe-harvested URLs keep working when the plain
+    // innertube URLs are bot-blocked and 403 — the exact failure mode that
+    // otherwise leaves video songs stuck on the artwork fallback.
+    if (!simpMusicAttempted && (bestResult?.selectedHeight ?: 0) < WebRemixMaxVideoHeight) {
+        simpMusicAttempted = true
+        resolveVideoStreamUrlViaSimpMusic(videoId, preferredHeight)?.let { simpmusic ->
+            if ((simpmusic.selectedHeight ?: 0) > (bestResult?.selectedHeight ?: Int.MIN_VALUE)) {
+                Timber
+                    .tag(VideoPlaybackLogTag)
+                    .i(
+                        "SimpMusic last-resort supplies ${simpmusic.selectedHeight}p for $videoId " +
+                            "after the innertube chain topped out at ${bestResult?.selectedHeight}p",
+                    )
+                bestResult = simpmusic
+                bestResultFromSimpMusic = true
+            }
+        }
+    }
+
     if (bestResult != null) {
 
-        YTPlayerUtils.markStreamUrlSuccessful(bestResult.streamUrl)
+        if (!bestResultFromSimpMusic) {
+            YTPlayerUtils.markStreamUrlSuccessful(bestResult.streamUrl)
+        }
         Timber
             .tag(VideoPlaybackLogTag)
             .i("Resolved video stream for $videoId at ${bestResult.selectedHeight}p (best available below the ${heightCeiling}p ceiling)")
