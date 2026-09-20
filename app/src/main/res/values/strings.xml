@@ -1217,6 +1217,12 @@
     <string name="sources_tidal_token_help">Paste a Tidal o2_refresh token (the long JWT with \"type\":\"o2_refresh\" in its middle segment). The app exchanges it for fresh access tokens automatically. User ID is read from the token itself — no extra fields needed.</string>
     <string name="sources_tidal_token_verified">Tidal token verified — account connected.</string>
     <string name="sources_tidal_token_failed">Tidal could not refresh that token — it may be expired or revoked.</string>
+    <string name="pool_refresh_title">Refresh from pool</string>
+    <string name="pool_refresh_description">Pull the latest shared accounts and instances from the community source pool</string>
+    <string name="pool_refreshing">Refreshing from pool…</string>
+    <string name="pool_refresh_done">Pool refreshed: %1$d Tidal, %2$d Qobuz, %3$d Deezer account(s)</string>
+    <string name="pool_refresh_up_to_date">Already up to date — the pool is only fetched every few hours, so nothing was requested just now.</string>
+    <string name="pool_refresh_failed">Couldn\'t reach the source pool. Check your connection and try again.</string>
     <string name="manual_source_login">Manual source sign-in</string>
     <string name="description_manual_source_login">Show the advanced Tidal/Qobuz instance &amp; account fields. Off by default — the app uses the community source pool automatically.</string>
     <string name="manual_source_login_active_note">Advanced: add your own private Tidal/Qobuz instances or account tokens. The community source pool is already used automatically without any setup.</string>

@@ -116,8 +116,17 @@ object PoolAccountManager {
     @Volatile
     private var amazonCache: List<AmazonPoolAccount> = emptyList()
 
+    /**
+     * When the pool was last fetched over the network, in epoch millis (0 = never fetched).
+     *
+     * Exposed so the settings refresh row can tell "this tap actually fetched" from "this tap was
+     * throttled" — without it the row reported a refresh that never happened.
+     */
     @Volatile
-    private var lastRefreshAt = 0L
+    var lastRefreshAtMillis = 0L
+        private set
+
+    @Volatile
     private var lastLaunchRefreshAt = 0L
 
     @Volatile
@@ -271,7 +280,7 @@ object PoolAccountManager {
             loadCached(context)
 
             val now = System.currentTimeMillis()
-            if (!force && hasAccounts() && now - lastRefreshAt < refreshIntervalMs()) {
+            if (!force && hasAccounts() && now - lastRefreshAtMillis < refreshIntervalMs()) {
                 return@withContext true
             }
             if (!force && now - lastFeedFailureAt < FEED_FAILURE_BACKOFF_MS) {
@@ -279,7 +288,8 @@ object PoolAccountManager {
             }
 
             refreshMutex.withLock {
-                if (!force && hasAccounts() && System.currentTimeMillis() - lastRefreshAt < refreshIntervalMs()) {
+                // Re-check the throttle inside the lock in case another caller just refreshed.
+                if (!force && hasAccounts() && System.currentTimeMillis() - lastRefreshAtMillis < refreshIntervalMs()) {
                     return@withLock true
                 }
                 if (!force && System.currentTimeMillis() - lastFeedFailureAt < FEED_FAILURE_BACKOFF_MS) {
@@ -381,7 +391,7 @@ object PoolAccountManager {
                     deezerCache = deezer
                     appleMusicCache = apple
                     amazonCache = amazon
-                    lastRefreshAt = System.currentTimeMillis()
+                    lastRefreshAtMillis = System.currentTimeMillis()
                     persist(context, tidal, qobuz, deezer, apple, amazon)
                 }
                 Timber.tag(TAG).i(
