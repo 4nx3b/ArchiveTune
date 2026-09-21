@@ -3389,3 +3389,20 @@ Work Log:
 
 Stage Summary:
 - dev: stacked pinned banners, no chat UI on protobuf servers (with notice + toast fallbacks), solo chatter permanently out of the persisted history (flag + clear-on-empty + version wipe), a searchable share-a-song picker, and a stationary TikTok artwork whenever the caption strip feature is on.
+
+---
+
+## Task ID: 67
+
+Task: Two-part user batch — (1) delete actions on other people's messages: "Delete" that only removes the message locally, plus a host-only "Delete for everyone"; (2) pinned messages must stack as ONE carousel row (constant space), latest pin first, tap reveals the pin before it, swipe browses previous pins.
+
+Work Log:
+- Protocol.kt: ChatMessagePayload gains `pinnedAt: Long = 0L` (@SerialName "pinned_at") — wall clock of the most recent pin, the sort key for latest-pin-first ordering; zero falls back to the message timestamp (covers history pinned before the field existed). Never serialized onto the wire (chat travels as ChatPayload); remote clients stamp their own clock when ACTION_PIN arrives; persists with the local history (ignoreUnknownKeys keeps old stores decodable).
+- ListenTogetherManager.kt: ACTION_DELETE in applyChatControl now accepts a delete when the sender is the author OR the current room host (`roomState.value?.hostId == fromUserId`) — host moderation. ACTION_PIN/ACTION_UNPIN stamp/reset pinnedAt. deleteMessage split into deleteMessageForEveryone (own message or host, broadcasts the tombstone) and deleteMessageForMe (local hide only: removes from _chatMessages and rewrites the persisted history without it — via a DIRECT snapshot write that cancels the 600ms debounce, because a delayed write would race the leave-room wipe of the live list; removing the last kept message clears the store). scheduleChatPersist unchanged (the leave-wipe guard stays).
+- ListenTogetherChatComponents.kt: MessageActionTarget gains `isHost` (local user's role). MessageActionsPopup: onDelete -> onDeleteForMe + onDeleteForEveryone; own messages keep the single room-wide Delete chip, other people's messages get "Delete" (local, trash icon) and — host only — "Delete for everyone" (new delete_forever.xml, trash-with-X stroke icon); the action row is a FlowRow so the chips wrap onto a second line instead of overflowing the 320dp popup. PinnedMessagesStack rebuilt as a single constant-height carousel: ordered latest-pin-first (pinnedAt, timestamp fallback), displayedKey state tracked against the pinned set (a fresh pin takes over the bar, the shown pin is kept while valid), tap steps to the previous pin (wrapping) AND jumps+highlights it in the chat, horizontal drag browses older/newer pins (48dp threshold, finger-following translation, AnimatedContent slide in the travel direction), i/N position chip when >1 pin, trailing unpin button for the shown pin. pointerInput keyed on (ordered, displayedKey) so swipe navigation never runs off a stale index after tap-browsing.
+- CommentTogether.kt: iAmHost derived from the live room state (recomposes on host transfer, verified roomState.hostId is set for creators and updated on HOST_CHANGED); MessageActionTarget carries it; popup wired to the new manager functions.
+- strings.xml: listen_together_chat_delete_for_everyone, listen_together_chat_pinned_position ("%1$d of %2$d"); the old pinned_count/show_all/show_less strings stay defined (translations exist, UnusedResources is a warning and abortOnError=false).
+- Verification: local :app compile impossible in the 4GB sandbox (daemon OOM-killed, same ceiling as tasks 65/66) — GitHub Actions is the loop. Pushed 408920ecd to dev.
+
+Stage Summary:
+- CI on 408920ecd: ALL THREE workflows GREEN — Build Pull Request (compile/test/lint), Build APKs (release/R8), Nightly. Guests can privately hide anyone's message; the host can tombstone anyone's message room-wide; pinned messages occupy one carousel row with tap-to-walk-back + swipe browsing.
