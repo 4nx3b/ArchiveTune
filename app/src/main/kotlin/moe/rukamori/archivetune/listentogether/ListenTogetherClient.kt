@@ -139,6 +139,13 @@ sealed class ListenTogetherEvent {
         val payload: SuggestionReceivedPayload,
         val playImmediately: Boolean = false,
     ) : ListenTogetherEvent()
+
+    /** The host rejected the local user's suggestion — lets the manager clear
+     *  its one-shot dedup so the same song can be suggested again. */
+    data class SuggestionRejected(
+        val suggestionId: String,
+        val reason: String? = null,
+    ) : ListenTogetherEvent()
 }
 
 @Singleton
@@ -1307,6 +1314,10 @@ class ListenTogetherClient @Inject constructor(
 
                     suggestionNotifications.remove(payload.suggestionId)?.let { notifId ->
                         NotificationManagerCompat.from(context).cancel(notifId)
+                    }
+
+                    scope.launch {
+                        _events.emit(ListenTogetherEvent.SuggestionRejected(payload.suggestionId, payload.reason))
                     }
 
                 }

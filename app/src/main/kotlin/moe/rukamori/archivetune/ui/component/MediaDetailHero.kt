@@ -451,6 +451,12 @@ public fun MediaDetailPrimaryActions(
                             text = stringResource(R.string.play),
                             style = playTextStyle,
                             fontWeight = FontWeight.Bold,
+                            // Single line + ellipsis so the balanced layout below
+                            // can shrink the pill for long translations
+                            // (e.g. "Reproducir") without the text wrapping.
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            softWrap = false,
                         )
                     }
                 }
@@ -540,7 +546,7 @@ private fun MediaDetailBalancedActionLayout(
             } else {
                 playAction.width + 2 * (maxOf(leftActionsWidth, rightActionsWidth) + sideSpacing)
             }
-        val clusterWidth =
+        var clusterWidth =
             if (playAction == null) {
                 centeredContentWidth
             } else {
@@ -552,6 +558,33 @@ private fun MediaDetailBalancedActionLayout(
             } else {
                 balancedContentWidth.coerceAtLeast(constraints.minWidth)
             }
+
+        // Long translations (Spanish "Reproducir", German "Wiedergabe", …)
+        // can make the cluster wider than the viewport. Centering the pill
+        // ALONE then leaves the row lopsided — the side with more satellite
+        // buttons runs into the edge while the other keeps a big gap. Instead,
+        // re-measure the pill with just the width that remains next to the
+        // satellite actions so the whole cluster fits, and let the regular
+        // cluster-centering branch below keep the margins equal on both sides
+        // in every language.
+        var playPlaceable = playAction
+        if (
+            playAction != null &&
+            constraints.hasBoundedWidth &&
+            clusterWidth > layoutWidth
+        ) {
+            val maxPlayWidth = layoutWidth - (leftActionsWidth + rightActionsWidth + 2 * sideSpacing)
+            if (maxPlayWidth > 0) {
+                val shrunkPlaceable =
+                    measurables.getOrNull(playActionIndex)?.measure(
+                        constraints.copy(minWidth = 0, maxWidth = maxPlayWidth, minHeight = 0),
+                    )
+                if (shrunkPlaceable != null) {
+                    playPlaceable = shrunkPlaceable
+                    clusterWidth = leftActionsWidth + rightActionsWidth + shrunkPlaceable.width + 2 * sideSpacing
+                }
+            }
+        }
         val contentHeight = placeables.maxOfOrNull { it.height } ?: 0
         val layoutHeight =
             if (constraints.hasBoundedHeight) {
@@ -581,10 +614,10 @@ private fun MediaDetailBalancedActionLayout(
                     val clusterStart = (layoutWidth - clusterWidth) / 2
                     clusterStart + leftActionsWidth + sideSpacing
                 } else {
-                    (layoutWidth - playAction.width) / 2
+                    (layoutWidth - (playPlaceable?.width ?: playAction.width)) / 2
                 }
             var leftActionX = playActionX - actionSpacing - leftActionsWidth
-            var rightActionX = playActionX + playAction.width + actionSpacing
+            var rightActionX = playActionX + (playPlaceable?.width ?: playAction.width) + actionSpacing
 
             leftActions.forEach { action ->
                 action.placeRelative(
@@ -600,9 +633,9 @@ private fun MediaDetailBalancedActionLayout(
                 )
                 rightActionX += action.width + actionSpacing
             }
-            playAction.placeRelative(
+            playPlaceable?.placeRelative(
                 x = playActionX,
-                y = (layoutHeight - playAction.height) / 2,
+                y = (layoutHeight - (playPlaceable?.height ?: playAction.height)) / 2,
             )
         }
     }

@@ -117,6 +117,7 @@ import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.player.blurBackdropFootprint
+import moe.rukamori.archivetune.ui.player.movingBlurWanderMaxDriftDp
 import moe.rukamori.archivetune.ui.player.rememberBlurWanderDrift
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
@@ -959,7 +960,6 @@ private fun SpatialFlowLyricsMovingBlur(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val blurWander = rememberBlurWanderDrift(active = true)
     val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
 
     val morph = remember { Animatable(0f) }
@@ -973,6 +973,12 @@ private fun SpatialFlowLyricsMovingBlur(
                 .fillMaxSize()
                 .clipToBounds(),
     ) {
+        // Same screen-scaled wander amplitude as every other player style
+        // (Apple Music lyrics-page behaviour) so the moving blur feels
+        // identical everywhere: the colour mass traverses the whole display
+        // instead of orbiting near the centre.
+        val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
+        val blurWander = rememberBlurWanderDrift(active = true, maxDriftDp = wanderMaxDrift)
         val driftFootprint =
             remember(maxWidth, maxHeight) {
                 blurBackdropFootprint(
@@ -980,6 +986,7 @@ private fun SpatialFlowLyricsMovingBlur(
                     height = maxHeight,
                     restScale = SfLyricsBlurRestScale,
                     driftScale = SfLyricsBlurDriftScale,
+                    maxDriftDp = wanderMaxDrift,
                 )
             }
 

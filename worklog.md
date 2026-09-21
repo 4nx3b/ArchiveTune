@@ -3426,3 +3426,26 @@ Work Log:
 
 Stage Summary:
 - dev: alone rooms show no older chats; history restores per-present-member with working avatars, right-side own messages and a divider; artist-screen (and every ZOOM canvas surface) renders aspect-correct; guest song changes propagate to the whole room through the existing suggestion -> auto-approve -> broadcast chain.
+
+---
+
+## Task ID: 69
+
+Task: Eight-part user batch — (1) Listen Together first song: a just-joined client could not start the room's first song (host saw it paused until manual resume), chat must always open on the newest message, and the whole screen (not just the composer) must resize with the keyboard; (2) song-details "Numbers" tab: compact K/M/B counts; (3) YouLyPlus provider dead (API moved); (4) moving blur across all player styles must behave like the Apple Music lyrics page; (5) moving blur colours confined to a fixed radius must instead spread across the entire screen, exiting and re-entering bounds smoothly; (6) artist-page action row off-centre in non-English locales (Spanish screenshot measured: 12% left margin vs ~1% right); (7) use maximum bandwidth/parallelism when resolving YouTube audio streams; (8) video songs must always take their audio from the YouTube video source itself (Qobuz/JioSaavn audio desyncs from the video layer).
+
+Work Log:
+- VLM-measured the Spanish screenshot with a percent-grid overlay: play pill perfectly centred (30–70%) while the cluster ran 12%→99% — the signature of MediaDetailBalancedActionLayout's overflow branch, which centred the pill alone.
+- Probed the YouLyPlus mirrors live: binimum.org answers 200 on v2/lyrics/get with valid KPoE JSON (type "Word" + syllabus timing); prjktla.my.id is Cloudflare-530 dead; workers.dev 429; vercel 402 (permanent). v1/ttml/get is 404 everywhere — upstream removed it.
+- LT first-song root cause: applyApprovedSuggestion restored the host's pre-suggestion playWhenReady (false on an idle room), and the follow-up CHANGE_TRACK paused the guests too. Now playWhenReady = wasPlaying || playImmediately, so an auto-approved first suggestion plays immediately and the transition listener broadcasts PLAY.
+- Suggestion dedup hardening: lastSuggestedTrackId now resets on SuggestionRejected (new event wired client→manager), on guest CHANGE_TRACK, and in cleanup() — a lost/rejected suggestion can be retried with the same song.
+- CommentTogether: one-shot snapshotFlow(totalItemsCount>0) + 150 ms settle + instant scrollToItem(last) so the chat always opens at the most recent message (the old animateScrollToItem raced the first layout and lost); Scaffold-level imePadding (classic adjustResize, whole screen resizes) replaces the composer-only imePadding; the pre-resize at-bottom state is captured at input-focus time and the list re-pins to the newest message as the IME opens.
+- ShowMediaInfo Numbers tab: views/likes/dislikes via formatCompactCount (4.234.688 → 4.2M).
+- lyrics submodule (d8a5b92, pushed): mirror order [binimum, prjktla.my.id, workers.dev], vercel dropped, dead TTML pass removed, unused YouLyPlusTtmlResponse model removed; gitlink re-pinned.
+- BlurWanderDrift rewritten: screen-scaled amplitude (movingBlurWanderMaxDriftDp = 0.85 × half-diagonal), uniform-area target sampling over the full reachable disc (the old code orbited targets on a 60–120 dp ring — the "fixed radius" complaint), MaxLegDurationMs 26 s so full-screen traversals stay slow, cosine easing keeps zero velocity at every waypoint (no flicker/abrupt turns); every call site (LyricsScreen MOVING_BLUR + StyledLyricsBackground consumers, AppleMusicPlayer backdrop, SpatialFlowLyricsMovingBlur) now passes the same amplitude into both the wander and blurBackdropFootprint, and pre-S devices get translation drift too (bitmap path, no rotation on the screen-shaped bitmap).
+- MediaDetailBalancedActionLayout: overflow case re-measures the play pill with the width remaining beside the satellite actions (Text now maxLines=1 + ellipsis), so the whole cluster fits and the regular cluster-centering branch keeps both margins equal in every language; scrollable rows unchanged (unbounded width skips the shrink).
+- YTPlayerUtils.playerResponseForPlaybackOnce: SimpMusic and the Echo client chain now race concurrently (select on first success, loser explicitly cancelled — coroutineScope alone waits for all children), local InnerTube chain stays the sequential last resort; CancellationException is re-thrown through the whole race.
+- MusicService: isMusicVideoPlayback(mediaId) (queued metadata + DB row) gates resolveMultiSourceDataSpec — music videos skip every alternative audio source so the audio always comes from the same YouTube video the artwork layer plays.
+- Independent static review pass over the whole diff; its two confirmed bugs (race not cancelling losers; LaunchedEffect(active) capturing a stale drift instance after rotation) fixed before push.
+
+Stage Summary:
+- dev: first-song suggestions play immediately room-wide; chat opens at the newest message and resizes wholesale with the keyboard; Numbers tab shows 4.2M-style counts; YouLyPlus resolves against the live binimum mirror; moving blur uses one shared screen-scale wander engine across all styles; artist action row centres in every language; stream resolution races two resolvers at once; video-song audio is pinned to YouTube.

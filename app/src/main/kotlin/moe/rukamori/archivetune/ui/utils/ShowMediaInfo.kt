@@ -238,9 +238,11 @@ fun ShowMediaInfo(videoId: String) {
         if (info != null) {
             listOf(
                 MediaInfoMetric(R.string.subscribers, info?.subscribers ?: unknownText),
-                MediaInfoMetric(R.string.views, info?.viewCount?.let(::numberFormatter) ?: unknownText),
-                MediaInfoMetric(R.string.likes, info?.like?.let(::numberFormatter) ?: unknownText),
-                MediaInfoMetric(R.string.dislikes, info?.dislike?.let(::numberFormatter) ?: unknownText),
+                // Compact K/M/B formatting: raw grouped numbers like "4.234.688"
+                // are hard to read at a glance in the stats grid.
+                MediaInfoMetric(R.string.views, info?.viewCount?.let { formatCompactCount(it.toLong()) } ?: unknownText),
+                MediaInfoMetric(R.string.likes, info?.like?.let { formatCompactCount(it.toLong()) } ?: unknownText),
+                MediaInfoMetric(R.string.dislikes, info?.dislike?.let { formatCompactCount(it.toLong()) } ?: unknownText),
             )
         } else {
             emptyList()

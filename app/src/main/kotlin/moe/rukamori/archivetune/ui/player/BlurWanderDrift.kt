@@ -22,10 +22,25 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.random.Random
 
+/**
+ * Shared wander engine behind every "moving blur" backdrop (the Apple
+ * Music lyrics-page behaviour, used identically by all player styles).
+ *
+ * The anchor point drifts between random targets spread over the WHOLE
+ * reachable disc — never a narrow ring around the centre — so the blurred
+ * colour mass explores every part of the screen: it can sink into the lower
+ * half, travel up past the top edge, and sweep back in again. Each leg is
+ * cosine-eased, so velocity is zero at every waypoint: direction changes are
+ * always smooth, with no flicker and no abrupt turns. The backdrop itself is
+ * sized by [blurBackdropFootprint] to keep covering the display at any drift
+ * offset, which is what makes the motion gapless.
+ */
 internal class BlurWanderDrift(
     private val random: Random = Random.Default,
+    private val maxDriftDp: Float = DefaultWanderRadiusDp,
 ) {
     private val xState = mutableFloatStateOf(0f)
     private val yState = mutableFloatStateOf(0f)
@@ -43,7 +58,6 @@ internal class BlurWanderDrift(
     private var toY = 0f
     private var fromRotation = 0f
     private var toRotation = 0f
-    private var legAngle = random.nextFloat() * TwoPi
     private var legDurationMs = 0f
     private var legElapsedMs = 0f
 
@@ -71,18 +85,24 @@ internal class BlurWanderDrift(
         fromY = toY
         fromRotation = toRotation
 
-        val turn = MinTurnRadians + random.nextFloat() * (TwoPi - 2f * MinTurnRadians)
-        legAngle = (legAngle + turn) % TwoPi
-
-        val radius = WanderRadiusDp * (MinRadiusFraction + random.nextFloat() * (1f - MinRadiusFraction))
-        toX = cos(legAngle) * radius
-
-        toY = sin(legAngle) * radius
+        // Uniform-area sampling over the full reachable disc: sqrt(u) keeps
+        // the distribution even across the area (a plain radius would pile
+        // targets near the centre) and lets offsets reach all the way out to
+        // the disc edge, so the colour mass regularly crosses the display
+        // bounds on its way to the opposite side.
+        val radius = maxDriftDp * sqrt(random.nextFloat())
+        val angle = random.nextFloat() * TwoPi
+        toX = cos(angle) * radius
+        toY = sin(angle) * radius
 
         val rotationSign = if (random.nextBoolean()) 1f else -1f
         val rotationSpan =
             MinLegRotationDegrees + random.nextFloat() * (MaxLegRotationDegrees - MinLegRotationDegrees)
         toRotation = fromRotation + rotationSign * rotationSpan
+
+        // Long traversals stay slow: the leg duration is derived from the
+        // distance (not clamped down to a sprint), so a full-screen sweep
+        // takes its time exactly like the Apple Music lyrics backdrop.
         val distance = hypot(toX - fromX, toY - fromY)
         legDurationMs =
             (distance / WanderSpeedDpPerSecond * 1000f)
@@ -90,22 +110,38 @@ internal class BlurWanderDrift(
     }
 
     internal companion object {
-        const val WanderRadiusDp = 120f
+        /** Legacy fixed amplitude, used only when no screen size is known. */
+        const val DefaultWanderRadiusDp = 120f
 
         private const val WanderSpeedDpPerSecond = 26f
 
         private const val MinLegDurationMs = 6_000f
-        private const val MaxLegDurationMs = 18_000f
+
+        private const val MaxLegDurationMs = 26_000f
 
         private const val MinLegRotationDegrees = 18f
+
         private const val MaxLegRotationDegrees = 55f
-
-        private const val MinRadiusFraction = 0.5f
-
-        private const val MinTurnRadians = 1.25f
 
         private const val TwoPi = (2.0 * PI).toFloat()
     }
+}
+
+/**
+ * Screen-proportional wander amplitude shared by every player style, so the
+ * moving blur behaves identically everywhere: the anchor can reach ~85% of
+ * the half-diagonal away from the centre in any direction. Colour features
+ * then traverse the entire display and briefly cross its bounds before the
+ * (always-covering) backdrop sweeps them back in from the other side.
+ */
+internal fun movingBlurWanderMaxDriftDp(
+    width: Dp,
+    height: Dp,
+): Float {
+    val w = width.value
+    val h = height.value
+    if (w <= 0f || h <= 0f) return BlurWanderDrift.DefaultWanderRadiusDp
+    return (hypot(w, h) / 2f) * 0.85f
 }
 
 internal fun blurBackdropFootprint(
@@ -113,7 +149,7 @@ internal fun blurBackdropFootprint(
     height: Dp,
     restScale: Float,
     driftScale: Float,
-    maxDriftDp: Float = BlurWanderDrift.WanderRadiusDp,
+    maxDriftDp: Float = BlurWanderDrift.DefaultWanderRadiusDp,
 ): DpSize {
     val w = width.value
     val h = height.value
@@ -131,9 +167,15 @@ internal fun blurBackdropFootprint(
 private const val BlurBackdropCoverSafety = 1.02f
 
 @Composable
-internal fun rememberBlurWanderDrift(active: Boolean): BlurWanderDrift {
-    val drift = remember { BlurWanderDrift() }
-    LaunchedEffect(active) {
+internal fun rememberBlurWanderDrift(
+    active: Boolean,
+    maxDriftDp: Float = BlurWanderDrift.DefaultWanderRadiusDp,
+): BlurWanderDrift {
+    val drift = remember(maxDriftDp) { BlurWanderDrift(maxDriftDp = maxDriftDp) }
+    // Keyed on maxDriftDp as well: a size change (rotation, fold/unfold,
+    // split-screen) recreates the drift instance above, and the animation
+    // loop must follow the new instance or the wander freezes at (0, 0).
+    LaunchedEffect(active, maxDriftDp) {
         if (!active) return@LaunchedEffect
         var lastFrameNanos = 0L
         var unappliedMs = 0f
