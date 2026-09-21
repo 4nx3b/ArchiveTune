@@ -3371,3 +3371,21 @@ Work Log:
 
 Stage Summary:
 - dev carries the both-streams video barrier + raced resolution, the full chat suite repair (crash-free glass popup, complete emoji keyboard, avatars both ways, tombstones, solo-persistence exclusion, pinned jump, links, song sharing), and fade-free bottom-aligned TikTok captions with rail clearance.
+
+---
+
+## Task ID: 66
+
+Task: Four-part user batch — (1) pinned chat messages must stack at the top (all of them, not just the latest); (2) the chat pill must not appear at all on the Metrolist (protobuf) server; (3) chat send failures surfaced + solo-room chatter must never persist + the composer's music icon must open a searchable song picker; (4) the TikTok artwork must stop shifting up when lyrics show.
+
+Work Log:
+- Verified live (websocket test bots) that both vivi JSON servers relay chat fine (echo with user_id/username/timestamp), and audited MetrolistGroup/metroserver's Go source: its protocol has NO chat message type (unknown types get `unknown_message_type`) — chat is impossible there, which is the whole "message doesn't get sent anymore" report. The Meowery proto also has a client_capabilities handshake the app already sidesteps via protocol pre-negotiation.
+- ListenTogetherChatComponents.kt: PinnedBanner (single message) replaced by PinnedMessagesStack — every pinned message stacked chronologically, per-row unpin + jump-to-message; collapses behind a "N pinned / show all" header beyond 3 rows.
+- ListenTogetherScreen.kt: the Comments pill is gated on a new chatSupported check (server protocol != PROTOBUF), same pattern as webInviteSupported; CommentTogether.kt: defensive composer replacement with a "Chat is not supported by this server" notice if the screen is somehow reached on a protobuf server; ListenTogetherClient.sendChatMessage now toasts (never silently drops) on the protobuf path.
+- Protocol.kt: ChatMessagePayload gains `solo: Boolean = false` — set on the local user's own messages that arrive while alone in the room. ListenTogetherManager: the volatile soloChatMessageKeys set is gone; the persist filter reads the payload flag (survives persist -> restore -> re-persist, so restored solo messages can never re-enter the store); when nothing but solo messages remains the stored history is CLEARED (the old `trimmed.isEmpty() -> return` early-leave kept stale entries alive forever); an empty live list (user left the room before the 600ms debounce fired) still never erases a stored conversation. PersistedChatHistory gains a version field (2); histories written by the older scheme are discarded once on load — the one-time wipe that finally removes the user's stale alone-room chatter.
+- ListenTogetherSongPicker.kt (new): ShareSongPickerSheet — the composer's music-note button now opens a searchable picker (400ms-debounced YouTube.search FILTER_SONG, stale-result guard) with thumbnail/title/artist/duration rows sharing as rich cards, plus a "now playing" quick-share row; SongItem -> TrackInfo mapping with seconds -> ms.
+- TikTokSongPage.kt: the karaoke-caption slot (TikTokMainLyricsHeight, now internal) is reserved whenever the main-lyrics preference is on — for EVERY page, and whether or not that song has synced lyrics (they load async) — so the weight(1f) artwork box keeps a constant height and the artwork never shifts up/shrinks when lyrics appear, change between songs, or during swipes. TikTokMainLyrics.kt: caller-owned slot, height constant internalized.
+- strings.xml: pinned_count/pinned_show_all/pinned_show_less/unsupported_server/pick_song_title/pick_song_hint/pick_song_no_results/now_playing.
+
+Stage Summary:
+- dev: stacked pinned banners, no chat UI on protobuf servers (with notice + toast fallbacks), solo chatter permanently out of the persisted history (flag + clear-on-empty + version wipe), a searchable share-a-song picker, and a stationary TikTok artwork whenever the caption strip feature is on.
