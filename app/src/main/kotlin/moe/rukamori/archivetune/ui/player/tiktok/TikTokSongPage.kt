@@ -52,6 +52,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
@@ -80,6 +81,7 @@ import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.TikTokMainLyricsEnabledKey
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
@@ -100,6 +102,7 @@ import moe.rukamori.archivetune.ui.player.isLoadingState
 import moe.rukamori.archivetune.ui.player.rememberOfflineArtworkImageRequest
 import moe.rukamori.archivetune.ui.utils.getNextFallbackUrl
 import moe.rukamori.archivetune.ui.utils.resize
+import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -392,19 +395,35 @@ internal fun TikTokSongPage(
                 }
             }
 
-            if (!immersive && isCurrentPage && !lyricsOpen) {
-                TikTokMainLyrics(
-                    sliderPositionProvider = sliderPositionProvider,
-                    lyricsSyncOffset = lyricsSyncOffset,
+            // Reserve the karaoke-caption slot whenever the feature is on — on
+            // EVERY page, and whether or not the current song has synced lyrics
+            // (they also load asynchronously). The artwork box above therefore
+            // keeps a constant height and the artwork NEVER shifts up/shrinks
+            // when lyrics load, appear, change between songs, or during swipes.
+            val mainLyricsEnabled by rememberPreference(TikTokMainLyricsEnabledKey, false)
+            if (!immersive && mainLyricsEnabled && !lyricsOpen) {
+                Box(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            // Mirror the title/artist clearance: the right-side
-                            // rail (~58dp of buttons, bottom-anchored and tall)
-                            // must never overlap or cut the wrapped lyric rows.
-                            .padding(start = 16.dp, end = TIKTOK_CAPTION_TEXT_CLEARANCE + 16.dp)
-                            .padding(bottom = 4.dp),
-                )
+                            .height(TikTokMainLyricsHeight)
+                            .clipToBounds(),
+                ) {
+                    if (isCurrentPage) {
+                        TikTokMainLyrics(
+                            sliderPositionProvider = sliderPositionProvider,
+                            lyricsSyncOffset = lyricsSyncOffset,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    // Mirror the title/artist clearance: the right-side
+                                    // rail (~58dp of buttons, bottom-anchored and tall)
+                                    // must never overlap or cut the wrapped lyric rows.
+                                    .padding(start = 16.dp, end = TIKTOK_CAPTION_TEXT_CLEARANCE + 16.dp)
+                                    .padding(bottom = 4.dp),
+                        )
+                    }
+                }
             }
 
             if (!immersive) {

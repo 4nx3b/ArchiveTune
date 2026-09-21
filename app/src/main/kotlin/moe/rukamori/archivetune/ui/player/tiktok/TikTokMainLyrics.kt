@@ -9,8 +9,6 @@ package moe.rukamori.archivetune.ui.player.tiktok
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -33,6 +31,12 @@ import moe.rukamori.archivetune.utils.rememberPreference
  * enhanced lyrics library's word-timed sweep. Left-aligned with the song info
  * block (and its "recently played" queue pill); previous and upcoming lines are
  * never composed.
+ *
+ * The caller (TikTokSongPage) owns the slot: it reserves [TikTokMainLyricsHeight]
+ * whenever the feature is enabled — for every page and whether or not the
+ * current song has synced lyrics — so the artwork box above never changes size
+ * when lyrics load, appear or change between songs. This composable simply
+ * fills that slot (or composes nothing when there is nothing to show).
  */
 @Composable
 internal fun TikTokMainLyrics(
@@ -63,8 +67,6 @@ internal fun TikTokMainLyrics(
     Box(
         modifier =
             modifier
-                .fillMaxWidth()
-                .height(TikTokMainLyricsHeight)
                 .clipToBounds(),
         contentAlignment = Alignment.BottomStart,
     ) {
@@ -83,5 +85,8 @@ internal fun TikTokMainLyrics(
 // phonetic row above it + the translation below — sized for the worst case
 // without stealing too much height from the artwork above, and clipped at the
 // strip edge so a freak three-row line never bleeds into the song info.
-private val TikTokMainLyricsHeight = 168.dp
+// Internal (not private) so TikTokSongPage can reserve the slot BEFORE knowing
+// whether this song even has lyrics — that reservation is what keeps the
+// artwork from shifting.
+internal val TikTokMainLyricsHeight = 168.dp
 private const val TikTokMainLyricsTextSizeSp = 24f
