@@ -6712,6 +6712,19 @@ class MusicService :
 
     private val queuedMetadataByMediaId = ConcurrentHashMap<String, MediaMetadata>()
 
+    /** True when [mediaId] refers to a music video (OMV/UGC) rather than an
+     *  audio track: queued metadata carries the flag straight from the search
+     *  result, and the DB row covers items restored from a saved queue. */
+    private fun isMusicVideoPlayback(mediaId: String): Boolean {
+        val queuedMetadata =
+            currentMediaMetadata.value?.takeIf { it.id == mediaId }
+                ?: queuedMetadataByMediaId[mediaId]
+        if (queuedMetadata?.isMusicVideo == true) return true
+        return runCatching {
+            runBlocking(Dispatchers.IO) { database.song(mediaId).first() }
+        }.getOrNull()?.song?.isMusicVideo == true
+    }
+
     private fun cacheQueuedMetadata() {
         if (player.mediaItemCount == 0) return
         val present = HashSet<String>(player.mediaItemCount)
@@ -6920,6 +6933,14 @@ class MusicService :
     ): DataSpec? {
         if (mediaId.isLocalMediaId() || mediaId.isTelegramMediaId()) {
             Timber.tag("MusicService").d("Multi-source skip: %s is a local/telegram media id", mediaId)
+            return null
+        }
+        // Music videos must stream their audio from the very same YouTube video
+        // they play the video artwork of — every alternative source (Qobuz,
+        // JioSaavn, Tidal…) resolves a DIFFERENT master of the song, which drifts
+        // out of sync with the video layer. Pin videos to YouTube unconditionally.
+        if (isMusicVideoPlayback(mediaId)) {
+            Timber.tag("MusicService").d("Multi-source skip: %s is a music video — audio pinned to the YouTube video source", mediaId)
             return null
         }
         val qobuzTrackIdRaw = runCatching {

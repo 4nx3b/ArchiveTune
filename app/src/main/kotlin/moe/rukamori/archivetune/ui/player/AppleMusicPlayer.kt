@@ -441,8 +441,6 @@ fun AppleMusicPlayerContent(
         { sliderPositionState.value }
     }
 
-    val blurWander = rememberBlurWanderDrift(active = lyricsBackdropActive)
-
     val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
 
     val lyricsBackdropProgress =
@@ -636,6 +634,11 @@ fun AppleMusicPlayerContent(
         }
 
         if (!videoShowing) {
+            // Same screen-scaled wander amplitude as every other player style
+            // (Apple Music lyrics-page behaviour): the blurred colour mass
+            // traverses the whole display instead of orbiting near the centre.
+            val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
+            val blurWander = rememberBlurWanderDrift(active = lyricsBackdropActive, maxDriftDp = wanderMaxDrift)
             val driftGraphicsLayer: GraphicsLayerScope.() -> Unit = {
                 val progress = lyricsBackdropProgress.value
 
@@ -658,6 +661,7 @@ fun AppleMusicPlayerContent(
                         height = maxHeight,
                         restScale = AmCoverBlurScale,
                         driftScale = AmLyricsBlurDriftScale,
+                        maxDriftDp = wanderMaxDrift,
                     )
                 }
             Box(
