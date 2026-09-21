@@ -1773,7 +1773,10 @@ class ListenTogetherManager @Inject constructor(
             ChatControlEvent.ACTION_DELETE -> {
                 val targetTimestamp = control.targetTimestamp ?: return
                 val targetUserId = control.targetUserId ?: return
-                if (targetUserId != fromUserId) return
+                // Authors delete their own messages; the room host may
+                // additionally delete anyone's (moderation).
+                val senderIsRoomHost = roomState.value?.hostId == fromUserId
+                if (targetUserId != fromUserId && !senderIsRoomHost) return
                 // Tombstone, not removal: everyone (and the persisted history)
                 // keeps seeing that a message existed and was deleted.
                 updateChatMessage(targetUserId, targetTimestamp) { message ->
@@ -1787,7 +1790,13 @@ class ListenTogetherManager @Inject constructor(
                 val targetUserId = control.targetUserId ?: return
                 val pinned = control.action == ChatControlEvent.ACTION_PIN
                 updateChatMessage(targetUserId, targetTimestamp) { message ->
-                    message.copy(pinned = pinned)
+                    // The stamp orders the pinned carousel latest-pin-first;
+                    // it is reset to zero when unpinned.
+                    if (pinned) {
+                        message.copy(pinned = true, pinnedAt = System.currentTimeMillis())
+                    } else {
+                        message.copy(pinned = false, pinnedAt = 0L)
+                    }
                 }
             }
         }
@@ -1847,9 +1856,10 @@ class ListenTogetherManager @Inject constructor(
         applyChatControl(userId.value ?: "", client.currentUsername ?: "", control)
     }
 
-    /** Deletes one of the local user's own messages, room-wide. */
-    fun deleteMessage(message: ChatMessagePayload) {
-        if (message.userId != userId.value) return
+    /** Deletes a message for everyone in the room. Members may delete their own
+     * messages; the host may additionally delete anyone's (moderation). */
+    fun deleteMessageForEveryone(message: ChatMessagePayload) {
+        if (message.userId != userId.value && !isHost) return
         val control = ChatControlEvent(
             action = ChatControlEvent.ACTION_DELETE,
             targetTimestamp = message.timestamp,
@@ -1857,6 +1867,41 @@ class ListenTogetherManager @Inject constructor(
         )
         client.sendChatControl(control)
         applyChatControl(userId.value ?: "", client.currentUsername ?: "", control)
+    }
+
+    /** Hides a message from the local user's view only. Nothing is broadcast —
+     * other members keep seeing the message — and the persisted history is
+     * rewritten without it, so it does not come back on restore. */
+    fun deleteMessageForMe(message: ChatMessagePayload) {
+        val remaining =
+            _chatMessages.value.filterNot {
+                it.userId == message.userId && it.timestamp == message.timestamp
+            }
+        _chatMessages.value = remaining
+
+        // The post-removal snapshot is written directly rather than through
+        // the debounced persist: a delayed write would race the leave-room
+        // wipe of the live list (which must never erase the stored
+        // conversation). Removing the last kept message clears the store
+        // instead of silently leaving it stale.
+        chatPersistJob?.cancel()
+        scope.launch(Dispatchers.IO) {
+            val username = client.currentUsername ?: return@launch
+            val trimmed = remaining.takeLast(MAX_PERSISTED_CHAT_MESSAGES).filterNot { it.solo }
+            runCatching {
+                context.dataStore.edit { prefs ->
+                    if (trimmed.isEmpty()) {
+                        prefs.remove(ListenTogetherChatHistoryKey)
+                    } else {
+                        prefs[ListenTogetherChatHistoryKey] =
+                            chatHistoryJson.encodeToString(
+                                PersistedChatHistory.serializer(),
+                                PersistedChatHistory(username = username, messages = trimmed),
+                            )
+                    }
+                }
+            }.onFailure { Timber.tag(TAG).e(it, "Failed to persist chat history") }
+        }
     }
 
     /** Re-announces that the local user is composing, throttled to one frame per 2.5s. */
