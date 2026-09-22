@@ -3472,3 +3472,27 @@ Work Log:
 Stage Summary:
 - dev: YouLyPlus word-synced lyrics keep inter-word spaces across every player style, for both the syllable-generated LRC (gap re-inserted at generation time) and any enhanced-LRC source that already carries them (gap preserved at parse time); CJK lyrics never gain invented spaces; TTML sources (Apple Music account / Musixmatch / BetterLyrics) now preserve embedded span-edge gaps too. lyrics submodule re-pinned to 714754f.
 - CI verification (commit 1b6122369): all 12 check-runs completed successfully — build, Build Release APKs (gms-mobile-arm64, gms-tv-universal), and the full Nightly matrix (arm64/armeabi/x86/x86_64/universal, foss universal, tv universal) all green; the app-module edits compile and assemble cleanly with the re-pinned lyrics submodule.
+
+---
+
+## Task ID: 71
+
+Task: 12-item user batch — Spanish artist crash, album-list title, notification avatars, lyrics share card reference redesign, chat +/GIF attachments, keyboard overlap, @mentions, connectivity resync rewrite, one-word karaoke lines, long-press popup clamp, full-res year-in-music export, dead-code sweep.
+
+Work Log:
+- Analyzed the crashlog: `measure() may not be called multiple times on the same Measurable` at obfuscated `ui.component.j0.c` — matched to MediaDetailBalancedActionLayout's overflow path that re-measured the play pill whenever a long translated label (Spanish "Reproducir") widened the cluster. Rebuilt satellite-first so the play measurable is measured exactly once with a pre-capped width (1aebe95e2).
+- Artist album/song list pages: the plain TopAppBar titled itself from the local-DB artist entity (null for browsed YouTube artists) and rendered back-arrow-only; both now fall back to the Albums/Songs label the glass header shows. The earlier fix had landed on AlbumScreen (album detail), not the artist's album LIST.
+- One-word karaoke lines: enhanced-LRC parsing dropped any line with <2 word tokens, so lines like "Hey" fell back to whole-line sync; single-token lines now parse and their only word stretches toward the next line (capped 3s) instead of the 600ms flash.
+- Lyrics share card redesigned as an exact recreation of the user's reference (validated with a Python port rendered side-by-side against the reference image and iterated once): 2048px exports, blurred+vignetted artwork ambience, dark frosted-glass card (92x93%), artwork header + measured multi-line title, centered lyrics with the hook line emphasized at 1.28x bold, footer with the real monogram, ArchiveTune, separator and MUSIC LIVES ON tagline. The dialog preview now renders the ACTUAL export bitmap (single source of truth); glass-style presets + dim slider removed with their dead code (LyricsGlassStyle.kt deleted, LyricsImageCard.kt reduced to the vinyl twin, fitBitmap orphan removed).
+- Year in Music export lifts to a 1440x3200-class floor (full-screen resolution).
+- Chat: "+" attachment button (liquid-glass morph popup with dividers) offering Song / GIF; Giphy picker sheet (trending + debounced search + endless scroll + retry) sends only the GIF URL in a new [LTG:] envelope (server never processes the media); Coil GIF decoders registered app-wide; GifBubble renders links locally.
+- Mentions: @autocomplete over the room's member list (multi-mention, dismisses when the @ is deleted), mentions ride the [LTG:] envelope, bold styling with self-mentions emphasized, tappable @-counter chip in the chat header, and mention notifications flow through the existing conversation notification when the chat is closed.
+- Keyboard overlap: the message list is reverseLayout now — the newest message is anchored to the visual bottom so the IME resize can never bury it; chat opens snapped to the latest, auto-follow re-pins while reading at the bottom; the older-messages divider and pinned jumps were re-mapped to the reversed indices.
+- Long-press popup clamped above the mini player via the player-aware bottom inset.
+- Notification avatars: every messaging Person now carries the sender's custom profile picture or a new deterministic colored-initial default avatar; the collapsed heads-up shows the latest sender as large icon; GIF/song-only messages describe themselves.
+- Smart Network Resync removed (key, settings row, manager wiring) and replaced by a connectivity resync engine: network restoration probes the socket with a PING/PONG round trip (2.5s), dead probes force a backoff-reset reconnect, live sockets have guests pull a fresh sync immediately, and post-reconnect syncs fire without the old fixed 1s delay.
+- Static review agent over the full diff found 6 compile blockers (missing comma, duplicate coverBitmap, nonexistent notificationAvatarIcon, wrong kyant import paths, missing offset/blur imports) + minors — all fixed in ed10c840f.
+
+Stage Summary:
+- dev @ ed10c840f: 6 commits, 23 files, +1899/-1249 lines net of the review round.
+- All five workflows worth of behavior gated: push to dev and monitor CI (no local compile per user instruction).
