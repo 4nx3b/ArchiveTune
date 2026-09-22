@@ -921,11 +921,17 @@ object LyricsUtils {
         val words = mutableListOf<WordTimestamp>()
         tokens.forEachIndexed { index, token ->
             val startMs = parseEnhancedLrcStampMs(token.groupValues[1]) ?: return@forEachIndexed
-            val wordText =
+            val normalizedText =
                 token.groupValues[2]
                     .replace(WHITESPACE_REGEX, " ")
-                    .trim { it.isWhitespace() || it == NBSP }
+            val wordText = normalizedText.trim { it.isWhitespace() || it == NBSP }
             if (wordText.isEmpty()) return@forEachIndexed
+            // Keep one trailing space when the source carries it: verbatim
+            // word renderers (LyricsV2 / LyricsEnhanced karaoke) lay each word
+            // out as-is, so trimming the edge gap collapsed "Hello world" into
+            // "Helloworld" for enhanced LRC that embeds the separator after the
+            // word (the YouLyPlus generator and most enhanced-LRC files).
+            val textWithGap = if (normalizedText.endsWith(" ")) "$wordText " else wordText
             val nextStartMs =
                 tokens
                     .getOrNull(index + 1)
@@ -933,7 +939,7 @@ object LyricsUtils {
             val endMs = nextStartMs ?: (startMs + ENHANCED_LRC_LAST_WORD_DEFAULT_DURATION_MS)
             words.add(
                 WordTimestamp(
-                    text = wordText,
+                    text = textWithGap,
                     startTime = startMs / 1000.0,
                     endTime = maxOf(endMs, startMs + MIN_WORD_DURATION_MS) / 1000.0,
                 ),
