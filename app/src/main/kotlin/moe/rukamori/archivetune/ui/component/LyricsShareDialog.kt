@@ -18,8 +18,6 @@ import android.content.Intent
 import android.os.Build
 import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -43,6 +41,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -61,9 +60,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -72,8 +69,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -82,26 +81,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.palette.graphics.Palette
 import androidx.window.core.layout.WindowSizeClass
-import coil3.ImageLoader
-import coil3.request.ImageRequest
-import coil3.request.allowHardware
-import coil3.toBitmap
-import com.google.common.collect.ImmutableList
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.utils.ComposeToImage
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-
-@Immutable
-private data class LyricsGlassStyleOptions(
-    val items: ImmutableList<LyricsGlassStyle>,
-)
 
 fun shareLyricsAsText(
     context: Context,
@@ -150,51 +137,10 @@ fun LyricsShareImageDialog(
         !windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
 
     var isSharing by remember { mutableStateOf(false) }
-    var selectedGlassStyle by remember { mutableStateOf(LyricsGlassStyle.FrostedDark) }
-    var paletteGlassStyle by remember { mutableStateOf<LyricsGlassStyle?>(null) }
     var options by remember { mutableStateOf(LyricsShareImageOptions()) }
     var areAdvancedOptionsVisible by remember { mutableStateOf(false) }
 
     var customTextColor by remember { mutableStateOf<Color?>(null) }
-
-    LaunchedEffect(selectedGlassStyle) { customTextColor = null }
-
-    LaunchedEffect(mediaMetadata?.thumbnailUrl) {
-        val coverUrl = mediaMetadata?.thumbnailUrl
-        if (coverUrl == null) {
-            paletteGlassStyle = null
-            return@LaunchedEffect
-        }
-        val extractedStyle =
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    val loader = ImageLoader(context)
-                    val request =
-                        ImageRequest
-                            .Builder(context)
-                            .data(coverUrl)
-                            .allowHardware(false)
-                            .build()
-                    val bitmap = loader.execute(request).image?.toBitmap() ?: return@runCatching null
-                    LyricsGlassStyle.fromPalette(Palette.from(bitmap).generate())
-                }.getOrNull()
-            }
-        paletteGlassStyle = extractedStyle
-    }
-
-    val availableStyles by remember(paletteGlassStyle) {
-        derivedStateOf {
-            LyricsGlassStyleOptions(
-                items =
-                    ImmutableList.copyOf(
-                        buildList {
-                            paletteGlassStyle?.let(::add)
-                            addAll(LyricsGlassStyle.allPresets.filterNot { it == paletteGlassStyle })
-                        },
-                    ),
-            )
-        }
-    }
 
     val handleShare: () -> Unit = {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
@@ -223,7 +169,6 @@ fun LyricsShareImageDialog(
                                 width = options.aspectRatio.exportWidth,
                                 height = options.aspectRatio.exportHeight,
                                 textColor = customTextColor?.toArgb(),
-                                glassStyle = selectedGlassStyle,
                                 shareOptions = options,
                             )
                         }
@@ -261,9 +206,6 @@ fun LyricsShareImageDialog(
         payload = payload,
         options = options,
         onOptionsChange = { options = it },
-        availableStyles = availableStyles,
-        selectedGlassStyle = selectedGlassStyle,
-        onStyleSelect = { selectedGlassStyle = it },
         customTextColor = customTextColor,
         onCustomTextColorChange = { customTextColor = it },
         areAdvancedOptionsVisible = !isCompactLayout || areAdvancedOptionsVisible,
@@ -285,9 +227,6 @@ private fun LyricsShareStudioDialog(
     payload: LyricsSharePayload,
     options: LyricsShareImageOptions,
     onOptionsChange: (LyricsShareImageOptions) -> Unit,
-    availableStyles: LyricsGlassStyleOptions,
-    selectedGlassStyle: LyricsGlassStyle,
-    onStyleSelect: (LyricsGlassStyle) -> Unit,
     customTextColor: Color?,
     onCustomTextColorChange: (Color?) -> Unit,
     areAdvancedOptionsVisible: Boolean,
@@ -338,9 +277,6 @@ private fun LyricsShareStudioDialog(
                     payload = payload,
                     options = options,
                     onOptionsChange = onOptionsChange,
-                    availableStyles = availableStyles,
-                    selectedGlassStyle = selectedGlassStyle,
-                    onStyleSelect = onStyleSelect,
                     customTextColor = customTextColor,
                     onCustomTextColorChange = onCustomTextColorChange,
                     areAdvancedOptionsVisible = areAdvancedOptionsVisible,
@@ -394,9 +330,6 @@ private fun LyricsShareStudioScaffold(
     payload: LyricsSharePayload,
     options: LyricsShareImageOptions,
     onOptionsChange: (LyricsShareImageOptions) -> Unit,
-    availableStyles: LyricsGlassStyleOptions,
-    selectedGlassStyle: LyricsGlassStyle,
-    onStyleSelect: (LyricsGlassStyle) -> Unit,
     customTextColor: Color?,
     onCustomTextColorChange: (Color?) -> Unit,
     areAdvancedOptionsVisible: Boolean,
@@ -437,7 +370,6 @@ private fun LyricsShareStudioScaffold(
                 PreviewContainer(
                     payload = payload,
                     mediaMetadata = mediaMetadata,
-                    selectedGlassStyle = selectedGlassStyle,
                     options = options,
                     customTextColor = customTextColor,
                     isCompactLayout = true,
@@ -446,14 +378,10 @@ private fun LyricsShareStudioScaffold(
                 ControlsSection(
                     options = options,
                     onOptionsChange = onOptionsChange,
-                    availableStyles = availableStyles,
-                    selectedGlassStyle = selectedGlassStyle,
-                    onStyleSelect = onStyleSelect,
                     customTextColor = customTextColor,
                     onCustomTextColorChange = onCustomTextColorChange,
                     areAdvancedOptionsVisible = areAdvancedOptionsVisible,
                     onShowAdvancedOptions = onShowAdvancedOptions,
-                    isCompactLayout = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
             } else {
@@ -465,7 +393,6 @@ private fun LyricsShareStudioScaffold(
                     PreviewContainer(
                         payload = payload,
                         mediaMetadata = mediaMetadata,
-                        selectedGlassStyle = selectedGlassStyle,
                         options = options,
                         customTextColor = customTextColor,
                         isCompactLayout = false,
@@ -483,14 +410,10 @@ private fun LyricsShareStudioScaffold(
                         ControlsSection(
                             options = options,
                             onOptionsChange = onOptionsChange,
-                            availableStyles = availableStyles,
-                            selectedGlassStyle = selectedGlassStyle,
-                            onStyleSelect = onStyleSelect,
                             customTextColor = customTextColor,
                             onCustomTextColorChange = onCustomTextColorChange,
                             areAdvancedOptionsVisible = areAdvancedOptionsVisible,
                             onShowAdvancedOptions = onShowAdvancedOptions,
-                            isCompactLayout = false,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -573,16 +496,23 @@ private fun LyricsShareHeader(
     }
 }
 
+/**
+ * The live preview renders the ACTUAL export bitmap (the same
+ * [ComposeToImage.createLyricsImage] pipeline, at a reduced preview resolution)
+ * instead of a parallel Compose approximation — the preview is always
+ * pixel-identical to what gets shared, and there is a single source of truth
+ * for the card's visual design.
+ */
 @Composable
 private fun PreviewContainer(
     payload: LyricsSharePayload,
     mediaMetadata: MediaMetadata?,
-    selectedGlassStyle: LyricsGlassStyle,
     options: LyricsShareImageOptions,
     customTextColor: Color?,
     isCompactLayout: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val previewWidthFraction =
         when (options.aspectRatio) {
             LyricsShareAspectRatio.Square -> if (isCompactLayout) 0.78f else 0.82f
@@ -590,6 +520,32 @@ private fun PreviewContainer(
             LyricsShareAspectRatio.Story -> if (isCompactLayout) 0.40f else 0.42f
         }
     val previewMaxWidth = if (isCompactLayout) 260.dp else 380.dp
+
+    var previewBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+
+    LaunchedEffect(payload, options, customTextColor, mediaMetadata?.thumbnailUrl) {
+        if (options.vinylMode) return@LaunchedEffect
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return@LaunchedEffect
+        // Debounce so dragging a slider doesn't queue a render per frame.
+        delay(200)
+        val exportW = options.aspectRatio.exportWidth
+        val exportH = options.aspectRatio.exportHeight
+        val scale = minOf(1f, 900f / maxOf(exportW, exportH))
+        previewBitmap =
+            runCatching {
+                ComposeToImage.createLyricsImage(
+                    context = context,
+                    coverArtUrl = mediaMetadata?.thumbnailUrl,
+                    songTitle = payload.songTitle,
+                    artistName = payload.artists,
+                    lyrics = payload.lyricsText,
+                    width = (exportW * scale).toInt().coerceAtLeast(320),
+                    height = (exportH * scale).toInt().coerceAtLeast(320),
+                    textColor = customTextColor?.toArgb(),
+                    shareOptions = options,
+                )
+            }.getOrNull()
+    }
 
     Surface(
         modifier = modifier,
@@ -624,15 +580,17 @@ private fun PreviewContainer(
                             coverArtUrl = mediaMetadata?.thumbnailUrl,
                         )
                     } else {
-                        LyricsImageCard(
-                            lyricText = payload.lyricsText,
-                            songTitle = payload.songTitle,
-                            artistName = payload.artists,
-                            coverArtUrl = mediaMetadata?.thumbnailUrl,
-                            glassStyle = selectedGlassStyle,
-                            shareOptions = options,
-                            textColor = customTextColor,
-                        )
+                        val bitmap = previewBitmap
+                        if (bitmap != null) {
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else {
+                            LoadingIndicator(modifier = Modifier.size(28.dp))
+                        }
                     }
                 }
             }
@@ -644,14 +602,10 @@ private fun PreviewContainer(
 private fun ControlsSection(
     options: LyricsShareImageOptions,
     onOptionsChange: (LyricsShareImageOptions) -> Unit,
-    availableStyles: LyricsGlassStyleOptions,
-    selectedGlassStyle: LyricsGlassStyle,
-    onStyleSelect: (LyricsGlassStyle) -> Unit,
     customTextColor: Color?,
     onCustomTextColorChange: (Color?) -> Unit,
     areAdvancedOptionsVisible: Boolean,
     onShowAdvancedOptions: () -> Unit,
-    isCompactLayout: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -720,24 +674,6 @@ private fun ControlsSection(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-            LyricsShareControlGroup(title = stringResource(R.string.customize_colors)) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    maxItemsInEachRow = if (isCompactLayout) 2 else 3,
-                ) {
-                    availableStyles.items.forEach { style ->
-                        LyricsStyleOption(
-                            style = style,
-                            selected = selectedGlassStyle == style,
-                            onClick = { onStyleSelect(style) },
-                        )
-                    }
-                }
-            }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
             LyricsShareControlGroup(title = stringResource(R.string.lyrics_share_text_color)) {
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
@@ -745,7 +681,7 @@ private fun ControlsSection(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     LyricsTextColorSwatch(
-                        color = selectedGlassStyle.textColor,
+                        color = Color(0xFFF7F0EB),
                         label = stringResource(R.string.lyrics_share_text_color_default),
                         selected = customTextColor == null,
                         onClick = { onCustomTextColorChange(null) },
@@ -771,13 +707,6 @@ private fun ControlsSection(
                         value = options.blurRadius,
                         onValueChange = { onOptionsChange(options.copy(blurRadius = it)) },
                         valueRange = 0f..48f,
-                    )
-                    LyricsShareSlider(
-                        title = stringResource(R.string.lyrics_share_background_dim),
-                        valueLabel = stringResource(R.string.lyrics_share_background_dim_value, (options.sanitizedDimAmount * 100).toInt()),
-                        value = options.dimAmount,
-                        onValueChange = { onOptionsChange(options.copy(dimAmount = it)) },
-                        valueRange = 0.6f..1.6f,
                     )
 
                     Row(
@@ -934,82 +863,6 @@ private fun LyricsAspectRatioOption(
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
         )
-    }
-}
-
-@Composable
-private fun LyricsStyleOption(
-    style: LyricsGlassStyle,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val motionScheme = MaterialTheme.motionScheme
-    val optionShape = if (selected) MaterialTheme.shapes.extraLarge else MaterialTheme.shapes.large
-    val borderColor by animateColorAsState(
-        targetValue =
-            if (selected) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.outlineVariant
-            },
-        animationSpec = motionScheme.defaultEffectsSpec(),
-        label = "lyricsStyleBorder",
-    )
-    val containerColor by animateColorAsState(
-        targetValue =
-            if (selected) {
-                MaterialTheme.colorScheme.surfaceColorAtElevation(8.dp)
-            } else {
-                MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp)
-            },
-        animationSpec = motionScheme.defaultEffectsSpec(),
-        label = "lyricsStyleContainer",
-    )
-
-    Surface(
-        modifier =
-            modifier
-                .widthIn(min = 96.dp)
-                .heightIn(min = 40.dp)
-                .clip(optionShape)
-                .clickable(onClick = onClick),
-        shape = optionShape,
-        color = containerColor,
-        border = BorderStroke(width = if (selected) 1.5.dp else 1.dp, color = borderColor),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(24.dp)
-                        .clip(MaterialTheme.shapes.extraLarge)
-                        .background(style.surfaceTint.copy(alpha = 0.8f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(14.dp)
-                            .background(
-                                color = style.surfaceTint.copy(alpha = style.surfaceAlpha),
-                                shape = MaterialTheme.shapes.extraLarge,
-                            ),
-                )
-            }
-            Text(
-                text = stringResource(style.labelRes),
-                style = MaterialTheme.typography.labelMediumEmphasized,
-                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-        }
     }
 }
 

@@ -260,38 +260,28 @@ object ComposeToImage {
         lyrics: String,
         width: Int,
         height: Int,
-        backgroundColor: Int? = null,
         textColor: Int? = null,
-        secondaryTextColor: Int? = null,
-        glassStyle: moe.rukamori.archivetune.ui.component.LyricsGlassStyle? = null,
         shareOptions: LyricsShareImageOptions = LyricsShareImageOptions(),
     ): Bitmap =
         withContext(Dispatchers.Default) {
-            val style = glassStyle ?: moe.rukamori.archivetune.ui.component.LyricsGlassStyle.FrostedDark
             val canvasWidth = width.coerceAtLeast(1)
             val canvasHeight = height.coerceAtLeast(1)
-            val baseSize = minOf(canvasWidth, canvasHeight)
+            val baseSize = minOf(canvasWidth, canvasHeight).toFloat()
             val bitmap = createBitmap(canvasWidth, canvasHeight)
             val canvas = Canvas(bitmap)
 
-            val mainTextColor =
-                textColor
-                    ?: style.textColor.let {
-                        ((it.alpha * 255).toInt() shl 24) or
-                            ((it.red * 255).toInt() shl 16) or
-                            ((it.green * 255).toInt() shl 8) or
-                            (it.blue * 255).toInt()
-                    }
-            val secondaryTxtColor =
-                secondaryTextColor
-                    ?: style.secondaryTextColor.let {
-                        ((it.alpha * 255).toInt() shl 24) or
-                            ((it.red * 255).toInt() shl 16) or
-                            ((it.green * 255).toInt() shl 8) or
-                            (it.blue * 255).toInt()
-                    }
-            val bgColor = backgroundColor ?: 0xFF121212.toInt()
+            // ---- reference palette: dark frosted glass, warm off-white type ----
+            // A custom text color (dialog swatches) overrides the whole lyric set.
+            val emphasizedColor = textColor ?: 0xFFF7F0EB.toInt()
+            val normalColor = (emphasizedColor and 0x00FFFFFF) or (0xE6 shl 24)
+            val secondaryColor =
+                if (textColor != null) {
+                    (textColor and 0x00FFFFFF) or (0xBF shl 24)
+                } else {
+                    0xFFC9BFBC.toInt()
+                }
 
+            // ---- artwork (loaded once, reused for background + header) ----
             var coverArtBitmap: Bitmap? = null
             if (coverArtUrl != null) {
                 try {
@@ -310,233 +300,411 @@ object ComposeToImage {
                 }
             }
 
-            val fittedArt =
-                coverArtBitmap?.let {
-                    fitBitmap(
-                        source = it,
-                        targetWidth = canvasWidth,
-                        targetHeight = canvasHeight,
-                        backgroundColor = bgColor,
-                    )
+            // ---- ambient background: enlarged, heavily blurred artwork with a
+            // dark vignette; adapts to every album's palette automatically ----
+            val blurredBackground: Bitmap? =
+                coverArtBitmap?.let { art ->
+                    blurBitmap(coverBitmap(art, canvasWidth, canvasHeight), shareOptions.sanitizedBlurRadius.coerceAtLeast(14f))
                 }
-
-            if (fittedArt != null) {
-                val blurredBackground = blurBitmap(fittedArt, shareOptions.sanitizedBlurRadius)
-                canvas.drawBitmap(blurredBackground, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
+            if (blurredBackground != null) {
+                val bleed = baseSize * 0.03f
+                val bgRect = RectF(-bleed, -bleed, canvasWidth + bleed, canvasHeight + bleed)
+                canvas.drawBitmap(blurredBackground, null, bgRect, Paint(Paint.FILTER_BITMAP_FLAG))
             } else {
-                canvas.drawColor(bgColor)
+                canvas.drawColor(0xFF151014.toInt())
             }
 
-            val dimPaint =
+            val fullRect = RectF(0f, 0f, canvasWidth.toFloat(), canvasHeight.toFloat())
+            canvas.drawRect(fullRect, Paint().apply { color = 0x2E0A0608.toInt() })
+            canvas.drawRect(
+                fullRect,
                 Paint().apply {
-                    color =
-                        android.graphics.Color.argb(
-                            ((style.backgroundDimAlpha * shareOptions.sanitizedDimAmount).coerceIn(0f, 0.95f) * 255).toInt(),
-                            0,
-                            0,
-                            0,
+                    shader =
+                        RadialGradient(
+                            canvasWidth / 2f,
+                            canvasHeight / 2f,
+                            maxOf(canvasWidth, canvasHeight) * 0.75f,
+                            0x00000000,
+                            0x8C000000,
+                            Shader.TileMode.CLAMP,
                         )
+                },
+            )
+
+            // ---- the frosted-glass card ----
+            val cardWidth = canvasWidth * 0.92f
+            val cardHeight = canvasHeight * 0.93f
+            val cardLeft = (canvasWidth - cardWidth) / 2f
+            val cardTop = (canvasHeight - cardHeight) / 2f
+            val cardRight = cardLeft + cardWidth
+            val cardBottom = cardTop + cardHeight
+            val cardRect = RectF(cardLeft, cardTop, cardRight, cardBottom)
+            val cardRadius = baseSize * 0.028f
+
+            // Soft shadow lifting the card off the background (soft glow ring).
+            canvas.drawRoundRect(
+                cardRect,
+                cardRadius,
+                cardRadius,
+                Paint().apply {
+                    color = 0x33000000
                     isAntiAlias = true
-                }
-            canvas.drawRect(RectF(0f, 0f, canvasWidth.toFloat(), canvasHeight.toFloat()), dimPaint)
+                    setShadowLayer(baseSize * 0.030f, 0f, baseSize * 0.005f, 0x66000000)
+                },
+            )
 
-            val glassMargin = baseSize * 0.045f
-            val glassLeft = glassMargin
-            val glassTop = glassMargin
-            val glassRight = canvasWidth - glassMargin
-            val glassBottom = canvasHeight - glassMargin
-            val glassWidth = glassRight - glassLeft
-            val glassHeight = glassBottom - glassTop
-            val glassCornerRadius = baseSize * 0.05f
-
-            val glassRect = RectF(glassLeft, glassTop, glassRight, glassBottom)
-            val glassPath =
+            val cardPath =
                 Path().apply {
-                    addRoundRect(glassRect, glassCornerRadius, glassCornerRadius, Path.Direction.CW)
+                    addRoundRect(cardRect, cardRadius, cardRadius, Path.Direction.CW)
                 }
-
-            if (fittedArt != null) {
-                val frostedCrop = blurBitmap(fittedArt, (shareOptions.sanitizedBlurRadius + 10f).coerceIn(8f, 48f))
-                canvas.withClip(glassPath) {
-                    drawBitmap(frostedCrop, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
+            if (blurredBackground != null) {
+                val bleed = baseSize * 0.03f
+                val bgRect = RectF(-bleed, -bleed, canvasWidth + bleed, canvasHeight + bleed)
+                canvas.withClip(cardPath) {
+                    drawBitmap(blurredBackground, null, bgRect, Paint(Paint.FILTER_BITMAP_FLAG))
                 }
+            } else {
+                canvas.withClip(cardPath) { drawColor(0xFF2B2024.toInt()) }
             }
-
-            val glassBgPaint =
-                Paint().apply {
-                    color =
-                        style.surfaceTint.let {
-                            android.graphics.Color.argb(
-                                (style.surfaceAlpha * 255).toInt(),
-                                (it.red * 255).toInt(),
-                                (it.green * 255).toInt(),
-                                (it.blue * 255).toInt(),
+            // Dark translucent veil + slight tonal variation toward the bottom —
+            // the reference's glass reads darker in the middle and lighter where
+            // the artwork behind it is brighter.
+            canvas.withClip(cardPath) {
+                drawRect(fullRect, Paint().apply { color = 0x42140D10.toInt() })
+                drawRect(
+                    fullRect,
+                    Paint().apply {
+                        shader =
+                            LinearGradient(
+                                0f,
+                                cardTop,
+                                0f,
+                                cardBottom,
+                                0x00FFFFFF,
+                                0x1AFFFFFF,
+                                Shader.TileMode.CLAMP,
                             )
-                        }
-                    isAntiAlias = true
-                }
-            canvas.drawRoundRect(glassRect, glassCornerRadius, glassCornerRadius, glassBgPaint)
-
-            val overlayPaint =
+                    },
+                )
+            }
+            canvas.drawRoundRect(
+                cardRect,
+                cardRadius,
+                cardRadius,
                 Paint().apply {
-                    color =
-                        style.overlayColor.let {
-                            android.graphics.Color.argb(
-                                (style.overlayAlpha * 255).toInt(),
-                                (it.red * 255).toInt(),
-                                (it.green * 255).toInt(),
-                                (it.blue * 255).toInt(),
-                            )
-                        }
+                    style = Paint.Style.STROKE
+                    strokeWidth = (baseSize * 0.0012f).coerceAtLeast(1.5f)
+                    color = 0x66FFFFFF
                     isAntiAlias = true
+                },
+            )
+
+            // ---- header: artwork upper-left, title/artist to its right ----
+            val contentInset = cardWidth * 0.042f
+            val artSize = baseSize * 0.20f
+            val artTop = cardTop + cardHeight * 0.045f
+            val artLeft = cardLeft + contentInset
+            val artRadius = artSize * 0.075f
+
+            val showingArtwork = shareOptions.showArtwork && coverArtBitmap != null
+            if (showingArtwork) {
+                val artRect = RectF(artLeft, artTop, artLeft + artSize, artTop + artSize)
+                val artPath =
+                    Path().apply {
+                        addRoundRect(artRect, artRadius, artRadius, Path.Direction.CW)
+                    }
+                canvas.withClip(artPath) {
+                    drawBitmap(coverArtBitmap!!, null, artRect, Paint(Paint.FILTER_BITMAP_FLAG))
                 }
-            canvas.drawRoundRect(glassRect, glassCornerRadius, glassCornerRadius, overlayPaint)
-
-            val borderPaint =
-                Paint().apply {
-                    this.style = Paint.Style.STROKE
-                    strokeWidth = 1.5f
-                    color = android.graphics.Color.argb(25, 255, 255, 255)
-                    isAntiAlias = true
-                }
-            canvas.drawRoundRect(glassRect, glassCornerRadius, glassCornerRadius, borderPaint)
-
-            val contentPadding = minOf(glassWidth, glassHeight) * 0.08f
-            val contentLeft = glassLeft + contentPadding
-            val contentTop = glassTop + contentPadding
-            val contentRight = glassRight - contentPadding
-
-            val imageCornerRadius = baseSize * 0.035f
-            val coverSize = minOf(glassWidth * 0.18f, glassHeight * 0.15f)
-            val topRowGap = baseSize * 0.035f
+                canvas.drawRoundRect(
+                    artRect,
+                    artRadius,
+                    artRadius,
+                    Paint().apply {
+                        style = Paint.Style.STROKE
+                        strokeWidth = (baseSize * 0.0008f).coerceAtLeast(1f)
+                        color = 0x33FFFFFF
+                        isAntiAlias = true
+                    },
+                )
+            }
 
             val titlePaint =
                 TextPaint().apply {
-                    color = mainTextColor
-                    textSize = baseSize * 0.038f
+                    color = emphasizedColor
+                    textSize = baseSize * 0.036f
                     typeface = Typeface.DEFAULT_BOLD
                     isAntiAlias = true
-                    letterSpacing = -0.02f
+                    letterSpacing = -0.01f
                 }
             val artistPaint =
                 TextPaint().apply {
-                    color = secondaryTxtColor
-                    textSize = baseSize * 0.028f
+                    color = secondaryColor
+                    textSize = baseSize * 0.020f
                     typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
                     isAntiAlias = true
                 }
 
-            val showingArtwork = shareOptions.showArtwork && coverArtBitmap != null
-            if (showingArtwork) {
-                val rect = RectF(contentLeft, contentTop, contentLeft + coverSize, contentTop + coverSize)
-                val path =
-                    Path().apply {
-                        addRoundRect(rect, imageCornerRadius, imageCornerRadius, Path.Direction.CW)
-                    }
-                canvas.withClip(path) {
-                    drawBitmap(coverArtBitmap ?: return@withClip, null, rect, Paint(Paint.FILTER_BITMAP_FLAG))
-                }
-                val artBorderPaint =
-                    Paint().apply {
-                        this.style = Paint.Style.STROKE
-                        strokeWidth = 1f
-                        color = android.graphics.Color.argb(38, 255, 255, 255)
-                        isAntiAlias = true
-                    }
-                canvas.drawRoundRect(rect, imageCornerRadius, imageCornerRadius, artBorderPaint)
-            }
-
-            val textMaxWidth =
+            val textStartX =
                 if (showingArtwork) {
-                    (contentRight - contentLeft - coverSize - topRowGap).toInt()
+                    artLeft + artSize + baseSize * 0.030f
                 } else {
-                    (contentRight - contentLeft).toInt()
+                    cardLeft + contentInset
                 }
-            val textStartX = if (showingArtwork) contentLeft + coverSize + topRowGap else contentLeft
-            val headerAlignment = if (showingArtwork) Layout.Alignment.ALIGN_NORMAL else Layout.Alignment.ALIGN_CENTER
+            val textMaxWidth = (cardRight - contentInset - textStartX).coerceAtLeast(1f).toInt()
 
             val titleLayout =
                 StaticLayout.Builder
                     .obtain(songTitle, 0, songTitle.length, titlePaint, textMaxWidth)
-                    .setAlignment(headerAlignment)
-                    .setMaxLines(1)
+                    .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                    .setLineSpacing(0f, 1.08f)
+                    .setIncludePad(false)
+                    .setMaxLines(3)
+                    .setEllipsize(android.text.TextUtils.TruncateAt.END)
                     .build()
             val artistLayout =
                 StaticLayout.Builder
                     .obtain(artistName, 0, artistName.length, artistPaint, textMaxWidth)
-                    .setAlignment(headerAlignment)
-                    .setMaxLines(1)
+                    .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                    .setLineSpacing(0f, 1.2f)
+                    .setIncludePad(false)
+                    .setMaxLines(2)
+                    .setEllipsize(android.text.TextUtils.TruncateAt.END)
                     .build()
 
-            val topBlockHeight = if (showingArtwork) coverSize else (titleLayout.height + artistLayout.height + 6f)
-            val imageCenter = contentTop + topBlockHeight / 2f
-            val textBlockHeight = titleLayout.height + artistLayout.height + 6f
-            val textBlockY = imageCenter - textBlockHeight / 2f
-
-            canvas.withTranslation(textStartX, textBlockY) {
+            val headerGap = baseSize * 0.010f
+            val headerBlockHeight = titleLayout.height + headerGap + artistLayout.height
+            val headerTop =
+                if (showingArtwork) {
+                    artTop + (artSize - headerBlockHeight) * 0.56f
+                } else {
+                    cardTop + cardHeight * 0.055f
+                }
+            canvas.withTranslation(textStartX, headerTop) {
                 titleLayout.draw(this)
-                translate(0f, titleLayout.height.toFloat() + 6f)
+                translate(0f, titleLayout.height + headerGap)
                 artistLayout.draw(this)
             }
-
-            val lyricsPaint =
-                TextPaint().apply {
-                    color = mainTextColor
-                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    isAntiAlias = true
-                    letterSpacing = -0.01f
-                }
-
-            val lyricsMaxWidth = (glassWidth * 0.85f).toInt()
-            val logoBlockHeight = (baseSize * 0.08f).toInt()
-            val headerBottom = if (showingArtwork) contentTop + coverSize else (textBlockY + textBlockHeight)
-            val lyricsTop = headerBottom + baseSize * 0.045f
-            val lyricsBottom = glassBottom - (logoBlockHeight + contentPadding)
-            val availableLyricsHeight = lyricsBottom - lyricsTop
-
-            var lyricsTextSize = baseSize * 0.055f
-            var lyricsLayout: StaticLayout
-            do {
-                lyricsPaint.textSize = lyricsTextSize
-                lyricsLayout =
-                    StaticLayout.Builder
-                        .obtain(
-                            lyrics,
-                            0,
-                            lyrics.length,
-                            lyricsPaint,
-                            lyricsMaxWidth,
-                        ).setAlignment(Layout.Alignment.ALIGN_CENTER)
-                        .setIncludePad(false)
-                        .setLineSpacing(8f, 1.35f)
-                        .setMaxLines(10)
-                        .build()
-                if (lyricsLayout.height > availableLyricsHeight) {
-                    lyricsTextSize -= 2f
+            val headerAnchorBottom =
+                if (showingArtwork) {
+                    artTop + artSize
                 } else {
-                    break
+                    headerTop + headerBlockHeight
                 }
-            } while (lyricsTextSize > 22f)
+            val headerBottom = maxOf(headerAnchorBottom, headerTop + headerBlockHeight)
 
-            val lyricsYOffset = lyricsTop + (availableLyricsHeight - lyricsLayout.height) / 2f
-            canvas.withTranslation(glassLeft + (glassWidth - lyricsMaxWidth) / 2f, lyricsYOffset) {
-                lyricsLayout.draw(this)
+            // ---- footer: logo + ArchiveTune + separator + tagline ----
+            val footerCenterY = cardBottom - cardHeight * 0.085f
+            val footerTop = footerCenterY - baseSize * 0.032f
+
+            val logoDiameter = baseSize * 0.058f
+            val logoCenterX = cardLeft + contentInset + logoDiameter / 2f
+            canvas.drawCircle(
+                logoCenterX,
+                footerCenterY,
+                logoDiameter / 2f,
+                Paint().apply {
+                    color = 0xFF1C1C22.toInt()
+                    isAntiAlias = true
+                },
+            )
+            val monogramSize = (logoDiameter * 0.56f).toInt().coerceAtLeast(8)
+            context.getDrawable(R.drawable.small_icon)?.toBitmap(monogramSize, monogramSize)?.let { source ->
+                val tinted = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+                Canvas(tinted).drawBitmap(
+                    source,
+                    0f,
+                    0f,
+                    Paint().apply {
+                        colorFilter = PorterDuffColorFilter(0xE6FFFFFF.toInt(), PorterDuff.Mode.SRC_IN)
+                        isAntiAlias = true
+                    },
+                )
+                canvas.drawBitmap(
+                    tinted,
+                    logoCenterX - tinted.width / 2f,
+                    footerCenterY - tinted.height / 2f,
+                    null,
+                )
             }
 
-            AppLogo(
-                context = context,
-                canvas = canvas,
-                canvasWidth = canvasWidth,
-                canvasHeight = canvasHeight,
-                padding = contentLeft,
-                bottomPadding = glassBottom - contentPadding,
-                circleColor = secondaryTxtColor,
-                logoTint = if (style.isDark) 0xDD000000.toInt() else 0xE6FFFFFF.toInt(),
-                textColor = secondaryTxtColor,
-            )
+            val brandPaint =
+                TextPaint().apply {
+                    color = 0xFFF2EDE8.toInt()
+                    textSize = baseSize * 0.023f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    isAntiAlias = true
+                    letterSpacing = 0.01f
+                }
+            val appName = context.getString(R.string.app_name)
+            val brandX = logoCenterX + logoDiameter / 2f + baseSize * 0.014f
+            drawVerticallyCenteredText(canvas, appName, brandX, footerCenterY, brandPaint)
+
+            val taglinePaint =
+                TextPaint().apply {
+                    color = 0xB8D6CFC9.toInt()
+                    textSize = baseSize * 0.0165f
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                    isAntiAlias = true
+                    letterSpacing = 0.20f
+                }
+            val tagline = context.getString(R.string.archivetune_tagline)
+            val taglineWidth = taglinePaint.measureText(tagline)
+            val taglineEnd = cardRight - contentInset
+            drawVerticallyCenteredText(canvas, tagline, taglineEnd - taglineWidth, footerCenterY, taglinePaint)
+
+            val brandWidth = brandPaint.measureText(appName)
+            val separatorStart = brandX + brandWidth + baseSize * 0.022f
+            val separatorEnd = taglineEnd - taglineWidth - baseSize * 0.020f
+            if (separatorEnd > separatorStart) {
+                canvas.drawLine(
+                    separatorStart,
+                    footerCenterY,
+                    separatorEnd,
+                    footerCenterY,
+                    Paint().apply {
+                        strokeWidth = (baseSize * 0.0012f).coerceAtLeast(1.2f)
+                        color = 0x47FFFFFF
+                        isAntiAlias = true
+                    },
+                )
+            }
+
+            // ---- lyrics: the hero content, centered with generous rhythm ----
+            val lyricLines =
+                lyrics
+                    .lineSequence()
+                    .map(String::trim)
+                    .filter { it.isNotEmpty() }
+                    .toList()
+            if (lyricLines.isNotEmpty()) {
+                val lyricsTop = headerBottom + cardHeight * 0.045f
+                val lyricsBottom = footerTop - cardHeight * 0.035f
+                val availableLyricsHeight = (lyricsBottom - lyricsTop).coerceAtLeast(1f)
+                val lyricsMaxWidth = (cardWidth * 0.86f).toInt()
+
+                // The selection's hook gets the emphasis, mirroring the
+                // reference: for the default 5-line selection that is the second
+                // line (the long hook wraps onto two rows exactly like the
+                // reference composition); shorter selections keep the middle.
+                val emphasizedIndex =
+                    if (lyricLines.size >= 5) {
+                        lyricLines.size / 2 - 1
+                    } else {
+                        lyricLines.size / 2
+                    }
+
+                fun buildRows(scale: Float): List<Pair<StaticLayout, Boolean>> =
+                    lyricLines.mapIndexed { index, line ->
+                        val emphasized = index == emphasizedIndex
+                        val paint =
+                            TextPaint().apply {
+                                color = if (emphasized) emphasizedColor else normalColor
+                                textSize = baseSize * 0.042f * scale * (if (emphasized) 1.28f else 1f)
+                                typeface =
+                                    if (emphasized) {
+                                        Typeface.DEFAULT_BOLD
+                                    } else {
+                                        Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                                    }
+                                isAntiAlias = true
+                                letterSpacing = -0.012f
+                            }
+                        val layout =
+                            StaticLayout.Builder
+                                .obtain(line, 0, line.length, paint, lyricsMaxWidth)
+                                .setAlignment(Layout.Alignment.ALIGN_CENTER)
+                                .setLineSpacing(0f, 1.06f)
+                                .setIncludePad(false)
+                                .setMaxLines(4)
+                                .setEllipsize(android.text.TextUtils.TruncateAt.END)
+                                .build()
+                        layout to emphasized
+                    }
+
+                // Generous editorial pitch: 0.62em of rest between rows plus
+                // extra breathing around the emphasized hook, like the
+                // reference's vertical rhythm.
+                fun rowGap(
+                    previous: Pair<StaticLayout, Boolean>,
+                    current: Pair<StaticLayout, Boolean>,
+                ): Float {
+                    var gap = previous.first.paint.textSize * 0.62f
+                    if (previous.second || current.second) gap += current.first.paint.textSize * 0.35f
+                    return gap
+                }
+
+                fun blockHeight(rows: List<Pair<StaticLayout, Boolean>>): Float {
+                    var height = 0f
+                    rows.forEachIndexed { index, row ->
+                        if (index > 0) height += rowGap(rows[index - 1], row)
+                        height += row.first.height
+                    }
+                    return height
+                }
+
+                var rows = buildRows(1f)
+                var fitScale = 1f
+                while (blockHeight(rows) > availableLyricsHeight && fitScale > 0.55f) {
+                    fitScale *= 0.94f
+                    rows = buildRows(fitScale)
+                }
+
+                val totalHeight = blockHeight(rows)
+                var y = lyricsTop + (availableLyricsHeight - totalHeight) / 2f
+                rows.forEachIndexed { index, row ->
+                    if (index > 0) y += rowGap(rows[index - 1], row)
+                    canvas.withTranslation(cardLeft + (cardWidth - row.first.width) / 2f, y) {
+                        row.first.draw(this)
+                    }
+                    y += row.first.height
+                }
+            }
 
             return@withContext bitmap
         }
+
+    /** Center-crops the artwork to the given canvas so blurred edges never run out. */
+    private fun coverBitmap(
+        source: Bitmap,
+        targetWidth: Int,
+        targetHeight: Int,
+    ): Bitmap {
+        val safe = ensureSoftwareBitmap(source)
+        val targetW = targetWidth.coerceAtLeast(1)
+        val targetH = targetHeight.coerceAtLeast(1)
+        val srcRatio = safe.width.toFloat() / safe.height.toFloat()
+        val dstRatio = targetW.toFloat() / targetH.toFloat()
+        return if (kotlin.math.abs(srcRatio - dstRatio) < 0.01f) {
+            ensureSoftwareBitmap(Bitmap.createScaledBitmap(safe, targetW, targetH, true))
+        } else {
+            val cropW: Int
+            val cropH: Int
+            if (srcRatio > dstRatio) {
+                cropH = safe.height
+                cropW = (safe.height * dstRatio).toInt().coerceAtMost(safe.width)
+            } else {
+                cropW = safe.width
+                cropH = (safe.width / dstRatio).toInt().coerceAtMost(safe.height)
+            }
+            val left = (safe.width - cropW) / 2
+            val top = (safe.height - cropH) / 2
+            val cropped = Bitmap.createBitmap(safe, left, top, cropW, cropH)
+            ensureSoftwareBitmap(Bitmap.createScaledBitmap(cropped, targetW, targetH, true))
+        }
+    }
+
+    private fun drawVerticallyCenteredText(
+        canvas: Canvas,
+        text: String,
+        x: Float,
+        centerY: Float,
+        paint: TextPaint,
+    ) {
+        val metrics = paint.fontMetrics
+        val baseline = centerY - (metrics.ascent + metrics.descent) / 2f
+        canvas.drawText(text, x, baseline, paint)
+    }
 
     private fun blurBitmap(
         source: Bitmap,
@@ -748,67 +916,6 @@ object ComposeToImage {
 
         bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
         return bitmap
-    }
-
-    private fun AppLogo(
-        context: Context,
-        canvas: Canvas,
-        canvasWidth: Int,
-        canvasHeight: Int,
-        padding: Float,
-        bottomPadding: Float = canvasHeight - padding,
-        circleColor: Int,
-        logoTint: Int,
-        textColor: Int,
-    ) {
-        val baseSize = minOf(canvasWidth, canvasHeight).toFloat()
-        val logoSize = (baseSize * 0.045f).toInt()
-
-        val rawLogo = context.getDrawable(R.drawable.small_icon)?.toBitmap(logoSize, logoSize)
-        val logo =
-            rawLogo?.let { source ->
-                val colored = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
-                val canvasLogo = Canvas(colored)
-                val paint =
-                    Paint().apply {
-                        colorFilter = PorterDuffColorFilter(logoTint, PorterDuff.Mode.SRC_IN)
-                        isAntiAlias = true
-                    }
-                canvasLogo.drawBitmap(source, 0f, 0f, paint)
-                colored
-            }
-
-        val appName = context.getString(R.string.app_name)
-        val appNamePaint =
-            TextPaint().apply {
-                color = textColor
-                textSize = baseSize * 0.028f
-                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                isAntiAlias = true
-                letterSpacing = 0.02f
-            }
-
-        val circleRadius = logoSize * 0.55f
-        val circleX = padding + circleRadius
-        val circleY = bottomPadding - circleRadius
-        val logoX = circleX - logoSize / 2f
-        val logoY = circleY - logoSize / 2f
-        val textX = padding + circleRadius * 2 + 10f
-        val textY = circleY + appNamePaint.textSize * 0.3f
-
-        val circlePaint =
-            Paint().apply {
-                color = circleColor
-                isAntiAlias = true
-                style = Paint.Style.FILL
-            }
-        canvas.drawCircle(circleX, circleY, circleRadius, circlePaint)
-
-        logo?.let {
-            canvas.drawBitmap(it, logoX, logoY, null)
-        }
-
-        canvas.drawText(appName, textX, textY, appNamePaint)
     }
 
     @RequiresApi(Build.VERSION_CODES.M)
