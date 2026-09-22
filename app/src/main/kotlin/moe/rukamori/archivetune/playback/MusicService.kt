@@ -3317,7 +3317,9 @@ class MusicService :
                         val userSpeed = player.playbackParameters.speed
                         incomingPlayer.playbackParameters =
                             player.playbackParameters.withSpeed(
-                                (userSpeed * plan!!.incomingPlaybackRate).coerceIn(0.05f, 8f),
+                                (userSpeed.toDouble() * plan!!.incomingPlaybackRate)
+                                    .coerceIn(0.05, 8.0)
+                                    .toFloat(),
                             )
                     } else {
                         incomingPlayer.playbackParameters = player.playbackParameters

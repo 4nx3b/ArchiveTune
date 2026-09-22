@@ -1793,7 +1793,7 @@ private suspend fun renderRecapCardAtScale(
 
     val holder =
         ComposeView(context).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedOrDisposed)
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedOrReleased)
             setContent {
                 CompositionLocalProvider(
                     LocalDensity provides Density(screenDensity * scale, fontScale),
