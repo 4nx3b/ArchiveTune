@@ -10,6 +10,10 @@ package moe.rukamori.archivetune.listentogether
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.graphics.BitmapFactory
 import android.net.Uri
 import java.io.File
 
@@ -96,4 +100,46 @@ object ListenTogetherAvatar {
         } catch (e: Exception) {
             null
         }
+
+    /**
+     * The default profile picture for members without a custom one: a filled
+     * circle in a color derived from the username with the initial on top —
+     * the same identity the in-app [ChatAvatar] draws, rasterized for the
+     * conversation notification's Person icons.
+     */
+    fun defaultAvatarBitmap(
+        username: String,
+        size: Int = 96,
+    ): Bitmap {
+        val safeSize = size.coerceIn(48, 256)
+        val bitmap = Bitmap.createBitmap(safeSize, safeSize, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+
+        // Deterministic pastel-ish color from the username hash.
+        val hash = username.fold(0) { acc, ch -> acc * 31 + ch.code }
+        val hue = (hash % 360).let { if (it < 0) it + 360 else it }
+        val fill = android.graphics.Color.HSVToColor(floatArrayOf(hue.toFloat(), 0.42f, 0.58f))
+        val paint =
+            Paint().apply {
+                color = fill
+                isAntiAlias = true
+            }
+        val radius = safeSize / 2f
+        canvas.drawCircle(radius, radius, radius, paint)
+
+        val initial = username.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar() ?: '?'
+        val textSize = safeSize * 0.46f
+        val textPaint =
+            Paint().apply {
+                color = android.graphics.Color.WHITE
+                this.textSize = textSize
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                isAntiAlias = true
+                textAlign = Paint.Align.CENTER
+            }
+        val metrics = textPaint.fontMetrics
+        val baseline = radius - (metrics.ascent + metrics.descent) / 2f
+        canvas.drawText(initial.toString(), radius, baseline, textPaint)
+        return bitmap
+    }
 }

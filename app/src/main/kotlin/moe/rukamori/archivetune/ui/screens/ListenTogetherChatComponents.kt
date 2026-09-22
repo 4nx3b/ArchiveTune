@@ -46,6 +46,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -106,6 +107,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -121,6 +123,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalListenTogetherManager
+import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenTogetherAvatarIndexKey
 import moe.rukamori.archivetune.listentogether.ChatMessagePayload
@@ -386,6 +389,7 @@ internal fun MessageActionsPopup(
 ) {
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
+    val playerAwareBottomInset = LocalPlayerAwareWindowInsets.current
 
     var dismissed by remember { mutableStateOf(false) }
     val scaleAnim = remember { Animatable(0.35f) }
@@ -424,13 +428,22 @@ internal fun MessageActionsPopup(
         val estimatedWidth =
             if (popupWidthPx > 0) popupWidthPx else with(density) { 300.dp.toPx() }.toInt()
         val screenWidthPx = if (overlayWidthPx > 0) overlayWidthPx else estimatedWidth + 2 * marginPx
+        // The mini player draws OVER NavHost content, so the popup's usable
+        // area ends above it — without this clamp, a long-press on the
+        // bottom-most message opened the popup straight into the player bar.
+        val playerBottomInsetPx =
+            playerAwareBottomInset
+                .only(WindowInsetsSides.Bottom)
+                .getBottom(density)
+        val usableHeightPx =
+            if (overlayHeightPx > 0) (overlayHeightPx - playerBottomInsetPx).coerceAtLeast(marginPx * 2) else estimatedHeight + 2 * marginPx
         val x =
             if (target.isMe) {
                 (target.bounds.right.toInt() - estimatedWidth - 8).coerceAtLeast(marginPx)
             } else {
                 (target.bounds.left.toInt() + 8).coerceAtMost(screenWidthPx - estimatedWidth - marginPx)
             }.coerceIn(marginPx, (screenWidthPx - estimatedWidth - marginPx).coerceAtLeast(marginPx))
-        val below = target.bounds.bottom + 6 < overlayHeightPx - estimatedHeight - marginPx
+        val below = target.bounds.bottom + 6 < usableHeightPx - estimatedHeight - marginPx
         val y =
             if (below) {
                 target.bounds.bottom.toInt() + 6
@@ -948,6 +961,18 @@ internal fun MessageItem(
                                     bubbleColor = bubbleColor,
                                     onPlay = { onPlayTrack(track) },
                                 )
+                                if (message.message.isNotBlank() || message.gifUrl != null) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                }
+                            }
+
+                            // A shared GIF: animated locally from the link the
+                            // server relayed (the media never crosses the relay).
+                            message.gifUrl?.let { gifUrl ->
+                                GifBubble(
+                                    gifUrl = gifUrl,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
                                 if (message.message.isNotBlank()) {
                                     Spacer(modifier = Modifier.height(6.dp))
                                 }
@@ -955,7 +980,11 @@ internal fun MessageItem(
 
                             if (message.message.isNotBlank()) {
                                 Text(
-                                    text = formatMessageWithLinks(message.message),
+                                    text = formatMessageWithMentions(
+                                        text = message.message,
+                                        mentions = message.mentions,
+                                        myUsername = myUsername,
+                                    ),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = textColor,
                                 )
@@ -1032,6 +1061,37 @@ internal fun MessageItem(
                 modifier = Modifier.align(Alignment.Top),
             )
         }
+    }
+}
+
+/**
+ * A GIF shared into the chat: the link the server relayed, animated locally
+ * by Coil's GIF decoder. Tapping opens the original in the browser.
+ */
+@Composable
+internal fun GifBubble(
+    gifUrl: String,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    Box(
+        modifier =
+            modifier
+                .heightIn(max = 220.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                .clickable {
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(gifUrl)))
+                    }
+                },
+    ) {
+        AsyncImage(
+            model = gifUrl,
+            contentDescription = stringResource(R.string.listen_together_chat_sent_gif),
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -1399,6 +1459,48 @@ internal fun PinnedMessagesStack(
 
 /** Stable identity of a chat message across list updates. */
 private fun pinnedKeyOf(message: ChatMessagePayload): String = "${message.userId}:${message.timestamp}"
+
+/** @mention token: "@" plus the username run, mirroring the client's wire regex. */
+private val MENTION_SPAN_REGEX = Regex("@([\\p{L}\\p{N}_-]{2,32})")
+
+/**
+ * Message body with tappable links plus @mention styling: mentions of anyone
+ * in the room render bold in the theme's primary color, and a mention of the
+ * LOCAL user gets an emphasized tint so their own pings stand out inline.
+ */
+@Composable
+internal fun formatMessageWithMentions(
+    text: String,
+    mentions: List<String>,
+    myUsername: String?,
+): AnnotatedString {
+    if (mentions.isEmpty() || !text.contains('@')) {
+        return formatMessageWithLinks(text)
+    }
+    val mentionColor = MaterialTheme.colorScheme.primary
+    val selfMentionColor = MaterialTheme.colorScheme.tertiary
+    return buildAnnotatedString {
+        var lastIdx = 0
+        for (match in MENTION_SPAN_REGEX.findAll(text)) {
+            append(text.substring(lastIdx, match.range.first))
+            val mentioned = match.groupValues[1]
+            val isSelf = myUsername != null && mentioned.equals(myUsername, ignoreCase = true)
+            val targetsMe = mentions.any { it.equals(mentioned, ignoreCase = true) }
+            withStyle(
+                SpanStyle(
+                    color = if (isSelf || targetsMe) selfMentionColor else mentionColor,
+                    fontWeight = FontWeight.Bold,
+                )
+            ) {
+                append(match.value)
+            }
+            lastIdx = match.range.last + 1
+        }
+        if (lastIdx < text.length) {
+            append(formatMessageWithLinks(text.substring(lastIdx)))
+        }
+    }
+}
 
 @Composable
 internal fun formatMessageWithLinks(text: String): AnnotatedString {

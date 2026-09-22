@@ -531,6 +531,14 @@ class App :
             .components {
                 add(moe.rukamori.archivetune.telegram.TelegramThumbnailFetcher.Factory())
                 add(OkHttpNetworkFetcherFactory(imageHttpClient))
+                // GIF support for the Listen Together chat's Giphy shares: the
+                // API 28+ ImageDecoder path animates natively, BitmapFactory's
+                // GifDecoder covers everything older.
+                if (Build.VERSION.SDK_INT >= 28) {
+                    add(coil3.gif.AnimatedImageDecoder.Factory())
+                } else {
+                    add(coil3.gif.GifDecoder.Factory())
+                }
             }
             .crossfade(!lowRam)
             .allowHardware(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
