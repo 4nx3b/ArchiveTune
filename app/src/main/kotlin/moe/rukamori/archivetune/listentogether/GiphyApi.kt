@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
@@ -105,19 +106,26 @@ object GiphyApi {
     ): Result =
         withContext(Dispatchers.IO) {
             try {
-                val builder =
+                val fullUrl =
+                    url
+                        .toHttpUrl()
+                        .newBuilder()
+                        .apply {
+                            addQueryParameter("api_key", API_KEY)
+                            addQueryParameter("limit", PAGE_SIZE.toString())
+                            addQueryParameter("offset", offset.toString())
+                            addQueryParameter("rating", "pg-13")
+                            query?.takeIf { it.isNotBlank() }?.let { addQueryParameter("q", it) }
+                        }.build()
+                val request =
                     Request
                         .Builder()
-                        .url(url)
+                        .url(fullUrl)
                         .get()
                         .addHeader("Accept", "application/json")
-                        .addQueryParameter("api_key", API_KEY)
-                        .addQueryParameter("limit", PAGE_SIZE.toString())
-                        .addQueryParameter("offset", offset.toString())
-                        .addQueryParameter("rating", "pg-13")
-                query?.takeIf { it.isNotBlank() }?.let { builder.addQueryParameter("q", it) }
+                        .build()
 
-                client.newCall(builder.build()).execute().use { response ->
+                client.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) return@withContext Result.Failure
                     val body = response.body?.string() ?: return@withContext Result.Failure
                     val parsed = json.decodeFromString(SearchResponse.serializer(), body)
