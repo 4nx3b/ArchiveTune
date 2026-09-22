@@ -77,7 +77,6 @@ import moe.rukamori.archivetune.constants.ListenTogetherAutoApprovalKey
 import moe.rukamori.archivetune.constants.ListenTogetherChatNotificationsKey
 import moe.rukamori.archivetune.constants.ListenTogetherSuggestionAutoApproveKey
 import moe.rukamori.archivetune.constants.ListenTogetherServerUrlKey
-import moe.rukamori.archivetune.constants.ListenTogetherSmartResyncKey
 import moe.rukamori.archivetune.constants.ListenTogetherSyncVolumeKey
 import moe.rukamori.archivetune.constants.ListenTogetherUsernameKey
 import moe.rukamori.archivetune.constants.ListenTogetherAvatarIndexKey
@@ -126,7 +125,6 @@ fun ListenTogetherSettings(
     var autoApproval by rememberPreference(ListenTogetherAutoApprovalKey, false)
     var suggestionAutoApprove by rememberPreference(ListenTogetherSuggestionAutoApproveKey, true)
     var syncHostVolume by rememberPreference(ListenTogetherSyncVolumeKey, false)
-    var smartResync by rememberPreference(ListenTogetherSmartResyncKey, true)
     var chatNotifications by rememberPreference(ListenTogetherChatNotificationsKey, true)
 
     var showServerUrlDialog by rememberSaveable { mutableStateOf(false) }
@@ -599,29 +597,6 @@ fun ListenTogetherSettings(
                         )
                     },
                     onClick = { syncHostVolume = !syncHostVolume }
-                ),
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.automation_slow_connecttion),
-                    title = { Text(stringResource(R.string.listen_together_smart_resync)) },
-                    description = {
-                        Text(stringResource(R.string.listen_together_smart_resync_desc))
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = smartResync,
-                            onCheckedChange = { smartResync = it },
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (smartResync) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize),
-                                )
-                            }
-                        )
-                    },
-                    onClick = { smartResync = !smartResync }
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.bug_report),

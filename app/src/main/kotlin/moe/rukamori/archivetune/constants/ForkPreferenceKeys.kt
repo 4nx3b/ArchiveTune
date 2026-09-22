@@ -37,7 +37,6 @@ val ListenTogetherAvatarIndexKey = intPreferencesKey("listenTogetherAvatarIndex"
 val ListenTogetherAutoApprovalKey = booleanPreferencesKey("listenTogetherAutoApproval")
 val ListenTogetherSuggestionAutoApproveKey = booleanPreferencesKey("listenTogetherSuggestionAutoApprove")
 val ListenTogetherCustomAvatarUriKey = stringPreferencesKey("listenTogetherCustomAvatarUri")
-val ListenTogetherSmartResyncKey = booleanPreferencesKey("listenTogetherSmartResync")
 val ListenTogetherSyncVolumeKey = booleanPreferencesKey("listenTogetherSyncVolume")
 val ListenTogetherBlockedUsersKey = stringPreferencesKey("listenTogetherBlockedUsers")
 val ListenTogetherChatNotificationsKey = booleanPreferencesKey("listenTogetherChatNotifications")
