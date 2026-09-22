@@ -25,9 +25,18 @@ import java.util.concurrent.TimeUnit
  * loads and animates the GIF locally.
  */
 object GiphyApi {
-    /** Giphy's long-lived public beta key, the one embedded across open-source
-     * projects; swap for a dedicated key by changing this constant. */
-    private const val API_KEY = "dc6zaTOxFJmzC"
+    /**
+     * Giphy retired the old public beta key (`dc6zaTOxFJmzC` now answers 403
+     * BANNED), which made every request fail as a generic network error. These
+     * are the keys Giphy's own web/mobile clients ship, tried in order — the
+     * web key first, the mobile one as a fallback if the primary is ever
+     * rate-limited or retired too.
+     */
+    private val API_KEYS =
+        listOf(
+            "Gc7131jiJuvI7IdN0HZ1D7nh0ow5BU6g", // giphy.com web client key
+            "L8eXbxrbPETZxlvgXN9kIEzQ55Df04v0", // giphy mobile client key (fallback)
+        )
 
     private const val BASE_URL = "https://api.giphy.com/v1/gifs"
 
@@ -105,42 +114,59 @@ object GiphyApi {
         offset: Int,
     ): Result =
         withContext(Dispatchers.IO) {
-            try {
-                val fullUrl =
-                    url
-                        .toHttpUrl()
-                        .newBuilder()
-                        .apply {
-                            addQueryParameter("api_key", API_KEY)
-                            addQueryParameter("limit", PAGE_SIZE.toString())
-                            addQueryParameter("offset", offset.toString())
-                            addQueryParameter("rating", "pg-13")
-                            query?.takeIf { it.isNotBlank() }?.let { addQueryParameter("q", it) }
-                        }.build()
-                val request =
-                    Request
-                        .Builder()
-                        .url(fullUrl)
-                        .get()
-                        .addHeader("Accept", "application/json")
-                        .build()
-
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) return@withContext Result.Failure
-                    val body = response.body?.string() ?: return@withContext Result.Failure
-                    val parsed = json.decodeFromString(SearchResponse.serializer(), body)
-                    val items = parsed.data.filter { !it.url.isNullOrBlank() }
-                    val total = parsed.pagination?.totalCount ?: items.size
-                    val next =
-                        if (items.isEmpty() || offset + items.size >= total) {
-                            null
-                        } else {
-                            offset + items.size
-                        }
-                    Result.Success(items, next)
-                }
-            } catch (e: Exception) {
-                Result.Failure
+            for (key in API_KEYS) {
+                val attempted =
+                    try {
+                        fetchWithKey(key, url, query, offset)
+                    } catch (_: Exception) {
+                        null
+                    }
+                // A rejected key (401/403) or a transient failure returns null
+                // and is worth retrying on the fallback key.
+                if (attempted != null) return@withContext attempted
             }
+            Result.Failure
         }
+
+    private fun fetchWithKey(
+        key: String,
+        url: String,
+        query: String?,
+        offset: Int,
+    ): Result? {
+        val fullUrl =
+            url
+                .toHttpUrl()
+                .newBuilder()
+                .apply {
+                    addQueryParameter("api_key", key)
+                    addQueryParameter("limit", PAGE_SIZE.toString())
+                    addQueryParameter("offset", offset.toString())
+                    addQueryParameter("rating", "pg-13")
+                    query?.takeIf { it.isNotBlank() }?.let { addQueryParameter("q", it) }
+                }.build()
+        val request =
+            Request
+                .Builder()
+                .url(fullUrl)
+                .get()
+                .addHeader("Accept", "application/json")
+                .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return null
+            val body = response.body?.string() ?: return null
+            if (body.isBlank()) return null
+            val parsed = json.decodeFromString(SearchResponse.serializer(), body)
+            val items = parsed.data.filter { !it.url.isNullOrBlank() }
+            val total = parsed.pagination?.totalCount ?: items.size
+            val next =
+                if (items.isEmpty() || offset + items.size >= total) {
+                    null
+                } else {
+                    offset + items.size
+                }
+            return Result.Success(items, next)
+        }
+    }
 }

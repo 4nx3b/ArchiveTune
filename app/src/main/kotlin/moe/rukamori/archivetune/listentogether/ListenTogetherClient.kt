@@ -34,6 +34,7 @@ import androidx.datastore.preferences.core.edit
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenTogetherAutoApprovalKey
 import moe.rukamori.archivetune.constants.ListenTogetherChatNotificationsKey
+import moe.rukamori.archivetune.constants.ListenTogetherResyncKey
 import moe.rukamori.archivetune.constants.ListenTogetherSuggestionAutoApproveKey
 import moe.rukamori.archivetune.constants.ListenTogetherAvatarIndexKey
 import moe.rukamori.archivetune.constants.ListenTogetherBlockedUsersKey
@@ -349,7 +350,13 @@ class ListenTogetherClient @Inject constructor(
                     isNetworkAvailable = available
 
                     if (available && !previous) {
-                        resyncAfterConnectivityChange("network restored")
+                        val resyncEnabled =
+                            runCatching { context.dataStore.get(ListenTogetherResyncKey, true) }.getOrDefault(true)
+                        if (resyncEnabled) {
+                            resyncAfterConnectivityChange("network restored")
+                        } else {
+                            log(LogLevel.INFO, "Network restored (auto-resync disabled)")
+                        }
                     } else if (!available && previous) {
                         log(LogLevel.WARNING, "Network lost")
                     }

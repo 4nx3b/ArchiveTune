@@ -75,6 +75,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenTogetherAutoApprovalKey
 import moe.rukamori.archivetune.constants.ListenTogetherChatNotificationsKey
+import moe.rukamori.archivetune.constants.ListenTogetherResyncKey
 import moe.rukamori.archivetune.constants.ListenTogetherSuggestionAutoApproveKey
 import moe.rukamori.archivetune.constants.ListenTogetherServerUrlKey
 import moe.rukamori.archivetune.constants.ListenTogetherSyncVolumeKey
@@ -126,6 +127,7 @@ fun ListenTogetherSettings(
     var suggestionAutoApprove by rememberPreference(ListenTogetherSuggestionAutoApproveKey, true)
     var syncHostVolume by rememberPreference(ListenTogetherSyncVolumeKey, false)
     var chatNotifications by rememberPreference(ListenTogetherChatNotificationsKey, true)
+    var autoResync by rememberPreference(ListenTogetherResyncKey, true)
 
     var showServerUrlDialog by rememberSaveable { mutableStateOf(false) }
     var showUsernameDialog by rememberSaveable { mutableStateOf(false) }
@@ -597,6 +599,29 @@ fun ListenTogetherSettings(
                         )
                     },
                     onClick = { syncHostVolume = !syncHostVolume }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.sync),
+                    title = { Text(stringResource(R.string.listen_together_auto_resync)) },
+                    description = {
+                        Text(stringResource(R.string.listen_together_auto_resync_desc))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = autoResync,
+                            onCheckedChange = { autoResync = it },
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (autoResync) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize),
+                                )
+                            }
+                        )
+                    },
+                    onClick = { autoResync = !autoResync }
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.bug_report),
