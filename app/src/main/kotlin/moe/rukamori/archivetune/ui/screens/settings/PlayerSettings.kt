@@ -64,6 +64,9 @@ import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.ArtworkProviderOrderKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
+import moe.rukamori.archivetune.constants.AutomixEnabledKey
+import moe.rukamori.archivetune.constants.AutomixPerformanceMode
+import moe.rukamori.archivetune.constants.AutomixPerformanceModeKey
 import moe.rukamori.archivetune.constants.PRELOAD_SONGS_RANGE
 import moe.rukamori.archivetune.constants.PreloadSongsCountKey
 import moe.rukamori.archivetune.constants.DEFAULT_PRELOAD_SONGS_COUNT
@@ -96,6 +99,7 @@ import moe.rukamori.archivetune.constants.WakelockKey
 import moe.rukamori.archivetune.ui.component.ArtistSeparatorsDialog
 import moe.rukamori.archivetune.ui.component.CrossfadeSliderPreference
 import moe.rukamori.archivetune.ui.component.DefaultDialog
+import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.NumberPickerPreference
@@ -109,6 +113,7 @@ import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.CanvasResolverEndpoints
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.roundToInt
@@ -223,6 +228,16 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(
             CrossfadeGaplessKey,
             defaultValue = true,
+        )
+    val (automixEnabled, onAutomixEnabledChange) =
+        rememberPreference(
+            AutomixEnabledKey,
+            defaultValue = false,
+        )
+    val (automixPerformanceMode, onAutomixPerformanceModeChange) =
+        rememberEnumPreference(
+            AutomixPerformanceModeKey,
+            defaultValue = AutomixPerformanceMode.BALANCED,
         )
 
     val (archiveTuneCanvasEnabled, onArchiveTuneCanvasEnabledChange) =
@@ -459,6 +474,10 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             onCheckedChange = { enabled ->
                                 if (enabled) {
                                     onAudioOffloadChange(false)
+                                    // Crossfade and automix are mutually
+                                    // exclusive: at most one engine shapes a
+                                    // given track boundary.
+                                    onAutomixEnabledChange(false)
                                 }
                                 onCrossfadeEnabledChange(enabled)
                             },
@@ -485,6 +504,50 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             onCheckedChange = onCrossfadeGaplessChange,
                             isEnabled = crossfadeEnabled,
                         )
+                    }
+                }
+
+                item {
+                    Column(modifier = positions.modifierFor("automix")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.automix_title)) },
+                            description = stringResource(
+                                if (automixEnabled) R.string.automix_enabled_subtitle else R.string.automix_disabled_subtitle,
+                            ),
+                            icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
+                            checked = automixEnabled,
+                            onCheckedChange = { enabled ->
+                                if (enabled) {
+                                    onAudioOffloadChange(false)
+                                    // Turning automix on hands every transition to
+                                    // the analysis engine: the manual crossfade
+                                    // slider stops applying.
+                                    onCrossfadeEnabledChange(false)
+                                }
+                                onAutomixEnabledChange(enabled)
+                            },
+                        )
+                    }
+                }
+
+                if (automixEnabled) {
+                    item {
+                        Column(modifier = positions.modifierFor("automix_performance")) {
+                            EnumListPreference(
+                                title = { Text(stringResource(R.string.automix_performance_title)) },
+                                description = stringResource(R.string.automix_performance_subtitle),
+                                icon = { Icon(painterResource(R.drawable.tune), null) },
+                                selectedValue = automixPerformanceMode,
+                                onValueSelected = onAutomixPerformanceModeChange,
+                                valueText = {
+                                    when (it) {
+                                        AutomixPerformanceMode.EFFICIENT -> stringResource(R.string.automix_performance_efficient)
+                                        AutomixPerformanceMode.BALANCED -> stringResource(R.string.automix_performance_balanced)
+                                        AutomixPerformanceMode.PERFORMANCE -> stringResource(R.string.automix_performance_max)
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
 
@@ -521,6 +584,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             if (enabled) {
                                 onSkipSilenceChange(false)
                                 onCrossfadeEnabledChange(false)
+                                onAutomixEnabledChange(false)
                             }
                         },
                     )

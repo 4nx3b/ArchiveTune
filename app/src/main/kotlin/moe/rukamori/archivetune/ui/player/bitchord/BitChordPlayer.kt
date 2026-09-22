@@ -92,6 +92,7 @@ import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.ContentScale
@@ -129,6 +130,9 @@ import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
+import moe.rukamori.archivetune.playback.smart.SmartFadeRuntimeState
+import moe.rukamori.archivetune.playback.smart.TrackAnalysisState
+import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
@@ -352,6 +356,10 @@ fun BitChordPlayerContent(
     val haptics = rememberHaptics()
     val database = LocalDatabase.current
     val player = playerConnection.player
+
+    // Automix: the engine's published state, straight from the service.
+    val automixOn by SmartFadeRuntimeState.enabled.collectAsStateWithLifecycle()
+    val automixAnalysis by SmartFadeRuntimeState.analysis.collectAsStateWithLifecycle()
 
     val reduceAnimations = LocalAnimationsDisabled.current
 
@@ -937,6 +945,27 @@ fun BitChordPlayerContent(
                         }
                     }
 
+                    // Automix analysis status, drawn on the sleeve the way
+                    // BitChord draws it: bottom-centre, dim, shadowed, and gone
+                    // once the layout starts collapsing.
+                    if (automixOn && p < 0.5f) {
+                        val currentStateLabel = localizedAnalysisState(automixAnalysis.current)
+                        val nextStateLabel = localizedAnalysisState(automixAnalysis.next)
+                        Text(
+                            text = stringResource(
+                                R.string.automix_analysis_status,
+                                currentStateLabel,
+                                nextStateLabel,
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.5f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                        )
+                    }
                 }
 
                 val swipeHintProgress = (abs(swipeSettle) / swipeThreshold)
@@ -1618,6 +1647,18 @@ private fun formatTime(ms: Long): String {
     val seconds = TimeUnit.MILLISECONDS.toSeconds(ms) % 60
     return "%d:%02d".format(Locale.ROOT, minutes, seconds)
 }
+
+@Composable
+private fun localizedAnalysisState(state: TrackAnalysisState): String =
+    stringResource(
+        when (state) {
+            TrackAnalysisState.ANALYSED -> R.string.automix_state_analysed
+            TrackAnalysisState.ANALYSING -> R.string.automix_state_analysing
+            TrackAnalysisState.REFINING -> R.string.automix_state_refining
+            TrackAnalysisState.FAILED -> R.string.automix_state_failed
+            TrackAnalysisState.WAITING -> R.string.automix_state_waiting
+        },
+    )
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 private object OverlayBack {
