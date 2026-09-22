@@ -1755,6 +1755,8 @@
     <string name="listen_together_auto_approval_desc">Automatically approve join requests instead of reviewing them manually</string>
     <string name="listen_together_sync_volume">Sync host volume</string>
     <string name="listen_together_sync_volume_desc">Guests follow the host volume level</string>
+    <string name="listen_together_auto_resync">Auto-resync on reconnect</string>
+    <string name="listen_together_auto_resync_desc">When the network comes back, probe the socket and re-sync the room automatically</string>
     <string name="listen_together_in_top_bar">Listen Together in top bar</string>
     <string name="listen_together_in_top_bar_desc">Show Listen Together in top app bar instead of navigation bar</string>
     <string name="listen_together_description">Listen to music with your friends in real-time. Create a room to be the host or join an existing room with a code.</string>
@@ -1799,7 +1801,7 @@
     <string name="listen_together_chat_attachment_gif">GIF</string>
     <string name="listen_together_chat_gif_picker_title">Pick a GIF</string>
     <string name="listen_together_chat_gif_picker_hint">Search Giphy</string>
-    <string name="listen_together_chat_gif_failed">Couldn\'t load GIFs — check your connection</string>
+    <string name="listen_together_chat_gif_failed">Couldn\'t load GIFs — check your connection or try again</string>
     <string name="listen_together_room_created">Room created: %s</string>
     <string name="listen_together_cannot_edit_username_in_room">Cannot edit username while in a room</string>
     <string name="listen_together_settings_desc">Configure server, username, and more</string>

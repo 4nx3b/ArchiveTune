@@ -42,6 +42,10 @@ val ListenTogetherBlockedUsersKey = stringPreferencesKey("listenTogetherBlockedU
 val ListenTogetherChatNotificationsKey = booleanPreferencesKey("listenTogetherChatNotifications")
 val ListenTogetherChatHistoryKey = stringPreferencesKey("listenTogetherChatHistory")
 
+/** Master switch for the connectivity resync engine: when enabled, network
+ * restoration probes the socket and repairs/re-syncs the room automatically. */
+val ListenTogetherResyncKey = booleanPreferencesKey("listenTogetherResync")
+
 val ListenTogetherUsernameKey = stringPreferencesKey("listenTogetherUsername")
 val ListenTogetherInTopBarKey = booleanPreferencesKey("listenTogetherInTopBar")
 
