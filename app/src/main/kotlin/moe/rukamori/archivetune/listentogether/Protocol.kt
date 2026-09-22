@@ -300,11 +300,18 @@ data class ChatMessagePayload(
     // payload JSON so it persists with the history; cross-device it travels in
     // an [LTS:...] envelope on the chat relay, like replies and avatars.
     @SerialName("shared_track") val sharedTrack: TrackInfo? = null,
-    // A GIF shared into the chat as a link (Giphy). The server relays only the
-    // URL — every client loads and animates the GIF locally, so the server
-    // never processes the media. Travels in an [LTG:...] envelope on the chat
-    // relay and persists with the local history exactly like shared tracks.
+    // A GIF shared into the chat as a link (Giphy or an uploaded custom GIF).
+    // The server relays only the URL — every client loads and animates the GIF
+    // locally, so the server never processes the media. Travels in an
+    // [LTG:...] envelope on the chat relay and persists with the local history
+    // exactly like shared tracks.
     @SerialName("gif_url") val gifUrl: String? = null,
+    // Intrinsic pixel dimensions of the shared GIF, carried alongside the URL
+    // so receivers can lay the bubble out at the ORIGINAL aspect ratio instead
+    // of a fixed cell that crops tall or wide GIFs. Zero = unknown (sent by
+    // older clients); receivers fall back to measuring the image locally.
+    @SerialName("gif_width") val gifWidth: Int = 0,
+    @SerialName("gif_height") val gifHeight: Int = 0,
     // Usernames @-mentioned by this message. The sender computes them from the
     // @tokens in the text; receiving clients match them against the local
     // username to raise the mention badge or a mention notification. Travels
@@ -347,6 +354,10 @@ data class ChatControlEvent(
         const val ACTION_DELETE = "delete"
         const val ACTION_PIN = "pin"
         const val ACTION_UNPIN = "unpin"
+        // The room's display name, decided by the host at creation time. Rides
+        // the chat relay like every other control event; receivers (and only
+        // receivers — the host already knows the name) adopt it locally.
+        const val ACTION_ROOM_NAME = "room_name"
     }
 }
 

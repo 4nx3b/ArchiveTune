@@ -50,6 +50,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
@@ -115,6 +116,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -128,6 +130,8 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenTogetherAvatarIndexKey
 import moe.rukamori.archivetune.listentogether.ChatMessagePayload
+import moe.rukamori.archivetune.listentogether.ChatSystemEvent
+import moe.rukamori.archivetune.listentogether.ChatSystemEventKind
 import moe.rukamori.archivetune.listentogether.RepliedMessage
 import moe.rukamori.archivetune.listentogether.TrackInfo
 import moe.rukamori.archivetune.listentogether.TypingUser
@@ -972,6 +976,8 @@ internal fun MessageItem(
                             message.gifUrl?.let { gifUrl ->
                                 GifBubble(
                                     gifUrl = gifUrl,
+                                    gifWidth = message.gifWidth,
+                                    gifHeight = message.gifHeight,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 if (message.message.isNotBlank()) {
@@ -1068,17 +1074,25 @@ internal fun MessageItem(
 /**
  * A GIF shared into the chat: the link the server relayed, animated locally
  * by Coil's GIF decoder. Tapping opens the original in the browser.
+ *
+ * The bubble lays out at the GIF's OWN aspect ratio — a fixed cell used to
+ * crop tall or wide GIFs to a uniform box. The intrinsic size arrives with
+ * the share ([ChatMessagePayload.gifWidth]/[gifHeight]); older messages
+ * without it measure the image via Coil once it loads and re-layout then.
  */
 @Composable
 internal fun GifBubble(
     gifUrl: String,
+    gifWidth: Int,
+    gifHeight: Int,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    var intrinsic by remember { mutableStateOf(gifWidth to gifHeight) }
+
     Box(
         modifier =
             modifier
-                .heightIn(max = 220.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                 .clickable {
@@ -1087,11 +1101,37 @@ internal fun GifBubble(
                     }
                 },
     ) {
+        val (width, height) = intrinsic
+        val imageModifier =
+            if (width > 0 && height > 0) {
+                // heightIn caps the box first, then aspectRatio picks the
+                // LARGEST ratio-true size inside the constraints: wide GIFs fill
+                // the bubble width, tall ones cap their height and slim their
+                // width — the original aspect always survives, never a crop.
+                Modifier
+                    .heightIn(max = 300.dp)
+                    .aspectRatio(width.toFloat() / height.toFloat())
+            } else {
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 260.dp)
+            }
         AsyncImage(
-            model = gifUrl,
+            model =
+                ImageRequest.Builder(context)
+                    .data(gifUrl)
+                    .listener(
+                        onSuccess = { _, result ->
+                            val image = result.image
+                            if (image.width > 0 && image.height > 0) {
+                                intrinsic = image.width to image.height
+                            }
+                        },
+                    )
+                    .build(),
             contentDescription = stringResource(R.string.listen_together_chat_sent_gif),
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxWidth(),
+            contentScale = ContentScale.Fit,
+            modifier = imageModifier,
         )
     }
 }
@@ -1563,4 +1603,59 @@ internal fun formatMessageWithLinks(text: String): AnnotatedString {
 internal fun formatTime(timestamp: Long): String {
     val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
     return sdf.format(Date(timestamp))
+}
+
+/**
+ * A "who did what" room event rendered as a slim centered system row,
+ * Telegram-style: "Almighty God Thor changed the song to The Search",
+ * "Mythicalshub joined", "someone is now the host". Centered, muted, never
+ * interactive — pure context so the conversation reads like a session log.
+ */
+@Composable
+internal fun SystemEventRow(
+    event: ChatSystemEvent,
+    modifier: Modifier = Modifier,
+) {
+    val label = remember(event) {
+        when (event.kind) {
+            ChatSystemEventKind.TRACK_CHANGED ->
+                if (event.detail.isNullOrBlank()) {
+                    "changed the song"
+                } else {
+                    "changed the song to \"${event.detail.take(48)}\""
+                }
+
+            ChatSystemEventKind.USER_JOINED -> "joined the room"
+            ChatSystemEventKind.USER_LEFT -> "left the room"
+            ChatSystemEventKind.USER_RECONNECTED -> "reconnected"
+            ChatSystemEventKind.USER_DISCONNECTED -> "lost connection"
+            ChatSystemEventKind.HOST_CHANGED -> "is now the host"
+            ChatSystemEventKind.ROOM_RENAMED ->
+                if (event.detail.isNullOrBlank()) {
+                    "renamed the room"
+                } else {
+                    "named the room \"${event.detail.take(32)}\""
+                }
+        }
+    }
+    Row(
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        ) {
+            Text(
+                text = "${event.actor} $label",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+            )
+        }
+    }
 }

@@ -621,11 +621,17 @@ fun BitChordPlayerContent(
     val onPlayPause = {
         if (player.isPlaying) player.pause() else player.play()
     }
+    // Read the session player AT CALL TIME: the captured `player` val goes
+    // stale the moment the service swaps the session player (automix/crossfade
+    // promotion), which left the BitChord seekbar dragging a released player —
+    // the bar moved but nothing seeked (lyrics taps still worked because their
+    // handlers re-adopt fresh lambdas). The connection's getter always resolves
+    // to the live player, matching the default player's working seek path.
     val onSeekFraction: (Float) -> Unit = { f ->
-
-        val d = player.duration
+        val livePlayer = playerConnection.player
+        val d = livePlayer.duration
         if (d > 0 && d != androidx.media3.common.C.TIME_UNSET) {
-            player.seekTo((f * d).toLong())
+            livePlayer.seekTo((f * d).toLong())
         }
     }
 

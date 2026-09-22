@@ -80,6 +80,10 @@ class SmartFadeAnalyzer(
             .Builder()
             .connectTimeout(java.time.Duration.ofSeconds(10))
             .readTimeout(java.time.Duration.ofSeconds(60))
+            // A hard ceiling for the whole call: a stalled transfer used to
+            // hold the single analysis thread hostage forever, leaving BOTH
+            // the current and the next track stuck on "analysing…".
+            .callTimeout(java.time.Duration.ofSeconds(120))
             .build()
 
     private val executor: ExecutorService =
@@ -198,6 +202,30 @@ class SmartFadeAnalyzer(
         // yielded nothing usable (recorded, degrades to a plain fade).
         val structural = structure(trackId, uri, local, effectiveDuration) ?: return null
         val features = structural.features ?: return empty(trackId, effectiveDuration)
+
+        // Early publish: the whole-track DSP alone already carries a tempo
+        // estimate — surface it the moment Pass 1 lands so the player's status
+        // line resolves within seconds. The Beat This! / vocal model passes
+        // below refine the result afterwards (the next poll picks the richer
+        // numbers up). Without this, "analysing…" sat on screen for the whole
+        // multi-minute pipeline even when the fast answer was already known.
+        runCatching {
+            val early = TrackAnalysis(
+                status = TrackAnalysis.STATUS_READY,
+                trackId = trackId,
+                duration = effectiveDuration,
+                contentEndTime = features.contentEndTime.takeIf { it > 0 } ?: effectiveDuration,
+                bpm = features.bpm,
+                beatInterval = features.beatInterval,
+                beatConfidence = features.beatConfidence,
+                downbeats = features.downbeats,
+            )
+            if (early.isUsable) {
+                results[trackId] = early
+                store.save(trackId, early)
+                Log.d(TAG, "Early analysis for $trackId: bpm=${features.bpm} (models still refining)")
+            }
+        }
 
         // Pass 2 (models): the Beat This! grid and the open-unmix vocal mask,
         // over the head and tail only — a transition only ever reads the tail

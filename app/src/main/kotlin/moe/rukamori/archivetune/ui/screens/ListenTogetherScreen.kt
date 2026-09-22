@@ -168,6 +168,7 @@ fun ListenTogetherScreen(
     var savedUsername by rememberPreference(ListenTogetherUsernameKey, "")
     val roomCodeInput by viewModel.roomCodeInput.collectAsState()
     val usernameInput by viewModel.usernameInput.collectAsState()
+    val roomNameInput by viewModel.roomNameInput.collectAsState()
 
     val isCreatingRoom by viewModel.isCreatingRoom.collectAsState()
     val isJoiningRoom by viewModel.isJoiningRoom.collectAsState()
@@ -311,6 +312,8 @@ fun ListenTogetherScreen(
             JoinCreateRoomSection(
                 usernameInput = usernameInput,
                 onUsernameChange = { viewModel.usernameInput.value = it },
+                roomNameInput = roomNameInput,
+                onRoomNameChange = { viewModel.roomNameInput.value = it },
                 roomCodeInput = roomCodeInput,
                 onRoomCodeChange = { viewModel.roomCodeInput.value = it },
                 savedUsername = savedUsername,
@@ -330,7 +333,7 @@ fun ListenTogetherScreen(
                         viewModel.isJoiningRoom.value = false
                         viewModel.joinErrorMessage.value = null
                         listenTogetherManager.connect()
-                        listenTogetherManager.createRoom(finalUsername)
+                        listenTogetherManager.createRoom(finalUsername, roomNameInput.trim())
                     } else {
                         Toast.makeText(context, R.string.error_username_empty, Toast.LENGTH_SHORT).show()
                     }
@@ -1193,6 +1196,8 @@ private fun PendingSuggestionsSection(
 private fun JoinCreateRoomSection(
     usernameInput: String,
     onUsernameChange: (String) -> Unit,
+    roomNameInput: String,
+    onRoomNameChange: (String) -> Unit,
     roomCodeInput: String,
     onRoomCodeChange: (String) -> Unit,
     savedUsername: String,
@@ -1311,6 +1316,36 @@ private fun JoinCreateRoomSection(
                     .fillMaxWidth()
                     .onFocusChanged { if (it.isFocused && !isInRoom) onFieldFocused() }
             )
+
+            // The host names the room before its code exists: the name shows
+            // in the chat header (and is broadcast to every joiner) while the
+            // code stays the join key. Optional — an unnamed room is fine.
+            if (!isInRoom && roomCodeInput.length < 8) {
+                OutlinedTextField(
+                    value = roomNameInput,
+                    onValueChange = { onRoomNameChange(it.take(64)) },
+                    label = { Text(stringResource(R.string.listen_together_room_name)) },
+                    placeholder = { Text(stringResource(R.string.listen_together_room_name_hint)) },
+                    leadingIcon = {
+                        Icon(
+                            painterResource(R.drawable.edit),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { if (it.isFocused) onFieldFocused() }
+                )
+            }
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,

@@ -31,9 +31,13 @@ import androidx.core.graphics.drawable.IconCompat
 import androidx.core.app.RemoteInput
 import androidx.core.content.getSystemService
 import androidx.datastore.preferences.core.edit
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenTogetherAutoApprovalKey
 import moe.rukamori.archivetune.constants.ListenTogetherChatNotificationsKey
+import moe.rukamori.archivetune.constants.ListenTogetherInAppNotificationsKey
 import moe.rukamori.archivetune.constants.ListenTogetherResyncKey
 import moe.rukamori.archivetune.constants.ListenTogetherSuggestionAutoApproveKey
 import moe.rukamori.archivetune.constants.ListenTogetherAvatarIndexKey
@@ -136,6 +140,14 @@ sealed class ListenTogetherEvent {
 
     data class ChatMessageReceived(val payload: ChatMessagePayload) : ListenTogetherEvent()
 
+    /** The host renamed the room (or broadcast the name to a late joiner):
+     * [name] is the new display name, from [username]. */
+    data class RoomNameChanged(
+        val userId: String,
+        val username: String,
+        val name: String,
+    ) : ListenTogetherEvent()
+
     /** A reactions/edit/delete/pin/typing control event decoded from the chat relay. */
     data class ChatControlReceived(
         val userId: String,
@@ -227,6 +239,21 @@ class ListenTogetherClient @Inject constructor(
         private data class GifEnvelope(
             @SerialName("gif_url") val gifUrl: String? = null,
             val mentions: List<String> = emptyList(),
+            // Intrinsic pixel dimensions of the GIF so receivers can keep the
+            // original aspect ratio; absent on envelopes from older clients.
+            @SerialName("gif_width") val gifWidth: Int = 0,
+            @SerialName("gif_height") val gifHeight: Int = 0,
+        )
+
+        /** Decoded [LTG:] envelope: the GIF link (nullable), the @-mention list,
+         * the message text that follows the envelope and the GIF's intrinsic
+         * pixel size (0 when the sender didn't know it). */
+        data class DecodedGif(
+            val gifUrl: String?,
+            val mentions: List<String>,
+            val remainingText: String,
+            val gifWidth: Int,
+            val gifHeight: Int,
         )
 
         private val gifEnvelopeJson = kotlinx.serialization.json.Json {
@@ -275,7 +302,7 @@ class ListenTogetherClient @Inject constructor(
 
         /** Splits a leading [LTG:base64] gif envelope off a chat message.
          * Returns null when the message carries no envelope. */
-        fun decodeGifEnvelope(message: String): Triple<String?, List<String>, String>? =
+        fun decodeGifEnvelope(message: String): DecodedGif? =
             try {
                 if (!message.startsWith(GifEnvelopePrefix)) return null
                 val endIdx = message.indexOf(GifEnvelopeSuffix, GifEnvelopePrefix.length)
@@ -287,10 +314,12 @@ class ListenTogetherClient @Inject constructor(
                     ),
                 )
                 val envelope = gifEnvelopeJson.decodeFromString(GifEnvelope.serializer(), json)
-                Triple(
-                    envelope.gifUrl?.takeIf { it.isNotBlank() && it.startsWith("https://") },
-                    envelope.mentions,
-                    message.substring(endIdx + GifEnvelopeSuffix.length),
+                DecodedGif(
+                    gifUrl = envelope.gifUrl?.takeIf { it.isNotBlank() && it.startsWith("https://") },
+                    mentions = envelope.mentions,
+                    remainingText = message.substring(endIdx + GifEnvelopeSuffix.length),
+                    gifWidth = envelope.gifWidth,
+                    gifHeight = envelope.gifHeight,
                 )
             } catch (e: Exception) {
                 null
@@ -553,6 +582,17 @@ class ListenTogetherClient @Inject constructor(
 
     private val _chatScreenVisible = MutableStateFlow(false)
 
+    /** Whether the chat screen is currently on top — the in-app notification
+     * popup and the shade conversation both key off this. */
+    val chatScreenVisible: StateFlow<Boolean> = _chatScreenVisible.asStateFlow()
+
+    /** Whether the app is in the foreground right now (ProcessLifecycleOwner):
+     * with in-app notifications enabled, the foreground case belongs to the
+     * in-app popup, not the shade notification. */
+    @Volatile
+    var appInForeground: Boolean = false
+        private set
+
     /** Set by the chat screen so incoming messages don't notify while it is open. */
     fun setChatScreenVisible(visible: Boolean) {
         _chatScreenVisible.value = visible
@@ -586,6 +626,70 @@ class ListenTogetherClient @Inject constructor(
         CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
             loadPersistedSession()
             observeNetworkChanges()
+        }
+
+        observeAppForeground()
+        startWakeLockRenewal()
+    }
+
+    /**
+     * App-foreground session repair: a backgrounded (often CPU-frozen) app
+     * keeps its process in memory, but the server quietly times the ROOM
+     * session out — or closes the socket outright — while nothing can run
+     * locally. Coming back to the foreground then shows the user their own
+     * "reconnecting" flash (or worse, their own reconnected event) once the
+     * next action finally trips over the dead session.
+     *
+     * Instead of waiting for that to happen organically, every foreground
+     * transition while a room session exists validates the connection right
+     * away: a dead socket reconnects immediately (backoff reset — the network
+     * is clearly fine, the app just slept), a live socket gets probed, and a
+     * guest in a room pulls a fresh sync so a server-side session expiry
+     * surfaces (and self-heals via the session_not_found rejoin) before the
+     * user ever looks at the screen.
+     */
+    private fun observeAppForeground() {
+        runCatching {
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_START -> {
+                        appInForeground = true
+                        scope.launch {
+                            if (isInRoom || sessionToken != null || _roomState.value != null || pendingAction != null) {
+                                log(LogLevel.INFO, "App foreground — validating Listen Together session")
+                                resyncAfterConnectivityChange("app foreground")
+                            }
+                        }
+                    }
+
+                    Lifecycle.Event.ON_STOP -> appInForeground = false
+
+                    else -> Unit
+                }
+            }
+            ProcessLifecycleOwner.get().lifecycle.addObserver(observer)
+        }.onFailure {
+            Timber.tag(TAG).w(it, "ProcessLifecycleOwner unavailable — foreground resync disabled")
+        }
+    }
+
+    /** Re-arms the partial wake lock every 5 minutes while a room session is
+     * live, so a long listening session outlives the initial 10-minute lease
+     * (the lock keeps the CPU — and with it the ping loop — awake while the
+     * screen is off, without the user playing music). acquireWakeLock() skips
+     * work while the lock is still held, so a renewal releases first. */
+    private fun startWakeLockRenewal() {
+        scope.launch {
+            while (true) {
+                delay(5 * 60 * 1000L)
+                if (isInRoom) {
+                    runCatching {
+                        wakeLock?.let { lock -> if (lock.isHeld) lock.release() }
+                        acquireWakeLock()
+                    }
+                    log(LogLevel.DEBUG, "Wake lock renewed")
+                }
+            }
         }
     }
 
@@ -1021,6 +1125,15 @@ class ListenTogetherClient @Inject constructor(
             if (payload.username in _blockedUsernames.value) return
             if (_chatScreenVisible.value) return
             if (!context.dataStore.get(ListenTogetherChatNotificationsKey, true)) return
+            // In-app notifications own the foreground case: the stacked popup
+            // surfaces the message (with reply / mark-as-read) while the user
+            // is actively in the app, and the shade only takes over once the
+            // app is backgrounded or the feature is off.
+            if (appInForeground &&
+                context.dataStore.get(ListenTogetherInAppNotificationsKey, true)
+            ) {
+                return
+            }
             postChatNotification(alert = true)
         } catch (e: Exception) {
             log(LogLevel.WARNING, "Failed to show chat notification", e.message)
@@ -1581,6 +1694,19 @@ class ListenTogetherClient @Inject constructor(
                     // Reactions / edits / deletes / pins / typing indicators ride the
                     // same relay with their own magic envelope; never chat bubbles.
                     decodeChatControl(payload.message)?.let { control ->
+                        // The room's display name rides the same envelope as a
+                        // control event; receivers adopt it directly instead of
+                        // routing it through the chat-control machinery.
+                        if (control.action == ChatControlEvent.ACTION_ROOM_NAME) {
+                            val name = control.text?.trim().orEmpty()
+                            if (name.isNotEmpty()) {
+                                log(LogLevel.INFO, "Room name received", "\"$name\" from ${payload.username}")
+                                scope.launch {
+                                    _events.emit(ListenTogetherEvent.RoomNameChanged(payload.userId, payload.username, name))
+                                }
+                            }
+                            return
+                        }
                         log(
                             LogLevel.DEBUG,
                             "Chat control received",
@@ -1616,11 +1742,18 @@ class ListenTogetherClient @Inject constructor(
                         payload = payload.copy(message = remainingText, sharedTrack = track)
                     }
 
-                    // A GIF link (plus the sender's @-mention list) rides in an
-                    // [LTG:base64] envelope, same convention — the server relays
-                    // the link only and every client animates the GIF locally.
-                    decodeGifEnvelope(payload.message)?.let { (gifUrl, mentions, remainingText) ->
-                        payload = payload.copy(message = remainingText, gifUrl = gifUrl, mentions = mentions)
+                    // A GIF link (plus the sender's @-mention list and the GIF's
+                    // intrinsic size) rides in an [LTG:base64] envelope, same
+                    // convention — the server relays the link only and every
+                    // client animates the GIF locally at its own aspect ratio.
+                    decodeGifEnvelope(payload.message)?.let { decoded ->
+                        payload = payload.copy(
+                            message = decoded.remainingText,
+                            gifUrl = decoded.gifUrl,
+                            gifWidth = decoded.gifWidth,
+                            gifHeight = decoded.gifHeight,
+                            mentions = decoded.mentions,
+                        )
                     }
 
                     log(LogLevel.INFO, "Chat message received", "From: ${payload.username}")
@@ -1791,6 +1924,8 @@ class ListenTogetherClient @Inject constructor(
         replyTo: RepliedMessage? = null,
         sharedTrack: TrackInfo? = null,
         gifUrl: String? = null,
+        gifWidth: Int = 0,
+        gifHeight: Int = 0,
     ) {
         if (message.isBlank() && sharedTrack == null && gifUrl == null) {
             return
@@ -1819,12 +1954,15 @@ class ListenTogetherClient @Inject constructor(
         var mentions: List<String> = emptyList()
         if (gifUrl != null) {
             // The mention list rides the same envelope so receivers can raise
-            // their badge/notifications even when the text is empty.
+            // their badge/notifications even when the text is empty; so do the
+            // GIF's intrinsic dimensions so bubbles keep the original aspect.
             mentions = extractMentions(message)
             val envelope =
                 GifEnvelope(
                     gifUrl = gifUrl.takeIf { it.startsWith("https://") },
                     mentions = mentions,
+                    gifWidth = gifWidth,
+                    gifHeight = gifHeight,
                 )
             val encoded = gifEnvelopeJson.encodeToString(GifEnvelope.serializer(), envelope)
             finalMessage =
@@ -1872,6 +2010,8 @@ class ListenTogetherClient @Inject constructor(
                 replyTo = replyTo,
                 sharedTrack = sharedTrack,
                 gifUrl = gifUrl,
+                gifWidth = gifWidth,
+                gifHeight = gifHeight,
                 mentions = mentions,
             )
         )
@@ -1888,6 +2028,15 @@ class ListenTogetherClient @Inject constructor(
             .filter { it.length >= 2 }
             .distinct()
             .toList()
+    }
+
+    /** Broadcasts the room's display name to every member over the chat relay.
+     * The host calls this at room creation and again whenever someone joins,
+     * so latecomers adopt the name without any server-side support. */
+    fun sendRoomName(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty() || !isInRoom) return
+        sendChatControl(ChatControlEvent(action = ChatControlEvent.ACTION_ROOM_NAME, text = trimmed.take(64)))
     }
 
     /**

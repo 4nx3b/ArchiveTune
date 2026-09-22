@@ -51,6 +51,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -71,14 +72,20 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.shape.CircleShape
 import coil3.compose.AsyncImage
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -87,6 +94,7 @@ import com.kyant.backdrop.effects.lens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.listentogether.GifShareApi
 import moe.rukamori.archivetune.listentogether.GiphyApi
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 
@@ -299,78 +307,25 @@ private fun AttachmentOptionRow(
 }
 
 /**
- * Bottom sheet with the Giphy catalog: trending GIFs by default, a search
- * field, endless scroll pagination, and tap-to-send. Sending shares only the
- * GIF's URL — the chat relay never processes the media.
+ * Bottom sheet with the GIF catalog: trending Giphy GIFs by default, a search
+ * field, endless scroll pagination, and tap-to-send — plus a "My device" tab
+ * that uploads any GIF the user picked (the keyboard's integrated GIF page
+ * saves into the gallery exactly like any other share) through the anonymous
+ * file host so it reaches the room exactly like a Giphy result: as a plain
+ * HTTPS link on the [LTG:] envelope, original aspect ratio included. Sending
+ * shares only the URL — the chat relay never processes the media.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun GifPickerSheet(
-    onPickGif: (url: String) -> Unit,
+    onPickGif: (url: String, width: Int, height: Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
-        var query by remember { mutableStateOf("") }
-        var items by remember { mutableStateOf<List<GiphyApi.GifItem>>(emptyList()) }
-        var loading by remember { mutableStateOf(true) }
-        var failed by remember { mutableStateOf(false) }
-        var nextOffset by remember { mutableStateOf<Int?>(0) }
-        var requestKey by remember { mutableStateOf(0) }
-
-        val gridState = rememberLazyGridState()
-        val scope = rememberCoroutineScope()
-
-        suspend fun load(reset: Boolean) {
-            val offset = if (reset) 0 else nextOffset ?: return
-            loading = true
-            val result =
-                if (query.isBlank()) {
-                    GiphyApi.trending(offset)
-                } else {
-                    GiphyApi.search(query, offset)
-                }
-            when (result) {
-                is GiphyApi.Result.Success -> {
-                    failed = false
-                    items = if (reset) result.items else items + result.items
-                    nextOffset = result.nextOffset
-                }
-
-                GiphyApi.Result.Failure -> {
-                    if (reset) {
-                        failed = true
-                        items = emptyList()
-                    }
-                }
-            }
-            loading = false
-        }
-
-        // Trending on open; debounced search as the query changes.
-        LaunchedEffect(query) {
-            delay(GIF_SEARCH_DEBOUNCE_MS)
-            load(reset = true)
-        }
-
-        // Endless scroll: fetch the next page as the end approaches.
-        val closeToEnd by remember {
-            derivedStateOf {
-                val info = gridState.layoutInfo
-                val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
-                last >= info.totalItemsCount - 6
-            }
-        }
-        LaunchedEffect(closeToEnd, nextOffset) {
-            if (closeToEnd && nextOffset != null && !loading) {
-                load(reset = false)
-            }
-        }
-        LaunchedEffect(requestKey) {
-            if (requestKey > 0) load(reset = true)
-        }
+        var tab by remember { mutableStateOf(0) }
 
         Column(
             modifier =
@@ -393,112 +348,330 @@ internal fun GifPickerSheet(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
+                Spacer(Modifier.weight(1f))
+                TabPill(
+                    label = "Giphy",
+                    selected = tab == 0,
+                    onClick = { tab = 0 },
+                )
+                TabPill(
+                    label = stringResource(R.string.listen_together_chat_gif_my_device),
+                    selected = tab == 1,
+                    onClick = { tab = 1 },
+                )
             }
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = { Text(stringResource(R.string.listen_together_chat_gif_picker_hint)) },
-                singleLine = true,
-                shape = RoundedCornerShape(24.dp),
-                keyboardOptions =
-                    KeyboardOptions(
-                        imeAction = ImeAction.Search,
-                    ),
-                keyboardActions =
-                    KeyboardActions(
-                        onSearch = {
-                            scope.launch { load(reset = true) }
-                        },
-                    ),
-                trailingIcon = {
-                    Icon(
-                        painter = painterResource(R.drawable.search),
-                        contentDescription = stringResource(R.string.search),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-            )
 
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f, fill = false)
-                        .heightIn(min = 380.dp),
-            ) {
-                when {
-                    failed && items.isEmpty() -> {
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
+            when (tab) {
+                0 -> GiphyCatalogTab(onPickGif)
+                else -> CustomGifTab(onPickGif, onDismiss)
+            }
+        }
+    }
+}
+
+/** Small rounded tab selector for the GIF sheet header. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun TabPill(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = if (selected) {
+            MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        },
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = if (selected) {
+                MaterialTheme.colorScheme.onSecondaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+        )
+    }
+}
+
+/** The Giphy catalog: search + trending + endless scroll. */
+@Composable
+private fun GiphyCatalogTab(
+    onPickGif: (url: String, width: Int, height: Int) -> Unit,
+) {
+    var query by remember { mutableStateOf("") }
+    var items by remember { mutableStateOf<List<GiphyApi.GifItem>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var failed by remember { mutableStateOf(false) }
+    var nextOffset by remember { mutableStateOf<Int?>(0) }
+    var requestKey by remember { mutableStateOf(0) }
+
+    val gridState = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
+
+    suspend fun load(reset: Boolean) {
+        val offset = if (reset) 0 else nextOffset ?: return
+        loading = true
+        val result =
+            if (query.isBlank()) {
+                GiphyApi.trending(offset)
+            } else {
+                GiphyApi.search(query, offset)
+            }
+        when (result) {
+            is GiphyApi.Result.Success -> {
+                failed = false
+                items = if (reset) result.items else items + result.items
+                nextOffset = result.nextOffset
+            }
+
+            GiphyApi.Result.Failure -> {
+                if (reset) {
+                    failed = true
+                    items = emptyList()
+                }
+            }
+        }
+        loading = false
+    }
+
+    // Trending on open; debounced search as the query changes.
+    LaunchedEffect(query) {
+        delay(GIF_SEARCH_DEBOUNCE_MS)
+        load(reset = true)
+    }
+
+    // Endless scroll: fetch the next page as the end approaches.
+    val closeToEnd by remember {
+        derivedStateOf {
+            val info = gridState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            last >= info.totalItemsCount - 6
+        }
+    }
+    LaunchedEffect(closeToEnd, nextOffset) {
+        if (closeToEnd && nextOffset != null && !loading) {
+            load(reset = false)
+        }
+    }
+    LaunchedEffect(requestKey) {
+        if (requestKey > 0) load(reset = true)
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            placeholder = { Text(stringResource(R.string.listen_together_chat_gif_picker_hint)) },
+            singleLine = true,
+            shape = RoundedCornerShape(24.dp),
+            keyboardOptions =
+                KeyboardOptions(
+                    imeAction = ImeAction.Search,
+                ),
+            keyboardActions =
+                KeyboardActions(
+                    onSearch = {
+                        scope.launch { load(reset = true) }
+                    },
+                ),
+            trailingIcon = {
+                Icon(
+                    painter = painterResource(R.drawable.search),
+                    contentDescription = stringResource(R.string.search),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+        )
+
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 380.dp),
+        ) {
+            when {
+                failed && items.isEmpty() -> {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.listen_together_chat_gif_failed),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        TextButton(
+                            onClick = { requestKey++ },
                         ) {
-                            Text(
-                                text = stringResource(R.string.listen_together_chat_gif_failed),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            TextButton(
-                                onClick = { requestKey++ },
-                            ) {
-                                Text(stringResource(R.string.retry))
-                            }
+                            Text(stringResource(R.string.retry))
                         }
                     }
+                }
 
-                    else -> {
-                        LazyVerticalGrid(
-                            state = gridState,
-                            columns = GridCells.Adaptive(minSize = 110.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 460.dp),
-                        ) {
-                            items(items = items, key = { it.id }) { gif ->
-                                val url = gif.url ?: return@items
+                else -> {
+                    LazyVerticalGrid(
+                        state = gridState,
+                        columns = GridCells.Adaptive(minSize = 110.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 460.dp),
+                    ) {
+                        items(items = items, key = { it.id }) { gif ->
+                            val url = gif.url ?: return@items
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .aspectRatio(
+                                            (gif.width.coerceAtLeast(1)).toFloat() /
+                                                (gif.height.coerceAtLeast(1)).toFloat(),
+                                        )
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { onPickGif(url, gif.width, gif.height) }
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                            ) {
+                                AsyncImage(
+                                    model = url,
+                                    contentDescription = gif.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
+                        if (loading) {
+                            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                                 Box(
                                     modifier =
                                         Modifier
-                                            .aspectRatio(
-                                                (gif.width.coerceAtLeast(1)).toFloat() /
-                                                    (gif.height.coerceAtLeast(1)).toFloat(),
-                                            )
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .clickable { onPickGif(url) }
-                                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                                            .fillMaxWidth()
+                                            .padding(vertical = 14.dp),
+                                    contentAlignment = Alignment.Center,
                                 ) {
-                                    AsyncImage(
-                                        model = url,
-                                        contentDescription = gif.title,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                }
-                            }
-                            if (loading) {
-                                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                                    Box(
-                                        modifier =
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 14.dp),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        CircularProgressIndicator(modifier = Modifier.size(26.dp))
-                                    }
+                                    CircularProgressIndicator(modifier = Modifier.size(26.dp))
                                 }
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Custom GIFs: anything the user picked with the system picker — including GIFs
+ * saved by the keyboard's integrated GIF page — uploads to the anonymous host
+ * and then sends exactly like a Giphy result (link + intrinsic dimensions, so
+ * receivers render the ORIGINAL aspect ratio, never a fixed cell).
+ */
+@Composable
+private fun CustomGifTab(
+    onPickGif: (url: String, width: Int, height: Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var uploading by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+
+    val picker =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.PickVisualMedia(),
+        ) { uri ->
+            if (uri == null) return@rememberLauncherForActivityResult
+            scope.launch {
+                uploading = true
+                failed = false
+                val uploaded = GifShareApi.upload(context, uri)
+                uploading = false
+                if (uploaded != null) {
+                    onPickGif(uploaded.url, uploaded.width, uploaded.height)
+                    onDismiss()
+                } else {
+                    failed = true
+                }
+            }
+        }
+
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 380.dp)
+                .padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        if (uploading) {
+            CircularProgressIndicator(modifier = Modifier.size(34.dp))
+            Spacer(Modifier.height(14.dp))
+            Text(
+                text = stringResource(R.string.listen_together_chat_gif_uploading),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Box(
+                modifier =
+                    Modifier
+                        .size(84.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.secondaryContainer)
+                        .clickable {
+                            picker.launch(
+                                PickVisualMediaRequest(
+                                    ActivityResultContracts.PickVisualMedia.VisualMediaType.SingleMimeType("image/gif"),
+                                ),
+                            )
+                        },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.add),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.size(34.dp),
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = stringResource(R.string.listen_together_chat_gif_pick_custom),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = stringResource(R.string.listen_together_chat_gif_pick_custom_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            if (failed) {
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    text = stringResource(R.string.listen_together_chat_gif_upload_failed),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                )
             }
         }
     }

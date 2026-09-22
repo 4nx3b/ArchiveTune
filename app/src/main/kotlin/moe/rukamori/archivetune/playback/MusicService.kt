@@ -2720,15 +2720,25 @@ class MusicService :
         smartFadeAnalyzer?.let { return it }
         val created =
             SmartFadeAnalyzer(this) { mediaId ->
+                // Bounded: stream resolution can stall indefinitely (mutex
+                // held, PoToken solver hang, extractor retry loops) and the
+                // analysis runs on a SINGLE worker thread — an unbounded
+                // resolve here parked "analysing…" on BOTH the current and
+                // the next track forever. A timeout degrades to "no stream
+                // this tick", which the strike counter eventually writes off.
                 runBlocking {
                     runCatching {
-                        YTPlayerUtils.playerResponseForPlayback(
-                            mediaId,
-                            audioQuality = AudioQuality.LOW,
-                            connectivityManager = connectivityManager,
-                            preferredStreamClient = preferredStreamClient,
-                            networkMetered = false,
-                        ).getOrThrow().streamUrl
+                        withTimeout(SMART_FADE_RESOLVE_TIMEOUT_MS) {
+                            runCatching {
+                                YTPlayerUtils.playerResponseForPlayback(
+                                    mediaId,
+                                    audioQuality = AudioQuality.LOW,
+                                    connectivityManager = connectivityManager,
+                                    preferredStreamClient = preferredStreamClient,
+                                    networkMetered = false,
+                                ).getOrThrow().streamUrl
+                            }.getOrNull()
+                        }
                     }.getOrNull()
                 }
             }
@@ -10276,6 +10286,11 @@ class MusicService :
         // ---- Automix (smart fade): poll cadence, fallback overlap and the
         // filter-ride constants, all ported from BitChord's CrossfadeController.
         const val SMART_FADE_POLL_MS = 1_000L
+
+        /** Hard ceiling for one automix audio-source resolve: the analysis
+         * worker is single-threaded, so an unbounded resolve starves both the
+         * outgoing and the incoming track's status. */
+        const val SMART_FADE_RESOLVE_TIMEOUT_MS = 45_000L
         const val DEFAULT_SMART_FALLBACK_MS = 6_000L
         const val FILTER_ENTRY_HZ = 7_000.0
         const val FILTER_FLOOR_HZ = 300.0
