@@ -12,6 +12,7 @@ package moe.rukamori.archivetune.ui.component
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -452,12 +453,19 @@ public fun MediaDetailPrimaryActions(
                             text = stringResource(R.string.play),
                             style = playTextStyle,
                             fontWeight = FontWeight.Bold,
-                            // Single line + ellipsis so the balanced layout below
-                            // can shrink the pill for long translations
-                            // (e.g. "Reproducir") without the text wrapping.
+                            // Single line, and instead of truncating long
+                            // translations ("Reproducir" shrinking to
+                            // "Reprod…"), the label MARQUEES inside the pill —
+                            // the balanced layout below still shrinks the pill
+                            // to fit the cluster, and any text that no longer
+                            // fits scrolls rather than dying with an ellipsis.
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
                             softWrap = false,
+                            overflow = TextOverflow.Visible,
+                            modifier = Modifier.basicMarquee(
+                                iterations = Int.MAX_VALUE,
+                                initialDelayMillis = 600,
+                            ),
                         )
                     }
                 }

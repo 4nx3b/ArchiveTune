@@ -75,6 +75,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenTogetherAutoApprovalKey
 import moe.rukamori.archivetune.constants.ListenTogetherChatNotificationsKey
+import moe.rukamori.archivetune.constants.ListenTogetherInAppNotificationsKey
 import moe.rukamori.archivetune.constants.ListenTogetherResyncKey
 import moe.rukamori.archivetune.constants.ListenTogetherSuggestionAutoApproveKey
 import moe.rukamori.archivetune.constants.ListenTogetherServerUrlKey
@@ -127,6 +128,7 @@ fun ListenTogetherSettings(
     var suggestionAutoApprove by rememberPreference(ListenTogetherSuggestionAutoApproveKey, true)
     var syncHostVolume by rememberPreference(ListenTogetherSyncVolumeKey, false)
     var chatNotifications by rememberPreference(ListenTogetherChatNotificationsKey, true)
+    var inAppNotifications by rememberPreference(ListenTogetherInAppNotificationsKey, true)
     var autoResync by rememberPreference(ListenTogetherResyncKey, true)
 
     var showServerUrlDialog by rememberSaveable { mutableStateOf(false) }
@@ -576,6 +578,29 @@ fun ListenTogetherSettings(
                         )
                     },
                     onClick = { chatNotifications = !chatNotifications }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.ic_notification),
+                    title = { Text(stringResource(R.string.listen_together_in_app_notifications)) },
+                    description = {
+                        Text(stringResource(R.string.listen_together_in_app_notifications_desc))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = inAppNotifications,
+                            onCheckedChange = { inAppNotifications = it },
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (inAppNotifications) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize),
+                                )
+                            }
+                        )
+                    },
+                    onClick = { inAppNotifications = !inAppNotifications }
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.volume_up),

@@ -34,6 +34,7 @@ class ListenTogetherViewModel @Inject constructor(
 
     val roomCodeInput = MutableStateFlow("")
     val usernameInput = MutableStateFlow("")
+    val roomNameInput = MutableStateFlow("")
     val isCreatingRoom = MutableStateFlow(false)
     val isJoiningRoom = MutableStateFlow(false)
     val joinErrorMessage = MutableStateFlow<String?>(null)

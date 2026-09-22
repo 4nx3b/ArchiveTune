@@ -17,6 +17,7 @@ import android.media.MediaCodec
 import android.media.MediaDataSource
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.os.SystemClock
 import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -39,6 +40,11 @@ object AudioDecoder {
 
     private const val TAG = "BitChordAudioDecoder"
     private const val TIMEOUT_US = 10_000L
+
+    /** Hard ceiling for one region decode: whole-track reads of long files
+     * legitimately take tens of seconds, but anything past this is a wedged
+     * codec, not a slow decode. */
+    private const val MAX_DECODE_WALL_MS = 120_000L
 
     /** Decoded mono PCM at the container's own sample rate; the caller resamples. */
     data class Pcm(val samples: FloatArray, val sampleRate: Double)
@@ -174,8 +180,17 @@ object AudioDecoder {
             var sawFirstSample = false
             var inputDone = false
             var outputDone = false
+            // Wall-clock ceiling for the sync decode loop: a codec wedged on a
+            // corrupt stream spins this loop forever without erroring, which
+            // used to pin the single analysis thread (and the "analysing…"
+            // status with it) indefinitely.
+            val deadlineUptimeMs = SystemClock.uptimeMillis() + MAX_DECODE_WALL_MS
 
             while (!outputDone) {
+                if (SystemClock.uptimeMillis() > deadlineUptimeMs) {
+                    Log.w(TAG, "Region decode exceeded ${MAX_DECODE_WALL_MS}ms wall clock — aborting")
+                    return null
+                }
                 if (!inputDone) {
                     val inputIndex = codec.dequeueInputBuffer(TIMEOUT_US)
                     if (inputIndex >= 0) {

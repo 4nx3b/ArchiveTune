@@ -46,6 +46,21 @@ val ListenTogetherChatHistoryKey = stringPreferencesKey("listenTogetherChatHisto
  * restoration probes the socket and repairs/re-syncs the room automatically. */
 val ListenTogetherResyncKey = booleanPreferencesKey("listenTogetherResync")
 
+/** Room code -> display name map, so rooms the host named keep their name
+ * across rejoins (guests adopt the broadcast name and remember it too). */
+val ListenTogetherRoomNamesKey = stringPreferencesKey("listenTogetherRoomNames")
+
+/** In-app chat notification popup: while the app is in the foreground but the
+ * chat screen is closed, incoming room messages surface as a stacked heads-up
+ * card with a quick reply (and mark-as-read on mentions) instead of only the
+ * system shade notification. */
+val ListenTogetherInAppNotificationsKey = booleanPreferencesKey("listenTogetherInAppNotifications")
+
+/** Chat wallpaper: a content URI to an image the LOCAL user picked, rendered
+ * behind the Listen Together chat. Deliberately device-local — it never syncs
+ * and other members never see it. */
+val ListenTogetherChatWallpaperKey = stringPreferencesKey("listenTogetherChatWallpaper")
+
 val ListenTogetherUsernameKey = stringPreferencesKey("listenTogetherUsername")
 val ListenTogetherInTopBarKey = booleanPreferencesKey("listenTogetherInTopBar")
 

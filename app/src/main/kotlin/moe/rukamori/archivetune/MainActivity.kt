@@ -336,6 +336,7 @@ import moe.rukamori.archivetune.ui.player.BottomSheetPlayer
 import moe.rukamori.archivetune.ui.player.ProvideVideoFullscreenState
 import moe.rukamori.archivetune.ui.screens.LOGIN_URL_ARGUMENT
 import moe.rukamori.archivetune.ui.screens.LoginScreen
+import moe.rukamori.archivetune.ui.screens.InAppChatNotificationsHost
 import moe.rukamori.archivetune.ui.screens.Screens
 import moe.rukamori.archivetune.ui.screens.buildLoginRoute
 import moe.rukamori.archivetune.ui.screens.navigationBuilder
@@ -3209,6 +3210,26 @@ class MainActivity : ComponentActivity() {
                                         end = 16.dp,
                                     ).zIndex(10f),
                         )
+
+                        // In-app Listen Together chat notification: a single
+                        // stacked, blurred heads-up card while the app is in
+                        // the foreground and the chat screen is closed. Drawn
+                        // from the menu glass backdrop (throttled recorder) —
+                        // sampling the full-rate content backdrop from inside
+                        // the subtree it records crashes the RenderThread.
+                        if (listenTogetherManager != null) {
+                            InAppChatNotificationsHost(
+                                manager = listenTogetherManager,
+                                navController = navController,
+                                backdrop = LocalMenuGlassBackdrop.current,
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(
+                                        top = if (shouldShowTopBar) effectiveTopInset + AppBarHeight + 8.dp else effectiveTopInset + 8.dp,
+                                    )
+                                    .zIndex(12f),
+                            )
+                        }
                     }
 
                     pendingBackupRestoreUri?.let { uri ->
