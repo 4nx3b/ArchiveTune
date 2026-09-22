@@ -3496,3 +3496,23 @@ Work Log:
 Stage Summary:
 - dev @ ed10c840f: 6 commits, 23 files, +1899/-1249 lines net of the review round.
 - All five workflows worth of behavior gated: push to dev and monitor CI (no local compile per user instruction).
+
+## Task ID: 72
+
+Task: 12-item user batch — BitChord analysing/seekbar, keyboard GIFs, chat glass header + wallpaper, background self-reconnect, in-app notifications, who-did-what rows, pill marquee, GIF aspect ratios, in-chat mention popup, 30s-advanced-but-restarted playback, Telegram-style composer, room naming.
+
+Work Log:
+- Forensics on the attached logcat: socket keepalives stop while the app is backgrounded (process frozen), the server times the session out, and the first action after unfreeze trips the rejoin — the "I see myself reconnecting" report. Automix status text stuck because the single-threaded analyzer's unbounded stream resolve (runBlocking, no timeout) parked both tracks' states; BitChord seekbar lost seeks after any session-player swap (Unit-keyed pointerInput stale closure).
+- Client: ProcessLifecycleOwner ON_START observer probes/repairs the room session before the UI settles; wake lock renews every 5 min (release-then-acquire); foreground state suppresses the shade conversation when in-app notifications own the case; GifEnvelope carries intrinsic dimensions; room_name rides the chat control relay; chatScreenVisible exposed as a flow.
+- Manager: ChatSystemEvent rows (track changes with suggestedBy/host attribution, joins/leaves/reconnects/host transfers/renames; self-reconnect filtered), persisted with history v3 and interleaved by timestamp; roomName flow with per-code persistence; chatMessageEvents SharedFlow feeds the in-app popup; track-change PLAY clamped to 2s; guest transit adjustment clamped to 5s (clock skew); verifySeekApplied re-lands seeks lost to buffering races (try/finally so isSyncing can never stick).
+- Chat screen rebuilt: local LayerBackdrop + sibling glass surfaces (header pill + composer capsule sample it; haze source on the content, HomeTopFadeBlur band on top); transparent header background; device-local wallpaper inside the recorded box; Telegram-style glass composer (GIF pill, "/" song quick-share, paperclip attachment anchor, wallpaper kebab menu, reply preview inside the capsule, send button morphs in while typing); persistent mention popup; row-index-correct jump navigation.
+- GIFs: GifPickerSheet gains Giphy/My-device tabs; custom GIFs picked with the system picker (keyboard GIF pages save into the gallery) upload via anonymous hosting (catbox, litterbox 72h fallback) with intrinsic dims probed locally; GifBubble lays out at the ORIGINAL aspect ratio (envelope dims, Coil self-measure fallback) — no more fixed-cell crops.
+- In-app notifications: new ListenTogetherInAppNotification.kt (stacked scrolling entries in one blurred card, quick reply, mark-as-read on mentions, mentions persist, regular messages auto-dismiss after 6s) hosted in MainActivity over the menu glass backdrop; settings toggle in Listen Together settings.
+- Automix: withTimeout(45s) around the resolver inside runBlocking; fetch callTimeout 120s; decode wall deadline 120s; early publish of the whole-track DSP result (native tempo) so ANALYSED lands in seconds while the ONNX passes refine.
+- BitChord: ThinSlider rememberUpdatedState on both callbacks; onSeekFraction reads playerConnection.player at call time.
+- Play pill: basicMarquee replaces ellipsis for long translations; ic_paperclip + ic_notification drawables; 19 new strings.
+- Static review agent over the full staged diff found 2 compile blockers (missing aspectRatio import; withTimeout outside runBlocking) + 3 logic bugs (wake-lock renewal no-op, jump index off-by-system-rows, isSyncing stuck on seek throw) — all fixed before push.
+
+Stage Summary:
+- dev @ b0250307a: 22 files, +2470/-593.
+- PR #216 continues to carry dev → main; CI monitored (no local compile per standing instruction).
