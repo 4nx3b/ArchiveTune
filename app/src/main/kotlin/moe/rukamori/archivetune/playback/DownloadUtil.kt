@@ -1369,6 +1369,10 @@ class DownloadUtil
                 "api.qobuz.com",
                 "api.tidal.com",
                 "amp-api.tidal.com",
+                "www.jiosaavn.com",
+                "api.deezer.com",
+                "media.deezer.com",
+                "www.deezer.com",
             )
         }
     }

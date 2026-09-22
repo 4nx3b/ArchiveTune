@@ -146,6 +146,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
+import androidx.media3.common.Player
 import androidx.media3.common.Player.STATE_BUFFERING
 import androidx.media3.common.Player.STATE_READY
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -536,7 +537,16 @@ fun BottomSheetPlayer(
     }
 
     var position by rememberSaveable(mediaMetadata?.id) {
-        mutableLongStateOf(playerConnection.player.currentPosition)
+        val player = playerConnection.player
+        val seededPosition =
+            if (player.playbackState == Player.STATE_READY &&
+                player.currentMediaItem?.mediaId == mediaMetadata?.id
+            ) {
+                player.currentPosition.coerceAtLeast(0L)
+            } else {
+                0L
+            }
+        mutableLongStateOf(seededPosition)
     }
 
     val positionUpdatedState = rememberUpdatedState(position)
@@ -974,8 +984,10 @@ fun BottomSheetPlayer(
                 val metaDuration = it.duration.toLong() * 1000
                 duration = if (metaDuration > 0) metaDuration else 0L
             }
-            val currentPlayerPosition = playerConnection.player.currentPosition
-            if (sliderPosition == null && currentPlayerPosition > 0L) {
+            val player = playerConnection.player
+            val playerMatchesMetadata = player.currentMediaItem?.mediaId == mediaMetadata?.id
+            val currentPlayerPosition = player.currentPosition
+            if (sliderPosition == null && playerMatchesMetadata && currentPlayerPosition > 0L) {
                 position = currentPlayerPosition
             }
         }
