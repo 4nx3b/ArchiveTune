@@ -289,14 +289,9 @@
     <string name="lyrics_share_background_dim_value">%1$d%%</string>
     <string name="lyrics_share_show_cover">Show album cover</string>
     <string name="lyrics_share_show_cover_desc">Include the artwork in the header of the exported image.</string>
-    <string name="lyrics_share_style_album_tint">Album tint</string>
-    <string name="lyrics_share_style_frosted_dark">Frosted dark</string>
-    <string name="lyrics_share_style_frosted_light">Frosted light</string>
-    <string name="lyrics_share_style_clear_glass">Clear glass</string>
-    <string name="lyrics_share_style_deep_blur">Deep blur</string>
-    <string name="lyrics_share_style_vivid_glow">Vivid glow</string>
+    <string name="archivetune_tagline" translatable="false">MUSIC LIVES ON</string>
     <string name="lyrics_share_text_color">Lyrics text color</string>
-    <string name="lyrics_share_text_color_default">Style default</string>
+    <string name="lyrics_share_text_color_default">Reference</string>
     <string name="lyrics_share_text_color_custom">Custom</string>
     <string name="lyrics_share_text_color_white">White</string>
     <string name="lyrics_share_text_color_black">Black</string>

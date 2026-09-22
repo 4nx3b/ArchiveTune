@@ -17,20 +17,22 @@ enum class LyricsShareAspectRatio(
     val exportWidth: Int,
     val exportHeight: Int,
 ) {
+    // High-resolution exports: the square card renders at 2048 internally so
+    // shared images stay crisp on every social platform.
     Square(
         labelRes = R.string.lyrics_share_layout_square,
-        exportWidth = 1080,
-        exportHeight = 1080,
+        exportWidth = 2048,
+        exportHeight = 2048,
     ),
     Portrait(
         labelRes = R.string.lyrics_share_layout_portrait,
-        exportWidth = 1080,
-        exportHeight = 1350,
+        exportWidth = 2048,
+        exportHeight = 2560,
     ),
     Story(
         labelRes = R.string.lyrics_share_layout_story,
-        exportWidth = 1080,
-        exportHeight = 1920,
+        exportWidth = 1440,
+        exportHeight = 2560,
     ),
     ;
 
@@ -42,16 +44,12 @@ enum class LyricsShareAspectRatio(
 data class LyricsShareImageOptions(
     val aspectRatio: LyricsShareAspectRatio = LyricsShareAspectRatio.Square,
     val blurRadius: Float = 24f,
-    val dimAmount: Float = 1f,
     val showArtwork: Boolean = true,
 
     val vinylMode: Boolean = false,
 ) {
     val sanitizedBlurRadius: Float
         get() = blurRadius.coerceIn(0f, 48f)
-
-    val sanitizedDimAmount: Float
-        get() = dimAmount.coerceIn(0.6f, 1.6f)
 
     val previewBlurRadius: Int
         get() = sanitizedBlurRadius.roundToInt().coerceIn(0, 48)

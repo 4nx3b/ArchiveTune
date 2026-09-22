@@ -244,8 +244,17 @@ private fun YearInMusicRecapScreen(
                                 raw
                             }
 
+                        // Full-screen-class export: the screen capture is at the
+                        // device's native resolution, and the floor lifts smaller
+                        // captures (FHD+ devices) up to a crisp 1440x3200-class
+                        // story image — the same high-quality export behaviour
+                        // as the redesigned lyrics share card.
                         val fitted =
-                            ComposeToImage.exportBitmapAtFhdFloor(source = cardBitmap)
+                            ComposeToImage.exportBitmapAtFhdFloor(
+                                source = cardBitmap,
+                                minLongSide = 3200,
+                                minShortSide = 1440,
+                            )
                         val uri =
                             ComposeToImage.saveBitmapAsFile(
                                 context = context,
