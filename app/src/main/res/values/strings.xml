@@ -1755,8 +1755,6 @@
     <string name="listen_together_auto_approval_desc">Automatically approve join requests instead of reviewing them manually</string>
     <string name="listen_together_sync_volume">Sync host volume</string>
     <string name="listen_together_sync_volume_desc">Guests follow the host volume level</string>
-    <string name="listen_together_smart_resync">Smart Network Resync</string>
-    <string name="listen_together_smart_resync_desc">Automatically catch up with the host after a connection drop</string>
     <string name="listen_together_in_top_bar">Listen Together in top bar</string>
     <string name="listen_together_in_top_bar_desc">Show Listen Together in top app bar instead of navigation bar</string>
     <string name="listen_together_description">Listen to music with your friends in real-time. Create a room to be the host or join an existing room with a code.</string>

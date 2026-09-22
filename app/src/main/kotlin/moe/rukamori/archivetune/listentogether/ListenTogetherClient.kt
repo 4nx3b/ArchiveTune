@@ -50,6 +50,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -334,6 +336,9 @@ class ListenTogetherClient @Inject constructor(
     private val _events = MutableSharedFlow<ListenTogetherEvent>()
     val events: SharedFlow<ListenTogetherEvent> = _events.asSharedFlow()
 
+    /** Monotonic PONG receipt counter backing [probeConnection]. */
+    private val _pongCounter = MutableStateFlow(0)
+
     private fun observeNetworkChanges() {
         scope.launch {
             try {
@@ -343,16 +348,7 @@ class ListenTogetherClient @Inject constructor(
                     isNetworkAvailable = available
 
                     if (available && !previous) {
-                        log(LogLevel.INFO, "Network restored, checking if reconnection needed")
-
-                        if (_connectionState.value == ConnectionState.ERROR ||
-                            _connectionState.value == ConnectionState.DISCONNECTED) {
-                            if (sessionToken != null || _roomState.value != null || pendingAction != null) {
-                                log(LogLevel.INFO, "Network restored, triggering reconnection")
-                                reconnectAttempts = 0
-                                connect()
-                            }
-                        }
+                        resyncAfterConnectivityChange("network restored")
                     } else if (!available && previous) {
                         log(LogLevel.WARNING, "Network lost")
                     }
@@ -360,6 +356,66 @@ class ListenTogetherClient @Inject constructor(
             } catch (e: Exception) {
                 Timber.tag(TAG).e(e, "Error observing network changes")
             }
+        }
+    }
+
+    /**
+     * Connectivity-driven resync, rebuilt from scratch (it replaces the old
+     * "Smart Resync" preference + fixed one-second post-reconnect sync).
+     *
+     * Whenever the network comes back while a room session exists:
+     *  - a dead/idle socket reconnects immediately (backoff reset), and the
+     *    RECONNECTED handler re-applies the whole room state;
+     *  - a socket that survived the transition is PROBED with a ping round
+     *    trip instead of trusting it — the OS happily hands back a black
+     *    hole after a wifi <-> cellular move, and the 25s keepalive would
+     *    only find out half a minute later. A failed probe forces the
+     *    reconnect; a live one has an in-room guest pull fresh state right
+     *    away (the room kept moving while this device was offline).
+     */
+    private suspend fun resyncAfterConnectivityChange(reason: String) {
+        if (!isInRoom && sessionToken == null && _roomState.value == null && pendingAction == null) {
+            return
+        }
+        when (_connectionState.value) {
+            ConnectionState.ERROR,
+            ConnectionState.DISCONNECTED,
+            ConnectionState.RECONNECTING,
+            -> {
+                log(LogLevel.INFO, "Reconnecting after $reason")
+                reconnectAttempts = 0
+                connect()
+            }
+
+            ConnectionState.CONNECTED -> {
+                val alive = probeConnection(timeoutMs = 2500L)
+                if (!alive) {
+                    log(LogLevel.WARNING, "Socket unresponsive after $reason — forcing reconnect")
+                    forceReconnect()
+                } else if (isInRoom && !isHost) {
+                    log(LogLevel.INFO, "Socket alive after $reason — pulling fresh sync")
+                    requestSync()
+                } else {
+                    log(LogLevel.INFO, "Socket alive after $reason")
+                }
+            }
+
+            else -> Unit
+        }
+    }
+
+    /** Ping/PONG round trip used by the connectivity resync: true when the
+     * server answers within [timeoutMs]. */
+    private suspend fun probeConnection(timeoutMs: Long): Boolean {
+        if (webSocket == null || _connectionState.value != ConnectionState.CONNECTED) return false
+        val observedBefore = _pongCounter.value
+        return try {
+            sendMessageNoPayload(MessageTypes.PING)
+            withTimeoutOrNull(timeoutMs) {
+                _pongCounter.first { it > observedBefore }
+            } != null
+        } catch (e: Exception) {
+            false
         }
     }
 
@@ -1457,6 +1513,7 @@ class ListenTogetherClient @Inject constructor(
                 }
 
                 MessageTypes.PONG -> {
+                    _pongCounter.value += 1
                     log(LogLevel.DEBUG, "Pong received")
                 }
 

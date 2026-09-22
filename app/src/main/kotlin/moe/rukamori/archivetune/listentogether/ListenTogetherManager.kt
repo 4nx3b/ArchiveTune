@@ -30,7 +30,6 @@ import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.constants.ListenTogetherAvatarIndexKey
 import moe.rukamori.archivetune.constants.ListenTogetherChatHistoryKey
-import moe.rukamori.archivetune.constants.ListenTogetherSmartResyncKey
 import moe.rukamori.archivetune.constants.ListenTogetherSyncVolumeKey
 import moe.rukamori.archivetune.extensions.currentMetadata
 import moe.rukamori.archivetune.extensions.metadata
@@ -98,7 +97,6 @@ class ListenTogetherManager @Inject constructor(
     private var playerListenerRegistered = false
 
     private val syncHostVolumeEnabled = MutableStateFlow(false)
-    private val smartResyncEnabled = MutableStateFlow(true)
     private var lastSyncedVolume: Float? = null
 
     private var lastRole: RoomRole = RoomRole.NONE
@@ -346,13 +344,6 @@ class ListenTogetherManager @Inject constructor(
                 .distinctUntilChanged()
                 .collect { enabled ->
                     syncHostVolumeEnabled.value = enabled
-                }
-
-            context.dataStore.data
-                .map { it[ListenTogetherSmartResyncKey] ?: true }
-                .distinctUntilChanged()
-                .collect { enabled ->
-                    smartResyncEnabled.value = enabled
                 }
         }
     }
@@ -681,9 +672,12 @@ class ListenTogetherManager @Inject constructor(
                         applyHostVolumeIfNeeded(event.state.volume)
 
                         scope.launch {
-                            delay(1000)
-                            if (isInRoom && !isHost && smartResyncEnabled.value) {
-                                Timber.tag(TAG).d("Requesting fresh sync after reconnect (Smart Resync)")
+                            // Fresh state pull right away (no fixed delay — the
+                            // old "Smart Resync" waited a second before asking;
+                            // the reconnect payload itself may have been built
+                            // while this device was still recovering).
+                            if (isInRoom && !isHost) {
+                                Timber.tag(TAG).d("Requesting fresh sync after reconnect")
                                 requestSync()
                             }
                         }
