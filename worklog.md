@@ -3471,3 +3471,4 @@ Work Log:
 
 Stage Summary:
 - dev: YouLyPlus word-synced lyrics keep inter-word spaces across every player style, for both the syllable-generated LRC (gap re-inserted at generation time) and any enhanced-LRC source that already carries them (gap preserved at parse time); CJK lyrics never gain invented spaces; TTML sources (Apple Music account / Musixmatch / BetterLyrics) now preserve embedded span-edge gaps too. lyrics submodule re-pinned to 714754f.
+- CI verification (commit 1b6122369): all 12 check-runs completed successfully — build, Build Release APKs (gms-mobile-arm64, gms-tv-universal), and the full Nightly matrix (arm64/armeabi/x86/x86_64/universal, foss universal, tv universal) all green; the app-module edits compile and assemble cleanly with the re-pinned lyrics submodule.
