@@ -751,6 +751,16 @@ fun AlbumScreen(
                     GlassPillTitleText(
                         text = pluralStringResource(R.plurals.n_song, count, count),
                     )
+                } else {
+                    // Every sibling screen with this header pill (local,
+                    // online, cache, auto, Spotify playlists) shows its title
+                    // inside the pill; the album page used to show only the
+                    // back arrow, which read as an empty glass pill.
+                    GlassPillTitleText(
+                        text = currentAlbumWithSongs.album.title.ifBlank {
+                            stringResource(R.string.albums)
+                        },
+                    )
                 }
             }
             LiquidGlassActionPill(

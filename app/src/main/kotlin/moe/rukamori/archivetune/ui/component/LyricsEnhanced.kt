@@ -440,7 +440,6 @@ fun LyricsEnhanced(
                     lyrics =
                         buildSyncedLyrics(
                             entries = lyricsEntries,
-                            isTtml = isTtmlFormat,
                             romanizationMap = romanization,
                             providerHeader = lyricsProviderLabel,
                             composerFooter = composerFooterLabel,
@@ -451,7 +450,7 @@ fun LyricsEnhanced(
                 )
         }
 
-        val aiMap = aiRomanizationMap(lyricsEntries, isTtmlFormat, aiRomanizedLines)
+        val aiMap = aiRomanizationMap(lyricsEntries, aiRomanizedLines)
 
         val toRomanize: List<Pair<Int, LyricsEntry>> =
             if (!romanizationPreferences.isEnabled) {
@@ -479,7 +478,7 @@ fun LyricsEnhanced(
                         async {
                             val romanized: List<String?> =
                                 try {
-                                    if (isTtmlFormat && entry.words != null) {
+                                    if (entry.words != null) {
                                         val mainWordCount = entry.words!!.count { !it.isBackground }
                                         providedRomanizedWordsForEntry(entry, mainWordCount, romanizationPreferences)
                                             ?: romanizeWordsForLine(
@@ -498,7 +497,7 @@ fun LyricsEnhanced(
                                     throw e
                                 } catch (e: Exception) {
                                     reportException(e)
-                                    if (isTtmlFormat && entry.words != null) {
+                                    if (entry.words != null) {
                                         List(entry.words!!.count { !it.isBackground }) { null }
                                     } else {
                                         listOf(null)
@@ -1625,7 +1624,6 @@ private fun Double.toMilliseconds(): Int = (this * 1000.0).roundToInt().coerceAt
 
 private fun aiRomanizationMap(
     entries: List<LyricsEntry>,
-    isTtml: Boolean,
     aiLines: List<String?>,
 ): Map<Int, List<String?>> {
     if (aiLines.isEmpty() || entries.isEmpty()) return emptyMap()
@@ -1634,7 +1632,7 @@ private fun aiRomanizationMap(
         val romanized = aiLines.getOrNull(index)?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEachIndexed
         val words = entry.words?.filter { !it.isBackground }
         map[index] =
-            if (isTtml && !words.isNullOrEmpty()) {
+            if (!words.isNullOrEmpty()) {
                 distributePhonetics(words.map { it.text }, romanized)
             } else {
                 listOf(romanized)
@@ -1662,7 +1660,6 @@ private fun distributePhonetics(
 
 private fun buildSyncedLyrics(
     entries: List<LyricsEntry>,
-    isTtml: Boolean,
     romanizationMap: Map<Int, List<String?>>,
     providerHeader: String?,
     composerFooter: String? = null,
@@ -1687,7 +1684,7 @@ private fun buildSyncedLyrics(
         if (entry.isInstrumental) return@forEachIndexed
         if (entry.text.isBlank() && entry.words.isNullOrEmpty()) return@forEachIndexed
 
-        if (isTtml && entry.words != null && hasTrueWordSync(entry)) {
+        if (entry.words != null && hasTrueWordSync(entry)) {
             val translation = providedTranslationTextForEntry(entry)
             val mainWords = entry.words!!.filter { !it.isBackground }
             val bgWords = entry.words!!.filter { it.isBackground }

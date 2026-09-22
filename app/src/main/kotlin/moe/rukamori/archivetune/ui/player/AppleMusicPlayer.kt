@@ -737,11 +737,11 @@ fun AppleMusicPlayerContent(
                 remember(useCanvasBackdrop, preBlurLoading, Build.VERSION.SDK_INT) {
                     val (a1, a2, a3) =
                         if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            Triple(0.25f, 0.40f, 0.65f)
+                            Triple(0.15f, 0.28f, 0.50f)
                         } else if (preBlurLoading) {
                             Triple(0.55f, 0.65f, 0.85f)
                         } else {
-                            Triple(0.40f, 0.55f, 0.75f)
+                            Triple(0.28f, 0.42f, 0.60f)
                         }
                     Brush.verticalGradient(
                         0f to Color.Black.copy(alpha = a1),

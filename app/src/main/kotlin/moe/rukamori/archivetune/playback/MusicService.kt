@@ -530,6 +530,15 @@ class MusicService :
             .followSslRedirects(true)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
+            .dispatcher(
+                okhttp3.Dispatcher()
+                    .apply {
+                        maxRequests = 256
+                        maxRequestsPerHost = 96
+                    },
+            ).connectionPool(
+                okhttp3.ConnectionPool(96, 10, TimeUnit.MINUTES),
+            ).protocols(listOf(okhttp3.Protocol.HTTP_2, okhttp3.Protocol.HTTP_1_1))
             .addInterceptor { chain ->
                 val request = chain.request()
                 val host = request.url.host
