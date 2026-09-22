@@ -25,8 +25,8 @@ import android.view.PixelCopy
 import android.view.View
 import androidx.annotation.RequiresApi
 import androidx.core.content.FileProvider
+import androidx.core.content.res.ResourcesCompat
 import androidx.core.graphics.createBitmap
-import androidx.core.graphics.drawable.toBitmap
 import androidx.core.graphics.withClip
 import androidx.core.graphics.withTranslation
 import androidx.core.view.drawToBitmap
@@ -42,8 +42,12 @@ import moe.rukamori.archivetune.ui.component.LyricsShareImageOptions
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.coroutines.resume
+import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sign
+import kotlin.math.sin
 
 object ComposeToImage {
     private tailrec fun Context.findActivity(): Activity? =
@@ -180,46 +184,6 @@ object ComposeToImage {
         return out
     }
 
-    private fun stepScaleBitmap(
-        source: Bitmap,
-        targetWidth: Int,
-        targetHeight: Int,
-        step: Float = 1.35f,
-    ): Bitmap {
-        var current = source
-        while (current.width < targetWidth * (1f / step) - 1f && current.height < targetHeight * (1f / step) - 1f) {
-            val nextW = (current.width * step).toInt().coerceAtMost(targetWidth)
-            val nextH = (current.height * step).toInt().coerceAtMost(targetHeight)
-            current = ensureSoftwareBitmap(Bitmap.createScaledBitmap(current, nextW, nextH, true))
-        }
-        if (current.width != targetWidth || current.height != targetHeight) {
-            current = ensureSoftwareBitmap(Bitmap.createScaledBitmap(current, targetWidth, targetHeight, true))
-        }
-        return current
-    }
-
-    fun exportBitmapAtFhdFloor(
-        source: Bitmap,
-        minLongSide: Int = 1920,
-        minShortSide: Int = 1080,
-    ): Bitmap {
-        val safeSource = ensureSoftwareBitmap(source)
-        val longSide = maxOf(safeSource.width, safeSource.height)
-        val shortSide = minOf(safeSource.width, safeSource.height)
-        if (longSide >= minLongSide && shortSide >= minShortSide) {
-            return safeSource
-        }
-        val longTarget = maxOf(minLongSide, longSide)
-        val shortTarget = maxOf(minShortSide, shortSide)
-        val scale = longTarget.toFloat() / longSide
-        val targetShort = (shortSide * scale).toInt().coerceAtLeast(1)
-        return if (safeSource.width >= safeSource.height) {
-            stepScaleBitmap(safeSource, longTarget, targetShort)
-        } else {
-            stepScaleBitmap(safeSource, targetShort, longTarget)
-        }
-    }
-
     @RequiresApi(Build.VERSION_CODES.M)
     suspend fun createLyricsImage(
         context: Context,
@@ -269,38 +233,7 @@ object ComposeToImage {
                 }
             }
 
-            // ---- ambient background: enlarged, heavily blurred artwork with a
-            // dark vignette; adapts to every album's palette automatically ----
-            val blurredBackground: Bitmap? =
-                coverArtBitmap?.let { art ->
-                    blurBitmap(coverBitmap(art, canvasWidth, canvasHeight), shareOptions.sanitizedBlurRadius.coerceAtLeast(14f))
-                }
-            if (blurredBackground != null) {
-                val bleed = baseSize * 0.03f
-                val bgRect = RectF(-bleed, -bleed, canvasWidth + bleed, canvasHeight + bleed)
-                canvas.drawBitmap(blurredBackground, null, bgRect, Paint(Paint.FILTER_BITMAP_FLAG))
-            } else {
-                canvas.drawColor(0xFF151014.toInt())
-            }
-
-            val fullRect = RectF(0f, 0f, canvasWidth.toFloat(), canvasHeight.toFloat())
-            canvas.drawRect(fullRect, Paint().apply { color = 0x2E0A0608.toInt() })
-            canvas.drawRect(
-                fullRect,
-                Paint().apply {
-                    shader =
-                        RadialGradient(
-                            canvasWidth / 2f,
-                            canvasHeight / 2f,
-                            maxOf(canvasWidth, canvasHeight) * 0.75f,
-                            0x00000000,
-                            0x8C000000,
-                            Shader.TileMode.CLAMP,
-                        )
-                },
-            )
-
-            // ---- the frosted-glass card ----
+            // ---- card geometry first: the liquid-glass layers need it ----
             val cardWidth = canvasWidth * 0.92f
             val cardHeight = canvasHeight * 0.93f
             val cardLeft = (canvasWidth - cardWidth) / 2f
@@ -308,7 +241,62 @@ object ComposeToImage {
             val cardRight = cardLeft + cardWidth
             val cardBottom = cardTop + cardHeight
             val cardRect = RectF(cardLeft, cardTop, cardRight, cardBottom)
-            val cardRadius = baseSize * 0.028f
+            // Reference-exact roundness: ~6% of card width, clearly softer
+            // than the old 2.8% pill.
+            val cardRadius = baseSize * 0.055f
+            val cardPath =
+                Path().apply {
+                    addRoundRect(cardRect, cardRadius, cardRadius, Path.Direction.CW)
+                }
+
+            // ---- reference liquid glass ----
+            // The whole glass look is derived from the artwork itself: a frosted,
+            // liquid-warped base for the ambient background plus a separately
+            // refracted and tinted layer behind the card. All displacement runs
+            // on a downscaled working copy — the source is already low-frequency
+            // — so the 3072px export stays fast while every crisp element (type,
+            // artwork, borders) renders at native canvas resolution. The blur
+            // radius is expressed at a 2048px reference scale, so the preview
+            // and the export always show the same relative frost.
+            val referenceScale = maxOf(canvasWidth, canvasHeight) / 2048f
+            val glassLayers =
+                coverArtBitmap?.let { art ->
+                    renderLiquidGlassLayers(art, canvasWidth, canvasHeight, cardRect, shareOptions, referenceScale)
+                }
+
+            // ---- ambient background: liquid-glass blurred artwork, dimmed and
+            // vignetted by the dim slider; adapts to every album's palette ----
+            if (glassLayers != null) {
+                val bleed = baseSize * 0.03f
+                val bgRect = RectF(-bleed, -bleed, canvasWidth + bleed, canvasHeight + bleed)
+                canvas.drawBitmap(glassLayers.ambient, null, bgRect, Paint(Paint.FILTER_BITMAP_FLAG))
+            } else {
+                canvas.drawColor(0xFF151014.toInt())
+            }
+
+            val fullRect = RectF(0f, 0f, canvasWidth.toFloat(), canvasHeight.toFloat())
+            val dimAmount = shareOptions.sanitizedDimAmount
+            if (dimAmount > 0f) {
+                val dimAlpha = (dimAmount * 0.58f * 255f).toInt().coerceIn(0, 255)
+                canvas.drawRect(
+                    fullRect,
+                    Paint().apply { color = (dimAlpha shl 24) or 0x0A0608 },
+                )
+                canvas.drawRect(
+                    fullRect,
+                    Paint().apply {
+                        shader =
+                            RadialGradient(
+                                canvasWidth / 2f,
+                                canvasHeight / 2f,
+                                maxOf(canvasWidth, canvasHeight) * 0.75f,
+                                0x00000000,
+                                ((dimAmount * 0.55f * 255f).toInt().coerceIn(0, 255)) shl 24,
+                                Shader.TileMode.CLAMP,
+                            )
+                    },
+                )
+            }
 
             // Soft shadow lifting the card off the background (soft glow ring).
             canvas.drawRoundRect(
@@ -322,24 +310,28 @@ object ComposeToImage {
                 },
             )
 
-            val cardPath =
-                Path().apply {
-                    addRoundRect(cardRect, cardRadius, cardRadius, Path.Direction.CW)
-                }
-            if (blurredBackground != null) {
+            // ---- the frosted-glass fill: the refracted glass layer at the
+            // opacity the slider picks ----
+            if (glassLayers != null) {
                 val bleed = baseSize * 0.03f
                 val bgRect = RectF(-bleed, -bleed, canvasWidth + bleed, canvasHeight + bleed)
+                val glassAlpha =
+                    (shareOptions.sanitizedGlassOpacity * 255f).toInt().coerceIn(0, 255)
                 canvas.withClip(cardPath) {
-                    drawBitmap(blurredBackground, null, bgRect, Paint(Paint.FILTER_BITMAP_FLAG))
+                    drawBitmap(
+                        glassLayers.glass,
+                        null,
+                        bgRect,
+                        Paint(Paint.FILTER_BITMAP_FLAG).apply { alpha = glassAlpha },
+                    )
                 }
             } else {
                 canvas.withClip(cardPath) { drawColor(0xFF2B2024.toInt()) }
             }
-            // Dark translucent veil + slight tonal variation toward the bottom —
-            // the reference's glass reads darker in the middle and lighter where
-            // the artwork behind it is brighter.
+            // Tonal balance + the reference's soft white glow falling from the
+            // top edge of the glass.
             canvas.withClip(cardPath) {
-                drawRect(fullRect, Paint().apply { color = 0x42140D10.toInt() })
+                drawRect(fullRect, Paint().apply { color = 0x2A140D10.toInt() })
                 drawRect(
                     fullRect,
                     Paint().apply {
@@ -348,22 +340,45 @@ object ComposeToImage {
                                 0f,
                                 cardTop,
                                 0f,
-                                cardBottom,
+                                cardTop + cardHeight * 0.42f,
+                                0x2EFFFFFF,
                                 0x00FFFFFF,
-                                0x1AFFFFFF,
                                 Shader.TileMode.CLAMP,
                             )
                     },
                 )
             }
+            // Outer hairline.
             canvas.drawRoundRect(
                 cardRect,
                 cardRadius,
                 cardRadius,
                 Paint().apply {
                     style = Paint.Style.STROKE
-                    strokeWidth = (baseSize * 0.0012f).coerceAtLeast(1.5f)
-                    color = 0x66FFFFFF
+                    strokeWidth = (baseSize * 0.0013f).coerceAtLeast(1.5f)
+                    color = 0x59FFFFFF
+                    isAntiAlias = true
+                },
+            )
+            // The rounder internal border: an inset ring with its own (smaller)
+            // corner radius, echoing the reference's layered glass rim.
+            val innerInset = baseSize * 0.0075f
+            val innerRect =
+                RectF(
+                    cardLeft + innerInset,
+                    cardTop + innerInset,
+                    cardRight - innerInset,
+                    cardBottom - innerInset,
+                )
+            val innerRadius = (cardRadius - innerInset).coerceAtLeast(1f)
+            canvas.drawRoundRect(
+                innerRect,
+                innerRadius,
+                innerRadius,
+                Paint().apply {
+                    style = Paint.Style.STROKE
+                    strokeWidth = (baseSize * 0.0009f).coerceAtLeast(1f)
+                    color = 0x2EFFFFFF
                     isAntiAlias = true
                 },
             )
@@ -398,20 +413,28 @@ object ComposeToImage {
                 )
             }
 
+            // ---- reference-exact typography: Figtree, the closest open
+            // match to the reference's Circular — loaded straight from font
+            // resources, entirely outside the app's Compose font system ----
+            val figtreeBold = shareCardTypeface(context, ShareCardFontWeight.BOLD)
+            val figtreeMedium = shareCardTypeface(context, ShareCardFontWeight.MEDIUM)
+            val figtreeRegular = shareCardTypeface(context, ShareCardFontWeight.REGULAR)
+
             val titlePaint =
                 TextPaint().apply {
                     color = emphasizedColor
-                    textSize = baseSize * 0.036f
-                    typeface = Typeface.DEFAULT_BOLD
+                    textSize = baseSize * 0.040f
+                    typeface = figtreeBold
                     isAntiAlias = true
                     letterSpacing = -0.01f
                 }
             val artistPaint =
                 TextPaint().apply {
                     color = secondaryColor
-                    textSize = baseSize * 0.020f
-                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                    textSize = baseSize * 0.0195f
+                    typeface = figtreeMedium
                     isAntiAlias = true
+                    letterSpacing = 0.025f
                 }
 
             val textStartX =
@@ -433,7 +456,7 @@ object ComposeToImage {
                     .build()
             val artistLayout =
                 StaticLayout.Builder
-                    .obtain(artistName, 0, artistName.length, artistPaint, textMaxWidth)
+                    .obtain(artistName.uppercase(), 0, artistName.uppercase().length, artistPaint, textMaxWidth)
                     .setAlignment(Layout.Alignment.ALIGN_NORMAL)
                     .setLineSpacing(0f, 1.2f)
                     .setIncludePad(false)
@@ -462,82 +485,21 @@ object ComposeToImage {
                 }
             val headerBottom = maxOf(headerAnchorBottom, headerTop + headerBlockHeight)
 
-            // ---- footer: logo + ArchiveTune + separator + tagline ----
+            // ---- footer: the ArchiveTune wordmark only — no monogram, no
+            // separator, no tagline (reference typography, Figtree bold) ----
             val footerCenterY = cardBottom - cardHeight * 0.085f
             val footerTop = footerCenterY - baseSize * 0.032f
-
-            val logoDiameter = baseSize * 0.058f
-            val logoCenterX = cardLeft + contentInset + logoDiameter / 2f
-            canvas.drawCircle(
-                logoCenterX,
-                footerCenterY,
-                logoDiameter / 2f,
-                Paint().apply {
-                    color = 0xFF1C1C22.toInt()
-                    isAntiAlias = true
-                },
-            )
-            val monogramSize = (logoDiameter * 0.56f).toInt().coerceAtLeast(8)
-            context.getDrawable(R.drawable.small_icon)?.toBitmap(monogramSize, monogramSize)?.let { source ->
-                val tinted = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
-                Canvas(tinted).drawBitmap(
-                    source,
-                    0f,
-                    0f,
-                    Paint().apply {
-                        colorFilter = PorterDuffColorFilter(0xE6FFFFFF.toInt(), PorterDuff.Mode.SRC_IN)
-                        isAntiAlias = true
-                    },
-                )
-                canvas.drawBitmap(
-                    tinted,
-                    logoCenterX - tinted.width / 2f,
-                    footerCenterY - tinted.height / 2f,
-                    null,
-                )
-            }
 
             val brandPaint =
                 TextPaint().apply {
                     color = 0xFFF2EDE8.toInt()
-                    textSize = baseSize * 0.023f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    textSize = baseSize * 0.024f
+                    typeface = figtreeBold
                     isAntiAlias = true
                     letterSpacing = 0.01f
                 }
             val appName = context.getString(R.string.app_name)
-            val brandX = logoCenterX + logoDiameter / 2f + baseSize * 0.014f
-            drawVerticallyCenteredText(canvas, appName, brandX, footerCenterY, brandPaint)
-
-            val taglinePaint =
-                TextPaint().apply {
-                    color = 0xB8D6CFC9.toInt()
-                    textSize = baseSize * 0.0165f
-                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                    isAntiAlias = true
-                    letterSpacing = 0.20f
-                }
-            val tagline = context.getString(R.string.archivetune_tagline)
-            val taglineWidth = taglinePaint.measureText(tagline)
-            val taglineEnd = cardRight - contentInset
-            drawVerticallyCenteredText(canvas, tagline, taglineEnd - taglineWidth, footerCenterY, taglinePaint)
-
-            val brandWidth = brandPaint.measureText(appName)
-            val separatorStart = brandX + brandWidth + baseSize * 0.022f
-            val separatorEnd = taglineEnd - taglineWidth - baseSize * 0.020f
-            if (separatorEnd > separatorStart) {
-                canvas.drawLine(
-                    separatorStart,
-                    footerCenterY,
-                    separatorEnd,
-                    footerCenterY,
-                    Paint().apply {
-                        strokeWidth = (baseSize * 0.0012f).coerceAtLeast(1.2f)
-                        color = 0x47FFFFFF
-                        isAntiAlias = true
-                    },
-                )
-            }
+            drawVerticallyCenteredText(canvas, appName, cardLeft + contentInset, footerCenterY, brandPaint)
 
             // ---- lyrics: the hero content, centered with generous rhythm ----
             val lyricLines =
@@ -569,13 +531,10 @@ object ComposeToImage {
                         val paint =
                             TextPaint().apply {
                                 color = if (emphasized) emphasizedColor else normalColor
-                                textSize = baseSize * 0.042f * scale * (if (emphasized) 1.28f else 1f)
-                                typeface =
-                                    if (emphasized) {
-                                        Typeface.DEFAULT_BOLD
-                                    } else {
-                                        Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                                    }
+                                // Reference pitch: the hook at ~8-9% of card width
+                                // in bold, surrounding lines regular at ~6%.
+                                textSize = baseSize * 0.050f * scale * (if (emphasized) 1.36f else 1f)
+                                typeface = if (emphasized) figtreeBold else figtreeRegular
                                 isAntiAlias = true
                                 letterSpacing = -0.012f
                             }
@@ -643,26 +602,6 @@ object ComposeToImage {
         val metrics = paint.fontMetrics
         val baseline = centerY - (metrics.ascent + metrics.descent) / 2f
         canvas.drawText(text, x, baseline, paint)
-    }
-
-    private fun blurBitmap(
-        source: Bitmap,
-        radius: Float,
-    ): Bitmap {
-        val safe = ensureSoftwareBitmap(source)
-        val safeRadius = radius.coerceIn(0f, 48f)
-        if (safeRadius <= 0.5f) return safe
-        val maxDimension = max(safe.width, safe.height)
-        if (maxDimension <= 720 || safeRadius < 8f) {
-            return stackBlur(safe, safeRadius.roundToInt().coerceAtLeast(1))
-        }
-
-        val scale = 720f / maxDimension.toFloat()
-        val scaledWidth = (safe.width * scale).roundToInt().coerceAtLeast(1)
-        val scaledHeight = (safe.height * scale).roundToInt().coerceAtLeast(1)
-        val scaled = ensureSoftwareBitmap(Bitmap.createScaledBitmap(safe, scaledWidth, scaledHeight, true))
-        val blurred = stackBlur(scaled, (safeRadius * scale).roundToInt().coerceAtLeast(1))
-        return ensureSoftwareBitmap(Bitmap.createScaledBitmap(blurred, safe.width, safe.height, true))
     }
 
     private fun stackBlur(
@@ -855,6 +794,269 @@ object ComposeToImage {
 
         bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
         return bitmap
+    }
+
+    // ------------------------------------------------------------------
+    // Liquid-glass engine for the lyrics share card
+    // ------------------------------------------------------------------
+
+    /** The share card's exclusive typeface set: Figtree, the closest open
+     * match to the reference image's Circular — deliberately outside the
+     * app's Compose font system so the card typography can never drift. */
+    private enum class ShareCardFontWeight {
+        REGULAR,
+        MEDIUM,
+        BOLD,
+    }
+
+    private fun shareCardTypeface(context: Context, weight: ShareCardFontWeight): Typeface =
+        runCatching {
+            ResourcesCompat.getFont(
+                context,
+                when (weight) {
+                    ShareCardFontWeight.REGULAR -> R.font.sharecard_figtree_regular
+                    ShareCardFontWeight.MEDIUM -> R.font.sharecard_figtree_medium
+                    ShareCardFontWeight.BOLD -> R.font.sharecard_figtree_bold
+                },
+            )
+        }.getOrNull() ?: Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+
+    /** Working resolution for the displacement passes: the source is heavily
+     * blurred, so sub-1024 computation is visually identical and ~10x faster. */
+    private const val LIQUID_WORKING_DIM = 1024
+
+    private class LiquidGlassLayers(
+        val ambient: Bitmap,
+        val glass: Bitmap,
+    )
+
+    /**
+     * Builds both glass layers from the artwork:
+     *  - [LiquidGlassLayers.ambient]: frosted + liquid-warped base for the
+     *    full-bleed background;
+     *  - [LiquidGlassLayers.glass]: the card's own slab — extra frost, a
+     *    stronger liquid warp, rim refraction that bends the surrounding
+     *    artwork inward, plus the brightness/saturation lift and frost grain
+     *    that sell the "liquid glass" material.
+     */
+    private fun renderLiquidGlassLayers(
+        cover: Bitmap,
+        canvasWidth: Int,
+        canvasHeight: Int,
+        cardRect: RectF,
+        options: LyricsShareImageOptions,
+        referenceScale: Float,
+    ): LiquidGlassLayers {
+        val safeCover = ensureSoftwareBitmap(cover)
+        val covered = coverBitmap(safeCover, canvasWidth, canvasHeight)
+        val workScale = min(1f, LIQUID_WORKING_DIM.toFloat() / max(covered.width, covered.height))
+        val working =
+            if (workScale < 1f) {
+                ensureSoftwareBitmap(
+                    Bitmap.createScaledBitmap(
+                        covered,
+                        (covered.width * workScale).roundToInt().coerceAtLeast(1),
+                        (covered.height * workScale).roundToInt().coerceAtLeast(1),
+                        true,
+                    ),
+                )
+            } else {
+                ensureSoftwareBitmap(covered.copy(Bitmap.Config.ARGB_8888, true))
+            }
+
+        val blurPx =
+            (options.sanitizedBlurRadius.coerceAtLeast(14f) * referenceScale * workScale)
+                .roundToInt().coerceAtLeast(1)
+        val frosted = stackBlur(working, blurPx)
+
+        // Ambient background: liquid warp of the frosted base, upscaled back.
+        val ambientWork = applyLiquidWarp(frosted, options.sanitizedLiquidyAmount)
+        val ambient =
+            ensureSoftwareBitmap(
+                Bitmap.createScaledBitmap(ambientWork, canvasWidth, canvasHeight, true),
+            )
+
+        // Glass slab: warp the SHARPER base first so the liquid survives the
+        // frost, then frost it; the rim samples the sharper warped layer so
+        // the refraction lens stays legible.
+        val sharpish =
+            stackBlur(
+                ensureSoftwareBitmap(working.copy(Bitmap.Config.ARGB_8888, true)),
+                (blurPx * 0.45f).roundToInt().coerceAtLeast(1),
+            )
+        val warped = applyLiquidWarp(sharpish, options.sanitizedLiquidyAmount)
+        val glassFrost =
+            stackBlur(
+                ensureSoftwareBitmap(warped.copy(Bitmap.Config.ARGB_8888, true)),
+                (blurPx * 1.25f).roundToInt().coerceAtLeast(1),
+            )
+        val cardRectInLayer =
+            RectF(
+                cardRect.left * workScale,
+                cardRect.top * workScale,
+                cardRect.right * workScale,
+                cardRect.bottom * workScale,
+            )
+        var glassWork = blendRefractionRim(glassFrost, warped, cardRectInLayer, options.sanitizedRefractionAmount)
+        glassWork = applyGlassFinish(glassWork)
+        val glass =
+            ensureSoftwareBitmap(
+                Bitmap.createScaledBitmap(glassWork, canvasWidth, canvasHeight, true),
+            )
+
+        return LiquidGlassLayers(ambient = ambient, glass = glass)
+    }
+
+    /** Sinusoidal liquid displacement: two overlapping waves whose amplitude
+     * scales with [amount] (0..1) — the "liquidy" slider. The amplitude is
+     * deliberately large relative to the frost radius so the flow survives
+     * the blur and stays visible in the final render. */
+    private fun applyLiquidWarp(
+        source: Bitmap,
+        amount: Float,
+    ): Bitmap {
+        if (amount <= 0.02f) return source
+        val safe = ensureSoftwareBitmap(source)
+        val w = safe.width
+        val h = safe.height
+        if (w < 8 || h < 8) return safe
+        val src = IntArray(w * h)
+        safe.getPixels(src, 0, w, 0, 0, w, h)
+        val dst = IntArray(w * h)
+        val amp = amount * 0.16f * minOf(w, h)
+        val fy = (2.0 * Math.PI / h).toFloat()
+        val fx = (2.6 * Math.PI / w).toFloat()
+        for (y in 0 until h) {
+            val dy = (sin(y * fy) * amp).toInt()
+            val row = (y + dy).coerceIn(0, h - 1) * w
+            for (x in 0 until w) {
+                val dx = (sin(x * fx + y * 0.011f) * amp * 0.72f).toInt()
+                dst[y * w + x] = src[row + (x + dx).coerceIn(0, w - 1)]
+            }
+        }
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        out.setPixels(dst, 0, w, 0, 0, w, h)
+        return out
+    }
+
+    /**
+     * Rim refraction — the lens at the glass edge. Within a band along the
+     * card's border, samples displaced radially outward are taken from the
+     * SHARPER warped layer (content just beyond the glass, bent inward the
+     * way a thick glass slab refracts the scene behind it) and blended over
+     * the frost with a quadratic falloff. [cardRect] is expressed in the
+     * working layer's coordinates.
+     */
+    private fun blendRefractionRim(
+        frost: Bitmap,
+        warped: Bitmap,
+        cardRect: RectF,
+        amount: Float,
+    ): Bitmap {
+        if (amount <= 0.02f) return frost
+        val w = frost.width
+        val h = frost.height
+        if (w < 8 || h < 8 || warped.width != w || warped.height != h) return frost
+        val frostPixels = IntArray(w * h)
+        frost.getPixels(frostPixels, 0, w, 0, 0, w, h)
+        val warpedPixels = IntArray(w * h)
+        warped.getPixels(warpedPixels, 0, w, 0, 0, w, h)
+        val dst = frostPixels.copyOf()
+
+        val cx = cardRect.centerX()
+        val cy = cardRect.centerY()
+        val halfW = cardRect.width() / 2f
+        val halfH = cardRect.height() / 2f
+        val bandX = halfW * 0.20f
+        val bandY = halfH * 0.20f
+        val strengthX = bandX * 1.1f * amount
+        val strengthY = bandY * 1.1f * amount
+
+        val yStart = cardRect.top.toInt().coerceIn(0, h - 1)
+        val yEnd = cardRect.bottom.toInt().coerceIn(0, h - 1)
+        val xStart = cardRect.left.toInt().coerceIn(0, w - 1)
+        val xEnd = cardRect.right.toInt().coerceIn(0, w - 1)
+
+        for (y in yStart..yEnd) {
+            val offY = y - cy
+            val ey = halfH - abs(offY)
+            val weightY =
+                if (ey < bandY) {
+                    val t = 1f - (ey / bandY).coerceIn(0f, 1f)
+                    t * t
+                } else {
+                    0f
+                }
+            val lensY = weightY * strengthY * sign(offY.toFloat())
+            val sy = (y + lensY).roundToInt().coerceIn(0, h - 1)
+            for (x in xStart..xEnd) {
+                val offX = x - cx
+                val ex = halfW - abs(offX)
+                val weightX =
+                    if (ex < bandX) {
+                        val t = 1f - (ex / bandX).coerceIn(0f, 1f)
+                        t * t
+                    } else {
+                        0f
+                    }
+                val weight = (weightX + weightY).coerceAtMost(1f)
+                if (weight <= 0f) continue
+                val lensX = weightX * strengthX * sign(offX.toFloat())
+                val sx = (x + lensX).roundToInt().coerceIn(0, w - 1)
+                val frostP = frostPixels[y * w + x]
+                val warpedP = warpedPixels[sy * w + sx]
+                val keep = 1f - weight
+                val a = ((frostP ushr 24) * keep + (warpedP ushr 24) * weight).toInt().coerceIn(0, 255)
+                val r = ((frostP shr 16 and 0xFF) * keep + (warpedP shr 16 and 0xFF) * weight).toInt().coerceIn(0, 255)
+                val g = ((frostP shr 8 and 0xFF) * keep + (warpedP shr 8 and 0xFF) * weight).toInt().coerceIn(0, 255)
+                val b = ((frostP and 0xFF) * keep + (warpedP and 0xFF) * weight).toInt().coerceIn(0, 255)
+                dst[y * w + x] = (a shl 24) or (r shl 16) or (g shl 8) or b
+            }
+        }
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        out.setPixels(dst, 0, w, 0, 0, w, h)
+        return out
+    }
+
+    /** The glass material's finish: gentle brightness + saturation lift and
+     * a deterministic per-pixel frost grain. */
+    private fun applyGlassFinish(source: Bitmap): Bitmap {
+        val safe = ensureSoftwareBitmap(source)
+        val out = Bitmap.createBitmap(safe.width, safe.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        val bright =
+            ColorMatrix(
+                floatArrayOf(
+                    1.14f, 0f, 0f, 0f, -18f,
+                    0f, 1.14f, 0f, 0f, -18f,
+                    0f, 0f, 1.16f, 0f, -21f,
+                    0f, 0f, 0f, 1f, 0f,
+                ),
+            )
+        val saturation = ColorMatrix().apply { setSaturation(1.32f) }
+        bright.postConcat(saturation)
+        canvas.drawBitmap(safe, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(bright) })
+
+        // Frost grain: hash-based deterministic noise, +-3 luminance levels.
+        val w = out.width
+        val h = out.height
+        if (w >= 8 && h >= 8) {
+            val pixels = IntArray(w * h)
+            out.getPixels(pixels, 0, w, 0, 0, w, h)
+            for (y in 0 until h) {
+                for (x in 0 until w) {
+                    val p = pixels[y * w + x]
+                    if (p ushr 24 == 0) continue
+                    val noise = (((x * 73856093) xor (y * 19349663)) and 7) - 3
+                    val r = ((p shr 16 and 0xFF) + noise).coerceIn(0, 255)
+                    val g = ((p shr 8 and 0xFF) + noise).coerceIn(0, 255)
+                    val b = ((p and 0xFF) + noise).coerceIn(0, 255)
+                    pixels[y * w + x] = (p and 0xFF000000.toInt()) or (r shl 16) or (g shl 8) or b
+                }
+            }
+            out.setPixels(pixels, 0, w, 0, 0, w, h)
+        }
+        return out
     }
 
     @RequiresApi(Build.VERSION_CODES.M)

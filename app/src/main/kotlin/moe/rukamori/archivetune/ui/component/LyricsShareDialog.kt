@@ -709,6 +709,38 @@ private fun ControlsSection(
                         valueRange = 0f..48f,
                     )
 
+                    LyricsShareSlider(
+                        title = stringResource(R.string.lyrics_share_glass_dim),
+                        valueLabel = stringResource(R.string.lyrics_share_glass_dim_value, (options.sanitizedDimAmount * 100).toInt()),
+                        value = options.dimAmount,
+                        onValueChange = { onOptionsChange(options.copy(dimAmount = it)) },
+                        valueRange = 0f..1f,
+                    )
+
+                    LyricsShareSlider(
+                        title = stringResource(R.string.lyrics_share_glass_liquidy),
+                        valueLabel = stringResource(R.string.lyrics_share_glass_liquidy_value, (options.sanitizedLiquidyAmount * 100).toInt()),
+                        value = options.liquidyAmount,
+                        onValueChange = { onOptionsChange(options.copy(liquidyAmount = it)) },
+                        valueRange = 0f..1f,
+                    )
+
+                    LyricsShareSlider(
+                        title = stringResource(R.string.lyrics_share_glass_refraction),
+                        valueLabel = stringResource(R.string.lyrics_share_glass_refraction_value, (options.sanitizedRefractionAmount * 100).toInt()),
+                        value = options.refractionAmount,
+                        onValueChange = { onOptionsChange(options.copy(refractionAmount = it)) },
+                        valueRange = 0f..1f,
+                    )
+
+                    LyricsShareSlider(
+                        title = stringResource(R.string.lyrics_share_glass_opacity),
+                        valueLabel = stringResource(R.string.lyrics_share_glass_opacity_value, (options.sanitizedGlassOpacity * 100).toInt()),
+                        value = options.glassOpacity,
+                        onValueChange = { onOptionsChange(options.copy(glassOpacity = it)) },
+                        valueRange = 0f..1f,
+                    )
+
                     Row(
                         modifier =
                             Modifier

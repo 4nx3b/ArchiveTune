@@ -281,13 +281,20 @@
     <string name="lyrics_share_resolution_value">%1$d x %2$d</string>
     <string name="lyrics_share_background_blur">Background blur</string>
     <string name="lyrics_share_background_blur_value">%1$d px</string>
+    <string name="lyrics_share_glass_dim">Dim</string>
+    <string name="lyrics_share_glass_dim_value">%1$d%%</string>
+    <string name="lyrics_share_glass_liquidy">Liquidy</string>
+    <string name="lyrics_share_glass_liquidy_value">%1$d%%</string>
+    <string name="lyrics_share_glass_refraction">Refraction</string>
+    <string name="lyrics_share_glass_refraction_value">%1$d%%</string>
+    <string name="lyrics_share_glass_opacity">Glass opacity</string>
+    <string name="lyrics_share_glass_opacity_value">%1$d%%</string>
     <string name="lyrics_line_blur">Blur lyrics lines</string>
     <string name="show_lyrics_player_controls">Show player controls</string>
     <string name="auto_hide_lyrics_player_controls">Auto-hide controls</string>
     <string name="auto_hide_lyrics_player_controls_description">Fade the controls after 5s and dock a slim seek bar at the bottom. Tap the screen to bring them back.</string>
     <string name="lyrics_share_show_cover">Show album cover</string>
     <string name="lyrics_share_show_cover_desc">Include the artwork in the header of the exported image.</string>
-    <string name="archivetune_tagline" translatable="false">MUSIC LIVES ON</string>
     <string name="lyrics_share_text_color">Lyrics text color</string>
     <string name="lyrics_share_text_color_default">Reference</string>
     <string name="lyrics_share_text_color_custom">Custom</string>
