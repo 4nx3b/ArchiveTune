@@ -13,6 +13,8 @@ package moe.rukamori.archivetune.listentogether
 import android.util.Base64
 import android.Manifest
 import android.app.NotificationChannel
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -55,6 +57,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -198,6 +202,13 @@ class ListenTogetherClient @Inject constructor(
         const val SharedTrackEnvelopePrefix = "\u200B[LTS:"
         const val SharedTrackEnvelopeSuffix = "]\u200B"
 
+        // Wire envelope for a GIF link (and the @-mention list) shared into the
+        // chat: an [LTG:base64 json {gif_url, mentions}] prefix, mirroring LTS.
+        // Only the URL travels — each client loads the GIF itself, so the
+        // server never processes the media.
+        const val GifEnvelopePrefix = "\u200B[LTG:"
+        const val GifEnvelopeSuffix = "]\u200B"
+
         private val chatControlJson = kotlinx.serialization.json.Json {
             ignoreUnknownKeys = true
             encodeDefaults = false
@@ -207,6 +218,21 @@ class ListenTogetherClient @Inject constructor(
             ignoreUnknownKeys = true
             encodeDefaults = false
         }
+
+        @Serializable
+        private data class GifEnvelope(
+            @SerialName("gif_url") val gifUrl: String? = null,
+            val mentions: List<String> = emptyList(),
+        )
+
+        private val gifEnvelopeJson = kotlinx.serialization.json.Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = false
+        }
+
+        /** @mention tokens: "@" followed by the username run (letters, digits,
+         * underscore and dash — stop at whitespace/punctuation like Discord). */
+        private val MENTION_TOKEN_REGEX = Regex("@([\\p{L}\\p{N}_-]{2,32})")
 
         fun decodeChatControl(message: String): ChatControlEvent? =
             try {
@@ -239,6 +265,29 @@ class ListenTogetherClient @Inject constructor(
                 )
                 val track = sharedTrackJson.decodeFromString(TrackInfo.serializer(), json)
                 track to message.substring(endIdx + SharedTrackEnvelopeSuffix.length)
+            } catch (e: Exception) {
+                null
+            }
+
+        /** Splits a leading [LTG:base64] gif envelope off a chat message.
+         * Returns null when the message carries no envelope. */
+        fun decodeGifEnvelope(message: String): Triple<String?, List<String>, String>? =
+            try {
+                if (!message.startsWith(GifEnvelopePrefix)) return null
+                val endIdx = message.indexOf(GifEnvelopeSuffix, GifEnvelopePrefix.length)
+                if (endIdx <= GifEnvelopePrefix.length) return null
+                val json = String(
+                    Base64.decode(
+                        message.substring(GifEnvelopePrefix.length, endIdx),
+                        Base64.NO_WRAP,
+                    ),
+                )
+                val envelope = gifEnvelopeJson.decodeFromString(GifEnvelope.serializer(), json)
+                Triple(
+                    envelope.gifUrl?.takeIf { it.isNotBlank() && it.startsWith("https://") },
+                    envelope.mentions,
+                    message.substring(endIdx + GifEnvelopeSuffix.length),
+                )
             } catch (e: Exception) {
                 null
             }
@@ -781,6 +830,7 @@ class ListenTogetherClient @Inject constructor(
         val me = Person.Builder()
             .setName(storedUsername ?: context.getString(R.string.listen_together_chat_you))
             .setKey("self:$selfId")
+            .setIcon(ListenTogetherAvatar.notificationAvatarIcon(context, avatarBitmapFor(selfId, storedUsername)))
             .build()
         val style = NotificationCompat.MessagingStyle(me)
         history.takeLast(8).forEach { msg ->
@@ -790,10 +840,11 @@ class ListenTogetherClient @Inject constructor(
                 Person.Builder()
                     .setName(msg.username)
                     .setKey(msg.userId.ifBlank { msg.username })
+                    .setIcon(ListenTogetherAvatar.notificationAvatarIcon(context, avatarBitmapFor(msg.userId, msg.username)))
                     .build()
             }
             style.addMessage(
-                NotificationCompat.MessagingStyle.Message(msg.message.take(300), msg.timestamp, sender)
+                NotificationCompat.MessagingStyle.Message(notificationBodyOf(msg), msg.timestamp, sender)
             )
         }
 
@@ -840,10 +891,58 @@ class ListenTogetherClient @Inject constructor(
                     replyPendingIntent
                 ).addRemoteInput(replyRemoteInput).build()
             )
+        // Collapsed heads-up shows the most recent sender's profile picture.
+        history.lastOrNull()?.let { last ->
+            avatarBitmapFor(last.userId, last.username)?.let { builder.setLargeIcon(it) }
+        }
         contentPendingIntent?.let { builder.setContentIntent(it) }
 
         NotificationManagerCompat.from(context).notify(CHAT_NOTIFICATION_ID, builder.build())
         chatNotificationActive = true
+    }
+
+    /** Shade text for a message: GIFs and shared songs describe themselves
+     * when the caption is blank, plain text otherwise. */
+    private fun notificationBodyOf(msg: ChatMessagePayload): String {
+        if (msg.deleted) return context.getString(R.string.listen_together_chat_message_deleted)
+        val text = msg.message.take(300)
+        return when {
+            msg.gifUrl != null && text.isBlank() -> context.getString(R.string.listen_together_chat_sent_gif)
+            msg.sharedTrack != null && text.isBlank() -> msg.sharedTrack.title
+            else -> text
+        }
+    }
+
+    /**
+     * Resolves a member's avatar bitmap for the conversation notification:
+     * their broadcast custom picture when there is one, the default
+     * colored-initial avatar otherwise. Works for the local user too (their
+     * own saved custom picture).
+     */
+    private fun avatarBitmapFor(userId: String?, username: String?): Bitmap? {
+        val selfId = _userId.value
+        val customBytes: ByteArray? =
+            if (userId != null && userId == selfId) {
+                if (context.dataStore.get(ListenTogetherAvatarIndexKey, 0) == ListenTogetherAvatar.CUSTOM_AVATAR_INDEX) {
+                    ListenTogetherAvatar.loadCustomAvatarBytes(context)
+                } else {
+                    null
+                }
+            } else {
+                val byId = userId?.let { _customAvatars.value[it] }
+                byId ?: username?.let { name ->
+                    _roomState.value?.users?.find { it.username == name }?.let { member ->
+                        _customAvatars.value[member.userId]
+                    }
+                }
+            }
+        val decoded =
+            customBytes?.let { bytes ->
+                runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull()
+            }
+        return decoded ?: username?.takeIf { it.isNotBlank() }?.let {
+            ListenTogetherAvatar.defaultAvatarBitmap(it)
+        }
     }
 
     private fun maybeNotifyChatMessage(payload: ChatMessagePayload) {
@@ -1452,6 +1551,13 @@ class ListenTogetherClient @Inject constructor(
                         payload = payload.copy(message = remainingText, sharedTrack = track)
                     }
 
+                    // A GIF link (plus the sender's @-mention list) rides in an
+                    // [LTG:base64] envelope, same convention — the server relays
+                    // the link only and every client animates the GIF locally.
+                    decodeGifEnvelope(payload.message)?.let { (gifUrl, mentions, remainingText) ->
+                        payload = payload.copy(message = remainingText, gifUrl = gifUrl, mentions = mentions)
+                    }
+
                     log(LogLevel.INFO, "Chat message received", "From: ${payload.username}")
 
                     val isSelfEcho = payload.userId == _userId.value
@@ -1619,8 +1725,9 @@ class ListenTogetherClient @Inject constructor(
         message: String,
         replyTo: RepliedMessage? = null,
         sharedTrack: TrackInfo? = null,
+        gifUrl: String? = null,
     ) {
-        if (message.isBlank() && sharedTrack == null) {
+        if (message.isBlank() && sharedTrack == null && gifUrl == null) {
             return
         }
         if (!isInRoom) {
@@ -1644,6 +1751,34 @@ class ListenTogetherClient @Inject constructor(
         }
 
         var finalMessage = message
+        var mentions: List<String> = emptyList()
+        if (gifUrl != null) {
+            // The mention list rides the same envelope so receivers can raise
+            // their badge/notifications even when the text is empty.
+            mentions = extractMentions(message)
+            val envelope =
+                GifEnvelope(
+                    gifUrl = gifUrl.takeIf { it.startsWith("https://") },
+                    mentions = mentions,
+                )
+            val encoded = gifEnvelopeJson.encodeToString(GifEnvelope.serializer(), envelope)
+            finalMessage =
+                GifEnvelopePrefix +
+                    Base64.encodeToString(encoded.toByteArray(), Base64.NO_WRAP) +
+                    GifEnvelopeSuffix +
+                    finalMessage
+        } else if (message.isNotBlank()) {
+            mentions = extractMentions(message)
+            if (mentions.isNotEmpty()) {
+                val envelope = GifEnvelope(gifUrl = null, mentions = mentions)
+                val encoded = gifEnvelopeJson.encodeToString(GifEnvelope.serializer(), envelope)
+                finalMessage =
+                    GifEnvelopePrefix +
+                        Base64.encodeToString(encoded.toByteArray(), Base64.NO_WRAP) +
+                        GifEnvelopeSuffix +
+                        finalMessage
+            }
+        }
         sharedTrack?.let { track ->
             val encoded = sharedTrackJson.encodeToString(TrackInfo.serializer(), track)
             finalMessage =
@@ -1671,9 +1806,23 @@ class ListenTogetherClient @Inject constructor(
                 timestamp = System.currentTimeMillis(),
                 replyTo = replyTo,
                 sharedTrack = sharedTrack,
+                gifUrl = gifUrl,
+                mentions = mentions,
             )
         )
         if (chatNotificationActive) postChatNotification(alert = false)
+    }
+
+    /** Usernames the message @-mentions (case-insensitive on the leading @).
+     * An @token extends up to the next whitespace or punctuation boundary. */
+    private fun extractMentions(message: String): List<String> {
+        if (!message.contains('@')) return emptyList()
+        return MENTION_TOKEN_REGEX
+            .findAll(message)
+            .map { it.groupValues[1] }
+            .filter { it.length >= 2 }
+            .distinct()
+            .toList()
     }
 
     /**

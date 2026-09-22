@@ -157,6 +157,15 @@ class ListenTogetherManager @Inject constructor(
     private val _unreadMessageCount = MutableStateFlow(0)
     val unreadMessageCount: kotlinx.coroutines.flow.StateFlow<Int> = _unreadMessageCount
 
+    /** @-mentions received since the last time the chat was caught up — the
+     * badge the chat header shows while the user is inside the conversation. */
+    private val _mentionCount = MutableStateFlow(0)
+    val mentionCount: kotlinx.coroutines.flow.StateFlow<Int> = _mentionCount
+
+    fun markMentionsSeen() {
+        _mentionCount.value = 0
+    }
+
     fun markChatAsRead() {
         _unreadMessageCount.value = 0
         client.cancelChatNotification()
@@ -781,6 +790,14 @@ class ListenTogetherManager @Inject constructor(
                     _chatMessages.value = _chatMessages.value + payload
                     if (payload.userId != userId.value) {
                         _unreadMessageCount.value++
+                        // Someone @-mentioned the local user: bump the mention
+                        // counter the chat header badge reads. While the chat
+                        // screen is closed the client also posts the conversation
+                        // notification (which carries the mention text).
+                        val myName = client.currentUsername
+                        if (myName != null && payload.mentions.any { it.equals(myName, ignoreCase = true) }) {
+                            _mentionCount.value++
+                        }
                     }
                     scheduleChatPersist()
                 } else {
@@ -819,6 +836,7 @@ class ListenTogetherManager @Inject constructor(
         ++currentTrackGeneration
         _chatMessages.value = emptyList()
         _unreadMessageCount.value = 0
+        _mentionCount.value = 0
         _typingUsers.value = emptyList()
     }
 
@@ -1777,6 +1795,12 @@ class ListenTogetherManager @Inject constructor(
      * [LTS:] envelope on the chat relay, optionally with a caption). */
     fun shareTrackToChat(track: TrackInfo, caption: String = "") {
         client.sendChatMessage(caption.trim(), null, sharedTrack = track)
+    }
+
+    /** Shares a GIF into the chat as a link (Giphy): the server relays only
+     * the URL and every client animates it locally. */
+    fun shareGifToChat(gifUrl: String, caption: String = "") {
+        client.sendChatMessage(caption.trim(), null, gifUrl = gifUrl)
     }
 
     /** Plays a song shared in the chat: the host applies it directly through the

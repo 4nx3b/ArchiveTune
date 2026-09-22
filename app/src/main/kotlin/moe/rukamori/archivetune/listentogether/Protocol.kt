@@ -300,6 +300,16 @@ data class ChatMessagePayload(
     // payload JSON so it persists with the history; cross-device it travels in
     // an [LTS:...] envelope on the chat relay, like replies and avatars.
     @SerialName("shared_track") val sharedTrack: TrackInfo? = null,
+    // A GIF shared into the chat as a link (Giphy). The server relays only the
+    // URL — every client loads and animates the GIF locally, so the server
+    // never processes the media. Travels in an [LTG:...] envelope on the chat
+    // relay and persists with the local history exactly like shared tracks.
+    @SerialName("gif_url") val gifUrl: String? = null,
+    // Usernames @-mentioned by this message. The sender computes them from the
+    // @tokens in the text; receiving clients match them against the local
+    // username to raise the mention badge or a mention notification. Travels
+    // in the [LTG:...] envelope (or a plain [LTM:] list) alongside the gif.
+    val mentions: List<String> = emptyList(),
     // Set locally on the local user's own messages that arrive while they are
     // ALONE in the room: self-chatter that must never reach the persisted
     // history. Travels with the payload so the filter survives a

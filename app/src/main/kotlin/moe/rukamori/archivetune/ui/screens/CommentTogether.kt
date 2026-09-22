@@ -5,7 +5,7 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  * Ported from vivi-music (beta branch) ui/screens/CommentTogether.kt (GPL-3.0),
  * rebuilt with avatars, reactions, pins, edits, deletes, swipe-to-reply,
- * typing indicators and per-username persistent history.
+ * typing indicators, GIF attachments, @mentions and per-username history.
  */
 
 package moe.rukamori.archivetune.ui.screens
@@ -17,6 +17,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,13 +25,12 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -45,6 +45,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -55,11 +56,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -70,11 +70,13 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.text.selection.LocalClipboardManager
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -111,6 +113,7 @@ fun CommentTogetherScreen(navController: NavController) {
     val userId by manager.userId.collectAsState()
     val roomState by manager.roomState.collectAsState()
     val typingUsers by manager.typingUsers.collectAsState()
+    val mentionCount by manager.mentionCount.collectAsState()
     val windowInsets = LocalPlayerAwareWindowInsets.current
 
     var textInput by remember { mutableStateOf("") }
@@ -119,6 +122,8 @@ fun CommentTogetherScreen(navController: NavController) {
     var actionTarget by remember { mutableStateOf<MessageActionTarget?>(null) }
     var showEmojiPicker by remember { mutableStateOf(false) }
     var showSongPicker by remember { mutableStateOf(false) }
+    var showGifPicker by remember { mutableStateOf(false) }
+    var attachmentAnchor by remember { mutableStateOf<Rect?>(null) }
     var jumpTargetKey by remember { mutableStateOf<String?>(null) }
 
     // metroserver (The Meowery) speaks a protobuf protocol with no chat message
@@ -133,11 +138,12 @@ fun CommentTogetherScreen(navController: NavController) {
     val coroutineScope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
 
-    // Local liquid-glass source for the anchored popup: records the chat content
-    // ONLY while the popup is open. The popup is composed as a SIBLING below, so
-    // sampling this backdrop cannot recurse — drawing from the app-wide
-    // LocalLiquidGlassBackdrop here (the popup lives inside the NavHost subtree
-    // that backdrop records) caused a circular-rendering SIGSEGV on long-press.
+    // Local liquid-glass source for the anchored popups: records the chat
+    // content ONLY while a popup is open. The popups are composed as SIBLINGS
+    // below, so sampling this backdrop cannot recurse — drawing from the
+    // app-wide LocalLiquidGlassBackdrop here (the popups live inside the
+    // NavHost subtree that backdrop records) caused a circular-rendering
+    // SIGSEGV on long-press.
     val chatGlassSource = rememberLayerBackdrop()
     val globalGlassEnabled = LocalLiquidGlassBackdrop.current != null
     val chatGlassBackdrop = if (globalGlassEnabled) chatGlassSource else null
@@ -146,55 +152,48 @@ fun CommentTogetherScreen(navController: NavController) {
     // notifications (and the shade conversation is cancelled via markChatAsRead).
     DisposableEffect(Unit) {
         manager.setChatScreenVisible(true)
-        onDispose { manager.setChatScreenVisible(false) }
+        onDispose {
+            manager.setChatScreenVisible(false)
+            manager.markMentionsSeen()
+        }
     }
 
-    // Auto-follow the newest messages only when the reader is already at (or
-    // near) the bottom — yanking the list down while someone reads pinned
-    // history would fight both them and the pinned jump.
+    // ---- reversed list geometry -------------------------------------------------
+    // The message list is reversed (newest at the visual bottom, index 0), the
+    // classic chat arrangement: the newest message is anchored to the list's
+    // start edge, so the shrinking viewport while the keyboard opens can never
+    // leave it hidden behind the IME — the resize keeps the start-anchored
+    // content pinned above the composer.
+    val reversedMessages = remember(messages) { messages.asReversed() }
+    val liveMessageCount = remember(messages) { messages.count { !it.restored } }
+    val hasRestoredMessages = remember(messages) { messages.any { it.restored } }
+
+    // "At the latest message" for the reversed list = reading near index 0.
     val atBottom by remember {
         derivedStateOf {
             val info = lazyListState.layoutInfo
-            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
-            val total = info.totalItemsCount
-            total == 0 || last >= total - 2
+            val first = info.visibleItemsInfo.firstOrNull()?.index ?: 0
+            info.totalItemsCount == 0 || first <= 1
         }
     }
 
+    // Auto-follow: while the reader is on the newest messages, every arrival
+    // (and every keyboard open) re-pins the list to the bottom.
     LaunchedEffect(messages.size) {
         manager.markChatAsRead()
-        if (messages.isNotEmpty() && atBottom) {
-            lazyListState.animateScrollToItem(messages.size - 1)
+        if (reversedMessages.isNotEmpty() && atBottom) {
+            lazyListState.animateScrollToItem(0)
         }
     }
 
-    // The chat must always OPEN on the most recent message: the animated
-    // auto-follow above raced the first layout pass and lost, so long
-    // histories started stuck at the top. Wait for the first real layout,
-    // give late-arriving persisted history one settle beat, then snap.
+    // The chat always OPENS on the most recent message; the reversed list
+    // makes that the natural start position, so a plain snap is enough even
+    // for very long restored histories (no layout race to lose anymore).
     LaunchedEffect(Unit) {
         snapshotFlow { lazyListState.layoutInfo.totalItemsCount }
             .filter { it > 0 }
             .first()
-        delay(150)
-        val total = lazyListState.layoutInfo.totalItemsCount
-        if (total > 0) {
-            lazyListState.scrollToItem(total - 1)
-        }
-    }
-
-    // The whole screen (message list included) now resizes with the keyboard
-    // via the Scaffold-level imePadding below. A top-anchored list would still
-    // leave the NEWEST messages clipped behind the IME, so capture the
-    // pre-resize "near bottom" state at focus time — the only moment it can
-    // be read reliably — and re-pin the list to the newest message as the
-    // keyboard opens.
-    var atBottomOnFocus by remember { mutableStateOf(true) }
-    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
-    LaunchedEffect(imeBottom > 0) {
-        if (imeBottom > 0 && atBottomOnFocus && lazyListState.layoutInfo.totalItemsCount > 0) {
-            lazyListState.animateScrollToItem(lazyListState.layoutInfo.totalItemsCount - 1)
-        }
+        lazyListState.scrollToItem(0)
     }
 
     // Clear the jump highlight shortly after it lands.
@@ -216,10 +215,6 @@ fun CommentTogetherScreen(navController: NavController) {
     val myUsername = manager.currentUsername
     fun isOwnMessage(message: ChatMessagePayload): Boolean =
         message.userId == userId || (myUsername != null && message.username == myUsername)
-
-    // Where the restored (persisted) history ends — the divider between the
-    // older messages and this session's live conversation sits right after it.
-    val lastRestoredIndex = remember(messages) { messages.indexOfLast { it.restored } }
 
     fun sendMessage() {
         if (textInput.isBlank()) return
@@ -265,12 +260,22 @@ fun CommentTogetherScreen(navController: NavController) {
         Toast.makeText(context, R.string.listen_together_chat_play_song, Toast.LENGTH_SHORT).show()
     }
 
-    // Root wrapper: the chat (inside the recorded box) and the anchored popup
-    // (sibling, outside it) — the structure that keeps the liquid glass
-    // non-recursive. The layerBackdrop modifier is attached ONLY while the
+    fun jumpToMessage(forwardIndex: Int, key: String) {
+        jumpTargetKey = key
+        coroutineScope.launch {
+            // Instant (not animated) so long histories snap straight to the
+            // target; the highlight flash marks the row.
+            val reversedIndex = (messages.size - 1 - forwardIndex).coerceIn(0, (messages.size - 1).coerceAtLeast(0))
+            lazyListState.scrollToItem(reversedIndex)
+        }
+    }
+
+    // Root wrapper: the chat (inside the recorded box) and the anchored popups
+    // (siblings, outside it) — the structure that keeps the liquid glass
+    // non-recursive. The layerBackdrop modifier is attached ONLY while a
     // popup is open, so normal chatting pays zero recording overhead.
     Box(modifier = Modifier.fillMaxSize()) {
-        val recordingGlass = chatGlassBackdrop != null && actionTarget != null
+        val recordingGlass = chatGlassBackdrop != null && (actionTarget != null || attachmentAnchor != null)
         Box(
             modifier =
                 Modifier
@@ -287,19 +292,68 @@ fun CommentTogetherScreen(navController: NavController) {
         modifier = Modifier
             .fillMaxSize()
             // Resize the ENTIRE screen (message list included) with the
-            // keyboard, classic adjustResize behaviour — previously only the
-            // composer rode above the IME while the message list kept its full
-            // height, so the newest messages stayed hidden behind it.
+            // keyboard, classic adjustResize behaviour — the reversed list's
+            // start-anchored newest message rides above the IME by design.
             .imePadding(),
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text(
-                            text = stringResource(R.string.comments),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = stringResource(R.string.comments),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            if (mentionCount > 0) {
+                                Spacer(modifier = Modifier.width(10.dp))
+                                // @-mentions received while reading the chat:
+                                // the counter the badge shows, tappable to jump
+                                // to the newest mention and clear it.
+                                Surface(
+                                    onClick = {
+                                        val myName = manager.currentUsername
+                                        val target = messages.lastOrNull { message ->
+                                            !isOwnMessage(message) &&
+                                                message.mentions.any { it.equals(myName ?: "", ignoreCase = true) }
+                                        }
+                                        if (target != null) {
+                                            val forwardIndex = messages.indexOfFirst {
+                                                it.timestamp == target.timestamp && it.userId == target.userId
+                                            }
+                                            if (forwardIndex >= 0) {
+                                                jumpToMessage(
+                                                    forwardIndex,
+                                                    "${target.userId}:${target.timestamp}",
+                                                )
+                                            }
+                                        }
+                                        manager.markMentionsSeen()
+                                    },
+                                    shape = RoundedCornerShape(50),
+                                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.alternate_email),
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                            modifier = Modifier.size(13.dp),
+                                        )
+                                        Text(
+                                            text = mentionCount.toString(),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         roomState?.roomCode?.let { code ->
                             Text(
                                 text = "Room: $code",
@@ -415,6 +469,31 @@ fun CommentTogetherScreen(navController: NavController) {
                 }
 
                 if (chatSupported) {
+                    // @-mention autocomplete: appears while the composer's text
+                    // ends in an @token, listing the room's other members.
+                    val mentionCandidates = remember(roomState, userId) {
+                        roomState?.users?.filter { it.userId != userId }.orEmpty()
+                    }
+                    val mentionQuery = remember(textInput) {
+                        activeMentionQuery(textInput)
+                    }
+                    AnimatedVisibility(
+                        visible = mentionQuery != null && mentionCandidates.isNotEmpty(),
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut(),
+                    ) {
+                        MentionSuggestionList(
+                            query = mentionQuery.orEmpty(),
+                            candidates = mentionCandidates,
+                            onPick = { name ->
+                                val atIdx = textInput.lastIndexOf('@')
+                                if (atIdx >= 0) {
+                                    textInput = textInput.substring(0, atIdx) + "@$name "
+                                }
+                            },
+                        )
+                    }
+
                     ChatInputArea(
                         text = textInput,
                         onTextChange = { newText ->
@@ -422,8 +501,7 @@ fun CommentTogetherScreen(navController: NavController) {
                             if (newText.isNotBlank()) manager.notifyTyping()
                         },
                         onSend = ::sendMessage,
-                        onShareTrack = { showSongPicker = true },
-                        onFocusGained = { atBottomOnFocus = atBottom },
+                        onAttachmentClick = { anchor -> attachmentAnchor = anchor },
                     )
                 } else {
                     Surface(
@@ -471,13 +549,7 @@ fun CommentTogetherScreen(navController: NavController) {
                                 it.timestamp == pinned.timestamp && it.userId == pinned.userId
                             }
                         if (index >= 0) {
-                            jumpTargetKey = "${pinned.userId}:${pinned.timestamp}"
-                            coroutineScope.launch {
-                                // Instant (not animated) so long histories snap
-                                // straight to the pinned message; the highlight
-                                // flash below marks the target row.
-                                lazyListState.scrollToItem(index)
-                            }
+                            jumpToMessage(index, "${pinned.userId}:${pinned.timestamp}")
                         }
                     },
                 )
@@ -490,9 +562,24 @@ fun CommentTogetherScreen(navController: NavController) {
                     state = lazyListState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    // Newest at the visual bottom (see the comment above): the
+                    // list opens on the latest message and the keyboard resize
+                    // can never cover it.
+                    reverseLayout = true,
                 ) {
-                    messages.forEachIndexed { index, message ->
+                    val dividerSlot =
+                        when {
+                            hasRestoredMessages && liveMessageCount == 0 -> 0
+                            hasRestoredMessages -> liveMessageCount
+                            else -> -1
+                        }
+                    reversedMessages.forEachIndexed { index, message ->
+                        if (index == dividerSlot) {
+                            item(key = "older_messages_divider") {
+                                OlderMessagesDivider()
+                            }
+                        }
                         item(key = message.timestamp.toString() + message.userId) {
                             MessageItem(
                                 message = message,
@@ -508,11 +595,6 @@ fun CommentTogetherScreen(navController: NavController) {
                                 onPlayTrack = ::playSharedTrack,
                                 highlighted = jumpTargetKey == "${message.userId}:${message.timestamp}",
                             )
-                        }
-                        if (index == lastRestoredIndex) {
-                            item(key = "older_messages_divider") {
-                                OlderMessagesDivider()
-                            }
                         }
                     }
                 }
@@ -565,9 +647,8 @@ fun CommentTogetherScreen(navController: NavController) {
         )
     }
 
-    // Song picker opened from the composer's music-note button: search YouTube
-    // Music and share any result as a rich tappable card, with the room's
-    // current song offered as a quick action on top.
+    // Song picker opened from the composer's "+" attachment menu: search
+    // YouTube Music and share any result as a rich tappable card.
     if (showSongPicker) {
         ShareSongPickerSheet(
             currentTrack = roomState?.currentTrack ?: manager.currentLocalTrack(),
@@ -582,6 +663,121 @@ fun CommentTogetherScreen(navController: NavController) {
             onDismiss = { showSongPicker = false },
         )
     }
+
+    // GIF picker (Giphy) opened from the "+" attachment menu after the menu
+    // itself has closed; picking one sends just the link into the chat.
+    if (showGifPicker) {
+        GifPickerSheet(
+            onPickGif = { url ->
+                manager.shareGifToChat(url)
+                showGifPicker = false
+            },
+            onDismiss = { showGifPicker = false },
+        )
+    }
+
+    // "+" attachment menu: liquid-glass morph popup over the composer with
+    // Song and GIF entries (see AttachmentMenuPopup).
+    attachmentAnchor?.let { anchor ->
+        AttachmentMenuPopup(
+            anchor = anchor,
+            backdrop = chatGlassBackdrop,
+            onPickSong = {
+                showSongPicker = true
+            },
+            onPickGif = {
+                // Open the bottom sheet after the overflow menu finishes its
+                // dismiss morph, as specified.
+                coroutineScope.launch {
+                    delay(260)
+                    showGifPicker = true
+                }
+            },
+            onDismiss = { attachmentAnchor = null },
+        )
+    }
+    }
+}
+
+/**
+ * The active @-mention query of a composer text: the text must currently end
+ * in "@token" (the token may be empty right after typing "@"); typing a space
+ * or removing the @ dismisses the suggestions.
+ */
+private fun activeMentionQuery(text: String): String? {
+    val atIdx = text.lastIndexOf('@')
+    if (atIdx == -1) return null
+    val token = text.substring(atIdx + 1)
+    val valid = token.all { it.isLetterOrDigit() || it == '_' || it == '-' }
+    return if (valid) token else null
+}
+
+/** Autocomplete list of room members for the composer's active @token. */
+@Composable
+private fun MentionSuggestionList(
+    query: String,
+    candidates: List<moe.rukamori.archivetune.listentogether.UserInfo>,
+    onPick: (String) -> Unit,
+) {
+    val filtered =
+        remember(query, candidates) {
+            if (query.isBlank()) {
+                candidates
+            } else {
+                candidates.filter { it.username.contains(query, ignoreCase = true) }
+            }
+        }
+    if (filtered.isEmpty()) return
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(16.dp),
+        tonalElevation = 4.dp,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = 220.dp),
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(vertical = 4.dp),
+        ) {
+            items(
+                count = filtered.size,
+                key = { filtered[it].userId },
+            ) { index ->
+                val member = filtered[index]
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onPick(member.username) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    ChatAvatar(
+                        userId = member.userId,
+                        fallbackName = member.username,
+                        size = 30.dp,
+                    )
+                    Text(
+                        text = member.username,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                    )
+                    if (member.isHost) {
+                        Icon(
+                            painter = painterResource(R.drawable.fire),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -590,10 +786,11 @@ private fun ChatInputArea(
     text: String,
     onTextChange: (String) -> Unit,
     onSend: () -> Unit,
-    onShareTrack: () -> Unit,
-    onFocusGained: () -> Unit = {},
+    onAttachmentClick: (Rect) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var attachmentButtonBounds by remember { mutableStateOf(Rect.Zero) }
+
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
         shape = RoundedCornerShape(28.dp),
@@ -603,12 +800,22 @@ private fun ChatInputArea(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
-            IconButton(onClick = onShareTrack) {
+            // "+" opens the attachment menu (Song / GIF) with the liquid-glass
+            // morph popup; it replaced the old direct music-note song button.
+            IconButton(
+                onClick = { onAttachmentClick(attachmentButtonBounds) },
+                modifier =
+                    Modifier
+                        .size(48.dp)
+                        .onGloballyPositioned { coordinates ->
+                            attachmentButtonBounds = coordinates.boundsInWindow()
+                        },
+            ) {
                 Icon(
-                    painter = painterResource(R.drawable.music_note),
+                    painter = painterResource(R.drawable.add),
                     contentDescription = stringResource(R.string.listen_together_chat_pick_song_title),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(26.dp),
                 )
             }
 
@@ -619,7 +826,6 @@ private fun ChatInputArea(
                 modifier = Modifier
                     .weight(1f)
                     .padding(end = 8.dp)
-                    .onFocusChanged { state -> if (state.isFocused) onFocusGained() },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Color.Transparent,
                     unfocusedBorderColor = Color.Transparent,
