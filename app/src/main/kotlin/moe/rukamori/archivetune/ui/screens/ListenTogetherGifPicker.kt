@@ -83,7 +83,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.shape.CircleShape
 import coil3.compose.AsyncImage
@@ -593,7 +592,7 @@ private fun CustomGifTab(
 
     val picker =
         rememberLauncherForActivityResult(
-            ActivityResultContracts.PickVisualMedia(),
+            ActivityResultContracts.OpenDocument(),
         ) { uri ->
             if (uri == null) return@rememberLauncherForActivityResult
             scope.launch {
@@ -635,11 +634,7 @@ private fun CustomGifTab(
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.secondaryContainer)
                         .clickable {
-                            picker.launch(
-                                PickVisualMediaRequest(
-                                    ActivityResultContracts.PickVisualMedia.VisualMediaType.SingleMimeType("image/gif"),
-                                ),
-                            )
+                            picker.launch(arrayOf("image/gif"))
                         },
                 contentAlignment = Alignment.Center,
             ) {
