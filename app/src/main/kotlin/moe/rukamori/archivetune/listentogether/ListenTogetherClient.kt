@@ -27,6 +27,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
+import androidx.core.graphics.drawable.IconCompat
 import androidx.core.app.RemoteInput
 import androidx.core.content.getSystemService
 import androidx.datastore.preferences.core.edit
@@ -886,7 +887,7 @@ class ListenTogetherClient @Inject constructor(
         val me = Person.Builder()
             .setName(storedUsername ?: context.getString(R.string.listen_together_chat_you))
             .setKey("self:$selfId")
-            .setIcon(ListenTogetherAvatar.notificationAvatarIcon(context, avatarBitmapFor(selfId, storedUsername)))
+            .setIcon(avatarBitmapFor(selfId, storedUsername)?.let { IconCompat.createWithBitmap(it) })
             .build()
         val style = NotificationCompat.MessagingStyle(me)
         history.takeLast(8).forEach { msg ->
@@ -896,7 +897,7 @@ class ListenTogetherClient @Inject constructor(
                 Person.Builder()
                     .setName(msg.username)
                     .setKey(msg.userId.ifBlank { msg.username })
-                    .setIcon(ListenTogetherAvatar.notificationAvatarIcon(context, avatarBitmapFor(msg.userId, msg.username)))
+                    .setIcon(avatarBitmapFor(msg.userId, msg.username)?.let { IconCompat.createWithBitmap(it) })
                     .build()
             }
             style.addMessage(
