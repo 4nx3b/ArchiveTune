@@ -3449,3 +3449,25 @@ Work Log:
 
 Stage Summary:
 - dev: first-song suggestions play immediately room-wide; chat opens at the newest message and resizes wholesale with the keyboard; Numbers tab shows 4.2M-style counts; YouLyPlus resolves against the live binimum mirror; moving blur uses one shared screen-scale wander engine across all styles; artist action row centres in every language; stream resolution races two resolvers at once; video-song audio is pinned to YouTube.
+
+---
+
+## Task ID: 70
+
+Task: YouLyPlus word-synced lyrics lost the spaces between words on some songs ("Helloworldonfire"-style rendering) while other songs rendered fine.
+
+Work Log:
+- Root-caused two independent gaps in the word-text pipeline (both YouLyPlus paths were affected):
+  1. lyrics submodule TTMLParser.parseSpanElements trimmed each span's text, so TTML that embeds the separator space INSIDE the span (Apple Music style "<span>Hello </span><span>world</span>") lost its gaps, while TTML that keeps the space as a bare text node between spans kept them — exactly the "some songs do, some don't" split.
+  2. The v2/lyrics/get path (now YouLyPlus's ONLY path since d8a5b92 dropped the dead TTML endpoint) concatenates bare syllable tokens with no separator at all in YouLyPlus.toLyricsText(), so every generated enhanced-LRC line ran words together.
+- lyrics submodule 714754f (cherry-picked onto d8a5b92, pushed to github.com/4nx3b/lyrics main):
+  - TTMLParser: word text now keeps one trailing space, a leading space folds onto the previous word, whitespace-only timed/untimed spans act as separators, pretty-printed (newline+indent) layout recovers separators only for space-using scripts (CJK stays spaceless via Character.UnicodeScript whitelist: Latin/Cyrillic/Greek/Hangul/Arabic/Hebrew/Devanagari/Georgian/Armenian/Ethiopic), and line-final separator spaces are dropped to stay consistent with the trimmed line text.
+  - YouLyPlus.toLyricsText(): syllableSeparator() re-inserts one space between words when generating the LRC — none around punctuation (NoSpaceAfterChars mirrors Lyrics.kt), none inside spaceless scripts (Han/kana/Thai/Lao/Khmer/Myanmar), Korean and Latin-script boundaries keep spaces.
+  - New JVM tests: TTMLParserWordSpacingTest (12 cases — all four source spacing styles, CJK/Korean script behaviour, double-space collapse, no invented spaces) and YouLyPlusSyllableSeparatorTest (11 cases). All 23 pass via :lyrics:betterlyrics:test / :lyrics:youlyplus:test.
+- App side LyricsUtils.extractEnhancedLrcWordTimestamps (added in task 69's batch) had the SAME trim bug: it stripped the trailing gap from each enhanced-LRC word token, so even LRC that carried spaces ("[00:12.000]<00:12.000>Hello <00:12.500>world") rendered glued in the verbatim word renderers (LyricsV2/Apple Music style, LyricsEnhanced karaoke). Now keeps one trailing space per word; line-final gap still trimmed by cleanInlineWordTimingText.
+- Renderer-safety pass for trailing-space word text: BitChordLyrics trims LyricWord.text at conversion (it aligns words against the line text via indexOf and derives its own gaps there, and the trimmed line text would stop matching a trailing-space final word); SpatialFlowLyrics wordSpansFor matches on the trimmed core for the same reason. Lyrics.kt karaoke already guards double spaces via shouldAppendWordSpace (returns false when either edge is whitespace).
+- App-side regression test added: EnhancedLrcWordSpacingTest (7 cases — trailing space kept, compact stays compact, double-space collapse, timings, plain-LRC null words, stamp-stripped line text, YouLyPlus-style multi-word line). Locally verified via scripts/verify_enhanced_lrc_spacing.py (faithful Python port of the regex + logic; app module cannot compile in this sandbox — no Android SDK), plus kotlin_balance_check.py on all four touched files.
+- Synced local dev to origin/dev first (01ad36d82 — task 69's 7-item batch was already pushed there): discovered the stale checkout, re-applied this fix on top via cherry-pick + conflict resolution (import block only; YouLyPlus.kt body merged clean).
+
+Stage Summary:
+- dev: YouLyPlus word-synced lyrics keep inter-word spaces across every player style, for both the syllable-generated LRC (gap re-inserted at generation time) and any enhanced-LRC source that already carries them (gap preserved at parse time); CJK lyrics never gain invented spaces; TTML sources (Apple Music account / Musixmatch / BetterLyrics) now preserve embedded span-edge gaps too. lyrics submodule re-pinned to 714754f.
