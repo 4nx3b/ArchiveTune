@@ -85,7 +85,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -1793,7 +1792,9 @@ private suspend fun renderRecapCardAtScale(
 
     val holder =
         ComposeView(context).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedOrReleased)
+            // The default dispose strategy (composition released when the view
+            // detaches or the window goes away) is exactly the lifetime wanted
+            // for this throw-away off-screen renderer.
             setContent {
                 CompositionLocalProvider(
                     LocalDensity provides Density(screenDensity * scale, fontScale),
