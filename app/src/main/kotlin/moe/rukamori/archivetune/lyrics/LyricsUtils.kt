@@ -59,6 +59,7 @@ object LyricsUtils {
     private const val NBSP = '\u00A0'
     private const val ENHANCED_LRC_LAST_WORD_DEFAULT_DURATION_MS = 600L
     private const val MIN_WORD_DURATION_MS = 40L
+    private const val SINGLE_WORD_LINE_MAX_SWEEP_MS = 3_000L
     private const val ENHANCED_LRC_TRAILING_LINE_DURATION_MS = 4_000L
     private const val GENERIC_ROMANIZATION_TRANSFORM = "Any-Latin; Latin-ASCII"
     private val OTHER_ROMANIZATION_EXCLUDED_SCRIPTS =
@@ -687,10 +688,26 @@ object LyricsUtils {
                     ?.takeIf { it.time > entry.time }
                     ?.time
                     ?: (entry.time + ENHANCED_LRC_TRAILING_LINE_DURATION_MS)
-            val lastEndMs = (lastWord.endTime * 1000.0).toLong()
+            val originalEndMs = (lastWord.endTime * 1000.0).toLong()
+            var lastEndMs = originalEndMs
+            // A single-word line ("Hey") only carries the default 600ms sweep,
+            // which reads as an instant flash followed by a dead-straight line.
+            // Stretch its only word toward the next line so the letter-by-letter
+            // sweep actually covers the gap, capped so a long instrumental
+            // break never turns it into a crawl.
+            if (words.size == 1 && lastEndMs < nextStartMs) {
+                lastEndMs =
+                    minOf(
+                        nextStartMs,
+                        (lastWord.startTime * 1000.0).toLong() + SINGLE_WORD_LINE_MAX_SWEEP_MS,
+                    )
+            }
             if (lastEndMs > nextStartMs) {
                 val clamped = lastWord.copy(endTime = nextStartMs / 1000.0)
                 entry.copy(words = words.dropLast(1) + clamped)
+            } else if (lastEndMs != originalEndMs) {
+                val stretched = lastWord.copy(endTime = lastEndMs / 1000.0)
+                entry.copy(words = words.dropLast(1) + stretched)
             } else {
                 entry
             }
@@ -916,7 +933,10 @@ object LyricsUtils {
     private fun extractEnhancedLrcWordTimestamps(rawText: String): List<WordTimestamp>? {
         if (!ENHANCED_LRC_WORD_TIME_REGEX.containsMatchIn(rawText)) return null
         val tokens = ENHANCED_LRC_WORD_TOKEN_REGEX.findAll(rawText).toList()
-        if (tokens.size < 2) return null
+        // A single timed word is still a valid karaoke line: lines like "Hey"
+        // or "Oh-oh" carry exactly one <mm:ss.mmm> token, and dropping them
+        // here made those lines fall back to whole-line sync (no letter sweep).
+        if (tokens.isEmpty()) return null
 
         val words = mutableListOf<WordTimestamp>()
         tokens.forEachIndexed { index, token ->
@@ -945,7 +965,7 @@ object LyricsUtils {
                 ),
             )
         }
-        return words.takeIf { it.size >= 2 }
+        return words.takeIf { it.isNotEmpty() }
     }
 
     private fun parseMillisecondsSyncedLine(line: String): List<LyricsEntry>? {

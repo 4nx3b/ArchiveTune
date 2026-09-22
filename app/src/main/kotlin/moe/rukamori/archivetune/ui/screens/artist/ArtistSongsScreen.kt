@@ -231,7 +231,15 @@ fun ArtistSongsScreen(
                 windowInsets =
                     WindowInsets(top = LocalStableSystemBarsTopPadding.current)
                         .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
-                title = { Text(artist?.artist?.name.orEmpty()) },
+                // Same as the albums list: the artist entity comes from the
+                // local database only — fall back to the "Songs" label the
+                // glass header shows instead of an empty back-arrow bar.
+                title = {
+                    Text(
+                        artist?.artist?.name?.takeIf { it.isNotBlank() }
+                            ?: stringResource(R.string.songs),
+                    )
+                },
                 navigationIcon = {
                     IconButton(
                         onClick = navController::navigateUp,
