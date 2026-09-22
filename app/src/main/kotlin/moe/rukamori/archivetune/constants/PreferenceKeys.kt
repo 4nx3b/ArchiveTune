@@ -509,6 +509,20 @@ val AudioOffload = booleanPreferencesKey("audioOffload")
 val CrossfadeEnabledKey = booleanPreferencesKey("crossfadeEnabled")
 val CrossfadeDurationKey = floatPreferencesKey("crossfadeDuration")
 val CrossfadeGaplessKey = booleanPreferencesKey("crossfadeGapless")
+
+/**
+ * Automix (the analysis-driven transition engine): how much CPU the background
+ * beat/vocal analysis may use. Crossfade and automix are mutually exclusive —
+ * at most one of them shapes a given track boundary.
+ */
+enum class AutomixPerformanceMode(val inferenceThreads: Int) {
+    EFFICIENT(1),
+    BALANCED(2),
+    PERFORMANCE(4),
+}
+
+val AutomixEnabledKey = booleanPreferencesKey("automixEnabled")
+val AutomixPerformanceModeKey = stringPreferencesKey("automixPerformanceMode")
 val AutoLoadMoreKey = booleanPreferencesKey("autoLoadMore")
 val AutoDownloadOnLikeKey = booleanPreferencesKey("autoDownloadOnLike")
 val AutoSkipNextOnErrorKey = booleanPreferencesKey("autoSkipNextOnError")

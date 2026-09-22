@@ -365,6 +365,15 @@ android {
         prefab = true
     }
 
+    // Automix's analysis front end (tempo/key/energy/structure DSP + the mel
+    // and vocal STFT front ends the ONNX models consume).
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
@@ -512,6 +521,11 @@ dependencies {
     implementation(libs.media3)
     implementation("androidx.media3:media3-exoplayer-hls:${libs.versions.media3.get()}")
     implementation(libs.media3.session)
+
+    // Automix: the Beat This! beat/downbeat and open-unmix vocal models run
+    // through ONNX Runtime. The full android artifact, not -mobile: mobile
+    // only loads .ort sessions.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.28.0")
     implementation(libs.car.app)
     implementation(libs.media3.okhttp)
     implementation("androidx.media3:media3-ui:${libs.versions.media3.get()}")
