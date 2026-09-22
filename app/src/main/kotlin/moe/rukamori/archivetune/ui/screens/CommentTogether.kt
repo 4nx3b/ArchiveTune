@@ -73,7 +73,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.text.selection.LocalClipboardManager
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -808,7 +808,7 @@ private fun ChatInputArea(
                     Modifier
                         .size(48.dp)
                         .onGloballyPositioned { coordinates ->
-                            attachmentButtonBounds = coordinates.boundsInWindow()
+                            attachmentButtonBounds = coordinates.boundsInRoot()
                         },
             ) {
                 Icon(

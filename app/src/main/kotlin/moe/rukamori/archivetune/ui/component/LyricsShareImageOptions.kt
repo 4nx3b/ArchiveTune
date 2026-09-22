@@ -10,7 +10,6 @@ package moe.rukamori.archivetune.ui.component
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
 import moe.rukamori.archivetune.R
-import kotlin.math.roundToInt
 
 enum class LyricsShareAspectRatio(
     @StringRes val labelRes: Int,
@@ -50,9 +49,6 @@ data class LyricsShareImageOptions(
 ) {
     val sanitizedBlurRadius: Float
         get() = blurRadius.coerceIn(0f, 48f)
-
-    val previewBlurRadius: Int
-        get() = sanitizedBlurRadius.roundToInt().coerceIn(0, 48)
 }
 
 @Immutable

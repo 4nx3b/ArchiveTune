@@ -149,37 +149,6 @@ object ComposeToImage {
         return ensureSoftwareBitmap(Bitmap.createBitmap(safeSource, safeLeft, safeTop, safeWidth, safeHeight))
     }
 
-    fun fitBitmap(
-        source: Bitmap,
-        targetWidth: Int,
-        targetHeight: Int,
-        backgroundColor: Int,
-    ): Bitmap {
-        val safeSource = ensureSoftwareBitmap(source)
-        val out = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(out)
-        canvas.drawColor(backgroundColor)
-
-        val scale =
-            minOf(
-                targetWidth.toFloat() / safeSource.width.coerceAtLeast(1),
-                targetHeight.toFloat() / safeSource.height.coerceAtLeast(1),
-            )
-        val scaledW = (safeSource.width * scale).toInt().coerceAtLeast(1)
-        val scaledH = (safeSource.height * scale).toInt().coerceAtLeast(1)
-        val scaled =
-            if (scaledW != safeSource.width || scaledH != safeSource.height) {
-                ensureSoftwareBitmap(Bitmap.createScaledBitmap(safeSource, scaledW, scaledH, true))
-            } else {
-                safeSource
-            }
-
-        val dx = ((targetWidth - scaled.width) / 2f)
-        val dy = ((targetHeight - scaled.height) / 2f)
-        canvas.drawBitmap(scaled, dx, dy, null)
-        return out
-    }
-
     fun coverBitmap(
         source: Bitmap,
         targetWidth: Int,
