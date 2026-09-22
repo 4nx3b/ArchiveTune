@@ -10,6 +10,8 @@
  * the GIF locally.
  */
 
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package moe.rukamori.archivetune.ui.screens
 
 import androidx.compose.animation.core.Animatable
@@ -31,6 +33,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -77,9 +80,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import com.kyant.backdrop.backdrops.drawBackdrop
-import com.kyant.backdrop.backdrops.colorControls
-import com.kyant.backdrop.backdrops.lens
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.effects.lens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R

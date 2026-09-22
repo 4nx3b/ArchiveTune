@@ -633,36 +633,6 @@ object ComposeToImage {
             return@withContext bitmap
         }
 
-    /** Center-crops the artwork to the given canvas so blurred edges never run out. */
-    private fun coverBitmap(
-        source: Bitmap,
-        targetWidth: Int,
-        targetHeight: Int,
-    ): Bitmap {
-        val safe = ensureSoftwareBitmap(source)
-        val targetW = targetWidth.coerceAtLeast(1)
-        val targetH = targetHeight.coerceAtLeast(1)
-        val srcRatio = safe.width.toFloat() / safe.height.toFloat()
-        val dstRatio = targetW.toFloat() / targetH.toFloat()
-        return if (kotlin.math.abs(srcRatio - dstRatio) < 0.01f) {
-            ensureSoftwareBitmap(Bitmap.createScaledBitmap(safe, targetW, targetH, true))
-        } else {
-            val cropW: Int
-            val cropH: Int
-            if (srcRatio > dstRatio) {
-                cropH = safe.height
-                cropW = (safe.height * dstRatio).toInt().coerceAtMost(safe.width)
-            } else {
-                cropW = safe.width
-                cropH = (safe.width / dstRatio).toInt().coerceAtMost(safe.height)
-            }
-            val left = (safe.width - cropW) / 2
-            val top = (safe.height - cropH) / 2
-            val cropped = Bitmap.createBitmap(safe, left, top, cropW, cropH)
-            ensureSoftwareBitmap(Bitmap.createScaledBitmap(cropped, targetW, targetH, true))
-        }
-    }
-
     private fun drawVerticallyCenteredText(
         canvas: Canvas,
         text: String,
