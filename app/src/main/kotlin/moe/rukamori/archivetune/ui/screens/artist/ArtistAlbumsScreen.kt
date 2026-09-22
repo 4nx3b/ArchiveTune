@@ -183,7 +183,16 @@ fun ArtistAlbumsScreen(
                 windowInsets =
                     WindowInsets(top = LocalStableSystemBarsTopPadding.current)
                         .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
-                title = { Text(artist?.artist?.name.orEmpty()) },
+                // The artist entity is only read from the local database, so it
+                // is null for an artist the user merely browsed on YouTube — the
+                // bar then rendered back-arrow-only and read as an empty pill.
+                // Fall back to the same "Albums" label the glass header shows.
+                title = {
+                    Text(
+                        artist?.artist?.name?.takeIf { it.isNotBlank() }
+                            ?: stringResource(R.string.albums),
+                    )
+                },
                 navigationIcon = {
                     IconButton(
                         onClick = navController::navigateUp,
