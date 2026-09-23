@@ -2880,7 +2880,36 @@ class MusicService :
                         hasPreparedSecondaryPlayer = true
                     }
                     if (remainingToStart <= 0L && plan.fadeMs >= MIN_CROSSFADE_DURATION_MS) {
-                        startCrossfade(target, plan.fadeMs, plan)
+                        // The fade may only span what is actually LEFT of the
+                        // outgoing track. A user who seeks straight to the tail
+                        // (or an analysis that lands late) used to start the
+                        // FULL plan.fadeMs here: the outgoing hit its
+                        // end-of-item pause mid-blend, the incoming kept ramping
+                        // at low volume into the silence, and only the promotion
+                        // seconds later "resumed" playback — the reported
+                        // stutter / pause / one-second-to-continue. The classic
+                        // crossfade path has always clamped like this; the smart
+                        // path simply forgot to.
+                        val positionMs = player.currentPosition
+                        val remainingFadeMs =
+                            (duration - positionMs - CROSSFADE_END_GUARD_MS)
+                                .coerceAtMost(plan.fadeMs)
+                        if (remainingFadeMs >= MIN_CROSSFADE_DURATION_MS) {
+                            startCrossfade(target, remainingFadeMs, plan)
+                        } else {
+                            // Too little song is left to fade within: get out of
+                            // the way and let the natural advance take over
+                            // rather than arming a fade that outruns the track.
+                            localPlayer.pauseAtEndOfMediaItems = false
+                            releaseSecondaryCrossfadePlayer()
+                            SmartFadeRuntimeState.transitionWindow.value = null
+                            SmartFadeRuntimeState.mixing.value = false
+                            SmartFadeRuntimeState.analysis.value =
+                                SmartFadeRuntimeState.analysis.value.copy(
+                                    current = TrackAnalysisState.WAITING,
+                                    next = TrackAnalysisState.WAITING,
+                                )
+                        }
                         return@launch
                     }
 
@@ -3310,14 +3339,51 @@ class MusicService :
                     smart,
                 )
 
+                // Re-clamped live below once the incoming player is actually
+                // rolling: the readiness wait consumes outgoing time too.
+                var fadeMs = durationMs
+
                 try {
-                    val requiredBufferedMs = requiredCrossfadeStartBufferMs(durationMs)
+                    // The buffer requirement may not exceed what the OUTGOING
+                    // still has left to play: a late-armed fade (seek to the
+                    // tail, analysis that landed late) otherwise waits for a
+                    // full smooth-start buffer while the outgoing runs itself
+                    // into its end-of-item pause — the audible "pause then
+                    // one-second-to-continue".
+                    val outgoingLeftMs =
+                        player.duration
+                            .takeIf { it != C.TIME_UNSET && it > 0L }
+                            ?.let { it - player.currentPosition }
+                            ?: Long.MAX_VALUE
+                    val requiredBufferedMs =
+                        requiredCrossfadeStartBufferMs(durationMs)
+                            .coerceAtMost(outgoingLeftMs.coerceAtLeast(0L))
                     if (!awaitCrossfadePlayerReady(incomingPlayer, CROSSFADE_READY_TIMEOUT_MS, requiredBufferedMs)) {
                         Timber.tag(TAG).d("crossfade[%d] incoming player not ready in time; aborting", generation)
                         cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
                         scheduleCrossfade()
                         return@launch
                     }
+
+                    // The wait (and the incoming player startup) spent outgoing
+                    // wall-clock: shrink the ramp to what is actually left so the
+                    // blend still finishes inside the outgoing track instead of
+                    // outrunning it. Never below the minimum — a fade that
+                    // cannot fit at all is handled by the mid-blend early finish
+                    // in the loop below.
+                    player.duration
+                        .takeIf { it != C.TIME_UNSET && it > 0L }
+                        ?.let { fullDuration ->
+                            val leftAfterWaitMs = fullDuration - player.currentPosition - CROSSFADE_END_GUARD_MS
+                            if (leftAfterWaitMs < fadeMs) {
+                                fadeMs = leftAfterWaitMs.coerceAtLeast(MIN_CROSSFADE_DURATION_MS)
+                                Timber.tag(TAG).d(
+                                    "crossfade[%d] re-clamped fade to %dms (outgoing almost done)",
+                                    generation,
+                                    fadeMs,
+                                )
+                            }
+                        }
 
                     if (smart) {
                         // Beat-match stretch: the incoming track plays at the
@@ -3348,10 +3414,47 @@ class MusicService :
 
                     var elapsedMs = 0L
                     var lastTickMs = android.os.SystemClock.elapsedRealtime()
-                    while (isActive && elapsedMs < durationMs) {
+                    while (isActive && elapsedMs < fadeMs) {
                         if (player.currentMediaItem?.mediaId != outgoingMediaId) {
                             cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
                             return@launch
+                        }
+
+                        // The outgoing track ended underneath the blend (its
+                        // end-of-item pause fired, or it ran fully to ENDED):
+                        // there is nothing left to mix OUT of, so finishing the
+                        // ramp early beats seconds of dead air while the
+                        // incoming keeps crawling up at low volume. Snap the
+                        // ramp to full and promote immediately. The sync in
+                        // onPlayWhenReadyChanged deliberately keeps
+                        // crossfadePlaybackRequested true across the end-of-item
+                        // pause, so a USER pause (which sets it false) can never
+                        // take this branch.
+                        val outgoingDuration = player.duration
+                        val outgoingPausedAtEnd =
+                            player.playbackState == Player.STATE_ENDED ||
+                                (
+                                    crossfadePlaybackRequested &&
+                                        !player.playWhenReady &&
+                                        player.playbackState == Player.STATE_READY &&
+                                        outgoingDuration != C.TIME_UNSET &&
+                                        player.currentPosition >= outgoingDuration - 250L
+                                    )
+                        if (outgoingPausedAtEnd) {
+                            Timber.tag(TAG).d(
+                                "crossfade[%d] outgoing ended mid-blend; finishing early at %.0f%%",
+                                generation,
+                                crossfadeProgress * 100f,
+                            )
+                            crossfadeProgress = 1f
+                            applyCrossfadeVolumes(
+                                1f,
+                                crossfadeBaseVolume,
+                                crossfadeIncomingBaseVolume,
+                                localPlayer,
+                                incomingPlayer,
+                            )
+                            break
                         }
 
                         val nowMs = android.os.SystemClock.elapsedRealtime()
@@ -3363,11 +3466,11 @@ class MusicService :
                                 // is actually audible regardless of buffering.
                                 elapsedMs =
                                     (incomingPlayer.currentPosition - cueTimeMs)
-                                        .coerceIn(0L, durationMs)
+                                        .coerceIn(0L, fadeMs)
                             } else {
-                                elapsedMs = (elapsedMs + (nowMs - lastTickMs)).coerceAtMost(durationMs)
+                                elapsedMs = (elapsedMs + (nowMs - lastTickMs)).coerceAtMost(fadeMs)
                             }
-                            crossfadeProgress = (elapsedMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+                            crossfadeProgress = (elapsedMs.toFloat() / fadeMs.toFloat()).coerceIn(0f, 1f)
                             applyCrossfadeVolumes(
                                 crossfadeProgress,
                                 crossfadeBaseVolume,

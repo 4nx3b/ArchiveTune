@@ -221,10 +221,11 @@ fun Modifier.liquidGlass(
     interactive: Boolean = true,
     baseColor: Color = Color.Unspecified,
     blurRadius: Dp = 8.dp,
+    scrim: Color? = null,
 ): Modifier {
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
-    return remember(backdrop, shape, interactive, baseColor, blurRadius, isDark) {
+    return remember(backdrop, shape, interactive, baseColor, blurRadius, isDark, scrim) {
         this.drawBackdrop(
             backdrop = backdrop,
             effects = {
@@ -257,13 +258,21 @@ fun Modifier.liquidGlass(
                     null
                 },
             onDrawSurface = {
-                val luminanceAnimation = 0.5f
-                val darken = lerp(
-                    0.12f,
-                    0.5f,
-                    ((luminanceAnimation - 0.3f) / 0.5f).coerceIn(0f, 1f),
-                )
-                drawRect((if (isDark) Color.Black else Color.White).copy(alpha = darken))
+                if (scrim != null) {
+                    // Caller-supplied surface scrim (e.g. glass floating over a
+                    // user wallpaper): the theme default darkens by ~27%, which
+                    // leaves white-on-white text when the sampled backdrop is a
+                    // bright image. The caller decides how much is enough.
+                    drawRect(scrim)
+                } else {
+                    val luminanceAnimation = 0.5f
+                    val darken = lerp(
+                        0.12f,
+                        0.5f,
+                        ((luminanceAnimation - 0.3f) / 0.5f).coerceIn(0f, 1f),
+                    )
+                    drawRect((if (isDark) Color.Black else Color.White).copy(alpha = darken))
+                }
             },
         )
     }
@@ -276,11 +285,12 @@ fun LiquidGlassContainer(
     shape: Shape = CircleShape,
     interactive: Boolean = false,
     blurRadius: Dp = LiquidGlassPillBlurRadius,
+    scrim: Color? = null,
     contentAlignment: Alignment = Alignment.Center,
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(
-        modifier = modifier.liquidGlass(backdrop, shape, interactive, blurRadius = blurRadius),
+        modifier = modifier.liquidGlass(backdrop, shape, interactive, blurRadius = blurRadius, scrim = scrim),
         contentAlignment = contentAlignment,
         content = content,
     )
@@ -292,6 +302,7 @@ fun LiquidGlassActionPill(
     modifier: Modifier = Modifier,
     interactive: Boolean = false,
     blurRadius: Dp = LiquidGlassPillBlurRadius,
+    scrim: Color? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     Row(
@@ -303,6 +314,7 @@ fun LiquidGlassActionPill(
                     shape = RoundedCornerShape(24.dp),
                     interactive = interactive,
                     blurRadius = blurRadius,
+                    scrim = scrim,
                 ),
         verticalAlignment = Alignment.CenterVertically,
         content = content,

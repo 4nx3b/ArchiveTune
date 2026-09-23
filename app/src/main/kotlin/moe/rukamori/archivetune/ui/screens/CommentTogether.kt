@@ -33,9 +33,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -44,7 +42,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -54,8 +51,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -105,6 +100,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalListenTogetherManager
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenTogetherChatWallpaperKey
 import moe.rukamori.archivetune.constants.ListenTogetherServerUrlKey
@@ -156,7 +152,6 @@ fun CommentTogetherScreen(navController: NavController) {
     var showGifPicker by remember { mutableStateOf(false) }
     var attachmentAnchor by remember { mutableStateOf<Rect?>(null) }
     var jumpTargetKey by remember { mutableStateOf<String?>(null) }
-    var wallpaperMenuOpen by remember { mutableStateOf(false) }
 
     // The local chat wallpaper (device-only, never synced, never seen by other
     // members) rendered behind the conversation.
@@ -362,7 +357,11 @@ fun CommentTogetherScreen(navController: NavController) {
     }
 
     // ---- screen geometry ----------------------------------------------------------
-    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    // The notch/status-bar inset comes from the app-level CompositionLocal: the
+    // plain WindowInsets.statusBars read returns ZERO here because ancestors of
+    // the NavHost already consume the top insets, which used to plant the glass
+    // header pill straight into the cutout on notched devices.
+    val statusBarTop = LocalStableSystemBarsTopPadding.current
     // The composer column floats over the list's bottom; the list reserves
     // room for it so the newest message is never hidden behind the capsule.
     var composerHeightPx by remember { mutableStateOf(0) }
@@ -387,7 +386,11 @@ fun CommentTogetherScreen(navController: NavController) {
         ) {
             // Background: the local wallpaper (when set) over a dim scrim, or
             // the plain theme surface. Inside the recorded box so both the top
-            // haze fade and the composer glass blur/sample it.
+            // haze fade and the composer glass blur/sample it. The scrim is
+            // what keeps the glass surfaces (header pill, composer capsule)
+            // readable: they sample and blur whatever is behind them, so a
+            // bright wallpaper at 35% dim came through the glass almost
+            // unattenuated and washed the icons/text out.
             if (chatWallpaper.isNotBlank()) {
                 AsyncImage(
                     model = chatWallpaper,
@@ -398,7 +401,7 @@ fun CommentTogetherScreen(navController: NavController) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.35f)),
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.52f)),
                 )
             } else {
                 Box(
@@ -434,10 +437,10 @@ fun CommentTogetherScreen(navController: NavController) {
                     )
                 }
 
-                if (messages.isEmpty() && typingUsers.isEmpty()) {
-                    EmptyChatPlaceholder()
-                } else {
-                    LazyColumn(
+                // An empty room renders an empty list — no placeholder icon
+                // and "no messages" copy; the composer already says everything
+                // there is to say.
+                LazyColumn(
                         state = lazyListState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = composerBottomPadding),
@@ -492,7 +495,6 @@ fun CommentTogetherScreen(navController: NavController) {
                             }
                         }
                     }
-                }
             }
         }
 
@@ -517,6 +519,11 @@ fun CommentTogetherScreen(navController: NavController) {
 
                 // The header pill itself: back button + title inside liquid glass,
                 // over a transparent background (no opaque top bar anymore).
+                // Over a wallpaper the glass gets an explicit dark surface scrim —
+                // the default ~27% darkening lets a bright image wash the icons
+                // and title out (see LiquidGlass.liquidGlass's scrim parameter).
+                val wallpaperGlassScrim: Color? =
+                    chatWallpaper.takeIf { it.isNotBlank() }?.let { Color.Black.copy(alpha = 0.45f) }
                 Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -536,6 +543,7 @@ fun CommentTogetherScreen(navController: NavController) {
                     LiquidGlassActionPill(
                         backdrop = chatGlassBackdrop,
                         modifier = Modifier.weight(1f, fill = false),
+                        scrim = wallpaperGlassScrim,
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.arrow_back),
@@ -711,14 +719,11 @@ fun CommentTogetherScreen(navController: NavController) {
                         }
                         replyingTo = null
                     },
-                    onGifClick = { showGifPicker = true },
-                    onSongClick = { showSongPicker = true },
                     onAttachmentClick = { anchor -> attachmentAnchor = anchor },
-                    onWallpaperPick = { wallpaperPicker.launch(arrayOf("image/*")) },
-                    onWallpaperClear = { chatWallpaper = "" },
                     glassBackdrop = chatGlassBackdrop,
-                    wallpaperMenuOpen = wallpaperMenuOpen,
-                    onWallpaperMenuOpen = { wallpaperMenuOpen = it },
+                    // Wallpaper mode deepens the capsule's glass scrim for the
+                    // same readability reason as the header pill.
+                    scrim = chatWallpaper.takeIf { it.isNotBlank() }?.let { Color.Black.copy(alpha = 0.45f) },
                 )
 
                 // Typing indicator with layered avatars
@@ -833,11 +838,15 @@ fun CommentTogetherScreen(navController: NavController) {
     }
 
     // Attachment menu: liquid-glass morph popup over the composer with
-    // Song and GIF entries (see AttachmentMenuPopup).
+    // Song, GIF and wallpaper entries (see AttachmentMenuPopup). The wallpaper
+    // controls moved here from the composer's kebab so the input box keeps
+    // only the paperclip and the send button.
     attachmentAnchor?.let { anchor ->
         AttachmentMenuPopup(
             anchor = anchor,
             backdrop = chatGlassBackdrop,
+            wallpaperSet = chatWallpaper.isNotBlank(),
+            scrimAlpha = if (chatWallpaper.isNotBlank()) 0.45f else 0.30f,
             onPickSong = {
                 showSongPicker = true
             },
@@ -848,6 +857,12 @@ fun CommentTogetherScreen(navController: NavController) {
                     delay(260)
                     showGifPicker = true
                 }
+            },
+            onPickWallpaper = {
+                wallpaperPicker.launch(arrayOf("image/*"))
+            },
+            onRemoveWallpaper = {
+                chatWallpaper = ""
             },
             onDismiss = { attachmentAnchor = null },
         )
@@ -951,9 +966,9 @@ private fun MentionAlertPopup(
 
 /**
  * The Telegram-style liquid-glass composer, recreated one-to-one from the
- * reference: a stadium capsule with the GIF quick button at the start, the
- * text field through the middle and a trailing cluster ("/" quick-song,
- * paperclip attachments, wallpaper kebab). While typing, the cluster yields
+ * reference: a stadium capsule with the text field through the middle and a
+ * paperclip (Song / GIF / wallpaper all live behind it in the attachment
+ * popup). While typing, the paperclip yields
  * to the send button, exactly like the reference. The reply state grows the
  * capsule upward with the accent reply preview INSIDE it (arrow, "Reply to
  * name", snippet, close) instead of a separate strip above.
@@ -970,14 +985,9 @@ private fun TelegramGlassComposer(
     replyingTo: ChatMessagePayload?,
     editingMessage: ChatMessagePayload?,
     onClearReply: () -> Unit,
-    onGifClick: () -> Unit,
-    onSongClick: () -> Unit,
     onAttachmentClick: (Rect) -> Unit,
-    onWallpaperPick: () -> Unit,
-    onWallpaperClear: () -> Unit,
     glassBackdrop: moe.rukamori.archivetune.ui.component.PlatformBackdrop?,
-    wallpaperMenuOpen: Boolean,
-    onWallpaperMenuOpen: (Boolean) -> Unit,
+    scrim: Color? = null,
     modifier: Modifier = Modifier,
 ) {
     var attachmentButtonBounds by remember { mutableStateOf(Rect.Zero) }
@@ -997,11 +1007,16 @@ private fun TelegramGlassComposer(
                 shape = capsuleShape,
                 interactive = false,
                 blurRadius = 18.dp,
+                scrim = scrim,
             )
         } else {
             Modifier
                 .background(
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+                    // Over a wallpaper even the no-glass fallback needs more
+                    // opacity than usual to stay legible.
+                    MaterialTheme.colorScheme.surfaceVariant.copy(
+                        alpha = if (scrim != null) 0.88f else 0.72f,
+                    ),
                     capsuleShape,
                 )
                 .border(
@@ -1083,26 +1098,6 @@ private fun TelegramGlassComposer(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            // GIF quick button: opens the GIF sheet (Giphy + device GIFs).
-            Surface(
-                onClick = onGifClick,
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                ),
-                modifier = Modifier.padding(start = 6.dp, end = 4.dp),
-            ) {
-                Text(
-                    text = "GIF",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                )
-            }
-
             OutlinedTextField(
                 value = text,
                 onValueChange = onTextChange,
@@ -1126,26 +1121,16 @@ private fun TelegramGlassComposer(
                 )
             )
 
-            // Trailing cluster: "/" (quick song share), paperclip (attachments)
-            // and kebab (wallpaper) — hidden while typing, when the send
-            // button takes their place, exactly like the reference.
+            // Trailing cluster: just the paperclip — Song, GIF and the
+            // wallpaper entries all live behind it in the attachment popup.
+            // Hidden while typing, when the send button takes its place,
+            // exactly like the reference.
             AnimatedVisibility(
                 visible = !typing,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = onSongClick,
-                        modifier = Modifier.size(38.dp),
-                    ) {
-                        Text(
-                            text = "/",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                     IconButton(
                         onClick = { onAttachmentClick(attachmentButtonBounds) },
                         modifier =
@@ -1161,52 +1146,6 @@ private fun TelegramGlassComposer(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(21.dp),
                         )
-                    }
-                    Box {
-                        IconButton(
-                            onClick = { onWallpaperMenuOpen(true) },
-                            modifier = Modifier.size(38.dp),
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.more_vert),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = wallpaperMenuOpen,
-                            onDismissRequest = { onWallpaperMenuOpen(false) },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.listen_together_chat_set_wallpaper)) },
-                                leadingIcon = {
-                                    Icon(
-                                        painterResource(R.drawable.image),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                },
-                                onClick = {
-                                    onWallpaperMenuOpen(false)
-                                    onWallpaperPick()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.listen_together_chat_remove_wallpaper)) },
-                                leadingIcon = {
-                                    Icon(
-                                        painterResource(R.drawable.hide_image),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                },
-                                onClick = {
-                                    onWallpaperMenuOpen(false)
-                                    onWallpaperClear()
-                                },
-                            )
-                        }
                     }
                 }
             }
@@ -1318,48 +1257,5 @@ private fun MentionSuggestionList(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun EmptyChatPlaceholder() {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            modifier = Modifier
-                .size(120.dp)
-                .clip(CircleShape)
-                .background(
-                    androidx.compose.ui.graphics.Brush.verticalGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.primaryContainer,
-                            MaterialTheme.colorScheme.secondaryContainer
-                        )
-                    )
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.chat_msg),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(56.dp)
-            )
-        }
-        Spacer(modifier = Modifier.height(24.dp))
-        Text(
-            text = "No messages yet",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Text(
-            text = "Start the conversation!",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }

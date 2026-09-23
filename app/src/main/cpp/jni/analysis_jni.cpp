@@ -35,6 +35,8 @@
 #include <jni.h>
 
 #include <cstdio>
+#include <limits>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -42,6 +44,36 @@
 #include "analyzer/resampler.h"
 
 namespace {
+
+// A helper that turns "copy the Java array into a native vector" into a
+// nullable result so allocation failure (std::bad_alloc) can degrade to "no
+// analysis this tick" instead of unwinding out of the JNI frame — an
+// exception escaping a native method aborts the process with SIGABRT and no
+// Java crash log.
+bool CopyIn(JNIEnv* env, jfloatArray source, std::vector<float>& out) {
+  const jsize count = env->GetArrayLength(source);
+  if (count <= 0) return true;
+  if (static_cast<size_t>(count) >
+      static_cast<size_t>(std::numeric_limits<jint>::max())) {
+    return false;
+  }
+  try {
+    out.resize(static_cast<size_t>(count));
+    env->GetFloatArrayRegion(source, 0, count, out.data());
+    return true;
+  } catch (const std::bad_alloc&) {
+    return false;
+  } catch (...) {
+    return false;
+  }
+}
+
+// The JNI bridge's own allocations can also throw; everything below funnels
+// through these so no exception ever crosses the JNI boundary.
+jfloatArray EmptyFloatArray(JNIEnv* env) {
+  return env->NewFloatArray(0);
+}
+
 
 // The analyzer's strings are its own literals -- key names like "C# minor"
 // and candidate types like "main_drop". Key names are emitted in UTF-8 with
@@ -130,12 +162,12 @@ Java_moe_rukamori_archivetune_playback_smart_TrackFeatures_nativeAnalyze(
     jfloatArray samples,
     jdouble sample_rate,
     jdouble duration) {
-  const jsize count = env->GetArrayLength(samples);
-  std::vector<float> input(static_cast<size_t>(count));
-  if (count > 0) {
-    env->GetFloatArrayRegion(samples, 0, count, input.data());
+  std::vector<float> input;
+  if (!CopyIn(env, samples, input)) {
+    return env->NewStringUTF("{}");
   }
 
+  try {
   const bitchord::smart::AnalysisResult result =
       bitchord::smart::AnalyzeAudio(input, sample_rate, duration);
 
@@ -179,6 +211,13 @@ Java_moe_rukamori_archivetune_playback_smart_TrackFeatures_nativeAnalyze(
   json += '}';
 
   return env->NewStringUTF(json.c_str());
+  } catch (const std::bad_alloc&) {
+    // Degradation, not termination: the Kotlin side parses "{}" as an
+    // all-defaults analysis and the policy falls back to a plain fade.
+    return env->NewStringUTF("{}");
+  } catch (...) {
+    return env->NewStringUTF("{}");
+  }
 }
 
 JNIEXPORT jdouble JNICALL
@@ -199,15 +238,21 @@ Java_moe_rukamori_archivetune_playback_smart_TrackFeatures_nativeResample(
     jfloatArray samples,
     jdouble input_rate,
     jdouble output_rate) {
-  const jsize count = env->GetArrayLength(samples);
-  std::vector<float> input(static_cast<size_t>(count));
-  if (count > 0) {
-    env->GetFloatArrayRegion(samples, 0, count, input.data());
+  std::vector<float> input;
+  if (!CopyIn(env, samples, input)) {
+    return EmptyFloatArray(env);
   }
 
+  try {
   const std::vector<float> resampled =
       bitchord::smart::Resample(input, input_rate, output_rate);
 
+  // jsize is 32-bit: an output past 2^31-1 elements would make the cast go
+  // negative and hand NewFloatArray a negative length.
+  if (resampled.size() >
+      static_cast<size_t>(std::numeric_limits<jint>::max())) {
+    return EmptyFloatArray(env);
+  }
   const jsize produced = static_cast<jsize>(resampled.size());
   jfloatArray result = env->NewFloatArray(produced);
   if (result == nullptr) {
@@ -217,6 +262,11 @@ Java_moe_rukamori_archivetune_playback_smart_TrackFeatures_nativeResample(
     env->SetFloatArrayRegion(result, 0, produced, resampled.data());
   }
   return result;
+  } catch (const std::bad_alloc&) {
+    return EmptyFloatArray(env);
+  } catch (...) {
+    return EmptyFloatArray(env);
+  }
 }
 
 }  // extern "C"
