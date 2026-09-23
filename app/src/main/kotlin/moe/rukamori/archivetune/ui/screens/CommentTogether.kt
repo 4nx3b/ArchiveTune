@@ -1388,7 +1388,8 @@ private suspend fun measureWallpaperLuminance(
             .size(48, 48)
             .build()
     val result = runCatching { context.imageLoader.execute(request) }.getOrNull() ?: return null
-    val bitmap = runCatching { result.image.toBitmap() }.getOrNull() ?: return null
+    // ImageResult.image is nullable on the ErrorResult branch of Coil's API.
+    val bitmap = runCatching { result.image?.toBitmap() }.getOrNull() ?: return null
     if (bitmap.width <= 0 || bitmap.height <= 0) return null
     var total = 0.0
     for (y in 0 until bitmap.height) {
