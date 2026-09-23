@@ -1811,6 +1811,7 @@
     <string name="listen_together_chat_reply_to">Reply to %s</string>
     <string name="listen_together_chat_set_wallpaper">Set chat wallpaper</string>
     <string name="listen_together_chat_remove_wallpaper">Remove chat wallpaper</string>
+    <string name="listen_together_chat_wallpaper_hint">Visible only to you</string>
     <string name="listen_together_chat_shared_song">Shared a song: %s</string>
     <string name="listen_together_room_name">Room name</string>
     <string name="listen_together_room_name_hint">Optional — shown to everyone you invite</string>

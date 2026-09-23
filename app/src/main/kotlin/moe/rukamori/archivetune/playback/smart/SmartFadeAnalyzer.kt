@@ -29,6 +29,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -64,6 +65,17 @@ class SmartFadeAnalyzer(
 
         /** A refused decode is retried at most this often before being written off. */
         private const val MAX_SHORT_DECODE_STRIKES = 3
+
+        /**
+         * Long-form audio (DJ sets, concert recordings, full mixtapes) is
+         * refused outright: the structural pass decodes the WHOLE track into
+         * memory, and a 30-minute mix alone would demand ~800MB across the
+         * Java decode, the JNI copy and the resampled result — a silent
+         * abort or an LMK kill on mid-range devices. A plain crossfade is
+         * what unanalysed material gets anyway, so the cap costs nothing a
+         * listener can hear.
+         */
+        private const val MAX_ANALYSIS_SECONDS = 600.0
     }
 
     private val appContext = context.applicationContext
@@ -122,56 +134,80 @@ class SmartFadeAnalyzer(
         if (results.containsKey(trackId)) return
         if (!running.add(trackId)) return
 
-        executor.execute {
-            try {
-                // A usable stored analysis short-circuits the whole pipeline:
-                // without this head-check the first request of a session would
-                // re-earn from audio a result that was already on disk.
-                val stored = store.load(trackId)
-                if (stored != null && stored.isUsable) {
-                    results[trackId] = stored
-                    Log.d(TAG, "Restored analysis for $trackId: bpm=${stored.bpm} conf=${stored.beatConfidence}")
-                    return@execute
-                }
-                // Efficient mode yields to decoding and playback rather than
-                // competing for a core.
-                Process.setThreadPriority(
-                    if (SmartFadeSettings.performanceMode.value == AutomixPerformanceMode.EFFICIENT) {
-                        Process.THREAD_PRIORITY_BACKGROUND
+        // runCatching: after release() the executor is shut down, and a bare
+        // RejectedExecutionException would take the poll coroutine down with it.
+        runCatching {
+            executor.execute {
+                try {
+                    // A usable stored analysis short-circuits the whole pipeline:
+                    // without this head-check the first request of a session would
+                    // re-earn from audio a result that was already on disk.
+                    val stored = store.load(trackId)
+                    if (stored != null && stored.isUsable) {
+                        results[trackId] = stored
+                        Log.d(TAG, "Restored analysis for $trackId: bpm=${stored.bpm} conf=${stored.beatConfidence}")
+                        return@execute
+                    }
+                    // Efficient mode yields to decoding and playback rather than
+                    // competing for a core.
+                    Process.setThreadPriority(
+                        if (SmartFadeSettings.performanceMode.value == AutomixPerformanceMode.EFFICIENT) {
+                            Process.THREAD_PRIORITY_BACKGROUND
+                        } else {
+                            Process.THREAD_PRIORITY_DEFAULT
+                        },
+                    )
+                    val analysis = analyze(trackId, uri, durationSeconds)
+                    val strikes = shortDecodes[trackId] ?: 0
+                    if (analysis == null) {
+                        if (strikes + 1 >= MAX_SHORT_DECODE_STRIKES) {
+                            // Write it off rather than re-reading it every tick.
+                            results[trackId] = empty(trackId, durationSeconds)
+                            shortDecodes.remove(trackId)
+                        } else {
+                            shortDecodes[trackId] = strikes + 1
+                        }
                     } else {
-                        Process.THREAD_PRIORITY_DEFAULT
-                    },
-                )
-                val analysis = analyze(trackId, uri, durationSeconds)
-                val strikes = shortDecodes[trackId] ?: 0
-                if (analysis == null) {
-                    if (strikes + 1 >= MAX_SHORT_DECODE_STRIKES) {
-                        // Write it off rather than re-reading it every tick.
-                        results[trackId] = empty(trackId, durationSeconds)
+                        results[trackId] = analysis
                         shortDecodes.remove(trackId)
-                    } else {
-                        shortDecodes[trackId] = strikes + 1
+                        if (analysis.isUsable) {
+                            store.save(trackId, analysis)
+                        }
                     }
-                } else {
-                    results[trackId] = analysis
-                    shortDecodes.remove(trackId)
-                    if (analysis.isUsable) {
-                        store.save(trackId, analysis)
-                    }
+                } catch (t: Throwable) {
+                    Log.w(TAG, "Analysis of $trackId failed", t)
+                    results[trackId] = empty(trackId, durationSeconds)
+                } finally {
+                    running.remove(trackId)
                 }
-            } catch (t: Throwable) {
-                Log.w(TAG, "Analysis of $trackId failed", t)
-                results[trackId] = empty(trackId, durationSeconds)
-            } finally {
-                running.remove(trackId)
             }
+        }.onFailure {
+            running.remove(trackId)
         }
     }
 
     fun release() {
         executor.shutdownNow()
-        tracker.release()
-        vocals.release()
+        // The in-flight analysis can be deep inside a native ONNX Run() that an
+        // interrupt cannot stop. Closing the session underneath it is a
+        // use-after-free (native crash, no Java log), so the trackers are only
+        // released once the worker has actually drained — on a thread of its
+        // own, because release() is called from service teardown on the main
+        // thread and must never block for the seconds a long inference needs.
+        // If the worker somehow outlasts the drain window the sessions are left
+        // open (the process is going away anyway) rather than closed mid-Run.
+        Thread({
+            val drained = runCatching { executor.awaitTermination(10, TimeUnit.SECONDS) }
+                .isSuccess && executor.isTerminated
+            if (drained) {
+                tracker.release()
+                vocals.release()
+            } else {
+                Log.w(TAG, "Analysis worker did not drain in time; leaving model sessions to process teardown")
+            }
+        }, "archivetune-smartfade-release").apply {
+            isDaemon = true
+        }.start()
     }
 
     // ------------------------------------------------------------------
@@ -193,6 +229,13 @@ class SmartFadeAnalyzer(
         if (effectiveDuration <= 0) {
             Log.d(TAG, "Skipping $trackId: no readable duration")
             return empty(trackId, 0.0)
+        }
+        if (effectiveDuration > MAX_ANALYSIS_SECONDS) {
+            Log.d(
+                TAG,
+                "Skipping $trackId: %.0fs exceeds the analysis cap".format(Locale.ROOT, effectiveDuration),
+            )
+            return empty(trackId, effectiveDuration)
         }
 
         // Pass 1 (DSP-only): whole track at the analyzer's low sample rate, in

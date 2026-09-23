@@ -3516,3 +3516,29 @@ Work Log:
 Stage Summary:
 - dev @ b0250307a: 22 files, +2470/-593.
 - PR #216 continues to carry dev → main; CI monitored (no local compile per standing instruction).
+
+## Task ID: 73
+
+Task: 2-item user batch — (1) crash after some time of music playback + automix end-of-track stutter/pause-then-resume, (2) Listen Together chat polish (remove empty placeholder, notch collision, wallpaper readability, composer decluttering).
+
+Work Log:
+- Crash forensics: the attached Crashlog.txt predates the task-71 measure()-fix (build 9ba55673b1) and no new Java log exists, so the live crash had to be native/silent. A dedicated audit agent read the whole new automix analysis pipeline line-by-line and found the smoking guns.
+- Native crash fixes (the automix analyzer runs on every current+next track while music plays):
+  - CRITICAL: FindMixOutTime dereferenced `*std::max_element` on a range that is EMPTY whenever a trailing quiet run reaches the last decoded window — an intermittent OOB read (SIGSEGV, no Java log) designed in by the duration-over-report the 0.95 decode-fraction gate admits. Both before/after peaks are now range-guarded (audio_analysis.cpp).
+  - CRITICAL: whole-track decode had NO duration cap — a 30-minute file walks ~800MB across the Java decode, the JNI copy and the resampled result; a failed native allocation threw std::bad_alloc out of the JNI frame → std::terminate → SIGABRT with no log. All three JNI bridges now catch bad_alloc/... and degrade to empty/"{}" (which the Kotlin side already reads as no-evidence), jsize overflow guards added, and SmartFadeAnalyzer refuses tracks over MAX_ANALYSIS_SECONDS=600 (plain-fade fallback, no retry storm).
+  - HIGH: release() closed the ONNX sessions while a native Run() could still be in flight (use-after-free); the executor now drains on its own daemon thread and the trackers only close when the worker actually terminated. request() wraps executor.execute in runCatching so a post-release poll tick can't die on RejectedExecutionException.
+  - HIGH: VocalTracker allocated a fresh 15.7MB direct ByteBuffer per inference, released only by GC — the buffer is now cached model-shaped scratch (rewound per call).
+  - Hardening: AnalyzeAudio validates sample_rate before the fallback division and caps duration at 24h; SampleEnvelope guards the empty-vector `size()-1` underflow; CMake pins -fexceptions explicitly.
+- Automix end-of-track stutter/pause ("skip to the tail of an unanalysed song" / "pauses at the end and takes a second to continue"):
+  - scheduleSmartFade now clamps the fade to the outgoing track's REMAINING time at trigger (the classic path always did; the smart path forgot) and bails to the natural advance when less than MIN_CROSSFADE_DURATION_MS is left (pauseAtEndOfMediaItems disarmed, secondary released, runtime state reset).
+  - startCrossfade caps the readiness buffer requirement by what the outgoing still has to play (a late-armed fade no longer waits a full smooth-start buffer while the outgoing runs into its end-of-item pause), re-clamps fadeMs after the readiness wait, and the fade loop early-finishes (snap to progress 1 + promote) when the outgoing pauses at end mid-blend — a user pause can never take that branch because onPlayWhenReadyChanged only keeps crossfadePlaybackRequested true across the end-of-item reason.
+- Chat screen fixes:
+  - Empty room renders an empty list — the pink circle placeholder and its hardcoded "No messages yet" copy are gone (EmptyChatPlaceholder deleted).
+  - Header/notch collision: the pill's top padding came from WindowInsets.statusBars, which reads ZERO under the NavHost's consuming ancestors; it now uses LocalStableSystemBarsTopPadding (max of status bar and display cutout, provided above the consumers).
+  - Wallpaper readability: base scrim 0.35→0.52, plus a new `scrim: Color?` parameter threaded through Modifier.liquidGlass / LiquidGlassContainer / LiquidGlassActionPill — the chat passes Black@45% to the header pill and the composer capsule whenever a wallpaper is set (the no-glass composer fallback gets 0.88 surface opacity). AttachmentMenuPopup's surface scrim is parametrised the same way.
+  - Composer declutter: GIF pill, "/" quick-song button and wallpaper kebab removed from the input box — it keeps only the paperclip and the morphing send button; Song / GIF / Set wallpaper / Remove wallpaper all live in the paperclip's attachment popup now (new listen_together_chat_wallpaper_hint string).
+- Static review agent over the full diff: no compile blockers, no logic bugs; 3 minors (unused WindowInsets import, release() drain gate, bail-out WAITING reset) — all applied. Native sources additionally pass g++ -std=c++17 -fsyntax-only -Wall -Wextra against a faithful jni.h stub.
+
+Stage Summary:
+- 13 files, ~+560/-285 across Kotlin, C++ and resources.
+- dev push + CI monitoring to follow; PR #216 continues to carry dev → main.

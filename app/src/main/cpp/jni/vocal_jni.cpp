@@ -28,9 +28,56 @@
 
 #include <jni.h>
 
+#include <limits>
+#include <new>
 #include <vector>
 
 #include "analyzer/vocal_spectrogram.h"
+
+namespace {
+
+// See analysis_jni.cpp: no exception may unwind out of a JNI frame —
+// std::bad_alloc escaping aborts the process with SIGABRT and no Java log.
+bool CopyIn(JNIEnv* env, jfloatArray source, std::vector<float>& out) {
+  const jsize count = env->GetArrayLength(source);
+  if (count <= 0) return true;
+  if (static_cast<size_t>(count) >
+      static_cast<size_t>(std::numeric_limits<jint>::max())) {
+    return false;
+  }
+  try {
+    out.resize(static_cast<size_t>(count));
+    env->GetFloatArrayRegion(source, 0, count, out.data());
+    return true;
+  } catch (const std::bad_alloc&) {
+    return false;
+  } catch (...) {
+    return false;
+  }
+}
+
+jfloatArray AsArray(JNIEnv* env, const std::vector<float>& values) {
+  // jsize is 32-bit; an output past 2^31-1 elements would make the cast go
+  // negative and hand NewFloatArray a negative length.
+  if (values.size() > static_cast<size_t>(std::numeric_limits<jint>::max())) {
+    return env->NewFloatArray(0);
+  }
+  const jsize produced = static_cast<jsize>(values.size());
+  jfloatArray result = env->NewFloatArray(produced);
+  if (result == nullptr) {
+    return nullptr;  // OOM; the exception is already pending.
+  }
+  if (produced > 0) {
+    env->SetFloatArrayRegion(result, 0, produced, values.data());
+  }
+  return result;
+}
+
+jfloatArray EmptyFloatArray(JNIEnv* env) {
+  return env->NewFloatArray(0);
+}
+
+}  // namespace
 
 extern "C" {
 
@@ -44,25 +91,20 @@ Java_moe_rukamori_archivetune_playback_smart_VocalSpectrogram_nativeCompute(
     jfloatArray left,
     jfloatArray right,
     jdouble sample_rate) {
-  const jsize left_count = env->GetArrayLength(left);
-  const jsize right_count = env->GetArrayLength(right);
-
   std::vector<std::vector<float>> channels(2);
-  channels[0].resize(static_cast<size_t>(left_count));
-  channels[1].resize(static_cast<size_t>(right_count));
-  if (left_count > 0) env->GetFloatArrayRegion(left, 0, left_count, channels[0].data());
-  if (right_count > 0) env->GetFloatArrayRegion(right, 0, right_count, channels[1].data());
-
-  const bitchord::smart::VocalSpectrogram spectrogram =
-      bitchord::smart::ComputeVocalSpectrogram(channels, sample_rate);
-
-  const jsize produced = static_cast<jsize>(spectrogram.values.size());
-  jfloatArray result = env->NewFloatArray(produced);
-  if (result == nullptr) return nullptr;
-  if (produced > 0) {
-    env->SetFloatArrayRegion(result, 0, produced, spectrogram.values.data());
+  if (!CopyIn(env, left, channels[0]) || !CopyIn(env, right, channels[1])) {
+    return EmptyFloatArray(env);
   }
-  return result;
+
+  try {
+    const bitchord::smart::VocalSpectrogram spectrogram =
+        bitchord::smart::ComputeVocalSpectrogram(channels, sample_rate);
+    return AsArray(env, spectrogram.values);
+  } catch (const std::bad_alloc&) {
+    return EmptyFloatArray(env);
+  } catch (...) {
+    return EmptyFloatArray(env);
+  }
 }
 
 JNIEXPORT jint JNICALL

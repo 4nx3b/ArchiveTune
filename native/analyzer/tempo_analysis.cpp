@@ -210,7 +210,9 @@ double Correlation(const std::vector<double>& values, int lag, size_t limit) {
 // Linear interpolation lets sub-frame lag refinement participate in phase
 // scoring without resampling the complete onset envelope.
 double SampleEnvelope(const std::vector<double>& values, double position) {
-  if (position < 0 || position >= values.size() - 1) return 0;
+  // `values.size() - 1` underflows to SIZE_MAX on an empty vector, which lets
+  // every position through and then reads out of bounds below.
+  if (values.size() < 2 || position < 0 || position >= values.size() - 1) return 0;
   const size_t left = static_cast<size_t>(position);
   const double fraction = position - left;
   return values[left] * (1.0 - fraction) + values[left + 1] * fraction;

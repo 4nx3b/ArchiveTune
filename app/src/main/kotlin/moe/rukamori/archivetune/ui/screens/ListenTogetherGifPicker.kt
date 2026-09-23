@@ -101,17 +101,21 @@ import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 private const val GIF_SEARCH_DEBOUNCE_MS = 400L
 
 /**
- * Liquid-glass attachment menu anchored to the composer's "+" button: opens
- * with the same morph (spring scale + fade from the anchor) the message
+ * Liquid-glass attachment menu anchored to the composer's paperclip button:
+ * opens with the same morph (spring scale + fade from the anchor) the message
  * actions popup uses, over a locally-recorded chat backdrop, with divider
- * rules between the two options — Song and GIF.
+ * rules between the options — Song, GIF and the chat wallpaper (set/remove).
  */
 @Composable
 internal fun AttachmentMenuPopup(
     anchor: Rect,
     backdrop: PlatformBackdrop?,
+    wallpaperSet: Boolean,
+    scrimAlpha: Float = 0.30f,
     onPickSong: () -> Unit,
     onPickGif: () -> Unit,
+    onPickWallpaper: () -> Unit,
+    onRemoveWallpaper: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val density = LocalDensity.current
@@ -162,10 +166,10 @@ internal fun AttachmentMenuPopup(
     }
 
     val popupShape = RoundedCornerShape(18.dp)
-    val scrimAlpha = 0.18f * alphaAnim.value
+    val overlayScrimAlpha = 0.18f * alphaAnim.value
 
     val frostedModifier =
-        remember(backdrop) {
+        remember(backdrop, scrimAlpha) {
             if (backdrop != null) {
                 Modifier.drawBackdrop(
                     backdrop = backdrop,
@@ -179,7 +183,7 @@ internal fun AttachmentMenuPopup(
                     },
                     onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
                     onDrawSurface = {
-                        drawRect(Color.Black.copy(alpha = 0.30f))
+                        drawRect(Color.Black.copy(alpha = scrimAlpha))
                     },
                     shape = { popupShape },
                 )
@@ -198,7 +202,7 @@ internal fun AttachmentMenuPopup(
                     overlayWidthPx = size.width
                     overlayHeightPx = size.height
                 }
-                .background(Color.Black.copy(alpha = scrimAlpha))
+                .background(Color.Black.copy(alpha = overlayScrimAlpha))
                 .combinedClickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -257,6 +261,44 @@ internal fun AttachmentMenuPopup(
             ) {
                 onPickGif()
                 if (!dismissed) dismissed = true
+            }
+
+            Spacer(
+                modifier =
+                    Modifier
+                        .padding(horizontal = 6.dp, vertical = 5.dp)
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(Color.White.copy(alpha = 0.14f)),
+            )
+
+            AttachmentOptionRow(
+                icon = R.drawable.image,
+                label = stringResource(R.string.listen_together_chat_set_wallpaper),
+                description = stringResource(R.string.listen_together_chat_wallpaper_hint),
+            ) {
+                onPickWallpaper()
+                if (!dismissed) dismissed = true
+            }
+
+            if (wallpaperSet) {
+                Spacer(
+                    modifier =
+                        Modifier
+                            .padding(horizontal = 6.dp, vertical = 5.dp)
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(Color.White.copy(alpha = 0.14f)),
+                )
+
+                AttachmentOptionRow(
+                    icon = R.drawable.hide_image,
+                    label = stringResource(R.string.listen_together_chat_remove_wallpaper),
+                    description = stringResource(R.string.listen_together_chat_wallpaper_hint),
+                ) {
+                    onRemoveWallpaper()
+                    if (!dismissed) dismissed = true
+                }
             }
         }
     }

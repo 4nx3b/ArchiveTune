@@ -37,7 +37,10 @@ target_include_directories(archivetune_analysis PRIVATE
 
 # -ffast-math is deliberately NOT enabled: the analyzer's log/mel-adjacent
 # arithmetic (see audio_analysis.cpp) is tuned against exact IEEE behaviour.
-target_compile_options(archivetune_analysis PRIVATE -O3 -fvisibility=hidden)
+# -fexceptions is explicit because the JNI bridges catch std::bad_alloc so an
+# allocation failure degrades to "no analysis" instead of aborting the process
+# (an exception unwinding out of a JNI frame is a hard SIGABRT with no log).
+target_compile_options(archivetune_analysis PRIVATE -O3 -fvisibility=hidden -fexceptions)
 
 find_library(log-lib log)
 target_link_libraries(archivetune_analysis ${log-lib})

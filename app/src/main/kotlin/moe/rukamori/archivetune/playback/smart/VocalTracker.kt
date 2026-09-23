@@ -89,6 +89,23 @@ class VocalTracker(private val context: Context) {
     @Volatile private var sessionThreads = 0
     private val lock = Any()
 
+    /**
+     * The model-shaped direct mix scratch, allocated once and reused for every
+     * inference. Only the single analysis thread ever touches it, and every
+     * cell is rewritten (values plus explicit zero padding) before each run.
+     */
+    private var mixScratch: ByteBuffer? = null
+
+    private fun scratchBuffer(bins: Int): ByteBuffer {
+        val size = VocalSpectrogram.CHANNELS * bins * FIXED_FRAMES * Float.SIZE_BYTES
+        val existing = mixScratch
+        if (existing != null && existing.capacity() == size) return existing
+        return ByteBuffer
+            .allocateDirect(size)
+            .order(ByteOrder.nativeOrder())
+            .also { mixScratch = it }
+    }
+
     private fun session(): OrtSession? {
         val threads = SmartFadeSettings.performanceMode.value.inferenceThreads
         session?.takeIf { sessionThreads == threads }?.let { return it }
@@ -148,9 +165,18 @@ class VocalTracker(private val context: Context) {
             // lies instead of copying it into native memory. Both matter: this
             // runs on devices whose whole Java heap is 256MB, and the two copies
             // this replaces were together enough to end the process.
-            val backing = ByteBuffer
-                .allocateDirect(VocalSpectrogram.CHANNELS * bins * FIXED_FRAMES * Float.SIZE_BYTES)
-                .order(ByteOrder.nativeOrder())
+            //
+            // Cached rather than allocated per call: this is pure scratch with a
+            // size that never varies (bins comes from the model contract), and a
+            // music app's low Java allocation rate means GC would otherwise let
+            // dozens of dead 16MB direct buffers pile up in native memory over a
+            // listening session. The single analysis thread is the only reader,
+            // so no synchronisation is needed; fillFixedFrames writes every cell
+            // (real frames plus explicit zero padding) so nothing survives a
+            // previous call. rewind() rather than a position view: it is a
+            // ByteBuffer member since API 1.
+            val backing = scratchBuffer(bins)
+            backing.rewind()
             fillFixedFrames(backing.asFloatBuffer(), spectrogram.values, bins, spectrogram.frames)
             val environment = OrtEnvironment.getEnvironment()
             val shape = longArrayOf(1, VocalSpectrogram.CHANNELS.toLong(), bins.toLong(), FIXED_FRAMES.toLong())

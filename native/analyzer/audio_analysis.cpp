@@ -246,8 +246,16 @@ double FindMixOutTime(
     if (silence_duration >= 0.3 && silence_end <= duration - 4.0) {
       const size_t before_start = index > context_windows ? index - context_windows : 0;
       const size_t after_end = std::min(levels.size(), end + context_windows);
-      const double before_peak = *std::max_element(levels.begin() + before_start, levels.begin() + index);
-      const double after_peak = *std::max_element(levels.begin() + end, levels.begin() + after_end);
+      // An empty range makes max_element return `last`; dereferencing that is
+      // a read past the allocation (intermittent SIGSEGV with no Java log).
+      // The quiet run can reach the final decoded window, so `end ==
+      // levels.size()` is a designed-in case, not a theoretical one.
+      const double before_peak = before_start < index
+          ? *std::max_element(levels.begin() + before_start, levels.begin() + index)
+          : 0.0;
+      const double after_peak = end < after_end
+          ? *std::max_element(levels.begin() + end, levels.begin() + after_end)
+          : 0.0;
       const double quiet_level = Average(levels, index, end);
       // Late gaps often separate an outro/hidden track and remain useful mix
       // points. Earlier gaps are protected when the main arrangement returns.
@@ -587,8 +595,12 @@ AnalysisResult AnalyzeAudio(
   double supplied_duration
 ) {
   AnalysisResult result;
+  // Validate BEFORE the fallback computation: samples.size() / sample_rate
+  // with a zero rate is `inf`, which slips through the guard below and
+  // propagates unbounded values into the structure pass.
+  if (samples.empty() || !(sample_rate >= 1000)) return result;
   result.duration = supplied_duration > 0 ? supplied_duration : samples.size() / sample_rate;
-  if (samples.empty() || sample_rate < 1000 || result.duration <= 0) return result;
+  if (!(result.duration > 0) || result.duration > 24.0 * 3600.0) return result;
   const auto envelope = AnalyzeEnvelope(samples, sample_rate, result.duration);
   result.audible_start_time = envelope.audible_start;
   result.pickup_time = envelope.audible_start;
