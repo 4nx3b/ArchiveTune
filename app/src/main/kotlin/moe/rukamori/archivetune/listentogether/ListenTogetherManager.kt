@@ -613,7 +613,12 @@ class ListenTogetherManager @Inject constructor(
                 if (isHost) {
                     _roomName.value?.let { client.sendRoomName(it) }
                 }
-                addSystemEvent(ChatSystemEventKind.USER_JOINED, event.username)
+                // The user's OWN join never renders as a system row — an
+                // automatic rejoin (session lost while backgrounded) would
+                // otherwise greet them with "you joined the room".
+                if (event.userId != userId.value) {
+                    addSystemEvent(ChatSystemEventKind.USER_JOINED, event.username)
+                }
 
                 // The newcomer's username is in roomState by the time the event
                 // is emitted, so the restore below only brings back the older
@@ -2298,10 +2303,17 @@ class ListenTogetherManager @Inject constructor(
                 // the right position, not blindly on top.
                 _chatMessages.value = (fresh + existing).sortedBy { it.timestamp }
                 // System events restore alongside the messages they belong to;
-                // a v2 store without them simply restores none.
+                // a v2 store without them simply restores none. A persisted
+                // self-join row is this user's OWN past join — re-showing it
+                // after every reconnect makes backgrounding look like a fresh
+                // "you joined the room" event, so those are dropped here.
                 if (stored.systemEvents.isNotEmpty()) {
                     val existingEventKeys = _chatSystemEvents.value.map { it.timestamp }.toHashSet()
-                    val freshEvents = stored.systemEvents.filterNot { it.timestamp in existingEventKeys }
+                    val freshEvents = stored.systemEvents
+                        .filterNot {
+                            it.kind == ChatSystemEventKind.USER_JOINED && it.actor == username
+                        }
+                        .filterNot { it.timestamp in existingEventKeys }
                     if (freshEvents.isNotEmpty()) {
                         _chatSystemEvents.value = (_chatSystemEvents.value + freshEvents).sortedBy { it.timestamp }
                     }

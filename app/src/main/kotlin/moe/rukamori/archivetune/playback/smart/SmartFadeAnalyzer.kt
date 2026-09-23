@@ -68,14 +68,25 @@ class SmartFadeAnalyzer(
 
         /**
          * Long-form audio (DJ sets, concert recordings, full mixtapes) is
-         * refused outright: the structural pass decodes the WHOLE track into
-         * memory, and a 30-minute mix alone would demand ~800MB across the
-         * Java decode, the JNI copy and the resampled result — a silent
-         * abort or an LMK kill on mid-range devices. A plain crossfade is
-         * what unanalysed material gets anyway, so the cap costs nothing a
-         * listener can hear.
+         * refused outright: even with the streaming low-rate fold a 30-minute
+         * mix still costs a multi-minute decode plus native copies of a
+         * ~26 MB envelope signal, and the models then run over that. A plain
+         * crossfade is what unanalysed material gets anyway, so the cap costs
+         * nothing a listener can hear.
          */
         private const val MAX_ANALYSIS_SECONDS = 600.0
+
+        /** Structural decode may exceed the advertised duration by this
+         * fraction (sync-seek overshoot, lying timestamps) before the budget
+         * stops it. */
+        private const val STRUCT_DECODE_HEADROOM = 1.25
+
+        /** Absolute slack on top of the headroom, in seconds. */
+        private const val STRUCT_DECODE_SLACK_SECONDS = 15.0
+
+        /** Head/tail region decodes get the same treatment, tighter. */
+        private const val REGION_DECODE_HEADROOM = 1.25
+        private const val REGION_DECODE_SLACK_SECONDS = 10.0
     }
 
     private val appContext = context.applicationContext
@@ -86,6 +97,13 @@ class SmartFadeAnalyzer(
     private val results = ConcurrentHashMap<String, TrackAnalysis>()
     private val running = ConcurrentHashMap.newKeySet<String>()
     private val shortDecodes = ConcurrentHashMap<String, Int>()
+
+    /** Set by [release]; the worker checks it between pipeline stages so a
+     * teardown-time analysis stops at the next boundary instead of holding
+     * the model sessions open past the drain window (the leak path when the
+     * service is recreated within the same process). */
+    @Volatile
+    private var released = false
 
     private val fetchClient =
         OkHttpClient
@@ -139,6 +157,7 @@ class SmartFadeAnalyzer(
         runCatching {
             executor.execute {
                 try {
+                    if (released) return@execute
                     // A usable stored analysis short-circuits the whole pipeline:
                     // without this head-check the first request of a session would
                     // re-earn from audio a result that was already on disk.
@@ -187,6 +206,7 @@ class SmartFadeAnalyzer(
     }
 
     fun release() {
+        released = true
         executor.shutdownNow()
         // The in-flight analysis can be deep inside a native ONNX Run() that an
         // interrupt cannot stop. Closing the session underneath it is a
@@ -194,10 +214,16 @@ class SmartFadeAnalyzer(
         // released once the worker has actually drained — on a thread of its
         // own, because release() is called from service teardown on the main
         // thread and must never block for the seconds a long inference needs.
-        // If the worker somehow outlasts the drain window the sessions are left
-        // open (the process is going away anyway) rather than closed mid-Run.
+        // The drain window has to cover a real worst case (resolve + decode
+        // wall + inference can legitimately run ~3 minutes): timing out at 10s
+        // used to leave BOTH model sessions allocated forever whenever the
+        // service was recreated in the same process — cumulative native growth
+        // that ended in a malloc abort. The worker itself bails at stage
+        // boundaries once [released] is seen, so the common case drains in
+        // milliseconds; this window only matters for an interrupt-immune
+        // native Run().
         Thread({
-            val drained = runCatching { executor.awaitTermination(10, TimeUnit.SECONDS) }
+            val drained = runCatching { executor.awaitTermination(150, TimeUnit.SECONDS) }
                 .isSuccess && executor.isTerminated
             if (drained) {
                 tracker.release()
@@ -246,6 +272,11 @@ class SmartFadeAnalyzer(
         val structural = structure(trackId, uri, local, effectiveDuration) ?: return null
         val features = structural.features ?: return empty(trackId, effectiveDuration)
 
+        // Stage boundary: a release that arrived mid-decode stops the pipeline
+        // here rather than handing the models several more minutes of work —
+        // this is what lets the drain thread close the sessions promptly.
+        if (released) return null
+
         // Early publish: the whole-track DSP alone already carries a tempo
         // estimate — surface it the moment Pass 1 lands so the player's status
         // line resolves within seconds. The Beat This! / vocal model passes
@@ -273,6 +304,7 @@ class SmartFadeAnalyzer(
         // Pass 2 (models): the Beat This! grid and the open-unmix vocal mask,
         // over the head and tail only — a transition only ever reads the tail
         // of the outgoing track and the head of the incoming one.
+        if (released) return null
         val openTrackSource: () -> MediaDataSource? = { openSource(trackId, uri, local) }
         val window = BeatTracker.WINDOW_SECONDS
         val tailStart = max(0.0, effectiveDuration - window)
@@ -345,9 +377,23 @@ class SmartFadeAnalyzer(
         effectiveDuration: Double,
     ): Structural? {
         val structRate = TrackFeatures.sampleRate
+        // Streaming fold + hard budget: the decode produces the analyzer's
+        // low-rate signal directly (never the container-rate full track), and
+        // the budget stops a container whose timestamps lie from walking the
+        // file to its true end. This is the fix for the automix force-close:
+        // the old path held the whole track at container rate in Java (up to
+        // ~200 MB transient on a ~100 MB heap), and the OOM landed on whatever
+        // thread allocated next — lyrics, Coil, the notification — with no
+        // automix line anywhere in the log.
         val decoded =
             openSource(trackId, uri, local)?.use {
-                AudioDecoder.decodeRegion(it, 0.0, effectiveDuration)
+                AudioDecoder.decodeRegion(
+                    it,
+                    0.0,
+                    effectiveDuration,
+                    targetSampleRate = structRate,
+                    maxSeconds = effectiveDuration * STRUCT_DECODE_HEADROOM + STRUCT_DECODE_SLACK_SECONDS,
+                )
             } ?: return null
         val (pcm, _) = decoded
 
@@ -362,13 +408,10 @@ class SmartFadeAnalyzer(
             return null
         }
 
-        val samples =
-            if (abs(pcm.sampleRate - structRate) > 1.0) {
-                TrackFeatures.resample(pcm.samples, pcm.sampleRate, structRate)
-            } else {
-                pcm.samples
-            }
-        return Structural(TrackFeatures.analyze(samples ?: return null, effectiveDuration))
+        // Samples arrive already folded to the analyzer's rate, so the native
+        // whole-track resample pass (and the full-rate native copy it made)
+        // is gone entirely.
+        return Structural(TrackFeatures.analyze(pcm.samples, effectiveDuration))
     }
 
     /** Everything a decoded region contributes, once its audio is let go of. */
@@ -389,8 +432,14 @@ class SmartFadeAnalyzer(
         features: TrackFeatures.Features,
     ): Region? {
         val decoded =
-            openSource()?.use { AudioDecoder.decodeRegionStereo(it, startSeconds, endSeconds) }
-                ?: return null
+            openSource()?.use {
+                AudioDecoder.decodeRegionStereo(
+                    it,
+                    startSeconds,
+                    endSeconds,
+                    maxSeconds = (endSeconds - startSeconds) * REGION_DECODE_HEADROOM + REGION_DECODE_SLACK_SECONDS,
+                )
+            } ?: return null
         val (stereo, actualStart) = decoded
         if (stereo.left.size < stereo.sampleRate) return null
 
@@ -488,10 +537,15 @@ class SmartFadeAnalyzer(
         val file = analysisFileFor(trackId)
         if (file.exists() && file.length() >= MIN_ANALYSIS_BYTES) {
             file.setLastModified(System.currentTimeMillis())
-            return FileMediaDataSource(file)
+            // runCatching: the LRU prune can delete the file between the
+            // exists() check and the RandomAccessFile open — an unguarded
+            // FileNotFoundException used to be swallowed by the worker's
+            // catch-all as a permanent write-off for the track instead of the
+            // retryable miss it is.
+            return runCatching { FileMediaDataSource(file) }.getOrNull()
         }
         val fetched = fetchAnalysisAudio(trackId, file) ?: return null
-        return FileMediaDataSource(fetched)
+        return runCatching { FileMediaDataSource(fetched) }.getOrNull()
     }
 
     private fun analysisFileFor(trackId: String): File {

@@ -45,7 +45,17 @@ class ArtistItemsViewModel
                 .get<String>("params")
                 ?.takeUnless { it.isBlank() || it == "null" }
 
-        val title = MutableStateFlow("")
+        // The originating section's title ("Singles/EPs", "Albums", …) rides
+        // the route: it seeds the header pill IMMEDIATELY, so the screen never
+        // opens back-arrow-only while the fetch runs — and never stays that
+        // way when the fetch fails or answers blank (the network page's own
+        // title still refines it once it lands).
+        private val routeTitle =
+            savedStateHandle
+                .get<String>("title")
+                ?.takeUnless { it.isBlank() || it == "null" }
+
+        val title = MutableStateFlow(routeTitle.orEmpty())
         val itemsPage = MutableStateFlow<ItemsPage?>(null)
         val itemsLayout = MutableStateFlow(ArtistItemsPageLayout.LIST)
 

@@ -927,7 +927,13 @@ fun ArtistScreen(
                                     onClick =
                                         section.moreEndpoint?.let {
                                             {
-                                                navController.navigate(buildArtistItemsRoute(viewModel.artistId, it))
+                                                navController.navigate(
+                                                    buildArtistItemsRoute(
+                                                        viewModel.artistId,
+                                                        it,
+                                                        section.title,
+                                                    ),
+                                                )
                                             }
                                         },
                                 )
@@ -1599,11 +1605,16 @@ private fun String.toArtistCompactCountText(): String? {
 private fun buildArtistItemsRoute(
     artistId: String,
     endpoint: BrowseEndpoint,
+    sectionTitle: String? = null,
 ): String {
     val encodedArtistId = Uri.encode(artistId)
     val encodedBrowseId = Uri.encode(endpoint.browseId)
     val encodedParams =
         endpoint.params
+            ?.takeIf { it.isNotBlank() }
+            ?.let { Uri.encode(it) }
+    val encodedTitle =
+        sectionTitle
             ?.takeIf { it.isNotBlank() }
             ?.let { Uri.encode(it) }
 
@@ -1615,6 +1626,14 @@ private fun buildArtistItemsRoute(
         if (encodedParams != null) {
             append("&params=")
             append(encodedParams)
+        }
+        // The section's own title rides the route so the glass header pill
+        // shows it immediately — without it the pill rendered back-arrow-only
+        // while the network fetch ran (and forever, if it failed), because the
+        // screen's title previously existed ONLY inside the fetched page.
+        if (encodedTitle != null) {
+            append("&title=")
+            append(encodedTitle)
         }
     }
 }
