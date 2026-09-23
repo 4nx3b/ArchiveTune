@@ -425,7 +425,19 @@ class ListenTogetherClient @Inject constructor(
             }
 
             ConnectionState.CONNECTED -> {
-                val alive = probeConnection(timeoutMs = 2500L)
+                // A probe fired the instant the process unfreezes can race the
+                // network stack itself — the socket write goes out before the
+                // radios are fully back. Give a foreground return a longer
+                // timeout AND one retry before declaring the socket dead: a
+                // forced reconnect spends the server's one-shot session token,
+                // which is exactly what turned a benign background stint into
+                // the visible rejoin flow.
+                val foregroundReturn = reason == "app foreground"
+                var alive = probeConnection(timeoutMs = if (foregroundReturn) 4000L else 2500L)
+                if (!alive && foregroundReturn) {
+                    delay(1200)
+                    alive = probeConnection(timeoutMs = 4000L)
+                }
                 if (!alive) {
                     log(LogLevel.WARNING, "Socket unresponsive after $reason — forcing reconnect")
                     forceReconnect()
@@ -760,7 +772,15 @@ class ListenTogetherClient @Inject constructor(
             .build()
 
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
+            // Late callbacks from a socket that is no longer the current one
+            // (a cancelled/half-closed predecessor whose onFailure lands after
+            // a replacement already connected) used to run the full
+            // disconnect machinery: cancel the ping job, clobber the state and
+            // schedule a SECOND connect — whose RECONNECT burned the server's
+            // one-shot session token and forced the visible rejoin flow.
+            // Every callback below first checks it belongs to the live socket.
+            override fun onOpen(socket: WebSocket, response: Response) {
+                if (socket !== webSocket) return
                 log(LogLevel.INFO, "Connected to server")
                 _connectionState.value = ConnectionState.CONNECTED
                 reconnectAttempts = 0
@@ -774,25 +794,30 @@ class ListenTogetherClient @Inject constructor(
                 }
             }
 
-            override fun onMessage(webSocket: WebSocket, text: String) {
+            override fun onMessage(socket: WebSocket, text: String) {
+                if (socket !== webSocket) return
                 handleMessage(text.toByteArray())
             }
 
-            override fun onMessage(webSocket: WebSocket, bytes: okio.ByteString) {
+            override fun onMessage(socket: WebSocket, bytes: okio.ByteString) {
+                if (socket !== webSocket) return
                 handleMessage(bytes.toByteArray())
             }
 
-            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            override fun onClosing(socket: WebSocket, code: Int, reason: String) {
+                if (socket !== webSocket) return
                 log(LogLevel.INFO, "Server closing connection", "Code: $code, Reason: $reason")
-                webSocket.close(1000, null)
+                socket.close(1000, null)
             }
 
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+            override fun onClosed(socket: WebSocket, code: Int, reason: String) {
+                if (socket !== webSocket) return
                 log(LogLevel.INFO, "Connection closed", "Code: $code, Reason: $reason")
                 handleDisconnect()
             }
 
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            override fun onFailure(socket: WebSocket, t: Throwable, response: Response?) {
+                if (socket !== webSocket) return
                 log(LogLevel.ERROR, "Connection failure", t.message)
                 handleConnectionFailure(t)
             }
@@ -1608,24 +1633,38 @@ class ListenTogetherClient @Inject constructor(
                             // create/join sent to a protobuf-only server.
                             maybeRetryRoomActionAfterProtocolUpgrade()
                         }
-                        "session_not_found" -> {
-                            if (storedRoomCode != null && storedUsername != null && !wasHost) {
-                                log(LogLevel.WARNING, "Session expired on server",
-                                    "Attempting automatic rejoin to room: $storedRoomCode")
-
+                        // Session-level loss: the token is spent or expired, but the
+                        // ROOM may still exist (the server's reconnect grace is far
+                        // longer than its socket deadline). A fresh JOIN recovers it
+                        // transparently — guests AND hosts: a host whose session died
+                        // while the room lives on (host transfer, server restart)
+                        // used to hit a dead end that required manual re-joining.
+                        // The dead token is cleared FIRST so nothing can RECONNECT
+                        // with it again (each retry consumes it server-side).
+                        "session_not_found", "session_expired", "invalid_session" -> {
+                            if (storedRoomCode != null && storedUsername != null) {
+                                log(
+                                    LogLevel.WARNING,
+                                    "Room session lost on server",
+                                    "${payload.code} — attempting transparent rejoin to room: $storedRoomCode",
+                                )
+                                sessionToken = null
                                 scope.launch {
                                     delay(500)
                                     joinRoom(storedRoomCode!!, storedUsername!!)
                                 }
-                            } else if (storedRoomCode != null && storedUsername != null) {
-                                log(LogLevel.WARNING, "Host session expired",
-                                    "Room: $storedRoomCode - manual intervention may be needed")
-                                clearPersistedSession()
-                                sessionToken = null
                             } else {
                                 clearPersistedSession()
                                 sessionToken = null
                             }
+                        }
+                        // The room itself is gone: no rejoin target exists, so retrying
+                        // a JOIN would only loop. Clear the session and let the
+                        // ServerError event surface it.
+                        "room_not_found", "room_closed" -> {
+                            log(LogLevel.WARNING, "Room is gone on the server", payload.code)
+                            clearPersistedSession()
+                            sessionToken = null
                         }
                         else -> {}
                     }

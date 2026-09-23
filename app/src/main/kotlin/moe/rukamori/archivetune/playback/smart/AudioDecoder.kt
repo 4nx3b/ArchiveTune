@@ -35,6 +35,13 @@ import kotlin.math.max
  * container Android cannot parse, a region past the end — all return null,
  * and the caller falls back to no analysis, which the transition policy
  * already handles as its bottom rung.
+ *
+ * Memory contract: the whole-track structural pass folds each decoded chunk
+ * down to the analyzer's low target rate as it arrives
+ * ([decodeRegion]'s [targetSampleRate]), so the container-rate signal never
+ * exists in full — a heap that cannot hold 200 MB of float PCM must never be
+ * asked to. [maxSeconds] bounds a decode whose timestamps lie (containers
+ * that under-report their duration would otherwise walk the file to its end).
  */
 object AudioDecoder {
 
@@ -80,8 +87,12 @@ object AudioDecoder {
                 }
                 .maxOrNull()
                 ?.takeIf { it.isFinite() && it > 0 }
-        } catch (error: Exception) {
-            Log.w(TAG, "Could not read duration from cached media", error)
+        } catch (error: Throwable) {
+            // Throwable, not Exception: during heap pressure the huge PCM
+            // allocations below can surface as OutOfMemoryError here first,
+            // and an escaping Error used to kill the analysis worker's thread
+            // with no Java unwind left behind.
+            runCatching { Log.w(TAG, "Could not read duration from cached media", error) }
             null
         } finally {
             runCatching { extractor.release() }
@@ -89,19 +100,58 @@ object AudioDecoder {
     }
 
     /**
-     * Decodes [startSeconds] to [endSeconds] of [source], downmixed to mono at
-     * the container's native rate.
+     * Decodes [startSeconds] to [endSeconds] of [source], downmixed to mono.
+     *
+     * With [targetSampleRate] the mono chunks are folded down to that rate as
+     * the codec produces them ([StreamingResampler]) and the result comes
+     * back at exactly that rate — the container-rate signal never exists in
+     * full, which is what keeps a whole-track structural pass inside a normal
+     * heap. Without it, the result stays at the container's own rate and the
+     * caller resamples.
+     *
+     * [maxSeconds] (in seconds of decoded audio) stops the decode early once
+     * exceeded — a guard against containers whose timestamps lie, which would
+     * otherwise decode far past the requested end and balloon without bound.
      *
      * The extractor seeks to the closest sync sample at or before the
      * requested start, so a little more audio than asked for may come back at
      * the front; the caller is given the real start via the returned offset
      * so frame indices still map to true track times.
      */
-    fun decodeRegion(source: MediaDataSource, startSeconds: Double, endSeconds: Double): Pair<Pcm, Double>? {
+    fun decodeRegion(
+        source: MediaDataSource,
+        startSeconds: Double,
+        endSeconds: Double,
+        targetSampleRate: Double? = null,
+        maxSeconds: Double? = null,
+    ): Pair<Pcm, Double>? {
+        if (targetSampleRate != null && targetSampleRate > 0) {
+            val resampler = StreamingResampler(targetSampleRate)
+            val budget =
+                maxSeconds
+                    ?.takeIf { it > 0 }
+                    ?.let { seconds -> (seconds * targetSampleRate).toLong().coerceAtLeast(1L) }
+                    ?: Long.MAX_VALUE
+            val decoded =
+                decodeRaw(source, startSeconds, endSeconds) { buffer, info, channels, rate ->
+                    resampler.push(toMono(buffer, info, channels), rate, budget)
+                } ?: return null
+            val samples = resampler.result() ?: return null
+            return Pcm(samples, targetSampleRate) to decoded.second
+        }
         val chunks = ArrayList<FloatArray>()
-        val decoded = decodeRaw(source, startSeconds, endSeconds) { buffer, info, channels ->
-            chunks += toMono(buffer, info, channels)
-        } ?: return null
+        var framesDecoded = 0L
+        var frameBudget = -1L
+        val decoded =
+            decodeRaw(source, startSeconds, endSeconds) { buffer, info, channels, rate ->
+                if (frameBudget < 0 && maxSeconds != null && rate > 0) {
+                    frameBudget = (maxSeconds * rate).toLong().coerceAtLeast(1L)
+                }
+                val chunk = toMono(buffer, info, channels)
+                chunks += chunk
+                framesDecoded += chunk.size
+                frameBudget < 0 || framesDecoded < frameBudget
+            } ?: return null
         return Pcm(flatten(chunks), decoded.first) to decoded.second
     }
 
@@ -117,12 +167,23 @@ object AudioDecoder {
         source: MediaDataSource,
         startSeconds: Double,
         endSeconds: Double,
+        maxSeconds: Double? = null,
     ): Pair<StereoPcm, Double>? {
         val left = ArrayList<FloatArray>()
         val right = ArrayList<FloatArray>()
-        val decoded = decodeRaw(source, startSeconds, endSeconds) { buffer, info, channels ->
-            toStereo(buffer, info, channels, left, right)
-        } ?: return null
+        var framesDecoded = 0L
+        var frameBudget = -1L
+        val decoded =
+            decodeRaw(source, startSeconds, endSeconds) { buffer, info, channels, rate ->
+                if (frameBudget < 0 && maxSeconds != null && rate > 0) {
+                    frameBudget = (maxSeconds * rate).toLong().coerceAtLeast(1L)
+                }
+                val (leftChunk, rightChunk) = toStereo(buffer, info, channels)
+                left += leftChunk
+                right += rightChunk
+                framesDecoded += leftChunk.size
+                frameBudget < 0 || framesDecoded < frameBudget
+            } ?: return null
         return StereoPcm(flatten(left), flatten(right), decoded.first) to decoded.second
     }
 
@@ -138,8 +199,10 @@ object AudioDecoder {
     }
 
     /**
-     * Runs the decode loop, handing each output buffer to [onBuffer], and
-     * returns the output sample rate paired with the region's real start.
+     * Runs the decode loop, handing each output buffer to [onBuffer] — which
+     * receives the output sample rate and returns false to stop the decode
+     * (the budget signal) — and returns the output sample rate paired with
+     * the region's real start.
      *
      * Shared by the mono and stereo entry points so there is one dequeue loop
      * to get right rather than two that can drift apart; all that differs
@@ -149,7 +212,7 @@ object AudioDecoder {
         source: MediaDataSource,
         startSeconds: Double,
         endSeconds: Double,
-        onBuffer: (ByteBuffer, MediaCodec.BufferInfo, Int) -> Unit,
+        onBuffer: (ByteBuffer, MediaCodec.BufferInfo, Int, Double) -> Boolean,
     ): Pair<Double, Double>? {
         if (endSeconds <= startSeconds) return null
         val extractor = MediaExtractor()
@@ -227,10 +290,19 @@ object AudioDecoder {
                                 actualStartSeconds = bufferInfo.presentationTimeUs / 1_000_000.0
                                 sawFirstSample = true
                             }
+                            var budgetExceeded = false
                             codec.getOutputBuffer(outputIndex)?.let { output ->
-                                onBuffer(output, bufferInfo, outputChannels)
+                                budgetExceeded = !onBuffer(output, bufferInfo, outputChannels, outputRate.toDouble())
                             }
-                            if (bufferInfo.presentationTimeUs > endUs) outputDone = true
+                            if (budgetExceeded) {
+                                // Enough decoded audio: stop feeding and drain no
+                                // further — timestamps that lie would otherwise
+                                // walk the decode to the file's true end.
+                                inputDone = true
+                                outputDone = true
+                            } else if (bufferInfo.presentationTimeUs > endUs) {
+                                outputDone = true
+                            }
                         }
                         codec.releaseOutputBuffer(outputIndex, false)
                     }
@@ -239,8 +311,13 @@ object AudioDecoder {
 
             if (!sawFirstSample || outputRate <= 0) return null
             return outputRate.toDouble() to actualStartSeconds
-        } catch (error: Exception) {
-            Log.w(TAG, "Region decode failed", error)
+        } catch (error: Throwable) {
+            // Throwable, not Exception: MediaCodec configuration and the float
+            // PCM allocations surface as OutOfMemoryError/StackOverflowError
+            // under heap pressure, and an Error escaping here used to kill the
+            // analysis thread outright — the exact silent force-close the
+            // automix crash reports described.
+            runCatching { Log.w(TAG, "Region decode failed", error) }
             return null
         } finally {
             runCatching { codec?.stop() }
@@ -271,7 +348,7 @@ object AudioDecoder {
 
     /**
      * Splits one 16-bit PCM output buffer into planar left/right float in
-     * [-1, 1], appending each to its own accumulator.
+     * [-1, 1], as one chunk per side.
      *
      * A mono source is widened by giving both sides the same samples, and
      * anything above two channels keeps only the first two: the model's input
@@ -283,9 +360,7 @@ object AudioDecoder {
         buffer: ByteBuffer,
         info: MediaCodec.BufferInfo,
         channels: Int,
-        left: MutableList<FloatArray>,
-        right: MutableList<FloatArray>,
-    ) {
+    ): Pair<FloatArray, FloatArray> {
         val safeChannels = max(1, channels)
         val shorts = buffer.duplicate().apply {
             order(ByteOrder.LITTLE_ENDIAN)
@@ -301,9 +376,88 @@ object AudioDecoder {
             leftChunk[index] = frame[0] / 32768f
             rightChunk[index] = (if (safeChannels > 1) frame[1] else frame[0]) / 32768f
         }
-        left += leftChunk
-        right += rightChunk
+        return leftChunk to rightChunk
     }
 
     private fun MediaFormat.intOrNull(key: String): Int? = if (containsKey(key)) getInteger(key) else null
+}
+
+/**
+ * Folds a stream of mono chunks — whose source rate is only known once the
+ * codec starts producing — into one buffer at a fixed target rate, so a
+ * whole-track decode never materialises at the container rate.
+ *
+ * Down-conversion box-averages each output sample's worth of input, which is
+ * an adequate anti-alias for envelope, structure and key work (all of it
+ * lives far below half the target rate — the beat model's mel front end still
+ * gets the full-bandwidth sinc-resampled path); up-conversion
+ * sample-and-holds. Both keep O(1) state and handle arbitrary, non-integer
+ * ratios, and neither needs the previous chunk: every input sample lands in
+ * exactly one output box.
+ */
+private class StreamingResampler(private val targetRate: Double) {
+    /** Source samples per output sample; learned from the first chunk's rate. */
+    private var step = 0.0
+
+    /** Running sum/count of the currently open output box (down-conversion). */
+    private var acc = 0.0
+    private var accCount = 0
+
+    /** 1-based source-sample count that closes the currently open box. */
+    private var nextBoundary = 0.0
+
+    /** Source samples pushed so far. */
+    private var sourceSeen = 0L
+
+    private var out = FloatArray(8192)
+    private var outSize = 0
+
+    /**
+     * Appends [chunk] (decoded at [rate]) and returns false once [budget]
+     * output samples exist — the caller's signal to stop the decode.
+     */
+    fun push(chunk: FloatArray, rate: Double, budget: Long): Boolean {
+        if (chunk.isEmpty()) return outSize.toLong() < budget
+        if (step <= 0.0) {
+            if (rate <= 0.0) return outSize.toLong() < budget
+            step = rate / targetRate
+            nextBoundary = step
+        }
+        if (step >= 1.0) {
+            for (value in chunk) {
+                acc += value
+                accCount++
+                val oneBased = ++sourceSeen
+                if (oneBased.toDouble() >= nextBoundary) {
+                    append((acc / accCount).toFloat())
+                    acc = 0.0
+                    accCount = 0
+                    nextBoundary += step
+                }
+            }
+        } else {
+            for (value in chunk) {
+                val from = kotlin.math.ceil(sourceSeen / step).toLong()
+                val until = kotlin.math.ceil((sourceSeen + 1) / step).toLong()
+                for (index in from until until) append(value)
+                sourceSeen++
+            }
+        }
+        return outSize.toLong() < budget
+    }
+
+    /** Emits the trailing partial box, if any, and returns the folded samples. */
+    fun result(): FloatArray? {
+        if (accCount > 0) {
+            append((acc / accCount).toFloat())
+            acc = 0.0
+            accCount = 0
+        }
+        return out.takeIf { outSize > 0 }?.copyOf(outSize)
+    }
+
+    private fun append(value: Float) {
+        if (outSize == out.size) out = out.copyOf(out.size * 2)
+        out[outSize++] = value
+    }
 }

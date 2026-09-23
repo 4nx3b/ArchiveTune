@@ -76,6 +76,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -90,14 +91,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import coil3.imageLoader
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
+import coil3.toBitmap
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalListenTogetherManager
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
@@ -156,6 +163,13 @@ fun CommentTogetherScreen(navController: NavController) {
     // The local chat wallpaper (device-only, never synced, never seen by other
     // members) rendered behind the conversation.
     var chatWallpaper by rememberPreference(ListenTogetherChatWallpaperKey, "")
+
+    // Glass contrast over that wallpaper, MEASURED from the image itself: a
+    // dark wallpaper gets a dark glass scrim with WHITE icons and text even
+    // while the app theme is light, and a bright one flips the pill bright
+    // with dark ink — the pill stays legible in every theme/wallpaper
+    // combination instead of following the theme's surface luminance.
+    val chatWallpaperGlass = rememberChatWallpaperGlassColors(chatWallpaper)
 
     // metroserver (The Meowery) speaks a protobuf protocol with no chat message
     // type at all — the composer is replaced by an explanatory notice there.
@@ -401,7 +415,10 @@ fun CommentTogetherScreen(navController: NavController) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.52f)),
+                        .background(
+                            chatWallpaperGlass.backgroundDim
+                                ?: MaterialTheme.colorScheme.scrim.copy(alpha = 0.52f),
+                        ),
                 )
             } else {
                 Box(
@@ -519,11 +536,12 @@ fun CommentTogetherScreen(navController: NavController) {
 
                 // The header pill itself: back button + title inside liquid glass,
                 // over a transparent background (no opaque top bar anymore).
-                // Over a wallpaper the glass gets an explicit dark surface scrim —
-                // the default ~27% darkening lets a bright image wash the icons
-                // and title out (see LiquidGlass.liquidGlass's scrim parameter).
-                val wallpaperGlassScrim: Color? =
-                    chatWallpaper.takeIf { it.isNotBlank() }?.let { Color.Black.copy(alpha = 0.45f) }
+                // Over a wallpaper the glass gets an explicit surface scrim whose
+                // polarity follows the MEASURED wallpaper luminance (dark image →
+                // dark scrim + white content, bright image → light scrim + dark
+                // ink), so the pill reads in light theme and dark alike.
+                val wallpaperGlassScrim: Color? = chatWallpaperGlass.scrim
+                val headerContentColor = chatWallpaperGlass.contentColor ?: liquidGlassContentColor()
                 Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -548,7 +566,7 @@ fun CommentTogetherScreen(navController: NavController) {
                         Icon(
                             painter = painterResource(R.drawable.arrow_back),
                             contentDescription = null,
-                            tint = liquidGlassContentColor(),
+                            tint = headerContentColor,
                             modifier = Modifier
                                 .clickable { navController.navigateUp() }
                                 .padding(12.dp)
@@ -558,7 +576,7 @@ fun CommentTogetherScreen(navController: NavController) {
                             text = headerTitle,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = liquidGlassContentColor(),
+                            color = headerContentColor,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
@@ -721,9 +739,11 @@ fun CommentTogetherScreen(navController: NavController) {
                     },
                     onAttachmentClick = { anchor -> attachmentAnchor = anchor },
                     glassBackdrop = chatGlassBackdrop,
-                    // Wallpaper mode deepens the capsule's glass scrim for the
-                    // same readability reason as the header pill.
-                    scrim = chatWallpaper.takeIf { it.isNotBlank() }?.let { Color.Black.copy(alpha = 0.45f) },
+                    // Wallpaper mode: the capsule's scrim polarity AND its content
+                    // color both follow the measured wallpaper luminance (see
+                    // rememberChatWallpaperGlassColors).
+                    scrim = chatWallpaperGlass.scrim,
+                    contentColor = chatWallpaperGlass.contentColor,
                 )
 
                 // Typing indicator with layered avatars
@@ -988,17 +1008,23 @@ private fun TelegramGlassComposer(
     onAttachmentClick: (Rect) -> Unit,
     glassBackdrop: moe.rukamori.archivetune.ui.component.PlatformBackdrop?,
     scrim: Color? = null,
+    contentColor: Color? = null,
     modifier: Modifier = Modifier,
 ) {
     var attachmentButtonBounds by remember { mutableStateOf(Rect.Zero) }
     val typing = text.isNotBlank()
     val replying = replyingTo != null || editingMessage != null
     val capsuleShape = RoundedCornerShape(28.dp)
-    val accent = if (editingMessage != null) {
-        MaterialTheme.colorScheme.tertiary
-    } else {
-        MaterialTheme.colorScheme.primary
-    }
+    // Over a wallpaper the reply/edit accent follows the measured content
+    // color — the labels themselves ("Reply to…" vs "Edit message") carry
+    // the distinction, so legibility wins over the theme's accent hues.
+    val accent = contentColor
+        ?: if (editingMessage != null) {
+            MaterialTheme.colorScheme.tertiary
+        } else {
+            MaterialTheme.colorScheme.primary
+        }
+    val secondaryContent = contentColor ?: MaterialTheme.colorScheme.onSurfaceVariant
 
     val capsuleModifier =
         if (glassBackdrop != null) {
@@ -1012,11 +1038,16 @@ private fun TelegramGlassComposer(
         } else {
             Modifier
                 .background(
-                    // Over a wallpaper even the no-glass fallback needs more
-                    // opacity than usual to stay legible.
-                    MaterialTheme.colorScheme.surfaceVariant.copy(
-                        alpha = if (scrim != null) 0.88f else 0.72f,
-                    ),
+                    // No-glass fallback: without a wallpaper the usual
+                    // translucent surfaceVariant; over a wallpaper the capsule
+                    // keeps the scrim's polarity so its content color still
+                    // contrasts (a dark image must not put white text on a
+                    // light fallback surface).
+                    when {
+                        scrim == null -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                        scrim.luminance() < 0.5f -> Color.Black.copy(alpha = 0.72f)
+                        else -> Color.White.copy(alpha = 0.88f)
+                    },
                     capsuleShape,
                 )
                 .border(
@@ -1077,7 +1108,8 @@ private fun TelegramGlassComposer(
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = contentColor?.copy(alpha = 0.8f)
+                            ?: MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 IconButton(
@@ -1087,6 +1119,7 @@ private fun TelegramGlassComposer(
                     Icon(
                         painter = painterResource(R.drawable.close),
                         contentDescription = null,
+                        tint = secondaryContent,
                         modifier = Modifier.size(16.dp),
                     )
                 }
@@ -1101,16 +1134,39 @@ private fun TelegramGlassComposer(
             OutlinedTextField(
                 value = text,
                 onValueChange = onTextChange,
-                placeholder = { Text(stringResource(R.string.type_message)) },
+                placeholder = {
+                    Text(
+                        stringResource(R.string.type_message),
+                        color = contentColor?.copy(alpha = 0.6f)
+                            ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
                 modifier = Modifier
                     .weight(1f)
                     .padding(end = 0.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Color.Transparent,
-                    unfocusedBorderColor = Color.Transparent,
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                ),
+                colors = if (contentColor != null) {
+                    // Wallpaper mode: typed text, cursor and placeholder all
+                    // follow the measured contrast color instead of the theme's
+                    // (light-theme dark ink over a dark scrim was unreadable).
+                    OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedTextColor = contentColor,
+                        unfocusedTextColor = contentColor,
+                        cursorColor = contentColor,
+                        focusedPlaceholderColor = contentColor.copy(alpha = 0.6f),
+                        unfocusedPlaceholderColor = contentColor.copy(alpha = 0.6f),
+                    )
+                } else {
+                    OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                    )
+                },
                 maxLines = 4,
                 keyboardOptions = KeyboardOptions(
                     imeAction = ImeAction.Send,
@@ -1143,7 +1199,7 @@ private fun TelegramGlassComposer(
                         Icon(
                             painter = painterResource(R.drawable.ic_paperclip),
                             contentDescription = stringResource(R.string.listen_together_chat_attachment_song),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = secondaryContent,
                             modifier = Modifier.size(21.dp),
                         )
                     }
@@ -1258,4 +1314,92 @@ private fun MentionSuggestionList(
             }
         }
     }
+}
+
+/**
+ * The glass-surface contrast choices a chat wallpaper implies.
+ *
+ * A null field means "no wallpaper" — the caller keeps its theme-derived
+ * behavior. With a wallpaper set, every field is non-null and derived from
+ * the image's MEASURED luminance: dark images drive a dark glass scrim with
+ * white content (regardless of app theme — the reported bug was dark
+ * wallpaper + light theme rendering dark ink on a dark pill), bright images
+ * drive a light scrim with dark ink.
+ */
+private class ChatWallpaperGlassPalette(
+    /** The glass surfaces' scrim (polarity follows the wallpaper). */
+    val scrim: Color?,
+    /** The icons/text color that contrasts with [scrim]'d glass. */
+    val contentColor: Color?,
+    /** The full-screen dim behind the conversation. */
+    val backgroundDim: Color?,
+)
+
+/** Luminance threshold below which a wallpaper drives the dark-glass palette. */
+private const val WallpaperDarkLuminanceThreshold = 0.5f
+
+@Composable
+private fun rememberChatWallpaperGlassColors(wallpaper: String): ChatWallpaperGlassPalette {
+    val context = LocalContext.current
+    var luminance by remember(wallpaper) { mutableStateOf<Float?>(null) }
+    LaunchedEffect(wallpaper) {
+        luminance =
+            if (wallpaper.isBlank()) {
+                null
+            } else {
+                withContext(Dispatchers.IO) {
+                    runCatching { measureWallpaperLuminance(context, wallpaper) }.getOrNull()
+                }
+            }
+    }
+    return when {
+        wallpaper.isBlank() -> ChatWallpaperGlassPalette(null, null, null)
+        // While the measurement is in flight (or failed — a broken image also
+        // renders nothing): assume dark. White content over the dark scrim is
+        // the safe default in both themes.
+        luminance == null || luminance!! < WallpaperDarkLuminanceThreshold -> ChatWallpaperGlassPalette(
+            scrim = Color.Black.copy(alpha = 0.45f),
+            contentColor = Color.White,
+            backgroundDim = MaterialTheme.colorScheme.scrim.copy(alpha = 0.52f),
+        )
+        // Bright wallpaper: light glass scrim + dark ink, and a lighter
+        // full-screen dim so the image keeps its character.
+        else -> ChatWallpaperGlassPalette(
+            scrim = Color.White.copy(alpha = 0.50f),
+            contentColor = Color(0xFF1C1B1F),
+            backgroundDim = Color.Black.copy(alpha = 0.35f),
+        )
+    }
+}
+
+/**
+ * Average perceived luminance (0..1) of the wallpaper, measured over a tiny
+ * 48px decode so the cost is one small bitmap, once per wallpaper change.
+ */
+private suspend fun measureWallpaperLuminance(
+    context: android.content.Context,
+    source: String,
+): Float? {
+    val request =
+        ImageRequest
+            .Builder(context)
+            .data(source)
+            .allowHardware(false)
+            .size(48, 48)
+            .build()
+    val result = runCatching { context.imageLoader.execute(request) }.getOrNull() ?: return null
+    val bitmap = runCatching { result.image.toBitmap() }.getOrNull() ?: return null
+    if (bitmap.width <= 0 || bitmap.height <= 0) return null
+    var total = 0.0
+    for (y in 0 until bitmap.height) {
+        for (x in 0 until bitmap.width) {
+            val pixel = bitmap.getPixel(x, y)
+            val alpha = (pixel ushr 24) / 255.0
+            val r = ((pixel shr 16) and 0xFF) * alpha
+            val g = ((pixel shr 8) and 0xFF) * alpha
+            val b = (pixel and 0xFF) * alpha
+            total += 0.2126 * r + 0.7152 * g + 0.0722 * b
+        }
+    }
+    return (total / (bitmap.width * bitmap.height) / 255.0).toFloat()
 }

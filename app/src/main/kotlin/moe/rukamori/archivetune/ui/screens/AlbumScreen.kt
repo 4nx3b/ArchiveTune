@@ -38,13 +38,21 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -102,6 +110,7 @@ import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.NavigationTitle
+import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.component.layerBackdrop
@@ -875,6 +884,30 @@ fun AlbumScreen(
             }
         }
 
+        // Pinned play/shuffle row: the hero's buttons scroll away with the
+        // header, so once the list passes it (showTopBarTitle — the same
+        // trigger the top bar's own title uses) a compact action pill fades
+        // in under the glass header and keeps Play/Shuffle one tap away at
+        // any scroll depth. Requested directly: "keep the buttons fixed in
+        // place".
+        val pinnedActionsAlbum = albumWithSongs
+        if (pinnedActionsAlbum?.songs?.isNotEmpty() == true) {
+            PinnedAlbumActionsRow(
+                visible = showTopBarTitle && !selection,
+                backdrop = artworkBackdrop.takeIf { layerBackdropActive },
+                onPlay = { playerConnection.playQueue(LocalAlbumRadio(pinnedActionsAlbum)) },
+                onShuffle = {
+                    playerConnection.playQueue(
+                        LocalAlbumRadio(pinnedActionsAlbum.copy(songs = pinnedActionsAlbum.songs.shuffled())),
+                    )
+                },
+                modifier =
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = systemBarsTopPadding + 60.dp),
+            )
+        }
+
         if (!liquidGlassHeaderActive) {
         val topAppBarColors =
             if (transparentAppBar) {
@@ -1017,3 +1050,83 @@ fun AlbumScreen(
 }
 
 private const val MediaDetailMetadataSeparator = "  •  "
+
+/**
+ * The compact, always-reachable play/shuffle row that fades in under the
+ * glass header once the hero's own buttons have scrolled out of view — the
+ * same controls, pinned, so deep-scrolling the track list never costs a
+ * long scroll back up just to hit play.
+ */
+@Composable
+private fun PinnedAlbumActionsRow(
+    visible: Boolean,
+    backdrop: PlatformBackdrop?,
+    onPlay: () -> Unit,
+    onShuffle: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(180)) + expandVertically(tween(180)),
+        exit = fadeOut(tween(160)) + shrinkVertically(tween(160)),
+        modifier = modifier,
+    ) {
+        if (backdrop != null) {
+            LiquidGlassActionPill(
+                backdrop = backdrop,
+                interactive = true,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            ) {
+                androidx.compose.material3.IconButton(
+                    onClick = onShuffle,
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.shuffle),
+                        contentDescription = stringResource(R.string.shuffle),
+                        tint = liquidGlassContentColor(),
+                    )
+                }
+                androidx.compose.material3.IconButton(
+                    onClick = onPlay,
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.play),
+                        contentDescription = stringResource(R.string.play),
+                        tint = liquidGlassContentColor(),
+                    )
+                }
+            }
+        } else {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
+                tonalElevation = 3.dp,
+                shadowElevation = 6.dp,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            ) {
+                Row {
+                    androidx.compose.material3.IconButton(
+                        onClick = onShuffle,
+                        modifier = Modifier.size(48.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.shuffle),
+                            contentDescription = stringResource(R.string.shuffle),
+                        )
+                    }
+                    androidx.compose.material3.IconButton(
+                        onClick = onPlay,
+                        modifier = Modifier.size(48.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.play),
+                            contentDescription = stringResource(R.string.play),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

@@ -776,68 +776,91 @@ fun AppleMusicPlayerContent(
                             }
                         },
             ) {
-                Box(
+                // Left half: the artwork with the song title and artist
+                // directly beneath it — Apple Music's own landscape
+                // arrangement. The right half is controls only
+                // (showTitleRow = false further down), which is what makes
+                // this read as "the Apple Music style" in horizontal mode
+                // instead of a stretched portrait layout.
+                Column(
                     modifier =
                         Modifier
                             .weight(1f)
-                            .fillMaxHeight(),
+                            .fillMaxHeight()
+                            .padding(bottom = contentBottomPadding),
                 ) {
-                    AppleMusicSharpArtwork(
-                        artworkRequest = artworkRequest,
-                        artworkUrl = artworkUrl,
-                        canvasPrimaryUrl = canvasPrimaryUrl,
-                        canvasFallbackUrl = canvasFallbackUrl,
-                        isPlaying = isPlaying,
-                        fadeBottom = false,
-                        videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
-                        isMusicVideo = mediaMetadata.isMusicVideo,
-                        landscape = true,
-                        artworkCornerRadiusDp = artworkCornerRadiusDp,
-                        canvasLoopSync = canvasLoopSync,
+                    Box(
                         modifier =
                             Modifier
-                                .fillMaxSize(),
-                    )
-
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = lyricsOpen,
-                        enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
-                        exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
-                        modifier = Modifier.matchParentSize(),
+                                .weight(1f)
+                                .fillMaxWidth(),
                     ) {
-                        Box(
+                        AppleMusicSharpArtwork(
+                            artworkRequest = artworkRequest,
+                            artworkUrl = artworkUrl,
+                            canvasPrimaryUrl = canvasPrimaryUrl,
+                            canvasFallbackUrl = canvasFallbackUrl,
+                            isPlaying = isPlaying,
+                            fadeBottom = false,
+                            videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
+                            isMusicVideo = mediaMetadata.isMusicVideo,
+                            landscape = true,
+                            artworkCornerRadiusDp = artworkCornerRadiusDp,
+                            canvasLoopSync = canvasLoopSync,
                             modifier =
                                 Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = AppleMusicContentPadding - 16.dp),
+                                    .fillMaxSize(),
+                        )
+
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = lyricsOpen,
+                            enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
+                            exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
+                            modifier = Modifier.matchParentSize(),
                         ) {
-                            if (lyricsContentReady) {
-                                when (lyricsMode) {
-                                    LyricsMode.V2 ->
-                                        LyricsV2(
-                                            sliderPositionProvider = lyricsPosProvider,
-                                            lyricsSyncOffset = lyricsSyncOffset,
-                                            modifier = Modifier.fillMaxSize(),
-                                        )
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = AppleMusicContentPadding - 16.dp),
+                            ) {
+                                if (lyricsContentReady) {
+                                    when (lyricsMode) {
+                                        LyricsMode.V2 ->
+                                            LyricsV2(
+                                                sliderPositionProvider = lyricsPosProvider,
+                                                lyricsSyncOffset = lyricsSyncOffset,
+                                                modifier = Modifier.fillMaxSize(),
+                                            )
 
-                                    LyricsMode.ENHANCED ->
-                                        LyricsEnhanced(
-                                            sliderPositionProvider = lyricsPosProvider,
-                                            lyricsSyncOffset = lyricsSyncOffset,
-                                            modifier = Modifier.fillMaxSize(),
-                                        )
+                                        LyricsMode.ENHANCED ->
+                                            LyricsEnhanced(
+                                                sliderPositionProvider = lyricsPosProvider,
+                                                lyricsSyncOffset = lyricsSyncOffset,
+                                                modifier = Modifier.fillMaxSize(),
+                                            )
 
-                                    LyricsMode.SPOTIFY ->
-                                        LyricsV2(
-                                            sliderPositionProvider = lyricsPosProvider,
-                                            lyricsSyncOffset = lyricsSyncOffset,
-                                            spotifyStyle = true,
-                                            modifier = Modifier.fillMaxSize(),
-                                        )
+                                        LyricsMode.SPOTIFY ->
+                                            LyricsV2(
+                                                sliderPositionProvider = lyricsPosProvider,
+                                                lyricsSyncOffset = lyricsSyncOffset,
+                                                spotifyStyle = true,
+                                                modifier = Modifier.fillMaxSize(),
+                                            )
+                                    }
                                 }
                             }
                         }
                     }
+
+                    AppleMusicLandscapeTitleBlock(
+                        mediaMetadata = mediaMetadata,
+                        currentSongLiked = currentSongLiked,
+                        titleActions = titleActions,
+                        onToggleLike = playerConnection::toggleLike,
+                        onMoreClick = onMoreClick,
+                        onMorePositioned = { moreIconBounds = it },
+                    )
                 }
                 AnimatedVisibility(
 
@@ -875,6 +898,7 @@ fun AppleMusicPlayerContent(
                             bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
                         },
                         onMorePositioned = { moreIconBounds = it },
+                        showTitleRow = false,
                         modifier =
                             Modifier
                                 .fillMaxSize()
@@ -1553,6 +1577,89 @@ private fun AppleMusicControlsColumn(
             tint = if (isQueueActive) Color.White else Color.White.copy(alpha = 0.85f),
         )
     }
+    }
+}
+
+/**
+ * The landscape player's title block: song title and artist directly under
+ * the artwork on the left half — Apple Music's own landscape arrangement —
+ * carrying the like and overflow chips the portrait title row owns, so
+ * nothing is lost when the right column switches to controls-only
+ * (showTitleRow = false).
+ */
+@Composable
+private fun AppleMusicLandscapeTitleBlock(
+    mediaMetadata: MediaMetadata,
+    currentSongLiked: Boolean,
+    titleActions: PlayerTitleActions,
+    onToggleLike: () -> Unit,
+    onMoreClick: () -> Unit,
+    onMorePositioned: ((Rect) -> Unit)? = null,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = AppleMusicContentPadding)
+                .padding(top = 12.dp, bottom = 10.dp),
+    ) {
+        PlayerTextBackdrop(
+            textColor = Color.White,
+            modifier = Modifier.weight(1f),
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = mediaMetadata.title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .basicMarquee(iterations = Int.MAX_VALUE)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = titleActions.onTitleClick,
+                            ),
+                )
+                Text(
+                    text = mediaMetadata.artists.joinToString { it.name },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White.copy(alpha = 0.64f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .basicMarquee(iterations = Int.MAX_VALUE)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) {
+                                mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
+                            },
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        AppleMusicChip(
+            iconRes = if (currentSongLiked) R.drawable.player_star_filled else R.drawable.player_star,
+            tint = Color.White,
+            contentDescription = null,
+            onClick = onToggleLike,
+        )
+        Spacer(Modifier.width(10.dp))
+        AppleMusicChip(
+            iconRes = R.drawable.player_more_horiz,
+            tint = Color.White,
+            contentDescription = null,
+            onClick = onMoreClick,
+            onPositioned = onMorePositioned,
+        )
     }
 }
 

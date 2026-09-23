@@ -1019,6 +1019,23 @@ class MusicService :
             return
         }
 
+        // A live Listen Together room keeps the process in the foreground.
+        // Stopping the service while the app is backgrounded drops the process
+        // to cached, the cached-app freezer kills the socket keepalives, and
+        // the server's far shorter socket read deadline ends the connection
+        // LONG before the room's 15-minute disconnect grace — the user then
+        // "reconnects" the moment they come back, which is exactly the
+        // background-reconnect report. The room's own leave/disconnect flow
+        // tears this down on the next unbind once the room is gone.
+        if (::listenTogetherManager.isInitialized &&
+            listenTogetherManager.roomState.value != null
+        ) {
+            cancelIdleStop()
+            promoteToStartedService()
+            ensureStartedAsForeground()
+            return
+        }
+
         val state = player.playbackState
 
         val delayMs =
@@ -2673,7 +2690,7 @@ class MusicService :
         val triggerAt = duration - effectiveDuration - CROSSFADE_END_GUARD_MS
 
         crossfadeTriggerJob =
-            scope.launch {
+            scope.launch(SilentHandler) {
                 var hasPreparedSecondaryPlayer = false
                 while (isActive) {
                     if (!crossfadeEnabled || isCrossfading) return@launch
@@ -2771,7 +2788,7 @@ class MusicService :
         val currentIndex = player.currentMediaItemIndex
 
         crossfadeTriggerJob =
-            scope.launch {
+            scope.launch(SilentHandler) {
                 var hasPreparedSecondaryPlayer = false
                 var lastVerdict: String? = null
                 while (isActive) {
@@ -3318,7 +3335,7 @@ class MusicService :
         crossfadeTriggerJob = null
         crossfadeJob?.cancel()
         crossfadeJob =
-            scope.launch {
+            scope.launch(SilentHandler) {
                 isCrossfading = true
                 crossfadeProgress = 0f
                 crossfadeBaseVolume = currentEffectivePlayerVolume()
@@ -6152,7 +6169,7 @@ class MusicService :
             scrobbleManager?.onSongStart(player.currentMetadata, duration = player.duration)
         }
 
-        scope.launch {
+        scope.launch(SilentHandler) {
             val shouldSave = withContext(Dispatchers.IO) { dataStore.get(PersistentQueueKey, true) }
             if (shouldSave) {
                 saveQueueToDisk()
@@ -6316,7 +6333,7 @@ class MusicService :
         widgetUpdater.update()
         widgetUpdater.updateProgressTracking()
 
-        scope.launch {
+        scope.launch(SilentHandler) {
             val shouldSave = withContext(Dispatchers.IO) { dataStore.get(PersistentQueueKey, true) }
             if (shouldSave) {
                 saveQueueToDisk()
