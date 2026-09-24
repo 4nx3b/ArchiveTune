@@ -241,10 +241,8 @@ fun Thumbnail(
 
     val currentMediaItem =
         remember(mediaMetadata) {
-
             val metadata = mediaMetadata
             if (metadata != null) {
-
                 metadata.toMediaItem()
             } else {
                 try {
@@ -340,10 +338,6 @@ fun Thumbnail(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
 
-            // "Now Playing" header with a trailing overflow affordance. The
-            // centered text block lives in a weighted middle slot flanked by
-            // equal spacers, so adding the three-dot button on the right does
-            // not off-center the title block.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
@@ -555,7 +549,6 @@ fun Thumbnail(
                                         .clip(RoundedCornerShape(thumbnailCornerRadius.dp)),
                             ) {
                                 if (hidePlayerThumbnail) {
-
                                     Box(
                                         modifier =
                                             Modifier

@@ -132,7 +132,6 @@ class LyricsPreloadManager
             }
 
             try {
-
                 val lyricsResult = lyricsHelper.getLyricsWithProvider(song)
                 if (lyricsResult.lyrics == LyricsEntity.LYRICS_NOT_FOUND) return
 

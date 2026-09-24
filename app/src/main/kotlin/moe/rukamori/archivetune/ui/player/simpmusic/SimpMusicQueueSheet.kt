@@ -118,7 +118,6 @@ internal fun SimpMusicQueueSheet(
                         .fillMaxSize()
                         .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()),
             ) {
-
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -232,7 +231,6 @@ private fun SimpMusicQueueRow(
         Spacer(Modifier.width(8.dp))
         Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
             if (isPlaying) {
-
                 Box(
                     modifier =
                         Modifier

@@ -86,7 +86,6 @@ fun MiniPlayer(
     isPairedWithNavigation: Boolean = false,
     onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
-
     val docked = LocalMiniPlayerDocked.current
 
     val dockedAnim by animateFloatAsState(
@@ -102,7 +101,6 @@ fun MiniPlayer(
     val translationYPx = with(density) { 10.dp.toPx() }
     val dockedModifier =
         if (dockedAnim > 0.001f) {
-
             val scale = 1f - 0.5f * dockedAnim
             modifier
                 .graphicsLayer {
@@ -362,11 +360,8 @@ private fun rememberMiniPlayerContentColors(
                 secondaryButtonContainer = Color.Black.copy(alpha = 0.22f),
                 buttonIcon = Color.White,
                 disabledButtonIcon = Color.White.copy(alpha = 0.38f),
-                togetherContainer = Color.White.copy(alpha = 0.16f),
-                togetherContent = Color.White,
             )
         } else if (useLiquidGlass) {
-
             MiniPlayerContentColors(
                 title = glassInk,
                 secondary = glassInk.copy(alpha = 0.72f),
@@ -380,8 +375,6 @@ private fun rememberMiniPlayerContentColors(
                 secondaryButtonContainer = Color.Black.copy(alpha = 0.22f),
                 buttonIcon = glassInk,
                 disabledButtonIcon = glassInk.copy(alpha = 0.38f),
-                togetherContainer = glassInk.copy(alpha = 0.16f),
-                togetherContent = glassInk,
             )
         } else {
             MiniPlayerContentColors(
@@ -396,8 +389,6 @@ private fun rememberMiniPlayerContentColors(
                 secondaryButtonContainer = colorScheme.surfaceContainerHighest,
                 buttonIcon = colorScheme.onSurface,
                 disabledButtonIcon = colorScheme.onSurface.copy(alpha = 0.38f),
-                togetherContainer = colorScheme.primaryContainer,
-                togetherContent = colorScheme.onPrimaryContainer,
             )
         }
     }
@@ -412,7 +403,6 @@ private fun MiniPlayerBackground(
     palette: MiniPlayerBackgroundPalette?,
     modifier: Modifier = Modifier,
 ) {
-
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
     val effectiveStyle = if (isPreS && style == MiniPlayerBackgroundStyle.FROSTED) {
         MiniPlayerBackgroundStyle.THEME
@@ -454,7 +444,6 @@ private fun MiniPlayerBackground(
             if (backdrop == null) {
                 Box(modifier = modifier.background(baseColor))
             } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-
                 val positionInRootState = remember { mutableStateOf(Offset.Zero) }
                 val miniPlayerSizeState = remember { mutableStateOf(IntSize.Zero) }
                 val positionInRoot by positionInRootState
@@ -495,7 +484,6 @@ private fun MiniPlayerBackground(
                     }
                 }
             } else {
-
                 val positionInRootState = remember { mutableStateOf(Offset.Zero) }
                 val positionInRoot by positionInRootState
                 Box(

@@ -13,7 +13,6 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 object ImageBlurUtils {
-
     fun blur(
         source: Bitmap,
         radius: Float,

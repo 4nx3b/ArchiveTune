@@ -12,6 +12,10 @@ import androidx.media3.common.PlaybackException
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import moe.rukamori.archivetune.constants.AllowAgeRestrictedKey
@@ -194,7 +198,6 @@ object YTPlayerUtils {
     private val simpMusicFailedUntil = ConcurrentHashMap<String, Long>()
 
     init {
-
         SimpStreamLog.sink =
             SimpStreamLog.Sink { level, tag, message, error ->
                 when (level) {
@@ -928,7 +931,6 @@ object YTPlayerUtils {
         val (cpn, response, mediaType) =
             result.getOrNull()
                 ?: run {
-
                     simpMusicFailedUntil[videoId] = System.currentTimeMillis() + SIMP_MUSIC_FAILURE_BACKOFF_MS
                     Timber.tag(logTag).w(
                         result.exceptionOrNull(),
@@ -1029,7 +1031,6 @@ object YTPlayerUtils {
     private fun withSimpMusicTrackingHosts(
         tracking: PlayerResponse.PlaybackTracking,
     ): PlayerResponse.PlaybackTracking {
-
         val videostatsPlayback = tracking.videostatsPlaybackUrl
         val atr = tracking.atrUrl
         val watchtime = tracking.videostatsWatchtimeUrl
@@ -1071,36 +1072,89 @@ object YTPlayerUtils {
     ): PlaybackData {
         Timber.tag(logTag).i("Fetching player response for videoId: $videoId, playlistId: $playlistId")
 
-        if (simpMusicFailedUntil[videoId]?.let { it > System.currentTimeMillis() } != true) {
-            simpMusicStreamResolution(
-                videoId = videoId,
-                playlistId = playlistId,
-                audioQuality = audioQuality,
-                networkMetered = networkMetered ?: connectivityManager.isActiveNetworkMetered,
-                preferM4A = preferM4A,
-            )?.let { return it }
-        }
+        // Bandwidth-for-latency trade: resolve with EVERY remote strategy at
+        // once and keep whichever answers first, so stream start latency is the
+        // max() of the racing resolvers instead of the sum of the sequential
+        // fallbacks. SimpMusic (NewPipe + InnerTube) and the Echo client chain
+        // are fully independent of each other; the local InnerTube chain stays
+        // the sequential last resort because it mutates shared playback auth
+        // state. Losing racers are cancelled as soon as a winner exists.
+        val racedWinner: PlaybackData? =
+            coroutineScope {
+                val simpMusicDeferred =
+                    async {
+                        if (simpMusicFailedUntil[videoId]?.let { it > System.currentTimeMillis() } == true) {
+                            null
+                        } else {
+                            try {
+                                simpMusicStreamResolution(
+                                    videoId = videoId,
+                                    playlistId = playlistId,
+                                    audioQuality = audioQuality,
+                                    networkMetered = networkMetered ?: connectivityManager.isActiveNetworkMetered,
+                                    preferM4A = preferM4A,
+                                )
+                            } catch (cancellation: CancellationException) {
+                                throw cancellation
+                            } catch (t: Throwable) {
+                                Timber.tag(logTag).w(t, "SimpMusic resolution failed for %s during race", videoId)
+                                null
+                            }
+                        }
+                    }
+                val echoDeferred =
+                    async {
+                        try {
+                            val echoPlaybackData =
+                                moe.rukamori.archivetune.echo.EchoStreamResolver
+                                    .playerResponseForPlayback(
+                                        videoId = videoId,
+                                        playlistId = playlistId,
+                                        audioQuality = audioQuality,
+                                        connectivityManager = connectivityManager,
+                                    )
+                            Timber
+                                .tag(logTag)
+                                .i("Echo resolver produced a stream for %s (itag=%d), using it", videoId, echoPlaybackData.format.itag)
+                            echoPlaybackData
+                        } catch (cancellation: CancellationException) {
+                            throw cancellation
+                        } catch (echoFailure: Throwable) {
+                            Timber
+                                .tag(logTag)
+                                .w(echoFailure, "Echo stream resolution failed for %s; racing the local chain next", videoId)
+                            null
+                        }
+                    }
 
-        try {
-            val echoPlaybackData =
-                moe.rukamori.archivetune.echo.EchoStreamResolver
-                    .playerResponseForPlayback(
-                        videoId = videoId,
-                        playlistId = playlistId,
-                        audioQuality = audioQuality,
-                        connectivityManager = connectivityManager,
-                    )
-            Timber
-                .tag(logTag)
-                .i("Echo resolver produced a stream for %s (itag=%d), using it", videoId, echoPlaybackData.format.itag)
-            return echoPlaybackData
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (echoFailure: Throwable) {
-            Timber
-                .tag(logTag)
-                .w(echoFailure, "Echo stream resolution failed for %s; falling back to the local chain", videoId)
-        }
+                // First COMPLETED strategy wins the select; if it finished
+                // empty-handed, fall through and wait for the other one.
+                // coroutineScope alone waits for ALL children, so the loser
+                // must be cancelled explicitly — otherwise a fast SimpMusic
+                // success would sit out Echo's full timeout chain.
+                val firstResult =
+                    select<PlaybackData?> {
+                        simpMusicDeferred.onAwait { it }
+                        echoDeferred.onAwait { it }
+                    }
+                if (firstResult != null) {
+                    simpMusicDeferred.cancel()
+                    echoDeferred.cancel()
+                    return@coroutineScope firstResult
+                }
+
+                suspend fun awaitQuietly(deferred: Deferred<PlaybackData?>): PlaybackData? =
+                    try {
+                        deferred.await()
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (t: Throwable) {
+                        null
+                    }
+                val secondResult = awaitQuietly(simpMusicDeferred) ?: awaitQuietly(echoDeferred)
+                secondResult
+            }
+        racedWinner?.let { return it }
 
         val signatureTimestamp = getSignatureTimestampOrNull(videoId)
         Timber.tag(logTag).v("Signature timestamp: $signatureTimestamp")

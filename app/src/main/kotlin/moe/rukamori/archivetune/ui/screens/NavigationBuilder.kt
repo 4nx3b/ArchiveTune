@@ -72,10 +72,12 @@ import moe.rukamori.archivetune.ui.screens.settings.ExportDownloadedSongsScreen
 import moe.rukamori.archivetune.ui.screens.settings.HiddenPlaylistsScreen
 import moe.rukamori.archivetune.ui.screens.settings.IconScreen
 import moe.rukamori.archivetune.ui.screens.settings.IntegrationScreen
+import moe.rukamori.archivetune.ui.screens.settings.ListenTogetherSettings
 import moe.rukamori.archivetune.ui.screens.settings.InternetSettings
 import moe.rukamori.archivetune.ui.screens.settings.TidalSettings
 import moe.rukamori.archivetune.ui.screens.settings.QobuzSettings
 import moe.rukamori.archivetune.ui.screens.settings.AmazonSettings
+import moe.rukamori.archivetune.ui.screens.settings.QqMusicSettings
 import moe.rukamori.archivetune.ui.screens.settings.DeezerSettings
 import moe.rukamori.archivetune.ui.screens.settings.JioSettings
 import moe.rukamori.archivetune.ui.screens.settings.TidalLoginScreen
@@ -105,7 +107,6 @@ import moe.rukamori.archivetune.ui.screens.settings.LogcatScreen
 import moe.rukamori.archivetune.ui.screens.settings.LyricsSettings
 import moe.rukamori.archivetune.ui.screens.settings.LyricsProvidersSettings
 import moe.rukamori.archivetune.ui.screens.settings.LyricsRomanisationSettings
-import moe.rukamori.archivetune.ui.screens.settings.MusicTogetherScreen
 import moe.rukamori.archivetune.ui.screens.settings.PO_TOKEN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.PalettePickerScreen
 import moe.rukamori.archivetune.ui.screens.settings.PlayerSettings
@@ -150,6 +151,17 @@ fun NavGraphBuilder.navigationBuilder(
         Screens.Library.route,
     ) {
         LibraryScreen(navController)
+    }
+    composable("listen_together") {
+        ListenTogetherScreen(navController, showTopBar = false)
+    }
+    composable(
+        route = "listen_together_from_topbar",
+    ) {
+        ListenTogetherScreen(navController, showTopBar = true)
+    }
+    composable("listen_together/chat") {
+        CommentTogetherScreen(navController)
     }
     composable(Screens.Search.route) {
         SearchScreen(
@@ -347,7 +359,7 @@ fun NavGraphBuilder.navigationBuilder(
         ArtistAlbumsScreen(navController, scrollBehavior)
     }
     composable(
-        route = "artist/{artistId}/items?browseId={browseId}&params={params}",
+        route = "artist/{artistId}/items?browseId={browseId}&params={params}&title={title}",
         arguments =
             listOf(
                 navArgument("artistId") {
@@ -360,6 +372,11 @@ fun NavGraphBuilder.navigationBuilder(
                 navArgument("params") {
                     type = NavType.StringType
                     nullable = true
+                },
+                navArgument("title") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
                 },
             ),
     ) {
@@ -583,6 +600,9 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         IntegrationScreen(navController, it.savedStateHandle["scrollTo"])
     }
+    composable(route = "settings/integrations/listen_together") {
+        ListenTogetherSettings(navController, scrollBehavior)
+    }
     composable(
         route = "settings/tidal?scrollTo={scrollTo}",
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
@@ -612,6 +632,12 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         JioSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
+    }
+    composable(
+        route = "settings/qqmusic?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        QqMusicSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable(TIDAL_LOGIN_ROUTE) {
         TidalLoginScreen(navController)
@@ -668,9 +694,6 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         AiIntegrationSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
-    }
-    composable("settings/music_together") {
-        MusicTogetherScreen(navController)
     }
     composable(
         route = "settings/lastfm?scrollTo={scrollTo}",

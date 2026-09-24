@@ -128,7 +128,6 @@ object PlayerConfigStore {
 
     suspend fun forceRefresh(missingHash: String): Boolean = withContext(Dispatchers.IO) {
         refreshMutex.withLock {
-
             if (mergedConfigs.containsKey(missingHash)) {
                 Timber.tag(TAG).d("forceRefresh: $missingHash arrived via concurrent refresh")
                 return@withLock true
@@ -307,7 +306,6 @@ object PlayerConfigStore {
         val tmp = File(file.parentFile, "${file.name}.tmp")
         tmp.writeText(content)
         if (!tmp.renameTo(file)) {
-
             file.delete()
             if (!tmp.renameTo(file)) {
                 file.writeText(content)

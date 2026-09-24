@@ -16,6 +16,8 @@ import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.speech.RecognizerIntent
 import android.content.pm.PackageManager
@@ -216,8 +218,9 @@ import moe.rukamori.archivetune.aod.ACTION_AOD_MODE
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.AppFontPreference
 import moe.rukamori.archivetune.constants.AppLanguageKey
-import moe.rukamori.archivetune.constants.AodAutoOnScreenDimKey
+import moe.rukamori.archivetune.constants.AodAutoStartScreenOffKey
 import moe.rukamori.archivetune.constants.AodAutoTimerSecondsKey
+import moe.rukamori.archivetune.constants.AodModeEnabledKey
 import moe.rukamori.archivetune.constants.CustomFontUriKey
 import moe.rukamori.archivetune.constants.CustomThemeColorKey
 import moe.rukamori.archivetune.constants.WallpaperExtractionFailedKey
@@ -333,6 +336,7 @@ import moe.rukamori.archivetune.ui.player.BottomSheetPlayer
 import moe.rukamori.archivetune.ui.player.ProvideVideoFullscreenState
 import moe.rukamori.archivetune.ui.screens.LOGIN_URL_ARGUMENT
 import moe.rukamori.archivetune.ui.screens.LoginScreen
+import moe.rukamori.archivetune.ui.screens.InAppChatNotificationsHost
 import moe.rukamori.archivetune.ui.screens.Screens
 import moe.rukamori.archivetune.ui.screens.buildLoginRoute
 import moe.rukamori.archivetune.ui.screens.navigationBuilder
@@ -359,6 +363,8 @@ import moe.rukamori.archivetune.utils.SyncUtils
 import moe.rukamori.archivetune.utils.Updater
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
+import moe.rukamori.archivetune.LocalListenTogetherManager
+import moe.rukamori.archivetune.listentogether.ListenTogetherManager
 import moe.rukamori.archivetune.utils.isLowRamDevice
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -392,14 +398,18 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var syncUtils: SyncUtils
 
+    @Inject
+    lateinit var listenTogetherManager: ListenTogetherManager
+
     private lateinit var navController: NavHostController
     private var pendingIntent: Intent? = null
     private var pendingDeepLinkQueue: Queue? = null
     private var pendingVoiceSearchQuery: String? = null
     private var pendingAodModeRequest = false
     private var pendingAodModeJob: Job? = null
+    private var aodPreferenceReadJob: Job? = null
     private var aodModeLaunchRequestCount by mutableIntStateOf(0)
-    private var pendingTogetherJoinLink: String? = null
+    private var isAodScreenOffReceiverRegistered = false
     private var pendingBackupRestoreUri by mutableStateOf<Uri?>(null)
     private var latestVersionName by mutableStateOf(BuildConfig.VERSION_NAME)
     private var latestUpdateChannel by mutableStateOf(defaultUpdateChannel)
@@ -420,15 +430,17 @@ class MainActivity : ComponentActivity() {
                     playerConnection?.dispose()
                     playerConnection =
                         PlayerConnection(this@MainActivity, service, database, lifecycleScope)
+
+                    listenTogetherManager.setPlayerConnection(playerConnection)
                     playPendingDeepLinkQueueIfReady()
                     playPendingVoiceSearchIfReady()
                     openPendingAodModeIfReady()
-                    joinPendingTogetherIfReady()
                 }
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
                 isMusicServiceBound = false
+                listenTogetherManager.setPlayerConnection(null)
                 disposePlayerConnection()
             }
         }
@@ -447,10 +459,55 @@ class MainActivity : ComponentActivity() {
         connection.playFromVoiceSearch(query)
     }
 
-    private fun requestAodMode() {
-        pendingAodModeRequest = true
-        startMusicServiceSafely()
-        openPendingAodModeIfReady()
+    private fun requestAodMode(requireAutoStart: Boolean = false) {
+        aodPreferenceReadJob?.cancel()
+        aodPreferenceReadJob =
+            lifecycleScope.launch {
+                try {
+                    val preferences = dataStore.data.first()
+                    val isAodEnabled = preferences[AodModeEnabledKey] ?: true
+                    val shouldAutoStart = preferences[AodAutoStartScreenOffKey] ?: true
+                    if (!isAodEnabled || (requireAutoStart && !shouldAutoStart)) return@launch
+
+                    pendingAodModeRequest = true
+                    startMusicServiceSafely()
+                    openPendingAodModeIfReady()
+                } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                    throw cancellation
+                } catch (throwable: Throwable) {
+                    pendingAodModeRequest = false
+                    reportException(throwable)
+                }
+            }
+    }
+
+    private val aodScreenOffReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(
+                context: Context?,
+                intent: Intent?,
+            ) {
+                if (intent?.action != Intent.ACTION_SCREEN_OFF) return
+                if (playerConnection?.player?.isPlaying != true) return
+                requestAodMode(requireAutoStart = true)
+            }
+        }
+
+    private fun registerAodScreenOffReceiver() {
+        if (isAodScreenOffReceiverRegistered) return
+        val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(aodScreenOffReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(aodScreenOffReceiver, filter)
+        }
+        isAodScreenOffReceiverRegistered = true
+    }
+
+    private fun unregisterAodScreenOffReceiver() {
+        if (!isAodScreenOffReceiverRegistered) return
+        unregisterReceiver(aodScreenOffReceiver)
+        isAodScreenOffReceiverRegistered = false
     }
 
     private fun openPendingAodModeIfReady() {
@@ -465,23 +522,6 @@ class MainActivity : ComponentActivity() {
                     aodModeLaunchRequestCount++
                 }
             }
-    }
-
-    private fun joinPendingTogetherIfReady() {
-        val pending = pendingTogetherJoinLink ?: return
-        val connection = playerConnection ?: return
-        pendingTogetherJoinLink = null
-        lifecycleScope.launch(Dispatchers.IO) {
-            val displayName =
-                runCatching { dataStore.data.first()[moe.rukamori.archivetune.constants.TogetherDisplayNameKey] }
-                    .getOrNull()
-                    ?.trim()
-                    .orEmpty()
-                    .ifBlank { Build.MODEL ?: getString(R.string.app_name) }
-            withContext(Dispatchers.Main) {
-                connection.service.joinTogether(pending, displayName)
-            }
-        }
     }
 
     private suspend fun awaitRestorablePlayback(connection: PlayerConnection): Boolean {
@@ -505,6 +545,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        registerAodScreenOffReceiver()
         serviceBindingJob = lifecycleScope.launch {
             try {
                 if (!isMusicServiceBound) {
@@ -529,23 +570,11 @@ class MainActivity : ComponentActivity() {
             service.clearResolvedSources(currentMediaId)
         }
 
-        // Every-launch background pool refresh — silent, throttled to one
-        // server fetch per 10 minutes so restarts never hammer the feed.
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching { PoolAccountManager.refreshForLaunch(this@MainActivity) }
         }
     }
 
-    /**
-     * Drops the current [PlayerConnection]. Safe to call repeatedly.
-     *
-     * unbindService() does NOT trigger onServiceDisconnected — Android only
-     * delivers that callback on a service crash — so every clean unbind path
-     * must dispose here, or the connection stays registered as a listener on
-     * the service's long-lived player and pins this Activity (plus its whole
-     * Compose tree) until the service itself dies. One leaked connection
-     * accumulates per background/foreground cycle without this.
-     */
     private fun disposePlayerConnection() {
         pendingAodModeJob?.cancel()
         pendingAodModeJob = null
@@ -567,6 +596,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        unregisterAodScreenOffReceiver()
         serviceBindingJob?.cancel()
         serviceBindingJob = null
         safeUnbindMusicService()
@@ -588,8 +618,7 @@ class MainActivity : ComponentActivity() {
             safeUnbindMusicService()
             stopService(Intent(this, MusicService::class.java))
         }
-        // onStop's unbind already disposed; safety net for any path that
-        // reaches destruction with a live connection.
+
         disposePlayerConnection()
         safeUnbindMusicService()
     }
@@ -687,6 +716,8 @@ class MainActivity : ComponentActivity() {
             runCatching { downloadUtil.prewarmDownloadConnections() }
         }
 
+        runCatching { listenTogetherManager.initialize() }
+
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             val initialLocale =
                 PreferenceStore
@@ -766,8 +797,21 @@ class MainActivity : ComponentActivity() {
                 }
                 moe.rukamori.archivetune.utils.UpdateNotificationManager
                     .checkForUpdates(this@MainActivity)
+                // Pre-save & Release Countdown: while the radar is enabled the
+                // release check runs at WorkManager's 15-minute floor AND an
+                // immediate expedited pass fires on every app open — a release
+                // that lands while the app is away surfaces within moments of
+                // the next use instead of "rarely in a day".
+                val presaveRadar =
+                    withContext(Dispatchers.IO) {
+                        dataStore.data.first()[moe.rukamori.archivetune.constants.PresaveReleaseRadarKey]
+                    } ?: false
                 moe.rukamori.archivetune.utils.NewReleaseNotificationManager
-                    .schedulePeriodicCheck(this@MainActivity)
+                    .schedulePeriodicCheck(this@MainActivity, fast = presaveRadar)
+                if (presaveRadar) {
+                    moe.rukamori.archivetune.utils.NewReleaseNotificationManager
+                        .runImmediateCheck(this@MainActivity)
+                }
             }
 
             val bottomSheetPageState =
@@ -1010,10 +1054,7 @@ class MainActivity : ComponentActivity() {
                                             .Builder(this@MainActivity)
                                             .data(song.thumbnailUrl)
                                             .allowHardware(false)
-                                            // Dominant-color extraction needs a
-                                            // thumbnail, not the full-res image —
-                                            // without this every track change
-                                            // decodes a multi-MB software bitmap.
+
                                             .size(
                                                 PlayerColorExtractor.Config.IMAGE_SIZE,
                                                 PlayerColorExtractor.Config.IMAGE_SIZE,
@@ -1153,6 +1194,12 @@ class MainActivity : ComponentActivity() {
                     val accountName by homeViewModel.accountName.collectAsStateWithLifecycle()
                     val networkBannerState by networkBannerViewModel.bannerState.collectAsStateWithLifecycle()
                     val hasUnreadNews by newsViewModel.hasUnreadNews.collectAsStateWithLifecycle()
+
+                    val (listenTogetherInTopBar) =
+                        rememberPreference(
+                            moe.rukamori.archivetune.constants.ListenTogetherInTopBarKey,
+                            defaultValue = true,
+                        )
                     var profileMenuExpanded by rememberSaveable { mutableStateOf(false) }
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val (previousTab) = rememberSaveable { mutableStateOf("home") }
@@ -1359,12 +1406,6 @@ class MainActivity : ComponentActivity() {
                                 !active
                         }
 
-                    // SpatialFlow-style scroll-driven navbar behaviour: scrolling
-                    // down the page hides the bar completely and the mini player
-                    // smoothly takes over the freed space; scrolling back up
-                    // smoothly restores it. Reset whenever the destination
-                    // changes so a freshly opened tab always starts with the
-                    // bar visible.
                     var isNavBarHiddenByScroll by remember { mutableStateOf(false) }
                     LaunchedEffect(navBackStackEntry?.destination?.route) {
                         isNavBarHiddenByScroll = false
@@ -1379,10 +1420,7 @@ class MainActivity : ComponentActivity() {
                                     available: Offset,
                                     source: NestedScrollSource,
                                 ): Offset {
-                                    // Only real user gestures (drag or fling) drive the
-                                    // hide/show; programmatic scrolls (scroll-position
-                                    // restore on playlists, settings auto-scroll) must
-                                    // not touch the bar.
+
                                     if (source == NestedScrollSource.UserInput) {
                                         if (consumed.y < -navBarHideScrollThresholdPx) {
                                             isNavBarHiddenByScroll = true
@@ -1452,15 +1490,16 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // The in-app Listen Together chat notification samples the
+                    // same throttled recorder for its liquid-glass card; while
+                    // it is visible the recorder has to keep running or the
+                    // card draws on a stale, empty layer (reads as fully
+                    // transparent).
+                    var inAppChatNotificationActive by remember { mutableStateOf(false) }
+
                     var glassPrewarmActive by remember { mutableStateOf(false) }
                     LaunchedEffect(Unit) {
-                        // Deferred past the cold-open window: the prewarm
-                        // compiles the AGSL vibrancy shader + blur RenderEffect
-                        // by drawing a backdrop for 450ms, which used to fire
-                        // two seconds in — exactly while the first home feed
-                        // was still rendering, janking the app's very first
-                        // interactions. 4.5s still warms the pipeline long
-                        // before a menu is ever opened.
+
                         delay(4500)
                         glassPrewarmActive = true
                         delay(450)
@@ -1535,7 +1574,6 @@ class MainActivity : ComponentActivity() {
                     }
 
                     val aodAutoTimerSeconds by rememberPreference(AodAutoTimerSecondsKey, defaultValue = 0)
-                    val aodAutoOnScreenDim by rememberPreference(AodAutoOnScreenDimKey, defaultValue = false)
                     val isPlayingNow by remember(playerConnection) {
                         playerConnection?.isPlaying ?: MutableStateFlow(false)
                     }.collectAsStateWithLifecycle()
@@ -1555,36 +1593,6 @@ class MainActivity : ComponentActivity() {
                         requestAodMode()
                     }
 
-                    LaunchedEffect(
-                        aodAutoOnScreenDim,
-                        isPlayingNow,
-                        playerBottomSheetState.isExpanded,
-                        playerBottomSheetState.isDismissed,
-                        aodModeEnabled,
-                    ) {
-                        if (!aodAutoOnScreenDim) return@LaunchedEffect
-                        if (aodModeEnabled) return@LaunchedEffect
-                        if (!isPlayingNow) return@LaunchedEffect
-                        if (playerBottomSheetState.isExpanded) return@LaunchedEffect
-                        if (playerBottomSheetState.isDismissed) return@LaunchedEffect
-
-                        val systemTimeoutMs =
-                            Settings.System
-                                .getLong(
-                                    contentResolver,
-                                    Settings.System.SCREEN_OFF_TIMEOUT,
-                                    30_000L,
-                                ).coerceIn(5_000L, 600_000L)
-
-                        val triggerDelayMs = (systemTimeoutMs - 2_000L).coerceAtLeast(2_000L)
-                        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                        try {
-                            delay(triggerDelayMs)
-                            requestAodMode()
-                        } finally {
-                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                        }
-                    }
 
                     LaunchedEffect(useDarkTheme, playerBottomSheetState.isExpanded, playerBackground, aodModeEnabled) {
                         if (aodModeEnabled) return@LaunchedEffect
@@ -2077,6 +2085,7 @@ class MainActivity : ComponentActivity() {
                         LocalDensity provides scaledDensity,
                         LocalContentColor provides if (pureBlack) Color.White else contentColorFor(MaterialTheme.colorScheme.surface),
                         LocalPlayerConnection provides playerConnection,
+                        LocalListenTogetherManager provides listenTogetherManager,
                         LocalPlayerAwareWindowInsets provides playerAwareWindowInsets,
                         LocalStableSystemBarsTopPadding provides effectiveStatusBarTop,
                         LocalDownloadUtil provides downloadUtil,
@@ -2098,7 +2107,7 @@ class MainActivity : ComponentActivity() {
                             modifier =
                                 Modifier.let { base ->
                                     if (menuGlassBackdrop != null &&
-                                        (menuGlassRecordingActive || glassPrewarmActive)
+                                        (menuGlassRecordingActive || glassPrewarmActive || inAppChatNotificationActive)
                                     ) {
                                         base.throttledLayerBackdrop(menuGlassBackdrop)
                                     } else {
@@ -2148,9 +2157,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                 } else {
                                     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-                                    // Only the neutral frosted rail blurs — the tinted
-                                    // rail is a flat solid colour (tint wins if both
-                                    // flags are somehow stored on).
+
                                     val canRailBlur =
                                         navigationBarFrostedBlur && !navigationBarTintFrostedBlur &&
                                             navBarFrostedBackdrop != null && !isPreS
@@ -2161,9 +2168,7 @@ class MainActivity : ComponentActivity() {
                                         mutableStateOf(Offset.Zero)
                                     }
                                     val railDarkScheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
-                                    // Scheme-adaptive tinted rail — matches the tinted bar: light
-                                    // accent pastel in light mode, deep accent-tinted dark bar in
-                                    // dark mode, with the content polarity flipping with the scheme.
+
                                     val railTintedBaseColor =
                                         if (railDarkScheme) {
                                             lerp(Color.Black, MaterialTheme.colorScheme.primary, 0.30f)
@@ -2273,9 +2278,7 @@ class MainActivity : ComponentActivity() {
                                                         .drawBackdrop(
                                                             backdrop = liquidGlassBackdrop,
                                                             effects = {
-                                                                // Vividness boost; no lens here on purpose - the
-                                                                // rail's rectangle shape has no corner radii for
-                                                                // the refraction SDF.
+
                                                                 colorControls(saturation = 1.7f)
                                                                 blur(4f.dp.toPx())
                                                             },
@@ -2604,15 +2607,21 @@ class MainActivity : ComponentActivity() {
                                                                         navController.navigate(MusicRecognitionRoute)
                                                                     },
                                                                 ),
-                                                                ProfileMenuItem(
-                                                                    icon = R.drawable.multi_user,
-                                                                    label = stringResource(R.string.music_together),
-                                                                    onClick = {
-                                                                        profileMenuExpanded = false
-                                                                        navController.navigate("settings/music_together")
-                                                                    },
-                                                                ),
-                                                            ),
+
+                                                                if (listenTogetherInTopBar) {
+                                                                    ProfileMenuItem(
+                                                                        icon = R.drawable.diversity_listen_together,
+                                                                        label = stringResource(R.string.listen_together),
+                                                                        onClick = {
+                                                                            profileMenuExpanded = false
+                                                                            navController.navigate("listen_together_from_topbar")
+                                                                        },
+                                                                    )
+                                                                } else {
+                                                                    null
+                                                                },
+
+                                                            ).filterNotNull(),
                                                             onDismiss = { profileMenuExpanded = false },
                                                         )
                                                     }
@@ -2902,17 +2911,7 @@ class MainActivity : ComponentActivity() {
                                                 isMiniPlayerPairedWithNavigation = areBottomBarsPaired,
                                                 onLyricsVisibilityChange = { isPlayerLyricsFullScreen = it },
                                                 navbarHiddenOffset = {
-                                                    // When the navigation bar slides away (route change or
-                                                    // scroll-to-hide), the collapsed mini player takes over the
-                                                    // freed space: it drifts down by exactly the bar's footprint
-                                                    // (bar height + its padding), keeping the system gesture
-                                                    // inset clear. Scaled by (1 - sheet progress) inside
-                                                    // BottomSheet so the expanded player is unaffected.
-                                                    // Only on routes whose collapsed bound still contains the
-                                                    // bar footprint — routes that hide the bar outright
-                                                    // (settings, playlists, active search) already exclude it
-                                                    // from the bound, so drifting again would shove the mini
-                                                    // player right off the screen.
+
                                                     if (shouldShowNavigationBar && !useRail) {
                                                         val hideFraction =
                                                             1f - (
@@ -3231,6 +3230,27 @@ class MainActivity : ComponentActivity() {
                                         end = 16.dp,
                                     ).zIndex(10f),
                         )
+
+                        // In-app Listen Together chat notification: a single
+                        // stacked, blurred heads-up card while the app is in
+                        // the foreground and the chat screen is closed. Drawn
+                        // from the menu glass backdrop (throttled recorder) —
+                        // sampling the full-rate content backdrop from inside
+                        // the subtree it records crashes the RenderThread.
+                        if (listenTogetherManager != null) {
+                            InAppChatNotificationsHost(
+                                manager = listenTogetherManager,
+                                navController = navController,
+                                backdrop = LocalMenuGlassBackdrop.current,
+                                onActiveChanged = { inAppChatNotificationActive = it },
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(
+                                        top = if (shouldShowTopBar) effectiveTopInset + AppBarHeight + 8.dp else effectiveTopInset + 8.dp,
+                                    )
+                                    .zIndex(12f),
+                            )
+                        }
                     }
 
                     pendingBackupRestoreUri?.let { uri ->
@@ -3415,15 +3435,25 @@ class MainActivity : ComponentActivity() {
         val coroutineScope = lifecycleScope
 
         val authority = uri.authority?.lowercase()
-        if (uri.scheme.equals("archivetune", ignoreCase = true) && authority == "together") {
-            pendingTogetherJoinLink = uri.toString()
-            startMusicServiceSafely()
-            joinPendingTogetherIfReady()
-            return
-        }
 
         if (uri.scheme.equals("archivetune", ignoreCase = true) && authority == "login") {
             navController.navigate(buildLoginRoute(uri.getQueryParameter(LOGIN_URL_ARGUMENT)))
+            return
+        }
+
+        val listenCode =
+            uri.getQueryParameter("code")
+                ?: uri.getQueryParameter("room")
+                ?: uri.pathSegments.getOrNull(1)
+        val isListenLink =
+            uri.pathSegments.firstOrNull() == "listen" ||
+                uri.host?.equals("listen", ignoreCase = true) == true ||
+                uri.host?.equals("vivimusic-listen-together.onrender.com", ignoreCase = true) == true
+        if (!listenCode.isNullOrBlank() && isListenLink) {
+            val username =
+                dataStore.get(moe.rukamori.archivetune.constants.ListenTogetherUsernameKey, "")
+                    .ifBlank { "Guest" }
+            listenTogetherManager.joinRoom(listenCode, username)
             return
         }
 
@@ -3606,12 +3636,16 @@ class MainActivity : ComponentActivity() {
                                 BackupCategory.LIBRARY -> R.string.backup_category_library
                                 BackupCategory.ACCOUNT -> R.string.backup_category_account
                                 BackupCategory.SETTINGS -> R.string.backup_category_settings
+                                BackupCategory.LYRICS -> R.string.backup_category_lyrics
+                                BackupCategory.CANVAS -> R.string.backup_category_canvas
                             }
                         val descRes =
                             when (category) {
                                 BackupCategory.LIBRARY -> R.string.backup_category_library_desc
                                 BackupCategory.ACCOUNT -> R.string.backup_category_account_desc
                                 BackupCategory.SETTINGS -> R.string.backup_category_settings_desc
+                                BackupCategory.LYRICS -> R.string.backup_category_lyrics_desc
+                                BackupCategory.CANVAS -> R.string.backup_category_canvas_desc
                             }
                         Surface(
                             modifier = Modifier.fillMaxWidth(),

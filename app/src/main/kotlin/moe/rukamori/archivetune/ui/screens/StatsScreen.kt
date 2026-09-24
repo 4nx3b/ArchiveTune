@@ -632,7 +632,6 @@ private fun StatsStatusScreen(
 ) {
     Scaffold(
         topBar = {
-
             TopAppBar(
                 title = {},
                 navigationIcon = {

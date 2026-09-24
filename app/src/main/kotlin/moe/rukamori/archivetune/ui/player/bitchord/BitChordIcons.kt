@@ -16,7 +16,6 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
 object BitChordIcons {
-
     private const val STROKE = 2.2f
     private val stroke = SolidColor(Color.Black)
 
@@ -32,7 +31,6 @@ object BitChordIcons {
                 strokeLineCap = StrokeCap.Round,
                 strokeLineJoin = StrokeJoin.Round,
             ) {
-
                 moveTo(3.4f, 7.4f); lineTo(7f, 7.4f); lineTo(16.6f, 16.6f); lineTo(20.6f, 16.6f)
                 moveTo(18.1f, 14.1f); lineTo(20.6f, 16.6f); lineTo(18.1f, 19.1f)
 
@@ -98,7 +96,6 @@ object BitChordIcons {
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
-
             path(fill = stroke) {
                 moveTo(4.2f, 17.7f)
                 arcToRelative(2.9f, 2.5f, 0f, isMoreThanHalf = true, isPositiveArc = true, 5.8f, 0f)
@@ -145,6 +142,48 @@ object BitChordIcons {
 
     val HeartFilled: ImageVector by lazy { heart("bc_heart_filled", filled = true) }
 
+    /** The speech-bubble-with-quotation-marks glyph that anchors the bottom
+     * row's lyrics entry (drawn at a 2f stroke like the rest of the family). */
+    val LyricsQuote: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_lyrics_quote",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = 2f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(6f, 3.5f)
+                lineTo(18f, 3.5f)
+                quadTo(21f, 3.5f, 21f, 6.5f)
+                lineTo(21f, 15f)
+                quadTo(21f, 18f, 18f, 18f)
+                lineTo(10f, 18f)
+                lineTo(6f, 21f)
+                lineTo(6f, 18f)
+                quadTo(3f, 18f, 3f, 15f)
+                lineTo(3f, 6.5f)
+                quadTo(3f, 3.5f, 6f, 3.5f)
+                close()
+            }
+            path(fill = stroke) {
+                for (x in listOf(7.6f, 12.8f)) {
+                    moveTo(x, 8f)
+                    lineTo(x + 3f, 8f)
+                    lineTo(x + 3f, 11.1f)
+                    quadTo(x + 3f, 13.2f, x + 0.5f, 13.7f)
+                    lineTo(x + 0.5f, 12.3f)
+                    quadTo(x + 1.7f, 12f, x + 1.7f, 11f)
+                    lineTo(x, 11f)
+                    close()
+                }
+            }
+        }.build()
+    }
+
     private fun heart(name: String, filled: Boolean): ImageVector =
         ImageVector.Builder(
             name = name,
@@ -158,7 +197,6 @@ object BitChordIcons {
                 strokeLineJoin = StrokeJoin.Round,
                 fill = if (filled) stroke else null,
             ) {
-
                 moveTo(12f, 20f)
                 curveTo(12f, 20f, 3.2f, 14.6f, 3.2f, 8.9f)
                 arcToRelative(4.5f, 4.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, 8.8f, -1.5f)

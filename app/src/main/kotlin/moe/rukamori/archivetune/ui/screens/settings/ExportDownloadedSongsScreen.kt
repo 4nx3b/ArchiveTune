@@ -413,7 +413,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                 },
                 actions = {
                     if (!isSearchActive && songs.isNotEmpty()) {
-
                         IconButton(onClick = { isSearchActive = true }) {
                             Icon(
                                 painter = painterResource(R.drawable.search),
@@ -459,7 +458,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                     ),
                                 ).padding(16.dp),
                     ) {
-
                         Text(
                             text =
                                 stringResource(
@@ -499,7 +497,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-
                             OutlinedButton(
                                 onClick = { showDeleteConfirm = true },
                                 enabled = !isExporting && !isDeleting && selectedIds.isNotEmpty(),
@@ -588,7 +585,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                 }
             }
             displayedSongs.isEmpty() -> {
-
                 Column(
                     modifier =
                         Modifier

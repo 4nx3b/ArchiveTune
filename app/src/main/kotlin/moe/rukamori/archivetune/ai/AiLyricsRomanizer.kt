@@ -15,7 +15,6 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
 class AiLyricsRomanizer {
-
     suspend fun romanize(
         config: AiServiceConfig,
         lines: List<String>,
@@ -78,7 +77,6 @@ class AiLyricsRomanizer {
             throw e
         } catch (_: Exception) {
             if (batch.size <= 1) {
-
                 listOf(null)
             } else {
                 val mid = batch.size / 2

@@ -12,6 +12,7 @@ package moe.rukamori.archivetune.ui.component
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -48,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -200,7 +202,6 @@ public fun MediaDetailHero(
                     ),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineLarge.copy(lineHeight = 36.sp),
@@ -343,6 +344,7 @@ public fun MediaDetailPrimaryActions(
 
     thumbnailUrl: String? = null,
     useBlurredPlayButton: Boolean = false,
+    allowHorizontalScroll: Boolean = true,
 ) {
     val secondaryButtonColors =
         IconButtonDefaults.filledTonalIconButtonColors(
@@ -355,20 +357,22 @@ public fun MediaDetailPrimaryActions(
     val actionScrollMaxValue = actionScrollState.maxValue
     val density = LocalDensity.current
 
-    LaunchedEffect(actionScrollMaxValue) {
-        if (
-            actionScrollMaxValue > 0 &&
-            actionScrollMaxValue != Int.MAX_VALUE &&
-            actionScrollState.value == 0
-        ) {
-            val overflowDp = with(density) { actionScrollMaxValue.toDp() }
-            val target =
-                if (overflowDp < 80.dp) {
-                    actionScrollMaxValue
-                } else {
-                    actionScrollMaxValue / 2
-                }
-            actionScrollState.scrollTo(target)
+    if (allowHorizontalScroll) {
+        LaunchedEffect(actionScrollMaxValue) {
+            if (
+                actionScrollMaxValue > 0 &&
+                actionScrollMaxValue != Int.MAX_VALUE &&
+                actionScrollState.value == 0
+            ) {
+                val overflowDp = with(density) { actionScrollMaxValue.toDp() }
+                val target =
+                    if (overflowDp < 80.dp) {
+                        actionScrollMaxValue
+                    } else {
+                        actionScrollMaxValue / 2
+                    }
+                actionScrollState.scrollTo(target)
+            }
         }
     }
 
@@ -380,14 +384,20 @@ public fun MediaDetailPrimaryActions(
     ) {
         val actionViewportWidth = maxWidth
 
-        Row(
-            modifier =
+        val actionRowModifier =
+            if (allowHorizontalScroll) {
                 Modifier
                     .fillMaxWidth()
                     .fadingEdge(horizontal = MediaDetailActionEdgeFade)
                     .horizontalScroll(actionScrollState)
-                    .padding(horizontal = MediaDetailActionHorizontalPadding),
-        ) {
+                    .padding(horizontal = MediaDetailActionHorizontalPadding)
+            } else {
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = MediaDetailActionHorizontalPadding)
+            }
+
+        Row(modifier = actionRowModifier) {
             MediaDetailBalancedActionLayout(
                 actionRowScope = this,
                 modifier = Modifier.widthIn(min = actionViewportWidth),
@@ -443,6 +453,19 @@ public fun MediaDetailPrimaryActions(
                             text = stringResource(R.string.play),
                             style = playTextStyle,
                             fontWeight = FontWeight.Bold,
+                            // Single line, and instead of truncating long
+                            // translations ("Reproducir" shrinking to
+                            // "Reprod…"), the label MARQUEES inside the pill —
+                            // the balanced layout below still shrinks the pill
+                            // to fit the cluster, and any text that no longer
+                            // fits scrolls rather than dying with an ellipsis.
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Visible,
+                            modifier = Modifier.basicMarquee(
+                                iterations = Int.MAX_VALUE,
+                                initialDelayMillis = 600,
+                            ),
                         )
                     }
                 }
@@ -488,22 +511,26 @@ private fun MediaDetailBalancedActionLayout(
         val shuffleActionIndex = measurables.indexOfFirst { it.layoutId == MediaDetailActionLayoutId.Shuffle }
         val playActionIndex = measurables.indexOfFirst { it.layoutId == MediaDetailActionLayoutId.Play }
         val toggleAddActionIndex = measurables.indexOfFirst { it.layoutId == MediaDetailActionLayoutId.ToggleAdd }
-        val placeables =
-            measurables.map { measurable ->
-                measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+        // Satellite actions (everything except the play pill) are measured once;
+        // the play measurable is deliberately skipped here so it can be measured
+        // exactly once below with the width that remains beside them.
+        val satellitePlaceables: List<Placeable?> =
+            measurables.mapIndexed { index, measurable ->
+                if (index == playActionIndex) {
+                    null
+                } else {
+                    measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                }
             }
-        val shuffleAction = placeables.getOrNull(shuffleActionIndex)
-        val playAction = placeables.getOrNull(playActionIndex)
-        val toggleAddAction = placeables.getOrNull(toggleAddActionIndex)
+        val shuffleAction = satellitePlaceables.getOrNull(shuffleActionIndex)
+        val toggleAddAction = satellitePlaceables.getOrNull(toggleAddActionIndex)
         val otherActions =
-            placeables.filterIndexed { index, _ ->
-                index != shuffleActionIndex &&
-                    index != playActionIndex &&
-                    index != toggleAddActionIndex
-            }
-        val centeredContentWidth =
-            placeables.sumOf { it.width } +
-                actionSpacing * (placeables.size - 1).coerceAtLeast(0)
+            satellitePlaceables
+                .filterIndexed { index, _ ->
+                    index != shuffleActionIndex &&
+                        index != playActionIndex &&
+                        index != toggleAddActionIndex
+                }.filterNotNull()
         val leftOtherActionCount = otherActions.size / 2
         val leftActions =
             buildList {
@@ -525,12 +552,51 @@ private fun MediaDetailBalancedActionLayout(
         val rightActionsWidth =
             rightActions.sumOf { it.width } +
                 actionSpacing * (rightActions.size - 1).coerceAtLeast(0)
+        val sideSpacing = if (leftActions.isEmpty() && rightActions.isEmpty()) 0 else actionSpacing
+
+        // Long translations (Spanish "Reproducir", German "Wiedergabe", …)
+        // can make the cluster wider than the viewport. The pill is measured
+        // EXACTLY ONCE, pre-capped at the width that remains next to the
+        // satellite actions, so the whole cluster fits and the margins stay
+        // equal on both sides in every language. (The old code measured the
+        // pill unconstrained first and then re-measured it on overflow — a
+        // second measure() on the same Measurable, which crashes with
+        // IllegalStateException the moment the artist page opens in those
+        // languages.)
+        val maxPlayWidth =
+            constraints.maxWidth - (leftActionsWidth + rightActionsWidth + 2 * sideSpacing)
+        val playAction: Placeable? =
+            measurables.getOrNull(playActionIndex)?.let { measurable ->
+                if (constraints.hasBoundedWidth && maxPlayWidth > 0) {
+                    measurable.measure(
+                        constraints.copy(minWidth = 0, maxWidth = maxPlayWidth, minHeight = 0),
+                    )
+                } else {
+                    // Satellites alone overflow the row (or the width is
+                    // unbounded): keep the pill's natural size, matching the old
+                    // overflow fallback.
+                    measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                }
+            }
+        val placeables: List<Placeable> =
+            satellitePlaceables.mapIndexed { index, placeable ->
+                if (index == playActionIndex) playAction else placeable
+            }.filterNotNull()
+
+        val centeredContentWidth =
+            placeables.sumOf { it.width } +
+                actionSpacing * (placeables.size - 1).coerceAtLeast(0)
         val balancedContentWidth =
             if (playAction == null) {
                 centeredContentWidth
             } else {
-                val sideSpacing = if (leftActions.isEmpty() && rightActions.isEmpty()) 0 else actionSpacing
                 playAction.width + 2 * (maxOf(leftActionsWidth, rightActionsWidth) + sideSpacing)
+            }
+        val clusterWidth =
+            if (playAction == null) {
+                centeredContentWidth
+            } else {
+                leftActionsWidth + rightActionsWidth + playAction.width + 2 * sideSpacing
             }
         val layoutWidth =
             if (constraints.hasBoundedWidth) {
@@ -559,7 +625,16 @@ private fun MediaDetailBalancedActionLayout(
                 return@layout
             }
 
-            val playActionX = (layoutWidth - playAction.width) / 2
+            val playActionX =
+                if (clusterWidth <= layoutWidth) {
+                    // Center the whole cluster so the empty space is equal on both sides —
+                    // with an asymmetric action set (artist: shuffle/radio vs +) a
+                    // play-button-centered placement pushes the group off-center.
+                    val clusterStart = (layoutWidth - clusterWidth) / 2
+                    clusterStart + leftActionsWidth + sideSpacing
+                } else {
+                    (layoutWidth - playAction.width) / 2
+                }
             var leftActionX = playActionX - actionSpacing - leftActionsWidth
             var rightActionX = playActionX + playAction.width + actionSpacing
 

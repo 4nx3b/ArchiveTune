@@ -8,7 +8,6 @@
 package moe.rukamori.archivetune.ui.screens.settings
 
 import android.content.Context
-import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import moe.rukamori.archivetune.db.entities.Song
@@ -19,6 +18,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.*
 
 object ListenBrainzManager {
     private val logTag = "ListenBrainzManager"

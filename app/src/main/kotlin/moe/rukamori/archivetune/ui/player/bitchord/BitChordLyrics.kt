@@ -152,11 +152,16 @@ internal fun List<LyricsEntry>.toBitChordLyrics(): List<LyricLine> =
         val lead = mutableListOf<LyricWord>()
         val backing = mutableListOf<LyricWord>()
         entry.words.orEmpty().forEach { word ->
+            // BitChord aligns each word against the (space-carrying) line text
+            // via indexOf, and derives its own gaps from that text — so drop
+            // the edge separator space the TTML parser now preserves on word
+            // text; otherwise the last word of a line no longer matches the
+            // trimmed line text.
             val w =
                 LyricWord(
                     startMs = (word.startTime * 1000.0).toLong(),
                     endMs = (word.endTime * 1000.0).toLong(),
-                    text = word.text,
+                    text = word.text.trim(),
                 )
             if (word.isBackground) backing += w else lead += w
         }
@@ -259,7 +264,6 @@ private fun SweptLyricLine(
     val sweep = Modifier.drawWithContent {
         val position = clock.longValue
         when {
-
             position >= line.endMs -> drawContent()
 
             position <= line.timeMs -> Unit
@@ -292,7 +296,6 @@ private fun SweptLyricLine(
 
                     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                     .drawWithContent {
-
                         val measured = layout ?: return@drawWithContent
                         val position = clock.longValue
                         glowAt(
@@ -436,7 +439,6 @@ internal fun CurrentLyricLine(
             .padding(vertical = 4.dp)
             .graphicsLayer {
                 if (!synced || instrumental) {
-
                     alpha = 0.5f
                     return@graphicsLayer
                 }

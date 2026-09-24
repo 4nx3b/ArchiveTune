@@ -189,7 +189,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -238,7 +237,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 item {
                     Column {
                         SwitchPreference(
-                            modifier = positions.modifierFor("navigation_bar_frosted_blur"),
+                            modifier = positions.modifierFor("navigation_bar_frosted_blur", "frosted_nav_bar"),
                             title = { Text(stringResource(R.string.navigation_bar_frosted_blur)) },
                             description = stringResource(R.string.navigation_bar_frosted_blur_desc),
                             icon = { Icon(painterResource(R.drawable.blur_on), null) },
@@ -268,7 +267,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 }
 
                 item {
-
                     val supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                     SwitchPreference(
                         modifier = positions.modifierFor("liquid_glass_nav_bar"),
@@ -521,7 +519,6 @@ private fun SliderPreferenceRow(
                 showDialog = false
             },
             buttons = {
-
                 if (default != null) {
                     TextButton(
                         onClick = { tempValue = default },
@@ -689,7 +686,6 @@ private fun NavBarPreview(
                         verticalArrangement = Arrangement.Center,
                         modifier = Modifier.weight(1f),
                     ) {
-
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier =

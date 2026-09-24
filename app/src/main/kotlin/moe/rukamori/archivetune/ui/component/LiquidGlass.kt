@@ -102,7 +102,6 @@ class ThrottledLayerBackdrop internal constructor(
     val graphicsLayer: GraphicsLayer,
     internal val minIntervalMillis: Long,
 ) : Backdrop {
-
     override val isCoordinatesDependent: Boolean get() = true
 
     internal var layerCoordinates: LayoutCoordinates? by mutableStateOf(null)
@@ -115,7 +114,6 @@ class ThrottledLayerBackdrop internal constructor(
         val coordinates = coordinates ?: return
         val layerCoordinates = layerCoordinates ?: return
         withTransform({
-
             val offset =
                 try {
                     layerCoordinates.localPositionOf(coordinates)
@@ -171,7 +169,6 @@ private class ThrottledLayerBackdropElement(
 private class ThrottledLayerBackdropNode(
     var backdrop: ThrottledLayerBackdrop,
 ) : DrawModifierNode, GlobalPositionAwareModifierNode, Modifier.Node() {
-
     private var lastRecordUptimeMillis = 0L
 
     override fun onAttach() {
@@ -190,7 +187,6 @@ private class ThrottledLayerBackdropNode(
                 val previousDensity = drawContext.density
                 drawContext.density = density
                 try {
-
                     this@draw.drawContent()
                 } finally {
                     drawContext.density = previousDensity
@@ -225,18 +221,16 @@ fun Modifier.liquidGlass(
     interactive: Boolean = true,
     baseColor: Color = Color.Unspecified,
     blurRadius: Dp = 8.dp,
+    scrim: Color? = null,
 ): Modifier {
-
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
-    return remember(backdrop, shape, interactive, baseColor, blurRadius, isDark) {
+    return remember(backdrop, shape, interactive, baseColor, blurRadius, isDark, scrim) {
         this.drawBackdrop(
             backdrop = backdrop,
             effects = {
                 val l = 0f
-                // SpatialFlow-style vividness: 1.7x saturation bleed instead of
-                // the stock 1.5x vibrancy, so the background colours move through
-                // the glass more visibly as the content scrolls behind it.
+
                 colorControls(saturation = 1.7f)
                 blur(
                     if (l > 0f) {
@@ -245,8 +239,7 @@ fun Modifier.liquidGlass(
                         blurRadius.toPx()
                     },
                 )
-                // More liquid: taller refraction band, ~25% stronger edge bend
-                // and the depth uniform enabled (same shader, no extra cost).
+
                 lens(
                     refractionHeight = 28f.dp.toPx(),
                     refractionAmount = size.minDimension / 3.2f,
@@ -265,13 +258,21 @@ fun Modifier.liquidGlass(
                     null
                 },
             onDrawSurface = {
-                val luminanceAnimation = 0.5f
-                val darken = lerp(
-                    0.12f,
-                    0.5f,
-                    ((luminanceAnimation - 0.3f) / 0.5f).coerceIn(0f, 1f),
-                )
-                drawRect((if (isDark) Color.Black else Color.White).copy(alpha = darken))
+                if (scrim != null) {
+                    // Caller-supplied surface scrim (e.g. glass floating over a
+                    // user wallpaper): the theme default darkens by ~27%, which
+                    // leaves white-on-white text when the sampled backdrop is a
+                    // bright image. The caller decides how much is enough.
+                    drawRect(scrim)
+                } else {
+                    val luminanceAnimation = 0.5f
+                    val darken = lerp(
+                        0.12f,
+                        0.5f,
+                        ((luminanceAnimation - 0.3f) / 0.5f).coerceIn(0f, 1f),
+                    )
+                    drawRect((if (isDark) Color.Black else Color.White).copy(alpha = darken))
+                }
             },
         )
     }
@@ -284,11 +285,12 @@ fun LiquidGlassContainer(
     shape: Shape = CircleShape,
     interactive: Boolean = false,
     blurRadius: Dp = LiquidGlassPillBlurRadius,
+    scrim: Color? = null,
     contentAlignment: Alignment = Alignment.Center,
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(
-        modifier = modifier.liquidGlass(backdrop, shape, interactive, blurRadius = blurRadius),
+        modifier = modifier.liquidGlass(backdrop, shape, interactive, blurRadius = blurRadius, scrim = scrim),
         contentAlignment = contentAlignment,
         content = content,
     )
@@ -300,6 +302,7 @@ fun LiquidGlassActionPill(
     modifier: Modifier = Modifier,
     interactive: Boolean = false,
     blurRadius: Dp = LiquidGlassPillBlurRadius,
+    scrim: Color? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     Row(
@@ -311,6 +314,7 @@ fun LiquidGlassActionPill(
                     shape = RoundedCornerShape(24.dp),
                     interactive = interactive,
                     blurRadius = blurRadius,
+                    scrim = scrim,
                 ),
         verticalAlignment = Alignment.CenterVertically,
         content = content,

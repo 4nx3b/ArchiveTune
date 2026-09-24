@@ -80,7 +80,6 @@ object FunctionNameExtractor {
         Timber.tag(TAG).d("Q-array obfuscation check: hasQArray=$hasQArray")
 
         if (hasQArray) {
-
             val match = Q_ARRAY_PATTERN.find(playerJs)
             if (match != null) {
                 val start = match.range.first
@@ -218,7 +217,6 @@ object FunctionNameExtractor {
                         return NFunctionInfo(name, arrayIdx, isHardcoded = false)
                     }
                     else -> {
-
                         if (pattern.toPattern().matcher("").groupCount() < 1) {
                             Timber.tag(TAG).d("N-pattern $index matched but has no capture groups; skipping")
                             continue

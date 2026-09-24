@@ -136,7 +136,6 @@ class DownloadUtil
         @DownloadCache val downloadCache: Cache,
         @PlayerCache val playerCache: Cache,
     ) {
-
         private val appContext: Context = context
 
         private val connectivityManager = context.getSystemService<ConnectivityManager>()!!
@@ -172,7 +171,6 @@ class DownloadUtil
                 .callTimeout(0, TimeUnit.SECONDS)
                 .dispatcher(
                     okhttp3.Dispatcher().apply {
-
                         maxRequests = MAX_DOWNLOAD_HTTP_REQUESTS
                         maxRequestsPerHost = MAX_DOWNLOAD_HTTP_REQUESTS_PER_HOST
                     },
@@ -196,7 +194,6 @@ class DownloadUtil
                             host.endsWith("ytimg.com")
 
                     if (!isYouTubeMediaHost) {
-
                         val patched =
                             request
                                 .newBuilder()
@@ -685,7 +682,6 @@ class DownloadUtil
                 val album = song.album?.title?.takeIf { it.isNotBlank() }
                 val durationMs = song.song.duration.takeIf { it > 0 }?.toLong()?.times(1000L)
                 if (title != null) {
-
                     val sourceOrder: List<DownloadSource> = downloadSourceChain(songSourcePrefs)
                     for (source in sourceOrder) {
                         val resolved = runCatching {
@@ -825,14 +821,12 @@ class DownloadUtil
                         if (contentLength > 0) {
                             val cachedBytes = spans.sumOf { it.length }
                             if (cachedBytes < contentLength) {
-
                                 runCatching { playerCache.removeResource(cacheKey) }
                                 throw IOException("Partial cache: $cachedBytes / $contentLength bytes for $cacheKey")
                             }
                         }
                         true
                     } catch (e: Exception) {
-
                         runCatching { playerCache.removeResource(cacheKey) }
                         throw e
                     }
@@ -941,13 +935,11 @@ class DownloadUtil
                 )?.let { ResolvedStreamData(it.uri, it.mimeType, it.codecs, it.contentLength) }
             }
             DownloadSource.QOBUZ_BACKUP -> {
-
                 LosslessStreamResolver
                     .resolveQobuzBackup(directQobuzBackupVideoId ?: mediaId)
                     ?.let { ResolvedStreamData(it.uri, it.mimeType, it.codecs, it.contentLength) }
             }
             DownloadSource.DEEZER -> {
-
                 LosslessStreamResolver.resolveDeezer(
                     mediaId = mediaId,
                     title = title,
@@ -968,13 +960,9 @@ class DownloadUtil
                 )?.let { ResolvedStreamData(it.uri, it.mimeType, it.codecs, it.contentLength) }
             }
             DownloadSource.APPLE -> {
-
                 resolveAppleDownloadStream(mediaId, title, artists, album, durationMs)
             }
 
-            // Amazon serves CENC-protected fragmented MP4 and this fork ships no decryption step
-            // (see AmazonEnabledKey in PreferenceKeys.kt), so no download stream can be produced
-            // here — the chain skips Amazon and falls through to the next source.
             DownloadSource.AMAZON -> null
             DownloadSource.AUTO, DownloadSource.YOUTUBE_MUSIC -> null
         }
@@ -1118,7 +1106,6 @@ class DownloadUtil
                         }
                     }
                 } finally {
-
                     runCatching { cacheSink.close() }
                 }
                 val spans = playerCache.getCachedSpans(cacheKey)
@@ -1282,7 +1269,6 @@ class DownloadUtil
                             val authorName = videoDetails.author?.takeIf { it.isNotBlank() }
                             val channelId = videoDetails.channelId?.takeIf { it.isNotBlank() }
                             if (authorName != null) {
-
                                 val artistId = channelId ?: "UCYT:${mediaId}"
 
                                 val cleanArtistName = authorName
@@ -1359,11 +1345,9 @@ class DownloadUtil
         }
 
         companion object {
-
             private const val DEFAULT_MAX_PARALLEL_DOWNLOADS = 12
 
             internal const val YT_DOWNLOAD_RESOLVE_TIMEOUT_MS = 120_000L
-
 
             internal const val DOWNLOAD_AUTO_RETRY_DELAY_MS = 4_000L
 
@@ -1385,6 +1369,10 @@ class DownloadUtil
                 "api.qobuz.com",
                 "api.tidal.com",
                 "amp-api.tidal.com",
+                "www.jiosaavn.com",
+                "api.deezer.com",
+                "media.deezer.com",
+                "www.deezer.com",
             )
         }
     }

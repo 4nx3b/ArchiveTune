@@ -128,6 +128,8 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
             "lyrics_romanize_hindi", "lyrics_romanize_other",
         )
 
+        own("listen_together", "integration", "listen_together", "listen_together_screen")
+
         own("appearance", "lyrics", "lyrics_background_style")
         own("discord_experimental", "lyrics", "translate_lyrics", "enable_translator")
 
@@ -153,7 +155,6 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
     }
 
 private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): String? {
-
     val ownerKey = CROSS_PAGE_SCROLL_OWNERS["$parentKey/${scrollKey.orEmpty()}"] ?: parentKey
     val route =
         when (ownerKey) {
@@ -176,13 +177,13 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
             "content" -> "settings/content"
             "behavior" -> "settings/privacy"
             "integration" -> "settings/integration"
+            "listen_together" -> "settings/integrations/listen_together"
             "internet" -> "settings/internet"
             "storage" -> "settings/storage"
             "downloads" -> "settings/downloads"
             "backup_restore" -> "settings/backup_restore"
             "developer_options" -> "settings/misc"
             "logcat" -> "settings/logcat"
-            "music_together" -> "settings/music_together"
             "about" -> "settings/about"
             "discord" -> "settings/discord"
             "discord_experimental" -> "settings/discord/experimental"
@@ -204,7 +205,7 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
                 "po_token",
                 "account",
                 "logcat",
-                "music_together",
+                "listen_together",
             )
     return if (!supportsScroll || scrollKey.isNullOrBlank()) route else "$route?scrollTo=$scrollKey"
 }
@@ -305,7 +306,6 @@ fun SettingsScreen(
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
         ) { _ ->
             Box(modifier = Modifier.fillMaxSize()) {
-
                 val playerAwareBottomPadding =
                     LocalPlayerAwareWindowInsets.current
                         .only(WindowInsetsSides.Bottom)
@@ -506,7 +506,6 @@ private fun BoxScope.SettingsHomeStyleHeader(
                 .padding(top = systemBarsTopPadding)
                 .height(AppBarHeight),
     ) {
-
         Text(
             text = stringResource(R.string.settings),
             color = MaterialTheme.colorScheme.onBackground,

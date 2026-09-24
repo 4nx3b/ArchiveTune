@@ -146,7 +146,6 @@ private fun VideoQualitySheetContent(
     AnimatedContent(
         targetState = advancedOpen,
         transitionSpec = {
-
             val direction = if (targetState) 1 else -1
             (
                 slideInHorizontally(tween(220)) { width -> direction * width / 3 } +
@@ -195,7 +194,6 @@ private fun MainQualityPage(
     onSelect: (Int?) -> Unit,
     onOpenAdvanced: () -> Unit,
 ) {
-
     val playingLabel = selectedHeight?.let { stringResource(R.string.video_quality_current, formatHeightLabel(it)) }
 
     fun subtitleFor(
@@ -285,7 +283,6 @@ private fun AdvancedQualityPage(
     }
 
     if (availableHeights.isEmpty()) {
-
         Text(
             text = stringResource(R.string.video_quality_unavailable_on_device),
             style = MaterialTheme.typography.bodyMedium,
@@ -297,7 +294,6 @@ private fun AdvancedQualityPage(
                 ),
         )
     } else {
-
         Column(
             modifier =
                 Modifier

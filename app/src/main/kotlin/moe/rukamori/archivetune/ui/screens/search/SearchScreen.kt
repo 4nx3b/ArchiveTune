@@ -142,13 +142,7 @@ fun SearchScreen(
 ) {
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var searchProvider by rememberEnumPreference(DefaultSearchSourceKey, SearchProvider.YOUTUBE)
-    // The home tab's Minimal mode setting now also applies here (user
-    // request): with it on, the search tab shows only the search field and the
-    // user's own recent searches — trending searches, trending songs, new
-    // albums, moods/genres and the recommendation tabs are all hidden, the
-    // same philosophy as minimal home (personal history stays, discovery
-    // goes). Render-only gating, exactly like HomeScreen: the discovery
-    // view model still loads, it just has nothing to draw.
+
     val (minimalMode, _) = rememberPreference(MinimalHomeModeKey, defaultValue = false)
     val onSearchSourceSelection: (SearchSource, SearchProvider) -> Unit = { _, provider ->
         searchProvider = provider
@@ -202,7 +196,6 @@ fun SearchScreen(
                 ),
             modifier = Modifier.fillMaxSize(),
         ) {
-
             item(
                 key = "search_field",
                 contentType = "search_field",
@@ -224,10 +217,7 @@ fun SearchScreen(
             }
 
             if (minimalMode) {
-                // Minimal search: keep the user's own recent-search history
-                // (the analogue of minimal home keeping "Recently played"),
-                // skip the discovery tabs and every trending/recommendation
-                // section below.
+
                 if (recentSearches.isNotEmpty()) {
                     item(
                         key = "search_recent_searches",
@@ -300,7 +290,6 @@ fun SearchScreen(
                 is SearchDiscoveryScreenState.Success -> {
                     when (selectedTab) {
                         SearchDiscoveryTab.EXPLORE -> {
-
                             if (recentSearches.isNotEmpty()) {
                                 item(
                                     key = "search_recent_searches",
@@ -508,7 +497,7 @@ fun SearchScreen(
                     }
                 }
             }
-            } // end !minimalMode
+            }
 
             item(key = "search_bottom_spacer", contentType = "spacer") {
                 Spacer(Modifier.height(SearchSectionSpacing))
@@ -705,7 +694,6 @@ private fun SearchSectionHeader(
                 .fillMaxWidth()
                 .padding(horizontal = SearchHorizontalPadding, vertical = 8.dp),
     ) {
-
         if (leadingIconRes != null) {
             Box(
                 modifier = Modifier
@@ -880,7 +868,6 @@ private fun RecentSearchMonogram(query: String) {
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
-
         Icon(
             painter = painterResource(R.drawable.search),
             contentDescription = null,
@@ -987,7 +974,6 @@ private fun MoodCard(
                 .background(cardBrush)
                 .clickable(onClick = onClick),
     ) {
-
         if (artworkModel != null) {
             AsyncImage(
                 model = artworkModel,
@@ -1059,7 +1045,6 @@ private fun TrendingChip(
                 .clickable(onClick = onClick)
                 .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
-
         Icon(
             painter = painterResource(R.drawable.trending_up),
             contentDescription = null,

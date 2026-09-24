@@ -183,8 +183,6 @@ private val AppleMusicChipSize = 34.dp
 private val AppleMusicTransportIconSize = 48.dp
 private val AppleMusicPlayPauseIconSize = 80.dp
 
-// The loading spinner replaces the glyph visually; decoupled so the 80dp
-// play/pause glyph size does not balloon the indicator.
 private val AppleMusicPlayPauseSpinnerSize = 48.dp
 
 private val AppleMusicBottomIconSize = 26.dp
@@ -278,7 +276,6 @@ fun AppleMusicPlayerContent(
     canvasFallbackUrl: String?,
     currentFormat: FormatEntity?,
     contentBottomPadding: Dp,
-    onQueueClick: () -> Unit,
     onSliderValueChange: (Long) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
     lyricsSyncOffset: Int = 0,
@@ -288,6 +285,8 @@ fun AppleMusicPlayerContent(
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
 ) {
+    // Lockstep the sharp hero canvas and the blurred backdrop copy of the same loop.
+    val canvasLoopSync = remember { CanvasLoopSync() }
 
     var queueOpen by remember { mutableStateOf(false) }
 
@@ -399,7 +398,6 @@ fun AppleMusicPlayerContent(
             return@LaunchedEffect
         }
         if (lyricsOpen && !showLyricsPlayerControls) {
-
             return@LaunchedEffect
         }
         delay(autoHideDelayMs)
@@ -409,7 +407,6 @@ fun AppleMusicPlayerContent(
     var canvasVisibleForLyrics by remember { mutableStateOf(true) }
     LaunchedEffect(lyricsOpen) {
         if (lyricsOpen) {
-
             canvasVisibleForLyrics = true
             delay(AmLyricsBackdropMorphMs.toLong())
             canvasVisibleForLyrics = false
@@ -443,8 +440,6 @@ fun AppleMusicPlayerContent(
     val lyricsPosProvider = remember {
         { sliderPositionState.value }
     }
-
-    val blurWander = rememberBlurWanderDrift(active = lyricsBackdropActive)
 
     val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
 
@@ -549,7 +544,6 @@ fun AppleMusicPlayerContent(
 
     val onMoreClick = {
         if (lyricsOpen) {
-
             showAnchoredLyricsMenu = true
         } else {
             menuState.show {
@@ -572,14 +566,12 @@ fun AppleMusicPlayerContent(
 
     val castAction = rememberCastPlayerMenuAction()
     val onOutputClick: () -> Unit = castAction?.onClick ?: {
-
         runCatching {
             context.startActivity(Intent("android.settings.panel.action.MEDIA_OUTPUT"))
         }
     }
 
     BoxWithConstraints(modifier = modifier) {
-
         BoxWithConstraints(
             modifier =
                 Modifier
@@ -615,7 +607,6 @@ fun AppleMusicPlayerContent(
         val context = LocalContext.current
         val imageLoader = context.imageLoader
         val preBlurredBitmap by produceState<Bitmap?>(null, artworkUrl) {
-
             if (!isPreS || artworkUrl.isNullOrBlank() || videoShowing || useCanvasBackdrop) {
                 value = null
                 return@produceState
@@ -643,16 +634,18 @@ fun AppleMusicPlayerContent(
         }
 
         if (!videoShowing) {
-
+            // Same screen-scaled wander amplitude as every other player style
+            // (Apple Music lyrics-page behaviour): the blurred colour mass
+            // traverses the whole display instead of orbiting near the centre.
+            val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
+            val blurWander = rememberBlurWanderDrift(active = lyricsBackdropActive, maxDriftDp = wanderMaxDrift)
             val driftGraphicsLayer: GraphicsLayerScope.() -> Unit = {
-
                 val progress = lyricsBackdropProgress.value
 
                 val scale = AmCoverBlurScale + (AmLyricsBlurDriftScale - AmCoverBlurScale) * progress
                 scaleX = scale
                 scaleY = scale
                 if (progress > 0f) {
-
                     translationX = blurWander.xDp.floatValue * driftDpToPx * progress
                     translationY = blurWander.yDp.floatValue * driftDpToPx * progress
 
@@ -668,6 +661,7 @@ fun AppleMusicPlayerContent(
                         height = maxHeight,
                         restScale = AmCoverBlurScale,
                         driftScale = AmLyricsBlurDriftScale,
+                        maxDriftDp = wanderMaxDrift,
                     )
                 }
             Box(
@@ -678,7 +672,6 @@ fun AppleMusicPlayerContent(
                 contentAlignment = Alignment.Center,
             ) {
                 if (isPreS && preBlurredBitmap != null) {
-
                     Image(
                         bitmap = preBlurredBitmap!!.asImageBitmap(),
                         contentDescription = null,
@@ -729,6 +722,7 @@ fun AppleMusicPlayerContent(
                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                         visible = canvasVisibleForLyrics,
                         maxVideoEdgePx = AmCanvasBackdropMaxVideoEdgePx,
+                        loopSyncFollower = canvasLoopSync,
                         modifier =
                             Modifier
                                 .fillMaxWidth(1f / AmCanvasBackdropUpscale)
@@ -743,11 +737,11 @@ fun AppleMusicPlayerContent(
                 remember(useCanvasBackdrop, preBlurLoading, Build.VERSION.SDK_INT) {
                     val (a1, a2, a3) =
                         if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            Triple(0.25f, 0.40f, 0.65f)
+                            Triple(0.15f, 0.28f, 0.50f)
                         } else if (preBlurLoading) {
                             Triple(0.55f, 0.65f, 0.85f)
                         } else {
-                            Triple(0.40f, 0.55f, 0.75f)
+                            Triple(0.28f, 0.42f, 0.60f)
                         }
                     Brush.verticalGradient(
                         0f to Color.Black.copy(alpha = a1),
@@ -782,28 +776,83 @@ fun AppleMusicPlayerContent(
                             }
                         },
             ) {
+                // Left half: the artwork with the song title and artist
+                // directly beneath it — Apple Music's own landscape
+                // arrangement, sized up so the artwork reads as the hero of
+                // the half (not a shrunken portrait card) and CENTERED with
+                // equal side margins, the title block aligned to the very
+                // same width so name and artwork share one visual column.
+                // The right half is lyrics-first: opening lyrics swaps the
+                // controls column out for the lyric sheet over there,
+                // keeping the artwork on screen while lyrics show.
+                BoxWithConstraints(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                ) {
+                    // The landscape hero artwork: as large as the half allows,
+                    // with equal side margins, so it sits perfectly centred —
+                    // and the title block below inherits the exact same width.
+                    val landscapeArtworkSize =
+                        (maxWidth - 32.dp)
+                            .coerceAtMost(maxHeight * 0.86f)
+                            .coerceAtLeast(280.dp)
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .padding(bottom = contentBottomPadding),
+                    ) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            AppleMusicSharpArtwork(
+                                artworkRequest = artworkRequest,
+                                artworkUrl = artworkUrl,
+                                canvasPrimaryUrl = canvasPrimaryUrl,
+                                canvasFallbackUrl = canvasFallbackUrl,
+                                isPlaying = isPlaying,
+                                fadeBottom = false,
+                                videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
+                                isMusicVideo = mediaMetadata.isMusicVideo,
+                                landscape = true,
+                                landscapeArtworkSize = landscapeArtworkSize,
+                                fadeRightEdge = true,
+                                artworkCornerRadiusDp = artworkCornerRadiusDp,
+                                canvasLoopSync = canvasLoopSync,
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize(),
+                            )
+                        }
+
+                        AppleMusicLandscapeTitleBlock(
+                            mediaMetadata = mediaMetadata,
+                            currentSongLiked = currentSongLiked,
+                            titleActions = titleActions,
+                            onToggleLike = playerConnection::toggleLike,
+                            onMoreClick = onMoreClick,
+                            onMorePositioned = { moreIconBounds = it },
+                            contentWidth = landscapeArtworkSize,
+                        )
+                    }
+                }
                 Box(
                     modifier =
                         Modifier
                             .weight(1f)
                             .fillMaxHeight(),
                 ) {
-                    AppleMusicSharpArtwork(
-                        artworkRequest = artworkRequest,
-                        artworkUrl = artworkUrl,
-                        canvasPrimaryUrl = canvasPrimaryUrl,
-                        canvasFallbackUrl = canvasFallbackUrl,
-                        isPlaying = isPlaying,
-                        fadeBottom = false,
-                        videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
-                        isMusicVideo = mediaMetadata.isMusicVideo,
-                        landscape = true,
-                        artworkCornerRadiusDp = artworkCornerRadiusDp,
-                        modifier =
-                            Modifier
-                                .fillMaxSize(),
-                    )
-
+                    // Lyrics own the right half whenever they are open — the
+                    // controls column yields instead of stacking over them.
                     androidx.compose.animation.AnimatedVisibility(
                         visible = lyricsOpen,
                         enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
@@ -843,52 +892,52 @@ fun AppleMusicPlayerContent(
                             }
                         }
                     }
-                }
-                AnimatedVisibility(
+                    androidx.compose.animation.AnimatedVisibility(
 
-                    visible =
-                        (!lyricsOpen && !queueOpen) ||
-                            (queueOpen && playerControlsExpanded) ||
-                            (lyricsOpen && playerControlsExpanded),
-                    enter = fadeIn(tween(120)),
-                    exit = fadeOut(tween(100)),
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                ) {
-                    AppleMusicControlsColumn(
-                        mediaMetadata = mediaMetadata,
-                        isPlaying = isPlaying,
-                        isLoading = isLoading,
-                        canSkipPrevious = canSkipPrevious,
-                        canSkipNext = canSkipNext,
-                        sliderPosition = sliderPosition,
-                        positionProvider = positionProvider,
-                        duration = duration,
-                        playerConnection = playerConnection,
-                        currentSongLiked = currentSongLiked,
-                        volume = volume,
-                        onVolumeChange = onControlsVolumeChange,
-                        titleActions = titleActions,
-                        onPlayPauseClick = onPlayPauseClick,
-                        onMoreClick = onMoreClick,
-                        onOutputClick = onOutputClick,
-                        onQueueClick = onQueueClick,
-                        onLyricsClick = toggleLyrics,
-                        onSliderValueChange = onControlsSliderValueChange,
-                        onSliderValueChangeFinished = onControlsSliderValueChangeFinished,
-                        currentFormat = currentFormat,
-                        onQualityChipClick = {
-                            bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
-                        },
-                        onMorePositioned = { moreIconBounds = it },
-                        modifier =
-                            Modifier
-                                .fillMaxSize()
-                                .padding(bottom = contentBottomPadding),
-                    )
+                        visible =
+                            (!lyricsOpen && !queueOpen) ||
+                                (queueOpen && playerControlsExpanded) ||
+                                (lyricsOpen && playerControlsExpanded),
+                        enter = fadeIn(tween(120)),
+                        exit = fadeOut(tween(100)),
+                        modifier = Modifier.matchParentSize(),
+                    ) {
+                        AppleMusicControlsColumn(
+                            mediaMetadata = mediaMetadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            sliderPosition = sliderPosition,
+                            positionProvider = positionProvider,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            currentSongLiked = currentSongLiked,
+                            volume = volume,
+                            onVolumeChange = onControlsVolumeChange,
+                            titleActions = titleActions,
+                            onPlayPauseClick = onPlayPauseClick,
+                            onMoreClick = onMoreClick,
+                            onOutputClick = onOutputClick,
+                            onQueueClick = toggleQueue,
+                            onLyricsClick = toggleLyrics,
+                            onSliderValueChange = onControlsSliderValueChange,
+                            onSliderValueChangeFinished = onControlsSliderValueChangeFinished,
+                            currentFormat = currentFormat,
+                            onQualityChipClick = {
+                                bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
+                            },
+                            onMorePositioned = { moreIconBounds = it },
+                            showTitleRow = false,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .padding(bottom = contentBottomPadding),
+                        )
+                    }
                 }
             }
         } else {
-
             Column(
                 modifier =
                     Modifier
@@ -910,7 +959,6 @@ fun AppleMusicPlayerContent(
                 BoxWithConstraints(
                     modifier = Modifier.weight(1f),
                 ) {
-
                 val topInset = LocalStableSystemBarsTopPadding.current
                 val miniHeaderHeight = AppleMusicMiniArtworkSize + 16.dp + topInset
                 SharedTransitionLayout(
@@ -919,7 +967,6 @@ fun AppleMusicPlayerContent(
                     AnimatedContent(
                         targetState = morphState,
                         transitionSpec = {
-
                             fadeIn(tween(600, easing = FastOutSlowInEasing)) togetherWith
                                 fadeOut(tween(600, easing = FastOutSlowInEasing))
                         },
@@ -927,7 +974,6 @@ fun AppleMusicPlayerContent(
                         label = "AppleMusicMorph",
                     ) { targetState ->
                         if (targetState == AppleMusicPlayerState.COVER) {
-
                             Box(modifier = Modifier.fillMaxSize()) {
                                 AppleMusicSharpArtwork(
                                     artworkRequest = artworkRequest,
@@ -943,6 +989,7 @@ fun AppleMusicPlayerContent(
                                     fullPlayerHeight = fullPlayerHeightForArtwork,
 
                                     artworkCornerRadiusDp = artworkCornerRadiusDp,
+                                    canvasLoopSync = canvasLoopSync,
                                     modifier =
                                         Modifier
                                             .fillMaxSize()
@@ -972,14 +1019,12 @@ fun AppleMusicPlayerContent(
                                 )
                             }
                         } else {
-
                             Box(
                                 modifier =
                                     Modifier
                                         .fillMaxSize()
                                         .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current)),
                             ) {
-
                                 Column(modifier = Modifier.fillMaxSize()) {
                                     AppleMusicMiniHeader(
                                         artworkRequest = artworkRequest,
@@ -1026,7 +1071,6 @@ fun AppleMusicPlayerContent(
                     enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
                     exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
                 ) {
-
                     Box(
                         modifier =
                             Modifier
@@ -1034,7 +1078,6 @@ fun AppleMusicPlayerContent(
                                 .height(maxHeight - miniHeaderHeight)
                                 .offset(y = miniHeaderHeight),
                     ) {
-
                         val lyricsHorizontalPadding = AppleMusicContentPadding - 16.dp
                         if (lyricsContentReady) {
                             when (lyricsMode) {
@@ -1156,11 +1199,16 @@ private fun AppleMusicSharpArtwork(
     isMusicVideo: Boolean = false,
     landscape: Boolean = false,
 
+    landscapeArtworkSize: Dp? = null,
+
+    fadeRightEdge: Boolean = false,
+
     showCanvas: Boolean = true,
 
     fullPlayerHeight: Dp? = null,
 
     artworkCornerRadiusDp: Dp = 16.dp,
+    canvasLoopSync: CanvasLoopSync? = null,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current
@@ -1171,11 +1219,21 @@ private fun AppleMusicSharpArtwork(
             1f to Color.Transparent,
         )
     }
+    // Landscape canvas blend: the canvas's right edge (the screen's middle
+    // in horizontal mode) dissolves into the blurred backdrop with a
+    // gradient mask instead of ending in a hard rectangle — matching the
+    // edge-less look non-canvas songs get from the full-bleed backdrop.
+    val canvasRightFadeBrush = remember {
+        Brush.horizontalGradient(
+            0f to Color.Black,
+            0.55f to Color.Black,
+            1f to Color.Transparent,
+        )
+    }
     Box(
         modifier =
             modifier.then(
                 if (fadeBottom) {
-
                     Modifier
                         .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                         .drawWithContent {
@@ -1208,34 +1266,39 @@ private fun AppleMusicSharpArtwork(
                         .background(Color.Black),
             )
         } else if (immersiveExtendedCard) {
-
             BoxWithConstraints(modifier = Modifier.matchParentSize()) {
                 val horizontalPadding = if (maxWidth < 380.dp) 16.dp else 20.dp
                 val effectiveFullHeight = fullPlayerHeight ?: if (landscape) maxHeight else maxHeight / 0.55f
                 val compactHeight = effectiveFullHeight < 760.dp
                 val veryCompactHeight = effectiveFullHeight < 700.dp
 
-                val artworkMinSize =
-                    when {
-                        veryCompactHeight -> 200.dp
-                        compactHeight -> 216.dp
-                        else -> 236.dp
-                    }
-
-                val artworkHeightLimitFromFull =
-                    effectiveFullHeight *
-                        when {
-                            veryCompactHeight -> 0.32f
-                            compactHeight -> 0.35f
-                            else -> 0.40f
-                        }
-                val artworkHeightLimitFromMorph = maxHeight * 0.82f
-                val artworkHeightLimit =
-                    minOf(artworkHeightLimitFromFull, artworkHeightLimitFromMorph)
+                // Landscape gets an explicit size handed down from the player
+                // (the hero-of-the-half arrangement); portrait keeps the
+                // fraction-based sizing it has always had.
                 val artworkSize =
-                    (maxWidth - horizontalPadding * 2)
-                        .coerceAtMost(artworkHeightLimit)
-                        .coerceAtLeast(artworkMinSize)
+                    landscapeArtworkSize
+                        ?: run {
+                            val artworkMinSize =
+                                when {
+                                    veryCompactHeight -> 200.dp
+                                    compactHeight -> 216.dp
+                                    else -> 236.dp
+                                }
+
+                            val artworkHeightLimitFromFull =
+                                effectiveFullHeight *
+                                    when {
+                                        veryCompactHeight -> 0.32f
+                                        compactHeight -> 0.35f
+                                        else -> 0.40f
+                                    }
+                            val artworkHeightLimitFromMorph = maxHeight * 0.82f
+                            val artworkHeightLimit =
+                                minOf(artworkHeightLimitFromFull, artworkHeightLimitFromMorph)
+                            (maxWidth - horizontalPadding * 2)
+                                .coerceAtMost(artworkHeightLimit)
+                                .coerceAtLeast(artworkMinSize)
+                        }
 
                 val artworkPauseScale by animateFloatAsState(
                     targetValue = if (isPlaying) 1f else 0.92f,
@@ -1276,12 +1339,28 @@ private fun AppleMusicSharpArtwork(
         if (showCanvas && !showVideo &&
             (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())
         ) {
+            val canvasModifier =
+                if (fadeRightEdge) {
+                    Modifier
+                        .matchParentSize()
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(
+                                brush = canvasRightFadeBrush,
+                                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                            )
+                        }
+                } else {
+                    Modifier.matchParentSize()
+                }
             CanvasArtworkPlayer(
                 primaryUrl = canvasPrimaryUrl,
                 fallbackUrl = canvasFallbackUrl,
                 isPlaying = isPlaying,
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                modifier = Modifier.matchParentSize(),
+                loopSyncLeader = canvasLoopSync,
+                modifier = canvasModifier,
             )
         }
 
@@ -1366,7 +1445,6 @@ private fun AppleMusicControlsColumn(
                             val dragDelta = change.positionChange().y
 
                             if (!swipeActivated) {
-
                                 if (dragDelta < 0f) {
                                     accumulated += dragDelta
                                 }
@@ -1376,7 +1454,6 @@ private fun AppleMusicControlsColumn(
                                     change.consume()
                                 }
                             } else {
-
                                 if (dragDelta < 0f) {
                                     swipeUpAccumulated =
                                         (swipeUpAccumulated + dragDelta).coerceAtLeast(-swipeUpThreshold * 1.5f)
@@ -1394,7 +1471,6 @@ private fun AppleMusicControlsColumn(
 
         verticalArrangement = Arrangement.Bottom,
     ) {
-
     if (showTitleRow) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             PlayerTextBackdrop(
@@ -1484,14 +1560,6 @@ private fun AppleMusicControlsColumn(
 
     Spacer(Modifier.height(scrubberToTransportGap))
 
-    // vivi-music (beta) Player_V2 transport proportions, restored. The ported
-    // glyphs fill very different fractions of their 960-unit viewports (the
-    // chevrons span ~88% of the width, the play/pause glyph only ~41%), so the
-    // dp sizes are what must carry the reference's 5:3 ratio: 48dp skips vs an
-    // 80dp play/pause. At the previous 52dp/62dp the play/pause rendered
-    // visually smaller than the skips (25dp-wide pause bars next to 46dp-wide
-    // chevrons). Scaled down proportionally on short screens so the row keeps
-    // its footprint in compact/landscape heights.
     val transportIconSize =
         if (veryCompactHeight) 40.dp else if (compactHeight) 44.dp else AppleMusicTransportIconSize
     val playPauseIconSize =
@@ -1502,8 +1570,7 @@ private fun AppleMusicControlsColumn(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // vivi-music (beta) Player_v2 transport set: the exact play/pause,
-        // next and previous glyphs from vivi's new player style.
+
         AppleMusicTransportButton(
             iconRes = R.drawable.apple_skip_previous,
             enabled = canSkipPrevious,
@@ -1577,6 +1644,102 @@ private fun AppleMusicControlsColumn(
             tint = if (isQueueActive) Color.White else Color.White.copy(alpha = 0.85f),
         )
     }
+    }
+}
+
+/**
+ * The landscape player's title block: song title and artist directly under
+ * the artwork on the left half — Apple Music's own landscape arrangement —
+ * carrying the like and overflow chips the portrait title row owns, so
+ * nothing is lost when the right column switches to controls-only
+ * (showTitleRow = false).
+ */
+@Composable
+private fun AppleMusicLandscapeTitleBlock(
+    mediaMetadata: MediaMetadata,
+    currentSongLiked: Boolean,
+    titleActions: PlayerTitleActions,
+    onToggleLike: () -> Unit,
+    onMoreClick: () -> Unit,
+    onMorePositioned: ((Rect) -> Unit)? = null,
+    contentWidth: Dp? = null,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier =
+            Modifier
+                .let { base ->
+                    if (contentWidth != null) {
+                        // Aligned to the artwork: the block spans exactly the
+                        // artwork's width so title, chips and artwork share one
+                        // centred visual column (the caller centres it).
+                        base
+                            .width(contentWidth)
+                    } else {
+                        base
+                            .fillMaxWidth()
+                            .padding(horizontal = AppleMusicContentPadding)
+                    }
+                }
+                .padding(top = 12.dp, bottom = 10.dp),
+    ) {
+        PlayerTextBackdrop(
+            textColor = Color.White,
+            modifier = Modifier.weight(1f),
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = mediaMetadata.title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .basicMarquee(iterations = Int.MAX_VALUE)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = titleActions.onTitleClick,
+                            ),
+                )
+                Text(
+                    text = mediaMetadata.artists.joinToString { it.name },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White.copy(alpha = 0.64f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .basicMarquee(iterations = Int.MAX_VALUE)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) {
+                                mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
+                            },
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        AppleMusicChip(
+            iconRes = if (currentSongLiked) R.drawable.player_star_filled else R.drawable.player_star,
+            tint = Color.White,
+            contentDescription = null,
+            onClick = onToggleLike,
+        )
+        Spacer(Modifier.width(10.dp))
+        AppleMusicChip(
+            iconRes = R.drawable.player_more_horiz,
+            tint = Color.White,
+            contentDescription = null,
+            onClick = onMoreClick,
+            onPositioned = onMorePositioned,
+        )
     }
 }
 
@@ -1701,7 +1864,6 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                 .padding(horizontal = AppleMusicContentPadding, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-
         Box(
             modifier =
                 Modifier

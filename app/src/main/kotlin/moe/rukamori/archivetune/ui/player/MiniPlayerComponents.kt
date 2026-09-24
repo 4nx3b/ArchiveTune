@@ -48,7 +48,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -90,7 +89,6 @@ import moe.rukamori.archivetune.constants.NavigationBarHorizontalPadding
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
-import moe.rukamori.archivetune.together.isConnectedToSession
 import moe.rukamori.archivetune.ui.utils.getNextFallbackUrl
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -115,8 +113,6 @@ data class MiniPlayerContentColors(
     val secondaryButtonContainer: Color,
     val buttonIcon: Color,
     val disabledButtonIcon: Color,
-    val togetherContainer: Color,
-    val togetherContent: Color,
 )
 
 @Composable
@@ -432,16 +428,7 @@ private fun MiniPlayerArtwork(
                         shape = CircleShape,
                     ),
         ) {
-            // The artwork always renders here, even when the SpatialFlow
-            // morph layer is expected to draw over this slot (canvas songs,
-            // plain songs). The floating layer sits at a higher z-index and
-            // shows the exact same image, so covering it is invisible — and if
-            // that layer ever fails to draw (rects not yet measured, artwork
-            // inactive, canvas URL blank) the thumbnail is still on screen
-            // instead of an empty ring. This is the fix for the
-            // "thumbnail doesn't load in mini player in spatialflow style"
-            // report: the placeholder-only path had no artwork of its own and
-            // no fallback when the shared layer could not draw.
+
             val baseThumbnailUrl = mediaMetadata?.thumbnailUrl
             if (baseThumbnailUrl != null) {
                 val thumbnailSwapState =
@@ -451,10 +438,7 @@ private fun MiniPlayerArtwork(
                         lowDataMode = rememberLowDataModeActive(),
                         isMusicVideo = mediaMetadata.isMusicVideo,
                     )
-                // Same hardening as every other artwork surface: a
-                // disk-cache-backed request plus the maxres -> hq720 -> mq
-                // fallback chain, so a single failed ytimg request can never
-                // park the 42dp slot empty for the rest of the session.
+
                 var displayUrl by remember(thumbnailSwapState.displayUrl) {
                     mutableStateOf(thumbnailSwapState.displayUrl)
                 }
@@ -629,7 +613,6 @@ fun NewMiniPlayerContent(
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val playbackState by playerConnection.playbackState.collectAsStateWithLifecycle()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
-    val togetherSessionState by playerConnection.service.togetherSessionState.collectAsStateWithLifecycle()
     val canSkipPrevious by playerConnection.canSkipPrevious.collectAsStateWithLifecycle()
     val canSkipNext by playerConnection.canSkipNext.collectAsStateWithLifecycle()
 
@@ -668,23 +651,6 @@ fun NewMiniPlayerContent(
                 colors = colors,
             )
         } ?: Spacer(Modifier.weight(1f))
-
-        if (togetherSessionState.isConnectedToSession) {
-            Surface(
-                shape = CircleShape,
-                color = colors.togetherContainer,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.player_all_inclusive),
-                    contentDescription = stringResource(R.string.music_together),
-                    tint = colors.togetherContent,
-                    modifier =
-                        Modifier
-                            .padding(7.dp)
-                            .size(14.dp),
-                )
-            }
-        }
 
         MiniPlayerTransportControls(
             isPlaying = isPlaying,

@@ -10,27 +10,30 @@ package moe.rukamori.archivetune.ui.component
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
 import moe.rukamori.archivetune.R
-import kotlin.math.roundToInt
 
 enum class LyricsShareAspectRatio(
     @StringRes val labelRes: Int,
     val exportWidth: Int,
     val exportHeight: Int,
 ) {
+    // Max-resolution exports: the square card renders at 3072 internally so
+    // shared images carry zero visible quality loss on every platform — text
+    // and artwork are rasterized at native canvas resolution and saved as
+    // lossless PNG.
     Square(
         labelRes = R.string.lyrics_share_layout_square,
-        exportWidth = 1080,
-        exportHeight = 1080,
+        exportWidth = 3072,
+        exportHeight = 3072,
     ),
     Portrait(
         labelRes = R.string.lyrics_share_layout_portrait,
-        exportWidth = 1080,
-        exportHeight = 1350,
+        exportWidth = 3072,
+        exportHeight = 3840,
     ),
     Story(
         labelRes = R.string.lyrics_share_layout_story,
-        exportWidth = 1080,
-        exportHeight = 1920,
+        exportWidth = 2160,
+        exportHeight = 3840,
     ),
     ;
 
@@ -41,8 +44,18 @@ enum class LyricsShareAspectRatio(
 @Immutable
 data class LyricsShareImageOptions(
     val aspectRatio: LyricsShareAspectRatio = LyricsShareAspectRatio.Square,
+    /** The card's visual style — liquid glass or one of the classic presets. */
+    val style: LyricsShareStyle = LyricsShareStyle.LIQUID_GLASS,
+    /** Blur intensity behind the glass (px-equivalent at export scale). */
     val blurRadius: Float = 24f,
-    val dimAmount: Float = 1f,
+    /** How dark the ambient background behind the card is (0..1). */
+    val dimAmount: Float = 0.45f,
+    /** Liquid displacement: the wavy "liquid" flow of the glass (0..1). */
+    val liquidyAmount: Float = 0.35f,
+    /** Edge refraction: how strongly the glass bends light near its rim (0..1). */
+    val refractionAmount: Float = 0.45f,
+    /** Opacity of the frosted-glass card fill (0..1). */
+    val glassOpacity: Float = 0.55f,
     val showArtwork: Boolean = true,
 
     val vinylMode: Boolean = false,
@@ -51,10 +64,32 @@ data class LyricsShareImageOptions(
         get() = blurRadius.coerceIn(0f, 48f)
 
     val sanitizedDimAmount: Float
-        get() = dimAmount.coerceIn(0.6f, 1.6f)
+        get() = dimAmount.coerceIn(0f, 1f)
 
-    val previewBlurRadius: Int
-        get() = sanitizedBlurRadius.roundToInt().coerceIn(0, 48)
+    val sanitizedLiquidyAmount: Float
+        get() = liquidyAmount.coerceIn(0f, 1f)
+
+    val sanitizedRefractionAmount: Float
+        get() = refractionAmount.coerceIn(0f, 1f)
+
+    val sanitizedGlassOpacity: Float
+        get() = glassOpacity.coerceIn(0f, 1f)
+}
+
+/**
+ * The share card's visual styles: the current liquid-glass engine plus the
+ * classic preset family that used to live in the popup (restored verbatim —
+ * same surfaces, scrims and inks they always had).
+ */
+enum class LyricsShareStyle(
+    @StringRes val labelRes: Int,
+) {
+    LIQUID_GLASS(R.string.lyrics_share_style_liquid_glass),
+    FROSTED_DARK(R.string.lyrics_share_style_frosted_dark),
+    FROSTED_LIGHT(R.string.lyrics_share_style_frosted_light),
+    CLEAR_GLASS(R.string.lyrics_share_style_clear_glass),
+    DEEP_BLUR(R.string.lyrics_share_style_deep_blur),
+    VIVID_GLOW(R.string.lyrics_share_style_vivid_glow),
 }
 
 @Immutable

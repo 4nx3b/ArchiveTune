@@ -178,7 +178,6 @@ fun LyricsProvidersSettings(
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = stringResource(R.string.providers)) {
-
                 item {
                     SwitchPreference(
                         modifier = positions.modifierFor("prioritize_word_synced_lyrics"),

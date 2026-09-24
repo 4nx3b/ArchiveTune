@@ -80,7 +80,6 @@ import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.innertube.models.MediaInfo
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -175,7 +174,6 @@ fun ShowMediaInfo(videoId: String) {
 
     val technicalDetails =
         buildList {
-
             currentFormat?.itag?.takeIf { it > 0 }?.toString()?.let { add(MediaInfoDetail(label = "Itag", value = it)) }
             currentFormat
                 ?.mimeType
@@ -240,9 +238,11 @@ fun ShowMediaInfo(videoId: String) {
         if (info != null) {
             listOf(
                 MediaInfoMetric(R.string.subscribers, info?.subscribers ?: unknownText),
-                MediaInfoMetric(R.string.views, info?.viewCount?.let(::numberFormatter) ?: unknownText),
-                MediaInfoMetric(R.string.likes, info?.like?.let(::numberFormatter) ?: unknownText),
-                MediaInfoMetric(R.string.dislikes, info?.dislike?.let(::numberFormatter) ?: unknownText),
+                // Compact K/M/B formatting: raw grouped numbers like "4.234.688"
+                // are hard to read at a glance in the stats grid.
+                MediaInfoMetric(R.string.views, info?.viewCount?.let { formatCompactCount(it.toLong()) } ?: unknownText),
+                MediaInfoMetric(R.string.likes, info?.like?.let { formatCompactCount(it.toLong()) } ?: unknownText),
+                MediaInfoMetric(R.string.dislikes, info?.dislike?.let { formatCompactCount(it.toLong()) } ?: unknownText),
             )
         } else {
             emptyList()

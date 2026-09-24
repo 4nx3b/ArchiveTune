@@ -47,7 +47,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.*
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.ui.component.EditTextPreference
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
@@ -73,6 +72,7 @@ import dev.chrisbanes.haze.hazeSource
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.getValue
+import moe.rukamori.archivetune.constants.*
 
 @Composable
 fun ContentSettings(
@@ -114,6 +114,8 @@ fun ContentSettings(
     val (hideVideo, onHideVideoChange) = rememberPreference(key = HideVideoKey, defaultValue = false)
     val (homeCatalogueSwitch, onHomeCatalogueSwitchChange) =
         rememberPreference(key = HomeCatalogueSwitchKey, defaultValue = false)
+    val (presaveReleaseRadar, onPresaveReleaseRadarChange) =
+        rememberPreference(key = PresaveReleaseRadarKey, defaultValue = false)
     val (allowAgeRestricted, onAllowAgeRestrictedChange) = rememberPreference(key = AllowAgeRestrictedKey, defaultValue = false)
     val (lengthTop, onLengthTopChange) = rememberPreference(key = TopSize, defaultValue = "50")
 
@@ -270,7 +272,7 @@ fun ContentSettings(
 
             item {
                 SwitchPreference(
-                    modifier = positions.modifierFor("hide_video"),
+                    modifier = positions.modifierFor("hide_video", "enable_video"),
                     title = { Text(stringResource(R.string.hide_video)) },
                     icon = { Icon(painterResource(R.drawable.slow_motion_video), null) },
                     checked = hideVideo,
@@ -286,6 +288,17 @@ fun ContentSettings(
                     icon = { Icon(painterResource(R.drawable.sync), null) },
                     checked = homeCatalogueSwitch,
                     onCheckedChange = onHomeCatalogueSwitchChange,
+                )
+            }
+
+            item {
+                SwitchPreference(
+                    modifier = positions.modifierFor("presave_release_radar"),
+                    title = { Text(stringResource(R.string.presave_release_radar)) },
+                    description = stringResource(R.string.presave_release_radar_summary),
+                    icon = { Icon(painterResource(R.drawable.new_release), null) },
+                    checked = presaveReleaseRadar,
+                    onCheckedChange = onPresaveReleaseRadarChange,
                 )
             }
 

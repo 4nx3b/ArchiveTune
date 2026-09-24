@@ -23,7 +23,6 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
@@ -72,7 +71,6 @@ fun DeezerLoginScreen(navController: NavController) {
 
     val handled = remember { AtomicBoolean(false) }
 
-    // Manual ARL entry state (region-locked users).
     var manualArl by remember { mutableStateOf("") }
     var manualVerifying by remember { mutableStateOf(false) }
 
@@ -92,10 +90,8 @@ fun DeezerLoginScreen(navController: NavController) {
 
     fun finishLogin(arl: String) {
         scope.launch {
-
             val info = withContext(Dispatchers.IO) { DeezerAudioProvider.verifyArl(arl) }
             if (info == null) {
-
                 handled.set(false)
                 toast(context.getString(R.string.deezer_arl_invalid))
                 return@launch
@@ -178,7 +174,6 @@ fun DeezerLoginScreen(navController: NavController) {
                             view: WebView,
                             url: String?,
                         ) {
-
                             val arl = readArl() ?: return
                             if (!handled.compareAndSet(false, true)) return
                             finishLogin(arl)

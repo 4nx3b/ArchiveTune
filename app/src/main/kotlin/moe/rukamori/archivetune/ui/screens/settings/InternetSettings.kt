@@ -69,9 +69,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.*
 import moe.rukamori.archivetune.innertube.YouTube
-import moe.rukamori.archivetune.ui.component.*
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.ProxyUtils
 import moe.rukamori.archivetune.utils.dataStore
@@ -92,6 +90,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import moe.rukamori.archivetune.constants.*
+import moe.rukamori.archivetune.ui.component.*
 
 @Composable
 fun InternetWarningBox(modifier: Modifier = Modifier) {
@@ -231,7 +231,6 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -287,7 +286,6 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                             onYtMusicRegionChange(newValue)
 
                             scope.launch {
-
                                 withContext(Dispatchers.IO) {
                                     context.dataStore.edit { it.remove(VisitorDataKey) }
                                 }

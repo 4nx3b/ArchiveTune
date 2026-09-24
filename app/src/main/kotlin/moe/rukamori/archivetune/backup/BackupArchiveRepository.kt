@@ -28,9 +28,11 @@ import kotlin.math.roundToInt
 enum class BackupArchiveStep {
     EXPORT_SETTINGS,
     EXPORT_STATS,
+    EXPORT_LYRICS,
     CHECKPOINT_DATABASE,
     COPY_DATABASE_FILE,
     COPY_CUSTOM_FONTS,
+    COPY_CANVAS_FILE,
 }
 
 data class BackupArchiveProgress(
@@ -59,6 +61,8 @@ class BackupArchiveRepository
             val includeSettings = BackupArchiveCategory.SETTINGS in categories
             val includeAccount = BackupArchiveCategory.ACCOUNT in categories
             val includeLibrary = BackupArchiveCategory.LIBRARY in categories
+            val includeLyrics = BackupArchiveCategory.LYRICS in categories
+            val includeCanvas = BackupArchiveCategory.CANVAS in categories
             val settingsExcludedKeys = if (includeAccount) emptySet() else ACCOUNT_PREFERENCE_KEYS
             val dbFile = context.getDatabasePath(InternalDatabase.DB_NAME)
             val dbFiles =
@@ -72,12 +76,20 @@ class BackupArchiveRepository
                 } else {
                     emptyList()
                 }
+            val canvasFiles =
+                if (includeCanvas) {
+                    canvasCacheFiles()
+                } else {
+                    emptyList()
+                }
 
             val totalUnits =
                 (if (includeSettings) 1 else 0) +
                     (if (!includeLibrary) 1 else 0) +
+                    (if (includeLyrics) 1 else 0) +
                     (if (includeLibrary) 1 else 0) +
-                    dbFiles.size
+                    dbFiles.size +
+                    canvasFiles.size
             val unitSpan = 100f / totalUnits.coerceAtLeast(1)
             var completedUnits = 0
             var lastProgress: BackupArchiveProgress? = null
@@ -113,6 +125,15 @@ class BackupArchiveRepository
                     val statsSnapshot = database.allEventsOnce()
                     zipStream.putNextEntry(ZipEntry(StatsBackup.ZIP_ENTRY_NAME))
                     zipStream.write(StatsBackup.encode(statsSnapshot).toByteArray(Charsets.UTF_8))
+                    zipStream.closeEntry()
+                    completedUnits++
+                }
+
+                if (includeLyrics) {
+                    emit(BackupArchiveStep.EXPORT_LYRICS, indeterminate = true)
+                    val lyricsSnapshot = database.allLyricsOnce()
+                    zipStream.putNextEntry(ZipEntry(LyricsBackup.ZIP_ENTRY_NAME))
+                    zipStream.write(LyricsBackup.encode(lyricsSnapshot).toByteArray(Charsets.UTF_8))
                     zipStream.closeEntry()
                     completedUnits++
                 }
@@ -187,7 +208,42 @@ class BackupArchiveRepository
                         completedUnits++
                     }
                 }
+
+                if (canvasFiles.isNotEmpty()) {
+                    val buffer = ByteArray(BUFFER_SIZE)
+                    canvasFiles.forEach { file ->
+                        val fileSize = file.length().coerceAtLeast(1L)
+                        var bytesCopied = 0L
+                        emit(BackupArchiveStep.COPY_CANVAS_FILE, file.name)
+                        zipStream.putNextEntry(ZipEntry("$CANVAS_ZIP_PREFIX/${file.name}"))
+                        FileInputStream(file).use { input ->
+                            while (true) {
+                                val read = input.read(buffer)
+                                if (read <= 0) break
+                                zipStream.write(buffer, 0, read)
+                                bytesCopied += read
+                                emit(
+                                    step = BackupArchiveStep.COPY_CANVAS_FILE,
+                                    fileName = file.name,
+                                    unitFraction = bytesCopied.toFloat() / fileSize.toFloat(),
+                                )
+                            }
+                        }
+                        zipStream.closeEntry()
+                        completedUnits++
+                    }
+                }
             }
+        }
+
+        private fun canvasCacheFiles(): List<java.io.File> {
+            val canvasDir =
+                runCatching {
+                    moe.rukamori.archivetune.storage.StorageLocationRepository
+                        .cacheDirectory(context, moe.rukamori.archivetune.storage.StorageFolderKind.CANVAS_CACHE)
+                }.getOrNull() ?: return emptyList()
+            if (!canvasDir.isDirectory) return emptyList()
+            return canvasDir.listFiles { file -> file.isFile }?.sortedBy { it.name } ?: emptyList()
         }
 
         private suspend fun writeSettingsToXml(
@@ -251,6 +307,7 @@ class BackupArchiveRepository
             const val SETTINGS_XML_FILENAME = "settings.xml"
             const val CUSTOM_FONTS_DIR_NAME = "custom_fonts"
             const val FONTS_ZIP_PREFIX = "fonts"
+            const val CANVAS_ZIP_PREFIX = "canvas"
             private const val BUFFER_SIZE = 64 * 1024
 
             val ACCOUNT_PREFERENCE_KEYS: Set<String> =
@@ -311,4 +368,6 @@ enum class BackupArchiveCategory {
     LIBRARY,
     ACCOUNT,
     SETTINGS,
+    LYRICS,
+    CANVAS,
 }

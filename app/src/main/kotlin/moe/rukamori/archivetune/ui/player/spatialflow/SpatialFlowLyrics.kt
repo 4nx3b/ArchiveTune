@@ -117,6 +117,7 @@ import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.player.blurBackdropFootprint
+import moe.rukamori.archivetune.ui.player.movingBlurWanderMaxDriftDp
 import moe.rukamori.archivetune.ui.player.rememberBlurWanderDrift
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
@@ -326,7 +327,6 @@ internal fun SpatialFlowLyricsOverlay(
                     .navigationBarsPadding()
                     .padding(vertical = 12.dp),
         ) {
-
             Row(
                 modifier =
                     Modifier
@@ -336,8 +336,6 @@ internal fun SpatialFlowLyricsOverlay(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-
-                // Overflow (lyrics menu) lives on the leading side.
                 IconButton(
                     onClick = { showLyricsMenu = true },
                     modifier =
@@ -410,9 +408,6 @@ internal fun SpatialFlowLyricsOverlay(
                     )
                 }
 
-                // Dismiss (X) sits alone at the far-right margin as a plain
-                // glyph, mirroring the leading 48dp menu slot so the title
-                // stays dead-centre on the screen.
                 IconButton(
                     onClick = onDismiss,
                     modifier = Modifier.size(48.dp),
@@ -619,10 +614,17 @@ private fun wordSpansFor(
     val spans = mutableListOf<WordCharSpan>()
     var cursor = 0
     for (word in words) {
-        val idx = text.indexOf(word.text, cursor)
+        // Word text may carry a trailing separator space (TTML edge-whitespace
+        // preservation) while the line text is trimmed at its end — aligning on
+        // the raw token would stop matching at the final word of a line. Match
+        // on the trimmed core instead; the separator space itself stays outside
+        // the karaoke span, same as the pre-existing behaviour.
+        val core = word.text.trim()
+        if (core.isEmpty()) continue
+        val idx = text.indexOf(core, cursor)
         if (idx >= 0) {
-            spans += WordCharSpan(idx, idx + word.text.length, word)
-            cursor = idx + word.text.length
+            spans += WordCharSpan(idx, idx + core.length, word)
+            cursor = idx + core.length
         }
     }
     return spans
@@ -674,9 +676,7 @@ private fun SpatialFlowLyricLineItem(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth(),
         ) {
-
             Box(modifier = Modifier.fillMaxWidth()) {
-
                 Text(
                     text = line.text,
                     style = mainTextStyle,
@@ -758,13 +758,10 @@ private fun DrawScope.eraseFutureText(
             }
 
         if (charProgress >= 0.99f) {
-
         } else if (charProgress < 0.01f) {
-
             val path = charPaths[charIndex]
             drawPath(path, color = Color.Black, blendMode = BlendMode.DstOut)
         } else {
-
             val path = charPaths[charIndex]
             val box = layout.getBoundingBox(charIndex)
 
@@ -804,7 +801,6 @@ private fun calculateCharProgress(
     span: WordCharSpan,
     pos: Long,
 ): Float {
-
     val wordStartMs = (span.word.startTime * 1000.0).toLong()
     val wordEndMs = (span.word.endTime * 1000.0).toLong().coerceAtLeast(wordStartMs + 120L)
 
@@ -915,13 +911,6 @@ private const val SfLyricsBlurRestScale = 1.2f
 private const val SfLyricsBlurDriftScale = 2.4f
 private val SfLyricsBlurRadius = 64.dp
 
-/**
- * LRU for the pre-blurred lyrics backdrop bitmaps. [SpatialFlowPlayerContent]
- * pre-warms this cache the moment a song's artwork is known, so the very
- * first frame of the lyrics overlay already composes against a ready bitmap
- * instead of flashing the opaque palette fill while the async blur lands
- * (the "solid color for a split second" the reveal used to show).
- */
 internal object SfLyricsBlurBitmapCache {
     private const val MAX_ENTRIES = 4
 
@@ -978,7 +967,6 @@ private fun SpatialFlowLyricsMovingBlur(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val blurWander = rememberBlurWanderDrift(active = true)
     val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
 
     val morph = remember { Animatable(0f) }
@@ -992,6 +980,12 @@ private fun SpatialFlowLyricsMovingBlur(
                 .fillMaxSize()
                 .clipToBounds(),
     ) {
+        // Same screen-scaled wander amplitude as every other player style
+        // (Apple Music lyrics-page behaviour) so the moving blur feels
+        // identical everywhere: the colour mass traverses the whole display
+        // instead of orbiting near the centre.
+        val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
+        val blurWander = rememberBlurWanderDrift(active = true, maxDriftDp = wanderMaxDrift)
         val driftFootprint =
             remember(maxWidth, maxHeight) {
                 blurBackdropFootprint(
@@ -999,12 +993,12 @@ private fun SpatialFlowLyricsMovingBlur(
                     height = maxHeight,
                     restScale = SfLyricsBlurRestScale,
                     driftScale = SfLyricsBlurDriftScale,
+                    maxDriftDp = wanderMaxDrift,
                 )
             }
 
         if (artUrl != null) {
-            // Synchronous cache read first: a pre-warmed bitmap composes on the
-            // overlay's FIRST frame, so the reveal never shows the flat fill.
+
             var preBlurredBitmap by remember(artUrl) {
                 mutableStateOf(SfLyricsBlurBitmapCache.get(artUrl))
             }

@@ -35,6 +35,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.aboutlibraries.android)
+    alias(libs.plugins.protobufPlugin)
 }
 
 val localProperties = Properties()
@@ -181,6 +182,57 @@ android {
                 ).trim()
         buildConfigField("String", "POOL_CLIENT_KEY", "\"$poolClientKey\"")
 
+        // Amazon Music Web API. Access is approval-gated — Amazon issues a Login with Amazon
+        // security profile (client id) to approved partners only — so the client id defaults to
+        // blank and the source stays inert until it is set: a blank client id makes
+        // AmazonMusicProvider refuse every resolve, and playback falls through to the next source
+        // exactly as it did before this existed. Never commit a real value; local.properties or CI
+        // secrets only.
+        val amazonApiBase =
+            (
+                localProperties.getProperty("AMAZON_API_BASE")?.takeIf { it.isNotBlank() }
+                    ?: System.getenv("AMAZON_API_BASE")?.takeIf { it.isNotBlank() }
+                    ?: "https://api.music.amazon.dev"
+                ).trim().trimEnd('/')
+        buildConfigField("String", "AMAZON_API_BASE", "\"$amazonApiBase\"")
+
+        val amazonLwaClientId =
+            (
+                localProperties.getProperty("AMAZON_LWA_CLIENT_ID")?.takeIf { it.isNotBlank() }
+                    ?: System.getenv("AMAZON_LWA_CLIENT_ID")?.takeIf { it.isNotBlank() }
+                    ?: ""
+                ).trim()
+        buildConfigField("String", "AMAZON_LWA_CLIENT_ID", "\"$amazonLwaClientId\"")
+
+        // QQ Music partner programme (TME OpenAPI / QPlay). Everything defaults to blank, and the
+        // provider refuses to resolve while any of the three is unset: there is no public
+        // personal-developer playback API, so a build without a partnership cannot reach QQ Music at
+        // all, and the endpoint is left for the maintainer's own partnership documents rather than
+        // being guessed at here.
+        val qqPartnerAppId =
+            (
+                localProperties.getProperty("QQ_PARTNER_APP_ID")
+                    ?: System.getenv("QQ_PARTNER_APP_ID")
+                    ?: ""
+                ).trim()
+        buildConfigField("String", "QQ_PARTNER_APP_ID", "\"$qqPartnerAppId\"")
+
+        val qqPartnerAppKey =
+            (
+                localProperties.getProperty("QQ_PARTNER_APP_KEY")
+                    ?: System.getenv("QQ_PARTNER_APP_KEY")
+                    ?: ""
+                ).trim()
+        buildConfigField("String", "QQ_PARTNER_APP_KEY", "\"$qqPartnerAppKey\"")
+
+        val qqPartnerApiBase =
+            (
+                localProperties.getProperty("QQ_PARTNER_API_BASE")
+                    ?: System.getenv("QQ_PARTNER_API_BASE")
+                    ?: ""
+                ).trim().trimEnd('/')
+        buildConfigField("String", "QQ_PARTNER_API_BASE", "\"$qqPartnerApiBase\"")
+
         val nightlyBuildHash =
             (
                 localProperties.getProperty("NIGHTLY_BUILD_HASH")
@@ -313,6 +365,15 @@ android {
         prefab = true
     }
 
+    // Automix's analysis front end (tempo/key/energy/structure DSP + the mel
+    // and vocal STFT front ends the ONNX models consume).
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
@@ -378,6 +439,27 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
+// Protobuf codegen for the Listen Together wire protocol (app/src/main/proto/
+// listentogether.proto). Same configuration as vivi-music beta: protoc toolchain
+// pinned by the version catalog, lite runtimes for both java and kotlin builtins.
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:${libs.versions.protobuf.get()}"
+    }
+    generateProtoTasks {
+        all().forEach { task ->
+            task.builtins {
+                create("java") {
+                    option("lite")
+                }
+                create("kotlin") {
+                    option("lite")
+                }
+            }
+        }
+    }
+}
+
 dependencies {
     implementation(libs.guava)
     implementation(libs.coroutines.guava)
@@ -439,6 +521,11 @@ dependencies {
     implementation(libs.media3)
     implementation("androidx.media3:media3-exoplayer-hls:${libs.versions.media3.get()}")
     implementation(libs.media3.session)
+
+    // Automix: the Beat This! beat/downbeat and open-unmix vocal models run
+    // through ONNX Runtime. The full android artifact, not -mobile: mobile
+    // only loads .ort sessions.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.28.0")
     implementation(libs.car.app)
     implementation(libs.media3.okhttp)
     implementation("androidx.media3:media3-ui:${libs.versions.media3.get()}")
@@ -488,6 +575,10 @@ dependencies {
     implementation(libs.ktor.server.cio)
     implementation(libs.ktor.server.websockets)
     implementation(libs.ktor.server.content.negotiation)
+
+    // Listen Together wire protocol (protobuf lite runtimes)
+    implementation(libs.protobuf.javalite)
+    implementation(libs.protobuf.kotlin.lite)
 
     implementation(libs.timber)
     testImplementation(libs.junit)

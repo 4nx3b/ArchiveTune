@@ -5,25 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * Looper player style — the squiggly ExpressiveSlider.
- *
- * A port of Looper's premium_progress_bar.dart (github.com/SthrNilshaaa/looper,
- * GPL-3.0) over the squiggly_slider package's track shape
- * (github.com/hannesgith/squiggly_slider): an 8dp-tall track whose active
- * half becomes a moving sine while music plays —
- *
- *   y = centerY + sin(x / wavelength + phase * 2π) * amplitude * ease(x)
- *
- * with amplitude 2, wavelength 6 (Looper's Android values), the ease ramping
- * in over the first 3 wavelengths and out at the thumb, and the phase ticking
- * at squiggleSpeed 0.05 (one full cycle every 20s). The two halves stop 6px
- * short of the thumb (PremiumGapTrackShape's gap) and the thumb is a 6x16
- * rounded white line (LineThumbShape) instead of a circle. Timestamps sit
- * 8dp below in 12sp Jost w600 with tabular figures. The seek plumbing is
- * ArchiveTune's; every dimension, colour and easing is Looper's own.
- */
-
 package moe.rukamori.archivetune.ui.player.looper
 
 import androidx.compose.animation.core.animateFloatAsState
@@ -80,7 +61,6 @@ internal fun LooperExpressiveSlider(
     val displayPosition = (scrubPosition ?: position).coerceIn(0L, safeDuration)
     val progress = (displayPosition.toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
 
-    // enableWave — Looper's gate: playing AND past the first 12% of the track.
     val enableWave = isPlaying && progress > 0.12f
     val waveBlend by animateFloatAsState(
         targetValue = if (enableWave) 1f else 0f,
@@ -95,7 +75,6 @@ internal fun LooperExpressiveSlider(
         while (isPlaying) {
             withFrameNanos { frameNanos ->
                 if (lastNanos != 0L) {
-                    // squiggleSpeed 0.05: the phase factor advances 0.05 per second.
                     val advance = (frameNanos - lastNanos) / 1_000_000_000f * 0.05f
                     wavePhase = (wavePhase + advance) % 1f
                 }
@@ -144,7 +123,6 @@ internal fun LooperExpressiveSlider(
             val thumbX = progress * width
             val corner = CornerRadius(trackH / 2f, trackH / 2f)
 
-            // INACTIVE TRACK — right half, rounded, white10.
             val inactiveStart = (thumbX + gap).coerceAtMost(width)
             if (inactiveStart < width) {
                 drawRoundRect(
@@ -155,7 +133,6 @@ internal fun LooperExpressiveSlider(
                 )
             }
 
-            // ACTIVE TRACK — left half, straight to the 6px gap.
             val activeEnd = (thumbX - gap).coerceAtLeast(0f)
             if (activeEnd > 0f) {
                 if (waveBlend <= 0.01f) {
@@ -166,8 +143,7 @@ internal fun LooperExpressiveSlider(
                         cornerRadius = corner,
                     )
                 } else {
-                    // The squiggle: stroked polygon, one point per pixel, eased
-                    // in over the first three wavelengths and out at the end.
+
                     val easeLength = wavelength * 3f
                     val path = Path()
                     var x = 0f
@@ -195,7 +171,6 @@ internal fun LooperExpressiveSlider(
                 }
             }
 
-            // LINE THUMB — 6x16 rounded white bar.
             drawRoundRect(
                 color = Color.White,
                 topLeft = Offset(thumbX - thumbW / 2f, centerY - thumbH / 2f),

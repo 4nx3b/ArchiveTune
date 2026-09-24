@@ -190,7 +190,6 @@ fun DownloadsSettings(
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -261,7 +260,6 @@ fun DownloadsSettings(
                 }
 
                 item {
-
                     val fallbackAuto = stringResource(R.string.download_source_auto)
                     val description =
                         remember(downloadSourceOrder, fallbackAuto) {
@@ -475,8 +473,7 @@ private fun DownloadSource.iconRes(): Int =
         DownloadSource.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         DownloadSource.TIDAL -> R.drawable.provider_tidal
         DownloadSource.APPLE -> R.drawable.provider_apple
-        // No dedicated Amazon Music mark ships in drawable/ yet; ic_music is the stand-in the
-        // playback source pickers use for Amazon too.
+
         DownloadSource.AMAZON -> R.drawable.ic_music
         DownloadSource.DEEZER -> R.drawable.provider_deezer
         DownloadSource.JIOSAAVN -> R.drawable.provider_jiosaavn

@@ -55,9 +55,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -90,7 +90,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.util.fastForEach
+import androidx.compose.ui.util.fastForEachIndexed
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -102,6 +102,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.CONTENT_TYPE_ALBUM
 import moe.rukamori.archivetune.constants.CONTENT_TYPE_ARTIST
@@ -138,6 +139,7 @@ import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailIconAction
 import moe.rukamori.archivetune.ui.component.MediaDetailPrimaryActions
+import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.ui.component.NavigationTitle
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
@@ -160,7 +162,10 @@ import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.formatCompactCount
 import moe.rukamori.archivetune.ui.utils.resize
+import moe.rukamori.archivetune.utils.ReleaseRadarRepository
+import moe.rukamori.archivetune.utils.UpcomingRelease
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.constants.PresaveReleaseRadarKey
 import moe.rukamori.archivetune.viewmodels.ArtistAction
 import moe.rukamori.archivetune.viewmodels.ArtistBlockState
 import moe.rukamori.archivetune.viewmodels.ArtistEvent
@@ -189,6 +194,8 @@ fun ArtistScreen(
     val loadedLibrarySongs by viewModel.librarySongs.collectAsStateWithLifecycle()
     val loadedLibraryAlbums by viewModel.libraryAlbums.collectAsStateWithLifecycle()
     val blockState by viewModel.blockState.collectAsStateWithLifecycle()
+    val canvasArtwork by viewModel.canvasArtwork.collectAsStateWithLifecycle()
+    val artistCanvasEnabled by rememberPreference(key = AlbumCanvasEnabledKey, defaultValue = true)
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
 
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
@@ -213,7 +220,6 @@ fun ArtistScreen(
                     navController.navigate("library") { launchSingleTop = true }
                 }
             } catch (_: Exception) {
-
             }
         }
     }
@@ -311,6 +317,23 @@ fun ArtistScreen(
                     ?.toArtistReleaseUiModel()
             }
         }
+
+    // ---- Pre-save & Release Countdown -----------------------------------
+    // While the toggle is on, the artist's UPCOMING catalogue entries show at
+    // the top of the page (below the description) with a live countdown —
+    // the same card design the latest-release pill uses.
+    val presaveRadarEnabled by rememberPreference(PresaveReleaseRadarKey, defaultValue = false)
+    var upcomingReleases by remember { mutableStateOf<List<UpcomingRelease>>(emptyList()) }
+    val radarArtistName = artistPage?.artist?.title ?: libraryArtist?.artist?.name
+    LaunchedEffect(presaveRadarEnabled, radarArtistName) {
+        upcomingReleases = emptyList()
+        if (presaveRadarEnabled && !radarArtistName.isNullOrBlank() && !showLocal) {
+            upcomingReleases =
+                ReleaseRadarRepository
+                    .upcomingReleasesForArtist(radarArtistName)
+                    .take(3)
+        }
+    }
     val orderedRemoteSections =
         remember(artistPage?.sections) {
             val sections = artistPage?.sections.orEmpty()
@@ -379,7 +402,6 @@ fun ArtistScreen(
                 ),
         ) {
             if (isManuallyRefreshing && artistPage == null && !showLocal) {
-
                 item(key = "shimmer") {
                     ShimmerHost {
                         Box(
@@ -485,6 +507,21 @@ fun ArtistScreen(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                        }
+
+                        val heroCanvasPrimaryUrl =
+                            (canvasArtwork?.animated ?: canvasArtwork?.videoUrl)?.takeIf { artistCanvasEnabled }
+                        val heroCanvasFallbackUrl =
+                            canvasArtwork?.videoUrl?.takeIf { artistCanvasEnabled }
+                        if (!heroCanvasPrimaryUrl.isNullOrBlank() || !heroCanvasFallbackUrl.isNullOrBlank()) {
+                            moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer(
+                                primaryUrl = heroCanvasPrimaryUrl,
+                                fallbackUrl = heroCanvasFallbackUrl,
+                                isPlaying = true,
+                                visible = !lyricsFullScreen,
+                                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                                modifier = Modifier.matchParentSize(),
+                            )
                         }
 
                         Box(
@@ -680,6 +717,17 @@ fun ArtistScreen(
                         }
                     }
 
+                if (upcomingReleases.isNotEmpty()) {
+                    item(
+                        key = "upcoming_releases",
+                        contentType = CONTENT_TYPE_HEADER,
+                    ) {
+                        ArtistUpcomingReleasesColumn(
+                            releases = upcomingReleases,
+                        )
+                    }
+                }
+
                 latestRelease?.let { release ->
                     item(
                         key = "new_release_${release.id}",
@@ -701,7 +749,6 @@ fun ArtistScreen(
                                         .fillMaxWidth()
                                         .padding(horizontal = 16.dp, vertical = 8.dp),
                             ) {
-
                                 TextPlaceholder(
                                     height = 18.dp,
                                     modifier = Modifier.fillMaxWidth(0.35f),
@@ -739,7 +786,6 @@ fun ArtistScreen(
                         }
                     }
                 } else if (showLocal) {
-
                     if (librarySongs.isNotEmpty()) {
                         item {
                             NavigationTitle(
@@ -901,10 +947,10 @@ fun ArtistScreen(
                     }
                 } else {
 
-                    orderedRemoteSections.fastForEach { section ->
+                    orderedRemoteSections.fastForEachIndexed { sectionIndex, section ->
                         if (section.items.isNotEmpty()) {
                             item(
-                                key = "youtube_section_header_${section.title}_${section.items.firstOrNull()?.id.orEmpty()}_${section.moreEndpoint?.browseId.orEmpty()}",
+                                key = "youtube_section_header_${sectionIndex}_${section.title}_${section.items.firstOrNull()?.id.orEmpty()}_${section.moreEndpoint?.browseId.orEmpty()}",
                                 contentType = CONTENT_TYPE_HEADER,
                             ) {
                                 NavigationTitle(
@@ -912,7 +958,13 @@ fun ArtistScreen(
                                     onClick =
                                         section.moreEndpoint?.let {
                                             {
-                                                navController.navigate(buildArtistItemsRoute(viewModel.artistId, it))
+                                                navController.navigate(
+                                                    buildArtistItemsRoute(
+                                                        viewModel.artistId,
+                                                        it,
+                                                        section.title,
+                                                    ),
+                                                )
                                             }
                                         },
                                 )
@@ -922,7 +974,7 @@ fun ArtistScreen(
                         if (section.layout == ArtistSectionLayout.LIST && section.items.all { it is SongItem }) {
                             items(
                                 items = section.items.distinctBy { it.id },
-                                key = { "youtube_song_${it.id}" },
+                                key = { "youtube_song_${sectionIndex}_${it.id}" },
                                 contentType = { CONTENT_TYPE_SONG },
                             ) { song ->
                                 YouTubeListItem(
@@ -978,7 +1030,7 @@ fun ArtistScreen(
                             }
                         } else {
                             item(
-                                key = "youtube_section_grid_${section.title}_${section.items.firstOrNull()?.id.orEmpty()}_${section.moreEndpoint?.browseId.orEmpty()}",
+                                key = "youtube_section_grid_${sectionIndex}_${section.title}_${section.items.firstOrNull()?.id.orEmpty()}_${section.moreEndpoint?.browseId.orEmpty()}",
                                 contentType = CONTENT_TYPE_LIST,
                             ) {
                                 LazyRow(
@@ -996,7 +1048,7 @@ fun ArtistScreen(
                                                     is PlaylistItem -> "playlist"
                                                     else -> "item"
                                                 }
-                                            "youtube_${type}_${it.id}"
+                                            "youtube_${type}_${sectionIndex}_${it.id}"
                                         },
                                         contentType = {
                                             when (it) {
@@ -1151,7 +1203,6 @@ fun ArtistScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
-
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -1169,7 +1220,6 @@ fun ArtistScreen(
     }
 
     if (!liquidGlassHeaderActive) {
-
     TopAppBar(
         windowInsets =
             WindowInsets(top = systemBarsTopPadding)
@@ -1188,7 +1238,6 @@ fun ArtistScreen(
             )
         },
         navigationIcon = {
-
             IconButton(
                 onClick = navController::navigateUp,
                 onLongClick = navController::backToMain,
@@ -1200,7 +1249,6 @@ fun ArtistScreen(
             }
         },
         actions = {
-
             IconButton(
                 onClick = showArtistOverflowMenu,
                 onLongClick = {},
@@ -1242,28 +1290,23 @@ private fun ArtistOverflowMenu(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+                .padding(bottom = 12.dp),
     ) {
         ArtistOverflowMenuItem(
             text = stringResource(R.string.share),
             iconRes = R.drawable.share,
-            index = 0,
-            count = ArtistOverflowMenuItemCount,
             onClick = { onAction(ArtistAction.Share) },
         )
+        MenuSectionDivider()
         ArtistOverflowMenuItem(
             text = stringResource(R.string.copy_link),
             iconRes = R.drawable.copy,
-            index = 1,
-            count = ArtistOverflowMenuItemCount,
             onClick = { onAction(ArtistAction.CopyLink) },
         )
+        MenuSectionDivider()
         ArtistOverflowMenuItem(
             text = stringResource(if (isBlocked) R.string.unblock_artist else R.string.block_artist),
             iconRes = R.drawable.block,
-            index = 2,
-            count = ArtistOverflowMenuItemCount,
             enabled = blockActionEnabled,
             onClick = { onAction(ArtistAction.ToggleBlock) },
         )
@@ -1274,37 +1317,33 @@ private fun ArtistOverflowMenu(
 private fun ArtistOverflowMenuItem(
     text: String,
     iconRes: Int,
-    index: Int,
-    count: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    SegmentedListItem(
-        onClick = onClick,
-        enabled = enabled,
-        shapes = ListItemDefaults.segmentedShapes(index = index, count = count),
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .heightIn(min = 56.dp),
-        colors =
-            ListItemDefaults.segmentedColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+    val contentAlpha = if (enabled) 1f else 0.5f
+    ListItem(
+        headlineContent = {
+            Text(
+                text = text,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
+            )
+        },
         leadingContent = {
             Icon(
                 painter = painterResource(iconRes),
                 contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
             )
         },
-    ) {
-        Text(text = text)
-    }
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp),
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        tonalElevation = 0.dp,
+    )
 }
 
-private const val ArtistOverflowMenuItemCount = 3
 private const val ArtistHeroArtworkSizePx = 1200
 private const val ArtistReleaseArtworkSizePx = 320
 private val ArtistHeroArtworkSizeBuckets = listOf(ArtistHeroArtworkSizePx)
@@ -1366,6 +1405,7 @@ private fun ArtistPrimaryActions(
         modifier = modifier,
         thumbnailUrl = thumbnailUrl,
         useBlurredPlayButton = useBlurredPlayButton,
+        allowHorizontalScroll = false,
     )
 }
 
@@ -1480,6 +1520,152 @@ private fun ArtistNewReleaseSection(
     }
 }
 
+/**
+ * The Pre-save & Release Countdown column: the artist's upcoming catalogue
+ * entries, rendered in the same card design as the latest-release pill but
+ * labelled "UPCOMING RELEASE" and carrying a live countdown to the announced
+ * release moment.
+ */
+@Composable
+private fun ArtistUpcomingReleasesColumn(
+    releases: List<UpcomingRelease>,
+    modifier: Modifier = Modifier,
+) {
+    // A minute-resolution tick keeps every countdown honest without waking the
+    // CPU more than a music app already does.
+    var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(releases) {
+        while (true) {
+            nowMillis = System.currentTimeMillis()
+            kotlinx.coroutines.delay(60_000L)
+        }
+    }
+
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        releases.forEach { release ->
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors =
+                    CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = ArtistContentMaxWidth),
+            ) {
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    if (release.thumbnailUrl != null) {
+                        AsyncImage(
+                            model = release.thumbnailUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier =
+                                Modifier
+                                    .size(ArtistReleaseArtworkSize)
+                                    .clip(RoundedCornerShape(10.dp)),
+                        )
+                    } else {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .size(ArtistReleaseArtworkSize)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.album),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(40.dp),
+                            )
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.upcoming_release).uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                        )
+                        Text(
+                            text = release.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = upcomingReleaseCountdownText(release, nowMillis),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** "3 d 4 h left" / "5 h 12 m left" / "42 m left" — the moment-to-release. */
+@Composable
+private fun upcomingReleaseCountdownText(
+    release: UpcomingRelease,
+    nowMillis: Long,
+): String {
+    val leftMillis = release.releaseAtMillis - nowMillis
+    val resource =
+        when {
+            leftMillis <= 0L -> R.string.release_countdown_imminent
+            leftMillis >= 24L * 60 * 60 * 1000 ->
+                R.string.release_countdown_days
+            leftMillis >= 60L * 60 * 1000 ->
+                R.string.release_countdown_hours
+            else -> R.string.release_countdown_minutes
+        }
+    return when (resource) {
+        R.string.release_countdown_days -> {
+            val days = (leftMillis / (24L * 60 * 60 * 1000)).toInt()
+            val hours = ((leftMillis % (24L * 60 * 60 * 1000)) / (60L * 60 * 1000)).toInt()
+            stringResource(resource, days, hours)
+        }
+        R.string.release_countdown_hours -> {
+            val hours = (leftMillis / (60L * 60 * 1000)).toInt()
+            val minutes = ((leftMillis % (60L * 60 * 1000)) / 60_000L).toInt()
+            stringResource(resource, hours, minutes)
+        }
+        R.string.release_countdown_minutes -> {
+            val minutes = (leftMillis / 60_000L).coerceAtLeast(1L).toInt()
+            stringResource(resource, minutes)
+        }
+        else -> stringResource(resource)
+    }
+}
+
 private fun buildArtistStats(
     showLocal: Boolean,
     artistPage: ArtistPage?,
@@ -1570,14 +1756,14 @@ private fun compactCountText(
     return if (hasMore) "$value+" else value
 }
 
-private val CompactArtistCountPattern = Regex("""\d+(?:[.,]\d+)?\s*[KMB]""", RegexOption.IGNORE_CASE)
+private val CompactArtistCountPattern = Regex("""\d+(?:[.,]\d+)?[\s\u00A0\u202F\u2007]*[KMB]""", RegexOption.IGNORE_CASE)
 private val ArtistCountPattern = Regex("""\d+(?:[.,]\d+)*""")
 
 private fun String.toArtistCompactCountText(): String? {
     val compactText = CompactArtistCountPattern.find(this)?.value
     if (compactText != null) {
         return compactText
-            .filterNot { it.isWhitespace() }
+            .filterNot { it.isWhitespace() || it == '\u00A0' || it == '\u202F' || it == '\u2007' }
             .replace(',', '.')
             .uppercase(Locale.US)
     }
@@ -1596,11 +1782,16 @@ private fun String.toArtistCompactCountText(): String? {
 private fun buildArtistItemsRoute(
     artistId: String,
     endpoint: BrowseEndpoint,
+    sectionTitle: String? = null,
 ): String {
     val encodedArtistId = Uri.encode(artistId)
     val encodedBrowseId = Uri.encode(endpoint.browseId)
     val encodedParams =
         endpoint.params
+            ?.takeIf { it.isNotBlank() }
+            ?.let { Uri.encode(it) }
+    val encodedTitle =
+        sectionTitle
             ?.takeIf { it.isNotBlank() }
             ?.let { Uri.encode(it) }
 
@@ -1612,6 +1803,14 @@ private fun buildArtistItemsRoute(
         if (encodedParams != null) {
             append("&params=")
             append(encodedParams)
+        }
+        // The section's own title rides the route so the glass header pill
+        // shows it immediately — without it the pill rendered back-arrow-only
+        // while the network fetch ran (and forever, if it failed), because the
+        // screen's title previously existed ONLY inside the fetched page.
+        if (encodedTitle != null) {
+            append("&title=")
+            append(encodedTitle)
         }
     }
 }

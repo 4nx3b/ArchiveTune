@@ -120,7 +120,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.ui.unit.sp
 import moe.rukamori.archivetune.equalizer.EqualizerControlMode
 import moe.rukamori.archivetune.equalizer.EqualizerTone
 import moe.rukamori.archivetune.viewmodels.EqualizerBandUiModel
@@ -183,17 +182,9 @@ fun EqualizerDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        // Window config intentionally matches the long-working pre-restoration
-        // dialog (plain DialogWindowTheme path). The 6c8639207 rework had
-        // experimented with decorFitsSystemWindows=false — which silently
-        // switched the dialog onto the FloatingDialogWindowTheme +
-        // FLAG_LAYOUT_INSET_DECOR/setFitInsetsTypes(0) window path and was
-        // never validated outside the compile — and it crashed on open for
-        // real devices. The "status-bar gap" stays solved the old way:
-        // KeepStatusBarHiddenInDialog hides the bar while the dialog shows.
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
-        KeepStatusBarHiddenInDialog()
         EqualizerScreen(
             state = state,
             snackbarHostState = snackbarHostState,
@@ -260,13 +251,6 @@ private fun EqualizerScreen(
     }
 }
 
-/**
- * The SpatialFlow-style audio effects screen behind two category pills:
- * "Equalizer" (the 5-band frequency shaping) and "Audio effects" (every
- * ported effect - 8D, reverb, bass, loudness, balance, speed, virtualizer -
- * behind one master "Enable audio effects" switch that gates both
- * customisation in this screen and application in the playback service).
- */
 @Composable
 private fun AudioEffectsContent(
     model: EqualizerUiModel,
@@ -278,28 +262,18 @@ private fun AudioEffectsContent(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
-    // Playback speed + pitch matching live in the player preferences; the
-    // MusicService applies them to the (primary and crossfade) players.
     val (playbackSpeed, onPlaybackSpeedChange) = rememberPreference(AudioPlaybackSpeedKey, defaultValue = 1.0f)
     val (isPitchMatched, onPitchMatchedChange) = rememberPreference(AudioPlaybackSpeedPitchMatchKey, defaultValue = false)
     val (playbackPitch, onPlaybackPitchChange) = rememberPreference(AudioPlaybackPitchKey, defaultValue = 1.0f)
     var isSpeedSwitchOn by remember { mutableStateOf(playbackSpeed != 1.0f) }
 
-    // Stereo balance keeps the reference behaviour: the section switch is a
-    // session-local affordance (off resets the position to the centre).
     var isBalanceSwitchOn by remember { mutableStateOf(model.balance != 0f) }
 
-    // Master switch for the Audio effects pill: until this is on, none of
-    // the ported effects can be customised here nor applied to any song.
     val (audioEffectsEnabled, onAudioEffectsEnabledChange) =
         rememberPreference(EqualizerAudioEffectsEnabledKey, defaultValue = false)
 
-    // 0 = Equalizer pill, 1 = Audio effects pill.
     var selectedTab by rememberSaveable { mutableStateOf(0) }
 
-    // Processing flourish: the reference shows the wavy card while it renders
-    // 8D offline and keeps it 1.2s past 100%. Ours is real time, so the card
-    // appears for 1.2s right after the user flips 8D on.
     var showProcessingCard by remember { mutableStateOf(false) }
     var observed8DEnabled by remember { mutableStateOf(model.eightDEnabled) }
     LaunchedEffect(model.eightDEnabled) {
@@ -318,21 +292,13 @@ private fun AudioEffectsContent(
         modifier =
             Modifier
                 .fillMaxSize()
-                // Plain opaque surface. The 16.0 rework had drawn the kyant
-                // liquid-glass header (layerBackdrop + drawBackdrop AGSL
-                // effects + hazeSource) INSIDE this Dialog window — this is
-                // the only real Dialog in the app that ever did, and it is
-                // the one ingredient the dialog still had that the long-
-                // working pre-16.0 version did not. Removed: the dialog now
-                // renders exactly like every other working dialog (plain
-                // material3, opaque window background).
+
                 .background(MaterialTheme.colorScheme.surface)
                 .statusBarsPadding()
                 .verticalScroll(scrollState)
                 .padding(horizontal = 24.dp)
                 .padding(top = 8.dp, bottom = 120.dp),
     ) {
-        // Header
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -373,7 +339,6 @@ private fun AudioEffectsContent(
             }
         }
 
-        // Two category pills: Equalizer | Audio effects.
         Row(
             modifier =
                 Modifier
@@ -398,12 +363,7 @@ private fun AudioEffectsContent(
         val columns = if (isLandscape) 2 else 1
 
         if (selectedTab == 0) {
-            // ===== EQUALIZER PILL =====
-            // The full original control set, restored: the basic/advanced mode
-            // selector, the fixed-band shaper, and (in advanced mode) the
-            // device's real band sliders with reset, the signal section
-            // (output gain + auto headroom) and the profiles row — plus the
-            // system-equalizer escape hatch.
+
             SegmentedFeatureCard(
                 items =
                     listOf(
@@ -423,7 +383,6 @@ private fun AudioEffectsContent(
                     ),
             )
 
-            // Basic <-> Advanced mode selector (the original card).
             SectionContainer {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
@@ -464,7 +423,6 @@ private fun AudioEffectsContent(
             }
 
             if (model.controlMode == EqualizerControlMode.BASIC) {
-                // Basic: the two tone sliders driving the device bands.
                 SegmentedFeatureCard(
                     items =
                         model.tones.map { tone ->
@@ -483,7 +441,6 @@ private fun AudioEffectsContent(
                         },
                 )
             } else {
-                // Advanced: the device's real band sliders with a reset action.
                 SectionContainer {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -523,7 +480,6 @@ private fun AudioEffectsContent(
                     }
                 }
 
-                // Signal: full-range output gain + auto headroom (originals).
                 LabelSliderSection(
                     title = stringResource(R.string.eq_output_gain),
                     label = stringResource(R.string.eq_signal),
@@ -548,7 +504,6 @@ private fun AudioEffectsContent(
                     interactionEnabled = model.enabled,
                 )
 
-                // Profiles row: save / manage / import (the originals).
                 SectionContainer {
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -569,7 +524,6 @@ private fun AudioEffectsContent(
                 }
             }
 
-            // The system equalizer escape hatch (original).
             SectionContainer {
                 ListItem(
                     headlineContent = { Text(stringResource(R.string.eq_open_system_equalizer)) },
@@ -579,7 +533,6 @@ private fun AudioEffectsContent(
                 )
             }
         } else {
-            // ===== AUDIO EFFECTS PILL =====
             AnimatedVisibility(
                 visible = showProcessingCard,
                 enter = expandVertically() + fadeIn(),
@@ -588,7 +541,6 @@ private fun AudioEffectsContent(
                 ProcessingCard(progress = 100)
             }
 
-            // Master switch: everything below stays read-only until it is on.
             SwitchSection(
                 title = stringResource(R.string.eq_enable_audio_effects),
                 desc = stringResource(R.string.eq_enable_audio_effects_desc),
@@ -604,7 +556,6 @@ private fun AudioEffectsContent(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Box(modifier = Modifier.weight(1f)) {
-                    // GROUP 1: (8D + Reverb + Bass)
                     SegmentedFeatureCard(
                         items =
                             listOf(
@@ -651,7 +602,6 @@ private fun AudioEffectsContent(
                 }
 
                 Box(modifier = Modifier.weight(1f)) {
-                    // GROUP 2: (Loudness + Balance + Speed + Virtualizer)
                     SegmentedFeatureCard(
                         items =
                             listOf(
@@ -704,7 +654,7 @@ private fun AudioEffectsContent(
                                         onPitchMatchToggle = {
                                             val next = !isPitchMatched
                                             onPitchMatchedChange(next)
-                                            // Reset the explicit pitch when entering match mode.
+
                                             if (next) onPlaybackPitchChange(1.0f)
                                         },
                                         pitchValue = playbackPitch,
@@ -737,11 +687,6 @@ private fun AudioEffectsContent(
     }
 }
 
-/**
- * One of the two category pills at the top of the effects screen. Selected
- * pills use the theme's secondary container with a bold label; unselected
- * ones sit on surfaceContainerHigh with the variant color.
- */
 @Composable
 private fun CategoryPill(
     label: String,
@@ -778,8 +723,6 @@ private fun CategoryPill(
     }
 }
 
-// --- SUB-COMPOSABLES ---
-
 @Composable
 private fun ProcessingCard(progress: Int) {
     val infiniteTransition = rememberInfiniteTransition(label = "processing")
@@ -794,7 +737,6 @@ private fun ProcessingCard(progress: Int) {
         label = "pulse",
     )
 
-    // Smoothly animate the progress to avoid "jumping"
     val animatedProgress by animateFloatAsState(
         targetValue = progress / 100f,
         animationSpec = WavyProgressIndicatorDefaults.ProgressAnimationSpec,
@@ -817,9 +759,8 @@ private fun ProcessingCard(progress: Int) {
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.alpha(pulseAlpha),
             )
-            Spacer(modifier = Modifier.height(16.dp)) // More space for taller wave
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Custom thick stroke for a bolder "Expressive" feel
             val density = LocalDensity.current
             val thickStroke =
                 remember(density) {
@@ -881,10 +822,6 @@ private const val BASS_MAX_DB = 15f
 private const val LOUDNESS_MAX_DB = 12f
 private const val BALANCE_RANGE = 50f
 
-/**
- * Custom Switch with "Checked" icon (Checkmark) that is always white,
- * exactly like the reference implementation.
- */
 @Composable
 private fun ExpressiveSwitch(
     checked: Boolean,
@@ -902,7 +839,7 @@ private fun ExpressiveSwitch(
                         painter = painterResource(R.drawable.check),
                         contentDescription = null,
                         modifier = Modifier.size(SwitchDefaults.IconSize),
-                        tint = Color.White, // Always white in both dark/light
+                        tint = Color.White,
                     )
                 }
             } else {
@@ -1280,21 +1217,18 @@ private fun SpeedSection(
         )
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Match Pitch Button - Compact and Centered
         Box(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
             TextButton(
                 onClick = onPitchMatchToggle,
                 enabled = enabled && interactionEnabled,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), // Smaller padding
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                 shapes = ButtonDefaults.shapes(),
-                modifier = Modifier.height(32.dp), // Smaller height
+                modifier = Modifier.height(32.dp),
             ) {
                 Text(text = stringResource(R.string.eq_match_pitch), style = MaterialTheme.typography.labelMedium)
             }
         }
 
-        // Independent pitch slider (moved here from the song overflow menu):
-        // 1x = follow the speed (vinyl), otherwise the explicit multiplier.
         if (!isPitchMatched) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -1407,10 +1341,6 @@ private fun ReverbSection(
     }
 }
 
-/**
- * Optimized Responsive Slider that eliminates recomposition lag by managing
- * local drag state, while maintaining "Expressive" animations for value jumps.
- */
 @Composable
 private fun ResponsiveSlider(
     value: Float,
@@ -1423,14 +1353,12 @@ private fun ResponsiveSlider(
     var isDragging by remember { mutableStateOf(false) }
     var localValue by remember(value) { mutableFloatStateOf(value.coerceIn(valueRange)) }
 
-    // Sync local value with external updates when not dragging
     LaunchedEffect(value) {
         if (!isDragging) {
             localValue = value.coerceIn(valueRange)
         }
     }
 
-    // Only animate when the value changes externally (not during active dragging)
     val animatedValue by animateFloatAsState(
         targetValue = localValue,
         animationSpec =
@@ -1476,8 +1404,6 @@ private fun SectionContainer(content: @Composable ColumnScope.() -> Unit) {
         content = content,
     )
 }
-
-// --- PROFILE DIALOGS ---
 
 @Composable
 private fun SaveProfileDialog(
@@ -1580,8 +1506,6 @@ private fun ProfileRow(
         }
     }
 }
-
-// --- FALLBACK STATES ---
 
 @Composable
 private fun EqualizerLoading() {

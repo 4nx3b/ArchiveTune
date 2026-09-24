@@ -12,7 +12,6 @@ package moe.rukamori.archivetune.ui.player
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,11 +45,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -68,7 +65,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
@@ -77,9 +73,7 @@ import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.autoRateDisplay
 import moe.rukamori.archivetune.db.entities.containerLabel
-import moe.rukamori.archivetune.db.entities.formattedBitrate
 import moe.rukamori.archivetune.db.entities.formattedFileSize
-import moe.rukamori.archivetune.db.entities.formattedSampleRate
 import moe.rukamori.archivetune.models.ActiveOutputDevice
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.ActionPromptDialog
@@ -522,237 +516,6 @@ fun CodecInfoRow(
 }
 
 @Composable
-fun QueueCollapsedContentV2(
-    showCodecOnPlayer: Boolean,
-    currentFormat: FormatEntity?,
-    textBackgroundColor: Color,
-    textButtonColor: Color,
-    iconButtonColor: Color,
-    sleepTimerEnabled: Boolean,
-    sleepTimerTimeLeft: Long,
-    repeatMode: Int,
-    mediaMetadata: MediaMetadata?,
-    onExpandQueue: () -> Unit,
-    onSleepTimerClick: () -> Unit,
-    onShowLyrics: () -> Unit,
-    onRepeatModeClick: () -> Unit,
-    onMenuClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val view = LocalView.current
-    val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
-
-    LaunchedEffect(enableHapticFeedback) {
-        view.isHapticFeedbackEnabled = enableHapticFeedback
-    }
-
-    Column(modifier = modifier.fillMaxWidth()) {
-        if (showCodecOnPlayer && currentFormat != null) {
-            val codec =
-                currentFormat.codecs
-                    .takeIf { it.isNotBlank() }
-                    ?: currentFormat.containerLabel()
-
-            val container = currentFormat.containerLabel()
-
-            val codecLabel =
-                if (container.isNotBlank() && !codec.equals(container, ignoreCase = true)) {
-                    "$codec ($container)"
-                } else {
-                    codec
-                }
-
-            val bitrate = currentFormat.formattedBitrate()
-
-            val extraText =
-                listOfNotNull(
-                    currentFormat.formattedSampleRate(),
-                    currentFormat.formattedFileSize().takeIf { it.isNotBlank() },
-                ).joinToString(separator = " • ")
-
-            CodecInfoRow(
-                codec = codecLabel,
-                bitrate = bitrate,
-                fileSize = extraText,
-                textColor = textBackgroundColor.copy(alpha = 0.7f),
-            )
-        }
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 30.dp, vertical = 10.dp)
-                    .windowInsetsPadding(
-                        WindowInsets.systemBars.only(
-                            WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal,
-                        ),
-                    ),
-        ) {
-            val buttonSize = 42.dp
-            val iconSize = 24.dp
-            val borderColor = textBackgroundColor.copy(alpha = 0.35f)
-
-            Box(
-                modifier =
-                    Modifier
-                        .size(buttonSize)
-                        .clip(
-                            RoundedCornerShape(
-                                topStart = 50.dp,
-                                bottomStart = 50.dp,
-                                topEnd = 10.dp,
-                                bottomEnd = 10.dp,
-                            ),
-                        ).border(
-                            1.dp,
-                            borderColor,
-                            RoundedCornerShape(
-                                topStart = 50.dp,
-                                bottomStart = 50.dp,
-                                topEnd = 10.dp,
-                                bottomEnd = 10.dp,
-                            ),
-                        ).clickable { onExpandQueue() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.queue_music),
-                    contentDescription = null,
-                    modifier = Modifier.size(iconSize),
-                    tint = textBackgroundColor,
-                )
-            }
-
-            Box(
-                modifier =
-                    Modifier
-                        .size(buttonSize)
-                        .clip(RoundedCornerShape(10.dp))
-                        .border(1.dp, borderColor, RoundedCornerShape(10.dp))
-                        .clickable { onSleepTimerClick() },
-                contentAlignment = Alignment.Center,
-            ) {
-                AnimatedContent(
-                    label = "sleepTimer",
-                    targetState = sleepTimerEnabled,
-                ) { enabled ->
-                    if (enabled) {
-                        Text(
-                            text = makeTimeString(sleepTimerTimeLeft),
-                            color = textBackgroundColor,
-                            fontSize = 10.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .basicMarquee(),
-                        )
-                    } else {
-                        Icon(
-                            painter = painterResource(id = R.drawable.bedtime),
-                            contentDescription = null,
-                            modifier = Modifier.size(iconSize),
-                            tint = textBackgroundColor,
-                        )
-                    }
-                }
-            }
-
-            Box(
-                modifier =
-                    Modifier
-                        .size(buttonSize)
-                        .clip(RoundedCornerShape(10.dp))
-                        .border(1.dp, borderColor, RoundedCornerShape(10.dp))
-                        .clickable { onShowLyrics() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.lyrics),
-                    contentDescription = null,
-                    modifier = Modifier.size(iconSize),
-                    tint = textBackgroundColor,
-                )
-            }
-
-            Box(
-                modifier =
-                    Modifier
-                        .size(buttonSize)
-                        .clip(
-                            RoundedCornerShape(
-                                topStart = 10.dp,
-                                bottomStart = 10.dp,
-                                topEnd = 50.dp,
-                                bottomEnd = 50.dp,
-                            ),
-                        ).border(
-                            1.dp,
-                            borderColor,
-                            RoundedCornerShape(
-                                topStart = 10.dp,
-                                bottomStart = 10.dp,
-                                topEnd = 50.dp,
-                                bottomEnd = 50.dp,
-                            ),
-                        ).clickable {
-                            if (enableHapticFeedback) {
-                                view.performHapticFeedback(
-                                    android.view.HapticFeedbackConstants.CONTEXT_CLICK,
-                                    android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
-                                )
-                            }
-                            onRepeatModeClick()
-                        },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter =
-                        painterResource(
-                            id =
-                                when (repeatMode) {
-                                    Player.REPEAT_MODE_OFF, Player.REPEAT_MODE_ALL -> R.drawable.repeat
-                                    Player.REPEAT_MODE_ONE -> R.drawable.repeat_one
-                                    else -> R.drawable.repeat
-                                },
-                        ),
-                    contentDescription = null,
-                    modifier =
-                        Modifier
-                            .size(iconSize)
-                            .alpha(if (repeatMode == Player.REPEAT_MODE_OFF) 0.5f else 1f),
-                    tint = textBackgroundColor,
-                )
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            Box(
-                modifier =
-                    Modifier
-                        .size(buttonSize)
-                        .clip(CircleShape)
-                        .background(textButtonColor)
-                        .clickable { onMenuClick() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.more_vert),
-                    contentDescription = null,
-                    modifier = Modifier.size(iconSize),
-                    tint = iconButtonColor,
-                )
-            }
-        }
-    }
-}
-
-@Composable
 fun QueueCollapsedContentV3(
     showCodecOnPlayer: Boolean,
     currentFormat: FormatEntity?,
@@ -794,7 +557,6 @@ fun QueueCollapsedContentV3(
                         ),
                     ),
         ) {
-
             Box(
                 modifier =
                     Modifier
@@ -893,147 +655,6 @@ fun QueueCollapsedContentV3(
                     modifier = Modifier.size(18.dp),
                     tint = textBackgroundColor.copy(alpha = 0.7f),
                 )
-            }
-        }
-    }
-}
-
-@Composable
-fun QueueCollapsedContentV1(
-    showCodecOnPlayer: Boolean,
-    currentFormat: FormatEntity?,
-    textBackgroundColor: Color,
-    sleepTimerEnabled: Boolean,
-    sleepTimerTimeLeft: Long,
-    onExpandQueue: () -> Unit,
-    onSleepTimerClick: () -> Unit,
-    onShowLyrics: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        if (showCodecOnPlayer && currentFormat != null) {
-            val container = currentFormat.containerLabel()
-            val bitrate = currentFormat.autoRateDisplay()
-            val fileSize = currentFormat.formattedFileSize()
-
-            CodecInfoRow(
-                codec = container,
-                bitrate = bitrate,
-                fileSize = fileSize,
-                textColor = textBackgroundColor.copy(alpha = 0.7f),
-            )
-        }
-
-        Row(
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 30.dp, vertical = 12.dp)
-                    .windowInsetsPadding(
-                        WindowInsets.systemBars
-                            .only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
-                    ),
-        ) {
-            TextButton(
-                onClick = onExpandQueue,
-                modifier = Modifier.weight(1f),
-                shapes = ButtonDefaults.shapes(),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.queue_music),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = textBackgroundColor,
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = stringResource(id = R.string.queue),
-                        color = textBackgroundColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.basicMarquee(),
-                    )
-                }
-            }
-
-            TextButton(
-                onClick = onSleepTimerClick,
-                modifier = Modifier.weight(1.2f),
-                shapes = ButtonDefaults.shapes(),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.bedtime),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = textBackgroundColor,
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    AnimatedContent(
-                        label = "sleepTimer",
-                        targetState = sleepTimerEnabled,
-                    ) { enabled ->
-                        if (enabled) {
-                            Text(
-                                text = makeTimeString(sleepTimerTimeLeft),
-                                color = textBackgroundColor,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.basicMarquee(),
-                            )
-                        } else {
-                            Text(
-                                text = stringResource(id = R.string.sleep_timer),
-                                color = textBackgroundColor,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.basicMarquee(),
-                            )
-                        }
-                    }
-                }
-            }
-
-            TextButton(
-                onClick = onShowLyrics,
-                modifier = Modifier.weight(1f),
-                shapes = ButtonDefaults.shapes(),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.lyrics),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = textBackgroundColor,
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = stringResource(id = R.string.lyrics),
-                        color = textBackgroundColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.basicMarquee(),
-                    )
-                }
             }
         }
     }

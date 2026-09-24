@@ -111,7 +111,6 @@ fun LyricsSettings(
     viewModel: ContentSettingsViewModel = hiltViewModel(),
     scrollTo: String? = null,
 ) {
-
     val (lyricsClick, onLyricsClickChange) = rememberPreference(LyricsClickKey, defaultValue = true)
     val (lyricsScroll, onLyricsScrollChange) = rememberPreference(LyricsScrollKey, defaultValue = true)
 
@@ -380,7 +379,6 @@ fun LyricsSettings(
             modifier = positions.modifierFor("lyrics_font_size"),
             title = stringResource(R.string.display),
         ) {
-
             item {
                 SwitchPreference(
                     modifier = positions.modifierFor("lyrics_click"),
@@ -458,7 +456,6 @@ fun LyricsSettings(
             modifier = positions.modifierFor("lyrics_preload"),
             title = stringResource(R.string.queue),
         ) {
-
             item {
                 NumberPickerPreference(
                     modifier = positions.modifierFor("preload_queue_lyrics"),

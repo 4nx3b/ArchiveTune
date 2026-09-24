@@ -120,8 +120,8 @@
     <string name="lastfm_player_unavailable">Player not ready. Try again in a moment.</string>
 
     <string name="album_page">Album page</string>
-    <string name="album_canvas_enabled">Enable canvas in album and playlist page</string>
-    <string name="album_canvas_enabled_desc">Play the looping motion artwork behind the album and playlist headers, the way Apple Music does. Turn off to always show the static cover.</string>
+    <string name="album_canvas_enabled">Enable canvas in album, playlist and artist page</string>
+    <string name="album_canvas_enabled_desc">Play the looping motion artwork behind the album, playlist and artist headers, the way Apple Music does. Turn off to always show the static cover.</string>
 
     <string name="source_qobuz_backup_search_hint">Search the kouzu.in backup catalogue</string>
 
@@ -172,4 +172,8 @@
     <string name="sponsor_block_fillers">Fillers</string>
     <string name="sponsor_block_subscription_reminders">Subscription reminders</string>
     <string name="sponsor_block_hooks">Hook/Greetings</string>
+
+    <string name="tiktok_main_lyrics">Show lyrics on main player</string>
+    <string name="tiktok_main_lyrics_desc">Display a scrolling karaoke lyrics strip with word animation, translation and romanisation on the TikTok player screen, aligned with the song info</string>
+
 </resources>

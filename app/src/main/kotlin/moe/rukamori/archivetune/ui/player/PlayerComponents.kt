@@ -260,7 +260,6 @@ internal fun PlayerTextBackdrop(
     edgeFadeWidth: Dp = 24.dp,
     content: @Composable () -> Unit,
 ) {
-
     Box(modifier = modifier) {
         content()
     }
@@ -340,7 +339,6 @@ fun PlayerTitleSection(
             )
         }
     }
-
 }
 @Composable
 fun PlayerTopActions(
@@ -2686,7 +2684,6 @@ fun PlayerBackground(
     Box(modifier = Modifier.fillMaxSize()) {
         when (playerBackground) {
             PlayerBackgroundStyle.BLUR -> {
-
                 val context = LocalContext.current
                 val backgroundHazeState = remember { HazeState() }
                 AnimatedContent(
@@ -2698,7 +2695,6 @@ fun PlayerBackground(
                 ) { thumbnailUrl ->
                     if (thumbnailUrl != null) {
                         Box(modifier = Modifier.fillMaxSize()) {
-
                             AsyncImage(
                                 model =
                                     ImageRequest
@@ -3074,13 +3070,11 @@ fun PlayerBackground(
                                             progress: Float,
                                             speed: Float = 1f,
                                         ): Float {
-
                                             val v = kotlin.math.sin(2f * kotlin.math.PI.toFloat() * (progress * speed + phase)).toFloat()
                                             return min + (max - min) * ((v + 1f) * 0.5f)
                                         }
 
                                         onDrawBehind {
-
                                             val progress = progressState.value
 
                                             val color1 = rotatedColorAt(0, progress)
@@ -3166,7 +3160,6 @@ fun PlayerBackground(
             }
 
             else -> {
-
             }
         }
     }
@@ -3237,7 +3230,6 @@ fun V10PlayerContent(
     val field = textButtonColor
 
     Column(modifier = modifier.fillMaxSize()) {
-
         Row(
             modifier = Modifier
                 .fillMaxWidth()

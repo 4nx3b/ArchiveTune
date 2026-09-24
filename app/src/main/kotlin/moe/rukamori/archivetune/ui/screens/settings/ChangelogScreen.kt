@@ -191,7 +191,6 @@ fun ChangelogScreen(
                     ),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-
                 if (releases.isNotEmpty()) {
                     Row(
                         modifier =
@@ -295,7 +294,6 @@ fun ChangelogScreen(
                         ) {
                             currentRelease?.let { release ->
                                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-
                                     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
                                     val displayDateFormat = remember { SimpleDateFormat("MMMM d, yyyy", Locale.getDefault()) }
                                     val formattedDate =

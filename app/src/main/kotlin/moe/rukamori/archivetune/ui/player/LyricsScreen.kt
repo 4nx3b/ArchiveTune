@@ -179,7 +179,6 @@ private val LyricsSwipeStartRegion = 144.dp
 private const val MovingBlurDriftScale = 2.4f
 private val LyricsSwipeDismissThreshold = 96.dp
 
-/** Controls auto-hide delay on the shared lyrics page — matches AppleMusicPlayer's. */
 private const val LyricsControlsAutoHideDelayMs = 5_000L
 
 val LocalLyricsScrollListener = compositionLocalOf<(Boolean) -> Unit> { {} }
@@ -235,12 +234,6 @@ fun LyricsScreen(
 
     var isUserScrollingLyrics by remember { mutableStateOf(false) }
 
-    // Player-controls auto-hide. The old code hardcoded `controlsVisible = true`,
-    // which silently ignored the "Show lyrics player controls" / "Auto-hide"
-    // lyrics settings for every style hosting this screen (Cinematic, Little,
-    // Immersive, Material Extended, Editorial, TikTok). The wiring mirrors
-    // AppleMusicPlayer: any interaction (tap, lyrics scroll, slider/volume drag)
-    // restarts the reveal, then the controls collapse after the delay.
     val showLyricsPlayerControls by rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
     val autoHideLyricsPlayerControls by rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = true)
     var controlsRevealToken by remember { mutableIntStateOf(0) }
@@ -385,7 +378,6 @@ fun LyricsScreen(
     val darkTheme = isSystemInDarkTheme()
 
     LaunchedEffect(mediaMetadata.id, mediaMetadata.thumbnailUrl, lyricsBackground, darkTheme) {
-
         kotlinx.coroutines.delay(120)
         if (lyricsBackground != LyricsBackgroundStyle.DEFAULT &&
             lyricsBackground != LyricsBackgroundStyle.COLORING &&
@@ -557,9 +549,7 @@ fun LyricsScreen(
                         }
                     }
                 }.pointerInput(Unit) {
-                    // Any tap on the lyrics page re-reveals the player controls
-                    // (Apple Music "poke" behaviour) — they re-collapse after the
-                    // auto-hide delay restarts.
+
                     detectTapGestures(
                         onTap = { pokeLyricsControls() },
                     )
@@ -810,9 +800,9 @@ internal fun MovingBlurBackground(
             Brush.verticalGradient(
                 listOf(
 
-                    colors.getOrElse(0) { AppleMusicFallbackGradient[0] }.copy(alpha = 0.85f),
-                    colors.getOrElse(1) { AppleMusicFallbackGradient[1] }.copy(alpha = 0.75f),
-                    colors.getOrElse(2) { AppleMusicFallbackGradient[2] }.copy(alpha = 0.95f),
+                    colors.getOrElse(0) { AppleMusicFallbackGradient[0] }.copy(alpha = 0.55f),
+                    colors.getOrElse(1) { AppleMusicFallbackGradient[1] }.copy(alpha = 0.42f),
+                    colors.getOrElse(2) { AppleMusicFallbackGradient[2] }.copy(alpha = 0.62f),
                 ),
             )
         }
@@ -821,13 +811,13 @@ internal fun MovingBlurBackground(
             Brush.verticalGradient(
                 listOf(
                     Color.Transparent,
-                    Color.Black.copy(alpha = 0.18f),
+                    Color.Black.copy(alpha = 0.10f),
                 ),
             )
         }
 
     val vibrancyColorFilter = remember {
-        val sat = 1.6f
+        val sat = 1.85f
         val alpha = 0.213f + 0.787f * sat
         val beta = 0.715f - 0.715f * sat
         val gamma = 0.072f - 0.072f * sat
@@ -847,7 +837,6 @@ internal fun MovingBlurBackground(
     val imageLoader = context.imageLoader
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
 
-    val blurWander = rememberBlurWanderDrift(active = !isPreS)
     BoxWithConstraints(
         modifier =
             modifier
@@ -855,12 +844,17 @@ internal fun MovingBlurBackground(
                 .clipToBounds()
                 .background(AppleMusicFallbackGradient.last()),
     ) {
+        // Screen-proportional wander amplitude (Apple Music lyrics-page
+        // behaviour, shared with every other player style): the blurred
+        // colour mass traverses the whole display instead of orbiting a
+        // narrow ring around the centre.
+        val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
+        val blurWander = rememberBlurWanderDrift(active = true, maxDriftDp = wanderMaxDrift)
         val preSDriftScale =
             if (isPreS) {
-                val driftMax = BlurWanderDrift.WanderRadiusDp.dp
                 val safetyMargin = 48.dp
-                val requiredScaleX = 1f + 2f * (driftMax.value + safetyMargin.value) / maxWidth.value
-                val requiredScaleY = 1f + 2f * (driftMax.value + safetyMargin.value) / maxHeight.value
+                val requiredScaleX = 1f + 2f * (wanderMaxDrift + safetyMargin.value) / maxWidth.value
+                val requiredScaleY = 1f + 2f * (wanderMaxDrift + safetyMargin.value) / maxHeight.value
                 maxOf(requiredScaleX, requiredScaleY, 1.4f)
             } else {
                 MovingBlurDriftScale
@@ -871,9 +865,9 @@ internal fun MovingBlurBackground(
                 blurBackdropFootprint(
                     width = maxWidth,
                     height = maxHeight,
-
                     restScale = MovingBlurDriftScale,
                     driftScale = MovingBlurDriftScale,
+                    maxDriftDp = movingBlurWanderMaxDriftDp(maxWidth, maxHeight),
                 )
             }
 
@@ -915,15 +909,20 @@ internal fun MovingBlurBackground(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
+                                    // Translation only: the pre-S bitmap is
+                                    // screen-shaped, so rotating it would
+                                    // uncover the corners (the post-S path
+                                    // rotates a square footprint safely).
                                     scaleX = preSDriftScale
                                     scaleY = preSDriftScale
+                                    translationX = blurWander.xDp.floatValue.dp.toPx()
+                                    translationY = blurWander.yDp.floatValue.dp.toPx()
                                 }
 
                                 .alpha(0.95f),
                         )
                     }
                 } else {
-
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
@@ -1011,7 +1010,6 @@ private fun AppleMusicBackground(
         ) { thumbnailUrl ->
             if (thumbnailUrl != null) {
                 if (isPreS) {
-
                     val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
                         value = withContext(Dispatchers.IO) {
                             try {
@@ -1120,9 +1118,7 @@ private fun AppleMusicTrackHeader(
         modifier = modifier.heightIn(min = 72.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 56dp — the Apple Music player's lyrics header artwork size, shared
-        // by every player style's lyrics page so the thumbnail never reads
-        // oversized in the other styles.
+
         Box(
             modifier =
                 Modifier
@@ -1511,7 +1507,6 @@ private fun LyricsContent(
     textColor: Color,
     modifier: Modifier = Modifier,
 ) {
-
     when (lyricsMode) {
         LyricsMode.V2 -> {
             LyricsV2(

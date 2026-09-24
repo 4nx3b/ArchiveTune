@@ -9,7 +9,6 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 internal object DeezerCrypto {
-
     const val CHUNK_SIZE = 2048
 
     const val ENCRYPTED_CHUNK_STRIDE = 3
@@ -28,7 +27,6 @@ internal object DeezerCrypto {
         trackId: String,
         salt: String = DEFAULT_KEY_SALT,
     ): ByteArray {
-
         val effective = if (salt.length >= 16) salt else DEFAULT_KEY_SALT
         val md5Hex =
             MessageDigest
@@ -67,7 +65,6 @@ internal object DeezerCrypto {
             .appendQueryParameter(PARAM_URL, url)
             .appendQueryParameter(PARAM_KEY, trackId)
             .apply {
-
                 if (!salt.isNullOrBlank() && salt != DEFAULT_KEY_SALT) {
                     appendQueryParameter(PARAM_SALT, salt)
                 }

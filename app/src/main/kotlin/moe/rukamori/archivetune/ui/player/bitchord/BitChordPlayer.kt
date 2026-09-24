@@ -37,10 +37,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -93,6 +92,7 @@ import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.ContentScale
@@ -130,6 +130,9 @@ import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
+import moe.rukamori.archivetune.playback.smart.SmartFadeRuntimeState
+import moe.rukamori.archivetune.playback.smart.TrackAnalysisState
+import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
@@ -335,15 +338,7 @@ fun BitChordPlayerContent(
     isLoading: Boolean,
     canSkipPrevious: Boolean,
     canSkipNext: Boolean,
-    /**
-     * Read as late as possible, never in this composable's own body.
-     *
-     * Taking the position as a plain `Long` meant this whole scope was invalidated by every tick of
-     * the ~100ms poll, for the sake of three leaves that actually use it. Each of those now reads
-     * through the provider inside its own composable, so a tick invalidates the scrubber, the lyric
-     * line and the previous button rather than the entire player. The same shape AppleMusicPlayer
-     * already uses, fed by the same remembered lambda in Player.kt.
-     */
+
     positionProvider: () -> Long,
     duration: Long,
     playerConnection: PlayerConnection,
@@ -361,6 +356,10 @@ fun BitChordPlayerContent(
     val haptics = rememberHaptics()
     val database = LocalDatabase.current
     val player = playerConnection.player
+
+    // Automix: the engine's published state, straight from the service.
+    val automixOn by SmartFadeRuntimeState.enabled.collectAsStateWithLifecycle()
+    val automixAnalysis by SmartFadeRuntimeState.analysis.collectAsStateWithLifecycle()
 
     val reduceAnimations = LocalAnimationsDisabled.current
 
@@ -506,8 +505,6 @@ fun BitChordPlayerContent(
 
     var pendingSeek by remember { mutableStateOf<Float?>(null) }
 
-    // A lambda, not a value: each consumer below invokes it inside its own scope (the slider inside
-    // draw), so a position tick lands there instead of invalidating this whole composable.
     val shownFraction: () -> Float = {
         when {
             scrubbing -> scrubValue
@@ -517,9 +514,6 @@ fun BitChordPlayerContent(
         }
     }
 
-    // Collected rather than keyed on the position: keying restarted this effect on every tick of
-    // the poll, so a coroutine was cancelled and relaunched ten times a second for as long as the
-    // player was open, to check a condition that is only ever true just after a scrub.
     LaunchedEffect(duration, pendingSeek) {
         if (pendingSeek == null) return@LaunchedEffect
         snapshotFlow { positionProvider() }.collect { position ->
@@ -619,9 +613,6 @@ fun BitChordPlayerContent(
 
     val meshColors = rememberArtworkColors(artUrl)
 
-    // Lyrics background style: BitChord's mesh stays the player's own look;
-    // while the lyrics panel is open a non-DEFAULT style takes over the
-    // background (same option set the shared lyrics screen honours).
     val lyricsBackgroundStylePref by rememberEnumPreference(LyricsBackgroundStyleKey, LyricsBackgroundStyle.DEFAULT)
     val playerBackgroundStylePref by rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.DEFAULT)
     val resolvedLyricsBackground = lyricsBackgroundStylePref.resolveFor(playerBackgroundStylePref)
@@ -630,16 +621,21 @@ fun BitChordPlayerContent(
     val onPlayPause = {
         if (player.isPlaying) player.pause() else player.play()
     }
+    // Read the session player AT CALL TIME: the captured `player` val goes
+    // stale the moment the service swaps the session player (automix/crossfade
+    // promotion), which left the BitChord seekbar dragging a released player —
+    // the bar moved but nothing seeked (lyrics taps still worked because their
+    // handlers re-adopt fresh lambdas). The connection's getter always resolves
+    // to the live player, matching the default player's working seek path.
     val onSeekFraction: (Float) -> Unit = { f ->
-
-        val d = player.duration
+        val livePlayer = playerConnection.player
+        val d = livePlayer.duration
         if (d > 0 && d != androidx.media3.common.C.TIME_UNSET) {
-            player.seekTo((f * d).toLong())
+            livePlayer.seekTo((f * d).toLong())
         }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-
         if (lyricsUseStyledBackground) {
             StyledLyricsBackground(
                 style = resolvedLyricsBackground,
@@ -732,7 +728,6 @@ fun BitChordPlayerContent(
                         onDragStart = { total = 0f },
                         onDragCancel = { swipeOffset = 0f },
                         onDragEnd = {
-
                             when {
                                 total <= -swipeThreshold && canSkipNext -> {
                                     haptics.play(Haptic.SkipNext)
@@ -754,7 +749,6 @@ fun BitChordPlayerContent(
                 },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -778,7 +772,6 @@ fun BitChordPlayerContent(
                     .onGloballyPositioned { dismissBandSpace.value = it }
                     .pointerInput(Unit) {
                         awaitEachGesture {
-
                             val down = awaitFirstDown(requireUnconsumed = false)
                             val space = dismissBandSpace.value
                             val y = space
@@ -836,7 +829,6 @@ fun BitChordPlayerContent(
                     .fillMaxWidth()
                     .padding(top = ART_BOX_TOP_PAD, bottom = 18.dp),
             ) {
-
                 val roomy = maxHeight + if (lyricsOpen) 0.dp else controlSpread
 
                 val wantArt = minOf(maxWidth, roomy - ART_TITLE_GAP - HEADER_HEIGHT)
@@ -893,7 +885,6 @@ fun BitChordPlayerContent(
 
                         .onGloballyPositioned { dismissBandTop = it.boundsInRoot().top }
                         .graphicsLayer {
-
                             val idle = artScale + (1f - artScale) * p
                             scaleX = idle
                             scaleY = idle
@@ -912,7 +903,6 @@ fun BitChordPlayerContent(
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
-
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -961,6 +951,27 @@ fun BitChordPlayerContent(
                         }
                     }
 
+                    // Automix analysis status, drawn on the sleeve the way
+                    // BitChord draws it: bottom-centre, dim, shadowed, and gone
+                    // once the layout starts collapsing.
+                    if (automixOn && p < 0.5f) {
+                        val currentStateLabel = localizedAnalysisState(automixAnalysis.current)
+                        val nextStateLabel = localizedAnalysisState(automixAnalysis.next)
+                        Text(
+                            text = stringResource(
+                                R.string.automix_analysis_status,
+                                currentStateLabel,
+                                nextStateLabel,
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.5f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                        )
+                    }
                 }
 
                 val swipeHintProgress = (abs(swipeSettle) / swipeThreshold)
@@ -992,7 +1003,6 @@ fun BitChordPlayerContent(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
-
                         val titleSize = lerp(20.sp, 16.sp, p)
                         Text(
                             text = mediaMetadata.title,
@@ -1054,7 +1064,6 @@ fun BitChordPlayerContent(
                 }
 
                 if (lyricsOpen) {
-
                     val panelModifier = Modifier
                         .fillMaxSize()
                         .padding(top = HEADER_HEIGHT + 10.dp)
@@ -1067,11 +1076,7 @@ fun BitChordPlayerContent(
                     val latestScrubbing = rememberUpdatedState(scrubbing)
                     val latestDuration = rememberUpdatedState(duration)
                     val lyricsPositionProvider = remember {
-                        // The shown fraction used to arrive as a value from an
-                        // updated state up here; evaluating it in composition
-                        // would now put the position read straight back in the
-                        // player's own body whenever the lyrics panel is open,
-                        // so it is evaluated inside the provider instead.
+
                         {
                             if (latestScrubbing.value) {
                                 val shown = shownFraction()
@@ -1128,7 +1133,6 @@ fun BitChordPlayerContent(
                             onRemove = { index -> player.removeMediaItem(index) },
                             onMove = { from, to -> player.moveMediaItem(from, to) },
                             onClear = {
-
                                 val size = player.mediaItemCount
                                 for (i in (size - 1) downTo (queueIndex + 1)) {
                                     player.removeMediaItem(i)
@@ -1149,7 +1153,6 @@ fun BitChordPlayerContent(
                     .fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1197,7 +1200,6 @@ fun BitChordPlayerContent(
                     scrubValue = it
                 },
                 onValueChangeFinished = {
-
                     haptics.play(Haptic.Select)
                     pendingSeek = scrubValue
                     onSeekFraction(scrubValue)
@@ -1222,8 +1224,7 @@ fun BitChordPlayerContent(
             }
 
             if (!lyricsOpen) {
-
-            Spacer(Modifier.height(14.dp + controlSpread / 2))
+            Spacer(Modifier.height(10.dp + controlSpread / 3))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1237,7 +1238,6 @@ fun BitChordPlayerContent(
                 )
 
                 if (isLoading) {
-
                     Box(Modifier.size(74.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(
                             color = Color.White,
@@ -1249,7 +1249,7 @@ fun BitChordPlayerContent(
                     TransportGlyph(
                         icon = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                         contentDescription = if (isPlaying) "Pause" else "Play",
-                        size = 62.dp,
+                        size = 72.dp,
                         onClick = onPlayPause,
                         haptic = if (isPlaying) Haptic.Pause else Haptic.Resume,
                     )
@@ -1257,14 +1257,14 @@ fun BitChordPlayerContent(
                 TransportGlyph(
                     icon = Icons.Rounded.FastForward,
                     contentDescription = "Next",
-                    size = 46.dp,
+                    size = 48.dp,
                     onClick = { playerConnection.seekToNext() },
                     enabled = canSkipNext,
                     haptic = Haptic.SkipNext,
                 )
             }
 
-            Spacer(Modifier.height(18.dp + controlSpread / 2))
+            Spacer(Modifier.height(12.dp + controlSpread / 3))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1303,56 +1303,82 @@ fun BitChordPlayerContent(
                 )
             }
 
-            Spacer(Modifier.height(24.dp))
+            // The volume slider already has ~13dp below its drawn track; a
+            // 6dp rest brings the pill row up tight under the sliders the way
+            // the reference stacks seekbar -> transport -> volume -> pills.
+            Spacer(Modifier.height(6.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BottomGlyph(
-                    icon = BitChordIcons.Shuffle,
-                    contentDescription = if (shuffleEnabled) "Shuffle on" else "Shuffle off",
-                    onClick = { player.shuffleModeEnabled = !shuffleEnabled },
-                    highlighted = shuffleEnabled,
-                    haptic = if (shuffleEnabled) Haptic.ToggleOff else Haptic.ToggleOn,
-                )
-                BottomGlyph(
-                    icon = if (repeatMode == Player.REPEAT_MODE_ONE) null else BitChordIcons.Repeat,
-                    label = if (repeatMode == Player.REPEAT_MODE_ONE) "1" else null,
-                    contentDescription = when (repeatMode) {
-                        Player.REPEAT_MODE_ONE -> "Repeat one"
-                        Player.REPEAT_MODE_ALL -> "Repeat all"
-                        else -> "Repeat off"
-                    },
-                    onClick = {
-                        player.repeatMode = when (repeatMode) {
-                            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-                            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-                            else -> Player.REPEAT_MODE_OFF
-                        }
-                    },
-                    highlighted = repeatMode != Player.REPEAT_MODE_OFF,
-
-                    haptic = when (repeatMode) {
-                        Player.REPEAT_MODE_OFF -> Haptic.ToggleOn
-                        Player.REPEAT_MODE_ONE -> Haptic.ToggleOff
-                        else -> Haptic.Select
-                    },
-                )
-                BottomGlyph(
-                    icon = Icons.AutoMirrored.Rounded.QueueMusic,
-                    contentDescription = "Up next",
-                    onClick = {
-                        lyricsOpen = false
-                        queueOpen = !queueOpen
-                    },
-                    highlighted = queueOpen,
-                    haptic = if (queueOpen) Haptic.Tap else Haptic.Expand,
-                )
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                // Sized for the capsule, not the loose glyphs: fixed inset keeps
+                // the three ends aligned no matter the repeat glyph's state.
+                val widestRow = BOTTOM_ACTION_SIZE * 2 + pillWidth(2)
+                val edgeInset = ((maxWidth - widestRow) / 4).coerceAtLeast(0.dp)
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = edgeInset),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BottomGlyph(
+                        icon = BitChordIcons.LyricsQuote,
+                        contentDescription = if (lyricsOpen) "Close lyrics" else "Open lyrics",
+                        // One sleeve: opening the queue closes lyrics and vice
+                        // versa, so the two glyphs can never be lit at once.
+                        onClick = {
+                            queueOpen = false
+                            lyricsOpen = !lyricsOpen
+                        },
+                        highlighted = lyricsOpen,
+                        haptic = if (lyricsOpen) Haptic.Tap else Haptic.Expand,
+                    )
+                    Pill {
+                        PillSegment(
+                            icon = BitChordIcons.Shuffle,
+                            contentDescription = if (shuffleEnabled) "Shuffle on" else "Shuffle off",
+                            onClick = { player.shuffleModeEnabled = !shuffleEnabled },
+                            highlighted = shuffleEnabled,
+                            haptic = if (shuffleEnabled) Haptic.ToggleOff else Haptic.ToggleOn,
+                        )
+                        PillDivider()
+                        PillSegment(
+                            icon = if (repeatMode == Player.REPEAT_MODE_ONE) null else BitChordIcons.Repeat,
+                            label = if (repeatMode == Player.REPEAT_MODE_ONE) "1" else null,
+                            contentDescription = when (repeatMode) {
+                                Player.REPEAT_MODE_ONE -> "Repeat one"
+                                Player.REPEAT_MODE_ALL -> "Repeat all"
+                                else -> "Repeat off"
+                            },
+                            onClick = {
+                                player.repeatMode = when (repeatMode) {
+                                    Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                                    Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                                    else -> Player.REPEAT_MODE_OFF
+                                }
+                            },
+                            highlighted = repeatMode != Player.REPEAT_MODE_OFF,
+                            haptic = when (repeatMode) {
+                                Player.REPEAT_MODE_OFF -> Haptic.ToggleOn
+                                Player.REPEAT_MODE_ONE -> Haptic.ToggleOff
+                                else -> Haptic.Select
+                            },
+                        )
+                    }
+                    BottomGlyph(
+                        icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                        contentDescription = "Up next",
+                        onClick = {
+                            lyricsOpen = false
+                            queueOpen = !queueOpen
+                        },
+                        highlighted = queueOpen,
+                        haptic = if (queueOpen) Haptic.Tap else Haptic.Expand,
+                    )
+                }
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(12.dp))
             }
             }
             }
@@ -1372,7 +1398,6 @@ private suspend fun AwaitPointerEventScope.dragQueueIn(
     onHold: (Boolean) -> Unit,
     onSettle: (Boolean) -> Unit,
 ) {
-
     if (travel < 1f) return
 
     var pulled = 0f
@@ -1532,6 +1557,96 @@ private fun Modifier.opensPage(browseId: String?, onOpen: (String) -> Unit): Mod
         clip(RoundedCornerShape(6.dp)).clickable { onOpen(browseId) }
     }
 
+// ---------------------------------------------------------------------------
+// The segmented capsule at the centre of the bottom row (reference style):
+// squared-off segments joined by hairline dividers, one highlight fill.
+// ---------------------------------------------------------------------------
+
+/** Height of the capsule (and the glyphs flanking it). */
+private val BOTTOM_ACTION_SIZE = 44.dp
+
+/** Width of one [PillSegment]; the capsule is a whole number of these. */
+private val PILL_SEGMENT_WIDTH = 54.dp
+
+/** Icon size inside a [PillSegment]. */
+private val PILL_ICON_SIZE = 24.dp
+
+/** Outer width of an n-segment capsule, dividers included. */
+private fun pillWidth(segments: Int): Dp =
+    PILL_SEGMENT_WIDTH * segments + 1.dp * (segments - 1)
+
+@Composable
+private fun Pill(content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier = Modifier
+            .height(BOTTOM_ACTION_SIZE)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.12f)),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
+}
+
+@Composable
+private fun PillDivider() {
+    Box(
+        Modifier
+            .width(1.dp)
+            .height(20.dp)
+            .background(Color.White.copy(alpha = 0.20f)),
+    )
+}
+
+/**
+ * One control inside a [Pill] — [BottomGlyph]'s twin, squared off. A glyph's
+ * highlight is a circle sized to itself; a segment's fills its share of the
+ * capsule edge to edge or the join stops reading as one.
+ */
+@Composable
+private fun PillSegment(
+    contentDescription: String,
+    onClick: () -> Unit,
+    icon: ImageVector? = null,
+    iconSize: Dp = PILL_ICON_SIZE,
+    label: String? = null,
+    highlighted: Boolean = false,
+    haptic: Haptic = Haptic.Tap,
+) {
+    val haptics = rememberHaptics()
+    Box(
+        modifier = Modifier
+            .width(PILL_SEGMENT_WIDTH)
+            .height(BOTTOM_ACTION_SIZE)
+            .background(if (highlighted) Color.White.copy(alpha = 0.14f) else Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {
+                haptics.play(haptic)
+                onClick()
+            }
+            .semantics { this.contentDescription = contentDescription },
+        contentAlignment = Alignment.Center,
+    ) {
+        val tint = Color.White.copy(alpha = if (highlighted) 1f else 0.75f)
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(iconSize),
+            )
+        } else if (label != null) {
+            Text(
+                text = label,
+                color = tint,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
+
 private fun formatTime(ms: Long): String {
     if (ms <= 0) return "0:00"
     val minutes = TimeUnit.MILLISECONDS.toMinutes(ms)
@@ -1539,9 +1654,20 @@ private fun formatTime(ms: Long): String {
     return "%d:%02d".format(Locale.ROOT, minutes, seconds)
 }
 
+@Composable
+private fun localizedAnalysisState(state: TrackAnalysisState): String =
+    stringResource(
+        when (state) {
+            TrackAnalysisState.ANALYSED -> R.string.automix_state_analysed
+            TrackAnalysisState.ANALYSING -> R.string.automix_state_analysing
+            TrackAnalysisState.REFINING -> R.string.automix_state_refining
+            TrackAnalysisState.FAILED -> R.string.automix_state_failed
+            TrackAnalysisState.WAITING -> R.string.automix_state_waiting
+        },
+    )
+
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 private object OverlayBack {
-
     fun register(view: View, onBack: () -> Unit): Any? {
         val dispatcher = view.findOnBackInvokedDispatcher() ?: return null
         val callback = OnBackInvokedCallback { onBack() }
@@ -1558,13 +1684,6 @@ private object OverlayBack {
     }
 }
 
-/**
- * The elapsed/remaining pair under the scrubber.
- *
- * Its own composable purely so the position read is scoped here: these two labels change once a
- * second, and reading the position for them in the player's body invalidated the entire player ten
- * times a second instead.
- */
 @Composable
 private fun BitChordScrubTimes(
     shownFraction: () -> Float,
@@ -1588,12 +1707,6 @@ private fun BitChordScrubTimes(
     }
 }
 
-/**
- * The back glyph, in its own composable so its position read is scoped here.
- *
- * A value-returning @Composable would not have done: Compose does not make those restartable, so
- * the read would have landed in the caller and invalidated the whole player anyway.
- */
 @Composable
 private fun BitChordPreviousGlyph(
     positionProvider: () -> Long,
@@ -1603,21 +1716,14 @@ private fun BitChordPreviousGlyph(
     TransportGlyph(
         icon = Icons.Rounded.FastRewind,
         contentDescription = "Previous",
-        size = 46.dp,
+        size = 48.dp,
         onClick = onClick,
-        // Lit whenever back has something to do — either a track to step to, or enough elapsed for
-        // it to restart this one.
+
         enabled = canSkipPrevious || positionProvider() > BACK_RESTARTS_AFTER_MS,
         haptic = Haptic.SkipPrevious,
     )
 }
 
-/**
- * The one-line lyric strip, wrapped so the position read is scoped here rather than in the player.
- *
- * The nudge by the sync offset happens inside for the same reason: computing it in the caller would
- * have put the read straight back where it was.
- */
 @Composable
 private fun BitChordCurrentLyric(
     lines: List<LyricLine>,

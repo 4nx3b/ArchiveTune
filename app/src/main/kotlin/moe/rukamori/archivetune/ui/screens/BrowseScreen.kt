@@ -91,7 +91,6 @@ fun BrowseScreen(
                                         }
 
                                         else -> {
-
                                         }
                                     }
                                 },
@@ -122,7 +121,6 @@ fun BrowseScreen(
                                             }
 
                                             else -> {
-
                                             }
                                         }
                                     }

@@ -49,6 +49,218 @@ original app.
   center control is dominant again, scaled down proportionally on
   compact-height screens so the row keeps its footprint in landscape
 
+## Fixes (16.0.3 follow-up)
+
+- The TikTok lyric strip's translation no longer drifts away from the line it
+  translates: line-synced lyrics stacked the romanisation and the translation
+  with a full blank line between them, so the translation read as a detached
+  second thought instead of part of the same line. The single-active-line
+  captions now join them directly (the full lyrics page keeps its looser
+  spacing)
+- Guest song changes actually reach the host: approving a suggestion used a
+  raw seekToNextMediaItem that skipped the manual-skip machinery, so an
+  in-flight crossfade (or its pauseAtEnd handoff) kept streaming the OLD
+  song's audio through the secondary player while the queue had already moved
+  on — the host "never changed" even though every guest did. Approved
+  suggestions now go through the full skip path (crossfade cancelled, player
+  prepared, play state preserved)
+- The `Field 'track_info' is required` error on suggest_track is gone: the
+  vivi server relays the host's bare approve_suggestion payload to the room,
+  which carries only suggestion_id — the app demanded track_info and dropped
+  the whole frame. The field is optional now and the approval is acknowledged
+  with either the track title or the suggestion id
+- Listen Together chat grows up: messages carry the sender's profile picture
+  before their name, long-pressing a bubble opens an Instagram-style action
+  popup anchored to it (quick reactions, all-emoji picker, reply, copy, edit,
+  pin, delete) with the lyrics popup's morph animation over liquid glass,
+  swiping a bubble toward the screen centre replies to it, reaction chips
+  sit under the message and toggle on tap, pins show in a banner above the
+  list with jump-to, edits rewrite the message everywhere with an "edited"
+  mark, deletes remove it room-wide, and the composer folds into an edit bar
+  for your own messages
+- The chat now tells you who is composing: each typing member's avatar pops
+  in above the composer — several typists layer on top of each other with
+  surface outlines — next to bouncing dots and their names, expiring a few
+  seconds after they stop
+- Chat history follows you: the conversation persists locally per username
+  and reloads after reconnects and room changes, so the same you never walks
+  into an empty chat
+- Volume sync to the host ships OFF by default — opt in from Settings →
+  Integrations → Listen Together if you want guests to follow the host's
+  volume level
+- Video songs play again. The High-by-default video quality (added with the
+  4K persistence change) skipped the SimpMusic extractor whenever the ceiling
+  rose above 1080p — removing the exact path whose NewPipe-harvested URLs
+  survive YouTube's bot-blocking — and 4K streams regularly blew the 10-second
+  first-frame deadline, so every video song silently fell back to the blurred
+  artwork while the audio kept playing. Resolution now always keeps the
+  SimpMusic extractor as a last resort below the requested ceiling, and any
+  playback-time failure (403'd URL, first-frame timeout, stuck buffering)
+  first re-resolves the stream at 1080p before ever giving up — a video song
+  degrades to 1080p instead of dying into artwork. Poisoned stream-URL cache
+  entries are evicted on recovery so the same dead URL can't be handed back
+- Listen Together chat now reaches you outside the app: every room message
+  from someone else posts a conversation notification (MessagingStyle, recent
+  history included) with a direct-reply action — type in the shade and it goes
+  straight to the room, no app launch needed. Replies sent from the shade echo
+  into the conversation, the chat screen suppresses (and cancels) the
+  notification while it's open, leaving the room or getting kicked clears it,
+  and blocked users never notify. Toggle: Settings → Integrations → Listen
+  Together → "Chat message notifications"
+- Video tracks are guaranteed the real YouTube video: canvas (Spotify or
+  ArchiveTune) resolution is hard-gated off for music-video tracks in every
+  player style, so a canvas can never substitute for the video — a video song
+  only ever plays its YouTube stream (or, if that truly can't be resolved,
+  falls back to plain artwork — never canvas)
+- The TikTok lyrics strip now reads like a caption, not a scroll view: only the
+  active line is ever composed — bigger (24sp) and bolder — with its per-word
+  romanisation above it and its translation below it, driven by the enhanced
+  lyrics library's word-timed sweep and a fade-and-slide transition between
+  lines. Previous and upcoming lines no longer appear at all, and the strip
+  shrank from 168dp to 140dp, returning the difference to the artwork
+- The Metrolist server (The Meowery) actually hands out a room code in release
+  builds: protobuf-javalite 4.x resolves every generated message's fields by
+  NAME through reflection (MessageSchema + getDeclaredField("username_") +
+  Unsafe offsets), so once R8 renamed those fields the create_room frame could
+  never be encoded — "Field username_ for r8.ox5 not found" — and no room code
+  arrived (debug builds aren't minified, which is why it only showed up in
+  installed APKs). The listentogether package (generated proto classes
+  included) is now excluded from obfuscation, mirroring vivi-music's rules
+- The TikTok player's main lyrics strip is rebuilt on the enhanced lyrics
+  library: it now word-sweeps, scrolls line by line, and shows translation
+  and romanisation together (following the global lyrics preferences,
+  provider/on-device/AI romanisation included). The old single-line
+  implementation read the scrub-only slider position — null during normal
+  playback — so its clock was pinned at zero and nothing ever animated, and
+  romanisation could only ever come from a TTML transliteration track. The
+  strip is also left-aligned with the song info and its "recently played"
+  pill at the same 16dp inset (was: centred at 20dp)
+- The Metrolist server (The Meowery) finally hands out a room code: it is a
+  protobuf-only metroserver, but the client always opened the socket speaking
+  JSON, so the create_room frame was rejected and the pending action was
+  never re-sent after the codec's reactive protobuf upgrade. The server list
+  now knows each server's protocol and the client speaks protobuf (with
+  compression) to The Meowery from the first frame; an invalid_message reply
+  after a JSON→protobuf upgrade also re-sends the pending create/join once.
+  The invite link follows the selected server instead of a hardcoded vivi
+  host, and the "Copy link" button hides on servers without a web client
+- Dead code sweep: 11 orphaned files and 17 unused composables/helpers
+  removed (PlaybackLogManager, LocalMixQueue, AudioQualityDialogs,
+  LibraryChromeComponents, Material3SettingsGroup, MeshBackdrop,
+  SettingsAnchors, YouTubeMusicLauncher, TidalCookieUtils, ExploreViewModel,
+  the V1/V2 collapsed queue cards, the unused grid-item and spotlight-card
+  variants, the deprecated settings components), ~3.3k lines gone
+
+- The artist page's overflow menu renders like every other menu: flat rows
+  with dividers between Share / Copy link / Block artist instead of
+  Material-Expressive segmented blocks, and the trailing 24dp of dead space
+  is gone
+- The artist page plays its animated canvas: the hero resolves Apple Music /
+  Spotify canvas from the artist's top song exactly like album and community
+  playlist pages, behind the same gradient — gated by the renamed "Enable
+  canvas in album, playlist and artist page" toggle
+- The artist page's play / shuffle / radio / + row is centred as a whole
+  cluster (equal margins both sides) and no longer scrolls horizontally
+- The collective Albums / Singles / EPs / Songs lists carry a liquid glass
+  header pill (back + title) over a transparent, haze-washed background like
+  the home page; every settings submenu gets the same glass pill treatment
+  via the shared header component, and the equalizer page now paints behind
+  the status bar
+- The queue opens from the player, not the system navigation bar: tapping
+  the collapsed hint strip is a no-op, and the Apple Music style's queue
+  button and swipe-up open the style's own inline queue instead of the old
+  bottom sheet
+- The TikTok player style gains optional current-line lyrics on the main
+  screen ("Show lyrics on main player", Appearance → Player): the active
+  line with a word-timed karaoke sweep and animated line transitions, plus a
+  secondary line that shows either the translation or the romanisation —
+  only one of the two, chosen in the same place
+- Audio no longer dies around Bluetooth reconnects: a transient-can-duck
+  focus loss ducks to 20% instead of pausing mid-song, and a crossfade
+  promotion no longer un-pauses after you (or a focus loss) paused during
+  the fade, nor plays without audio focus at all
+- The Qobuz backup resolver heals stored endpoints: http:// entries are
+  upgraded to https (cleartext can never pass the network policy) and the
+  dead mlc-ytify.kouzu.in host is migrated to mls.kouzu.in
+- Canvas lookups stop hammering Apple Music and Spotify: a song that
+  resolves to no canvas is cached as a negative result for 10 minutes
+  instead of re-querying every time the UI asks (Spotify 429 spam gone)
+- The Apple Music source no longer falls back to opus when the stored dev
+  token expires: the token chain checks JWT expiry and falls back to the
+  scraped web token for the search, the stream build and the Widevine
+  licence call; an account (personal or pool) is all the source needs
+- Fresh launches drop their first-seconds jank: cold-start preference reads
+  share one DataStore initial load instead of queueing a blocking read each
+- The Meowery (Metrolist community server) joins the Listen Together server
+  list, and the Listen Together entry leaves the settings home page (the
+  top-bar entry stays)
+- Amazon Music and QQ Music join the source chain (ported from the canary
+  branch): a real Amazon Web API resolver with per-track Widevine licensing,
+  and a partner-gated QQ Music source that stays inert without Tencent
+  partner credentials; the source pool refreshes every five hours instead of
+  every fifteen minutes and the settings refresh row respects that interval
+
+## Fixes (16.0.4 follow-up)
+
+- Video songs start only when BOTH streams are loaded: the video player and
+  the main audio player form one start barrier now — the video is parked
+  until the audio player has finished loading (STATE_READY, not merely "not
+  buffering") and the audio is held back until the video's first frame is
+  rendered, so neither one ever runs ahead no matter how long the other
+  takes. The 10-second first-frame timeout that degraded slow-loading videos
+  to an audio-only start is gone (only a hard player error triggers the
+  artwork fallback), and the stuck-buffering watchdog now watches the
+  buffered position — a stream that is still downloading, however slowly,
+  keeps waiting instead of being declared dead
+- Video songs load much faster: the video ExoPlayer gets a fast-start load
+  control (600ms to the first frame instead of media3's default 2.5s of
+  media — 4x less to download before anything appears, with a 90s buffer
+  ceiling for aggressive prefetch), and every usable innertube client is
+  raced concurrently during stream resolution instead of paying each failing
+  client its full 8-second serial timeout
+- Long-pressing a chat message no longer crashes the app: the action popup
+  drew its liquid glass from the app-wide backdrop, which records the very
+  NavHost subtree the popup lives in — a circular rendering that killed the
+  RenderThread (SIGSEGV). The popup now samples a local backdrop recorded
+  from the chat content only, with the popup composed outside that layer;
+  the glass look (rounded 18dp sheet, refraction lens, dividers between the
+  reaction strip and the action row) is unchanged, and the no-glass fallback
+  is a properly rounded, bordered menu instead of a dark square
+- The chat's full emoji picker covers the whole Android keyboard: 3781
+  fully-qualified emoji sequences (Unicode 16.0 emoji-test data) across the
+  nine CLDR groups replace the ~214-emoji hand-picked list, and the entry
+  chip in the action popup is a "+" icon now
+- Profile pictures are real citizens of the chat: your own custom picture
+  renders on your messages (and refreshes live when you pick a new one —
+  it's re-broadcast to the room immediately, mid-session), and others'
+  pictures keep arriving through the avatar broadcast
+- Deleting a message leaves a "This message was deleted" tombstone for
+  everyone (and in the persisted history) instead of silently vanishing;
+  reply/reactions are disabled on tombstones
+- Chat history only persists conversations with other people: messages sent
+  while alone in a room are never written, so rejoining an empty room no
+  longer resurrects a monologue
+- Tapping the pinned banner jumps straight to the pinned message with a
+  highlight flash (instant scroll, and the list no longer yanks you to the
+  bottom when new messages arrive while you're reading history)
+- Links in chat messages are tappable whatever they are (any http/https URL
+  opens directly; YouTube Music links still open in-app)
+- Songs can be shared into the chat: a music-note button beside the composer
+  shares what's playing in the room as a rich card — thumbnail, title,
+  artist and duration, Instagram-style — and tapping the card plays that
+  song in the room for everyone (the host applies it directly, guests
+  suggest it and the host's auto-approve plays it)
+- TikTok captions no longer fade on long lines: the single-active-line
+  renderer is rebuilt without the lyrics library's viewport-wide fading-edge
+  mask — the mask's 100dp bottom ramp swallowed every line that wrapped to a
+  second row, dimming it "the more line there is". Word-timed karaoke sweep,
+  romanisation and translation are rendered by the app's own compact
+  cluster, fully opaque at any length
+- The TikTok caption strip sits lower — bottom-aligned directly above the
+  song info — and clears the right-side control rail (56dp end clearance
+  matching the title/artist), so wrapped lines never run under the like/
+  comment/share buttons
+
 ## Podcasts
 
 - **Podcasts, ported from upstream**: search a show and it appears as its own

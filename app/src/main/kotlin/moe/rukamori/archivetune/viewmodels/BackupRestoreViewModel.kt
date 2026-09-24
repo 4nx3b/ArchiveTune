@@ -22,6 +22,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.common.collect.ImmutableList
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +42,8 @@ import moe.rukamori.archivetune.backup.BackupArchiveCategory
 import moe.rukamori.archivetune.backup.BackupArchiveRepository
 import moe.rukamori.archivetune.backup.BackupArchiveStep
 import moe.rukamori.archivetune.backup.CreateBackupUseCase
+import moe.rukamori.archivetune.backup.LyricsBackup
+import moe.rukamori.archivetune.backup.mergeLyricsIntoDatabase
 import moe.rukamori.archivetune.backup.ObserveScheduledBackupSettingsUseCase
 import moe.rukamori.archivetune.backup.ScheduledBackupFrequency
 import moe.rukamori.archivetune.backup.ScheduledBackupSettings
@@ -59,6 +62,9 @@ import moe.rukamori.archivetune.googledrive.ObserveGoogleDriveSyncSettingsUseCas
 import moe.rukamori.archivetune.googledrive.UpdateGoogleDriveSyncUseCase
 import moe.rukamori.archivetune.playback.MusicService
 import moe.rukamori.archivetune.playback.MusicService.Companion.PERSISTENT_QUEUE_FILE
+import moe.rukamori.archivetune.playlistexport.ExportPlaylistAsCsvUseCase
+import moe.rukamori.archivetune.playlistexport.ExportablePlaylist
+import moe.rukamori.archivetune.playlistexport.ObserveExportablePlaylistsUseCase
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.reportException
 import org.xmlpull.v1.XmlPullParser
@@ -86,6 +92,8 @@ enum class BackupCategory {
     LIBRARY,
     ACCOUNT,
     SETTINGS,
+    LYRICS,
+    CANVAS,
 }
 
 data class BackupValidationResult(
@@ -150,6 +158,42 @@ data class GoogleDriveSyncUiData(
     val isSyncing: Boolean,
 )
 
+sealed interface ExportPlaylistScreenState {
+    data object Loading : ExportPlaylistScreenState
+
+    @Immutable
+    data class Success(
+        val playlists: ImmutableList<ExportPlaylistUiModel>,
+        val isPickerVisible: Boolean,
+        val isExporting: Boolean,
+    ) : ExportPlaylistScreenState
+
+    data object Empty : ExportPlaylistScreenState
+
+    @Immutable
+    data class Error(
+        @StringRes val messageRes: Int,
+    ) : ExportPlaylistScreenState
+}
+
+@Immutable
+data class ExportPlaylistUiModel(
+    val id: String,
+    val name: String,
+    val songCount: Int,
+)
+
+sealed interface ExportPlaylistEvent {
+    @Immutable
+    data class CreateDocument(
+        val suggestedFileName: String,
+    ) : ExportPlaylistEvent
+
+    @Immutable
+    data class ShowMessage(
+        @StringRes val messageRes: Int,
+    ) : ExportPlaylistEvent
+}
 internal fun readCsvRecords(reader: Reader): Sequence<List<String>> =
     sequence {
         val pushbackReader = if (reader is PushbackReader) reader else PushbackReader(reader, 1)
@@ -246,6 +290,8 @@ class BackupRestoreViewModel
         private val googleDriveClient: GoogleDriveClient,
         private val googleDriveSyncRepository: moe.rukamori.archivetune.googledrive.GoogleDriveSyncRepository,
         @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
+        private val observeExportablePlaylists: ObserveExportablePlaylistsUseCase,
+        private val exportPlaylistAsCsv: ExportPlaylistAsCsvUseCase,
     ) : ViewModel() {
         private val _backupRestoreProgress = MutableStateFlow<BackupRestoreProgressUi?>(null)
         val backupRestoreProgress: StateFlow<BackupRestoreProgressUi?> = _backupRestoreProgress.asStateFlow()
@@ -259,10 +305,20 @@ class BackupRestoreViewModel
         private val _scheduledBackupEvent = MutableSharedFlow<Int>(extraBufferCapacity = 1)
         val scheduledBackupEvent: SharedFlow<Int> = _scheduledBackupEvent.asSharedFlow()
 
+        private val _exportPlaylistState = MutableStateFlow<ExportPlaylistScreenState>(ExportPlaylistScreenState.Loading)
+        val exportPlaylistState: StateFlow<ExportPlaylistScreenState> = _exportPlaylistState.asStateFlow()
+
+        private val _exportPlaylistEvent = MutableSharedFlow<ExportPlaylistEvent>(extraBufferCapacity = 1)
+        val exportPlaylistEvent: SharedFlow<ExportPlaylistEvent> = _exportPlaylistEvent.asSharedFlow()
+
         private var scheduledBackupSettings: ScheduledBackupSettings? = null
         private var showCustomDatePicker = false
         private var scheduledBackupUpdateJob: Job? = null
         private var manualBackupJob: Job? = null
+        private var exportablePlaylists: ImmutableList<ExportablePlaylist> = ImmutableList.of()
+        private var pendingExportPlaylistId: String? = null
+        private var exportPlaylistListJob: Job? = null
+        private var exportPlaylistJob: Job? = null
 
         private val _googleDriveSyncState =
             MutableStateFlow<GoogleDriveSyncScreenState>(GoogleDriveSyncScreenState.Loading)
@@ -297,6 +353,126 @@ class BackupRestoreViewModel
                         publishGoogleDriveSyncState()
                     }
             }
+            observeExportPlaylists()
+        }
+
+        fun onExportPlaylistClick() {
+            when (val state = _exportPlaylistState.value) {
+                ExportPlaylistScreenState.Loading -> Unit
+                ExportPlaylistScreenState.Empty -> {
+                    _exportPlaylistEvent.tryEmit(
+                        ExportPlaylistEvent.ShowMessage(R.string.export_playlist_empty),
+                    )
+                }
+
+                is ExportPlaylistScreenState.Error -> observeExportPlaylists()
+                is ExportPlaylistScreenState.Success -> {
+                    if (!state.isExporting) {
+                        _exportPlaylistState.value = state.copy(isPickerVisible = true)
+                    }
+                }
+            }
+        }
+
+        fun onExportPlaylistPickerDismissed() {
+            val state = _exportPlaylistState.value as? ExportPlaylistScreenState.Success ?: return
+            if (state.isPickerVisible) {
+                _exportPlaylistState.value = state.copy(isPickerVisible = false)
+            }
+        }
+
+        fun onExportPlaylistSelected(playlistId: String) {
+            val state = _exportPlaylistState.value as? ExportPlaylistScreenState.Success ?: return
+            if (state.isExporting) return
+            val playlist = exportablePlaylists.firstOrNull { item -> item.id == playlistId } ?: return
+            pendingExportPlaylistId = playlist.id
+            _exportPlaylistState.value = state.copy(isPickerVisible = false)
+            _exportPlaylistEvent.tryEmit(
+                ExportPlaylistEvent.CreateDocument(playlist.suggestedFileName),
+            )
+        }
+
+        fun onExportPlaylistDestinationSelected(destination: Uri?) {
+            val playlistId = pendingExportPlaylistId
+            pendingExportPlaylistId = null
+            if (destination == null || playlistId == null || exportPlaylistJob?.isActive == true) return
+
+            val state = _exportPlaylistState.value as? ExportPlaylistScreenState.Success ?: return
+            _exportPlaylistState.value = state.copy(isExporting = true)
+            exportPlaylistJob =
+                viewModelScope.launch {
+                    try {
+                        exportPlaylistAsCsv(playlistId = playlistId, destination = destination)
+                        _exportPlaylistEvent.emit(
+                            ExportPlaylistEvent.ShowMessage(R.string.export_playlist_success),
+                        )
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (exception: Exception) {
+                        reportException(exception)
+                        _exportPlaylistState.value =
+                            ExportPlaylistScreenState.Error(R.string.export_playlist_failed_retry)
+                        _exportPlaylistEvent.emit(
+                            ExportPlaylistEvent.ShowMessage(R.string.export_playlist_failed),
+                        )
+                    } finally {
+                        val currentState = _exportPlaylistState.value
+                        if (currentState is ExportPlaylistScreenState.Success && currentState.isExporting) {
+                            _exportPlaylistState.value =
+                                if (currentState.playlists.isEmpty()) {
+                                    ExportPlaylistScreenState.Empty
+                                } else {
+                                    currentState.copy(isExporting = false)
+                                }
+                        }
+                    }
+                }
+        }
+
+        private fun observeExportPlaylists() {
+            exportPlaylistListJob?.cancel()
+            _exportPlaylistState.value = ExportPlaylistScreenState.Loading
+            exportPlaylistListJob =
+                viewModelScope.launch {
+                    observeExportablePlaylists()
+                        .catch { exception ->
+                            if (exception is CancellationException) throw exception
+                            reportException(exception)
+                            _exportPlaylistState.value =
+                                ExportPlaylistScreenState.Error(R.string.export_playlist_load_failed_retry)
+                        }.collect { playlists ->
+                            exportablePlaylists = ImmutableList.copyOf(playlists)
+                            if (playlists.isEmpty()) {
+                                val currentState = _exportPlaylistState.value as? ExportPlaylistScreenState.Success
+                                _exportPlaylistState.value =
+                                    if (currentState?.isExporting == true) {
+                                        currentState.copy(
+                                            playlists = ImmutableList.of(),
+                                            isPickerVisible = false,
+                                        )
+                                    } else {
+                                        ExportPlaylistScreenState.Empty
+                                    }
+                            } else {
+                                val currentState = _exportPlaylistState.value as? ExportPlaylistScreenState.Success
+                                _exportPlaylistState.value =
+                                    ExportPlaylistScreenState.Success(
+                                        playlists =
+                                            ImmutableList.copyOf(
+                                                playlists.map { playlist ->
+                                                    ExportPlaylistUiModel(
+                                                        id = playlist.id,
+                                                        name = playlist.name,
+                                                        songCount = playlist.songCount,
+                                                    )
+                                                },
+                                            ),
+                                        isPickerVisible = currentState?.isPickerVisible == true,
+                                        isExporting = currentState?.isExporting == true,
+                                    )
+                            }
+                        }
+                }
         }
 
         private fun emitProgress(
@@ -347,6 +523,14 @@ class BackupRestoreViewModel
                                     }
 
                                     BackupArchiveStep.COPY_CUSTOM_FONTS -> {
+                                        context.getString(R.string.backup_step_copying_file, progress.fileName.orEmpty())
+                                    }
+
+                                    BackupArchiveStep.EXPORT_LYRICS -> {
+                                        context.getString(R.string.backup_step_export_lyrics)
+                                    }
+
+                                    BackupArchiveStep.COPY_CANVAS_FILE -> {
                                         context.getString(R.string.backup_step_copying_file, progress.fileName.orEmpty())
                                     }
                                 }
@@ -503,7 +687,6 @@ class BackupRestoreViewModel
                 try {
                     val settings = googleDriveSettings
                     if (settings == null || !settings.enabled || settings.remoteFolderUri == null) {
-
                         updateGoogleDriveSync.runNow()
                         return@launch
                     }
@@ -520,7 +703,6 @@ class BackupRestoreViewModel
                     when (val result = googleDriveClient.uploadBackup(settings, fileName)) {
                         is GoogleDriveClient.UploadResult.Success -> {
                             updateGoogleDriveSync {
-
                                 googleDriveSyncRepository.recordSyncResult(success = true)
                             }
                             _googleDriveSyncEvent.emit(R.string.google_drive_sync_succeeded)
@@ -631,6 +813,8 @@ class BackupRestoreViewModel
                     val includeSettings = BackupCategory.SETTINGS in categories
                     val includeAccount = BackupCategory.ACCOUNT in categories
                     val includeLibrary = BackupCategory.LIBRARY in categories
+                    val includeLyrics = BackupCategory.LYRICS in categories
+                    val includeCanvas = BackupCategory.CANVAS in categories
                     val settingsExcludedKeys = if (includeAccount) emptySet() else ACCOUNT_PREF_KEYS
                     emitProgress(
                         title = title,
@@ -656,11 +840,14 @@ class BackupRestoreViewModel
                     if (includeLibrary && !hasDb) throw IllegalStateException("Backup missing database")
 
                     val includeStatsMerge = !includeLibrary && hasStats
+                    val includeLyricsMerge = includeLyrics && LyricsBackup.ZIP_ENTRY_NAME in entryNames
                     val restoreEntries =
                         entryNames.filter { name ->
                             (includeSettings && (name == SETTINGS_XML_FILENAME || name == SETTINGS_FILENAME)) ||
                                 (includeSettings && name.startsWith("$FONTS_ZIP_PREFIX/")) ||
                                 (includeStatsMerge && name == StatsBackup.ZIP_ENTRY_NAME) ||
+                                (includeLyricsMerge && name == LyricsBackup.ZIP_ENTRY_NAME) ||
+                                (includeCanvas && name.startsWith("$CANVAS_ZIP_PREFIX/")) ||
                                 (
                                     includeLibrary && (
                                         name == InternalDatabase.DB_NAME ||
@@ -714,6 +901,17 @@ class BackupRestoreViewModel
                                         }
                                     }
 
+                                    LyricsBackup.ZIP_ENTRY_NAME -> {
+                                        emit(context.getString(R.string.restore_step_restoring_lyrics), indeterminate = true)
+                                        val payload =
+                                            runCatching {
+                                                LyricsBackup.decode(zip.readBytes().toString(Charsets.UTF_8))
+                                            }.getOrNull()
+                                        if (payload != null) {
+                                            mergeLyricsIntoDatabase(database, payload)
+                                        }
+                                    }
+
                                     SETTINGS_XML_FILENAME -> {
                                         emit(context.getString(R.string.restore_step_restoring_settings), indeterminate = true)
                                         restoreSettingsFromXml(context, zip, settingsExcludedKeys)
@@ -744,7 +942,6 @@ class BackupRestoreViewModel
                                     }
 
                                     else -> {
-
                                         if (name.startsWith("$FONTS_ZIP_PREFIX/") && name.endsWith(".ttf", ignoreCase = true)) {
                                             emit(context.getString(R.string.restore_step_restoring_file, name), indeterminate = true)
                                             val fontsDir = context.filesDir / CUSTOM_FONTS_DIR_NAME
@@ -753,6 +950,24 @@ class BackupRestoreViewModel
                                             val fontFile = fontsDir / fontFileName
                                             fontFile.outputStream().use { out ->
                                                 zip.copyTo(out)
+                                            }
+                                        } else if (includeCanvas && name.startsWith("$CANVAS_ZIP_PREFIX/")) {
+                                            emit(context.getString(R.string.restore_step_restoring_file, name), indeterminate = true)
+                                            val canvasDir =
+                                                runCatching {
+                                                    moe.rukamori.archivetune.storage.StorageLocationRepository
+                                                        .cacheDirectory(
+                                                            context.applicationContext,
+                                                            moe.rukamori.archivetune.storage.StorageFolderKind.CANVAS_CACHE,
+                                                        )
+                                                }.getOrNull()
+                                            if (canvasDir != null) {
+                                                if (!canvasDir.exists()) canvasDir.mkdirs()
+                                                val canvasFileName = name.removePrefix("$CANVAS_ZIP_PREFIX/")
+                                                val canvasFile = canvasDir / canvasFileName
+                                                canvasFile.outputStream().use { out ->
+                                                    zip.copyTo(out)
+                                                }
                                             }
                                         }
                                     }
@@ -1072,12 +1287,20 @@ class BackupRestoreViewModel
                         val categories = mutableSetOf<BackupCategory>()
                         val hasSettings = SETTINGS_XML_FILENAME in entryNames || SETTINGS_FILENAME in entryNames
                         val hasDb = entryNames.any { it.startsWith(InternalDatabase.DB_NAME) }
+                        val hasLyrics = LyricsBackup.ZIP_ENTRY_NAME in entryNames
+                        val hasCanvas = entryNames.any { it.startsWith("$CANVAS_ZIP_PREFIX/") }
                         if (hasSettings) {
                             categories.add(BackupCategory.SETTINGS)
                             categories.add(BackupCategory.ACCOUNT)
                         }
                         if (hasDb) {
                             categories.add(BackupCategory.LIBRARY)
+                        }
+                        if (hasLyrics) {
+                            categories.add(BackupCategory.LYRICS)
+                        }
+                        if (hasCanvas) {
+                            categories.add(BackupCategory.CANVAS)
                         }
                         if (categories.isEmpty()) {
                             return@withContext BackupValidationResult(
@@ -1107,6 +1330,7 @@ class BackupRestoreViewModel
             const val SETTINGS_XML_FILENAME = BackupArchiveRepository.SETTINGS_XML_FILENAME
             const val CUSTOM_FONTS_DIR_NAME = BackupArchiveRepository.CUSTOM_FONTS_DIR_NAME
             const val FONTS_ZIP_PREFIX = BackupArchiveRepository.FONTS_ZIP_PREFIX
+            const val CANVAS_ZIP_PREFIX = BackupArchiveRepository.CANVAS_ZIP_PREFIX
 
             val ACCOUNT_PREF_KEYS: Set<String> = BackupArchiveRepository.ACCOUNT_PREFERENCE_KEYS
         }

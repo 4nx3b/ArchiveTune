@@ -49,7 +49,6 @@ import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.constants.YouTubeMusicRegionKey
 import moe.rukamori.archivetune.constants.YtmSyncKey
 import moe.rukamori.archivetune.db.MusicDatabase
-import moe.rukamori.archivetune.db.entities.*
 import moe.rukamori.archivetune.extensions.filterBlockedArtists
 import moe.rukamori.archivetune.extensions.filterBlockedSongs
 import moe.rukamori.archivetune.extensions.toEnum
@@ -79,6 +78,7 @@ import moe.rukamori.archivetune.utils.reportException
 import moe.rukamori.archivetune.utils.toPlaybackAuthState
 import timber.log.Timber
 import javax.inject.Inject
+import moe.rukamori.archivetune.db.entities.*
 
 sealed interface AccountChannelsState {
     data object Loading : AccountChannelsState
@@ -155,7 +155,6 @@ internal data class HomeContent(
     val remote: HomeRemoteContent,
     val selectedChip: HomePage.Chip?,
 ) {
-
     val hasContent: Boolean
         get() =
             local.heroPicks.isNotEmpty() ||
@@ -485,7 +484,6 @@ class HomeViewModel
 
         private fun observeQuickPicks() {
             viewModelScope.launch(Dispatchers.IO) {
-
                 var attempts = 0
                 while (true) {
                     try {
@@ -824,7 +822,6 @@ class HomeViewModel
         }
 
         private suspend fun refreshAccountIdentity() {
-
             context.dataStore.data.first().let { prefs ->
                 prefs[AccountNameKey]?.takeIf { it.isNotBlank() }?.let { _accountName.value = it }
                 prefs[AccountImageUrlKey]?.takeIf { it.isNotBlank() }?.let { _accountImageUrl.value = it }
@@ -1016,11 +1013,7 @@ class HomeViewModel
 
         private fun refresh() {
             if (!isRefreshing.compareAndSet(false, true)) {
-                // Escape hatch: a load that hung forever (a stalled network call
-                // with no timeout) leaves isRefreshing stuck true and every later
-                // pull-to-refresh silently no-ops at this compareAndSet — the
-                // "refreshing the home page doesn't refresh it" report. After the
-                // watchdog window a new manual refresh is allowed through.
+
                 val startedAt = refreshStartedAtMs.get()
                 val stuck = startedAt != 0L && System.currentTimeMillis() - startedAt > REFRESH_STUCK_WATCHDOG_MS
                 if (!stuck) return
@@ -1095,11 +1088,7 @@ class HomeViewModel
             viewModelScope.launch(Dispatchers.IO) {
                 reloadRequests.collectLatest { (generation, manual) ->
                     if (!manual) {
-                        // An auto reload (region / AI-filter / blocked-song
-                        // observers) arriving mid-manual-refresh used to CANCEL
-                        // the manual load via collectLatest and drop its commit —
-                        // the spinner reset but the visible page never changed.
-                        // Wait for the in-flight manual refresh to land first.
+
                         isRefreshing.first { !it }
                     }
                     recommendationJob?.cancelAndJoin()

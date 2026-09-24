@@ -52,6 +52,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
@@ -80,6 +81,7 @@ import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.TikTokMainLyricsEnabledKey
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
@@ -90,11 +92,17 @@ import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
 import moe.rukamori.archivetune.ui.player.InlineVideoControlsPill
 import moe.rukamori.archivetune.ui.player.InlineVideoPlayer
 import moe.rukamori.archivetune.ui.player.LocalVideoArtworkState
+import moe.rukamori.archivetune.ui.player.LocalVideoAvailableHeights
 import moe.rukamori.archivetune.ui.player.LocalVideoFullscreenState
+import moe.rukamori.archivetune.ui.player.LocalVideoOnPreferredHeightChange
+import moe.rukamori.archivetune.ui.player.LocalVideoPreferredHeight
+import moe.rukamori.archivetune.ui.player.LocalVideoSelectedHeight
+import moe.rukamori.archivetune.ui.player.VideoQualitySheet
 import moe.rukamori.archivetune.ui.player.isLoadingState
 import moe.rukamori.archivetune.ui.player.rememberOfflineArtworkImageRequest
 import moe.rukamori.archivetune.ui.utils.getNextFallbackUrl
 import moe.rukamori.archivetune.ui.utils.resize
+import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -160,7 +168,6 @@ internal fun TikTokSongPage(
     val artworkRequest = rememberOfflineArtworkImageRequest(artworkModel)
 
     Box(modifier = Modifier.fillMaxSize().background(TIKTOK_EMPTY_BACKDROP)) {
-
         val videoState = LocalVideoArtworkState.current
         val videoShowing =
             isCurrentPage &&
@@ -173,6 +180,7 @@ internal fun TikTokSongPage(
         val videoLoading = videoState != null && isLoadingState(videoState)
 
         var videoControlsVisible by remember(pageMetadata.id) { mutableStateOf(false) }
+        var videoQualityMenuOpen by remember(pageMetadata.id) { mutableStateOf(false) }
 
         val meshColors = rememberTikTokArtworkColors(pageMetadata.thumbnailUrl)
         TikTokMeshBackdrop(
@@ -235,7 +243,6 @@ internal fun TikTokSongPage(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-
                 BoxWithConstraints(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
@@ -317,7 +324,6 @@ internal fun TikTokSongPage(
                                             }
                                         },
                             ) {
-
                                 val artworkFallbackAlpha by animateFloatAsState(
                                     targetValue = if (canvasShowing || videoShowing) 0f else 1f,
                                     animationSpec = tween(300),
@@ -389,6 +395,37 @@ internal fun TikTokSongPage(
                 }
             }
 
+            // Reserve the karaoke-caption slot whenever the feature is on — on
+            // EVERY page, and whether or not the current song has synced lyrics
+            // (they also load asynchronously). The artwork box above therefore
+            // keeps a constant height and the artwork NEVER shifts up/shrinks
+            // when lyrics load, appear, change between songs, or during swipes.
+            val mainLyricsEnabled by rememberPreference(TikTokMainLyricsEnabledKey, false)
+            if (!immersive && mainLyricsEnabled && !lyricsOpen) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(TikTokMainLyricsHeight)
+                            .clipToBounds(),
+                ) {
+                    if (isCurrentPage) {
+                        TikTokMainLyrics(
+                            sliderPositionProvider = sliderPositionProvider,
+                            lyricsSyncOffset = lyricsSyncOffset,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    // Mirror the title/artist clearance: the right-side
+                                    // rail (~58dp of buttons, bottom-anchored and tall)
+                                    // must never overlap or cut the wrapped lyric rows.
+                                    .padding(start = 16.dp, end = TIKTOK_CAPTION_TEXT_CLEARANCE + 16.dp)
+                                    .padding(bottom = 4.dp),
+                        )
+                    }
+                }
+            }
+
             if (!immersive) {
                 TikTokSongInfo(
                     pageMetadata = pageMetadata,
@@ -429,8 +466,8 @@ internal fun TikTokSongPage(
         }
 
         if (videoShowing && !videoFullscreenHolder.isFullscreen) {
-            LaunchedEffect(videoControlsVisible, isPlaying) {
-                if (videoControlsVisible && isPlaying) {
+            LaunchedEffect(videoControlsVisible, isPlaying, videoQualityMenuOpen) {
+                if (videoControlsVisible && isPlaying && !videoQualityMenuOpen) {
                     kotlinx.coroutines.delay(TIKTOK_VIDEO_CONTROLS_AUTO_HIDE_MS)
                     videoControlsVisible = false
                 }
@@ -488,10 +525,24 @@ internal fun TikTokSongPage(
                                             end = TIKTOK_VIDEO_CONTROLS_END_CLEARANCE,
                                             bottom = 8.dp,
                                         ),
+                                qualityMenuOpen = videoQualityMenuOpen,
+                                onQualityMenuOpenChange = { videoQualityMenuOpen = it },
                             )
                         }
                     }
                 }
+            }
+
+            // The quality sheet lives outside the auto-hiding controls layer so it
+            // survives the controls fade-out timer instead of being disposed with it.
+            if (videoQualityMenuOpen) {
+                VideoQualitySheet(
+                    preferredHeight = LocalVideoPreferredHeight.current,
+                    availableHeights = LocalVideoAvailableHeights.current,
+                    selectedHeight = LocalVideoSelectedHeight.current,
+                    onPreferredHeightChange = LocalVideoOnPreferredHeightChange.current,
+                    onDismissRequest = { videoQualityMenuOpen = false },
+                )
             }
         }
 
@@ -589,7 +640,6 @@ private fun TikTokSongInfo(
     Column(modifier = modifier) {
         val showChipRow = lyricsControlsVisible || !queueTitle.isNullOrBlank()
         if (showChipRow) {
-
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.height(TIKTOK_CAPTION_ROW_HEIGHT),

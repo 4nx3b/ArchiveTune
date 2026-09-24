@@ -77,7 +77,6 @@ object AiTextService {
             is java.net.UnknownHostException -> true
             is java.io.IOException -> true
             else -> {
-
                 val cause = t.cause
                 cause != null && cause !== t && isConnectionLevelFailure(cause)
             }
@@ -128,7 +127,6 @@ object AiTextService {
             } catch (e: CancellationException) {
                 throw e
             } catch (t: Throwable) {
-
                 if (isConnectionLevelFailure(t)) {
                     recreateClientOnFailure(t)
                 }
@@ -175,7 +173,6 @@ object AiTextService {
             } catch (e: CancellationException) {
                 throw e
             } catch (t: Throwable) {
-
                 if (isConnectionLevelFailure(t)) {
                     recreateClientOnFailure(t)
                 }

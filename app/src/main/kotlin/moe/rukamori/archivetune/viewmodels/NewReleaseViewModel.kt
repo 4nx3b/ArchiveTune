@@ -100,7 +100,6 @@ class NewReleaseViewModel
             viewModelScope.launch(Dispatchers.IO) {
                 _uiState.value = NewReleaseUiState.Loading
                 try {
-
                     val cacheSnapshot = CachedCatalogue.get()
                     if (cacheSnapshot != null) {
                         lastCatalogue = cacheSnapshot
@@ -298,7 +297,6 @@ class NewReleaseViewModel
             )
 
         private companion object {
-
             const val READ_IDS_LIMIT = 500
 
             const val MAX_SWEEP_ARTISTS = 30

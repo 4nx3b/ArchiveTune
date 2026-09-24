@@ -36,6 +36,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -63,6 +64,7 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -79,6 +81,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.constants.VideoPlaybackSpeedKey
 import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
@@ -86,6 +93,7 @@ import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.innertube.NewPipeUtils
 import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.innertube.models.YouTubeClient
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
 import moe.rukamori.archivetune.simpstream.SimpMusicPlayer
 import moe.rukamori.archivetune.utils.ImageBlurUtils
@@ -128,13 +136,87 @@ private const val VideoStuckBufferingTimeoutMs = 8000L
 
 private fun maxVideoHeightFor(preferredHeight: Int?): Int = VideoQualityPreference.ceilingFor(preferredHeight)
 
+/** Only used for a log line now — the audio hold waits for the video's first
+ * frame for however long it takes; a slow network never degrades a video song
+ * to an audio-only start. */
 private const val VideoReadyHoldTimeoutMs = 10000L
 
 private const val VideoClientAttemptTimeoutMs = 8000L
 
-private const val VideoSimpMusicAttemptTimeoutMs = 12000L
+private const val VideoSimpMusicAttemptTimeoutMs = 6000L
+
+/** Video LoadControl: start the video after only ~600ms of media has buffered
+ * (media3's default is 2500ms — 4x the bytes before the first frame) and keep
+ * up to 90s buffered ahead, prioritising time over size thresholds so a fast
+ * network fills the buffer as aggressively as it can. */
+private const val VideoMinBufferMs = 15_000
+private const val VideoMaxBufferMs = 90_000
+private const val VideoBufferForPlaybackMs = 600
+private const val VideoBufferForPlaybackAfterRebufferMs = 1_000
+
+/** Safety valve on the both-streams barrier: if the audio player still hasn't
+ * reached STATE_READY after this long, resume anyway so MusicService's own
+ * stall recovery (which requires playWhenReady=true) can engage. */
+private const val AudioReadyBarrierTimeoutMs = 30_000L
+
+/**
+ * How many times a failing video stream is re-resolved (at a 1080p ceiling, which
+ * re-enables the SimpMusic extractor's early-return path) before the player gives
+ * up and falls back to the artwork.
+ */
+private const val MaxVideoRecoveryAttempts = 1
 
 private const val VideoLoadResumeDelayMs = 1000L
+
+private const val WebRemixMaxVideoHeight = 1080
+
+private val LowCeilingVideoClientNames =
+    setOf(
+        "WEB_REMIX",
+        "ANDROID_MUSIC",
+        "IOS_MUSIC",
+        "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
+        "WEB_EMBEDDED",
+    )
+
+private const val VideoStreamInfoCacheMaxEntries = 16
+
+private const val VideoStreamInfoCacheValidityMs = 45 * 60 * 1000L
+
+private val videoStreamInfoCache =
+    java.util.Collections.synchronizedMap(LinkedHashMap<String, Pair<Long, VideoStreamInfo>>())
+
+private fun resolveVideoStreamInfoFromCache(cacheKey: String): VideoStreamInfo? {
+    val cached = videoStreamInfoCache[cacheKey] ?: return null
+    val (cachedAtMs, info) = cached
+    val fresh = System.currentTimeMillis() - cachedAtMs < VideoStreamInfoCacheValidityMs
+    if (!fresh) videoStreamInfoCache.remove(cacheKey)
+    return if (fresh) info else null
+}
+
+private fun cacheResolvedVideoStreamInfo(
+    cacheKey: String,
+    info: VideoStreamInfo,
+) {
+    synchronized(videoStreamInfoCache) {
+        videoStreamInfoCache[cacheKey] = System.currentTimeMillis() to info
+        while (videoStreamInfoCache.size > VideoStreamInfoCacheMaxEntries) {
+            val eldest = videoStreamInfoCache.keys.firstOrNull() ?: break
+            videoStreamInfoCache.remove(eldest)
+        }
+    }
+}
+
+/**
+ * Drops every cached stream for a video. Used when a resolved URL dies at
+ * playback time: the cached "success" is poisoned, and a recovery attempt
+ * must never be served the same dead URL straight back out of the cache.
+ */
+private fun evictResolvedVideoStreamInfoForVideo(videoId: String) {
+    synchronized(videoStreamInfoCache) {
+        videoStreamInfoCache.keys.removeAll { it.startsWith("$videoId|") }
+    }
+}
 
 data class VideoStreamInfo(
     val streamUrl: String,
@@ -291,6 +373,7 @@ fun rememberVideoArtworkState(
     onRequestPauseMain: () -> Unit,
     onRequestResumeMain: () -> Unit,
     isMainAudioBuffering: Boolean = false,
+    mainAudioReady: Boolean = false,
 ): VideoArtworkState {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -304,6 +387,7 @@ fun rememberVideoArtworkState(
     val updatedOnRequestResumeMain by rememberUpdatedState(onRequestResumeMain)
     val updatedHoldAudioUntilVideoReady by rememberUpdatedState(holdAudioUntilVideoReady)
     val updatedIsMainAudioBuffering by rememberUpdatedState(isMainAudioBuffering)
+    val updatedMainAudioReady by rememberUpdatedState(mainAudioReady)
 
     val okHttpClient = remember { videoStreamHttpClient() }
 
@@ -335,14 +419,33 @@ fun rememberVideoArtworkState(
             }
         }
 
+    // Fast-start load control: the default DefaultLoadControl demands 2.5s of
+    // buffered media before the first frame can render, which is exactly what
+    // made video songs feel slow to appear. 600ms cuts the pre-first-frame
+    // download 4x; the widened 90s ceiling lets a fast connection keep pulling
+    // data aggressively ("use more internet to load the video faster").
+    val loadControl =
+        remember {
+            DefaultLoadControl
+                .Builder()
+                .setBufferDurationsMs(
+                    VideoMinBufferMs,
+                    VideoMaxBufferMs,
+                    VideoBufferForPlaybackMs,
+                    VideoBufferForPlaybackAfterRebufferMs,
+                ).setPrioritizeTimeOverSizeThresholds(true)
+                .build()
+        }
+
     val state =
-        remember(mediaSourceFactory, renderersFactory, trackSelector) {
+        remember(mediaSourceFactory, renderersFactory, trackSelector, loadControl) {
             val exoPlayer =
                 ExoPlayer
                     .Builder(context)
                     .setMediaSourceFactory(mediaSourceFactory)
                     .setRenderersFactory(renderersFactory)
                     .setTrackSelector(trackSelector)
+                    .setLoadControl(loadControl)
                     .build()
                     .apply {
                         volume = 0f
@@ -358,6 +461,9 @@ fun rememberVideoArtworkState(
 
     var lastLoadedStreamUrl by remember { mutableStateOf<String?>(null) }
     var lastLoadedCaptionTrack by remember { mutableStateOf<PlayerResponse.CaptionTrack?>(null) }
+
+    var videoRecoveryAttempts by remember { mutableStateOf(0) }
+    var videoRecoveryRequests by remember { mutableIntStateOf(0) }
 
     fun beginAudioHold() {
         if (!updatedHoldAudioUntilVideoReady) return
@@ -384,6 +490,44 @@ fun rememberVideoArtworkState(
         Timber
             .tag(VideoPlaybackLogTag)
             .d("Video ready — clearing hold flag (resume scheduled=${!resumeMainAudio})")
+    }
+
+    /**
+     * Single funnel for every playback-time video failure (first-frame hold
+     * timeout, ExoPlayer errors, stuck buffering). Before falling back to the
+     * artwork, one recovery attempt re-resolves the stream at a 1080p ceiling —
+     * that ceiling re-enables the SimpMusic extractor, whose NewPipe-harvested
+     * URLs survive the bot-blocking that 403s plain innertube URLs, so a video
+     * song degrades to 1080p instead of dying into a blurred artwork.
+     */
+    fun declareVideoFailure(reason: String) {
+        if (state.hasPlaybackFailed) return
+        state.isVideoReady = false
+        state.isChangingQuality = false
+        state.isResyncing = false
+        state.bufferingStartedAtMs = 0L
+        releaseAudioHold(resumeMainAudio = true)
+
+        if (videoRecoveryAttempts < MaxVideoRecoveryAttempts) {
+            videoRecoveryAttempts += 1
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .w("Video failing for $videoId ($reason) — re-resolving at a 1080p ceiling")
+            videoRecoveryRequests += 1
+            return
+        }
+
+        Timber
+            .tag(VideoPlaybackLogTag)
+            .w("Video playback failed for $videoId ($reason) — falling back to artwork")
+        state.hasPlaybackFailed = true
+        exoPlayer.stop()
+
+        state.pendingResumeAtMs = 0L
+        state.pendingResumeMainAudio = false
+        state.pendingResumeVideo = false
+
+        updatedOnPlaybackFailed()
     }
 
     LaunchedEffect(
@@ -431,6 +575,9 @@ fun rememberVideoArtworkState(
 
         lastLoadedStreamUrl = null
         lastLoadedCaptionTrack = null
+
+        videoRecoveryAttempts = 0
+        videoRecoveryRequests = 0
 
         beginAudioHold()
 
@@ -556,25 +703,40 @@ fun rememberVideoArtworkState(
         exoPlayer.playWhenReady = shouldPlay && !awaitingVideoReady
     }
 
-    LaunchedEffect(isPlaying, awaitingVideoReady, state.isChangingQuality, state.isResyncing, updatedIsMainAudioBuffering) {
+    LaunchedEffect(
+        isPlaying,
+        awaitingVideoReady,
+        state.isChangingQuality,
+        state.isResyncing,
+        updatedIsMainAudioBuffering,
+        updatedMainAudioReady,
+        state.isVideoReady,
+        state.isResolvingUrl,
+    ) {
         if (state.hasPlaybackFailed) {
             exoPlayer.pause()
         } else if (awaitingVideoReady) {
-
             if (isPlaying) {
                 resumeAudioAfterVideoReady = true
                 updatedOnRequestPauseMain()
             }
             exoPlayer.pause()
         } else if (state.isChangingQuality) {
-
             if (isPlaying) updatedOnRequestPauseMain()
             exoPlayer.pause()
         } else if (state.isResyncing) {
-
             exoPlayer.pause()
-        } else if (updatedIsMainAudioBuffering) {
-
+        } else if (!updatedMainAudioReady) {
+            // Both-streams barrier: the main audio is still loading (resolving,
+            // buffering or not even prepared). The video must never run ahead of
+            // it — playback starts when BOTH streams are loaded, or not at all.
+            exoPlayer.pause()
+        } else if (state.isResolvingUrl) {
+            // A stream is being (re-)resolved — preparing here would reload the
+            // failing media item and re-fire its error mid-recovery.
+            exoPlayer.pause()
+        } else if (!state.isVideoReady) {
+            // First frame not rendered yet — same barrier from the video side.
             exoPlayer.pause()
         } else {
             exoPlayer.setVideoPlayback(isPlaying)
@@ -598,17 +760,52 @@ fun rememberVideoArtworkState(
         if (state.streamUrl == null) return@LaunchedEffect
         delay(VideoReadyHoldTimeoutMs)
         if (awaitingVideoReady && !state.isVideoReady) {
+            // No forced fallback here by design: the audio hold waits for the
+            // first frame however long the network takes, and neither stream
+            // starts alone. Only a hard player error triggers recovery/fallback.
             Timber
                 .tag(VideoPlaybackLogTag)
-                .w("Video not ready within ${VideoReadyHoldTimeoutMs}ms — falling back to artwork")
+                .w("Video first frame still pending after ${VideoReadyHoldTimeoutMs}ms — audio stays held until it arrives")
+        }
+    }
+
+    LaunchedEffect(videoRecoveryRequests) {
+        if (videoRecoveryRequests == 0) return@LaunchedEffect
+        if (state.hasPlaybackFailed) return@LaunchedEffect
+
+        val recoveryCeiling = maxVideoHeightFor(updatedPreferredHeight)
+        val recoveryPreferredHeight =
+            if (recoveryCeiling > WebRemixMaxVideoHeight) null else updatedPreferredHeight
+
+        exoPlayer.stop()
+        state.streamUrl = null
+        state.isVideoReady = false
+        state.bufferingStartedAtMs = 0L
+        state.bufferingRecoveries = 0
+        state.isResolvingUrl = true
+
+        // The previously resolved URL may be cached (a "success" that 403'd at
+        // playback) — evict it so the recovery actually fetches a fresh stream.
+        evictResolvedVideoStreamInfoForVideo(videoId)
+
+        val recovered =
+            withContext(Dispatchers.IO) {
+                resolveVideoStreamUrl(videoId, recoveryPreferredHeight)
+            }
+        state.isResolvingUrl = false
+
+        if (recovered != null && !state.hasPlaybackFailed && recovered.streamUrl.isNotBlank()) {
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .i("Recovered video stream for $videoId at ${recovered.selectedHeight}p after a failure")
+            state.captionTracks = recovered.captionTracks
+            updatedOnStreamResolved(recovered)
+            state.streamUrl = recovered.streamUrl
+        } else {
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .w("Video recovery resolution failed for $videoId — falling back to artwork")
             state.hasPlaybackFailed = true
-            exoPlayer.stop()
-            releaseAudioHold(resumeMainAudio = true)
-
-            state.pendingResumeAtMs = 0L
-            state.pendingResumeMainAudio = false
-            state.pendingResumeVideo = false
-
             updatedOnPlaybackFailed()
         }
     }
@@ -654,6 +851,26 @@ fun rememberVideoArtworkState(
         val delayMs = (state.pendingResumeAtMs - now).coerceAtLeast(0L)
         delay(delayMs)
 
+        // Both-streams-loaded barrier: after the settle delay, hold the resume
+        // until the video has rendered its first frame AND the main audio player
+        // has finished loading (STATE_READY). Whichever stream finishes last
+        // gates the start — neither the video nor the audio may begin alone,
+        // no matter how long the other takes. The generous valve only exists so
+        // a genuinely dead audio stream can still reach MusicService's own stall
+        // recovery (which needs playWhenReady=true to act).
+        if (resumeVideo || resumeMainAudio) {
+            val bothLoaded =
+                withTimeoutOrNull(AudioReadyBarrierTimeoutMs) {
+                    snapshotFlow { state.isVideoReady to updatedMainAudioReady }
+                        .first { (videoReady, audioReady) -> videoReady && audioReady }
+                }
+            if (bothLoaded == null) {
+                Timber
+                    .tag(VideoPlaybackLogTag)
+                    .w("Audio still not loaded after ${AudioReadyBarrierTimeoutMs}ms — resuming anyway so the audio player's stall recovery can engage")
+            }
+        }
+
         if (state.hasPlaybackFailed || exoPlayer.playerError != null) {
             Timber
                 .tag(VideoPlaybackLogTag)
@@ -665,7 +882,7 @@ fun rememberVideoArtworkState(
         }
         Timber
             .tag(VideoPlaybackLogTag)
-            .d("Firing delayed resume (audio=$resumeMainAudio, video=$resumeVideo)")
+            .d("Firing delayed resume (audio=$resumeMainAudio, video=$resumeVideo, both streams loaded)")
         if (resumeMainAudio) {
             updatedOnRequestResumeMain()
         }
@@ -686,32 +903,39 @@ fun rememberVideoArtworkState(
         var prevAudioPos = -1L
         var frozenCycles = 0
         var frozenKicks = 0
+        var lastWatchdogBufferedPos = -1L
         while (isActive) {
             delay(VideoSyncPollIntervalMs)
             if (state.hasPlaybackFailed) continue
 
             if (state.bufferingStartedAtMs > 0L) {
+                val bufferedPos = exoPlayer.bufferedPosition
                 val bufferingForMs = SystemClock.elapsedRealtime() - state.bufferingStartedAtMs
+                // Progress-aware watchdog: as long as the buffered position keeps
+                // advancing the stream is merely SLOW, not stuck — the user
+                // prefers waiting over degrading, so restart the window and keep
+                // holding. Only a buffer that has not moved at all trips this.
+                val progressing = bufferedPos > lastWatchdogBufferedPos + 250L
+                lastWatchdogBufferedPos = bufferedPos
+                if (progressing) {
+                    state.bufferingStartedAtMs = SystemClock.elapsedRealtime()
+                    continue
+                }
                 if (bufferingForMs > VideoStuckBufferingTimeoutMs) {
                     state.bufferingRecoveries = state.bufferingRecoveries + 1
                     if (state.bufferingRecoveries >= 3) {
                         Timber
                             .tag(VideoPlaybackLogTag)
-                            .w("Video stuck in BUFFERING for ${bufferingForMs}ms after ${state.bufferingRecoveries - 1} recoveries — falling back to artwork")
+                            .w("Video frozen in BUFFERING for ${bufferingForMs}ms after ${state.bufferingRecoveries - 1} recoveries")
                         state.bufferingStartedAtMs = 0L
-                        state.hasPlaybackFailed = true
-                        exoPlayer.stop()
-                        releaseAudioHold(resumeMainAudio = true)
-                        state.pendingResumeAtMs = 0L
-                        state.pendingResumeMainAudio = false
-                        state.pendingResumeVideo = false
-                        updatedOnPlaybackFailed()
+                        declareVideoFailure("stuck buffering for ${bufferingForMs}ms")
                     } else {
                         val mainPos = currentPosition()
                         Timber
                             .tag(VideoPlaybackLogTag)
                             .w("Video stuck in BUFFERING for ${bufferingForMs}ms — re-anchoring to ${mainPos}ms and re-preparing")
                         state.bufferingStartedAtMs = SystemClock.elapsedRealtime()
+                        lastWatchdogBufferedPos = -1L
                         if (mainPos > 0) {
                             exoPlayer.seekTo(mainPos)
                             state.lastSeekAtMs = SystemClock.elapsedRealtime()
@@ -719,6 +943,8 @@ fun rememberVideoArtworkState(
                         exoPlayer.prepare()
                     }
                 }
+            } else {
+                lastWatchdogBufferedPos = -1L
             }
 
             if (state.isChangingQuality) continue
@@ -728,7 +954,6 @@ fun rememberVideoArtworkState(
 
             val now = SystemClock.elapsedRealtime()
             if (state.lastSeekAtMs > 0L && now - state.lastSeekAtMs < VideoSeekSettlingTimeMs) {
-
                 if (state.currentSpeedCorrectionFactor != 1.0f) {
                     state.currentSpeedCorrectionFactor = 1.0f
                 }
@@ -787,7 +1012,6 @@ fun rememberVideoArtworkState(
                     frozenKicks = 0
                 }
             } else if (!exoPlayer.playWhenReady) {
-
                 frozenCycles = 0
                 frozenKicks = 0
             }
@@ -795,20 +1019,17 @@ fun rememberVideoArtworkState(
             prevAudioPos = mainPos
 
             if (absDrift > VideoHardResyncThresholdMs) {
-
                 Timber
                     .tag(VideoPlaybackLogTag)
                     .w("Hard resync: drift=${signedDrift}ms (main=$mainPos, video=$videoPos, playing=$shouldPlay)")
                 state.currentSpeedCorrectionFactor = 1.0f
                 val accepted = state.requestAutoResync(mainPos, shouldPlay)
                 if (!accepted) {
-
                     exoPlayer.seekTo(mainPos)
                     state.lastSeekAtMs = now
                     state.lastSurfaceReanchorAtMs = now
                 }
             } else if (absDrift > VideoSoftSeekDriftThresholdMs) {
-
                 Timber
                     .tag(VideoPlaybackLogTag)
                     .d("Re-anchor: drift=${signedDrift}ms (main=$mainPos, video=$videoPos)")
@@ -818,7 +1039,6 @@ fun rememberVideoArtworkState(
 
                 state.lastSurfaceReanchorAtMs = now
             } else if (absDrift > VideoSyncIgnoreToleranceMs) {
-
                 val normalizedDrift =
                     (signedDrift.toFloat() / VideoSoftSeekDriftThresholdMs.toFloat())
                         .coerceIn(-1f, 1f)
@@ -832,7 +1052,6 @@ fun rememberVideoArtworkState(
                     state.currentSpeedCorrectionFactor = targetFactor
                 }
             } else {
-
                 if (state.currentSpeedCorrectionFactor != 1.0f) {
                     state.currentSpeedCorrectionFactor = 1.0f
                 }
@@ -847,8 +1066,12 @@ fun rememberVideoArtworkState(
                     (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) &&
                     !state.hasPlaybackFailed &&
                     exoPlayer.playerError == null &&
-                    state.streamUrl != null
+                    state.streamUrl != null &&
+                    state.isVideoReady &&
+                    updatedMainAudioReady
                 ) {
+                    // Only resume into an already-playing, fully-loaded pair of
+                    // streams — never let the video (or audio) restart alone.
                     exoPlayer.setVideoPlayback(shouldPlay)
                 }
             }
@@ -863,13 +1086,7 @@ fun rememberVideoArtworkState(
             object : Player.Listener {
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                     Timber.tag(VideoPlaybackLogTag).w(error, "Video playback failed for $videoId")
-                    state.hasPlaybackFailed = true
-                    state.isVideoReady = false
-                    state.isChangingQuality = false
-                    state.isResyncing = false
-                    state.bufferingStartedAtMs = 0L
-                    releaseAudioHold(resumeMainAudio = true)
-                    updatedOnPlaybackFailed()
+                    declareVideoFailure("player error ${error.errorCodeName}")
                 }
 
                 override fun onCues(cueGroup: CueGroup) {
@@ -892,7 +1109,6 @@ fun rememberVideoArtworkState(
                 }
 
                 override fun onRenderedFirstFrame() {
-
                     val wasAlreadyReady = state.isVideoReady
                     state.isVideoReady = true
                     state.bufferingRecoveries = 0
@@ -912,7 +1128,6 @@ fun rememberVideoArtworkState(
                         val mainPos = currentPosition()
                         if (mainPos > 0) {
                             if (wasAlreadyReady) {
-
                                 if (state.kickRenderer(now)) {
                                     Timber
                                         .tag(VideoPlaybackLogTag)
@@ -940,7 +1155,6 @@ fun rememberVideoArtworkState(
                     if (effectiveShouldPlay && !nothingToResume && !state.hasPlaybackFailed &&
                         exoPlayer.playerError == null
                     ) {
-
                         val resumeMainAudio =
                             (wasChangingQuality && state.wasPlayingBeforeQualityChange) ||
                                 (wasResync && wasPlayingBeforeResyncLocal) ||
@@ -961,7 +1175,6 @@ fun rememberVideoArtworkState(
                                     "(audio=$resumeMainAudio, video=true)",
                             )
                     } else if (!nothingToResume) {
-
                         state.pendingResumeAtMs = 0L
                         state.pendingResumeMainAudio = false
                         state.pendingResumeVideo = false
@@ -1042,6 +1255,7 @@ fun rememberVideoArtworkStateOrNull(
     onRequestPauseMain: () -> Unit,
     onRequestResumeMain: () -> Unit,
     isMainAudioBuffering: Boolean = false,
+    mainAudioReady: Boolean = false,
 ): VideoArtworkState? {
     return if (videoId.isNullOrBlank()) {
         onPlaybackFailed()
@@ -1059,6 +1273,7 @@ fun rememberVideoArtworkStateOrNull(
             onRequestPauseMain = onRequestPauseMain,
             onRequestResumeMain = onRequestResumeMain,
             isMainAudioBuffering = isMainAudioBuffering,
+            mainAudioReady = mainAudioReady,
         )
     }
 }
@@ -1078,14 +1293,12 @@ fun VideoArtworkSurface(
     )
 
     Box(modifier = modifier) {
-
         if (ambientMode && !thumbnailUrl.isNullOrBlank()) {
             VideoAmbientBackdrop(
                 thumbnailUrl = thumbnailUrl,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
-
             Box(
                 modifier =
                     Modifier
@@ -1223,7 +1436,6 @@ private fun pickVideoFormat(
         (streamingData.formats.orEmpty() + streamingData.adaptiveFormats.orEmpty())
             .asSequence()
             .filter {
-
                 val h = it.height
                 h != null && h > 0
             }
@@ -1232,7 +1444,6 @@ private fun pickVideoFormat(
             .toList()
 
     if (allVideoFormats.isEmpty()) {
-
         return (streamingData.formats.withUsableHeight() + streamingData.adaptiveFormats.withUsableHeight())
             .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
             .minByOrNull { it.height ?: Int.MAX_VALUE }
@@ -1329,8 +1540,20 @@ private suspend fun resolveVideoStreamUrl(
     videoId: String,
     preferredHeight: Int?,
 ): VideoStreamInfo? {
+    val heightCeiling = maxVideoHeightFor(preferredHeight)
+    val cacheKey = "$videoId|$heightCeiling"
+    resolveVideoStreamInfoFromCache(cacheKey)?.let { return it }
 
-    resolveVideoStreamUrlViaSimpMusic(videoId, preferredHeight)?.let { return it }
+    var bestResult: VideoStreamInfo? = null
+    var bestResultFromSimpMusic = false
+    var simpMusicAttempted = false
+    if (heightCeiling <= WebRemixMaxVideoHeight) {
+        simpMusicAttempted = true
+        resolveVideoStreamUrlViaSimpMusic(videoId, preferredHeight)?.let {
+            cacheResolvedVideoStreamInfo(cacheKey, it)
+            return it
+        }
+    }
 
     val authState = YouTube.currentPlaybackAuthState()
     val preferredClient =
@@ -1341,100 +1564,173 @@ private suspend fun resolveVideoStreamUrl(
     val clients = YTPlayerUtils.buildStreamClientOrder(preferredClient, authState)
 
     val usableClients =
-        clients.filterNot { client ->
-            YTPlayerUtils.isStreamClientBlocked(
+        clients
+            .filterNot { client ->
+                YTPlayerUtils.isStreamClientBlocked(
                     videoId = videoId,
                     clientKey = StreamClientUtils.buildClientKey(client),
                     authFingerprint = authState.fingerprint,
                 )
-        }
+            }.let { ordered ->
+                if (heightCeiling > WebRemixMaxVideoHeight) {
 
-    for (client in usableClients) {
-        val usesCookieAuthentication = authState.hasPlaybackLoginContext && client.supportsCookieAuthentication
-        if (client.loginRequired && !usesCookieAuthentication) continue
+                    val (highCeiling, lowCeiling) =
+                        ordered.partition { it.clientName !in LowCeilingVideoClientNames }
+                    highCeiling + lowCeiling
+                } else {
+                    ordered
+                }
+            }
 
-        val result =
-            withTimeoutOrNull(VideoClientAttemptTimeoutMs) {
-                runCatching {
-                    val signatureTimestamp =
-                        if (client.useSignatureTimestamp) {
-                            NewPipeUtils.getSignatureTimestamp(videoId).getOrNull()
-                        } else {
-                            null
-                        }
-                    val poToken = authState.resolvePlayerPoToken(client, videoId = videoId)?.takeIf { it.isNotBlank() }
-                    val playerResponse =
-                        YouTube
-                            .player(
-                                videoId = videoId,
-                                client = client,
-                                signatureTimestamp = signatureTimestamp,
-                                poToken = poToken,
-                                setLogin = usesCookieAuthentication,
-                                authState = authState,
-                            ).getOrThrow()
-                    if (playerResponse.playabilityStatus.status != "OK") {
-                        throw IllegalStateException(
-                            "${client.clientName} returned ${playerResponse.playabilityStatus.status}: " +
-                                playerResponse.playabilityStatus.reason.orEmpty(),
+    // Race every usable innertube client CONCURRENTLY instead of paying each
+    // failure its full serial timeout: all attempts start at once (more network
+    // in flight = faster resolution), then the results are consumed in client
+    // priority order — the first result that satisfies the height ceiling wins,
+    // and the best-below-ceiling result otherwise.
+    var racedWinner: VideoStreamInfo? = null
+    coroutineScope {
+        val attempts: List<Pair<YouTubeClient, Deferred<Result<VideoStreamInfo?>>>> =
+            usableClients
+                .mapNotNull { client ->
+                    val usesCookieAuthentication = authState.hasPlaybackLoginContext && client.supportsCookieAuthentication
+                    if (client.loginRequired && !usesCookieAuthentication) return@mapNotNull null
+                    client to async {
+                        withTimeoutOrNull(VideoClientAttemptTimeoutMs) {
+                            runCatching {
+                                val signatureTimestamp =
+                                    if (client.useSignatureTimestamp) {
+                                        NewPipeUtils.getSignatureTimestamp(videoId).getOrNull()
+                                    } else {
+                                        null
+                                    }
+                                val poToken = authState.resolvePlayerPoToken(client, videoId = videoId)?.takeIf { it.isNotBlank() }
+                                val playerResponse =
+                                    YouTube
+                                        .player(
+                                            videoId = videoId,
+                                            client = client,
+                                            signatureTimestamp = signatureTimestamp,
+                                            poToken = poToken,
+                                            setLogin = usesCookieAuthentication,
+                                            authState = authState,
+                                        ).getOrThrow()
+                                if (playerResponse.playabilityStatus.status != "OK") {
+                                    throw IllegalStateException(
+                                        "${client.clientName} returned ${playerResponse.playabilityStatus.status}: " +
+                                            playerResponse.playabilityStatus.reason.orEmpty(),
+                                    )
+                                }
+
+                                val availableHeights =
+                                    (playerResponse.streamingData?.formats.orEmpty() +
+                                        playerResponse.streamingData?.adaptiveFormats.orEmpty())
+                                        .mapNotNull { format ->
+
+                                            format.height?.takeIf { height ->
+                                                height in 1..VideoDecoderCapabilities.maxSupportedHeight()
+                                            }
+                                        }.distinct()
+                                        .sorted()
+                                val captionTracks =
+                                    playerResponse.captions
+                                        ?.playerCaptionsTracklistRenderer
+                                        ?.captionTracks
+                                        .orEmpty()
+                                val format = pickVideoFormat(playerResponse, preferredHeight) ?: return@runCatching null
+
+                                val finalUrl = NewPipeUtils.getStreamUrl(format = format, videoId = videoId).getOrThrow()
+                                VideoStreamInfo(
+                                    streamUrl = finalUrl,
+                                    availableHeights = availableHeights,
+                                    captionTracks = captionTracks,
+                                    selectedHeight = format.height?.takeIf { it > 0 },
+                                )
+                            }.onFailure { error ->
+                                if (error is CancellationException) throw error
+                            }
+                        } ?: Result.failure(
+                            SocketTimeoutException(
+                                "Video client ${client.clientName} timed out after ${VideoClientAttemptTimeoutMs}ms",
+                            ),
                         )
                     }
-
-                    val availableHeights =
-                        (playerResponse.streamingData?.formats.orEmpty() +
-                            playerResponse.streamingData?.adaptiveFormats.orEmpty())
-                            .mapNotNull { format ->
-
-                                format.height?.takeIf { height ->
-                                    height in 1..VideoDecoderCapabilities.maxSupportedHeight()
-                                }
-                            }.distinct()
-                            .sorted()
-                    val captionTracks =
-                        playerResponse.captions
-                            ?.playerCaptionsTracklistRenderer
-                            ?.captionTracks
-                            .orEmpty()
-                    val format = pickVideoFormat(playerResponse, preferredHeight) ?: return@runCatching null
-
-                    val finalUrl = NewPipeUtils.getStreamUrl(format = format, videoId = videoId).getOrThrow()
-                    VideoStreamInfo(
-                        streamUrl = finalUrl,
-                        availableHeights = availableHeights,
-                        captionTracks = captionTracks,
-                        selectedHeight = format.height?.takeIf { it > 0 },
-                    )
-                }.onFailure { error ->
-                    if (error is CancellationException) throw error
                 }
-            } ?: Result.failure(
-                SocketTimeoutException(
-                    "Video client ${client.clientName} timed out after ${VideoClientAttemptTimeoutMs}ms",
-                ),
-            )
 
-        val streamInfo = result.getOrNull()
-        if (streamInfo != null && streamInfo.streamUrl.isNotBlank()) {
-            YTPlayerUtils.markStreamUrlSuccessful(streamInfo.streamUrl)
-            Timber
-                .tag(VideoPlaybackLogTag)
-                .i("Resolved video stream for $videoId via ${client.clientName}@${client.clientVersion}")
-            return streamInfo
+        for ((client, deferred) in attempts) {
+            val streamInfo = runCatching { deferred.await() }.getOrNull()?.getOrNull()
+            if (streamInfo != null && streamInfo.streamUrl.isNotBlank()) {
+                if ((streamInfo.selectedHeight ?: 0) >= heightCeiling) {
+                    YTPlayerUtils.markStreamUrlSuccessful(streamInfo.streamUrl)
+                    Timber
+                        .tag(VideoPlaybackLogTag)
+                        .i("Resolved video stream for $videoId via ${client.clientName}@${client.clientVersion} at ${streamInfo.selectedHeight}p (raced)")
+                    cacheResolvedVideoStreamInfo(cacheKey, streamInfo)
+                    racedWinner = streamInfo
+                    break
+                }
+
+                if ((streamInfo.selectedHeight ?: 0) > (bestResult?.selectedHeight ?: Int.MIN_VALUE)) {
+                    bestResult = streamInfo
+                }
+                Timber
+                    .tag(VideoPlaybackLogTag)
+                    .i(
+                        "Video stream via ${client.clientName} reached only ${streamInfo.selectedHeight}p for $videoId (ceiling ${heightCeiling}p) — continuing",
+                    )
+                continue
+            }
+
+            run {
+                if (!autoChoose) return@run
+                val failure = runCatching { deferred.await() }.getOrNull()?.exceptionOrNull() ?: return@run
+                YTPlayerUtils.markStreamClientFailed(
+                    videoId = videoId,
+                    clientKey = StreamClientUtils.buildClientKey(client),
+                    httpStatusCode = null,
+                    authFingerprint = authState.fingerprint,
+                )
+                Timber
+                    .tag(VideoPlaybackLogTag)
+                    .w(failure, "Video stream resolution failed for $videoId via ${client.clientName}@${client.clientVersion}")
+            }
         }
 
-        if (autoChoose) {
-            YTPlayerUtils.markStreamClientFailed(
-                videoId = videoId,
-                clientKey = StreamClientUtils.buildClientKey(client),
-                httpStatusCode = null,
-                authFingerprint = authState.fingerprint,
-            )
+        // Cancel the losers that are still in flight so the scope returns promptly.
+        attempts.forEach { (_, deferred) -> deferred.cancel() }
+    }
+    if (racedWinner != null) return racedWinner
+
+    // The innertube chain could not fully satisfy the ceiling. If nothing
+    // playable at 1080p-or-better came out of it, the SimpMusic extractor is
+    // the last resort: its NewPipe-harvested URLs keep working when the plain
+    // innertube URLs are bot-blocked and 403 — the exact failure mode that
+    // otherwise leaves video songs stuck on the artwork fallback.
+    if (!simpMusicAttempted && (bestResult?.selectedHeight ?: 0) < WebRemixMaxVideoHeight) {
+        simpMusicAttempted = true
+        resolveVideoStreamUrlViaSimpMusic(videoId, preferredHeight)?.let { simpmusic ->
+            if ((simpmusic.selectedHeight ?: 0) > (bestResult?.selectedHeight ?: Int.MIN_VALUE)) {
+                Timber
+                    .tag(VideoPlaybackLogTag)
+                    .i(
+                        "SimpMusic last-resort supplies ${simpmusic.selectedHeight}p for $videoId " +
+                            "after the innertube chain topped out at ${bestResult?.selectedHeight}p",
+                    )
+                bestResult = simpmusic
+                bestResultFromSimpMusic = true
+            }
         }
-        result.exceptionOrNull()?.let { error ->
-            Timber
-                .tag(VideoPlaybackLogTag)
-                .w(error, "Video stream resolution failed for $videoId via ${client.clientName}@${client.clientVersion}")
+    }
+
+    if (bestResult != null) {
+
+        if (!bestResultFromSimpMusic) {
+            YTPlayerUtils.markStreamUrlSuccessful(bestResult.streamUrl)
         }
+        Timber
+            .tag(VideoPlaybackLogTag)
+            .i("Resolved video stream for $videoId at ${bestResult.selectedHeight}p (best available below the ${heightCeiling}p ceiling)")
+        cacheResolvedVideoStreamInfo(cacheKey, bestResult)
+        return bestResult
     }
 
     Timber.tag(VideoPlaybackLogTag).w("All video stream clients exhausted for $videoId")

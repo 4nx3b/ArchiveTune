@@ -13,7 +13,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -69,13 +68,6 @@ import moe.rukamori.archivetune.utils.joinByBullet
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.viewmodels.AmazonSearchViewModel
 
-/**
- * Results page for SearchProvider.AMAZON — the Amazon twin of [AppleMusicOnlineSearchResult].
- * Amazon's catalogue API only returns tracks, so there are no album/artist filter chips here, and
- * tapping a track resolves it exactly the way an Apple Music result does: a YouTube title/artist
- * text search through [AppleMusicPlaybackResolver] (Amazon streams are CENC-protected and this
- * fork ships no decryption step, so there is no direct playback path).
- */
 @Composable
 internal fun AmazonOnlineSearchResult(
     navController: NavController,
@@ -100,7 +92,6 @@ internal fun AmazonOnlineSearchResult(
                     .padding(top = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding())
                     .padding(top = AppBarHeight),
         ) {
-            // No filter chips: the Amazon catalogue search returns tracks only.
             Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
                 Text(
                     text = stringResource(R.string.search_amazon),
@@ -177,8 +168,7 @@ private fun AmazonSearchResultRow(
             resolving = true
             coroutineScope.launch {
                 try {
-                    // Same resolution path an Apple Music result takes: YouTube title/artist
-                    // text search — there is no direct Amazon stream to play (CENC).
+
                     val song =
                         withContext(Dispatchers.IO) {
                             AppleMusicPlaybackResolver.resolveTrack(item)
@@ -210,11 +200,6 @@ private fun AmazonSearchResultRow(
     )
 }
 
-/**
- * The Amazon twin of [AppleMusicItemRow] — same shape (title / artist bullet duration / artwork
- * thumbnail), Amazon stand-in icon and label. Also used by OnlineSearchScreen's suggestion
- * section, where tapping a suggestion simply fills the search field with "artist title".
- */
 @Composable
 internal fun AmazonSearchItemRow(
     item: AppleMusicSearchItem,

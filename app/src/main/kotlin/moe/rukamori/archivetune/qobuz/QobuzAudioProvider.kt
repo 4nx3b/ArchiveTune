@@ -15,7 +15,10 @@ import timber.log.Timber
 import java.text.Normalizer
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutorCompletionService
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
 
 object QobuzAudioProvider {
@@ -30,6 +33,12 @@ object QobuzAudioProvider {
     private const val AUDIO_FLAC_MIME_TYPE = "audio/flac"
     private const val HEALTH_PROBE_TRACK_ID = "5966783"
     private const val HEALTH_PROBE_FORMAT_ID = 5
+
+    private val backendRaceExecutor by lazy {
+        Executors.newFixedThreadPool(4) { runnable ->
+            Thread(runnable, "qobuz-backend-race").apply { isDaemon = true }
+        }
+    }
 
     private val STOP_WORDS =
         setOf("the", "a", "an", "of", "and", "feat", "ft", "featuring", "with")
@@ -83,6 +92,13 @@ object QobuzAudioProvider {
             .connectTimeout(8, TimeUnit.SECONDS)
             .readTimeout(12, TimeUnit.SECONDS)
             .callTimeout(20, TimeUnit.SECONDS)
+            .dispatcher(
+                okhttp3.Dispatcher()
+                    .apply {
+                        maxRequests = 64
+                        maxRequestsPerHost = 32
+                    },
+            ).connectionPool(okhttp3.ConnectionPool(32, 10, TimeUnit.MINUTES))
             .build()
 
     private val healthClient =
@@ -167,7 +183,6 @@ object QobuzAudioProvider {
                 val request = builder.get().build()
                 healthClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
-
                         if (response.code == 401) {
                             Timber
                                 .tag("QobuzDiscovery")
@@ -263,7 +278,6 @@ object QobuzAudioProvider {
                 ?.trim()
                 .orEmpty()
                 .ifBlank {
-
                     runCatching { searchTrackId(normalized, "adele hello") }.getOrNull().orEmpty()
                 }
         if (trackId.isEmpty()) return TidalAudioProvider.InstanceHealth.UNREACHABLE
@@ -323,42 +337,51 @@ object QobuzAudioProvider {
         }
 
         val available = backends.filterNot { isInstanceCoolingDown(it.id, now) }.ifEmpty { backends }
-        for (backend in available) {
 
-            val match = if (query.directTrackId != null) {
-                Match(
-                    id = query.directTrackId,
-                    title = query.title,
-                    artist = query.artists.joinToString(", "),
-                    album = query.album,
-                    durationMs = query.durationMs,
-                )
-            } else {
-                runCatching { resolveTrackId(backend, query) }
-                    .onFailure { markInstanceFailed(backend.id, hardFailure = it is java.io.IOException) }
-                    .getOrNull() ?: continue
-            }
+        data class BackendOutcome(
+            val backend: Backend,
+            val stream: DirectStream?,
+            val trackId: String?,
+            val failedHard: Boolean,
+            val failedSoft: Boolean,
+            val previewOnly: Boolean,
+        )
+
+        fun attempt(backend: Backend): BackendOutcome {
+            val match: Match =
+                if (query.directTrackId != null) {
+                    Match(
+                        id = query.directTrackId,
+                        title = query.title,
+                        artist = query.artists.joinToString(", "),
+                        album = query.album,
+                        durationMs = query.durationMs,
+                    )
+                } else {
+                    val searchFailureWasHard = AtomicBoolean(false)
+                    runCatching { resolveTrackId(backend, query) }
+                        .onFailure {
+                            val hard = it is java.io.IOException
+                            searchFailureWasHard.set(hard)
+                            markInstanceFailed(backend.id, hardFailure = hard)
+                        }.getOrNull()
+                        ?: return BackendOutcome(backend, null, null, searchFailureWasHard.get(), true, false)
+                }
             val trackId = match.id
             val download =
                 runCatching { backend.download(trackId, formatId) }
                     .onFailure { markInstanceFailed(backend.id, hardFailure = it is java.io.IOException) }
                     .getOrNull()
             if (download == null) {
-                markInstanceFailed(backend.id, hardFailure = false)
-                continue
+                return BackendOutcome(backend, null, trackId, false, true, false)
             }
             if (download.isPreview) {
-
                 Timber.tag("Qobuz").w("%s returned preview-only; skipping", backend.label)
-
                 if (backend.isToken && backend.isPoolPremium && backend.poolId != null) {
                     moe.rukamori.archivetune.utils.PoolAccountManager.report("qobuz", "account", backend.poolId, "not_premium")
                 }
-                markInstanceFailed(backend.id, hardFailure = false)
-                continue
+                return BackendOutcome(backend, null, trackId, false, false, true)
             }
-            markInstanceHealthy(backend.id)
-            lastResolvedTrackId = trackId
             val stream =
                 DirectStream(
                     uri = download.url,
@@ -372,6 +395,35 @@ object QobuzAudioProvider {
                     matchedAlbum = match.album,
                     matchedDurationMs = match.durationMs,
                 )
+            return BackendOutcome(backend, stream, trackId, false, false, false)
+        }
+
+        val outcomes: List<BackendOutcome> =
+            if (available.size <= 1) {
+                available.map(::attempt)
+            } else {
+                val completion =
+                    ExecutorCompletionService<BackendOutcome>(backendRaceExecutor)
+                available.forEach { backend -> completion.submit { attempt(backend) } }
+                val collected = mutableListOf<BackendOutcome>()
+                repeat(available.size) {
+                    runCatching { completion.take().get() }.getOrNull()?.let(collected::add)
+                }
+                val orderIndex = backends.withIndex().associate { (index, backend) -> backend.id to index }
+                collected.sortedBy { orderIndex[it.backend.id] ?: Int.MAX_VALUE }
+            }
+
+        for (outcome in outcomes) {
+            val backend = outcome.backend
+            when {
+                outcome.failedHard || outcome.failedSoft || outcome.previewOnly -> {
+                    if (!outcome.failedHard) markInstanceFailed(backend.id, hardFailure = false)
+                    continue
+                }
+            }
+            val stream = outcome.stream ?: continue
+            markInstanceHealthy(backend.id)
+            lastResolvedTrackId = outcome.trackId
             streamCache[cacheKey] = CachedStream(stream, now + STREAM_CACHE_MS)
             Timber.tag("Qobuz").i("resolved \"%s\" via %s [%s]", query.title, backend.label, stream.label)
             return stream
@@ -384,7 +436,6 @@ object QobuzAudioProvider {
         query: String,
         limit: Int = 8,
     ): List<CandidateMetadata> {
-
         if (tokens.isEmpty()) {
             val poolTokens = runCatching {
                 moe.rukamori.archivetune.utils.PoolAccountManager.qobuzAccounts().map {
@@ -863,10 +914,8 @@ object QobuzAudioProvider {
 
     private fun extractQobuzThumbnail(albumObj: JSONObject?, item: JSONObject): String? {
         if (albumObj != null) {
-
             val imageVal = albumObj.opt("image")
             if (imageVal != null) {
-
                 if (imageVal is org.json.JSONArray) {
                     for (i in 0 until imageVal.length()) {
                         val imgObj = imageVal.optJSONObject(i)

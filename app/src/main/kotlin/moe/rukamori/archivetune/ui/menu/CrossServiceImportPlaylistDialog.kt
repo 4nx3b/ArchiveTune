@@ -161,7 +161,6 @@ fun CrossServiceImportPlaylistDialog(
                     statusMessage = context.getString(R.string.cross_service_import_resolving_playlist)
                     coroutineScope.launch(Dispatchers.IO) {
                         try {
-
                             val credentials = CrossServiceImportCredentials.load(context)
                             val resolved = CrossServicePlaylistImporter.fetchPlaylist(url, credentials)
                                 .getOrElse { e ->
@@ -272,7 +271,6 @@ fun CrossServiceImportPlaylistDialog(
                             val isYtSyncEnabled = preferences == null || (preferences[YtmSyncKey] ?: true)
 
                             if (isSignedIn && isYtSyncEnabled && songIds.isNotEmpty()) {
-
                                 YouTube.createPlaylist(playlistName, songIds)
                                     .onSuccess { remoteBrowseId ->
                                         if (remoteBrowseId.isNotBlank()) {

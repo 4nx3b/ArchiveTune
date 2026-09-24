@@ -747,7 +747,6 @@ fun LyricsMenu(
             ),
     ) {
         item {
-
             val lyricsText = lyricsProvider()?.lyrics.orEmpty()
             val menuItems: List<AppleMusicLyricsMenuItem> =
                 listOf(
@@ -787,7 +786,6 @@ fun LyricsMenu(
                         isDestructive = false,
                         enabled = isAiRomanizationEnabled,
                         onClick = {
-
                             val status = AiLyricsRomanization.request(
                                 sessionKey =
                                     AiLyricsRomanization.sessionKey(
@@ -1713,7 +1711,6 @@ private fun AppleMusicLyricsMenuRow(
     item: AppleMusicLyricsMenuItem,
     modifier: Modifier = Modifier,
 ) {
-
     val headlineColor =
         if (item.isDestructive) {
             Color(0xFFFF453A)
@@ -1782,7 +1779,6 @@ fun AnchoredLyricsOverflowMenu(
     val alphaAnim = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
-
         if (dismissed) return@LaunchedEffect
 
         val scaleJob = scope.launch {
@@ -1848,8 +1844,7 @@ fun AnchoredLyricsOverflowMenu(
             Modifier.drawBackdrop(
                 backdrop = backdrop,
                 effects = {
-                    // SpatialFlow-style vivid bleed + liquid edge refraction;
-                    // 32dp -> 20dp blur pays for the lens pass (net GPU savings).
+
                     colorControls(saturation = 1.7f)
 
                     blur(20f.dp.toPx())
@@ -1882,7 +1877,6 @@ fun AnchoredLyricsOverflowMenu(
                     if (!dismissed) dismissed = true
                 },
     ) {
-
         Box(
             modifier =
                 Modifier
@@ -1896,7 +1890,6 @@ fun AnchoredLyricsOverflowMenu(
                                 .coerceAtLeast(horizontalMarginPx)
                         val y =
                             if (opensAboveAnchor()) {
-
                                 (iconBoundsInRoot.top - verticalOffsetPx -
                                     (if (popupHeightPx > 0) popupHeightPx else with(density) { 360.dp.toPx() }.toInt()))
                                     .coerceAtLeast(0f)
@@ -1942,17 +1935,14 @@ fun AnchoredLyricsOverflowMenu(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                     ) {
-
                     },
         ) {
-
             LyricsMenu(
                 lyricsProvider = lyricsProvider,
                 mediaMetadataProvider = mediaMetadataProvider,
                 lyricsSyncOffset = lyricsSyncOffset,
                 onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
                 onDismiss = {
-
                     if (!dismissed) dismissed = true
                 },
                 viewModel = viewModel,

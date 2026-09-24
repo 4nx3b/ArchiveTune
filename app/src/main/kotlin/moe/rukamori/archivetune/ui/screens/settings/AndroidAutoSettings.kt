@@ -154,13 +154,7 @@ private fun AndroidAutoSettingsContent(
     scrollTo: String? = null,
     modifier: Modifier = Modifier,
 ) {
-    // Settings-main-page recipe: the scrolling preferences are the haze/backdrop
-    // source and extend behind the header row, a progressive ScreenHeaderHaze
-    // band fades over the status bar and the header is a liquid-glass round
-    // back button plus a centred title when the liquid-glass look is enabled.
-    // The header row sits flush below the status bar (no double inset) and the
-    // content behind it is real scrolling content, so the glass reads
-    // translucent instead of sampling an opaque empty surface.
+
     val glassHeader = rememberGlassScreenHeader()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -178,11 +172,7 @@ private fun AndroidAutoSettingsContent(
                     contentAlignment = Alignment.Center,
                 ) { CircularProgressIndicator() }
                 is AndroidAutoSettingsState.Success -> {
-                    // Settings-main-page recipe: the bottom inset comes from
-                    // the player-aware window insets (navigation bar PLUS the
-                    // mini player height when playback is active) instead of
-                    // plain safeDrawing — otherwise the mini player overlapped
-                    // the last preference rows on this page.
+
                     val playerAwareBottomPadding =
                         LocalPlayerAwareWindowInsets.current
                             .only(WindowInsetsSides.Bottom)
@@ -220,10 +210,6 @@ private fun AndroidAutoSettingsContent(
                 )
             }
 
-            // Glass header exactly like the home screen: the back button AND
-            // the title live together inside one liquid-glass pill, floating
-            // over the scrolling content with the ScreenHeaderHaze band over
-            // the status bar. Without glass: a plain flush app bar row.
             val backdrop = glassHeader.backdrop
             if (backdrop != null) {
                 GlassScreenHeaderOverlay(
@@ -294,7 +280,6 @@ private fun AndroidAutoSettingsBody(
                 .then(positions.containerModifier())
                 .padding(bottom = bottomBarPadding + SettingsDimensions.ScreenBottomPadding),
     ) {
-        // Content scrolls behind the header row, like the settings main page.
         Spacer(Modifier.height(systemBarsTopPadding + AppBarHeight + 8.dp))
 
         AndroidAutoConnectionPreferences(snapshot = model.snapshot, onAction = onAction)

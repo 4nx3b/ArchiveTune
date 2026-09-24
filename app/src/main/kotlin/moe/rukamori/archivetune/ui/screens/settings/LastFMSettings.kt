@@ -100,7 +100,6 @@ fun LastFMSettings(
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-
             TopAppBar(
                 title = {},
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -319,14 +318,12 @@ private fun LastFmSettingsSuccess(
     showCustomEndpointDialog: Boolean,
     onShowCustomEndpointDialog: (Boolean) -> Unit,
 ) {
-
     var preferYtThumbnails by rememberPreference(LastFmPreferYtThumbnailsKey, defaultValue = false)
 
     PreferenceGroup(
         modifier = positions.modifierFor("lastfm_account"),
         title = stringResource(R.string.account),
     ) {
-
         item {
             PreferenceEntry(
                 modifier = positions.modifierFor("lastfm_connect_button"),
@@ -699,7 +696,6 @@ private fun LastFmCustomEndpointDialog(
             KeepStatusBarHiddenInDialog()
             TextButton(
                 onClick = {
-
                     val normalized = runCatching {
                         moe.rukamori.archivetune.lastfm.LastFM.normalizeEndpoint(endpoint.trim())
                     }.getOrNull()

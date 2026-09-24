@@ -32,13 +32,6 @@ data class AmazonSearchUiState(
     val errorMessage: String? = null,
 )
 
-/**
- * Results page state for SearchProvider.AMAZON — the Amazon twin of [AppleMusicSearchViewModel].
- * Items are [AppleMusicSearchItem.Track] (see AmazonMusicCatalog's header for why), so the
- * renderer reuses the same row shape and the same YouTube text-search resolution Apple Music
- * results use. The Amazon catalogue API exposes no pagination tokens, so this is a single page:
- * hasMore is always false and loadMore() is a no-op.
- */
 @HiltViewModel
 class AmazonSearchViewModel
     @Inject
@@ -62,7 +55,6 @@ class AmazonSearchViewModel
         }
 
         fun loadMore() {
-            // First page only — AmazonMusicCatalog.searchPage has no continuation tokens.
         }
 
         private fun loadPage(reset: Boolean) {

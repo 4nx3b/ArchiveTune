@@ -100,6 +100,7 @@ import moe.rukamori.archivetune.constants.PlayerButtonsStyle
 import moe.rukamori.archivetune.constants.PlayerButtonsStyleKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
+import moe.rukamori.archivetune.constants.TikTokMainLyricsEnabledKey
 import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
@@ -163,6 +164,11 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         rememberEnumPreference(
             PlayerDesignStyleKey,
             defaultValue = PlayerDesignStyle.V4,
+        )
+    val (tikTokMainLyrics, onTikTokMainLyricsChange) =
+        rememberPreference(
+            TikTokMainLyricsEnabledKey,
+            defaultValue = false,
         )
     val (_, onAppleMusicExperienceChange) =
         rememberPreference(
@@ -490,7 +496,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -512,7 +517,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(
-                modifier = positions.modifierFor("dynamic_theme"),
+                modifier = positions.modifierFor("dynamic_theme", "color_source"),
                 title = stringResource(R.string.theme),
             ) {
                 item {
@@ -575,7 +580,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 item(visible = !dynamicTheme || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
                     Column(modifier = positions.modifierFor("color_palette")) {
                         PreferenceEntry(
-                            modifier = positions.modifierFor("palette_picker"),
+                            modifier = positions.modifierFor("palette_picker", "theme_creator"),
                             title = { Text(stringResource(R.string.color_palette)) },
                             description = stringResource(R.string.customize_theme_colors),
                             icon = { Icon(painterResource(R.drawable.format_paint), null) },
@@ -720,7 +725,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                     item {
                         PreferenceEntry(
-                            modifier = positions.modifierFor("backdrop_blur_amount"),
+                            modifier = positions.modifierFor("backdrop_blur", "backdrop_blur_amount"),
                             title = { Text(stringResource(R.string.backdrop_blur_amount)) },
                             description = stringResource(R.string.backdrop_blur_amount_value, backdropBlurAmount),
                             icon = { Icon(painterResource(R.drawable.blur_on), null) },
@@ -827,6 +832,20 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                 }
                             },
                         )
+                    }
+                }
+
+                if (playerDesignStyle == PlayerDesignStyle.TIKTOK) {
+                    item {
+                        Column(modifier = positions.modifierFor("tiktok_main_lyrics")) {
+                            SwitchPreference(
+                                title = { Text(stringResource(R.string.tiktok_main_lyrics)) },
+                                description = stringResource(R.string.tiktok_main_lyrics_desc),
+                                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                                checked = tikTokMainLyrics,
+                                onCheckedChange = onTikTokMainLyricsChange,
+                            )
+                        }
                     }
                 }
 
@@ -1003,9 +1022,11 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
-                    ThumbnailCornerRadiusSelectorButton(
-                        onRadiusSelected = {},
-                    )
+                    Column(modifier = positions.modifierFor("thumbnail_corner_radius")) {
+                        ThumbnailCornerRadiusSelectorButton(
+                            onRadiusSelected = {},
+                        )
+                    }
                 }
 
                 item {

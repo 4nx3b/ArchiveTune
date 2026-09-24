@@ -80,10 +80,6 @@ fun AppleMusicPlaylistHero(
         return
     }
 
-    // Animated canvas backdrop behind the Apple-Music-style text hero: the
-    // looping artwork from the playlist's first song plays behind the text,
-    // under a surface-tinted scrim that keeps every line readable in light and
-    // dark schemes and fades into the page surface at the bottom edge.
     Box(
         modifier =
             modifier
@@ -110,13 +106,7 @@ fun AppleMusicPlaylistHero(
                         ),
                     ),
         )
-        // The content Column keeps its own (wrapping) height and gives the
-        // parent Box its size — the canvas and scrim then matchParentSize
-        // behind it. It must NOT be matchParentSize itself: inside a
-        // LazyColumn a Box whose children are all matchParentSize measures
-        // to zero height, collapsing the whole header the moment the canvas
-        // URLs arrive (~1s after entering the page) and making the playlist
-        // information "disappear".
+
         AppleMusicPlaylistHeroContent(
             sectionLabel = sectionLabel,
             title = title,

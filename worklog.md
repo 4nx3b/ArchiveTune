@@ -2970,3 +2970,661 @@ Work Log:
 Stage Summary:
 - PR #225 carries the 5-fix batch + the transport-ratio fix, CI-green,
   awaiting merge instructions.
+Task ID: T1-A
+Agent: general-purpose subagent (session web-e130fa90)
+Task: Remove the current Listen Together implementation from ArchiveTune
+
+Work Log:
+- Surveyed every "together" hit repo-wide first: the real feature refs were
+  confined to together/ (14 files), MusicTogetherViewModel.kt,
+  MusicTogetherScreen.kt, MusicService.kt (~780 refs), PlayerConnection.kt,
+  MainActivity.kt, AndroidManifest deep link, NavigationBuilder route,
+  SettingsScreen/SettingsDataBuilders search entries, MiniPlayer(Kt/
+  Components) together chip colors, Queue.kt guest lock/click paths, strings
+  (93 named keys), and 12 PreferenceKeys. All other hits are the Compose
+  `togetherWith` animation API, plain-English comments, or two badly-named
+  generic strings (see below).
+- git rm'd together/ package, MusicTogetherViewModel.kt,
+  MusicTogetherScreen.kt (16 files).
+- MusicService.kt: removed the together imports; the 219-line property
+  block (togetherSessionState flow, 24 together* fields, TogetherPendingGuestControl,
+  showTogetherNotice / participant / inactivity notifications, inactivity
+  scheduler, client-id helper); the 1979-line contiguous block from
+  startTogetherHost() through getLocalIpv4Address() (LAN host/join, public
+  host/join, all event handlers, control/add-track request paths, room
+  state build/apply, heartbeat, stopTogetherInternal); together checks in
+  scheduleStopIfIdle + onCreate TOGETHER notification channel; reworked
+  the crossfade combine(dataStore, togetherSessionState) back to a plain
+  dataStore.data.map (crossfade now simply follows the preference);
+  isTogetherGuestSession() + its 2 gates; guest early-return blocks in
+  playQueue / startRadioSeamlessly / playNext / addToQueue (functions are
+  now plain local implementations); guest echo-suppression blocks in
+  onMediaItemTransition / onEvents / onShuffleModeEnabledChanged /
+  onRepeatModeChanged; stopTogetherInternal call in onDestroy; the
+  host-session branch of onTaskRemoved (kept the stopMusicOnTaskClear
+  behavior verbatim, dropped the now-dead
+  shouldStopServiceOnTaskRemoved companion helper); TOGETHER_* companion
+  constants. Net -2764 lines.
+- PlayerConnection.kt: seekToNext/seekToPrevious are plain local skips now.
+- MainActivity.kt: pendingTogetherJoinLink + joinPendingTogetherIfReady()
+  + its onServiceConnected hook, the archivetune://together deep-link
+  branch, and the Listen Together ProfileMenuItem removed (comment fixed).
+- AndroidManifest.xml: removed the archivetune://together intent filter.
+- NavigationBuilder.kt: settings/music_together composable + import.
+- SettingsScreen.kt: music_together route mapping + supportsScroll
+  exclusion entry (CROSS_PAGE_SCROLL_OWNERS had no together entries).
+- SettingsDataBuilders.kt: musicTogether SettingsItem + its group slot.
+- MiniPlayerComponents.kt / MiniPlayer.kt: together chip + togetherContainer
+  / togetherContent color slots removed from MiniPlayerContentColors and
+  all three color variants.
+- Queue.kt: togetherForcesLock/effectiveLocked removed (usages now use the
+  plain `locked` state), onLockClick simplified, guest seek-to-track branch
+  in queue item click replaced by the direct local seekToDefaultPosition.
+- PreferenceKeys.kt: 12 Together* keys removed (all became unreferenced).
+- strings.xml (default + 18 translated files, 1321 lines total): removed
+  all together_*/music_together feature strings plus the 10 together-only
+  generic ones (start_session, join_session, session_link, session_code,
+  invalid_link, invalid_code, network_unavailable, leave, join, joined) —
+  each verified unreferenced after the code removals. KEPT
+  `together_online` ("Online", used by ArtistScreen's local/online filter
+  chip) and `together_connected` ("Connected", used by the Cast route
+  picker in the gms source set) because they are unrelated features that
+  merely carry awkward names, and shared strings still referenced by other
+  code (not_allowed, add_current_song, copy_link, loading, connecting,
+  dismiss, got_it, share, copied, error_unknown, app_name) stay too.
+- DI checked: no together providers/bindings existed; no MusicTogether
+  classes lived outside together/.
+
+Stage Summary:
+- 16 files deleted, 15 code files modified, 19 resource files cleaned;
+  4099 deletions / 159 insertions. worklog.md/changelogs.md untouched.
+- Verification: grep for moe.rukamori.archivetune.together / MusicTogether
+  / all removed service+view APIs = 0 hits across every source set
+  (main/gms/debug/foss/tv/test); remaining case-insensitive "together"
+  hits in Kotlin are only the Compose togetherWith API and unrelated
+  comments/placeholder copy; manifest + res have zero together traces
+  outside the two keeper strings; R.string.music_together = 0 refs;
+  scripts/kotlin_balance_check.py (project lexer) reports all 10 edited
+  Kotlin files balanced, and a before/after delimiter-count diff is
+  identical (all 0/0/0); every edited XML parses.
+- Deliberate keeps for the port: drawables player_all_inclusive /
+  multi_user / ic_share are now unreferenced but left in res/ (generic
+  names, no together text); strings together_online / together_connected
+  kept as above (grep for R.string.together* in main/kotlin returns 1 —
+  ArtistScreen's together_online, the unrelated "Online" filter label).
+  CI must confirm the compile since no gradle is available here. (feat(together)!: remove the current Listen Together implementation entirely)
+  CI must confirm the compile since no gradle is available here.
+
+---
+Task ID: T1-B
+Agent: general-purpose subagent (session web-e130fa90)
+Task: Port vivi-music Listen Together core into ArchiveTune
+
+Work Log:
+- Read the full vivi-beta listentogether package (Protocol, MessageCodec, ListenTogetherClient, ListenTogetherManager, ListenTogetherServers, ListenTogetherActionReceiver, listentogether.proto, NetworkConnectivityObserver) before porting; verified every ArchiveTune counterpart symbol by grep (PlayerConnection members, MusicService.queueTitle/playerVolume, extensions currentMetadata/metadata/toMediaItem, models SongItem.toMediaMetadata, YouTubeQueue constructor, YouTube.queue — used by MainActivity.kt:3713 + SongMenu.kt:1441, dataStore/get extensions, R.drawable.share).
+- Created package moe.rukamori.archivetune.listentogether with 6 ported Kotlin files (all vivi feature logic kept verbatim: room create/join approval, chat w/ embedded-reply Base64 protocol, track suggestions, host transfer, kick, block-list, buffer-wait sync, smart resync, volume sync, heartbeat, exponential-backoff reconnect w/ wake lock + network observer, actionable notifications) — only package/imports/constants/action-strings/wake-lock-tag changed, each marked with PORT-NOTE.
+- Copied listentogether.proto with package + java_package renamed to moe.rukamori.archivetune.listentogether.proto (java_outer_classname Listentogether, java_multiple_files false kept).
+- NetworkConnectivityObserver: ArchiveTune ALREADY ships an API-identical class in moe.rukamori.archivetune.utils (same networkStatus flow + isCurrentlyConnected; its onLost re-checks real connectivity instead of emitting false). Reverted an accidental overwrite; the vivi copy is NOT needed and the Client compiles against the existing class unchanged.
+- PlayerConnection adaptations in the Manager (vivi's ExoPlayer-typed member vs ArchiveTune's Player interface — no cast needed, all used members are interface-level): removed shouldBlockPlaybackChanges / allowInternalSync / onSkipPrevious / onSkipNext / onRestartSong hook wiring (ArchiveTune's PlayerConnection has no such hooks; host skip/seek broadcasting remains covered by the ported playerListener), connection.play()/pause()/seekTo() replaced with direct player calls + a Player.playForSync() helper replicating vivi's prepare-if-idle + playWhenReady branch, mute save/restore (isMuted/setMuted) became documented no-ops since ArchiveTune has no mute surface (vivi's own updateGuestMuteState had already degraded to a no-op).
+- MediaMetadata: added additive defaulted field suggestedBy: String? = null (vivi parity) so suggestion attribution survives TrackInfo->MediaMetadata->MediaItem round-trips; verified no positional constructions/destructuring exist anywhere in the app.
+- ForkPreferenceKeys.kt: added the 11 ListenTogether* keys with vivi's exact names/types (ServerUrl/UserId/RoomCode/SessionToken string, SessionTimestamp long, IsHost/AutoApproval/SmartResync/SyncVolume boolean, AvatarIndex int, BlockedUsers string — the last one is required by the Client's block-list persistence even though the task brief didn't list it).
+- DI: added provideListenTogetherClient(@ApplicationContext) to AppModule (Manager is @Singleton @Inject-constructed from Client+Context, needs no provider; nothing injects the Manager yet — integrator's next phase).
+- AndroidManifest: registered .listentogether.ListenTogetherActionReceiver (exported=false) after the MediaButtonReceiver; POST_NOTIFICATIONS already declared.
+- strings.xml: ported the full listen_together* family (48 strings incl. notification channel, join-request/suggestion notifications, room-created toast, smart-resync/sync-volume/auto-approval settings copy) + approve/reject from vivi; verified zero duplicate names across values/*.xml and XML well-formedness.
+- Build wiring (ArchiveTune had no protobuf): libs.versions.toml gained protobuf=4.33.5 + protobufPlugin=0.9.6 versions, protobuf-javalite/protobuf-kotlin-lite libraries and the protobufPlugin plugin entry; app/build.gradle.kts gained alias(libs.plugins.protobufPlugin), the protobuf{} block copied shape-for-shape from vivi (protoc from catalog version, java+kotlin lite builtins) after ksp{}, and the two protobuf implementation deps after the ktor block; root build.gradle.kts gained alias(libs.plugins.protobufPlugin) apply false (mirrors vivi's root declaration).
+- Verification: scripts/kotlin_balance_check.py reports all ported + edited Kotlin files balanced; grep for com.music.vivi|com.music.innertube inside listentogether/ = 0 hits; tomllib parses the catalog (no duplicate keys); gradle brace-balance OK; manifest + strings.xml parse; diffed every ported file against its vivi original (after mechanical package substitution) and reviewed every hunk — Client/Servers/Codec/Protocol/proto diffs are header/whitespace/import-only, Manager diffs are exactly the documented PlayerConnection adaptations.
+
+Stage Summary:
+- Files created: app/src/main/proto/listentogether.proto (200), listentogether/{Protocol 356, MessageCodec 489, ListenTogetherClient 1587, ListenTogetherManager 1741, ListenTogetherServers 52, ListenTogetherActionReceiver 56}.
+- Files modified: models/MediaMetadata.kt (+suggestedBy), constants/ForkPreferenceKeys.kt (+11 keys), di/AppModule.kt (+client provider), AndroidManifest.xml (+receiver), res/values/strings.xml (+50 strings), gradle/libs.versions.toml + app/build.gradle.kts + root build.gradle.kts (protobuf wiring).
+- NetworkConnectivityObserver NOT copied — existing ArchiveTune class already provides the identical API in the same package.
+- All vivi features preserved verbatim; every cross-codebase divergence is annotated with a PORT-NOTE (13 in the Manager, 2 in the Client, 1 in MediaMetadata).
+- Not wired into MusicService/MainActivity yet (per plan — integrator phase): ListenTogetherManager.setPlayerConnection(playerConnection) must be called from MainActivity's ServiceConnection (vivi pattern: on connect after PlayerConnection creation, null on disconnect) and the Manager injected where UI needs it.
+- No gradle available in this workspace — CI must confirm the compile (proto codegen + AGP 9.2.1/protobuf-plugin 0.9.6 combination).
+
+---
+Task ID: T1-C
+Agent: general-purpose subagent (session web-e130fa90)
+Task: Port vivi-music Listen Together UI into ArchiveTune
+
+Work Log:
+- Read the 4 vivi UI sources in full (ListenTogetherScreen 1717L, ListenTogetherSettings 895L, CommentTogether 471L, ListenTogetherViewModel 124L) plus every vivi component they reference (ExpressiveSettingGroup, AvatarBottomSheet, custom IconButton, Material3SettingsItem/Group, DefaultDialog, listItemShape) and grep-verified every ArchiveTune counterpart symbol before porting: LocalPlayerAwareWindowInsets (MainActivity.kt:3932), ui.utils.backToMain, utils.rememberPreference (MutableState variant — vivi's destructuring + `by` usages both valid), constants.AppBarHeight (Dimensions.kt), DefaultDialog (identical named-param surface), custom IconButton(onClick, onLongClick) — already present in ArchiveTune with the same signature, MaterialShapes/toShape, project-wide opt-ins for ExperimentalMaterial3Api/ExpressiveApi (so vivi's marker-annotated UserAvatar needs no caller OptIn), ListenTogetherManager's full UI-facing API and all payload/event/enums (UserInfo/JoinRequestPayload/SuggestionReceivedPayload/ChatMessagePayload/RepliedMessage/RoomState/TrackInfo/ListenTogetherServers/LogEntry/LogLevel/RoomRole — all StateFlows where collectAsState() is called).
+- Ported the 4 screens verbatim (feature-complete: connection card, OTP-style room-code input w/ staggered reveal animation, join/create morph button, waiting-for-approval + error banners, clipboard room-copy on create, room status row (chat/copy-link/copy-code), connected-user avatars w/ host crown + Cookie4Sided shape, host-only join-request approve/reject rows, suggestion approve/reject rows, user-action dialog (kick / block+kick / transfer host), settings link; chat screen with replies, YT Music link detection, unread-badge clearing; settings screen with server chooser + custom URL, username dialog, avatar picker, blocked-users dialog, auto-approval/volume-sync/smart-resync switches, log viewer with clipboard export). Only changes beyond mechanical package/import substitution: license headers, package drop of `.integrations`, removal of vivi's dead commented-out R.string.together title line, removal of an unused listItemShape import, and one PORT-NOTE on the verbatim vivi invite-link URL.
+- Created LocalListenTogetherManager.kt (staticCompositionLocalOf<ListenTogetherManager?> { null }) as its own file — MainActivity's CompositionLocalProvider wiring intentionally left to the integrator.
+- ExpressiveSettingGroup: NOT in ArchiveTune — ported vivi's component into ui/component (option a; its only missing dependency was listItemShape). Material3SettingsItem: ArchiveTune's data class had only 7 of vivi's 12 fields — extended it additively with the 5 missing fields (leadingContent, tintIcon, iconShape, enabled, isExternalLink — all defaulted after the existing fields so the class is otherwise untouched and no call sites existed to break).
+- listItemShape: vivi builds it from racra's AbsoluteSmoothCornerShape library which ArchiveTune does not depend on — ported the util into utils/ListItemShape.kt with plain RoundedCornerShape preserving the exact first/middle/last/single positional corner logic and radius (PORT-NOTE documents the squircle→rounded substitution).
+- AvatarBottomSheet: ported vivi's component into ui/component unchanged (deps are all stock material3).
+- ForkPreferenceKeys.kt: added the 2 UI-side keys missing from T1-B's set with vivi's exact names/types — ListenTogetherUsernameKey (stringPreferencesKey "listenTogetherUsername"), ListenTogetherInTopBarKey (booleanPreferencesKey "listenTogetherInTopBar").
+- Drawables: diffed the 44 distinct R.drawable refs in the ported files against ArchiveTune's res — 31 vivi-specific files copied (18 vector XMLs: diversity_listen_together, cloud_lock/off_listentogether, connecting_server, server_error, join_listen, group, group_outlined, group_add, crown, chat_msg, send_chat, content_copy, cloud, key, bug_report, info(none — existed), hyper_link, automation_slow_connecttion (vivi's typo preserved), plus 12 avatar bitmaps + woman_4.jpg); arrow_back/add/check/close/done/error/link/lock/logout/person/queue_music/volume_up already existed. Verified no name collisions in the gms/debug/tv source sets and all XMLs parse.
+- Strings: cross-checked all 79 app-string refs (framework android.R.string cancel/ok excluded) — 46 already present (T1-B's 48 listen_together* family minus unused, plus approve/reject/reset/settings/username/copied_to_clipboard/copy_link); ported the 33 missing from vivi's values/vivi_strings.xml into values/strings.xml ONLY (comments=Chat, connect, connected_users, copy_code, create, create_room, creating_room, disconnect, enter_username, error_username_empty, host_label, invalid_room_code, join, join_request_denied, join_room, joining_room(%s), kick_user(+desc), leave_room, manage_user, not_set, pending_suggestions, permanently_kick_user(+desc), room_code, send, transfer_ownership(+desc), type_message, unblock, user_blocked_by_host, waiting_for_approval, you_label) — `copy` already existed in archivetune_strings.xml so not duplicated; vivi's `together` string was only referenced from a comment and was not ported; verified zero duplicate names across ALL values/*.xml and no collisions in other source sets.
+- NavigationBuilder.kt: added 4 leaf routes — composable("listen_together") + composable(route="listen_together_from_topbar") (ListenTogetherScreen w/ showTopBar false/true, mirroring vivi lines 120-128, placed after the Library route) and composable("listen_together/chat") (CommentTogetherScreen), plus composable(route="settings/integrations/listen_together") { ListenTogetherSettings(navController, scrollBehavior) } (vivi's line 445-448 shape; scrollBehavior is in navigationBuilder's existing signature; ListenTogetherSettings keeps vivi's (navController, scrollBehavior, viewModel) signature). ListenTogetherScreen/CommentTogetherScreen are same-package so only the settings import was added. No other routes touched.
+
+Stage Summary:
+- Files created (8): LocalListenTogetherManager.kt (20), viewmodels/ListenTogetherViewModel.kt (127), utils/ListItemShape.kt (40), ui/component/ExpressiveSettingGroup.kt (155), ui/component/AvatarBottomSheet.kt (102), ui/screens/ListenTogetherScreen.kt (1720), ui/screens/CommentTogether.kt (474), ui/screens/settings/ListenTogetherSettings.kt (898).
+- Files modified (4): ui/component/Material3SettingsGroup.kt (+5 defaulted Material3SettingsItem fields), constants/ForkPreferenceKeys.kt (+2 keys), ui/screens/NavigationBuilder.kt (+4 routes +1 import), res/values/strings.xml (+33 strings).
+- Resources: 31 drawables copied from vivi (18 vector XML + 13 avatar bitmaps incl. woman_4.jpg).
+- Vivi→ArchiveTune adaptations: ExpressiveSettingGroup ported; AvatarBottomSheet ported; listItemShape ported with RoundedCornerShape (smooth-corner lib absent); Material3SettingsItem extended; vivi's custom IconButton/DefaultDialog/rememberPreference/backToMain/AppBarHeight/LocalPlayerAwareWindowInsets all matched 1:1 with no call-site changes; settings screen package flattened (no .integrations subdir); hiltViewModel import paths kept (both artifacts present in ArchiveTune).
+- Verification: scripts/kotlin_balance_check.py reports all 11 created/modified Kotlin files balanced; grep for com.music.vivi|com.music.innertube across the new files = 0; automated cross-check resolves all 76 R.string refs and all 44 R.drawable refs (incl. the 14-avatar list) against merged resources; all 122 project-internal imports symbol-checked (2 false-negatives manually confirmed: extension fun backToMain, generic fun <T> rememberPreference); strings.xml parses, zero duplicate names repo-wide in the default locale and other source sets; NavigationBuilder/Manifest untouched beyond the 4 routes; each ported string verified uniquely defined in vivi's values/.
+- Deliberately NOT wired (integrator phase): MainActivity CompositionLocalProvider for LocalListenTogetherManager, MainActivity ServiceConnection setPlayerConnection(playerConnection) on service connect / null on disconnect, settings search index entry (SettingsDataBuilders + SettingsScreen "listen_together" route mapping), top-bar/navigation entry point to the "listen_together"(_from_topbar) routes gated by ListenTogetherInTopBarKey, MusicService crossfade re-gating on the session state, and optionally the https invite-URL deep link + pending-join handling (vivi's RoomStatusCard copies a vivimusic-listen-together.onrender.com/listen?code=… link that currently only resolves inside vivi; joining in ArchiveTune is via the room-code field).
+- No gradle available in this workspace — CI must confirm the compile (largest risk: compose 1.11.4 → 1.12.0-beta02 API drift, all spot-checked as stable in both).
+
+---
+Task ID: T1-D
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Listen Together port — final integration (phase D of the vivi-music beta
+port; T1-A removed the old implementation, T1-B ported the core engine,
+T1-C ported the UI)
+
+Work Log:
+- MainActivity: ListenTogetherManager @Inject; setPlayerConnection wired into
+  the service connection (attach on connect, null on disconnect — vivi's
+  pattern); manager.initialize() in onCreate; LocalListenTogetherManager
+  provided in the root CompositionLocalProvider; deep-link branch in
+  handleDeepLinkIntent for the invite URL (onrender.com/listen?code=X) and
+  archivetune://listen?code=X — joins with the stored username (Guest
+  fallback).
+- AndroidManifest: two VIEW intent filters for the invite links (https host +
+  custom scheme).
+- Settings: a top-level "Listen Together" SettingsItem (diversity icon,
+  "Listen with friends") navigating to the listen_together route; integration
+  section children (listen_together + listen_together_screen) with the
+  volume-sync SearchResultSwitch; route mapping + CROSS_PAGE owner +
+  supportsScroll exclusion (the LT settings leaf has no scrollTo support).
+- MusicService: ListenTogetherManager injected; crossfade config now
+  combine()'d with the manager's roomState — crossfade disables while in a
+  room (vivi parity, guests need deterministic track starts).
+- Profile menu (top bar): Listen Together entry gated by
+  ListenTogetherInTopBarKey (default on), navigating to the from-topbar
+  variant of the room screen.
+- Static verification (scripts/verify_lt_port.py): all ported+edited files
+  balanced (MessageCodec/ListenTogetherScreen deltas match vivi's originals —
+  string-template artifacts of the checker, not real imbalance); XML parses;
+  zero com.music.vivi/innertube references; every R.string/R.drawable
+  resolves (missing-list false positives: android.R.string.ok + strings
+  defined in archivetune_strings.xml); proto file present; TOML + gradle
+  protobuf wiring present.
+
+Stage Summary:
+- The vivi-music beta Listen Together is fully integrated: protobuf wire
+  protocol + WebSocket client + manager bridge, room create/join/approval,
+  chat, suggestions, host transfer, kick/block, buffer-wait sync, smart
+  resync, volume sync, reconnect, notifications; UI (room screen, chat
+  screen, settings) + entry points (settings item, top-bar profile entry,
+  invite deep links). CI is the compile gate for the protobuf codegen and
+  the Kotlin adaptations. (feat(together): port vivi-music beta's Listen Together — complete replacement)
+
+---
+Task ID: 60
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 6-item batch — vivi Listen Together port (remove old + port everything),
+lossless API host, queue fixes, 4K video quality + persistence, settings
+search toggles + autoscroll, dead code/comment cleanup, PR dev→main.
+
+Work Log:
+- Discovered local clone was stale at 0a6062248 while origin/dev had advanced
+  30+ commits (tasks 47-59: Apple provider merge, canary port pool, 16.0
+  release, 5-fix batches). All local work rebased onto af00ef000 with
+  conflict resolution (Qobuz endpoint chain kept + default URL swapped;
+  MediaMetadata gained isPodcast+isrc+suggestedBy; profile-menu/service
+  connection merges).
+- T1 executed in 4 phases: T1-A subagent removed the old implementation
+  (48 files, -9,383 lines); T1-B subagent ported the 6 core files + proto +
+  build wiring (protobuf 0.9.6 initially); T1-C subagent ported the 3 UI
+  screens + ViewModel + components + 31 drawables + strings + nav routes;
+  main agent did the integration (MainActivity manager wiring + deep links,
+  manifest filters, settings index + routes, MusicService crossfade gate,
+  profile-menu entry).
+- CI round 1: ALL APK jobs failed at configuration — protobuf plugin 0.9.6
+  casts the android extension to legacy BaseExtension, removed in AGP 9.2.1.
+  Bumped to the AGP-9-compatible 0.10.0.
+- CI round 2: Kotlin compile errors — three fallout classes: (a) the cleanup
+  pass's import remover mis-lexed wildcard imports (regex captured the
+  package name, removed import x.y.* as 'unused') — 16 files restored;
+  (b) stray rebase-artifact lines (commit subjects pasted as code) in
+  SourceCheckService + QobuzBackupProvider — removed; (c) the remote's new
+  AMAZON SourceCheckRow call missed the positions parameter — fixed.
+- CI round 3 (d16939f63): ALL 11 check-runs green.
+- PR #226 opened (dev → main) with the full summary; monitoring its CI.
+
+Stage Summary:
+- dev carries: the vivi Listen Together port (protobuf wire protocol,
+  WebSocket client, manager, full UI, entry points), mls.kouzu.in default,
+  add-to-queue-after-current, AM queue full view, persisted 4K-default video
+  quality with instant cache, settings-search live toggles + repaired
+  autoscroll, and the 291-file cleanup pass. PR #226 awaiting CI + merge.
+
+---
+Task ID: 62
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Resume interrupted dead-code sweep + 2 new fixes — TikTok main lyrics
+rebuilt on the enhanced lyrics library, and the Metrolist server (The Meowery)
+never returning a room code.
+
+Work Log:
+- Finished the interrupted dead-code removal (previous session died
+  mid-edit leaving orphaned function bodies + stray commas in Items.kt and
+  Library.kt): removed SongGridItem/PlaylistGridItem/LibraryPinnedCollectionTile/
+  LibraryAlbumSpotlightCard/LibraryArtistSpotlightCard/LocalSongsGrid/
+  LibraryPlaylistFeatureCard orphans + playlistCountText/playlistPlaceholderIcon
+  helpers, LibraryArtistListItem/LibraryArtistGridItem/LibraryAlbumListItem/
+  LibraryPlaylistListItem, QueueCollapsedContentV1/V2, SettingsProfileHeader/
+  SettingsGroupCard/SettingsRow/SettingsSectionLabel/SettingsFlatItem, plus the
+  11 staged file deletions (PlaybackLogManager, LocalMixQueue, AudioQualityDialogs,
+  LibraryChromeComponents, Material3SettingsGroup, MeshBackdrop, SettingsAnchors,
+  YouTubeMusicLauncher, TidalCookieUtils, ExploreViewModel + anchor test);
+  pruned 31 now-unused imports; all removals verified reference-free (dd79b2d14).
+- TikTok lyrics root causes: the strip clocked itself off the TikTok screen's
+  sliderPositionProvider (null unless scrubbing → pinned at 0, so no word sweep
+  and no line transitions); romanisation only read the parse-time TTML
+  transliteration track; text was centred at a 20dp inset. Rebuilt the strip as
+  a compact LyricsEnhanced view (168dp, fading edges, white 18sp) — enhanced
+  lyrics library karaoke sweep + scroll-into-focus + slider-or-player position
+  with frame interpolation, translation AND romanisation via the global lyrics
+  pipelines; left-aligned at the song info's 16dp inset (matches the
+  "recently played" pill); gated on synced lyrics for the current song; the
+  TikTok-only Translation/Romanisation XOR picker removed from settings,
+  keys, strings, search index (c0e18ca9d).
+- Meowery room code root cause (verified against MetrolistGroup/metroserver
+  source cloned to /tmp/metrolist): metroserver is protobuf-only
+  (Decode → proto.Unmarshal, no JSON path), answers the JSON create_room with
+  a protobuf error envelope; the client reactively upgraded its codec to
+  protobuf but the consumed pending action was never retried → _roomState
+  stayed null → the 8-tile room code UI, toast and clipboard copy never fired.
+  Protos are field-compatible (metrolist adds revision/PongPayload/capabilities
+  fields the app ignores; UA policy allows okhttp by default). Fix:
+  ListenTogetherServer.protocol flag (JSON default, PROTOBUF for The Meowery),
+  connect() starts the codec in the server's own protocol (protobuf +
+  compression for Meowery — mirroring Metrolist's own MessageCodec(true)),
+  invalid_message-after-upgrade re-sends the pending create/join once in
+  protobuf (10s window), invite link derived from the selected server + link
+  button hidden for protobuf servers (no /listen web client — verified vivi
+  servers DO serve /listen), chat/avatar broadcast guarded with explicit
+  'not supported' logs (metroserver has no chat relay) (31ef54d64).
+- changelogs.md 16.0.3 follow-up section extended (db5463c84).
+
+Stage Summary:
+- dev @ db5463c84: dead code sweep (-3,295 lines), TikTok main lyrics on the
+  enhanced lyrics library (animated + scrolling + translation + romanisation,
+  left-aligned), Meowery/Metrolist room code fixed via per-server protocol
+  negotiation. CI monitoring next.
+
+---
+Task ID: 63
+Agent: Super Z (main agent, session web-e130fa90)
+Task: CI verification of the session's commits (task 62 batch + repair round).
+
+Work Log:
+- Round 1 (54d52f4a0): all three workflows red — 30+ compile errors from two
+  sources: the dead-code staging had removed two live files
+  (Material3SettingsGroup.kt / MeshBackdrop.kt — filename-matched instead of
+  symbol-matched), and the previous session's five never-CI'd commits carried
+  their own errors (non-exhaustive LYRICS/CANVAS whens, undeclared context in
+  SongSourceDialog, ByteArray-as-Bitmap produceState, AOD import + preview
+  branches, missing playlist_local drawable).
+- Round 2 (a3180c178): both files restored from 9b42c9176, the other nine
+  deletions re-audited symbol-by-symbol (confirmed dead), all fallout fixed,
+  upstream rukamori/dev consulted for the AOD preview branches + drawable.
+- Full resource-reference sweep (all R.drawable.* / R.string.* in app sources
+  vs res/) — clean; the android.R.string.ok hits were false positives.
+- Monitored to completion: Build Pull Request (compile+test+lint) SUCCESS,
+  Build APKs SUCCESS, Nightly (canary) SUCCESS — all 8 matrix jobs green.
+
+Stage Summary:
+- dev fully green at a3180c178. PR #226 carries the whole session: completed
+  dead-code sweep, TikTok main lyrics on the enhanced lyrics library
+  (animated/scrolling/translated/romanised, left-aligned), Meowery (Metrolist)
+  Listen Together room code via per-server protobuf negotiation.
+
+---
+Task ID: 64
+Agent: main (Super Z)
+Task: Two user reports — (1) Listen Together chat should notify with a direct-reply action usable without opening the app; (2) video songs no longer play (blurred artwork instead) since the recent batch, and video songs must always play the real YouTube video, never a canvas substitute.
+
+Work Log:
+- Root-caused the video regression with two parallel Explore agents + direct
+  diff review: the "overlay" commits (0abc10a8c / 3c2a79b02 / f198d91ca /
+  6fb88abf6 / 9b42c9176) were exonerated — they only choreograph the
+  SpatialFlow floating artwork layer and hoist video control popups. The
+  actual regression is a810e8501 from the same Sep-20 batch: High-by-default
+  quality (ceiling = deviceMax = 4K) made heightCeiling > 1080 always true,
+  which SKIPS the SimpMusic extractor entirely (the one resolution path whose
+  NewPipe-harvested URLs survive bot-blocking), and 4K progressive streams
+  routinely blow the 10s first-frame hold → hasPlaybackFailed → every player
+  style renders the blurred artwork fallback while audio keeps playing
+  (exactly the reported symptom).
+- resolveVideoStreamUrl: SimpMusic is now always attempted. At ceilings
+  <= 1080p it early-returns as before; above 1080p it runs as a post-chain
+  last resort whenever the innertube chain produced nothing at 1080p-or-better
+  (its result seeds bestResult, markStreamUrlSuccessful skipped for
+  SimpMusic-sourced results to match the early-return behaviour).
+- New declareVideoFailure funnel unifies all three playback-time failure
+  paths (first-frame hold timeout, onPlayerError, 3-strike stuck-buffering
+  watchdog): one bounded recovery attempt (MaxVideoRecoveryAttempts=1)
+  re-resolves at a 1080p ceiling — which re-enables the SimpMusic early
+  return — before ever setting hasPlaybackFailed. Recovery resumes the main
+  audio hold immediately (audio never stalls past the original 10s), seeks
+  the recovered stream to the live audio position, and resets per videoId.
+- Recovery hardening: evicts the video's cached stream entries first (a
+  resolved URL that 403'd at playback is a poisoned cache success and would
+  be re-served at ceilings <= 1080p where the cache key is unchanged); the
+  isPlaying effect pauses instead of re-preparing the stale media item while
+  resolving (which would re-fire the old URL's error and kill recovery);
+  discards the recovered stream if terminal failure was declared
+  mid-resolution; resets with videoId change cancel the in-flight coroutine.
+- Verified the video-only requirement is already structurally enforced:
+  every canvas fetch/render gate carries !trackIsMusicVideo (V7+TikTok
+  shouldUseV7Canvas, artwork-style shouldUseArtworkCanvas, Thumbnail.kt,
+  and the pinned-canvas collector re-check), so Spotify/BetterLyrics canvas
+  can never substitute a YouTube music video in any player style — no code
+  change needed, documented in changelogs.
+- Listen Together chat notifications: incoming room chat from other users
+  now posts a MessagingStyle conversation notification on a stable id
+  (40001) with recent history (25-message ring buffer, 8 shown), a
+  RemoteInput reply action (FLAG_MUTABLE PendingIntent to
+  ListenTogetherActionReceiver) and a deep-link content intent
+  (navigate_to=listen_together/chat, works cold-start and onNewIntent).
+- Shade replies route via handleChatReplyFromNotification ->
+  sendChatMessage with a local echo (deduped against the server's own echo
+  by userId+text+5s timestamp window) and a silent re-post so the
+  conversation stays visible in the shade; unsendable replies (not in room /
+  protobuf server / blank) post a "Reply not delivered" notice; empty
+  replies consume the RemoteInput spinner by re-posting.
+- Suppression & lifecycle: chat screen visible (DisposableEffect ->
+  manager.setChatScreenVisible -> client flag) suppresses notifications,
+  markChatAsRead cancels the notification, blocked users never notify,
+  leaveRoom + KICKED clear history + notification, and a
+  ListenTogetherChatNotificationsKey toggle (default on) sits in
+  ListenTogetherSettings with the chat icon. Strings added to values/strings.
+- kotlin_balance_check.py clean on all 6 touched Kotlin files; brace/paren
+  balance verified. Committed 865e1de72, pushed to dev, CI monitoring
+  started (Build Pull Request + Build APKs + Nightly).
+- Also verified during this session: d0b8b86f2 (previous session's TikTok
+  single-line captions + R8-proof protobuf) — Build Pull Request SUCCESS,
+  Build APKs SUCCESS, Nightly in progress at commit time.
+
+Stage Summary:
+- dev @ 865e1de72: video songs get a guaranteed-working stream (SimpMusic
+  last resort + one 1080p recovery pass), Listen Together chat works from
+  the notification shade with direct replies.
+- Canvas-never-for-video confirmed already enforced by !trackIsMusicVideo
+  gates; documented for users in changelogs.md.
+- CI on 865e1de72 in flight at time of writing; to be monitored to green.
+
+---
+
+## Task ID: 65
+
+Task: Three-part batch — (1) video songs must not start until BOTH the audio and the video streams have loaded, and the video should load faster using more network; (2) Listen Together chat fixes: long-press crash with the liquid-glass popup (keep the glass), popup chrome, "+" entry + full Android emoji keyboard, own/others profile pictures, delete tombstones relayed to everyone, persistence only for chats with others, pinned-jump to message, generic tappable links, Instagram-style song sharing that plays in the room; (3) TikTok captions: long wrapped lines fading, strip sitting lower without overlapping the right rail.
+
+Work Log:
+- VideoArtworkPlayer.kt: new `mainAudioReady` param (Player.kt passes `playbackState == STATE_READY`); the play/pause gating effect now treats "audio not READY" (idle/resolving/buffering) and "video first frame not rendered" as hard barriers, and the pendingResume effect waits (snapshotFlow, 30s OOM-safe valve for MusicService's own stall recovery) until BOTH are loaded before firing either resume; removed the 10s first-frame force-fallback (slow networks now just wait); stuck-buffering watchdog is progress-aware (bufferedPosition advancing = alive, window restarts; only a frozen buffer trips it); DefaultLoadControl fast-start tuning (600ms bufferForPlayback, 90s max, prioritizeTimeOverSize) on the video ExoPlayer; resolveVideoStreamUrl races all usable innertube clients concurrently (priority-order consumption of the deferreds, ceiling winner + cancel losers, failure marking preserved).
+- Protocol.kt: ChatMessagePayload gains `deleted` (tombstone) and `@SerialName("shared_track") sharedTrack: TrackInfo?` (defaults, old payloads + persisted history keep decoding).
+- ListenTogetherClient.kt: [LTS:base64 TrackInfo] envelope (encode in sendChatMessage with optional caption, decode in the CHAT branch after the RPLY strip); local notification echo carries the decoded payload.
+- ListenTogetherManager.kt: ACTION_DELETE now tombstones (deleted=true, text cleared) instead of removing; `soloChatMessageKeys` — messages sent while alone are never persisted (hasOtherRoomMembers gate at append + filter at write); shareTrackToChat/playSharedTrack (host: applyApprovedSuggestion direct, guest: suggestTrack -> auto-approve) + currentLocalTrack (host-side current song from the player window); applyApprovedSuggestion extracted from the LocalSuggestionApproved handler.
+- ListenTogetherChatComponents.kt: MessageActionsPopup takes `backdrop: LayerBackdrop?` — the crash fix is that it no longer reads the app-wide LocalLiquidGlassBackdrop (whose layerBackdrop modifier records the NavHost subtree the popup lives in = circular rendering = RenderThread SIGSEGV); CommentTogetherScreen records a LOCAL rememberLayerBackdrop over the chat only while the popup is open, popup composed as a sibling outside it. Popup chrome: clip-before-background + glass path (same colorControls/blur/lens recipe + 30% onDrawSurface tint + dividers) / non-glass fallback (rounded 0xF226262B + border). "+" icon (R.drawable.add) replaces the "All emojis" text chip; EmojiPickerSheet serves the generated EmojiCatalog; MessageItem renders the self avatar on own messages, tombstones ("This message was deleted", interactions disabled), SharedTrackCard (AsyncImage thumbnail/title/artist/mm:ss + play), jump-highlight flash; formatMessageWithLinks matches any http/https URL (YT Music in-app, others ACTION_VIEW); PinnedBanner previews song shares/tombstones.
+- EmojiCatalog.kt (new, generated by scripts/gen_emoji_catalog.py from the official Unicode 16.0 emoji-test.txt): 3781 fully-qualified emoji across 9 CLDR groups.
+- CommentTogether.kt: root Box wrapper (chat recorded Box + popup/emoji-picker siblings), music-note share button (roomState.currentTrack ?: currentLocalTrack), near-bottom-gated auto-follow scroll, pinned jump = instant scrollToItem + 1400ms highlight; ListenTogetherSettings re-broadcasts the custom avatar right after saving (manager captured at composition).
+- LyricsEnhanced.kt: SingleActiveKaraokeLine rebuilt as an app-side renderer (KaraokeSweepText per-syllable colour lerp with Latin-word-gap joining, joined phonetic row, TranslationStack rows, accompaniment row) — the library KaraokeLyricsView applies a permanent 20dp/100dp vertical DstIn fade mask over its viewport, which is what dimmed wrapped 2nd rows in the 140dp strip; content bottom-aligned in AnimatedContent.
+- TikTokMainLyrics.kt: strip 140 -> 168dp, bottom-aligned, clipToBounds; TikTokSongPage.kt: lyrics strip end clearance 56+16dp (mirrors the title/artist convention) so the rail never overlaps it.
+- strings.xml: message_deleted / share_song / play_song / nothing_playing; changelogs.md: new "Fixes (16.0.4 follow-up)" section.
+- Verification: full-module `compileFossMobileUniversalDebugKotlin` frontend type-check passed (zero `e:` source errors; the only failure is an environmental OutOfMemoryError in the JVM backend under the sandbox's 1.9GB cap, on the pre-existing giant Player.kt lambda). An independent review agent additionally compiled the chat components and verified API usage (drawBackdrop named params, coil3, rememberPreference, kyant LayerBackdrop types).
+
+Stage Summary:
+- dev carries the both-streams video barrier + raced resolution, the full chat suite repair (crash-free glass popup, complete emoji keyboard, avatars both ways, tombstones, solo-persistence exclusion, pinned jump, links, song sharing), and fade-free bottom-aligned TikTok captions with rail clearance.
+
+---
+
+## Task ID: 66
+
+Task: Four-part user batch — (1) pinned chat messages must stack at the top (all of them, not just the latest); (2) the chat pill must not appear at all on the Metrolist (protobuf) server; (3) chat send failures surfaced + solo-room chatter must never persist + the composer's music icon must open a searchable song picker; (4) the TikTok artwork must stop shifting up when lyrics show.
+
+Work Log:
+- Verified live (websocket test bots) that both vivi JSON servers relay chat fine (echo with user_id/username/timestamp), and audited MetrolistGroup/metroserver's Go source: its protocol has NO chat message type (unknown types get `unknown_message_type`) — chat is impossible there, which is the whole "message doesn't get sent anymore" report. The Meowery proto also has a client_capabilities handshake the app already sidesteps via protocol pre-negotiation.
+- ListenTogetherChatComponents.kt: PinnedBanner (single message) replaced by PinnedMessagesStack — every pinned message stacked chronologically, per-row unpin + jump-to-message; collapses behind a "N pinned / show all" header beyond 3 rows.
+- ListenTogetherScreen.kt: the Comments pill is gated on a new chatSupported check (server protocol != PROTOBUF), same pattern as webInviteSupported; CommentTogether.kt: defensive composer replacement with a "Chat is not supported by this server" notice if the screen is somehow reached on a protobuf server; ListenTogetherClient.sendChatMessage now toasts (never silently drops) on the protobuf path.
+- Protocol.kt: ChatMessagePayload gains `solo: Boolean = false` — set on the local user's own messages that arrive while alone in the room. ListenTogetherManager: the volatile soloChatMessageKeys set is gone; the persist filter reads the payload flag (survives persist -> restore -> re-persist, so restored solo messages can never re-enter the store); when nothing but solo messages remains the stored history is CLEARED (the old `trimmed.isEmpty() -> return` early-leave kept stale entries alive forever); an empty live list (user left the room before the 600ms debounce fired) still never erases a stored conversation. PersistedChatHistory gains a version field (2); histories written by the older scheme are discarded once on load — the one-time wipe that finally removes the user's stale alone-room chatter.
+- ListenTogetherSongPicker.kt (new): ShareSongPickerSheet — the composer's music-note button now opens a searchable picker (400ms-debounced YouTube.search FILTER_SONG, stale-result guard) with thumbnail/title/artist/duration rows sharing as rich cards, plus a "now playing" quick-share row; SongItem -> TrackInfo mapping with seconds -> ms.
+- TikTokSongPage.kt: the karaoke-caption slot (TikTokMainLyricsHeight, now internal) is reserved whenever the main-lyrics preference is on — for EVERY page, and whether or not that song has synced lyrics (they load async) — so the weight(1f) artwork box keeps a constant height and the artwork never shifts up/shrinks when lyrics appear, change between songs, or during swipes. TikTokMainLyrics.kt: caller-owned slot, height constant internalized.
+- strings.xml: pinned_count/pinned_show_all/pinned_show_less/unsupported_server/pick_song_title/pick_song_hint/pick_song_no_results/now_playing.
+
+Stage Summary:
+- dev: stacked pinned banners, no chat UI on protobuf servers (with notice + toast fallbacks), solo chatter permanently out of the persisted history (flag + clear-on-empty + version wipe), a searchable share-a-song picker, and a stationary TikTok artwork whenever the caption strip feature is on.
+
+---
+
+## Task ID: 67
+
+Task: Two-part user batch — (1) delete actions on other people's messages: "Delete" that only removes the message locally, plus a host-only "Delete for everyone"; (2) pinned messages must stack as ONE carousel row (constant space), latest pin first, tap reveals the pin before it, swipe browses previous pins.
+
+Work Log:
+- Protocol.kt: ChatMessagePayload gains `pinnedAt: Long = 0L` (@SerialName "pinned_at") — wall clock of the most recent pin, the sort key for latest-pin-first ordering; zero falls back to the message timestamp (covers history pinned before the field existed). Never serialized onto the wire (chat travels as ChatPayload); remote clients stamp their own clock when ACTION_PIN arrives; persists with the local history (ignoreUnknownKeys keeps old stores decodable).
+- ListenTogetherManager.kt: ACTION_DELETE in applyChatControl now accepts a delete when the sender is the author OR the current room host (`roomState.value?.hostId == fromUserId`) — host moderation. ACTION_PIN/ACTION_UNPIN stamp/reset pinnedAt. deleteMessage split into deleteMessageForEveryone (own message or host, broadcasts the tombstone) and deleteMessageForMe (local hide only: removes from _chatMessages and rewrites the persisted history without it — via a DIRECT snapshot write that cancels the 600ms debounce, because a delayed write would race the leave-room wipe of the live list; removing the last kept message clears the store). scheduleChatPersist unchanged (the leave-wipe guard stays).
+- ListenTogetherChatComponents.kt: MessageActionTarget gains `isHost` (local user's role). MessageActionsPopup: onDelete -> onDeleteForMe + onDeleteForEveryone; own messages keep the single room-wide Delete chip, other people's messages get "Delete" (local, trash icon) and — host only — "Delete for everyone" (new delete_forever.xml, trash-with-X stroke icon); the action row is a FlowRow so the chips wrap onto a second line instead of overflowing the 320dp popup. PinnedMessagesStack rebuilt as a single constant-height carousel: ordered latest-pin-first (pinnedAt, timestamp fallback), displayedKey state tracked against the pinned set (a fresh pin takes over the bar, the shown pin is kept while valid), tap steps to the previous pin (wrapping) AND jumps+highlights it in the chat, horizontal drag browses older/newer pins (48dp threshold, finger-following translation, AnimatedContent slide in the travel direction), i/N position chip when >1 pin, trailing unpin button for the shown pin. pointerInput keyed on (ordered, displayedKey) so swipe navigation never runs off a stale index after tap-browsing.
+- CommentTogether.kt: iAmHost derived from the live room state (recomposes on host transfer, verified roomState.hostId is set for creators and updated on HOST_CHANGED); MessageActionTarget carries it; popup wired to the new manager functions.
+- strings.xml: listen_together_chat_delete_for_everyone, listen_together_chat_pinned_position ("%1$d of %2$d"); the old pinned_count/show_all/show_less strings stay defined (translations exist, UnusedResources is a warning and abortOnError=false).
+- Verification: local :app compile impossible in the 4GB sandbox (daemon OOM-killed, same ceiling as tasks 65/66) — GitHub Actions is the loop. Pushed 408920ecd to dev.
+
+Stage Summary:
+- CI on 408920ecd: ALL THREE workflows GREEN — Build Pull Request (compile/test/lint), Build APKs (release/R8), Nightly. Guests can privately hide anyone's message; the host can tombstone anyone's message room-wide; pinned messages occupy one carousel row with tap-to-walk-back + swipe browsing.
+
+---
+
+## Task ID: 68
+
+Task: Three-part user batch — (1) chat-history restore rules: no older chats while alone in the room, restore only the history with the people who are actually present, profile pictures on restored messages, own restored messages always on the right side, and an "older messages" divider where history ends; (2) longer canvases render stretched (aspect glitch) on the artist screen; (3) a guest's song change must reach everyone in the room.
+
+Work Log:
+- Root causes: (1) the old loadPersistedChatHistory restored the FULL stored list unconditionally on create/join/reconnect, and restored messages kept their previous session's user ids — so alignment (isMe keyed on the session id), avatar lookup (roomState/customAvatars keyed by current ids) and reactions all missed; (2) media3-ui-compose's ContentFrame sizes its surface from PresentationState.videoSizeDp, which can stay null for some streams — a null size degenerates to fill-the-container and the video renders stretched (verified on-screenshot: square motion art stretched ~1.3x vertically into the portrait hero); (3) the player listener that turns a guest's onMediaItemTransition into a suggestion (suggestLocalTrackChange -> SUGGEST_TRACK -> host auto-approve -> CHANGE_TRACK broadcast) is only attached in setPlayerConnection while in a room, on RoomCreated, on host-transfer-to-self and on Reconnected — a guest joining with the player already connected (the normal app flow: service binds at start, room joined later) NEVER got the listener, so guest song changes stayed local.
+- Protocol.kt: ChatMessagePayload gains `restored: Boolean = false` — set on messages injected from the persisted history (never on the wire; the chat list draws the divider at the restored/live boundary; re-stamped on every restore so the boundary survives restarts).
+- ListenTogetherManager.kt: loadPersistedChatHistory -> restorePersistedChatHistory(otherMembers): no restore when otherMembers is empty; only messages between the local user and the given members come back; restored user ids are REMAPPED to the current session ids (own -> my current id, members -> their current id via roomState), so alignment/avatars/reactions/pins/edits/deletes work on restored messages exactly as on live ones; timestamp-ordered merge with the live list (dedup by username+timestamp — the id remap makes id-based dedup useless across sessions). Call sites: RoomCreated restores NOTHING (host alone in a fresh room); JoinApproved and Reconnected restore scoped to the room's other members; UserJoined restores scoped to everyone present (the newcomer included — client adds them to roomState before emitting).
+- ListenTogetherManager.kt (guest song-change fix): JoinApproved now attaches the player listener when the player connection exists but the listener was never registered (mirrors the host's RoomCreated path), and the role collector re-establishes it for any non-host in-room role (host-transfer-to-guest). The rest of the chain was already correct — suggestLocalTrackChange -> SUGGEST_TRACK -> host auto-approve (default on) -> applyApprovedSuggestion (playNext + manual-skip) -> host onMediaItemTransition -> CHANGE_TRACK + queue broadcast -> everyone syncs.
+- CommentTogether.kt: isOwnMessage (session user id OR username match — restored history carries old ids) drives MessageItem.isMe and the long-press action target; the message list renders an "older messages" divider item right after the last restored message (messages.forEachIndexed + item-per-message so the divider can be interleaved).
+- ListenTogetherChatComponents.kt: ChatAvatar identity falls back to the username — self-detection (right colors + own custom avatar file) and the member lookup (avatarIndex/isHost) both work for restored messages with stale ids; the custom-avatar lookup routes through the member's CURRENT id when the message's id is from an older session. New OlderMessagesDivider (history icon + "Older messages" between two rules).
+- CanvasArtworkPlayer.kt: the composable now tracks the video's display aspect itself (onVideoSizeChanged, pixelWidthHeightRatio applied, reset on URL change) and, for RESIZE_MODE_ZOOM with a known aspect, lays the ContentFrame out at the cover geometry of the container via a custom layout (aspect preserved, overflow centered) inside a clipToBounds Box — the canvas can never render stretched again, regardless of whether media3's internal video-size state arrives; when it does arrive both mechanisms agree on the same geometry. Non-ZOOM callers (player artwork squares, FIT) keep the exact previous path.
+- strings.xml: listen_together_chat_older_messages.
+- Verification: no local compile (same sandbox ceiling as tasks 65-67) — GitHub Actions is the loop.
+
+Stage Summary:
+- dev: alone rooms show no older chats; history restores per-present-member with working avatars, right-side own messages and a divider; artist-screen (and every ZOOM canvas surface) renders aspect-correct; guest song changes propagate to the whole room through the existing suggestion -> auto-approve -> broadcast chain.
+
+---
+
+## Task ID: 69
+
+Task: Eight-part user batch — (1) Listen Together first song: a just-joined client could not start the room's first song (host saw it paused until manual resume), chat must always open on the newest message, and the whole screen (not just the composer) must resize with the keyboard; (2) song-details "Numbers" tab: compact K/M/B counts; (3) YouLyPlus provider dead (API moved); (4) moving blur across all player styles must behave like the Apple Music lyrics page; (5) moving blur colours confined to a fixed radius must instead spread across the entire screen, exiting and re-entering bounds smoothly; (6) artist-page action row off-centre in non-English locales (Spanish screenshot measured: 12% left margin vs ~1% right); (7) use maximum bandwidth/parallelism when resolving YouTube audio streams; (8) video songs must always take their audio from the YouTube video source itself (Qobuz/JioSaavn audio desyncs from the video layer).
+
+Work Log:
+- VLM-measured the Spanish screenshot with a percent-grid overlay: play pill perfectly centred (30–70%) while the cluster ran 12%→99% — the signature of MediaDetailBalancedActionLayout's overflow branch, which centred the pill alone.
+- Probed the YouLyPlus mirrors live: binimum.org answers 200 on v2/lyrics/get with valid KPoE JSON (type "Word" + syllabus timing); prjktla.my.id is Cloudflare-530 dead; workers.dev 429; vercel 402 (permanent). v1/ttml/get is 404 everywhere — upstream removed it.
+- LT first-song root cause: applyApprovedSuggestion restored the host's pre-suggestion playWhenReady (false on an idle room), and the follow-up CHANGE_TRACK paused the guests too. Now playWhenReady = wasPlaying || playImmediately, so an auto-approved first suggestion plays immediately and the transition listener broadcasts PLAY.
+- Suggestion dedup hardening: lastSuggestedTrackId now resets on SuggestionRejected (new event wired client→manager), on guest CHANGE_TRACK, and in cleanup() — a lost/rejected suggestion can be retried with the same song.
+- CommentTogether: one-shot snapshotFlow(totalItemsCount>0) + 150 ms settle + instant scrollToItem(last) so the chat always opens at the most recent message (the old animateScrollToItem raced the first layout and lost); Scaffold-level imePadding (classic adjustResize, whole screen resizes) replaces the composer-only imePadding; the pre-resize at-bottom state is captured at input-focus time and the list re-pins to the newest message as the IME opens.
+- ShowMediaInfo Numbers tab: views/likes/dislikes via formatCompactCount (4.234.688 → 4.2M).
+- lyrics submodule (d8a5b92, pushed): mirror order [binimum, prjktla.my.id, workers.dev], vercel dropped, dead TTML pass removed, unused YouLyPlusTtmlResponse model removed; gitlink re-pinned.
+- BlurWanderDrift rewritten: screen-scaled amplitude (movingBlurWanderMaxDriftDp = 0.85 × half-diagonal), uniform-area target sampling over the full reachable disc (the old code orbited targets on a 60–120 dp ring — the "fixed radius" complaint), MaxLegDurationMs 26 s so full-screen traversals stay slow, cosine easing keeps zero velocity at every waypoint (no flicker/abrupt turns); every call site (LyricsScreen MOVING_BLUR + StyledLyricsBackground consumers, AppleMusicPlayer backdrop, SpatialFlowLyricsMovingBlur) now passes the same amplitude into both the wander and blurBackdropFootprint, and pre-S devices get translation drift too (bitmap path, no rotation on the screen-shaped bitmap).
+- MediaDetailBalancedActionLayout: overflow case re-measures the play pill with the width remaining beside the satellite actions (Text now maxLines=1 + ellipsis), so the whole cluster fits and the regular cluster-centering branch keeps both margins equal in every language; scrollable rows unchanged (unbounded width skips the shrink).
+- YTPlayerUtils.playerResponseForPlaybackOnce: SimpMusic and the Echo client chain now race concurrently (select on first success, loser explicitly cancelled — coroutineScope alone waits for all children), local InnerTube chain stays the sequential last resort; CancellationException is re-thrown through the whole race.
+- MusicService: isMusicVideoPlayback(mediaId) (queued metadata + DB row) gates resolveMultiSourceDataSpec — music videos skip every alternative audio source so the audio always comes from the same YouTube video the artwork layer plays.
+- Independent static review pass over the whole diff; its two confirmed bugs (race not cancelling losers; LaunchedEffect(active) capturing a stale drift instance after rotation) fixed before push.
+
+Stage Summary:
+- dev: first-song suggestions play immediately room-wide; chat opens at the newest message and resizes wholesale with the keyboard; Numbers tab shows 4.2M-style counts; YouLyPlus resolves against the live binimum mirror; moving blur uses one shared screen-scale wander engine across all styles; artist action row centres in every language; stream resolution races two resolvers at once; video-song audio is pinned to YouTube.
+
+---
+
+## Task ID: 70
+
+Task: YouLyPlus word-synced lyrics lost the spaces between words on some songs ("Helloworldonfire"-style rendering) while other songs rendered fine.
+
+Work Log:
+- Root-caused two independent gaps in the word-text pipeline (both YouLyPlus paths were affected):
+  1. lyrics submodule TTMLParser.parseSpanElements trimmed each span's text, so TTML that embeds the separator space INSIDE the span (Apple Music style "<span>Hello </span><span>world</span>") lost its gaps, while TTML that keeps the space as a bare text node between spans kept them — exactly the "some songs do, some don't" split.
+  2. The v2/lyrics/get path (now YouLyPlus's ONLY path since d8a5b92 dropped the dead TTML endpoint) concatenates bare syllable tokens with no separator at all in YouLyPlus.toLyricsText(), so every generated enhanced-LRC line ran words together.
+- lyrics submodule 714754f (cherry-picked onto d8a5b92, pushed to github.com/4nx3b/lyrics main):
+  - TTMLParser: word text now keeps one trailing space, a leading space folds onto the previous word, whitespace-only timed/untimed spans act as separators, pretty-printed (newline+indent) layout recovers separators only for space-using scripts (CJK stays spaceless via Character.UnicodeScript whitelist: Latin/Cyrillic/Greek/Hangul/Arabic/Hebrew/Devanagari/Georgian/Armenian/Ethiopic), and line-final separator spaces are dropped to stay consistent with the trimmed line text.
+  - YouLyPlus.toLyricsText(): syllableSeparator() re-inserts one space between words when generating the LRC — none around punctuation (NoSpaceAfterChars mirrors Lyrics.kt), none inside spaceless scripts (Han/kana/Thai/Lao/Khmer/Myanmar), Korean and Latin-script boundaries keep spaces.
+  - New JVM tests: TTMLParserWordSpacingTest (12 cases — all four source spacing styles, CJK/Korean script behaviour, double-space collapse, no invented spaces) and YouLyPlusSyllableSeparatorTest (11 cases). All 23 pass via :lyrics:betterlyrics:test / :lyrics:youlyplus:test.
+- App side LyricsUtils.extractEnhancedLrcWordTimestamps (added in task 69's batch) had the SAME trim bug: it stripped the trailing gap from each enhanced-LRC word token, so even LRC that carried spaces ("[00:12.000]<00:12.000>Hello <00:12.500>world") rendered glued in the verbatim word renderers (LyricsV2/Apple Music style, LyricsEnhanced karaoke). Now keeps one trailing space per word; line-final gap still trimmed by cleanInlineWordTimingText.
+- Renderer-safety pass for trailing-space word text: BitChordLyrics trims LyricWord.text at conversion (it aligns words against the line text via indexOf and derives its own gaps there, and the trimmed line text would stop matching a trailing-space final word); SpatialFlowLyrics wordSpansFor matches on the trimmed core for the same reason. Lyrics.kt karaoke already guards double spaces via shouldAppendWordSpace (returns false when either edge is whitespace).
+- App-side regression test added: EnhancedLrcWordSpacingTest (7 cases — trailing space kept, compact stays compact, double-space collapse, timings, plain-LRC null words, stamp-stripped line text, YouLyPlus-style multi-word line). Locally verified via scripts/verify_enhanced_lrc_spacing.py (faithful Python port of the regex + logic; app module cannot compile in this sandbox — no Android SDK), plus kotlin_balance_check.py on all four touched files.
+- Synced local dev to origin/dev first (01ad36d82 — task 69's 7-item batch was already pushed there): discovered the stale checkout, re-applied this fix on top via cherry-pick + conflict resolution (import block only; YouLyPlus.kt body merged clean).
+
+Stage Summary:
+- dev: YouLyPlus word-synced lyrics keep inter-word spaces across every player style, for both the syllable-generated LRC (gap re-inserted at generation time) and any enhanced-LRC source that already carries them (gap preserved at parse time); CJK lyrics never gain invented spaces; TTML sources (Apple Music account / Musixmatch / BetterLyrics) now preserve embedded span-edge gaps too. lyrics submodule re-pinned to 714754f.
+- CI verification (commit 1b6122369): all 12 check-runs completed successfully — build, Build Release APKs (gms-mobile-arm64, gms-tv-universal), and the full Nightly matrix (arm64/armeabi/x86/x86_64/universal, foss universal, tv universal) all green; the app-module edits compile and assemble cleanly with the re-pinned lyrics submodule.
+
+---
+
+## Task ID: 71
+
+Task: 12-item user batch — Spanish artist crash, album-list title, notification avatars, lyrics share card reference redesign, chat +/GIF attachments, keyboard overlap, @mentions, connectivity resync rewrite, one-word karaoke lines, long-press popup clamp, full-res year-in-music export, dead-code sweep.
+
+Work Log:
+- Analyzed the crashlog: `measure() may not be called multiple times on the same Measurable` at obfuscated `ui.component.j0.c` — matched to MediaDetailBalancedActionLayout's overflow path that re-measured the play pill whenever a long translated label (Spanish "Reproducir") widened the cluster. Rebuilt satellite-first so the play measurable is measured exactly once with a pre-capped width (1aebe95e2).
+- Artist album/song list pages: the plain TopAppBar titled itself from the local-DB artist entity (null for browsed YouTube artists) and rendered back-arrow-only; both now fall back to the Albums/Songs label the glass header shows. The earlier fix had landed on AlbumScreen (album detail), not the artist's album LIST.
+- One-word karaoke lines: enhanced-LRC parsing dropped any line with <2 word tokens, so lines like "Hey" fell back to whole-line sync; single-token lines now parse and their only word stretches toward the next line (capped 3s) instead of the 600ms flash.
+- Lyrics share card redesigned as an exact recreation of the user's reference (validated with a Python port rendered side-by-side against the reference image and iterated once): 2048px exports, blurred+vignetted artwork ambience, dark frosted-glass card (92x93%), artwork header + measured multi-line title, centered lyrics with the hook line emphasized at 1.28x bold, footer with the real monogram, ArchiveTune, separator and MUSIC LIVES ON tagline. The dialog preview now renders the ACTUAL export bitmap (single source of truth); glass-style presets + dim slider removed with their dead code (LyricsGlassStyle.kt deleted, LyricsImageCard.kt reduced to the vinyl twin, fitBitmap orphan removed).
+- Year in Music export lifts to a 1440x3200-class floor (full-screen resolution).
+- Chat: "+" attachment button (liquid-glass morph popup with dividers) offering Song / GIF; Giphy picker sheet (trending + debounced search + endless scroll + retry) sends only the GIF URL in a new [LTG:] envelope (server never processes the media); Coil GIF decoders registered app-wide; GifBubble renders links locally.
+- Mentions: @autocomplete over the room's member list (multi-mention, dismisses when the @ is deleted), mentions ride the [LTG:] envelope, bold styling with self-mentions emphasized, tappable @-counter chip in the chat header, and mention notifications flow through the existing conversation notification when the chat is closed.
+- Keyboard overlap: the message list is reverseLayout now — the newest message is anchored to the visual bottom so the IME resize can never bury it; chat opens snapped to the latest, auto-follow re-pins while reading at the bottom; the older-messages divider and pinned jumps were re-mapped to the reversed indices.
+- Long-press popup clamped above the mini player via the player-aware bottom inset.
+- Notification avatars: every messaging Person now carries the sender's custom profile picture or a new deterministic colored-initial default avatar; the collapsed heads-up shows the latest sender as large icon; GIF/song-only messages describe themselves.
+- Smart Network Resync removed (key, settings row, manager wiring) and replaced by a connectivity resync engine: network restoration probes the socket with a PING/PONG round trip (2.5s), dead probes force a backoff-reset reconnect, live sockets have guests pull a fresh sync immediately, and post-reconnect syncs fire without the old fixed 1s delay.
+- Static review agent over the full diff found 6 compile blockers (missing comma, duplicate coverBitmap, nonexistent notificationAvatarIcon, wrong kyant import paths, missing offset/blur imports) + minors — all fixed in ed10c840f.
+
+Stage Summary:
+- dev @ ed10c840f: 6 commits, 23 files, +1899/-1249 lines net of the review round.
+- All five workflows worth of behavior gated: push to dev and monitor CI (no local compile per user instruction).
+
+## Task ID: 72
+
+Task: 12-item user batch — BitChord analysing/seekbar, keyboard GIFs, chat glass header + wallpaper, background self-reconnect, in-app notifications, who-did-what rows, pill marquee, GIF aspect ratios, in-chat mention popup, 30s-advanced-but-restarted playback, Telegram-style composer, room naming.
+
+Work Log:
+- Forensics on the attached logcat: socket keepalives stop while the app is backgrounded (process frozen), the server times the session out, and the first action after unfreeze trips the rejoin — the "I see myself reconnecting" report. Automix status text stuck because the single-threaded analyzer's unbounded stream resolve (runBlocking, no timeout) parked both tracks' states; BitChord seekbar lost seeks after any session-player swap (Unit-keyed pointerInput stale closure).
+- Client: ProcessLifecycleOwner ON_START observer probes/repairs the room session before the UI settles; wake lock renews every 5 min (release-then-acquire); foreground state suppresses the shade conversation when in-app notifications own the case; GifEnvelope carries intrinsic dimensions; room_name rides the chat control relay; chatScreenVisible exposed as a flow.
+- Manager: ChatSystemEvent rows (track changes with suggestedBy/host attribution, joins/leaves/reconnects/host transfers/renames; self-reconnect filtered), persisted with history v3 and interleaved by timestamp; roomName flow with per-code persistence; chatMessageEvents SharedFlow feeds the in-app popup; track-change PLAY clamped to 2s; guest transit adjustment clamped to 5s (clock skew); verifySeekApplied re-lands seeks lost to buffering races (try/finally so isSyncing can never stick).
+- Chat screen rebuilt: local LayerBackdrop + sibling glass surfaces (header pill + composer capsule sample it; haze source on the content, HomeTopFadeBlur band on top); transparent header background; device-local wallpaper inside the recorded box; Telegram-style glass composer (GIF pill, "/" song quick-share, paperclip attachment anchor, wallpaper kebab menu, reply preview inside the capsule, send button morphs in while typing); persistent mention popup; row-index-correct jump navigation.
+- GIFs: GifPickerSheet gains Giphy/My-device tabs; custom GIFs picked with the system picker (keyboard GIF pages save into the gallery) upload via anonymous hosting (catbox, litterbox 72h fallback) with intrinsic dims probed locally; GifBubble lays out at the ORIGINAL aspect ratio (envelope dims, Coil self-measure fallback) — no more fixed-cell crops.
+- In-app notifications: new ListenTogetherInAppNotification.kt (stacked scrolling entries in one blurred card, quick reply, mark-as-read on mentions, mentions persist, regular messages auto-dismiss after 6s) hosted in MainActivity over the menu glass backdrop; settings toggle in Listen Together settings.
+- Automix: withTimeout(45s) around the resolver inside runBlocking; fetch callTimeout 120s; decode wall deadline 120s; early publish of the whole-track DSP result (native tempo) so ANALYSED lands in seconds while the ONNX passes refine.
+- BitChord: ThinSlider rememberUpdatedState on both callbacks; onSeekFraction reads playerConnection.player at call time.
+- Play pill: basicMarquee replaces ellipsis for long translations; ic_paperclip + ic_notification drawables; 19 new strings.
+- Static review agent over the full staged diff found 2 compile blockers (missing aspectRatio import; withTimeout outside runBlocking) + 3 logic bugs (wake-lock renewal no-op, jump index off-by-system-rows, isSyncing stuck on seek throw) — all fixed before push.
+
+Stage Summary:
+- dev @ b0250307a: 22 files, +2470/-593.
+- PR #216 continues to carry dev → main; CI monitored (no local compile per standing instruction).
+
+## Task ID: 73
+
+Task: 2-item user batch — (1) crash after some time of music playback + automix end-of-track stutter/pause-then-resume, (2) Listen Together chat polish (remove empty placeholder, notch collision, wallpaper readability, composer decluttering).
+
+Work Log:
+- Crash forensics: the attached Crashlog.txt predates the task-71 measure()-fix (build 9ba55673b1) and no new Java log exists, so the live crash had to be native/silent. A dedicated audit agent read the whole new automix analysis pipeline line-by-line and found the smoking guns.
+- Native crash fixes (the automix analyzer runs on every current+next track while music plays):
+  - CRITICAL: FindMixOutTime dereferenced `*std::max_element` on a range that is EMPTY whenever a trailing quiet run reaches the last decoded window — an intermittent OOB read (SIGSEGV, no Java log) designed in by the duration-over-report the 0.95 decode-fraction gate admits. Both before/after peaks are now range-guarded (audio_analysis.cpp).
+  - CRITICAL: whole-track decode had NO duration cap — a 30-minute file walks ~800MB across the Java decode, the JNI copy and the resampled result; a failed native allocation threw std::bad_alloc out of the JNI frame → std::terminate → SIGABRT with no log. All three JNI bridges now catch bad_alloc/... and degrade to empty/"{}" (which the Kotlin side already reads as no-evidence), jsize overflow guards added, and SmartFadeAnalyzer refuses tracks over MAX_ANALYSIS_SECONDS=600 (plain-fade fallback, no retry storm).
+  - HIGH: release() closed the ONNX sessions while a native Run() could still be in flight (use-after-free); the executor now drains on its own daemon thread and the trackers only close when the worker actually terminated. request() wraps executor.execute in runCatching so a post-release poll tick can't die on RejectedExecutionException.
+  - HIGH: VocalTracker allocated a fresh 15.7MB direct ByteBuffer per inference, released only by GC — the buffer is now cached model-shaped scratch (rewound per call).
+  - Hardening: AnalyzeAudio validates sample_rate before the fallback division and caps duration at 24h; SampleEnvelope guards the empty-vector `size()-1` underflow; CMake pins -fexceptions explicitly.
+- Automix end-of-track stutter/pause ("skip to the tail of an unanalysed song" / "pauses at the end and takes a second to continue"):
+  - scheduleSmartFade now clamps the fade to the outgoing track's REMAINING time at trigger (the classic path always did; the smart path forgot) and bails to the natural advance when less than MIN_CROSSFADE_DURATION_MS is left (pauseAtEndOfMediaItems disarmed, secondary released, runtime state reset).
+  - startCrossfade caps the readiness buffer requirement by what the outgoing still has to play (a late-armed fade no longer waits a full smooth-start buffer while the outgoing runs into its end-of-item pause), re-clamps fadeMs after the readiness wait, and the fade loop early-finishes (snap to progress 1 + promote) when the outgoing pauses at end mid-blend — a user pause can never take that branch because onPlayWhenReadyChanged only keeps crossfadePlaybackRequested true across the end-of-item reason.
+- Chat screen fixes:
+  - Empty room renders an empty list — the pink circle placeholder and its hardcoded "No messages yet" copy are gone (EmptyChatPlaceholder deleted).
+  - Header/notch collision: the pill's top padding came from WindowInsets.statusBars, which reads ZERO under the NavHost's consuming ancestors; it now uses LocalStableSystemBarsTopPadding (max of status bar and display cutout, provided above the consumers).
+  - Wallpaper readability: base scrim 0.35→0.52, plus a new `scrim: Color?` parameter threaded through Modifier.liquidGlass / LiquidGlassContainer / LiquidGlassActionPill — the chat passes Black@45% to the header pill and the composer capsule whenever a wallpaper is set (the no-glass composer fallback gets 0.88 surface opacity). AttachmentMenuPopup's surface scrim is parametrised the same way.
+  - Composer declutter: GIF pill, "/" quick-song button and wallpaper kebab removed from the input box — it keeps only the paperclip and the morphing send button; Song / GIF / Set wallpaper / Remove wallpaper all live in the paperclip's attachment popup now (new listen_together_chat_wallpaper_hint string).
+- Static review agent over the full diff: no compile blockers, no logic bugs; 3 minors (unused WindowInsets import, release() drain gate, bail-out WAITING reset) — all applied. Native sources additionally pass g++ -std=c++17 -fsyntax-only -Wall -Wextra against a faithful jni.h stub.
+
+Stage Summary:
+- 13 files, ~+560/-285 across Kotlin, C++ and resources.
+- dev push + CI monitoring to follow; PR #216 continues to carry dev → main.
+
+## Task ID: 74
+
+Task: 6-item user batch — automix force-close round 2 (memory blow-up), chat glass dynamic contrast over wallpapers, Listen Together background reconnect despite the 15-minute grace, Apple Music landscape layout, pinned album action buttons, artist Singles/EPs/Albums glass-pill titles.
+
+Work Log:
+- Crash forensics round 2 (no new logcat): re-audited the whole smart/* pipeline + native analyzers line-by-line. The P0: the structural pass decoded the WHOLE track at container rate into Java floats (chunks + flattened double-buffer, up to ~200 MB transient on a ~100 MB heap) and then JNI-copied it again for the native resample — the OOM landed on whatever thread allocated next (lyrics parsers, Coil, the notification) with no automix frame anywhere in the log; under RAM pressure the same RSS spike is an LMK kill in the background with no log at all.
+- AudioDecoder rework: decodeRegion gained targetSampleRate + maxSeconds — mono chunks now fold down to the analyzer's low rate AS THE CODEC PRODUCES THEM (new StreamingResampler: box-average decimation for down-conversion, sample-and-hold for up, O(1) state, arbitrary ratios), so the container-rate signal never exists in full (~26 MB for a 10-minute track instead of ~200 MB). decodeRaw's callback now carries the live sample rate and returns a stop signal; the budget stops decodes whose timestamps lie (under-reporting containers used to walk to the file's true end, bounded only by a 120 s wall clock). Stereo region decodes get the same budget (they had the identical unbounded-growth hole). Both catch Throwable now — an OOM/StackOverflowError escaping catch(Exception) was an analysis-thread killer.
+- SmartFadeAnalyzer: structure() consumes the streaming decode directly (the whole-track native resample pass and its full-rate native copy are gone); @Volatile released flag checked at pipeline stage boundaries; release() drain window 10 s -> 150 s (a legitimate worst case runs ~3 minutes; timing out used to leak BOTH ONNX sessions whenever the service was recreated in-process — cumulative native growth ending in a malloc abort); openSource wraps FileMediaDataSource in runCatching (LRU-prune race used to write the track off permanently instead of retrying).
+- MusicService: SilentHandler on both crossfade trigger loops, the fade loop and both save-queue launches (scope has no handler — any escaping exception was a main-thread FATAL).
+- Chat glass contrast: new rememberChatWallpaperGlassColors measures the wallpaper's actual luminance through a single 48 px Coil decode; dark images drive the dark scrim + WHITE icons/text (even in light theme — the reported dark-on-dark), bright images flip the pill bright with dark ink, and the full-screen dim adapts with it. The palette threads through the header pill, the composer capsule (text, cursor, placeholder, paperclip, reply preview, close icon, accent) and the no-glass fallbacks (whose surface polarity now follows the scrim so white content can never sit on a light fallback surface).
+- Listen Together background reconnect, root-caused as a three-part chain: (1) backgrounding with playback paused let scheduleStopIfIdle stop the FGS after 10 min -> process cached -> cached-app freezer killed the 25 s ping loop and OkHttp's 30 s pings -> the server's 60 s read deadline ended the socket long before the 15-minute room grace; (2) stale-socket late callbacks (onFailure/onClosed of a cancelled predecessor) ran the full disconnect machinery and scheduled a SECOND connect, whose RECONNECT burned the server's one-shot session token -> session_not_found -> the VISIBLE rejoin flow; (3) the ON_START probe's 2.5 s timeout right after unfreeze converted recoverable sockets into forced reconnects. Fixes: MusicService keeps the mediaPlayback FGS alive for the whole in-room session (same promote/foreground path as the resumable-notification branch); every WebSocketListener callback now guards `socket !== webSocket`; the foreground probe gets a 4 s timeout plus one retry after 1.2 s; ERROR handling covers session_expired/invalid_session (transparent rejoin, token cleared first, hosts included — the host dead-end is gone) and room_not_found/room_closed (clean session clear, no retry loop); the user's own join never renders a system row anymore (live and persisted-history restore both filter self-joins).
+- Apple Music landscape: the left half is now the artwork with the song title/artist directly beneath it (new AppleMusicLandscapeTitleBlock — marquee title, clickable artist, like + overflow chips preserved) and the right half is controls-only (showTitleRow = false), matching Apple Music's own horizontal arrangement instead of a stretched portrait column.
+- AlbumScreen: PinnedAlbumActionsRow — a compact glass pill (plain elevated Surface when glass is off) with Play/Shuffle that fades in under the header once the hero's own buttons scroll out of view (same trigger as the top-bar title), so the buttons stay reachable at any scroll depth.
+- Artist items header: the section's title ("Singles/EPs", "Albums", ...) rides the route (buildArtistItemsRoute + title navArgument + ArtistItemsViewModel seeding the flow), so the glass pill never opens back-arrow-only while the page fetch runs — or stays that way when it fails.
+- Structural verification: brace/paren balance pass over all 11 touched files; every callee signature re-read against its declaration (LiquidGlassActionPill, AppleMusicChip, PlayerTextBackdrop, joinRoom, UserJoined payload fields, ChatSystemEvent fields, promoteToStartedService/ensureStartedAsForeground, OutlinedTextFieldDefaults.colors param names, coil3 size/allowHardware/toBitmap patterns per CoilBitmapLoader precedent).
+
+Stage Summary:
+- 11 files, ~+900/-180.
+- dev push + CI monitoring next; PR #216 continues to carry dev -> main.
+
+---
+Task ID: 73
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 6-item user batch — chat full-screen/IME/composer fixes, automix analysis crash hardening, AM landscape lyrics-right arrangement, pre-save & release countdown radar, lyrics share styles restoration + 7-line limit, LT join gating + mention avatars
+
+Work Log:
+- Synced the local clone to origin/dev (fcde32d93) — the previous session's
+  30 commits (automix engine, chat suite, landscape arrangement) were all on
+  the remote; only the checkout was stale.
+- Chat (CommentTogether.kt): killed the IME white-strip flash by moving
+  imePadding off the root and onto the list + composer only (the wallpaper /
+  scrim background now fills the screen behind the animating keyboard);
+  restructured the list to fill the WHOLE screen with the floating header
+  stack (pill + mention alert + pinned carousel) reserved through measured
+  contentPadding instead of a fixed spacer — older messages now scroll under
+  the haze fade to the very top like the home page; the composer's height
+  probe moved between imePadding and the nav-bar inset so the reserved bottom
+  padding always covers everything the input column occupies (no content
+  behind the capsule); removed the MentionBadge from the room-name pill; the
+  mention alert is now compact, tucked 4dp under the pill, liquid glass (same
+  surface + wallpaper scrim as the pill) with an opaque same-shape fallback,
+  and leads with the mentioner's ChatAvatar.
+- In-app chat notification (ListenTogetherInAppNotification.kt +
+  MainActivity.kt): the card was drawing from the throttled menu recorder
+  that only records while a menu is open — hence the fully transparent
+  background; the recorder now also runs while the notification is visible
+  (onActiveChanged wired into the throttledLayerBackdrop condition) and the
+  card got the full liquid-glass treatment (frost + lens + hairline border)
+  with a theme-inked opaque twin when glass is off, same layout/dimensions;
+  Reply is now a filled tonal button with icon.
+- Automix (SmartFadeAnalyzer.kt): heap-headroom guard (96MB free) defers the
+  heavy stages instead of gambling the process into the OOM-kill path; stage
+  breadcrumbs (fetch/decode-struct, dsp, decode-region, models-done) so the
+  next crash log names the exact stage.
+- AM landscape (AppleMusicPlayer.kt): lyrics now own the RIGHT half when
+  open (controls yield); the artwork is a sized-up hero centred with equal
+  margins, the title block spans exactly the artwork width; the canvas's
+  right edge (screen middle) dissolves into the backdrop with a gradient
+  mask instead of a hard rectangle.
+- Pre-save & Release Countdown: PresaveReleaseRadarKey toggle in Content
+  settings; ReleaseRadarRepository (Deezer public REST, no auth) resolves the
+  artist by name and reads future-dated catalogue entries with a 6h cache;
+  ArtistScreen renders up to three UPCOMING RELEASE cards (latest-pill
+  design) with a live minute-resolution countdown below the description;
+  NewReleaseNotificationManager gained a fast cadence (15-minute WorkManager
+  floor, no battery gate) plus a runImmediateCheck expedited pass on every
+  app open while the toggle is on.
+- Lyrics share: selection limit 5 -> 7 across Lyrics/LyricsV2/LyricsEnhanced;
+  LyricsShareStyle enum (LiquidGlass + FrostedDark/FrostedLight/ClearGlass/
+  DeepBlur/VividGlow) with the classic renderer restored from main
+  (ComposeToImage.createClassicLyricsImage port, dim slider scaled to the
+  presets' 1.0 neutral) and a style chip row in the share dialog; glass-only
+  sliders (liquidy/refraction/glass opacity) hide for classic styles.
+- Listen Together join: the join/create button is always visible and greys
+  out (disabled colors) when the username is blank instead of vanishing;
+  mention suggestion sheet avatars bumped to 34dp.
+- Local verification: :app:compileFossMobileUniversalDebugKotlin green
+  (in-process Kotlin strategy, single worker, tuned heaps for the 3.9GB box;
+  submodules re-initialised, one duplicate string removed).
+
+Stage Summary:
+- All six user items implemented and compiling; dev ready to push. The
+  automix crash remains diagnosed-by-defense (no fresh stack trace reached
+  the server — the video/screenshots in the message never uploaded); the
+  breadcrumbs will pinpoint it on the next report.

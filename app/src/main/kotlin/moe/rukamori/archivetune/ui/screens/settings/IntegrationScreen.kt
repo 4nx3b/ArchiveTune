@@ -141,7 +141,6 @@ fun IntegrationScreen(
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -163,7 +162,6 @@ fun IntegrationScreen(
                 .padding(top = topPadding)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
-
             PreferenceGroup(
                 modifier = positions.modifierFor("ai_integration"),
                 title = stringResource(R.string.ai_integration),
@@ -201,7 +199,6 @@ fun IntegrationScreen(
                         .then(positions.modifierFor("music_sources")),
                 title = stringResource(R.string.music_sources),
             ) {
-
                 item(visible = showAppleMusicGroup) {
                     PreferenceEntry(
                         modifier = positions.modifierFor("applemusic"),
@@ -256,6 +253,22 @@ fun IntegrationScreen(
                         icon = { Icon(painterResource(R.drawable.login), null) },
                         onClick = {
                             navController.navigate("settings/amazon")
+                        },
+                    )
+                }
+
+                // QQ Music's settings screen is its only entry point: the source is not part of the
+                // shipped order, so there is no row for it in the playback-sources list to reach it
+                // from. Always visible, because the screen itself is where the partnership
+                // requirement is explained.
+                item {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("qqmusic"),
+                        title = { Text(stringResource(R.string.source_qq_music)) },
+                        description = stringResource(R.string.qq_music_enabled_desc),
+                        icon = { Icon(painterResource(R.drawable.ic_music), null) },
+                        onClick = {
+                            navController.navigate("settings/qqmusic")
                         },
                     )
                 }

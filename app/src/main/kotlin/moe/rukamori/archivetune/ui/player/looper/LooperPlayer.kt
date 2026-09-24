@@ -5,30 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * Looper player style — the expanded player.
- *
- * A port of Looper's AndroidExpandedPlayer (github.com/SthrNilshaaa/looper,
- * GPL-3.0, lib/ui/screens/android/player/android_expanded_player.dart):
- * a blurred-album-art backdrop under a fixed black scrim (musicDarkness
- * 0.62), the 48dp circular close/more header around a centred quality chip
- * pill, the square 12dp-radius sleeve (border white 4% / 0.8, shadow black
- * 40% / 16 / y+10) with tap-to-lyrics and swipe-to-skip, the 24sp Jost bold
- * title beside the 56dp circular favourite, the squiggly ExpressiveSlider,
- * the 80dp asymmetric transport pills (40/12 radii), and the 40dp
- * utility pills in their 32dp-radius containers. Dimensions, spacing,
- * colours and behaviour are Looper's own.
- *
- * From ArchiveTune it takes exactly one thing the task asked for: the
- * online lyrics with the enhanced lyrics animation, opened as the lyrics
- * page (a whole-page overlay over the player controls) with the floating
- * liquid-glass overflow menu. The canvas stack follows the Apple Music
- * player style's exact layering: a sharp stage bounded at the song-title
- * row with the 0.62->1.0 DstIn fade, and a duplicate canvas behind the
- * bottom controls — small-footprint render, 72dp-equivalent blur, full
- * height — under the 0.25/0.40/0.65 scrim gradient.
- */
-
 package moe.rukamori.archivetune.ui.player.looper
 
 import androidx.compose.animation.core.animateFloatAsState
@@ -70,7 +46,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -149,8 +124,6 @@ fun LooperPlayerContent(
 
     val accentColor = MaterialTheme.colorScheme.primary
 
-    // Canvas surfaces compose while lyrics are open only for the 650ms
-    // backdrop morph, then drop entirely (Apple Music style behaviour).
     var canvasPlayingForLyrics by remember { mutableStateOf(true) }
     var canvasSurfacesForLyrics by remember { mutableStateOf(true) }
     LaunchedEffect(lyricsVisible) {
@@ -189,7 +162,6 @@ fun LooperPlayerContent(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // ============ TOP BAR ============
                 Row(
                     modifier =
                         Modifier
@@ -198,7 +170,6 @@ fun LooperPlayerContent(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Close — 48dp circular.
                     Box(
                         modifier =
                             Modifier
@@ -221,7 +192,6 @@ fun LooperPlayerContent(
                         )
                     }
 
-                    // Centre: the quality chip pill (10sp w600, ls 0.5).
                     Box(
                         modifier =
                             Modifier
@@ -242,7 +212,6 @@ fun LooperPlayerContent(
                         )
                     }
 
-                    // More — 48dp circular.
                     Box(
                         modifier =
                             Modifier
@@ -280,7 +249,6 @@ fun LooperPlayerContent(
 
                 Spacer(Modifier.height(16.dp))
 
-                // ============ ARTWORK ============
                 Box(
                     modifier = Modifier.weight(1f),
                     contentAlignment = Alignment.Center,
@@ -327,7 +295,6 @@ fun LooperPlayerContent(
 
                 Spacer(Modifier.height(24.dp))
 
-                // ============ TITLE ROW ============
                 Row(
                     modifier =
                         Modifier
@@ -354,7 +321,6 @@ fun LooperPlayerContent(
 
                     Spacer(Modifier.width(12.dp))
 
-                    // Favourite — 56dp circular, icon 28dp.
                     Box(
                         modifier =
                             Modifier
@@ -391,7 +357,6 @@ fun LooperPlayerContent(
 
                 Spacer(Modifier.height(32.dp))
 
-                // ============ SQUIGGLY SLIDER ============
                 LooperExpressiveSlider(
                     position = position,
                     duration = duration,
@@ -405,7 +370,6 @@ fun LooperPlayerContent(
 
                 Spacer(Modifier.height(24.dp))
 
-                // ============ TRANSPORT ============
                 Row(
                     modifier =
                         Modifier
@@ -414,7 +378,6 @@ fun LooperPlayerContent(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    // Previous — 80dp tall, outer corners 40, inner 12.
                     Box(modifier = Modifier.weight(1f)) {
                         LooperTransportPill(
                             endCornerRadius = 40.dp,
@@ -437,8 +400,6 @@ fun LooperPlayerContent(
                         }
                     }
 
-                    // Play/pause — 80dp tall, 12dp corners; the accent fill
-                    // only while paused (Looper's exact inversion).
                     Box(
                         modifier =
                             Modifier
@@ -473,7 +434,6 @@ fun LooperPlayerContent(
                         }
                     }
 
-                    // Next — 80dp tall, outer corners 40, inner 12.
                     Box(modifier = Modifier.weight(1f)) {
                         LooperTransportPill(
                             endCornerRadius = 12.dp,
@@ -496,7 +456,6 @@ fun LooperPlayerContent(
 
                 Spacer(Modifier.height(24.dp))
 
-                // ============ UTILITY PILLS ============
                 Row(
                     modifier =
                         Modifier
@@ -505,7 +464,6 @@ fun LooperPlayerContent(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Shuffle + repeat, in one 32dp-radius container.
                     Row(
                         modifier =
                             Modifier
@@ -553,7 +511,6 @@ fun LooperPlayerContent(
                         )
                     }
 
-                    // Next Up + Lyrics, in one 32dp-radius container.
                     Row(
                         modifier =
                             Modifier
@@ -582,7 +539,6 @@ fun LooperPlayerContent(
     }
 }
 
-/** The square sleeve with its 0.8 white-4% border and the deep drop shadow. */
 @Composable
 private fun LooperArtwork(
     mediaMetadata: MediaMetadata,
@@ -633,10 +589,7 @@ private fun LooperArtwork(
                     )
                 },
     ) {
-        // Canvas plays INSIDE the fixed-radius sleeve (the same slot the static
-        // artwork occupies), not as a full-screen background behind the player.
-        // The still image hands over to the looping video only once the canvas
-        // is actually playing, so the sleeve never sits empty while it buffers.
+
         var canvasShowing by remember(canvasPrimaryUrl, canvasFallbackUrl) { mutableStateOf(false) }
         if (canvasPrimaryUrl != null || canvasFallbackUrl != null) {
             CanvasArtworkPlayer(
@@ -673,7 +626,7 @@ private fun LooperArtwork(
                         .fillMaxSize()
                         .graphicsLayer { alpha = staticArtworkAlpha }
                         .let { base ->
-                            // targetPadding 2.0 while paused — the sleeve breathes.
+
                             if (isPlaying) base else base.padding(2.dp)
                         }.clip(RoundedCornerShape(12.dp))
                         .border(
@@ -686,7 +639,6 @@ private fun LooperArtwork(
     }
 }
 
-/** A 40dp-tall pill for the shuffle/repeat cluster. */
 @Composable
 private fun LooperUtilityPill(
     iconRes: Int,
@@ -722,7 +674,6 @@ private fun LooperUtilityPill(
     }
 }
 
-/** A 40dp-tall pill with an icon and a 14sp w500 Jost label. */
 @Composable
 private fun LooperLabeledPill(
     iconRes: Int,
@@ -760,10 +711,6 @@ private fun LooperLabeledPill(
     }
 }
 
-/**
- * The 80dp transport pills: the outer edge is a 40dp semicircle, the inner
- * edge a 12dp round — Looper's asymmetric prev/next shapes.
- */
 @Composable
 private fun LooperTransportPill(
     endCornerRadius: androidx.compose.ui.unit.Dp,
@@ -816,7 +763,6 @@ private fun LooperTransportPill(
     }
 }
 
-/** Looper's quality text: "Lossless • FLAC • 44.1 kHz" style. */
 private fun looperQualityText(format: FormatEntity?): String {
     if (format == null) return "High Quality • Audio"
     val container = format.mimeType.substringAfter("/").substringBefore(";").uppercase()

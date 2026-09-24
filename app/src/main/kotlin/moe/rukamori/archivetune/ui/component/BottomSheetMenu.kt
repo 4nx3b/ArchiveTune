@@ -146,10 +146,7 @@ fun BottomSheetMenu(
                 Modifier.drawBackdrop(
                     backdrop = liquidGlassBackdrop,
                     effects = {
-                        // SpatialFlow-style vivid bleed (1.7x saturation) plus a
-                        // liquid edge refraction; the blur radius cut 32dp -> 20dp
-                        // pays for the lens pass, so the net GPU cost drops while
-                        // the surface reads MORE liquid than the old flat frost.
+
                         colorControls(saturation = 1.7f)
 
                         blur(20f.dp.toPx())
@@ -178,22 +175,12 @@ fun BottomSheetMenu(
             MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.42f)
         }
 
-    // Fully opaque "solid sheet" when liquid glass is off / no backdrop is
-    // available. The old flat #1C1C1E fill fought the app (and dynamic-color)
-    // neutrals drawn on top of it: a near-black header card, warm tonal tiles
-    // and a grey section card all banding against each other. The solid-mode
-    // redesign instead paints ONE elevated theme surface and the menu content
-    // flattens itself onto it (see NewMenuComponents / MuzoMenuComponents),
-    // so nothing ghosts through and the palette stays coherent card-wide.
-    // Callers that pass an explicit background keep full control of the color.
     val fallbackColor =
         when {
             !background.isUnspecified -> background
             else -> MaterialTheme.colorScheme.surfaceContainerHigh
         }
 
-    // Crisp hairline edge that defines the solid card over the scrim. The
-    // glass variant relies on blur + shadow alone and gets no border.
     val fallbackBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
 
     val contentInk =
@@ -233,7 +220,6 @@ fun BottomSheetMenu(
     val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     Box(modifier = modifier.fillMaxSize()) {
-
         Box(
             modifier =
                 Modifier
@@ -271,11 +257,7 @@ fun BottomSheetMenu(
                             glassModifier.background(glassTint)
                         } else {
                             Modifier
-                                // The fill MUST carry FloatingMenuShape: a
-                                // shapeless background draws a square rectangle
-                                // whose sharp corners overlap the rounded
-                                // border/shadow and read as sharp edges on the
-                                // sheet. The glass path is untouched.
+
                                 .background(fallbackColor, FloatingMenuShape)
                                 .border(1.dp, fallbackBorderColor, FloatingMenuShape)
                         },
@@ -285,20 +267,10 @@ fun BottomSheetMenu(
                         interactionSource = popupInteractionSource,
                         indication = null,
                     ) {
-
                     },
         ) {
             val unglassedColorScheme = MaterialTheme.colorScheme
 
-            // Glass ink theme only when there is actual glass (or the caller
-            // pinned an explicit background — that surface may not match the
-            // app theme, so the fixed white/dark ink keeps text readable).
-            // With liquid glass OFF and no explicit background the popup is an
-            // opaque theme surface: menu content must keep the app's regular
-            // color scheme, otherwise action tiles (surfaceContainerHigh →
-            // white@8%), section cards and dividers (outlineVariant →
-            // white@12%) render as translucent ghost shapes on the solid
-            // card — the "weird and glitched out" unglassed popup.
             val useGlassInk = glassModifier != null || !background.isUnspecified
             val menuContent: @Composable () -> Unit = {
                 Column(
@@ -309,8 +281,7 @@ fun BottomSheetMenu(
             }
 
             Column(modifier = Modifier.fillMaxWidth()) {
-                // Solid-sheet drag handle: the unglassed card's signature cue.
-                // The liquid-glass popup renders exactly as before — no handle.
+
                 if (glassModifier == null) {
                     Box(
                         modifier =

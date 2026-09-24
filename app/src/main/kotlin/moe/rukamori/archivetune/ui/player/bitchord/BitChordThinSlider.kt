@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -44,10 +45,7 @@ import androidx.compose.runtime.setValue
 
 @Composable
 fun ThinSlider(
-    /**
-     * Called from the draw scope, never read during composition. The played width is the only thing
-     * the position affects here, so a tick repaints this slider instead of recomposing it.
-     */
+
     valueProvider: () -> Float,
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
@@ -64,6 +62,16 @@ fun ThinSlider(
     markerColor: Color = Color.White.copy(alpha = 0.5f),
 ) {
     var dragging by remember { mutableStateOf(false) }
+
+    // The gesture handler runs under a Unit-keyed pointerInput — it adopts
+    // the FIRST composition's lambdas forever. Without re-reading the latest
+    // callbacks here, a drag-seek lands on a stale player instance after the
+    // service swaps the session player (automix/crossfade promotion), and the
+    // bar visually moves while nothing actually seeks. The lyrics path works
+    // because its tap handler re-adopts the current lambda every recomposition.
+    val currentOnValueChange by rememberUpdatedState(onValueChange)
+    val currentOnValueChangeFinished by rememberUpdatedState(onValueChangeFinished)
+
     val height by animateDpAsState(
         targetValue = if (dragging) activeHeight else idleHeight,
         animationSpec = spring(
@@ -83,7 +91,7 @@ fun ThinSlider(
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     dragging = true
-                    onValueChange((down.position.x / size.width).coerceIn(0f, 1f))
+                    currentOnValueChange((down.position.x / size.width).coerceIn(0f, 1f))
 
                     while (true) {
                         val event = awaitPointerEvent()
@@ -93,13 +101,13 @@ fun ThinSlider(
                             break
                         }
                         if (pointer.positionChanged()) {
-                            onValueChange((pointer.position.x / size.width).coerceIn(0f, 1f))
+                            currentOnValueChange((pointer.position.x / size.width).coerceIn(0f, 1f))
                             pointer.consume()
                         }
                     }
 
                     dragging = false
-                    onValueChangeFinished?.invoke()
+                    currentOnValueChangeFinished?.invoke()
                 }
             },
         contentAlignment = Alignment.Center,
