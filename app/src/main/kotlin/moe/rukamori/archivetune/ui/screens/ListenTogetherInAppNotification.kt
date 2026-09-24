@@ -6,10 +6,12 @@
  *
  * In-app chat notification popup for Listen Together: while the app is in the
  * FOREGROUND but the chat screen is closed, incoming room messages surface as
- * a single heads-up card near the top of the screen — plain backdrop blur
- * (deliberately NOT liquid glass), stacking messages that arrive together in
- * one scrolling list, with a quick inline reply. Mentions additionally get a
- * mark-as-read action and never auto-dismiss.
+ * a single heads-up card near the top of the screen — liquid glass (the same
+ * frosted + lens treatment as the app's other glass surfaces, sampled from
+ * the throttled menu recorder) while the mode is on, and the exact same card
+ * opaque when it is off — stacking messages that arrive together in one
+ * scrolling list, with a prominent quick-reply action. Mentions additionally
+ * get a mark-as-read action and never auto-dismiss.
  */
 
 package moe.rukamori.archivetune.ui.screens
@@ -21,6 +23,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,9 +70,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.FilledTonalButton
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.effects.lens
 import kotlinx.coroutines.delay
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.listentogether.ChatMessagePayload
@@ -110,21 +116,45 @@ fun InAppChatNotificationPopup(
 ) {
     val hasMention = entries.any { it.isMention }
     val cardShape = RoundedCornerShape(22.dp)
+    val glassActive = backdrop != null
+
+    // One ink for the whole card: over the glass scrim the content stays the
+    // light treatment every glass surface uses; on the opaque card it follows
+    // the theme so light theme keeps a readable dark ink. Same layout and
+    // dimensions either way — only the surface changes.
+    val cardInk = if (glassActive) Color.White.copy(alpha = 0.94f) else MaterialTheme.colorScheme.onSurface
+    val cardSecondaryInk =
+        if (glassActive) {
+            Color.White.copy(alpha = 0.75f)
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
 
     val cardModifier =
         if (backdrop != null) {
-            // Plain blur — no lens, no refraction: a frosted card, not a
-            // liquid-glass surface.
-            Modifier.drawBackdrop(
-                backdrop = backdrop,
-                effects = { blur(26.dp.toPx()) },
-                onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
-                onDrawSurface = { drawRect(Color.Black.copy(alpha = 0.35f)) },
-                shape = { cardShape },
-            )
-        } else {
+            // Liquid glass: frost plus the lens refraction the app's glass
+            // pills carry, over the throttled menu recorder (the only recorder
+            // whose subtree excludes this card).
             Modifier
-                .background(Color(0xE626262B), cardShape)
+                .drawBackdrop(
+                    backdrop = backdrop,
+                    effects = {
+                        colorControls(saturation = 1.6f)
+                        blur(24.dp.toPx())
+                        lens(
+                            refractionHeight = 22f.dp.toPx(),
+                            refractionAmount = size.minDimension / 5f,
+                            depthEffect = false,
+                            chromaticAberration = false,
+                        )
+                    },
+                    onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
+                    onDrawSurface = { drawRect(Color.Black.copy(alpha = 0.45f)) },
+                    shape = { cardShape },
+                )
+                .border(0.75.dp, Color.White.copy(alpha = 0.22f), cardShape)
+        } else {
+            Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh, cardShape)
         }
 
     AnimatedVisibility(
@@ -160,7 +190,7 @@ fun InAppChatNotificationPopup(
                     Icon(
                         painter = painterResource(R.drawable.chat_msg),
                         contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.85f),
+                        tint = cardInk,
                         modifier = Modifier.size(18.dp),
                     )
                     Spacer(Modifier.width(8.dp))
@@ -172,14 +202,14 @@ fun InAppChatNotificationPopup(
                         },
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White.copy(alpha = 0.9f),
+                        color = cardInk,
                         modifier = Modifier.weight(1f),
                     )
                     IconButton(onClick = onDismiss, modifier = Modifier.size(30.dp)) {
                         Icon(
                             painter = painterResource(R.drawable.close),
                             contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.7f),
+                            tint = cardSecondaryInk,
                             modifier = Modifier.size(16.dp),
                         )
                     }
@@ -218,7 +248,7 @@ fun InAppChatNotificationPopup(
                                     text = entry.message.username,
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White.copy(alpha = 0.95f),
+                                    color = cardInk,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -232,7 +262,7 @@ fun InAppChatNotificationPopup(
                                 Text(
                                     text = body,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.75f),
+                                    color = cardSecondaryInk,
                                     maxLines = 3,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -241,20 +271,30 @@ fun InAppChatNotificationPopup(
                     }
                 }
 
-                // Actions: Reply always; Mark-as-read on mentions.
+                // Actions: Reply always (a filled tonal button — it has to read
+                // as the card's primary action at a glance); Mark-as-read on
+                // mentions. Same row, same dimensions in both glass and opaque
+                // modes.
                 var replying by remember { mutableStateOf(false) }
                 var replyText by remember { mutableStateOf("") }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    TextButton(
+                    FilledTonalButton(
                         onClick = { replying = !replying },
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        modifier = Modifier.height(36.dp),
                     ) {
+                        Icon(
+                            painter = painterResource(R.drawable.reply),
+                            contentDescription = null,
+                            modifier = Modifier.size(15.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
                         Text(
                             text = stringResource(R.string.listen_together_in_app_notification_reply),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                            style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
                     }
@@ -265,7 +305,7 @@ fun InAppChatNotificationPopup(
                         ) {
                             Text(
                                 text = stringResource(R.string.listen_together_in_app_notification_mark_read),
-                                color = Color.White.copy(alpha = 0.8f),
+                                color = cardSecondaryInk,
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }
@@ -283,9 +323,9 @@ fun InAppChatNotificationPopup(
                         shape = RoundedCornerShape(20.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = Color.White.copy(alpha = 0.25f),
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
+                            unfocusedBorderColor = cardSecondaryInk.copy(alpha = 0.45f),
+                            focusedTextColor = cardInk,
+                            unfocusedTextColor = cardInk,
                         ),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(
@@ -339,12 +379,21 @@ fun InAppChatNotificationsHost(
     navController: androidx.navigation.NavController,
     backdrop: Backdrop?,
     modifier: Modifier = Modifier,
+    onActiveChanged: (Boolean) -> Unit = {},
 ) {
     val inAppEnabled by rememberPreference(
         moe.rukamori.archivetune.constants.ListenTogetherInAppNotificationsKey,
         true,
     )
     val entries = remember { mutableStateListOf<InAppNotificationEntry>() }
+
+    // The glass card needs the menu recorder RUNNING to have anything to
+    // sample: report the card's presence so the activity keeps the throttled
+    // backdrop recording (it otherwise only records while a menu is open —
+    // which is exactly why the card used to render fully transparent).
+    LaunchedEffect(inAppEnabled, entries.isNotEmpty()) {
+        onActiveChanged(inAppEnabled && entries.isNotEmpty())
+    }
 
     // Opening the chat screen retires the popup — the conversation itself is
     // now visible.

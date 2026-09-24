@@ -1622,49 +1622,52 @@ private fun JoinCreateRoomSection(
                 val hasUsername = usernameInput.trim().isNotBlank() || savedUsername.isNotBlank()
                 val hasRoomCode = roomCodeInput.length == 8
 
-                AnimatedVisibility(visible = hasUsername) {
-                    val containerColor by animateColorAsState(
-                        targetValue = if (hasRoomCode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
-                        animationSpec = spring(stiffness = Spring.StiffnessMedium),
-                        label = "buttonColorAnim"
+                // The join/create button is ALWAYS present: with no username it
+                // renders greyed out (disabled) instead of vanishing, so the
+                // requirement is visible right where the username field is.
+                val containerColor by animateColorAsState(
+                    targetValue = if (hasRoomCode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                    animationSpec = spring(stiffness = Spring.StiffnessMedium),
+                    label = "buttonColorAnim"
+                )
+                Button(
+                    onClick = if (hasRoomCode) onJoinRoom else onCreateRoom,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = hasUsername,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = containerColor,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     )
-                    Button(
-                        onClick = if (hasRoomCode) onJoinRoom else onCreateRoom,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = hasUsername,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = containerColor,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        )
-                    ) {
-                        AnimatedContent(
-                            targetState = hasRoomCode,
-                            transitionSpec = {
-                                tween<Float>(200).let {
-                                    fadeIn(it) togetherWith fadeOut(it)
-                                }
-                            },
-                            label = "JoinCreateButtonAnim"
-                        ) { isJoin ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (isJoin) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.join_listen),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(stringResource(R.string.join_room), fontWeight = FontWeight.SemiBold)
-                                } else {
-                                    Icon(
-                                        painter = painterResource(R.drawable.add),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(stringResource(R.string.create_room), fontWeight = FontWeight.SemiBold)
-                                }
+                ) {
+                    AnimatedContent(
+                        targetState = hasRoomCode,
+                        transitionSpec = {
+                            tween<Float>(200).let {
+                                fadeIn(it) togetherWith fadeOut(it)
+                            }
+                        },
+                        label = "JoinCreateButtonAnim"
+                    ) { isJoin ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isJoin) {
+                                Icon(
+                                    painter = painterResource(R.drawable.join_listen),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.join_room), fontWeight = FontWeight.SemiBold)
+                            } else {
+                                Icon(
+                                    painter = painterResource(R.drawable.add),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.create_room), fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }

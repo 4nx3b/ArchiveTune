@@ -162,7 +162,10 @@ import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.formatCompactCount
 import moe.rukamori.archivetune.ui.utils.resize
+import moe.rukamori.archivetune.utils.ReleaseRadarRepository
+import moe.rukamori.archivetune.utils.UpcomingRelease
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.constants.PresaveReleaseRadarKey
 import moe.rukamori.archivetune.viewmodels.ArtistAction
 import moe.rukamori.archivetune.viewmodels.ArtistBlockState
 import moe.rukamori.archivetune.viewmodels.ArtistEvent
@@ -314,6 +317,23 @@ fun ArtistScreen(
                     ?.toArtistReleaseUiModel()
             }
         }
+
+    // ---- Pre-save & Release Countdown -----------------------------------
+    // While the toggle is on, the artist's UPCOMING catalogue entries show at
+    // the top of the page (below the description) with a live countdown —
+    // the same card design the latest-release pill uses.
+    val presaveRadarEnabled by rememberPreference(PresaveReleaseRadarKey, defaultValue = false)
+    var upcomingReleases by remember { mutableStateOf<List<UpcomingRelease>>(emptyList()) }
+    val radarArtistName = artistPage?.artist?.title ?: libraryArtist?.artist?.name
+    LaunchedEffect(presaveRadarEnabled, radarArtistName) {
+        upcomingReleases = emptyList()
+        if (presaveRadarEnabled && !radarArtistName.isNullOrBlank() && !showLocal) {
+            upcomingReleases =
+                ReleaseRadarRepository
+                    .upcomingReleasesForArtist(radarArtistName)
+                    .take(3)
+        }
+    }
     val orderedRemoteSections =
         remember(artistPage?.sections) {
             val sections = artistPage?.sections.orEmpty()
@@ -696,6 +716,17 @@ fun ArtistScreen(
                             )
                         }
                     }
+
+                if (upcomingReleases.isNotEmpty()) {
+                    item(
+                        key = "upcoming_releases",
+                        contentType = CONTENT_TYPE_HEADER,
+                    ) {
+                        ArtistUpcomingReleasesColumn(
+                            releases = upcomingReleases,
+                        )
+                    }
+                }
 
                 latestRelease?.let { release ->
                     item(
@@ -1486,6 +1517,152 @@ private fun ArtistNewReleaseSection(
                 }
             }
         }
+    }
+}
+
+/**
+ * The Pre-save & Release Countdown column: the artist's upcoming catalogue
+ * entries, rendered in the same card design as the latest-release pill but
+ * labelled "UPCOMING RELEASE" and carrying a live countdown to the announced
+ * release moment.
+ */
+@Composable
+private fun ArtistUpcomingReleasesColumn(
+    releases: List<UpcomingRelease>,
+    modifier: Modifier = Modifier,
+) {
+    // A minute-resolution tick keeps every countdown honest without waking the
+    // CPU more than a music app already does.
+    var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(releases) {
+        while (true) {
+            nowMillis = System.currentTimeMillis()
+            kotlinx.coroutines.delay(60_000L)
+        }
+    }
+
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        releases.forEach { release ->
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors =
+                    CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = ArtistContentMaxWidth),
+            ) {
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    if (release.thumbnailUrl != null) {
+                        AsyncImage(
+                            model = release.thumbnailUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier =
+                                Modifier
+                                    .size(ArtistReleaseArtworkSize)
+                                    .clip(RoundedCornerShape(10.dp)),
+                        )
+                    } else {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .size(ArtistReleaseArtworkSize)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.album),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(40.dp),
+                            )
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.upcoming_release).uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                        )
+                        Text(
+                            text = release.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = upcomingReleaseCountdownText(release, nowMillis),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** "3 d 4 h left" / "5 h 12 m left" / "42 m left" — the moment-to-release. */
+@Composable
+private fun upcomingReleaseCountdownText(
+    release: UpcomingRelease,
+    nowMillis: Long,
+): String {
+    val leftMillis = release.releaseAtMillis - nowMillis
+    val resource =
+        when {
+            leftMillis <= 0L -> R.string.release_countdown_imminent
+            leftMillis >= 24L * 60 * 60 * 1000 ->
+                R.string.release_countdown_days
+            leftMillis >= 60L * 60 * 1000 ->
+                R.string.release_countdown_hours
+            else -> R.string.release_countdown_minutes
+        }
+    return when (resource) {
+        R.string.release_countdown_days -> {
+            val days = (leftMillis / (24L * 60 * 60 * 1000)).toInt()
+            val hours = ((leftMillis % (24L * 60 * 60 * 1000)) / (60L * 60 * 1000)).toInt()
+            stringResource(resource, days, hours)
+        }
+        R.string.release_countdown_hours -> {
+            val hours = (leftMillis / (60L * 60 * 1000)).toInt()
+            val minutes = ((leftMillis % (60L * 60 * 1000)) / 60_000L).toInt()
+            stringResource(resource, hours, minutes)
+        }
+        R.string.release_countdown_minutes -> {
+            val minutes = (leftMillis / 60_000L).coerceAtLeast(1L).toInt()
+            stringResource(resource, minutes)
+        }
+        else -> stringResource(resource)
     }
 }
 

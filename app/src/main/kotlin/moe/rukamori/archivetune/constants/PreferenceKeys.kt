@@ -1469,6 +1469,10 @@ val SeenNewReleaseIdsKey = stringPreferencesKey("seenNewReleaseIds")
 
 val ReadNewReleaseIdsKey = stringPreferencesKey("readNewReleaseIds")
 
+/** Pre-save & Release Countdown: upcoming-release radar on artist pages plus
+ * near-instant release notifications for subscribed artists. */
+val PresaveReleaseRadarKey = booleanPreferencesKey("presaveReleaseRadar")
+
 val GitHubContributorsEtagKey = stringPreferencesKey("github_contributors_etag")
 val GitHubContributorsJsonKey = stringPreferencesKey("github_contributors_json")
 val GitHubContributorsLastCheckedAtKey = longPreferencesKey("github_contributors_last_checked_at")

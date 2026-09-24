@@ -295,7 +295,7 @@ fun LyricsEnhanced(
     var isSelectionModeActive by rememberSaveable { mutableStateOf(false) }
     val selectedLineKeys = remember { mutableStateListOf<String>() }
     var showMaxSelectionToast by remember { mutableStateOf(false) }
-    val maxSelectionLimit = 5
+    val maxSelectionLimit = 7
     var showShareDialog by remember { mutableStateOf(false) }
     var shareDialogData by remember { mutableStateOf<Triple<String, String, String>?>(null) }
     var showShareImageDialog by remember { mutableStateOf(false) }

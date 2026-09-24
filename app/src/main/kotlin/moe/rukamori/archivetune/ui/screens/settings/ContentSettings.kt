@@ -114,6 +114,8 @@ fun ContentSettings(
     val (hideVideo, onHideVideoChange) = rememberPreference(key = HideVideoKey, defaultValue = false)
     val (homeCatalogueSwitch, onHomeCatalogueSwitchChange) =
         rememberPreference(key = HomeCatalogueSwitchKey, defaultValue = false)
+    val (presaveReleaseRadar, onPresaveReleaseRadarChange) =
+        rememberPreference(key = PresaveReleaseRadarKey, defaultValue = false)
     val (allowAgeRestricted, onAllowAgeRestrictedChange) = rememberPreference(key = AllowAgeRestrictedKey, defaultValue = false)
     val (lengthTop, onLengthTopChange) = rememberPreference(key = TopSize, defaultValue = "50")
 
@@ -286,6 +288,17 @@ fun ContentSettings(
                     icon = { Icon(painterResource(R.drawable.sync), null) },
                     checked = homeCatalogueSwitch,
                     onCheckedChange = onHomeCatalogueSwitchChange,
+                )
+            }
+
+            item {
+                SwitchPreference(
+                    modifier = positions.modifierFor("presave_release_radar"),
+                    title = { Text(stringResource(R.string.presave_release_radar)) },
+                    description = stringResource(R.string.presave_release_radar_summary),
+                    icon = { Icon(painterResource(R.drawable.new_release), null) },
+                    checked = presaveReleaseRadar,
+                    onCheckedChange = onPresaveReleaseRadarChange,
                 )
             }
 

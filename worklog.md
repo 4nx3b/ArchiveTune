@@ -3562,3 +3562,69 @@ Work Log:
 Stage Summary:
 - 11 files, ~+900/-180.
 - dev push + CI monitoring next; PR #216 continues to carry dev -> main.
+
+---
+Task ID: 73
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 6-item user batch — chat full-screen/IME/composer fixes, automix analysis crash hardening, AM landscape lyrics-right arrangement, pre-save & release countdown radar, lyrics share styles restoration + 7-line limit, LT join gating + mention avatars
+
+Work Log:
+- Synced the local clone to origin/dev (fcde32d93) — the previous session's
+  30 commits (automix engine, chat suite, landscape arrangement) were all on
+  the remote; only the checkout was stale.
+- Chat (CommentTogether.kt): killed the IME white-strip flash by moving
+  imePadding off the root and onto the list + composer only (the wallpaper /
+  scrim background now fills the screen behind the animating keyboard);
+  restructured the list to fill the WHOLE screen with the floating header
+  stack (pill + mention alert + pinned carousel) reserved through measured
+  contentPadding instead of a fixed spacer — older messages now scroll under
+  the haze fade to the very top like the home page; the composer's height
+  probe moved between imePadding and the nav-bar inset so the reserved bottom
+  padding always covers everything the input column occupies (no content
+  behind the capsule); removed the MentionBadge from the room-name pill; the
+  mention alert is now compact, tucked 4dp under the pill, liquid glass (same
+  surface + wallpaper scrim as the pill) with an opaque same-shape fallback,
+  and leads with the mentioner's ChatAvatar.
+- In-app chat notification (ListenTogetherInAppNotification.kt +
+  MainActivity.kt): the card was drawing from the throttled menu recorder
+  that only records while a menu is open — hence the fully transparent
+  background; the recorder now also runs while the notification is visible
+  (onActiveChanged wired into the throttledLayerBackdrop condition) and the
+  card got the full liquid-glass treatment (frost + lens + hairline border)
+  with a theme-inked opaque twin when glass is off, same layout/dimensions;
+  Reply is now a filled tonal button with icon.
+- Automix (SmartFadeAnalyzer.kt): heap-headroom guard (96MB free) defers the
+  heavy stages instead of gambling the process into the OOM-kill path; stage
+  breadcrumbs (fetch/decode-struct, dsp, decode-region, models-done) so the
+  next crash log names the exact stage.
+- AM landscape (AppleMusicPlayer.kt): lyrics now own the RIGHT half when
+  open (controls yield); the artwork is a sized-up hero centred with equal
+  margins, the title block spans exactly the artwork width; the canvas's
+  right edge (screen middle) dissolves into the backdrop with a gradient
+  mask instead of a hard rectangle.
+- Pre-save & Release Countdown: PresaveReleaseRadarKey toggle in Content
+  settings; ReleaseRadarRepository (Deezer public REST, no auth) resolves the
+  artist by name and reads future-dated catalogue entries with a 6h cache;
+  ArtistScreen renders up to three UPCOMING RELEASE cards (latest-pill
+  design) with a live minute-resolution countdown below the description;
+  NewReleaseNotificationManager gained a fast cadence (15-minute WorkManager
+  floor, no battery gate) plus a runImmediateCheck expedited pass on every
+  app open while the toggle is on.
+- Lyrics share: selection limit 5 -> 7 across Lyrics/LyricsV2/LyricsEnhanced;
+  LyricsShareStyle enum (LiquidGlass + FrostedDark/FrostedLight/ClearGlass/
+  DeepBlur/VividGlow) with the classic renderer restored from main
+  (ComposeToImage.createClassicLyricsImage port, dim slider scaled to the
+  presets' 1.0 neutral) and a style chip row in the share dialog; glass-only
+  sliders (liquidy/refraction/glass opacity) hide for classic styles.
+- Listen Together join: the join/create button is always visible and greys
+  out (disabled colors) when the username is blank instead of vanishing;
+  mention suggestion sheet avatars bumped to 34dp.
+- Local verification: :app:compileFossMobileUniversalDebugKotlin green
+  (in-process Kotlin strategy, single worker, tuned heaps for the 3.9GB box;
+  submodules re-initialised, one duplicate string removed).
+
+Stage Summary:
+- All six user items implemented and compiling; dev ready to push. The
+  automix crash remains diagnosed-by-defense (no fresh stack trace reached
+  the server — the video/screenshots in the message never uploaded); the
+  breadcrumbs will pinpoint it on the next report.

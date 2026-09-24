@@ -39,6 +39,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.LyricsShareImageOptions
+import moe.rukamori.archivetune.ui.component.LyricsShareStyle
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.coroutines.resume
@@ -197,6 +198,22 @@ object ComposeToImage {
         shareOptions: LyricsShareImageOptions = LyricsShareImageOptions(),
     ): Bitmap =
         withContext(Dispatchers.Default) {
+            // The classic preset family (restored from the pre-liquid-glass
+            // share popup) renders through its own pipeline; the liquid-glass
+            // engine below is just one style among the rest now.
+            if (shareOptions.style != LyricsShareStyle.LIQUID_GLASS) {
+                return@withContext createClassicLyricsImage(
+                    context = context,
+                    coverArtUrl = coverArtUrl,
+                    songTitle = songTitle,
+                    artistName = artistName,
+                    lyrics = lyrics,
+                    width = width,
+                    height = height,
+                    textColor = textColor,
+                    shareOptions = shareOptions,
+                )
+            }
             val canvasWidth = width.coerceAtLeast(1)
             val canvasHeight = height.coerceAtLeast(1)
             val baseSize = minOf(canvasWidth, canvasHeight).toFloat()
@@ -588,6 +605,365 @@ object ComposeToImage {
                     y += row.first.height
                 }
             }
+
+            return@withContext bitmap
+        }
+
+    /**
+     * One classic share-card preset, restored from the pre-liquid-glass share
+     * popup: surface tint + fill alpha, inks, overlay wash and the background
+     * dim each style carried. Values are the ones those styles always had.
+     */
+    private class ClassicStyle(
+        val surfaceTint: Int,
+        val surfaceAlpha: Float,
+        val textColor: Int,
+        val secondaryTextColor: Int,
+        val overlayColor: Int,
+        val overlayAlpha: Float,
+        val isDark: Boolean,
+        val backgroundDimAlpha: Float,
+    )
+
+    private fun classicStyleFor(style: LyricsShareStyle): ClassicStyle? =
+        when (style) {
+            LyricsShareStyle.FROSTED_DARK ->
+                ClassicStyle(
+                    surfaceTint = 0xFF000000.toInt(), surfaceAlpha = 0.35f,
+                    textColor = 0xFFFFFFFF.toInt(), secondaryTextColor = 0xB3FFFFFF.toInt(),
+                    overlayColor = 0xFF000000.toInt(), overlayAlpha = 0.25f,
+                    isDark = true, backgroundDimAlpha = 0.35f,
+                )
+            LyricsShareStyle.FROSTED_LIGHT ->
+                ClassicStyle(
+                    surfaceTint = 0xFFFFFFFF.toInt(), surfaceAlpha = 0.45f,
+                    textColor = 0xFF1A1A1A.toInt(), secondaryTextColor = 0xA61A1A1A.toInt(),
+                    overlayColor = 0xFFFFFFFF.toInt(), overlayAlpha = 0.35f,
+                    isDark = false, backgroundDimAlpha = 0.15f,
+                )
+            LyricsShareStyle.CLEAR_GLASS ->
+                ClassicStyle(
+                    surfaceTint = 0xFFFFFFFF.toInt(), surfaceAlpha = 0.15f,
+                    textColor = 0xFFFFFFFF.toInt(), secondaryTextColor = 0xBFFFFFFF.toInt(),
+                    overlayColor = 0xFFFFFFFF.toInt(), overlayAlpha = 0.08f,
+                    isDark = true, backgroundDimAlpha = 0.2f,
+                )
+            LyricsShareStyle.DEEP_BLUR ->
+                ClassicStyle(
+                    surfaceTint = 0xFF0A0A14.toInt(), surfaceAlpha = 0.55f,
+                    textColor = 0xFFFFFFFF.toInt(), secondaryTextColor = 0x99FFFFFF.toInt(),
+                    overlayColor = 0xFF0A0A14.toInt(), overlayAlpha = 0.4f,
+                    isDark = true, backgroundDimAlpha = 0.5f,
+                )
+            LyricsShareStyle.VIVID_GLOW ->
+                ClassicStyle(
+                    surfaceTint = 0xFFFF6B9D.toInt(), surfaceAlpha = 0.2f,
+                    textColor = 0xFFFFFFFF.toInt(), secondaryTextColor = 0xCCFFFFFF.toInt(),
+                    overlayColor = 0xFFFF6B9D.toInt(), overlayAlpha = 0.12f,
+                    isDark = true, backgroundDimAlpha = 0.25f,
+                )
+            LyricsShareStyle.LIQUID_GLASS -> null
+        }
+
+    /**
+     * The classic preset card renderer, restored: blurred artwork background,
+     * a dim wash, one rounded frosted-glass panel with the preset's tint and
+     * overlay, artwork-or-centred header, auto-fitted centered lyrics, and the
+     * app-signature footer.
+     */
+    @RequiresApi(Build.VERSION_CODES.M)
+    private suspend fun createClassicLyricsImage(
+        context: Context,
+        coverArtUrl: String?,
+        songTitle: String,
+        artistName: String,
+        lyrics: String,
+        width: Int,
+        height: Int,
+        textColor: Int?,
+        shareOptions: LyricsShareImageOptions,
+    ): Bitmap =
+        withContext(Dispatchers.Default) {
+            val style = classicStyleFor(shareOptions.style) ?: return@withContext createLyricsImage(
+                context = context,
+                coverArtUrl = coverArtUrl,
+                songTitle = songTitle,
+                artistName = artistName,
+                lyrics = lyrics,
+                width = width,
+                height = height,
+                textColor = textColor,
+                shareOptions = shareOptions,
+            )
+            val canvasWidth = width.coerceAtLeast(1)
+            val canvasHeight = height.coerceAtLeast(1)
+            val baseSize = minOf(canvasWidth, canvasHeight).toFloat()
+            val bitmap = createBitmap(canvasWidth, canvasHeight)
+            val canvas = Canvas(bitmap)
+
+            val mainTextColor = textColor ?: style.textColor
+            val secondaryTxtColor = textColor?.let { (it and 0x00FFFFFF) or (0xBF shl 24) } ?: style.secondaryTextColor
+            val bgColor = 0xFF121212.toInt()
+
+            var coverArtBitmap: Bitmap? = null
+            if (coverArtUrl != null) {
+                try {
+                    val imageLoader = ImageLoader(context)
+                    val request =
+                        ImageRequest
+                            .Builder(context)
+                            .data(coverArtUrl)
+                            .size(max(canvasWidth, canvasHeight))
+                            .allowHardware(false)
+                            .build()
+                    val result = imageLoader.execute(request)
+                    coverArtBitmap = result.image?.toBitmap()
+                } catch (e: Exception) {
+                    reportException(e)
+                }
+            }
+
+            val fittedArt =
+                coverArtBitmap?.let {
+                    coverBitmap(
+                        source = it,
+                        targetWidth = canvasWidth,
+                        targetHeight = canvasHeight,
+                    )
+                }
+
+            if (fittedArt != null) {
+                val blurPx = shareOptions.sanitizedBlurRadius.roundToInt().coerceIn(1, 48)
+                val blurredBackground = stackBlur(fittedArt, blurPx)
+                canvas.drawBitmap(blurredBackground, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
+            } else {
+                canvas.drawColor(bgColor)
+            }
+
+            // The liquid-glass slider runs 0..1 with 0.45 as its neutral
+            // point; the classic presets were authored against a 1.0 neutral,
+            // so the slider scales around that.
+            val dimScale = if (shareOptions.sanitizedDimAmount <= 0f) 0f else shareOptions.sanitizedDimAmount / 0.45f
+            val dimPaint =
+                Paint().apply {
+                    color =
+                        ((style.backgroundDimAlpha * dimScale).coerceIn(0f, 0.95f) * 255f).toInt().let { alpha ->
+                            (alpha shl 24) or (if (style.isDark) 0x000000 else 0xFFFFFF)
+                        }
+                    isAntiAlias = true
+                }
+            canvas.drawRect(RectF(0f, 0f, canvasWidth.toFloat(), canvasHeight.toFloat()), dimPaint)
+
+            val glassMargin = baseSize * 0.045f
+            val glassLeft = glassMargin
+            val glassTop = glassMargin
+            val glassRight = canvasWidth - glassMargin
+            val glassBottom = canvasHeight - glassMargin
+            val glassWidth = glassRight - glassLeft
+            val glassHeight = glassBottom - glassTop
+            val glassCornerRadius = baseSize * 0.05f
+
+            val glassRect = RectF(glassLeft, glassTop, glassRight, glassBottom)
+            val glassPath =
+                Path().apply {
+                    addRoundRect(glassRect, glassCornerRadius, glassCornerRadius, Path.Direction.CW)
+                }
+
+            if (fittedArt != null) {
+                val frostedPx = (shareOptions.sanitizedBlurRadius + 10f).coerceIn(8f, 48f).roundToInt()
+                val frostedCrop = stackBlur(fittedArt, frostedPx)
+                canvas.withClip(glassPath) {
+                    drawBitmap(frostedCrop, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
+                }
+            }
+
+            fun argb(alpha: Float, color: Int): Int =
+                ((alpha * 255f).toInt().coerceIn(0, 255) shl 24) or (color and 0x00FFFFFF)
+
+            val glassBgPaint =
+                Paint().apply {
+                    color = argb(style.surfaceAlpha, style.surfaceTint)
+                    isAntiAlias = true
+                }
+            canvas.drawRoundRect(glassRect, glassCornerRadius, glassCornerRadius, glassBgPaint)
+
+            val overlayPaint =
+                Paint().apply {
+                    color = argb(style.overlayAlpha, style.overlayColor)
+                    isAntiAlias = true
+                }
+            canvas.drawRoundRect(glassRect, glassCornerRadius, glassCornerRadius, overlayPaint)
+
+            val borderPaint =
+                Paint().apply {
+                    this.style = Paint.Style.STROKE
+                    strokeWidth = 1.5f
+                    color = android.graphics.Color.argb(25, 255, 255, 255)
+                    isAntiAlias = true
+                }
+            canvas.drawRoundRect(glassRect, glassCornerRadius, glassCornerRadius, borderPaint)
+
+            val contentPadding = minOf(glassWidth, glassHeight) * 0.08f
+            val contentLeft = glassLeft + contentPadding
+            val contentTop = glassTop + contentPadding
+            val contentRight = glassRight - contentPadding
+
+            val imageCornerRadius = baseSize * 0.035f
+            val coverSize = minOf(glassWidth * 0.18f, glassHeight * 0.15f)
+            val topRowGap = baseSize * 0.035f
+
+            val titlePaint =
+                TextPaint().apply {
+                    color = mainTextColor
+                    textSize = baseSize * 0.038f
+                    typeface = Typeface.DEFAULT_BOLD
+                    isAntiAlias = true
+                    letterSpacing = -0.02f
+                }
+            val artistPaint =
+                TextPaint().apply {
+                    color = secondaryTxtColor
+                    textSize = baseSize * 0.028f
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                    isAntiAlias = true
+                }
+
+            val showingArtwork = shareOptions.showArtwork && coverArtBitmap != null
+            if (showingArtwork) {
+                val rect = RectF(contentLeft, contentTop, contentLeft + coverSize, contentTop + coverSize)
+                val path =
+                    Path().apply {
+                        addRoundRect(rect, imageCornerRadius, imageCornerRadius, Path.Direction.CW)
+                    }
+                canvas.withClip(path) {
+                    drawBitmap(coverArtBitmap ?: return@withClip, null, rect, Paint(Paint.FILTER_BITMAP_FLAG))
+                }
+                val artBorderPaint =
+                    Paint().apply {
+                        this.style = Paint.Style.STROKE
+                        strokeWidth = 1f
+                        color = android.graphics.Color.argb(38, 255, 255, 255)
+                        isAntiAlias = true
+                    }
+                canvas.drawRoundRect(rect, imageCornerRadius, imageCornerRadius, artBorderPaint)
+            }
+
+            val textMaxWidth =
+                if (showingArtwork) {
+                    (contentRight - contentLeft - coverSize - topRowGap).toInt()
+                } else {
+                    (contentRight - contentLeft).toInt()
+                }
+            val textStartX = if (showingArtwork) contentLeft + coverSize + topRowGap else contentLeft
+            val headerAlignment = if (showingArtwork) Layout.Alignment.ALIGN_NORMAL else Layout.Alignment.ALIGN_CENTER
+
+            val titleLayout =
+                StaticLayout.Builder
+                    .obtain(songTitle, 0, songTitle.length, titlePaint, textMaxWidth)
+                    .setAlignment(headerAlignment)
+                    .setMaxLines(1)
+                    .build()
+            val artistLayout =
+                StaticLayout.Builder
+                    .obtain(artistName, 0, artistName.length, artistPaint, textMaxWidth)
+                    .setAlignment(headerAlignment)
+                    .setMaxLines(1)
+                    .build()
+
+            val topBlockHeight = if (showingArtwork) coverSize else (titleLayout.height + artistLayout.height + 6f)
+            val imageCenter = contentTop + topBlockHeight / 2f
+            val textBlockHeight = titleLayout.height + artistLayout.height + 6f
+            val textBlockY = imageCenter - textBlockHeight / 2f
+
+            canvas.withTranslation(textStartX, textBlockY) {
+                titleLayout.draw(this)
+                translate(0f, titleLayout.height.toFloat() + 6f)
+                artistLayout.draw(this)
+            }
+
+            val lyricsPaint =
+                TextPaint().apply {
+                    color = mainTextColor
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    isAntiAlias = true
+                    letterSpacing = -0.01f
+                }
+
+            val lyricsMaxWidth = (glassWidth * 0.85f).toInt()
+            val logoBlockHeight = (baseSize * 0.08f).toInt()
+            val headerBottom = if (showingArtwork) contentTop + coverSize else (textBlockY + textBlockHeight)
+            val lyricsTop = headerBottom + baseSize * 0.045f
+            val lyricsBottom = glassBottom - (logoBlockHeight + contentPadding)
+            val availableLyricsHeight = lyricsBottom - lyricsTop
+
+            var lyricsTextSize = baseSize * 0.055f
+            var lyricsLayout: StaticLayout
+            do {
+                lyricsPaint.textSize = lyricsTextSize
+                lyricsLayout =
+                    StaticLayout.Builder
+                        .obtain(
+                            lyrics,
+                            0,
+                            lyrics.length,
+                            lyricsPaint,
+                            lyricsMaxWidth,
+                        ).setAlignment(Layout.Alignment.ALIGN_CENTER)
+                        .setIncludePad(false)
+                        .setLineSpacing(8f, 1.35f)
+                        .setMaxLines(10)
+                        .build()
+                if (lyricsLayout.height > availableLyricsHeight) {
+                    lyricsTextSize -= 2f
+                } else {
+                    break
+                }
+            } while (lyricsTextSize > 22f)
+
+            val lyricsYOffset = lyricsTop + (availableLyricsHeight - lyricsLayout.height) / 2f
+            canvas.withTranslation(glassLeft + (glassWidth - lyricsMaxWidth) / 2f, lyricsYOffset) {
+                lyricsLayout.draw(this)
+            }
+
+            // Footer signature: a small tinted disc with the note glyph and the
+            // app name, centred on the card's bottom band.
+            val footerPaint =
+                TextPaint().apply {
+                    color = secondaryTxtColor
+                    textSize = baseSize * 0.024f
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    isAntiAlias = true
+                    letterSpacing = 0.04f
+                }
+            val footerText = "ARCHIVETUNE"
+            val footerTextWidth = footerPaint.measureText(footerText)
+            val discRadius = baseSize * 0.028f
+            val footerGap = baseSize * 0.018f
+            val footerCenterY = glassBottom - contentPadding - logoBlockHeight / 2f
+            val footerTotalWidth = discRadius * 2f + footerGap + footerTextWidth
+            val footerStartX = glassLeft + (glassWidth - footerTotalWidth) / 2f
+            val discPaint =
+                Paint().apply {
+                    color = argb(0.55f, style.overlayColor)
+                    isAntiAlias = true
+                }
+            canvas.drawCircle(footerStartX + discRadius, footerCenterY, discRadius, discPaint)
+            val notePaint =
+                Paint().apply {
+                    color = if (style.isDark) 0xDD000000.toInt() else 0xE6FFFFFF.toInt()
+                    isAntiAlias = true
+                    textSize = discRadius * 1.1f
+                    typeface = Typeface.DEFAULT_BOLD
+                    textAlign = Paint.Align.CENTER
+                }
+            canvas.drawText("\u266A", footerStartX + discRadius, footerCenterY + discRadius * 0.4f, notePaint)
+            val fm = footerPaint.fontMetrics
+            canvas.drawText(
+                footerText,
+                footerStartX + discRadius * 2f + footerGap,
+                footerCenterY - (fm.ascent + fm.descent) / 2f,
+                footerPaint,
+            )
 
             return@withContext bitmap
         }

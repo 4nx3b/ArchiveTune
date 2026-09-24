@@ -276,6 +276,13 @@
     <string name="lyrics_share_layout_square">Square</string>
     <string name="lyrics_share_layout_portrait">Portrait</string>
     <string name="lyrics_share_layout_story">Story</string>
+    <string name="lyrics_share_style">Style</string>
+    <string name="lyrics_share_style_liquid_glass">Liquid Glass</string>
+    <string name="lyrics_share_style_frosted_dark">Frosted Dark</string>
+    <string name="lyrics_share_style_frosted_light">Frosted Light</string>
+    <string name="lyrics_share_style_clear_glass">Clear Glass</string>
+    <string name="lyrics_share_style_deep_blur">Deep Blur</string>
+    <string name="lyrics_share_style_vivid_glow">Vivid Glow</string>
     <string name="lyrics_share_vinyl_mode">Vinyl mode</string>
     <string name="lyrics_share_vinyl_mode_desc">Render as a vinyl record with the album cover instead of the lyrics card</string>
     <string name="lyrics_share_resolution_value">%1$d x %2$d</string>
@@ -314,7 +321,6 @@
     <string name="lyrics_share_export_not_supported">Image sharing requires Android 6.0 or newer</string>
     <string name="lyrics_share_options">Options</string>
     <string name="lyrics_share_aspect_ratio">Aspect ratio</string>
-    <string name="lyrics_share_style">Style</string>
     <string name="lyrics_share_advanced">Advanced</string>
     <string name="lyrics_share_show_advanced">Show advanced options</string>
     <string name="lyrics_share_hide_advanced">Hide advanced options</string>
@@ -578,6 +584,15 @@
     <string name="album_not_found_desc">The requested album could not be loaded</string>
     <string name="new_releases">New releases</string>
     <string name="latest_release">Latest Release</string>
+    <string name="upcoming_release">Upcoming Release</string>
+    <string name="upcoming_releases">Upcoming releases</string>
+    <string name="release_countdown_days">%1$d d %2$d h left</string>
+    <string name="release_countdown_hours">%1$d h %2$d m left</string>
+    <string name="release_countdown_minutes">%1$d m left</string>
+    <string name="release_countdown_imminent">Releasing any moment</string>
+    <string name="release_date_format">%1$s</string>
+    <string name="presave_release_radar">Pre-save &amp; release countdown</string>
+    <string name="presave_release_radar_summary">Show upcoming releases with a countdown at the top of subscribed artists\' pages, and check for new releases from subscribed artists far more often so the notification lands within minutes.</string>
     <string name="release_type_album">Album</string>
     <string name="release_type_single">Single</string>
     <string name="release_metadata">%1$s • %2$d</string>
