@@ -797,8 +797,21 @@ class MainActivity : ComponentActivity() {
                 }
                 moe.rukamori.archivetune.utils.UpdateNotificationManager
                     .checkForUpdates(this@MainActivity)
+                // Pre-save & Release Countdown: while the radar is enabled the
+                // release check runs at WorkManager's 15-minute floor AND an
+                // immediate expedited pass fires on every app open — a release
+                // that lands while the app is away surfaces within moments of
+                // the next use instead of "rarely in a day".
+                val presaveRadar =
+                    withContext(Dispatchers.IO) {
+                        dataStore.data.first()[moe.rukamori.archivetune.constants.PresaveReleaseRadarKey]
+                    } ?: false
                 moe.rukamori.archivetune.utils.NewReleaseNotificationManager
-                    .schedulePeriodicCheck(this@MainActivity)
+                    .schedulePeriodicCheck(this@MainActivity, fast = presaveRadar)
+                if (presaveRadar) {
+                    moe.rukamori.archivetune.utils.NewReleaseNotificationManager
+                        .runImmediateCheck(this@MainActivity)
+                }
             }
 
             val bottomSheetPageState =
@@ -1477,6 +1490,13 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // The in-app Listen Together chat notification samples the
+                    // same throttled recorder for its liquid-glass card; while
+                    // it is visible the recorder has to keep running or the
+                    // card draws on a stale, empty layer (reads as fully
+                    // transparent).
+                    var inAppChatNotificationActive by remember { mutableStateOf(false) }
+
                     var glassPrewarmActive by remember { mutableStateOf(false) }
                     LaunchedEffect(Unit) {
 
@@ -2087,7 +2107,7 @@ class MainActivity : ComponentActivity() {
                             modifier =
                                 Modifier.let { base ->
                                     if (menuGlassBackdrop != null &&
-                                        (menuGlassRecordingActive || glassPrewarmActive)
+                                        (menuGlassRecordingActive || glassPrewarmActive || inAppChatNotificationActive)
                                     ) {
                                         base.throttledLayerBackdrop(menuGlassBackdrop)
                                     } else {
@@ -3222,6 +3242,7 @@ class MainActivity : ComponentActivity() {
                                 manager = listenTogetherManager,
                                 navController = navController,
                                 backdrop = LocalMenuGlassBackdrop.current,
+                                onActiveChanged = { inAppChatNotificationActive = it },
                                 modifier = Modifier
                                     .align(Alignment.TopCenter)
                                     .padding(

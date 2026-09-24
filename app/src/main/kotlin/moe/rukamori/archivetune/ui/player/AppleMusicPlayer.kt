@@ -778,132 +778,163 @@ fun AppleMusicPlayerContent(
             ) {
                 // Left half: the artwork with the song title and artist
                 // directly beneath it — Apple Music's own landscape
-                // arrangement. The right half is controls only
-                // (showTitleRow = false further down), which is what makes
-                // this read as "the Apple Music style" in horizontal mode
-                // instead of a stretched portrait layout.
-                Column(
+                // arrangement, sized up so the artwork reads as the hero of
+                // the half (not a shrunken portrait card) and CENTERED with
+                // equal side margins, the title block aligned to the very
+                // same width so name and artwork share one visual column.
+                // The right half is lyrics-first: opening lyrics swaps the
+                // controls column out for the lyric sheet over there,
+                // keeping the artwork on screen while lyrics show.
+                BoxWithConstraints(
                     modifier =
                         Modifier
                             .weight(1f)
-                            .fillMaxHeight()
-                            .padding(bottom = contentBottomPadding),
+                            .fillMaxHeight(),
                 ) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                    ) {
-                        AppleMusicSharpArtwork(
-                            artworkRequest = artworkRequest,
-                            artworkUrl = artworkUrl,
-                            canvasPrimaryUrl = canvasPrimaryUrl,
-                            canvasFallbackUrl = canvasFallbackUrl,
-                            isPlaying = isPlaying,
-                            fadeBottom = false,
-                            videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
-                            isMusicVideo = mediaMetadata.isMusicVideo,
-                            landscape = true,
-                            artworkCornerRadiusDp = artworkCornerRadiusDp,
-                            canvasLoopSync = canvasLoopSync,
-                            modifier =
-                                Modifier
-                                    .fillMaxSize(),
-                        )
+                    // The landscape hero artwork: as large as the half allows,
+                    // with equal side margins, so it sits perfectly centred —
+                    // and the title block below inherits the exact same width.
+                    val landscapeArtworkSize =
+                        (maxWidth - 32.dp)
+                            .coerceAtMost(maxHeight * 0.86f)
+                            .coerceAtLeast(280.dp)
 
-                        androidx.compose.animation.AnimatedVisibility(
-                            visible = lyricsOpen,
-                            enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
-                            exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
-                            modifier = Modifier.matchParentSize(),
-                        ) {
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .fillMaxSize()
-                                        .padding(horizontal = AppleMusicContentPadding - 16.dp),
-                            ) {
-                                if (lyricsContentReady) {
-                                    when (lyricsMode) {
-                                        LyricsMode.V2 ->
-                                            LyricsV2(
-                                                sliderPositionProvider = lyricsPosProvider,
-                                                lyricsSyncOffset = lyricsSyncOffset,
-                                                modifier = Modifier.fillMaxSize(),
-                                            )
-
-                                        LyricsMode.ENHANCED ->
-                                            LyricsEnhanced(
-                                                sliderPositionProvider = lyricsPosProvider,
-                                                lyricsSyncOffset = lyricsSyncOffset,
-                                                modifier = Modifier.fillMaxSize(),
-                                            )
-
-                                        LyricsMode.SPOTIFY ->
-                                            LyricsV2(
-                                                sliderPositionProvider = lyricsPosProvider,
-                                                lyricsSyncOffset = lyricsSyncOffset,
-                                                spotifyStyle = true,
-                                                modifier = Modifier.fillMaxSize(),
-                                            )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    AppleMusicLandscapeTitleBlock(
-                        mediaMetadata = mediaMetadata,
-                        currentSongLiked = currentSongLiked,
-                        titleActions = titleActions,
-                        onToggleLike = playerConnection::toggleLike,
-                        onMoreClick = onMoreClick,
-                        onMorePositioned = { moreIconBounds = it },
-                    )
-                }
-                AnimatedVisibility(
-
-                    visible =
-                        (!lyricsOpen && !queueOpen) ||
-                            (queueOpen && playerControlsExpanded) ||
-                            (lyricsOpen && playerControlsExpanded),
-                    enter = fadeIn(tween(120)),
-                    exit = fadeOut(tween(100)),
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                ) {
-                    AppleMusicControlsColumn(
-                        mediaMetadata = mediaMetadata,
-                        isPlaying = isPlaying,
-                        isLoading = isLoading,
-                        canSkipPrevious = canSkipPrevious,
-                        canSkipNext = canSkipNext,
-                        sliderPosition = sliderPosition,
-                        positionProvider = positionProvider,
-                        duration = duration,
-                        playerConnection = playerConnection,
-                        currentSongLiked = currentSongLiked,
-                        volume = volume,
-                        onVolumeChange = onControlsVolumeChange,
-                        titleActions = titleActions,
-                        onPlayPauseClick = onPlayPauseClick,
-                        onMoreClick = onMoreClick,
-                        onOutputClick = onOutputClick,
-                        onQueueClick = toggleQueue,
-                        onLyricsClick = toggleLyrics,
-                        onSliderValueChange = onControlsSliderValueChange,
-                        onSliderValueChangeFinished = onControlsSliderValueChangeFinished,
-                        currentFormat = currentFormat,
-                        onQualityChipClick = {
-                            bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
-                        },
-                        onMorePositioned = { moreIconBounds = it },
-                        showTitleRow = false,
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
                         modifier =
                             Modifier
                                 .fillMaxSize()
                                 .padding(bottom = contentBottomPadding),
-                    )
+                    ) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            AppleMusicSharpArtwork(
+                                artworkRequest = artworkRequest,
+                                artworkUrl = artworkUrl,
+                                canvasPrimaryUrl = canvasPrimaryUrl,
+                                canvasFallbackUrl = canvasFallbackUrl,
+                                isPlaying = isPlaying,
+                                fadeBottom = false,
+                                videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
+                                isMusicVideo = mediaMetadata.isMusicVideo,
+                                landscape = true,
+                                landscapeArtworkSize = landscapeArtworkSize,
+                                fadeRightEdge = true,
+                                artworkCornerRadiusDp = artworkCornerRadiusDp,
+                                canvasLoopSync = canvasLoopSync,
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize(),
+                            )
+                        }
+
+                        AppleMusicLandscapeTitleBlock(
+                            mediaMetadata = mediaMetadata,
+                            currentSongLiked = currentSongLiked,
+                            titleActions = titleActions,
+                            onToggleLike = playerConnection::toggleLike,
+                            onMoreClick = onMoreClick,
+                            onMorePositioned = { moreIconBounds = it },
+                            contentWidth = landscapeArtworkSize,
+                        )
+                    }
+                }
+                Box(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                ) {
+                    // Lyrics own the right half whenever they are open — the
+                    // controls column yields instead of stacking over them.
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = lyricsOpen,
+                        enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
+                        exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
+                        modifier = Modifier.matchParentSize(),
+                    ) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = AppleMusicContentPadding - 16.dp),
+                        ) {
+                            if (lyricsContentReady) {
+                                when (lyricsMode) {
+                                    LyricsMode.V2 ->
+                                        LyricsV2(
+                                            sliderPositionProvider = lyricsPosProvider,
+                                            lyricsSyncOffset = lyricsSyncOffset,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+
+                                    LyricsMode.ENHANCED ->
+                                        LyricsEnhanced(
+                                            sliderPositionProvider = lyricsPosProvider,
+                                            lyricsSyncOffset = lyricsSyncOffset,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+
+                                    LyricsMode.SPOTIFY ->
+                                        LyricsV2(
+                                            sliderPositionProvider = lyricsPosProvider,
+                                            lyricsSyncOffset = lyricsSyncOffset,
+                                            spotifyStyle = true,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                }
+                            }
+                        }
+                    }
+                    androidx.compose.animation.AnimatedVisibility(
+
+                        visible =
+                            (!lyricsOpen && !queueOpen) ||
+                                (queueOpen && playerControlsExpanded) ||
+                                (lyricsOpen && playerControlsExpanded),
+                        enter = fadeIn(tween(120)),
+                        exit = fadeOut(tween(100)),
+                        modifier = Modifier.matchParentSize(),
+                    ) {
+                        AppleMusicControlsColumn(
+                            mediaMetadata = mediaMetadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            sliderPosition = sliderPosition,
+                            positionProvider = positionProvider,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            currentSongLiked = currentSongLiked,
+                            volume = volume,
+                            onVolumeChange = onControlsVolumeChange,
+                            titleActions = titleActions,
+                            onPlayPauseClick = onPlayPauseClick,
+                            onMoreClick = onMoreClick,
+                            onOutputClick = onOutputClick,
+                            onQueueClick = toggleQueue,
+                            onLyricsClick = toggleLyrics,
+                            onSliderValueChange = onControlsSliderValueChange,
+                            onSliderValueChangeFinished = onControlsSliderValueChangeFinished,
+                            currentFormat = currentFormat,
+                            onQualityChipClick = {
+                                bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
+                            },
+                            onMorePositioned = { moreIconBounds = it },
+                            showTitleRow = false,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .padding(bottom = contentBottomPadding),
+                        )
+                    }
                 }
             }
         } else {
@@ -1168,6 +1199,10 @@ private fun AppleMusicSharpArtwork(
     isMusicVideo: Boolean = false,
     landscape: Boolean = false,
 
+    landscapeArtworkSize: Dp? = null,
+
+    fadeRightEdge: Boolean = false,
+
     showCanvas: Boolean = true,
 
     fullPlayerHeight: Dp? = null,
@@ -1181,6 +1216,17 @@ private fun AppleMusicSharpArtwork(
     val artworkFadeBrush = remember {
         Brush.verticalGradient(
             0.62f to Color.Black,
+            1f to Color.Transparent,
+        )
+    }
+    // Landscape canvas blend: the canvas's right edge (the screen's middle
+    // in horizontal mode) dissolves into the blurred backdrop with a
+    // gradient mask instead of ending in a hard rectangle — matching the
+    // edge-less look non-canvas songs get from the full-bleed backdrop.
+    val canvasRightFadeBrush = remember {
+        Brush.horizontalGradient(
+            0f to Color.Black,
+            0.55f to Color.Black,
             1f to Color.Transparent,
         )
     }
@@ -1226,27 +1272,33 @@ private fun AppleMusicSharpArtwork(
                 val compactHeight = effectiveFullHeight < 760.dp
                 val veryCompactHeight = effectiveFullHeight < 700.dp
 
-                val artworkMinSize =
-                    when {
-                        veryCompactHeight -> 200.dp
-                        compactHeight -> 216.dp
-                        else -> 236.dp
-                    }
-
-                val artworkHeightLimitFromFull =
-                    effectiveFullHeight *
-                        when {
-                            veryCompactHeight -> 0.32f
-                            compactHeight -> 0.35f
-                            else -> 0.40f
-                        }
-                val artworkHeightLimitFromMorph = maxHeight * 0.82f
-                val artworkHeightLimit =
-                    minOf(artworkHeightLimitFromFull, artworkHeightLimitFromMorph)
+                // Landscape gets an explicit size handed down from the player
+                // (the hero-of-the-half arrangement); portrait keeps the
+                // fraction-based sizing it has always had.
                 val artworkSize =
-                    (maxWidth - horizontalPadding * 2)
-                        .coerceAtMost(artworkHeightLimit)
-                        .coerceAtLeast(artworkMinSize)
+                    landscapeArtworkSize
+                        ?: run {
+                            val artworkMinSize =
+                                when {
+                                    veryCompactHeight -> 200.dp
+                                    compactHeight -> 216.dp
+                                    else -> 236.dp
+                                }
+
+                            val artworkHeightLimitFromFull =
+                                effectiveFullHeight *
+                                    when {
+                                        veryCompactHeight -> 0.32f
+                                        compactHeight -> 0.35f
+                                        else -> 0.40f
+                                    }
+                            val artworkHeightLimitFromMorph = maxHeight * 0.82f
+                            val artworkHeightLimit =
+                                minOf(artworkHeightLimitFromFull, artworkHeightLimitFromMorph)
+                            (maxWidth - horizontalPadding * 2)
+                                .coerceAtMost(artworkHeightLimit)
+                                .coerceAtLeast(artworkMinSize)
+                        }
 
                 val artworkPauseScale by animateFloatAsState(
                     targetValue = if (isPlaying) 1f else 0.92f,
@@ -1287,13 +1339,28 @@ private fun AppleMusicSharpArtwork(
         if (showCanvas && !showVideo &&
             (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())
         ) {
+            val canvasModifier =
+                if (fadeRightEdge) {
+                    Modifier
+                        .matchParentSize()
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(
+                                brush = canvasRightFadeBrush,
+                                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                            )
+                        }
+                } else {
+                    Modifier.matchParentSize()
+                }
             CanvasArtworkPlayer(
                 primaryUrl = canvasPrimaryUrl,
                 fallbackUrl = canvasFallbackUrl,
                 isPlaying = isPlaying,
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                 loopSyncLeader = canvasLoopSync,
-                modifier = Modifier.matchParentSize(),
+                modifier = canvasModifier,
             )
         }
 
@@ -1595,13 +1662,26 @@ private fun AppleMusicLandscapeTitleBlock(
     onToggleLike: () -> Unit,
     onMoreClick: () -> Unit,
     onMorePositioned: ((Rect) -> Unit)? = null,
+    contentWidth: Dp? = null,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier =
             Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AppleMusicContentPadding)
+                .let { base ->
+                    if (contentWidth != null) {
+                        // Aligned to the artwork: the block spans exactly the
+                        // artwork's width so title, chips and artwork share one
+                        // centred visual column (the caller centres it).
+                        base
+                            .width(contentWidth)
+                    } else {
+                        base
+                            .fillMaxWidth()
+                            .padding(horizontal = AppleMusicContentPadding)
+                    }
+                }
                 .padding(top = 12.dp, bottom = 10.dp),
     ) {
         PlayerTextBackdrop(

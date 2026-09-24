@@ -640,6 +640,26 @@ private fun ControlsSection(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
+            // The style family: liquid glass (the current engine) plus the
+            // classic presets restored from the old share popup.
+            LyricsShareControlGroup(title = stringResource(R.string.lyrics_share_style)) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    LyricsShareStyle.entries.forEach { style ->
+                        LyricsStyleOption(
+                            style = style,
+                            selected = options.style == style && !options.vinylMode,
+                            onClick = { onOptionsChange(options.copy(style = style, vinylMode = false)) },
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
             Row(
                 modifier =
                     Modifier
@@ -717,29 +737,31 @@ private fun ControlsSection(
                         valueRange = 0f..1f,
                     )
 
-                    LyricsShareSlider(
-                        title = stringResource(R.string.lyrics_share_glass_liquidy),
-                        valueLabel = stringResource(R.string.lyrics_share_glass_liquidy_value, (options.sanitizedLiquidyAmount * 100).toInt()),
-                        value = options.liquidyAmount,
-                        onValueChange = { onOptionsChange(options.copy(liquidyAmount = it)) },
-                        valueRange = 0f..1f,
-                    )
+                    if (options.style == LyricsShareStyle.LIQUID_GLASS) {
+                        LyricsShareSlider(
+                            title = stringResource(R.string.lyrics_share_glass_liquidy),
+                            valueLabel = stringResource(R.string.lyrics_share_glass_liquidy_value, (options.sanitizedLiquidyAmount * 100).toInt()),
+                            value = options.liquidyAmount,
+                            onValueChange = { onOptionsChange(options.copy(liquidyAmount = it)) },
+                            valueRange = 0f..1f,
+                        )
 
-                    LyricsShareSlider(
-                        title = stringResource(R.string.lyrics_share_glass_refraction),
-                        valueLabel = stringResource(R.string.lyrics_share_glass_refraction_value, (options.sanitizedRefractionAmount * 100).toInt()),
-                        value = options.refractionAmount,
-                        onValueChange = { onOptionsChange(options.copy(refractionAmount = it)) },
-                        valueRange = 0f..1f,
-                    )
+                        LyricsShareSlider(
+                            title = stringResource(R.string.lyrics_share_glass_refraction),
+                            valueLabel = stringResource(R.string.lyrics_share_glass_refraction_value, (options.sanitizedRefractionAmount * 100).toInt()),
+                            value = options.refractionAmount,
+                            onValueChange = { onOptionsChange(options.copy(refractionAmount = it)) },
+                            valueRange = 0f..1f,
+                        )
 
-                    LyricsShareSlider(
-                        title = stringResource(R.string.lyrics_share_glass_opacity),
-                        valueLabel = stringResource(R.string.lyrics_share_glass_opacity_value, (options.sanitizedGlassOpacity * 100).toInt()),
-                        value = options.glassOpacity,
-                        onValueChange = { onOptionsChange(options.copy(glassOpacity = it)) },
-                        valueRange = 0f..1f,
-                    )
+                        LyricsShareSlider(
+                            title = stringResource(R.string.lyrics_share_glass_opacity),
+                            valueLabel = stringResource(R.string.lyrics_share_glass_opacity_value, (options.sanitizedGlassOpacity * 100).toInt()),
+                            value = options.glassOpacity,
+                            onValueChange = { onOptionsChange(options.copy(glassOpacity = it)) },
+                            valueRange = 0f..1f,
+                        )
+                    }
 
                     Row(
                         modifier =
@@ -884,6 +906,64 @@ private fun LyricsAspectRatioOption(
     ) {
         Text(
             text = stringResource(aspectRatio.labelRes),
+            style =
+                if (selected) {
+                    MaterialTheme.typography.labelLargeEmphasized
+                } else {
+                    MaterialTheme.typography.labelLarge
+                },
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/** One style chip of the share-card style family (liquid glass + classics). */
+@Composable
+private fun LyricsStyleOption(
+    style: LyricsShareStyle,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val motionScheme = MaterialTheme.motionScheme
+    val optionShape = if (selected) MaterialTheme.shapes.extraLarge else MaterialTheme.shapes.medium
+    val containerColor by animateColorAsState(
+        targetValue =
+            if (selected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerLowest
+            },
+        animationSpec = motionScheme.defaultEffectsSpec(),
+        label = "lyricsStyleContainer",
+    )
+    val contentColor by animateColorAsState(
+        targetValue =
+            if (selected) {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        animationSpec = motionScheme.defaultEffectsSpec(),
+        label = "lyricsStyleContent",
+    )
+
+    Surface(
+        modifier =
+            modifier
+                .widthIn(min = 84.dp)
+                .heightIn(min = 40.dp)
+                .clip(optionShape)
+                .clickable(onClick = onClick),
+        shape = optionShape,
+        color = containerColor,
+        contentColor = contentColor,
+    ) {
+        Text(
+            text = stringResource(style.labelRes),
             style =
                 if (selected) {
                     MaterialTheme.typography.labelLargeEmphasized

@@ -579,7 +579,7 @@ fun Lyrics(
         selectedIndices.clear()
     }
 
-    val maxSelectionLimit = 5
+    val maxSelectionLimit = 7
 
     LaunchedEffect(showMaxSelectionToast) {
         if (showMaxSelectionToast) {

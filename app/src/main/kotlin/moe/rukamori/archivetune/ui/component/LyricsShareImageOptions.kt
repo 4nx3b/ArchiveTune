@@ -44,6 +44,8 @@ enum class LyricsShareAspectRatio(
 @Immutable
 data class LyricsShareImageOptions(
     val aspectRatio: LyricsShareAspectRatio = LyricsShareAspectRatio.Square,
+    /** The card's visual style — liquid glass or one of the classic presets. */
+    val style: LyricsShareStyle = LyricsShareStyle.LIQUID_GLASS,
     /** Blur intensity behind the glass (px-equivalent at export scale). */
     val blurRadius: Float = 24f,
     /** How dark the ambient background behind the card is (0..1). */
@@ -72,6 +74,22 @@ data class LyricsShareImageOptions(
 
     val sanitizedGlassOpacity: Float
         get() = glassOpacity.coerceIn(0f, 1f)
+}
+
+/**
+ * The share card's visual styles: the current liquid-glass engine plus the
+ * classic preset family that used to live in the popup (restored verbatim —
+ * same surfaces, scrims and inks they always had).
+ */
+enum class LyricsShareStyle(
+    @StringRes val labelRes: Int,
+) {
+    LIQUID_GLASS(R.string.lyrics_share_style_liquid_glass),
+    FROSTED_DARK(R.string.lyrics_share_style_frosted_dark),
+    FROSTED_LIGHT(R.string.lyrics_share_style_frosted_light),
+    CLEAR_GLASS(R.string.lyrics_share_style_clear_glass),
+    DEEP_BLUR(R.string.lyrics_share_style_deep_blur),
+    VIVID_GLOW(R.string.lyrics_share_style_vivid_glow),
 }
 
 @Immutable

@@ -73,6 +73,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -119,6 +120,7 @@ import moe.rukamori.archivetune.listentogether.RepliedMessage
 import moe.rukamori.archivetune.listentogether.TrackInfo
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.LiquidGlassPillBlurRadius
 import moe.rukamori.archivetune.ui.component.liquidGlass
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -378,18 +380,31 @@ fun CommentTogetherScreen(navController: NavController) {
     val statusBarTop = LocalStableSystemBarsTopPadding.current
     // The composer column floats over the list's bottom; the list reserves
     // room for it so the newest message is never hidden behind the capsule.
+    // onGloballyPositioned sits BETWEEN imePadding and the navigation-bar
+    // inset padding, so the reserved height covers everything the composer
+    // column occupies on screen minus the IME region the list also lifts
+    // over — content can never render behind the input capsule.
     var composerHeightPx by remember { mutableStateOf(0) }
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val composerBottomPadding = with(density) { (composerHeightPx.toDp()) + 12.dp }
+    val composerBottomPadding = with(density) { (composerHeightPx.toDp()) + 14.dp }
+    // The full floating header stack (glass pill + mention alert + pinned
+    // carousel) is measured and reserved as the list's TOP content padding
+    // instead of a fixed spacer: scrolling towards older messages carries
+    // them under the haze fade all the way to the very top of the screen —
+    // the same full-bleed scroll the home and settings pages have.
+    var headerOverlayHeightPx by remember { mutableStateOf(0) }
+    val headerOverlayBottomPadding = with(density) { headerOverlayHeightPx.toDp() + 8.dp }
 
     // Root wrapper: the chat (inside the recorded box) and the floating glass
     // surfaces (siblings, outside it) — the structure that keeps the liquid
-    // glass non-recursive. The whole screen resizes with the IME so the
-    // reversed list's start-anchored newest message rides above the keyboard.
+    // glass non-recursive. The wallpaper/scrim background fills the ENTIRE
+    // screen and never reacts to the IME: only the message list and the
+    // composer carry imePadding, so the strip the opening keyboard animates
+    // over shows the chat's own background instead of flashing the window's
+    // plain white background.
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .imePadding()
     ) {
         Box(
             modifier =
@@ -429,44 +444,23 @@ fun CommentTogetherScreen(navController: NavController) {
                 )
             }
 
-            Column(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                // Reserve the floating header zone: the list scrolls UNDER the
-                // haze fade and the glass pill (the transparent-header effect).
-                Spacer(
-                    modifier = Modifier.height(statusBarTop + 48.dp + 14.dp),
-                )
-
-                if (pinnedMessages.isNotEmpty()) {
-                    PinnedMessagesStack(
-                        messages = pinnedMessages,
-                        onUnpin = { pinned -> manager.setPinned(pinned, false) },
-                        onJumpTo = { pinned ->
-                            val index =
-                                messages.indexOfFirst {
-                                    it.timestamp == pinned.timestamp && it.userId == pinned.userId
-                                }
-                            if (index >= 0) {
-                                jumpToMessage(index, "${pinned.userId}:${pinned.timestamp}")
-                            }
-                        },
-                    )
-                }
-
-                // An empty room renders an empty list — no placeholder icon
-                // and "no messages" copy; the composer already says everything
-                // there is to say.
-                LazyColumn(
-                        state = lazyListState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = composerBottomPadding),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        // Newest at the visual bottom (see the comment above): the
-                        // list opens on the latest message and the keyboard resize
-                        // can never cover it.
-                        reverseLayout = true,
-                    ) {
+            // An empty room renders an empty list — no placeholder icon
+            // and "no messages" copy; the composer already says everything
+            // there is to say. The list fills the WHOLE screen: the floating
+            // header stack is reserved through contentPadding (not a spacer),
+            // so older messages scroll under the glass pill to the very top.
+            LazyColumn(
+                    state = lazyListState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .imePadding(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = headerOverlayBottomPadding, bottom = composerBottomPadding),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    // Newest at the visual bottom (see the comment above): the
+                    // list opens on the latest message and the keyboard resize
+                    // can never cover it.
+                    reverseLayout = true,
+                ) {
                         val dividerSlot =
                             when {
                                 hasRestoredMessages && liveRowCount == 0 -> 0
@@ -511,16 +505,24 @@ fun CommentTogetherScreen(navController: NavController) {
                                 }
                             }
                         }
-                    }
-            }
+                }
         }
 
         // ---- floating liquid-glass header + haze fade (sibling of the recorded
-        // content: samples the recorded backdrop, no recursion possible).
+        // content: samples the recorded backdrop, no recursion possible). The
+        // whole stack (pill + mention alert + pinned carousel) is measured so
+        // the list can reserve it as top content padding while still letting
+        // content scroll beneath it to the top edge. The wallpaper-aware glass
+        // polarity is hoisted here so the mention alert shares it with the pill.
+        val wallpaperGlassScrim: Color? = chatWallpaperGlass.scrim
+        val headerContentColor = chatWallpaperGlass.contentColor ?: liquidGlassContentColor()
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .align(Alignment.TopCenter),
+                .align(Alignment.TopCenter)
+                .onGloballyPositioned { coordinates ->
+                    headerOverlayHeightPx = coordinates.size.height
+                },
         ) {
             // The same haze fade the home screen's header uses, blurring the
             // chat content (and the wallpaper) as it scrolls under the header —
@@ -539,9 +541,9 @@ fun CommentTogetherScreen(navController: NavController) {
                 // Over a wallpaper the glass gets an explicit surface scrim whose
                 // polarity follows the MEASURED wallpaper luminance (dark image →
                 // dark scrim + white content, bright image → light scrim + dark
-                // ink), so the pill reads in light theme and dark alike.
-                val wallpaperGlassScrim: Color? = chatWallpaperGlass.scrim
-                val headerContentColor = chatWallpaperGlass.contentColor ?: liquidGlassContentColor()
+                // ink), so the pill reads in light theme and dark alike. The
+                // mention-count badge is gone from the pill: the compact mention
+                // alert right below it is the indicator now.
                 Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -584,27 +586,6 @@ fun CommentTogetherScreen(navController: NavController) {
                                 .widthIn(max = 200.dp)
                                 .padding(end = 14.dp),
                         )
-                        if (mentionCount > 0) {
-                            MentionBadge(count = mentionCount, onClick = {
-                                val myName = manager.currentUsername
-                                val target = messages.lastOrNull { message ->
-                                    !isOwnMessage(message) &&
-                                        message.mentions.any { it.equals(myName ?: "", ignoreCase = true) }
-                                }
-                                if (target != null) {
-                                    val forwardIndex = messages.indexOfFirst {
-                                        it.timestamp == target.timestamp && it.userId == target.userId
-                                    }
-                                    if (forwardIndex >= 0) {
-                                        jumpToMessage(
-                                            forwardIndex,
-                                            "${target.userId}:${target.timestamp}",
-                                        )
-                                    }
-                                }
-                                manager.markMentionsSeen()
-                            })
-                        }
                     }
                 } else {
                     // Glass disabled: the same header, plain surfaces.
@@ -630,27 +611,6 @@ fun CommentTogetherScreen(navController: NavController) {
                                     .weight(1f, fill = false)
                                     .widthIn(max = 200.dp),
                             )
-                            if (mentionCount > 0) {
-                                MentionBadge(count = mentionCount, onClick = {
-                                    val myName = manager.currentUsername
-                                    val target = messages.lastOrNull { message ->
-                                        !isOwnMessage(message) &&
-                                            message.mentions.any { it.equals(myName ?: "", ignoreCase = true) }
-                                    }
-                                    if (target != null) {
-                                        val forwardIndex = messages.indexOfFirst {
-                                            it.timestamp == target.timestamp && it.userId == target.userId
-                                        }
-                                        if (forwardIndex >= 0) {
-                                            jumpToMessage(
-                                                forwardIndex,
-                                                "${target.userId}:${target.timestamp}",
-                                            )
-                                        }
-                                    }
-                                    manager.markMentionsSeen()
-                                })
-                            }
                         }
                     }
                 }
@@ -658,12 +618,19 @@ fun CommentTogetherScreen(navController: NavController) {
             } // end header-overlay Box (haze band + glass pill)
 
             // The in-chat mention popup: persists until jumped-to or dismissed.
+            // Compact, tucked tight under the pill, liquid glass when the mode
+            // is on and the same shape opaque when it is not; the mentioner's
+            // profile picture leads the row.
             mentionPopup?.let { popup ->
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(4.dp))
                 MentionAlertPopup(
+                    userId = popup.userId,
                     username = popup.username,
                     snippet = popup.sharedTrack?.title
                         ?: if (popup.gifUrl != null) "GIF" else popup.message,
+                    glassBackdrop = chatGlassBackdrop,
+                    scrim = wallpaperGlassScrim,
+                    contentColor = headerContentColor,
                     onJump = {
                         val forwardIndex = messages.indexOfFirst {
                             it.timestamp == popup.timestamp && it.userId == popup.userId
@@ -677,23 +644,49 @@ fun CommentTogetherScreen(navController: NavController) {
                     onDismiss = { mentionPopup = null },
                 )
             }
+
+            // The pinned-message carousel rides at the bottom of the floating
+            // header stack: the list reserves the whole stack's height as top
+            // content padding, so nothing ever hides behind it at rest while
+            // older messages still scroll beneath the stack to the very top.
+            if (pinnedMessages.isNotEmpty()) {
+                PinnedMessagesStack(
+                    messages = pinnedMessages,
+                    onUnpin = { pinned -> manager.setPinned(pinned, false) },
+                    onJumpTo = { pinned ->
+                        val index =
+                            messages.indexOfFirst {
+                                it.timestamp == pinned.timestamp && it.userId == pinned.userId
+                            }
+                        if (index >= 0) {
+                            jumpToMessage(index, "${pinned.userId}:${pinned.timestamp}")
+                        }
+                    },
+                )
+            }
         }
 
         // ---- floating composer (sibling of the recorded content) ---------------
+        // imePadding sits OUTERMOST so the whole column (mention autocomplete,
+        // capsule, typing indicator) rides above the opening keyboard; the
+        // height probe sits between imePadding and the navigation-bar inset so
+        // the list reserves everything the column occupies except the IME band
+        // it lifts over itself.
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
+                    .imePadding()
+                    .onGloballyPositioned { coordinates ->
+                        composerHeightPx = coordinates.size.height
+                    }
                     .windowInsetsPadding(
                         windowInsets.only(
                             WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
                         ),
                     )
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                    .onGloballyPositioned { coordinates ->
-                        composerHeightPx = coordinates.size.height
-                    },
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             if (chatSupported) {
                 // @-mention autocomplete: appears while the composer's text
@@ -889,97 +882,97 @@ fun CommentTogetherScreen(navController: NavController) {
     }
 }
 
-/** Small @-mention count chip inside the chat header pill. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun MentionBadge(count: Int, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.alternate_email),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                modifier = Modifier.size(13.dp),
-            )
-            Text(
-                text = count.toString(),
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onTertiaryContainer,
-            )
-        }
-    }
-}
-
 /**
  * The in-chat mention alert: a compact top pill that appears the moment
  * someone @-mentions the user while they are reading the chat. It never
  * auto-hides — only jumping to the mention or the dismiss button clears it,
  * so a mention can't slip by unnoticed.
+ *
+ * Liquid glass when the mode is on (same surface treatment as the header
+ * pill, scrim polarity from the measured wallpaper); with the mode off the
+ * exact same shape and dimensions render opaque. The mentioner's profile
+ * picture leads the row instead of a generic @ glyph.
  */
 @Composable
 private fun MentionAlertPopup(
+    userId: String,
     username: String,
     snippet: String,
+    glassBackdrop: moe.rukamori.archivetune.ui.component.PlatformBackdrop?,
+    scrim: Color?,
+    contentColor: Color,
     onJump: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.95f),
-        shadowElevation = 8.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
-                .clickable(onClick = onJump)
-                .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.alternate_email),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                modifier = Modifier.size(18.dp),
+    val alertShape = RoundedCornerShape(20.dp)
+    val rowModifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 14.dp)
+
+    val surfaceModifier = if (glassBackdrop != null) {
+        rowModifier
+            .liquidGlass(
+                backdrop = glassBackdrop,
+                shape = alertShape,
+                interactive = false,
+                blurRadius = LiquidGlassPillBlurRadius,
+                scrim = scrim,
             )
-            Column(modifier = Modifier.weight(1f)) {
+    } else {
+        rowModifier
+            .shadow(8.dp, alertShape)
+            .background(
+                MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.96f),
+                alertShape,
+            )
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = surfaceModifier
+            .clickable(onClick = onJump)
+            .padding(start = 10.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
+    ) {
+        ChatAvatar(
+            userId = userId,
+            fallbackName = username,
+            size = 26.dp,
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "$username ${stringResource(R.string.listen_together_chat_mentioned_you)}",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (glassBackdrop != null) contentColor else MaterialTheme.colorScheme.onTertiaryContainer,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (snippet.isNotBlank()) {
                 Text(
-                    text = "$username ${stringResource(R.string.listen_together_chat_mentioned_you)}",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    text = snippet,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (glassBackdrop != null) {
+                        contentColor.copy(alpha = 0.78f)
+                    } else {
+                        MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (snippet.isNotBlank()) {
-                    Text(
-                        text = snippet,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
             }
-            IconButton(onClick = onDismiss, modifier = Modifier.size(34.dp)) {
-                Icon(
-                    painter = painterResource(R.drawable.close),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                    modifier = Modifier.size(17.dp),
-                )
-            }
+        }
+        IconButton(onClick = onDismiss, modifier = Modifier.size(30.dp)) {
+            Icon(
+                painter = painterResource(R.drawable.close),
+                contentDescription = null,
+                tint = if (glassBackdrop != null) {
+                    contentColor.copy(alpha = 0.85f)
+                } else {
+                    MaterialTheme.colorScheme.onTertiaryContainer
+                },
+                modifier = Modifier.size(15.dp),
+            )
         }
     }
 }
@@ -1293,7 +1286,7 @@ private fun MentionSuggestionList(
                     ChatAvatar(
                         userId = member.userId,
                         fallbackName = member.username,
-                        size = 30.dp,
+                        size = 34.dp,
                     )
                     Text(
                         text = member.username,

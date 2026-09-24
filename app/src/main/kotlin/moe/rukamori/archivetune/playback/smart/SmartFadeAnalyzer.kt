@@ -87,6 +87,17 @@ class SmartFadeAnalyzer(
         /** Head/tail region decodes get the same treatment, tighter. */
         private const val REGION_DECODE_HEADROOM = 1.25
         private const val REGION_DECODE_SLACK_SECONDS = 10.0
+
+        /**
+         * The analysis pipeline's transient Java-heap footprint (structural
+         * decode + region decodes + model scratch) sits in the tens of MB; a
+         * process already close to its heap ceiling gets killed by the runtime
+         * the moment the next big allocation lands — with the blame pinned on
+         * whatever allocated next, not on automix. Below this much FREE headroom
+         * the analysis defers (a retryable miss, not a strike) instead of
+         * gambling the process.
+         */
+        private const val MIN_FREE_HEAP_BYTES = 96L * 1024 * 1024
     }
 
     private val appContext = context.applicationContext
@@ -264,6 +275,21 @@ class SmartFadeAnalyzer(
             return empty(trackId, effectiveDuration)
         }
 
+        // Memory-pressure guard: the pipeline's peak transient footprint is
+        // several tens of MB on top of whatever the player, the UI and image
+        // loading already hold. When free heap runs low, defer rather than
+        // push the process into the OOM-kill path mid-analysis — a deferred
+        // track is retried by the poll loop on a later tick.
+        if (!hasHeapHeadroom()) {
+            Log.d(TAG, "Deferring analysis of $trackId: low heap headroom")
+            return null
+        }
+
+        // Stage breadcrumbs: every crash report from here on names the exact
+        // stage the pipeline died in, instead of an OOM landing on an
+        // unrelated thread with no automix line anywhere in the log.
+        Log.d(TAG, "stage=fetch/decode-struct track=$trackId duration=%.1fs".format(Locale.ROOT, effectiveDuration))
+
         // Pass 1 (DSP-only): whole track at the analyzer's low sample rate, in
         // its own frame so the decoded buffer is collectible before Pass 2.
         // A null result means the source would not open or the decode refused
@@ -276,6 +302,8 @@ class SmartFadeAnalyzer(
         // here rather than handing the models several more minutes of work —
         // this is what lets the drain thread close the sessions promptly.
         if (released) return null
+
+        Log.d(TAG, "stage=dsp track=$trackId")
 
         // Early publish: the whole-track DSP alone already carries a tempo
         // estimate — surface it the moment Pass 1 lands so the player's status
@@ -305,6 +333,11 @@ class SmartFadeAnalyzer(
         // over the head and tail only — a transition only ever reads the tail
         // of the outgoing track and the head of the incoming one.
         if (released) return null
+        if (!hasHeapHeadroom()) {
+            Log.d(TAG, "Deferring model passes of $trackId: low heap headroom")
+            return null
+        }
+        Log.d(TAG, "stage=decode-region track=$trackId")
         val openTrackSource: () -> MediaDataSource? = { openSource(trackId, uri, local) }
         val window = BeatTracker.WINDOW_SECONDS
         val tailStart = max(0.0, effectiveDuration - window)
@@ -319,7 +352,7 @@ class SmartFadeAnalyzer(
 
         Log.d(
             TAG,
-            "Analysed $trackId: bpm=${leading?.bpm ?: features.bpm} " +
+            "stage=models-done track=$trackId: bpm=${leading?.bpm ?: features.bpm} " +
                 "conf=${leading?.beatConfidence ?: features.beatConfidence} " +
                 "key=${features.key} contentEnd=${features.contentEndTime} " +
                 "mixOutCandidates=${features.mixOutCandidates.size}",
@@ -505,6 +538,14 @@ class SmartFadeAnalyzer(
             }
         }
         return merged.toList()
+    }
+
+    /** True when the Java heap still has the headroom the pipeline's transient
+     * allocations need — see [MIN_FREE_HEAP_BYTES]. */
+    private fun hasHeapHeadroom(): Boolean {
+        val runtime = Runtime.getRuntime()
+        val free = runtime.maxMemory() - runtime.totalMemory() + runtime.freeMemory()
+        return free >= MIN_FREE_HEAP_BYTES
     }
 
     /** Recorded ready-but-empty so an undecodable track is not retried forever. */
