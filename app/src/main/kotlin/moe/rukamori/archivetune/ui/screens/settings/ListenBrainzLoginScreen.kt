@@ -10,11 +10,20 @@
  *  - OAUTH (LISTENBRAINZ_CLIENT_ID/SECRET in local.properties or env): the
  *    MusicBrainz OAuth2 code flow — authorize → archivetune:// callback →
  *    code exchange → the access token IS the ListenBrainz user token.
- *  - FALLBACK (no client registered yet): the WebView opens the ListenBrainz
- *    login page; the footer lets the user copy their user token out of the
- *    site's settings and finish with one tap (validated against
- *    /1/validate-token). Not single-tap, but it keeps the whole flow inside
- *    the same sign-in sheet instead of a blind paste dialog.
+ *  - AUTO TOKEN (the default, no client registered): the WebView opens
+ *    https://listenbrainz.org/settings/ — ListenBrainz answers with a 302 to
+ *    its real sign-in page (/login/musicbrainz/?next=/settings/; the old
+ *    /login/ path is NOT a route of LB's React router and rendered as the
+ *    site's own 404 page). The user signs in with their MusicBrainz account,
+ *    lands back on /settings/ still signed in, and the page is scraped for
+ *    the token automatically: every LB page embeds a
+ *    <script id="global-react-props"> JSON blob whose current_user object
+ *    carries auth_token (see listenbrainz-server's
+ *    webserver/utils.py::get_global_props), and the settings page itself
+ *    renders the token into <input id="auth-token">. Either source is enough
+ *    — the token is validated against /1/validate-token before it is saved,
+ *    so a bad extraction can never "succeed".
+ *  A paste-token footer remains as the manual escape hatch.
  */
 
 package moe.rukamori.archivetune.ui.screens.settings
@@ -54,16 +63,17 @@ import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import org.json.JSONTokener
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 const val LISTENBRAINZ_LOGIN_ROUTE = "settings/listenbrainz/login"
 
 private const val OAUTH_CALLBACK_URI = "archivetune://listenbrainz-auth-callback"
-private const val OAUTH_AUTHORIZE_URL = "https://musicbrainz.org/oauth/authorize"
+private const val OAUTH_AUTHORIZE_URL = "https://musicbrainz.org/oauth2/authorize"
 private const val OAUTH_TOKEN_URL = "https://musicbrainz.org/oauth/token"
 private const val LISTENBRAINZ_VALIDATE_URL = "https://api.listenbrainz.org/1/validate-token"
-private const val LISTENBRAINZ_LOGIN_URL = "https://listenbrainz.org/login/"
+private const val LISTENBRAINZ_SETTINGS_URL = "https://listenbrainz.org/settings/"
 
 private val client by lazy {
     OkHttpClient
@@ -127,6 +137,40 @@ private fun exchangeCodeForToken(code: String): String? {
     }.getOrNull()
 }
 
+/**
+ * Runs inside the logged-in listenbrainz.org page and returns the user token
+ * as a plain string (or null). evaluateJavascript JSON-encodes the result, so
+ * the Kotlin side decodes it with a JSONTokener.
+ *
+ * Strategy 1: the global-react-props JSON blob every LB page embeds — its
+ * current_user.auth_token is the token (server-rendered by
+ * webserver/utils.py). Strategy 2: the settings page's own
+ * <input id="auth-token"> value.
+ */
+private const val TOKEN_EXTRACTION_JS = """
+(function() {
+    function ok(t) { return t && typeof t === 'string' && t.trim().length >= 16 ? t.trim() : null; }
+    try {
+        var el = document.getElementById('global-react-props');
+        if (el) {
+            var raw = el.textContent || el.innerHTML || '';
+            var props = JSON.parse(raw);
+            var t = props && props.current_user && props.current_user.auth_token;
+            var found = ok(t);
+            if (found) return found;
+        }
+    } catch (e) { /* fall through */ }
+    try {
+        var input = document.getElementById('auth-token');
+        if (input && input.value) {
+            var v = ok(input.value);
+            if (v) return v;
+        }
+    } catch (e) { /* fall through */ }
+    return null;
+})()
+"""
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun ListenBrainzLoginScreen(navController: NavController) {
@@ -139,9 +183,11 @@ fun ListenBrainzLoginScreen(navController: NavController) {
     }
 
     fun finishLogin(token: String) {
+        if (!handled.compareAndSet(false, true)) return
         scope.launch {
             val userName = withContext(Dispatchers.IO) { validateToken(token) }
             if (userName == null) {
+                handled.set(false)
                 withContext(Dispatchers.Main) {
                     toast(context.getString(R.string.listenbrainz_login_failed))
                 }
@@ -176,6 +222,7 @@ fun ListenBrainzLoginScreen(navController: NavController) {
         scope.launch {
             val token = withContext(Dispatchers.IO) { exchangeCodeForToken(code) }
             if (token != null) {
+                handled.set(false)
                 finishLogin(token)
             } else {
                 handled.set(false)
@@ -188,7 +235,21 @@ fun ListenBrainzLoginScreen(navController: NavController) {
         return true
     }
 
-    // Fallback mode's finisher: the token the user copied out of the site.
+    /** Scrapes the signed-in page for the user token; no-op when logged out. */
+    fun tryExtractToken(view: WebView, url: String?) {
+        if (handled.get()) return
+        val host = runCatching { Uri.parse(url ?: return).host }.getOrNull() ?: return
+        if (host != "listenbrainz.org" && host != "www.listenbrainz.org") return
+        view.evaluateJavascript(TOKEN_EXTRACTION_JS) { result ->
+            if (handled.get() || result == null || result == "null") return@evaluateJavascript
+            val token = runCatching { JSONTokener(result).nextValue() as? String }.getOrNull()
+            if (!token.isNullOrBlank() && token.length >= 16) {
+                finishLogin(token)
+            }
+        }
+    }
+
+    // Manual escape hatch: the token the user copied out of the site.
     fun finishFromClipboard() {
         scope.launch {
             val token =
@@ -216,24 +277,19 @@ fun ListenBrainzLoginScreen(navController: NavController) {
             if (oauthConfigured()) {
                 stringResource(R.string.listenbrainz_login_subtitle_oauth)
             } else {
-                stringResource(R.string.listenbrainz_login_subtitle_manual)
+                stringResource(R.string.listenbrainz_login_subtitle_auto)
             },
-        footer =
-            if (!oauthConfigured()) {
-                {
-                    Button(
-                        onClick = ::finishFromClipboard,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(top = 4.dp),
-                    ) {
-                        Text(stringResource(R.string.listenbrainz_login_paste_token))
-                    }
-                }
-            } else {
-                null
-            },
+        footer = {
+            Button(
+                onClick = ::finishFromClipboard,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+            ) {
+                Text(stringResource(R.string.listenbrainz_login_paste_token))
+            }
+        },
         factory = { ctx ->
             WebView(ctx).apply {
                 webViewClient = object : WebViewClient() {
@@ -250,6 +306,17 @@ fun ListenBrainzLoginScreen(navController: NavController) {
                         view: WebView,
                         url: String?,
                     ): Boolean = handleRedirect(url)
+
+                    override fun onPageFinished(
+                        view: WebView,
+                        url: String?,
+                    ) {
+                        // Auto flow: any signed-in listenbrainz.org page embeds
+                        // the token; the login redirect chain ends back on
+                        // /settings/, so this fires exactly once the user is
+                        // signed in.
+                        tryExtractToken(view, url)
+                    }
                 }
                 settings.apply {
                     javaScriptEnabled = true
@@ -259,7 +326,7 @@ fun ListenBrainzLoginScreen(navController: NavController) {
                     displayZoomControls = false
                 }
                 resetAuthWebViewSession(ctx, this, clearCookies = true) {
-                    loadUrl(if (oauthConfigured()) authorizeUrl() else LISTENBRAINZ_LOGIN_URL)
+                    loadUrl(if (oauthConfigured()) authorizeUrl() else LISTENBRAINZ_SETTINGS_URL)
                 }
             }
         },

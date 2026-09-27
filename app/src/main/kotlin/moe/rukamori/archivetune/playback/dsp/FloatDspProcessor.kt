@@ -42,11 +42,27 @@ class FloatDspProcessor : BaseAudioProcessor() {
     @Volatile
     var outputFloat: Boolean = false
 
+    // Volatile: setEngaged() is called from the service thread while the
+    // playback thread creates/releases the handle in queueInput/onReset. A
+    // plain Long is also tearable on 32-bit ABIs (armeabi-v7a ships in the
+    // release matrix) — a torn 64-bit handle dereferenced in JNI is an
+    // instant SIGSEGV with no Java-side trace.
+    @Volatile
     private var dspHandle: Long = 0L
+
+    // Guards the handle LIFECYCLE only (create/release/setEngaged):
+    // setEngaged arrives from the service thread while create/release run
+    // on the playback thread — an unguarded pair can call into a handle that
+    // onReset just deleted (use-after-free, bare SIGSEGV). The queueInput hot
+    // path stays lock-free: it runs on the same playback thread as
+    // onReset/ensureHandle, which serialize it by construction.
+    private val handleLock = Any()
 
     fun setEngaged(value: Boolean) {
         engaged = value
-        if (dspHandle != 0L) FloatDsp.nativeSetEngaged(dspHandle, value)
+        synchronized(handleLock) {
+            if (dspHandle != 0L) FloatDsp.nativeSetEngaged(dspHandle, value)
+        }
     }
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
@@ -115,9 +131,11 @@ class FloatDspProcessor : BaseAudioProcessor() {
 
     private fun ensureHandle(): Boolean {
         if (!FloatDsp.available) return false
-        dspHandle = FloatDsp.nativeCreate(inputAudioFormat.sampleRate, inputAudioFormat.channelCount)
-        if (dspHandle == 0L) return false
-        FloatDsp.nativeSetEngaged(dspHandle, engaged)
+        synchronized(handleLock) {
+            dspHandle = FloatDsp.nativeCreate(inputAudioFormat.sampleRate, inputAudioFormat.channelCount)
+            if (dspHandle == 0L) return false
+            FloatDsp.nativeSetEngaged(dspHandle, engaged)
+        }
         return true
     }
 
@@ -126,9 +144,11 @@ class FloatDspProcessor : BaseAudioProcessor() {
     }
 
     override fun onReset() {
-        if (dspHandle != 0L) {
-            FloatDsp.nativeRelease(dspHandle)
-            dspHandle = 0L
+        synchronized(handleLock) {
+            if (dspHandle != 0L) {
+                FloatDsp.nativeRelease(dspHandle)
+                dspHandle = 0L
+            }
         }
     }
 
@@ -137,9 +157,11 @@ class FloatDspProcessor : BaseAudioProcessor() {
         // Best-effort reclaim: the normal teardown is onReset, but a player
         // released without a pipeline reset would otherwise hold the tiny
         // native context until process death.
-        if (dspHandle != 0L) {
-            runCatching { FloatDsp.nativeRelease(dspHandle) }
-            dspHandle = 0L
+        synchronized(handleLock) {
+            if (dspHandle != 0L) {
+                runCatching { FloatDsp.nativeRelease(dspHandle) }
+                dspHandle = 0L
+            }
         }
     }
 }

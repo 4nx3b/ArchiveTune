@@ -123,6 +123,9 @@ class App :
             Timber.plant(Timber.DebugTree())
             return
         }
+        // Crash log capture first: the native signal handlers and the session
+        // breadcrumb mirror must be in place before anything else can die.
+        runCatching { moe.rukamori.archivetune.utils.CrashReporter.install(this) }
         if (BuildConfig.DEBUG) {
             android.os.StrictMode.setThreadPolicy(
                 android.os.StrictMode.ThreadPolicy.Builder()
@@ -447,6 +450,10 @@ class App :
             try {
                 Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
                     try {
+                        // File first: the DebugActivity hand-off below kills
+                        // the process, so this is the only chance to persist a
+                        // report the user can hand over later.
+                        moe.rukamori.archivetune.utils.CrashReporter.writeJavaCrashReport(thread, throwable)
                         val sw = StringWriter()
                         val pw = PrintWriter(sw)
                         throwable.printStackTrace(pw)
