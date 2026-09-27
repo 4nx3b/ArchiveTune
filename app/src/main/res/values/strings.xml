@@ -659,7 +659,7 @@
     <string name="float_dsp">32-bit float DSP</string>
     <string name="float_dsp_desc">Native 32-bit float processing (DC blocker, soft-knee limiter, TPDF dither) applied automatically to lossless and high-quality streams</string>
     <string name="usb_exclusive_audio">USB exclusive output</string>
-    <string name="usb_exclusive_audio_desc">Drive a USB DAC directly with an exclusive 32-bit float stream, bypassing the system mixer. Applies when a USB device is connected; incompatible with offload, crossfade and automix.</string>
+    <string name="usb_exclusive_audio_desc">Drive a USB DAC directly with an exclusive 32-bit float stream, bypassing the system mixer. Engages from the next track whenever a USB device is connected — including one plugged in mid-session; incompatible with offload, crossfade and automix (they suspend it while active).</string>
     <string name="pause_on_device_mute">Pause when device volume is 0</string>
     <string name="pause_on_device_mute_desc">Pause at zero volume, explain play attempts, and resume when volume increases</string>
     <string name="device_mute_recovery_volume">Increase volume from 0</string>

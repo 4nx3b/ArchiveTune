@@ -3175,6 +3175,53 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
 
+                        // Root-level host for the lyrics export: the SAF
+                        // launchers and the request collector live HERE, in a
+                        // part of the composition that exists for as long as
+                        // the activity does — never inside the transient
+                        // lyrics menu. A picker round-trip that destroys the
+                        // menu, the composition or even the process still
+                        // finds a registered launcher on return (the
+                        // ActivityResultRegistry re-delivers pending results
+                        // to a re-registered key after process death), and
+                        // the payload itself is staged to cacheDir by
+                        // LyricsExportCoordinator, so the write can never
+                        // depend on composable state that died mid-flight.
+                        // This is the fix for the long-standing "export gives
+                        // empty files" bug: the picker creates the file up
+                        // front, and every earlier layout lost the payload
+                        // between tap and callback.
+                        val lyricsExportTtmlLauncher =
+                            rememberLauncherForActivityResult(
+                                androidx.activity.result.contract.ActivityResultContracts.CreateDocument(
+                                    moe.rukamori.archivetune.utils.LyricsExportCoordinator.MIME_XML,
+                                ),
+                            ) { uri ->
+                                moe.rukamori.archivetune.utils.LyricsExportCoordinator
+                                    .onDestinationPicked(this@MainActivity, uri)
+                            }
+                        val lyricsExportTextLauncher =
+                            rememberLauncherForActivityResult(
+                                androidx.activity.result.contract.ActivityResultContracts.CreateDocument(
+                                    moe.rukamori.archivetune.utils.LyricsExportCoordinator.MIME_TEXT,
+                                ),
+                            ) { uri ->
+                                moe.rukamori.archivetune.utils.LyricsExportCoordinator
+                                    .onDestinationPicked(this@MainActivity, uri)
+                            }
+                        androidx.compose.runtime.LaunchedEffect(
+                            lyricsExportTtmlLauncher,
+                            lyricsExportTextLauncher,
+                        ) {
+                            moe.rukamori.archivetune.utils.LyricsExportCoordinator.requests.collect { pending ->
+                                if (pending.mime == moe.rukamori.archivetune.utils.LyricsExportCoordinator.MIME_XML) {
+                                    lyricsExportTtmlLauncher.launch(pending.fileName)
+                                } else {
+                                    lyricsExportTextLauncher.launch(pending.fileName)
+                                }
+                            }
+                        }
+
                         GlassPipelinePrewarm(
                             backdrop = menuGlassBackdrop,
                             active = glassPrewarmActive,

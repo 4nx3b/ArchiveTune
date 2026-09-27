@@ -77,6 +77,32 @@ void dumpProcFile(int fd, const char* path, size_t cap) {
     close(in);
 }
 
+// The crashing thread's name (its /proc/<pid>/task/<tid>/comm): knowing
+// whether a SIGSEGV landed on "ExoPlayer:Playback" vs an ONNX worker vs the
+// automix analysis thread is the fastest triage signal a bare register dump
+// can carry, and open/read/close are async-signal-safe.
+void dumpThreadName(int fd, long tid) {
+    char path[96];
+    char name[64];
+    snprintf(path, sizeof(path), "/proc/self/task/%ld/comm", tid);
+    const int in = open(path, O_RDONLY);
+    if (in < 0) return;
+    const ssize_t n = read(in, name, sizeof(name) - 1);
+    close(in);
+    if (n <= 0) return;
+    name[n] = '\0';
+    // Trim the trailing newline comm(5) keeps.
+    for (ssize_t i = 0; i < n; ++i) {
+        if (name[i] == '\n' || name[i] == '\r') {
+            name[i] = '\0';
+            break;
+        }
+    }
+    writeStr(fd, "thread_name=");
+    writeStr(fd, name);
+    writeStr(fd, "\n");
+}
+
 const char* signalName(int sig) {
     switch (sig) {
         case SIGSEGV: return "SIGSEGV";
@@ -152,10 +178,11 @@ void crashHandler(int sig, siginfo_t* info, void* ctx) {
         snprintf(path, sizeof(path), "%s/native_crash_%lld.trace", g_crash_dir, now);
         const int fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
         if (fd >= 0) {
+            const long tid = static_cast<long>(syscall(SYS_gettid));
             writeStr(fd, "ArchiveTune native crash report\n");
             writeFormatted(fd, "time_epoch=%lld\n", now);
-            writeFormatted(fd, "pid=%d tid=%ld (gettid)\n", static_cast<int>(getpid()),
-                           static_cast<long>(syscall(SYS_gettid)));
+            writeFormatted(fd, "pid=%d tid=%ld (gettid)\n", static_cast<int>(getpid()), tid);
+            dumpThreadName(fd, tid);
             writeRegisterBlock(fd, sig, info, ctx);
             writeStr(fd, "\n--- /proc/self/maps (for offline addr2line) ---\n");
             dumpProcFile(fd, "/proc/self/maps", 512 * 1024);

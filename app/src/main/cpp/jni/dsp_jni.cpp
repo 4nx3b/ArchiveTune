@@ -114,7 +114,7 @@ extern "C" JNIEXPORT void JNICALL JNI_FUNC_FLOATDSP(nativeProcessShortToFloat)(
         for (jint i = 0; i < samples; ++i) {
             outPtr[i] = static_cast<float>(inPtr[i]) / 32768.0f;
         }
-        dsp->process(outPtr, frames);
+        dsp->process(outPtr, frames, channels);
     } catch (...) {
     }
 }
@@ -131,7 +131,7 @@ extern "C" JNIEXPORT void JNICALL JNI_FUNC_FLOATDSP(nativeProcessFloatToFloat)(
         if (dsp == nullptr || inBase == nullptr || outPtr == nullptr) return;
         const auto* inPtr = reinterpret_cast<const float*>(inBase + inOffsetBytes);
         std::memcpy(outPtr, inPtr, static_cast<size_t>(samples) * sizeof(float));
-        dsp->process(outPtr, frames);
+        dsp->process(outPtr, frames, channels);
     } catch (...) {
     }
 }
@@ -153,7 +153,7 @@ extern "C" JNIEXPORT void JNICALL JNI_FUNC_FLOATDSP(nativeProcessShortToShort)(
         for (jint i = 0; i < samples; ++i) {
             scratch[static_cast<size_t>(i)] = static_cast<float>(inPtr[i]) / 32768.0f;
         }
-        dsp->process(scratch.data(), frames);
+        dsp->process(scratch.data(), frames, channels);
         dsp->toShort(scratch.data(), outPtr, static_cast<size_t>(samples));
     } catch (...) {
     }
@@ -248,7 +248,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_FUNC_AASTREAM(nativeWrite)(
             // unity volume — write the window as it sits.
             return static_cast<jint>(stream->write(
                 reinterpret_cast<const float*>(data),
-                static_cast<size_t>(frames), timeoutMs));
+                static_cast<size_t>(frames), channels, timeoutMs));
         }
         // Convert (and scale) into scratch first.
         std::vector<float> scratch(static_cast<size_t>(samples));
@@ -265,7 +265,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_FUNC_AASTREAM(nativeWrite)(
             }
         }
         return static_cast<jint>(stream->write(
-            scratch.data(), static_cast<size_t>(frames), timeoutMs));
+            scratch.data(), static_cast<size_t>(frames), channels, timeoutMs));
     } catch (...) {
         return -900 /* AAUDIO_ERROR_INTERNAL */;
     }

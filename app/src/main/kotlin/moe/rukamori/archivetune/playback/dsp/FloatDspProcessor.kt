@@ -2,8 +2,7 @@
 
 /*
  * ArchiveTune (2026)
- * © Rukamori — github.com/rukamori
- * GPL-3.0 License | Contributors: see git history
+ * © Rukamori — GPL-3.0 License | Contributors: see git history
  *
  * The audio-processor tail of the app's chain: runs the native 32-bit float
  * DSP whenever the service has engaged it for the current stream (lossless
@@ -42,6 +41,16 @@ class FloatDspProcessor : BaseAudioProcessor() {
     @Volatile
     var outputFloat: Boolean = false
 
+    /**
+     * The encoding actually being emitted right now: [outputFloat] as it was
+     * when THIS track was configured. A mid-track flip of the raw flag (USB
+     * plugged/unplugged, automix toggled) must never change what the sink is
+     * handed mid-stream — the sink's OutputConfig is frozen for the track —
+     * so the queueInput hot path reads this snapshot, not the live flag.
+     */
+    @Volatile
+    private var activeOutputFloat: Boolean = false
+
     // Volatile: setEngaged() is called from the service thread while the
     // playback thread creates/releases the handle in queueInput/onReset. A
     // plain Long is also tearable on 32-bit ABIs (armeabi-v7a ships in the
@@ -49,6 +58,23 @@ class FloatDspProcessor : BaseAudioProcessor() {
     // instant SIGSEGV with no Java-side trace.
     @Volatile
     private var dspHandle: Long = 0L
+
+    /**
+     * The input format the live native handle was created for. The handle's
+     * per-channel state and filter coefficients are baked in at construction;
+     * a track transition that changes the format (44.1<->48 kHz, stereo<->
+     * mono — YouTube serves both) reconfigures the chain but does NOT reset
+     * the processor, so without this check the stale handle would be driven
+     * with the new layout: frames * staleChannels floats pushed through a
+     * buffer sized frames * newChannels. That is a heap overrun of the
+     * direct output buffer — a bare SIGSEGV with no Java trace, and exactly
+     * the automix-crash shape (automix = a format change every song). The
+     * handle is now dropped at every configure whose format differs, and
+     * queueInput re-verifies before every native call (belt and braces: the
+     * native side independently refuses mismatched channel counts).
+     */
+    @Volatile
+    private var handleFormat: AudioProcessor.AudioFormat? = null
 
     // Guards the handle LIFECYCLE only (create/release/setEngaged):
     // setEngaged arrives from the service thread while create/release run
@@ -69,19 +95,56 @@ class FloatDspProcessor : BaseAudioProcessor() {
         if (!FloatDsp.available) return AudioProcessor.AudioFormat.NOT_SET
         val encoding = inputAudioFormat.encoding
         if (engaged && (encoding == C.ENCODING_PCM_16BIT || encoding == C.ENCODING_PCM_FLOAT)) {
+            // The encoding decision freezes for this track here; a live flag
+            // flip only lands at the NEXT configure.
+            activeOutputFloat = outputFloat
+            dropHandleIfFormatChanged(inputAudioFormat)
             return AudioProcessor.AudioFormat(
                 inputAudioFormat.sampleRate,
                 inputAudioFormat.channelCount,
-                if (outputFloat) C.ENCODING_PCM_FLOAT else C.ENCODING_PCM_16BIT,
+                if (activeOutputFloat) C.ENCODING_PCM_FLOAT else C.ENCODING_PCM_16BIT,
             )
         }
+        activeOutputFloat = false
         return AudioProcessor.AudioFormat.NOT_SET
     }
+
+    /**
+     * Releases the native handle when the incoming format no longer matches
+     * the one it was created for. onConfigure and queueInput both run on the
+     * playback thread, so this needs no extra synchronization against them.
+     */
+    private fun dropHandleIfFormatChanged(format: AudioProcessor.AudioFormat) {
+        val current = handleFormat ?: return
+        if (sameFormat(current, format)) return
+        synchronized(handleLock) {
+            if (dspHandle != 0L) {
+                FloatDsp.nativeRelease(dspHandle)
+                dspHandle = 0L
+            }
+        }
+        handleFormat = null
+    }
+
+    private fun sameFormat(
+        a: AudioProcessor.AudioFormat?,
+        b: AudioProcessor.AudioFormat,
+    ): Boolean = a != null && a.sampleRate == b.sampleRate && a.channelCount == b.channelCount && a.encoding == b.encoding
 
     override fun queueInput(inputBuffer: ByteBuffer) {
         if (!inputBuffer.hasRemaining()) return
         if (!engaged || dspHandle == 0L && !ensureHandle()) {
             // Not engaged (or the native lib is absent): bit-exact passthrough.
+            replaceOutputBuffer(inputBuffer.remaining()).put(inputBuffer).flip()
+            return
+        }
+        // Consistency re-check before any native call: the handle must have
+        // been created for exactly the format now streaming. A mismatch means
+        // a reconfigure slipped past onConfigure's drop (or the processor was
+        // flushed into a new stream) — passthrough this window and let the
+        // next ensureHandle() rebuild with the correct layout.
+        if (!sameFormat(handleFormat, inputAudioFormat)) {
+            releaseHandleForRebuild()
             replaceOutputBuffer(inputBuffer.remaining()).put(inputBuffer).flip()
             return
         }
@@ -99,7 +162,7 @@ class FloatDspProcessor : BaseAudioProcessor() {
         // through base+position, so pass the byte offset alongside.
         val inOffset = inputBuffer.position()
 
-        if (outputFloat) {
+        if (activeOutputFloat) {
             val outBytes = frames * channels * 4
             val output = replaceOutputBuffer(outBytes)
             if (inputFloat) {
@@ -134,9 +197,20 @@ class FloatDspProcessor : BaseAudioProcessor() {
         synchronized(handleLock) {
             dspHandle = FloatDsp.nativeCreate(inputAudioFormat.sampleRate, inputAudioFormat.channelCount)
             if (dspHandle == 0L) return false
+            handleFormat = inputAudioFormat
             FloatDsp.nativeSetEngaged(dspHandle, engaged)
         }
         return true
+    }
+
+    private fun releaseHandleForRebuild() {
+        synchronized(handleLock) {
+            if (dspHandle != 0L) {
+                FloatDsp.nativeRelease(dspHandle)
+                dspHandle = 0L
+            }
+        }
+        handleFormat = null
     }
 
     override fun onFlush() {
@@ -150,6 +224,8 @@ class FloatDspProcessor : BaseAudioProcessor() {
                 dspHandle = 0L
             }
         }
+        handleFormat = null
+        activeOutputFloat = false
     }
 
     @Suppress("FinalPrivate")

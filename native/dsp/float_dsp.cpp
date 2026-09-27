@@ -8,6 +8,7 @@
 
 #include "float_dsp.h"
 
+#include <atomic>
 #include <cmath>
 #include <algorithm>
 
@@ -80,8 +81,15 @@ float FloatDsp::limiterGainFor(float envelopeDb) const {
     return std::exp(gainDb * 0.11512925f);  // 10^(dB/20) = e^(dB * ln10/20)
 }
 
-void FloatDsp::process(float* data, size_t frames) {
+void FloatDsp::process(float* data, size_t frames, int channels) {
     if (!engaged_ || frames == 0 || channels_ <= 0) {
+        return;
+    }
+    // Layout guard: the per-channel state vectors are sized for channels_ at
+    // construction. A buffer whose interleave differs (a format change the
+    // Kotlin owner missed) must never be walked with the stale stride —
+    // frames * channels_ floats could overrun a frames * channels buffer.
+    if (channels != channels_) {
         return;
     }
 

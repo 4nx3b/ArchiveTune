@@ -85,16 +85,22 @@ int32_t AaudioExclusiveStream::open(int32_t sampleRate,
     return AAUDIO_OK;
 }
 
-int64_t AaudioExclusiveStream::write(const float* data, size_t frames, int64_t timeoutMs) {
+int64_t AaudioExclusiveStream::write(const float* data, size_t frames, int32_t channels, int64_t timeoutMs) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!open_ || stream_ == nullptr) {
         return AAUDIO_ERROR_DISCONNECTED;
+    }
+    // The caller's interleave governs the pointer stride. A stream whose
+    // granted layout disagrees with the buffer's cannot be written safely —
+    // striding by the stream's own count would read past the caller's buffer.
+    if (channels <= 0 || channels != channels_) {
+        return AAUDIO_ERROR_ILLEGAL_ARGUMENT;
     }
     int64_t written = 0;
     while (written < static_cast<int64_t>(frames)) {
         aaudio_result_t result = AAudioStream_write(
             stream_,
-            data + written * static_cast<size_t>(channels_),
+            data + written * static_cast<size_t>(channels),
             static_cast<int32_t>(frames - static_cast<size_t>(written)),
             static_cast<int64_t>(timeoutMs) * 1000000LL);
         if (result < 0) {
