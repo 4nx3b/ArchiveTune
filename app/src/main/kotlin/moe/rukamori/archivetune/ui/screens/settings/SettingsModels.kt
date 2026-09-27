@@ -37,6 +37,10 @@ data class SettingsItem(
     val badge: String? = null,
     val showUpdateIndicator: Boolean = false,
     val accentColor: Color = Color.Unspecified,
+    /** Optional profile-picture URL — when set (e.g. the signed-in Google
+     * account's avatar, a connected service's user image) the row renders it
+     * as a circular avatar in the icon slot instead of the tinted glyph. */
+    val iconUrl: String? = null,
     val keywords: List<String> = emptyList(),
     val children: List<SettingsChild> = emptyList(),
     val onClick: () -> Unit,

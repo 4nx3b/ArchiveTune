@@ -13,7 +13,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.painterResource
@@ -126,6 +126,58 @@ import moe.rukamori.archivetune.constants.TidalAnimatedCoversEnabledKey
 import moe.rukamori.archivetune.constants.ListenTogetherSyncVolumeKey
 import moe.rukamori.archivetune.utils.rememberPreference
 
+
+/**
+ * The settings home's vivid icon-tile palette — one saturated color per row
+ * (iOS Settings-style colorful icons), chosen to read equally well on the
+ * light and dark grouped cards and to keep neighboring rows distinguishable.
+ * The values are FIXED (not theme roles): the old primary/secondary/tertiary
+ * rotation collapsed to at most three near-identical tones.
+ */
+internal object SettingsIconPalette {
+    val Account = Color(0xFF4285F4)
+    val Stats = Color(0xFFEC407A)
+    val Appearance = Color(0xFFAB47BC)
+    val AppearanceExtras = Color(0xFF7E57C2)
+    val Aod = Color(0xFF3949AB)
+    val NavigationBar = Color(0xFF29B6F6)
+    val Playback = Color(0xFFEF5350)
+    val Sources = Color(0xFF26A69A)
+    val JioSaavn = Color(0xFFFFA726)
+    val Amazon = Color(0xFFFF7043)
+    val QqMusic = Color(0xFF7CB342)
+    val Deezer = Color(0xFF9C27B0)
+    val Lyrics = Color(0xFF42A5F5)
+    val LyricsProviders = Color(0xFF26C6DA)
+    val LyricsRomanisation = Color(0xFF66BB6A)
+    val LanguagePacks = Color(0xFF8D6E63)
+    val Content = Color(0xFFFFB300)
+    val Behavior = Color(0xFF78909C)
+    val AndroidAuto = Color(0xFF00ACC1)
+    val Integration = Color(0xFF7C4DFF)
+    val AiIntegration = Color(0xFFF06292)
+    val DiscordExperimental = Color(0xFF5865F2)
+    val Tidal = Color(0xFF00BFA5)
+    val Qobuz = Color(0xFFFF8A65)
+    val Telegram = Color(0xFF29A9EB)
+    val Internet = Color(0xFF5C6BC0)
+    val PoToken = Color(0xFFFFB300)
+    val Storage = Color(0xFF78909C)
+    val Downloads = Color(0xFF66BB6A)
+    val BackupRestore = Color(0xFF8D6E63)
+    val DeveloperOptions = Color(0xFF90A4AE)
+    val Updates = Color(0xFF26A69A)
+    val About = Color(0xFF29B6F6)
+    val DefaultLinks = Color(0xFF42A5F5)
+
+    // Integration-page-only services (no row on the settings home): brand
+    // tints shared with the integration rows' glyphs.
+    val AppleMusic = Color(0xFFFA2D48)
+    val LastFm = Color(0xFFD51007)
+    val ListenBrainz = Color(0xFF35B5AC)
+    val CrossServiceImport = Color(0xFF5C6BC0)
+}
+
 @Composable
 private fun SearchResultSwitch(
     key: androidx.datastore.preferences.core.Preferences.Key<Boolean>,
@@ -144,6 +196,7 @@ fun buildSettingsGroups(
     isAndroid12OrLater: Boolean,
     hasUpdate: Boolean,
     context: Context,
+    accountImageUrl: String? = null,
 ): List<SettingsGroup> {
     val account =
         SettingsItem(
@@ -151,7 +204,8 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.ic_account),
             title = stringResource(R.string.account),
             subtitle = stringResource(R.string.settings_account_subtitle),
-            accentColor = MaterialTheme.colorScheme.primary,
+            accentColor = SettingsIconPalette.Account,
+            iconUrl = accountImageUrl,
             keywords = listOf("account", "profile", "youtube", "sign in", "login", "logout", "token", "hidden", "playlist", "channels", "switch account"),
             onClick = { navController.navigate("settings/account") },
             children = listOf(
@@ -168,7 +222,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.stats),
             title = stringResource(R.string.settings_stats_title),
             subtitle = stringResource(R.string.settings_stats_subtitle),
-            accentColor = MaterialTheme.colorScheme.primary,
+            accentColor = SettingsIconPalette.Stats,
             keywords = listOf("stats", "statistics", "listening", "history", "top", "most played", "time"),
             onClick = { navController.navigate("stats") },
         )
@@ -178,7 +232,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.ic_palette),
             title = stringResource(R.string.appearance),
             subtitle = stringResource(R.string.settings_appearance_subtitle),
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.Appearance,
             keywords = listOf("appearance", "theme", "dark", "light", "color", "palette", "style", "design"),
             onClick = { navController.navigate("settings/appearance") },
             children = listOf(
@@ -240,7 +294,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.palette),
             title = "Appearance extras",
             subtitle = "Home and library card visibility",
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.AppearanceExtras,
             keywords = listOf("extras", "appearance extras", "home cards", "hide cards", "library cards", "quick picks cards"),
             onClick = { navController.navigate("settings/appearance/extras") },
             hidden = true,
@@ -261,7 +315,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.palette),
             title = "AOD customization",
             subtitle = "Always-on display layout and style",
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.Aod,
             keywords = listOf("aod", "always on display", "always-on display", "lockscreen", "screensaver", "idle screen", "ambient display"),
             onClick = { navController.navigate("settings/appearance/aod_customized") },
             hidden = true,
@@ -291,7 +345,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.palette),
             title = "Navigation bar",
             subtitle = "Navigation bar style and dimensions",
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.NavigationBar,
             keywords = listOf("navigation bar", "nav bar", "bottom bar", "tab bar", "navbar"),
             onClick = { navController.navigate("settings/appearance/navigation_bar") },
             hidden = true,
@@ -311,7 +365,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.music_note),
             title = stringResource(R.string.settings_playback_title),
             subtitle = stringResource(R.string.settings_playback_subtitle),
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.Playback,
             keywords = listOf("playback", "player", "audio", "quality", "equalizer", "eq", "volume", "crossfade", "gapless", "flac", "lossless", "hi-res", "sample rate", "bitrate", "video", "music video", "video playback", "pip", "picture in picture", "floating", "minimize"),
             onClick = { navController.navigate("settings/player") },
             children = listOf(
@@ -375,7 +429,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.provider_tidal),
             title = "JioSaavn",
             subtitle = "JioSaavn audio source",
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.JioSaavn,
             keywords = listOf("jiosaavn", "jio saavn", "saavn", "indian music", "bollywood", "vivimusic"),
             onClick = { navController.navigate("settings/jiosaavn") },
             hidden = true,
@@ -392,7 +446,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.login),
             title = "Amazon Music",
             subtitle = "Amazon Music account and audio source",
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.Amazon,
             keywords = listOf("amazon", "amazon music", "amazon login", "amazon hd", "amazon ultra hd"),
             onClick = { navController.navigate("settings/amazon") },
             hidden = true,
@@ -410,7 +464,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.ic_music),
             title = "QQ Music",
             subtitle = "QQ Music audio source (partner programme)",
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.QqMusic,
             keywords = listOf("qq", "qq music", "qqmusic", "tencent", "tme", "qplay", "partner"),
             onClick = { navController.navigate("settings/qqmusic") },
             hidden = true,
@@ -426,7 +480,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.provider_tidal),
             title = "Deezer",
             subtitle = "Deezer account and audio source",
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.Deezer,
             keywords = listOf("deezer", "deezer account", "deezer login", "arl", "deezer premium", "flac"),
             onClick = { navController.navigate("settings/deezer") },
             hidden = true,
@@ -443,7 +497,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.ic_music),
             title = stringResource(R.string.source_settings),
             subtitle = stringResource(R.string.source_settings_subtitle),
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.Sources,
             keywords = listOf("source", "music source", "youtube music", "spotify", "metadata source", "search source", "tidal", "qobuz", "provider", "streaming", "telegram", "telegram channel", "flac", "lossless", "private channel"),
             onClick = { navController.navigate("settings/sources") },
 
@@ -462,7 +516,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.ic_lyrics),
             title = stringResource(R.string.lyrics),
             subtitle = stringResource(R.string.settings_lyrics_subtitle),
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.Lyrics,
             keywords = listOf("lyrics", "lyric", "subtitle", "text", "sing along", "lrc", "translation", "romanize", "karaoke"),
             onClick = { navController.navigate("settings/lyrics") },
 
@@ -511,7 +565,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.lyrics),
             title = "Lyrics providers",
             subtitle = "Enable and prioritise lyrics sources",
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.LyricsProviders,
             keywords = listOf("lyrics provider", "lyrics providers", "lyrics source", "lrclib", "kugou", "musixmatch", "betterlyrics", "youlyplus", "unison"),
             onClick = { navController.navigate("settings/lyrics/providers") },
             hidden = true,
@@ -535,7 +589,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.translate),
             title = "Lyrics romanization",
             subtitle = "Transliterate non-Latin lyrics",
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.LyricsRomanisation,
             keywords = listOf("romanization", "romanisation", "romanize", "romaji", "pinyin", "transliteration", "furigana", "hangul"),
             onClick = { navController.navigate("settings/lyrics/romanisation") },
             hidden = true,
@@ -553,7 +607,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.language),
             title = stringResource(R.string.content),
             subtitle = stringResource(R.string.settings_content_subtitle),
-            accentColor = MaterialTheme.colorScheme.primary,
+            accentColor = SettingsIconPalette.Content,
             keywords = listOf("content", "language", "locale", "country", "region", "app language", "explicit", "age restricted", "age", "mature", "video", "progressive", "quick picks"),
             onClick = { navController.navigate("settings/content") },
             children = listOf(
@@ -578,7 +632,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.translate),
             title = stringResource(R.string.language_packs),
             subtitle = stringResource(R.string.settings_language_packs_subtitle),
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.LanguagePacks,
             keywords = listOf("language pack", "translation", "translate", "localization", "i18n"),
             onClick = { navController.navigate("settings/language_packs") },
 
@@ -590,7 +644,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.swipe),
             title = stringResource(R.string.settings_behavior_title),
             subtitle = stringResource(R.string.settings_behavior_subtitle),
-            accentColor = MaterialTheme.colorScheme.primary,
+            accentColor = SettingsIconPalette.Behavior,
             keywords = listOf("behavior", "privacy", "swipe", "gesture", "history", "cache", "data", "screenshot", "haptic", "vibrate"),
             onClick = { navController.navigate("settings/privacy") },
             children = listOf(
@@ -612,7 +666,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.directions_car),
             title = stringResource(R.string.android_auto),
             subtitle = stringResource(R.string.android_auto_settings_subtitle),
-            accentColor = MaterialTheme.colorScheme.primary,
+            accentColor = SettingsIconPalette.AndroidAuto,
             keywords = listOf("android auto", "androidauto", "car", "automotive", "driving", "aaosp", "vehicle", "head unit"),
             onClick = { navController.navigate("settings/android_auto") },
             children = listOf(
@@ -631,7 +685,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.auto_awesome),
             title = stringResource(R.string.integration),
             subtitle = stringResource(R.string.settings_integration_subtitle),
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.Integration,
             keywords = listOf("integration", "lastfm", "last.fm", "libre.fm", "scrobble", "scrobbling", "discord", "listenbrainz", "spotify", "apple music"),
             onClick = { navController.navigate("settings/integration") },
             children = listOf(
@@ -695,7 +749,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.auto_awesome),
             title = "Discord experimental",
             subtitle = "Rich presence buttons and translation",
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.DiscordExperimental,
             keywords = listOf("discord experimental", "discord buttons", "rich presence buttons", "rpc buttons", "discord translator"),
             onClick = { navController.navigate("settings/discord/experimental") },
             hidden = true,
@@ -715,7 +769,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.provider_tidal),
             title = "Tidal",
             subtitle = "Tidal account and instances",
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.Tidal,
             keywords = listOf("tidal", "tidal account", "tidal instances", "hifi", "mqa", "lossless", "flac", "tidal login"),
             onClick = { navController.navigate("settings/tidal") },
             hidden = true,
@@ -740,7 +794,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.provider_tidal),
             title = "Qobuz",
             subtitle = "Qobuz account, tokens and instances",
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.Qobuz,
             keywords = listOf("qobuz", "qobuz account", "qobuz tokens", "qobuz instances", "hi-res", "flac", "cd quality", "24 bit", "qobuz login"),
             onClick = { navController.navigate("settings/qobuz") },
             hidden = true,
@@ -767,7 +821,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.ic_telegram),
             title = "Telegram",
             subtitle = "Telegram account and channels",
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.Telegram,
             keywords = listOf("telegram", "telegram channel", "telegram login", "telegram music", "telegram bots", "channel sync"),
             onClick = { navController.navigate("settings/telegram") },
             hidden = true,
@@ -786,7 +840,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.ai),
             title = stringResource(R.string.ai_integration),
             subtitle = stringResource(R.string.ai_integration_desc),
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.AiIntegration,
             keywords = listOf("ai", "artificial intelligence", "chatgpt", "openai", "gemini", "llm", "ai integration", "mix", "smart mix"),
             onClick = { navController.navigate("settings/ai_integration") },
 
@@ -815,7 +869,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.wifi_proxy),
             title = stringResource(R.string.internet),
             subtitle = stringResource(R.string.settings_internet_subtitle),
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.Internet,
             keywords = listOf("internet", "proxy", "vpn", "network", "wifi", "connection", "traffic", "tor", "dns", "dns over https", "region", "country", "spoof", "geobypass", "geo bypass"),
             onClick = { navController.navigate("settings/internet") },
             children = listOf(
@@ -842,7 +896,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.token),
             title = stringResource(R.string.po_token_generation),
             subtitle = stringResource(R.string.settings_po_token_subtitle),
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.PoToken,
             keywords = listOf("po token", "potoken", "botguard", "youtube token", "playability"),
             onClick = { navController.navigate(PO_TOKEN_ROUTE) },
 
@@ -858,7 +912,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.storage),
             title = stringResource(R.string.storage),
             subtitle = stringResource(R.string.settings_storage_subtitle),
-            accentColor = MaterialTheme.colorScheme.primary,
+            accentColor = SettingsIconPalette.Storage,
             keywords = listOf("storage", "download", "cache", "disk", "space", "memory", "path", "location", "export", "export songs", "local storage", "save songs"),
             onClick = { navController.navigate("settings/storage") },
             children = listOf(
@@ -886,7 +940,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.download),
             title = stringResource(R.string.downloads),
             subtitle = stringResource(R.string.settings_downloads_subtitle),
-            accentColor = MaterialTheme.colorScheme.primary,
+            accentColor = SettingsIconPalette.Downloads,
             keywords = listOf("download", "downloader", "external downloader", "download source", "auto download", "export songs", "clear downloads", "offline"),
             onClick = { navController.navigate("settings/downloads") },
             children = listOf(
@@ -904,7 +958,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.backup),
             title = stringResource(R.string.backup_restore),
             subtitle = stringResource(R.string.settings_backup_restore_subtitle),
-            accentColor = MaterialTheme.colorScheme.primary,
+            accentColor = SettingsIconPalette.BackupRestore,
             keywords = listOf("backup", "restore", "export", "import", "data", "save", "scheduled", "playlist", "csv", "m3u"),
             onClick = { navController.navigate("settings/backup_restore") },
             children = listOf(
@@ -932,7 +986,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.experiment),
             title = stringResource(R.string.settings_developer_options_title),
             subtitle = stringResource(R.string.settings_developer_options_subtitle),
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.DeveloperOptions,
             keywords = listOf("developer", "debug", "experimental", "advanced", "logcat", "dev", "manual source", "changelog", "update"),
             onClick = { navController.navigate("settings/misc") },
             children = listOf(
@@ -956,7 +1010,7 @@ fun buildSettingsGroups(
                 icon = painterResource(R.drawable.link),
                 title = stringResource(R.string.default_links),
                 subtitle = stringResource(R.string.open_supported_links),
-                accentColor = MaterialTheme.colorScheme.secondary,
+                accentColor = SettingsIconPalette.DefaultLinks,
                 keywords = listOf("default links", "links", "urls", "deep link", "supported links"),
                 onClick = {
                     try {
@@ -1012,12 +1066,7 @@ fun buildSettingsGroups(
                         stringResource(R.string.settings_updates_subtitle)
                     },
                 showUpdateIndicator = hasUpdate,
-                accentColor =
-                    if (hasUpdate) {
-                        MaterialTheme.colorScheme.tertiary
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    },
+                accentColor = SettingsIconPalette.Updates,
                 badge = if (hasUpdate) "v${BuildConfig.VERSION_NAME}" else BuildConfig.VERSION_NAME,
                 onClick = { navController.navigate("settings/update") },
             )
@@ -1030,7 +1079,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.ic_about),
             title = stringResource(R.string.about),
             subtitle = stringResource(R.string.settings_about_subtitle),
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.About,
             keywords = listOf("about", "info", "version", "license", "credits", "contributors", "changelog"),
             onClick = { navController.navigate("settings/about") },
             children = listOf(

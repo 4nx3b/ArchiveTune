@@ -698,7 +698,7 @@ fun CommentTogetherScreen(navController: NavController) {
 
             // (The in-chat mention indicator no longer lives in the header
             // stack: it is a compact chip floating above the composer, on the
-            // left — see the composer column below.)
+            // right — see the composer column below.)
 
             // The pinned-message carousel rides at the bottom of the floating
             // header stack: the list reserves the whole stack's height as top
@@ -746,17 +746,19 @@ fun CommentTogetherScreen(navController: NavController) {
             if (chatSupported) {
                 // The mention chip: a COMPACT pill (just the @ glyph with the
                 // remaining-mention count badge and the mentioner's avatar)
-                // floating above the composer on the LEFT, with a small gap to
-                // the input capsule — never flush against it. Tapping jumps to
-                // the most recent mention and consumes it; the next most
-                // recent then takes its place, pinned-message style.
+                // floating above the composer on the RIGHT (corner-aligned with
+                // the composer's right edge), with a small gap to the input
+                // capsule — never flush against it. Tapping jumps to the most
+                // recent mention and consumes it; the next most recent then
+                // takes its place, pinned-message style.
                 if (mentionQueue.isNotEmpty()) {
                     val mention = mentionQueue.first()
                     Row(
+                        horizontalArrangement = Arrangement.End,
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .padding(start = 6.dp, bottom = 6.dp),
+                                .padding(end = 6.dp, bottom = 6.dp),
                     ) {
                         MentionAlertChip(
                             mention = mention,
@@ -994,7 +996,7 @@ fun CommentTogetherScreen(navController: NavController) {
  * The compact mention chip: JUST the @ glyph (with the remaining-mention count
  * as an overlay badge) and the mentioner's profile picture — no name, no
  * message text, no full-width row with trailing dead space. It floats above
- * the composer on the left with a small gap to the input capsule.
+ * the composer on the RIGHT with a small gap to the input capsule.
  *
  * Liquid glass when the mode is on (same surface treatment as the header
  * pills, scrim polarity from the measured wallpaper); with the mode off the
@@ -1054,7 +1056,9 @@ private fun MentionAlertChip(
         ) {
             Text(
                 text = "@",
-                style = MaterialTheme.typography.titleMedium,
+                // Larger than the rest of the chip's glyphs — the @ is the
+                // chip's whole identity, so it reads first.
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black,
                 color = if (glassBackdrop != null) {
                     contentColor

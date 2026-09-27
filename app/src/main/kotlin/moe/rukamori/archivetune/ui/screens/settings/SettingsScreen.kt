@@ -61,6 +61,7 @@ import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AccountImageUrlKey
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -74,6 +75,7 @@ import moe.rukamori.archivetune.ui.screens.glassHeaderSource
 import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.Updater
+import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -259,7 +261,20 @@ fun SettingsScreen(
         BuildConfig.UPDATER_AVAILABLE &&
             Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
     var isUpdateDismissed by remember { mutableStateOf(false) }
-    val allSettingsGroups = buildSettingsGroups(navController, isAndroid12OrLater, hasUpdate, context)
+
+    // The signed-in Google account's avatar (persisted by the account
+    // identity refresh) — the account row on this page shows the profile
+    // picture instead of a generic account glyph.
+    val (accountImageUrl) = rememberPreference(AccountImageUrlKey, "")
+
+    val allSettingsGroups =
+        buildSettingsGroups(
+            navController = navController,
+            isAndroid12OrLater = isAndroid12OrLater,
+            hasUpdate = hasUpdate,
+            context = context,
+            accountImageUrl = accountImageUrl.takeIf(String::isNotBlank),
+        )
 
     val filteredChildResults = remember(searchQuery, allSettingsGroups) {
         if (searchQuery.isBlank()) {
