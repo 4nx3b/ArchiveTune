@@ -118,6 +118,20 @@ android {
         buildConfigField("String", "LASTFM_API_KEY", "\"$lastfmApiKey\"")
         buildConfigField("String", "LASTFM_SECRET", "\"$lastfmSecret\"")
 
+        // ListenBrainz OAuth client (register at metabrainz.org/account/applications;
+        // redirect URI "archivetune://listenbrainz-auth-callback"). When empty the
+        // ListenBrainz login screen falls back to the login-page + copy-token flow.
+        val listenBrainzClientId =
+            localProperties.getProperty("LISTENBRAINZ_CLIENT_ID")
+                ?: System.getenv("LISTENBRAINZ_CLIENT_ID")
+                ?: ""
+        val listenBrainzClientSecret =
+            localProperties.getProperty("LISTENBRAINZ_CLIENT_SECRET")
+                ?: System.getenv("LISTENBRAINZ_CLIENT_SECRET")
+                ?: ""
+        buildConfigField("String", "LISTENBRAINZ_CLIENT_ID", "\"$listenBrainzClientId\"")
+        buildConfigField("String", "LISTENBRAINZ_CLIENT_SECRET", "\"$listenBrainzClientSecret\"")
+
         val extractorBearer =
             localProperties.getProperty("EXTRACTOR_BEARER")
                 ?: System.getenv("EXTRACTOR_BEARER")

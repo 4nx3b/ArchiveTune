@@ -7,7 +7,6 @@
 
 package moe.rukamori.archivetune.ui.component
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable

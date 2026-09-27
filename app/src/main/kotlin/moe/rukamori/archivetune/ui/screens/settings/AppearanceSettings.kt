@@ -447,6 +447,9 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     if (showSfProFontPicker) {
         SfProFontPickerDialog(
             onDismiss = { showSfProFontPicker = false },
+            // The picker marks the live font (check glyph + primary ink) by
+            // name, so reopening it shows which font is applied.
+            appliedFontName = customFontName.takeIf { fontPreference == AppFontPreference.CUSTOM }.orEmpty(),
             onApply = { uri, name ->
                 onCustomFontUriChange(uri)
                 onCustomFontNameChange(name)

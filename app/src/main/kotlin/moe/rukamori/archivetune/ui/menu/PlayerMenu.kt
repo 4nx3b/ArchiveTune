@@ -101,6 +101,7 @@ import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
+import moe.rukamori.archivetune.constants.SongCanvasDisabledKey
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.CanvasArtworkRefetchResult
@@ -135,6 +136,7 @@ import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.parseSpeedDialPins
 import moe.rukamori.archivetune.audiosource.SongSourceOverride
+import moe.rukamori.archivetune.audiosource.SongCanvasDisabled
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.SongSourceOverrideKey
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -212,6 +214,12 @@ fun PlayerMenu(
         hasCanvasArtwork = CanvasArtworkPlaybackCache.hasEntry(mediaMetadata.id)
     }
     val (speedDialSongIds, onSpeedDialSongIdsChange) = rememberPreference(SpeedDialSongIdsKey, "")
+    // Per-song "Disable canvas": reads the same map the player gates on.
+    val (songCanvasDisabledRaw, onSongCanvasDisabledChange) = rememberPreference(SongCanvasDisabledKey, "")
+    val songCanvasDisabledForCurrent =
+        remember(songCanvasDisabledRaw, mediaMetadata.id) {
+            SongCanvasDisabled.isDisabled(songCanvasDisabledRaw.ifBlank { null }, mediaMetadata.id)
+        }
     val speedDialPins = remember(speedDialSongIds) { parseSpeedDialPins(speedDialSongIds) }
     val songPin = remember(mediaMetadata.id) { SpeedDialPin(type = SpeedDialPinType.SONG, id = mediaMetadata.id) }
     val isInSpeedDial =
@@ -380,6 +388,13 @@ fun PlayerMenu(
                                 mediaId = mediaMetadata.id,
                                 source = source,
                                 qobuzBackupVideoId = trackId,
+                            )
+
+                        AudioSourceType.DEEZER ->
+                            playerConnection.service.setSongSourceOverrideWithDeezerTrackId(
+                                mediaId = mediaMetadata.id,
+                                source = source,
+                                deezerTrackId = trackId,
                             )
 
                         else ->
@@ -802,10 +817,61 @@ fun PlayerMenu(
                             if (
                                 !isLocalMedia &&
                                 isQueueTrigger != true &&
+                                (hasCanvasArtwork || songCanvasDisabledForCurrent) &&
+                                playerDesignStyle != PlayerDesignStyle.V5
+                            ) {
+                                add(
+                                    NewAction(
+                                        icon = {
+                                            Icon(
+                                                painter = painterResource(
+                                                    if (songCanvasDisabledForCurrent) {
+                                                        R.drawable.image
+                                                    } else {
+                                                        R.drawable.hide_image
+                                                    },
+                                                ),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(28.dp),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        text = stringResource(
+                                            if (songCanvasDisabledForCurrent) {
+                                                R.string.enable_canvas
+                                            } else {
+                                                R.string.disable_canvas
+                                            },
+                                        ),
+                                        onClick = {
+                                            onSongCanvasDisabledChange(
+                                                SongCanvasDisabled.withDisabled(
+                                                    songCanvasDisabledRaw,
+                                                    mediaMetadata.id,
+                                                    !songCanvasDisabledForCurrent,
+                                                ),
+                                            )
+                                            if (!songCanvasDisabledForCurrent) {
+                                                // Disabling: the player gates the canvas off on
+                                                // the next recomposition and the static artwork
+                                                // takes over. Re-enabling with no cached entry
+                                                // needs a resolve — the refetch path covers it.
+                                                onDismiss()
+                                            }
+                                        },
+                                        enabled = true,
+                                    ),
+                                )
+                            }
+
+                            if (
+                                !isLocalMedia &&
+                                isQueueTrigger != true &&
                                 archiveTuneCanvasEnabled &&
                                 !lowDataModeActive &&
                                 playerDesignStyle != PlayerDesignStyle.V5 &&
-                                hasCanvasArtwork
+                                hasCanvasArtwork &&
+                                !songCanvasDisabledForCurrent
                             ) {
                                 add(
                                     NewAction(

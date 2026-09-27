@@ -263,6 +263,7 @@ import moe.rukamori.archivetune.audiosource.DirectStream
 import moe.rukamori.archivetune.audiosource.SongSourceOverride
 import moe.rukamori.archivetune.audiosource.SongSourceQobuzBackupVideoId
 import moe.rukamori.archivetune.audiosource.SongSourceQobuzTrackId
+import moe.rukamori.archivetune.audiosource.SongSourceDeezerTrackId
 import moe.rukamori.archivetune.audiosource.TitleMatch
 import moe.rukamori.archivetune.audiosource.pcmBitrateOrNull
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
@@ -271,6 +272,7 @@ import moe.rukamori.archivetune.applemusic.AppleMusicVirtualStream
 import moe.rukamori.archivetune.constants.SongSourceOverrideKey
 import moe.rukamori.archivetune.constants.SongSourceQobuzBackupVideoIdKey
 import moe.rukamori.archivetune.constants.SongSourceQobuzTrackIdKey
+import moe.rukamori.archivetune.constants.SongSourceDeezerTrackIdKey
 import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalArtworkProvider
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
@@ -3508,9 +3510,25 @@ class MusicService :
                     finishCrossfade(target, incomingPlayer, generation)
                 } catch (error: CancellationException) {
                     throw error
-                } catch (error: Exception) {
-                    Timber.tag(TAG).w(error, "Crossfade failed")
-                    cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
+                } catch (error: Throwable) {
+                    // Throwable, not Exception: an Error (OOM first among them)
+                    // escaping the ramp used to bypass the cleanup entirely —
+                    // isCrossfading stayed true, pauseAtEndOfMediaItems stayed
+                    // armed and the secondary player leaked at half-faded
+                    // volumes until the next service event. SilentHandler
+                    // swallowed the Error so nothing else noticed either.
+                    runCatching {
+                        if (error is Exception) {
+                            Timber.tag(TAG).w(error, "Crossfade failed")
+                        } else {
+                            Timber.tag(TAG).w("Crossfade failed with %s", error::class.java.simpleName)
+                        }
+                    }
+                    runCatching { cancelCrossfade(resetVolume = true, resetPauseAtEnd = true) }
+                        .onFailure {
+                            runCatching { isCrossfading = false }
+                            runCatching { localPlayer.pauseAtEndOfMediaItems = false }
+                        }
                 }
             }
     }
@@ -7322,6 +7340,8 @@ class MusicService :
         val directQobuzTrackId: String? = null,
 
         val directQobuzBackupVideoId: String? = null,
+
+        val directDeezerTrackId: String? = null,
     )
 
     private fun sourceResolutionChain(): List<AudioSourceType> {
@@ -7396,6 +7416,11 @@ class MusicService :
             runBlocking { dataStore.data.first()[SongSourceQobuzBackupVideoIdKey] }
         }.getOrNull()
         val directQobuzBackupVideoId = SongSourceQobuzBackupVideoId.get(qobuzBackupVideoIdRaw, mediaId)
+
+        val deezerTrackIdRaw = runCatching {
+            runBlocking { dataStore.data.first()[SongSourceDeezerTrackIdKey] }
+        }.getOrNull()
+        val directDeezerTrackId = SongSourceDeezerTrackId.get(deezerTrackIdRaw, mediaId)
         return SourceQuery(
             mediaId = mediaId,
             title = title,
@@ -7405,6 +7430,7 @@ class MusicService :
             isrc = isrc,
             directQobuzTrackId = directQobuzTrackId,
             directQobuzBackupVideoId = directQobuzBackupVideoId,
+            directDeezerTrackId = directDeezerTrackId,
         )
     }
 
@@ -7508,6 +7534,25 @@ class MusicService :
         qobuzBackupVideoId: String?,
     ) {
         setSongSourceOverrideInternal(mediaId, source, qobuzTrackId = null, qobuzBackupVideoId = qobuzBackupVideoId)
+    }
+
+    fun setSongSourceOverrideWithDeezerTrackId(
+        mediaId: String,
+        source: AudioSourceType?,
+        deezerTrackId: String?,
+    ) {
+        runCatching {
+            runBlocking {
+                dataStore.edit { prefs ->
+                    prefs[SongSourceDeezerTrackIdKey] = SongSourceDeezerTrackId.withOverride(
+                        prefs[SongSourceDeezerTrackIdKey],
+                        mediaId,
+                        deezerTrackId,
+                    )
+                }
+            }
+        }
+        setSongSourceOverrideInternal(mediaId, source, qobuzTrackId = null, qobuzBackupVideoId = null)
     }
 
     private fun setSongSourceOverrideInternal(
@@ -8500,8 +8545,13 @@ class MusicService :
         Timber.tag("MusicService").d("Deezer resolve start | quality=%s", quality.name)
         return runCatching {
             runBlocking(Dispatchers.IO) {
-                DeezerAudioProvider
-                    .resolve(
+                val resolved =
+                    // The exact track picked in the popup resolves directly —
+                    // no fuzzy re-match that could substitute a different
+                    // master or miss the gate and drop to YouTube.
+                    query.directDeezerTrackId?.takeIf { it.isNotBlank() }?.let { directId ->
+                        DeezerAudioProvider.resolveByTrackId(directId, quality.toFormatName())
+                    } ?: DeezerAudioProvider.resolve(
                         query =
                             DeezerAudioProvider.Query(
                                 mediaId = query.mediaId,
@@ -8512,23 +8562,23 @@ class MusicService :
                                 isrc = query.isrc,
                             ),
                         format = quality.toFormatName(),
-                    )?.let { resolved ->
-
-                        DirectStream(
-                            uri = resolved.uri,
-                            mimeType = resolved.mimeType,
-                            codecs = resolved.codecs,
-                            contentLength = resolved.contentLength,
-                            label = resolved.label,
-                            source = AudioSourceType.DEEZER,
-                            matchedTitle = resolved.matchedTitle,
-                            matchedArtist = resolved.matchedArtist,
-                            matchedAlbum = resolved.matchedAlbum,
-                            matchedDurationMs = resolved.matchedDurationMs,
-                            sampleRate = resolved.sampleRate,
-                            bitDepth = resolved.bitDepth,
-                        )
-                    }
+                    )
+                resolved?.let {
+                    DirectStream(
+                        uri = it.uri,
+                        mimeType = it.mimeType,
+                        codecs = it.codecs,
+                        contentLength = it.contentLength,
+                        label = it.label,
+                        source = AudioSourceType.DEEZER,
+                        matchedTitle = it.matchedTitle,
+                        matchedArtist = it.matchedArtist,
+                        matchedAlbum = it.matchedAlbum,
+                        matchedDurationMs = it.matchedDurationMs,
+                        sampleRate = it.sampleRate,
+                        bitDepth = it.bitDepth,
+                    )
+                }
             }
         }.onFailure { error ->
             Timber.tag("MusicService").w(error, "DEEZER stream resolution failed for %s", query.mediaId)

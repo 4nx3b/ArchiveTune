@@ -36,6 +36,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenTogetherAutoApprovalKey
+import moe.rukamori.archivetune.constants.ListenTogetherChatMutedKey
 import moe.rukamori.archivetune.constants.ListenTogetherChatNotificationsKey
 import moe.rukamori.archivetune.constants.ListenTogetherInAppNotificationsKey
 import moe.rukamori.archivetune.constants.ListenTogetherResyncKey
@@ -1149,6 +1150,8 @@ class ListenTogetherClient @Inject constructor(
             if (!isInRoom) return
             if (payload.username in _blockedUsernames.value) return
             if (_chatScreenVisible.value) return
+            // The chat's own one-tap mute (overflow menu) silences everything.
+            if (context.dataStore.get(ListenTogetherChatMutedKey, false)) return
             if (!context.dataStore.get(ListenTogetherChatNotificationsKey, true)) return
             // In-app notifications own the foreground case: the stacked popup
             // surfaces the message (with reply / mark-as-read) while the user

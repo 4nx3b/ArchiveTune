@@ -66,7 +66,17 @@ class BeatTracker(private val context: Context) {
             session = null
             return runCatching {
                 val file = File(context.filesDir, MODEL_ASSET)
-                if (!file.exists() || file.length() == 0L) {
+                // Length-checked copy: an APK update shipping a newer model used
+                // to be ignored forever because the stale filesDir copy already
+                // existed. Asset sizes are exact for file-backed AAR entries, so
+                // a mismatch means the shipped model changed.
+                val assetLength = runCatching {
+                    context.assets.open(MODEL_ASSET).use { it.available().toLong() }
+                }.getOrDefault(-1L)
+                val stale = !file.exists() || file.length() == 0L ||
+                    (assetLength > 0 && file.length() != assetLength)
+                if (stale) {
+                    file.delete()
                     context.assets.open(MODEL_ASSET).use { input ->
                         file.outputStream().use { output -> input.copyTo(output) }
                     }
@@ -82,11 +92,18 @@ class BeatTracker(private val context: Context) {
                     setCPUArenaAllocator(false)
                     setMemoryPatternOptimization(false)
                 }
-                OrtEnvironment.getEnvironment().createSession(file.absolutePath, options)
-                    .also {
-                        session = it
-                        sessionThreads = threads
-                    }
+                try {
+                    OrtEnvironment.getEnvironment().createSession(file.absolutePath, options)
+                        .also {
+                            session = it
+                            sessionThreads = threads
+                        }
+                } finally {
+                    // The options object holds a native handle until GC
+                    // finalization; a performance-mode flip re-creates sessions,
+                    // and each leaked options block is small but cumulative.
+                    runCatching { options.close() }
+                }
             }.onFailure { Log.w(TAG, "Beat model unavailable; falling back to no grid", it) }
                 .getOrNull()
         }

@@ -56,6 +56,11 @@ val ListenTogetherRoomNamesKey = stringPreferencesKey("listenTogetherRoomNames")
  * system shade notification. */
 val ListenTogetherInAppNotificationsKey = booleanPreferencesKey("listenTogetherInAppNotifications")
 
+/** One-tap chat mute (chat overflow menu): silences BOTH the in-app popup and
+ * the shade conversation notification for the room chat, without touching the
+ * two feature toggles in Listen Together settings. */
+val ListenTogetherChatMutedKey = booleanPreferencesKey("listenTogetherChatMuted")
+
 /** Chat wallpaper: a content URI to an image the LOCAL user picked, rendered
  * behind the Listen Together chat. Deliberately device-local — it never syncs
  * and other members never see it. */

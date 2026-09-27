@@ -3628,3 +3628,29 @@ Stage Summary:
   automix crash remains diagnosed-by-defense (no fresh stack trace reached
   the server — the video/screenshots in the message never uploaded); the
   breadcrumbs will pinpoint it on the next report.
+
+---
+Task ID: 75
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 16-item user batch — automix stability round 3, chat notification/mention/overflow redesign, word-synced lyrics everywhere, AM landscape lyrics-first, share-slider export fix, Deezer ARL direct playback, ListenBrainz webauth, canvas gating, export lyrics, SF Pro applied indicator, multi-source release radar, dead-import sweep
+
+Work Log:
+- Automix (T10): ported BitChord's post-port stability commits — 16KB page alignment (-z max-page-size=16384, the Android 15+ crash source), decode abort polling (released/room-join abandons tens-of-MB decodes instead of carrying them), heap deferrals no longer count as write-off strikes (Deferred sentinel), in-memory results bounded to 64 (LRU), analysis-audio filenames keyed hash+length (collision fix), FileMediaDataSource synchronized, OrtSession.SessionOptions closed in both trackers, stale model copies refreshed on APK updates, crossfade ramp catches Throwable with guaranteed cleanup (isCrossfading/pauseAtEnd reset).
+- In-app chat notification (T1): one hairline border treatment in both glass and opaque modes (was white-hairline vs none vs theme-outline + 14dp shadow = the "inconsistent black borders"), theme-polarity glass scrim for light mode, card capped at 320dp with the message list as the weighted compressing child (autoscroll inside), horizontal swipe-to-dismiss with fling-commit, chat-mute preference gates the shade notification and the in-app host.
+- Mention chip (T2): redesigned as a compact pill — @ glyph with remaining-count badge + mentioner's avatar only, floating above the composer on the LEFT with a 6dp gap, liquid glass with wallpaper scrim (opaque twin otherwise). Mentions queue pinned-message style: most recent first, tap jumps and consumes, next recent then shows; close clears all.
+- Chat overflow (T6): top-right liquid-glass pill (more_vert) opening a corner-morphed popup (spring scale + fade from the icon, glass + scrim, opaque fallback) with Set/Remove wallpaper and a live Mute-notifications switch. Attachment popup slimmed to Song + GIF.
+- Word-synced lyrics (T3): YouLyPlus syllables now aligned against the line's own text so same-word pieces glue (submodule commit 5727bed, pushed to lyrics main); Apple Music returns raw syllable TTML (word timings preserved end-to-end, dead ttmlToLrc removed); KuGou downloads fmt=qrc first (QRC word timings, XML CR/LF entities normalized); both joined the word-sync racing set in LyricsHelper.
+- AM landscape (T4): lyrics own the right half from the first frame (lyricsOpen=landscape at start and per-song), controls hidden until a tap pokes them (no 5s flash on song change), artwork 72dp clear of the screen edge, ambient canvas keeps breathing beside the lyric sheet.
+- Share sliders (T5): classic styles' blur is resolution-normalized (slider px interpreted against a 900px reference — preview and 3072px export now match; caps raised to 256px, stackBlur runs on a ≤1024px proxy for speed).
+- Deezer ARL (T11): the popup's picked trackId is stored per song (SongSourceDeezerTrackId map) and resolved DIRECTLY (resolveByTrackId) — no fuzzy re-match substituting masters or missing the gate to YouTube; searchCandidates falls back to the logged-in gw-light search.music gateway when the public REST API is geo-blocked (India).
+- ListenBrainz (T8): full webauth login screen (MusicBrainz OAuth code flow via BuildConfig LISTENBRAINZ_CLIENT_ID/SECRET; clipboard-assist fallback when unconfigured), routed from the integrations list; the dead token TextFieldDialog removed. The Last.fm "lastwave" consent name documented as a key-registration artifact (needs a newly registered ArchiveTune key — in-code note added).
+- Canvas (T9/T14): the artist page refuses Spotify canvases (network AND cached) — only the standalone ArchiveTune/BetterLyrics artist canvas plays; per-song Disable/Enable canvas toggle in the player overflow (SongCanvasDisabled DataStore map gated in Player for every style).
+- Export lyrics (T12): overflow-menu item exporting the raw payload in its own format (.ttml/.lrc/.txt, SAF CreateDocument, sanitized filename).
+- SF Pro (T13): the picker marks the live font (check glyph + primary ink + "Now using X" subtitle) via the applied-font name.
+- Release radar (T7): iTunes Search catalogue joined Deezer with cross-source dedupe (normalised title+date, best artwork wins).
+- Dead code (T16): 12 verified-unused imports removed via the repo's cleanup_pass (its star-import false-positive bug fixed first — 15 files with wrongly deleted wildcard imports reverted before landing); dead ttmlToLrc/token-dialog/wallpaper-entries removed with their features.
+- Perf (T15): this round's fixes live inside the automix engine (the app's biggest measured CPU/memory consumer: bounded results, session-option closes, abortable decodes, proxy-blur exports) plus the sweep; visual behaviour unchanged by construction (no visual APIs touched).
+
+Stage Summary:
+- 39 app files + lyrics submodule bump (714754f -> 5727bed, pushed).
+- dev push + CI monitoring next; PR #216 continues to carry dev -> main.

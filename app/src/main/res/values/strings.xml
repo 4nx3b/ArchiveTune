@@ -155,6 +155,9 @@
     <string name="reset">Reset</string>
     <string name="details">Details</string>
     <string name="edit">Edit</string>
+    <string name="export_lyrics">Export lyrics</string>
+    <string name="export_lyrics_saved">Lyrics exported</string>
+    <string name="export_lyrics_failed">Couldn\'t export lyrics</string>
     <string name="start_radio">Start radio</string>
     <string name="start_mix">Start mix</string>
     <string name="play">Play</string>
@@ -241,6 +244,8 @@
     <string name="refetch">Refetch</string>
     <string name="refetch_canvas">Refetch canvas</string>
     <string name="canvas_refetch_failed">Couldn\'t refresh animated canvas</string>
+    <string name="disable_canvas">Disable canvas</string>
+    <string name="enable_canvas">Enable canvas</string>
     <string name="save_canvas">Save Canvas</string>
     <string name="save_canvas_variant_unavailable">Unavailable</string>
 
@@ -1100,6 +1105,13 @@
     <string name="listenbrainz_scrobbling_description">Enable submitting now-playing and finished listens to ListenBrainz</string>
     <string name="set_listenbrainz_token">Set ListenBrainz token</string>
     <string name="edit_listenbrainz_token">Edit ListenBrainz token</string>
+    <string name="listenbrainz_login_title">ListenBrainz sign-in</string>
+    <string name="listenbrainz_login_subtitle_oauth">Authorize ArchiveTune on MusicBrainz — you\'ll return here automatically</string>
+    <string name="listenbrainz_login_subtitle_manual">Sign in, open Settings → your user token, copy it, then tap the button below</string>
+    <string name="listenbrainz_login_paste_token">I copied my token — finish sign-in</string>
+    <string name="listenbrainz_login_success">Signed in to ListenBrainz as %s</string>
+    <string name="listenbrainz_login_failed">ListenBrainz sign-in failed — check the token and try again</string>
+    <string name="listenbrainz_clipboard_empty">No token found on the clipboard — copy it from the ListenBrainz settings page first</string>
     <string name="discord_activity_name">Activity name</string>
     <string name="discord_activity_details">Activity details</string>
     <string name="discord_activity_state">Activity state</string>
@@ -1812,6 +1824,10 @@
     <string name="listen_together_chat_set_wallpaper">Set chat wallpaper</string>
     <string name="listen_together_chat_remove_wallpaper">Remove chat wallpaper</string>
     <string name="listen_together_chat_wallpaper_hint">Visible only to you</string>
+    <string name="listen_together_chat_mute_notifications">Mute notifications</string>
+    <string name="listen_together_chat_mute_notifications_desc">Silence the in-app popup and the shade notification</string>
+    <string name="listen_together_chat_overflow">Chat options</string>
+    <string name="listen_together_chat_mention_badge">%d unread mention(s)</string>
     <string name="listen_together_chat_shared_song">Shared a song: %s</string>
     <string name="listen_together_room_name">Room name</string>
     <string name="listen_together_room_name_hint">Optional — shown to everyone you invite</string>

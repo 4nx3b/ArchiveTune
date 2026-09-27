@@ -95,6 +95,8 @@ import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LastFmLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LIBREFM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LibreFmLoginScreen
+import moe.rukamori.archivetune.ui.screens.settings.LISTENBRAINZ_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.ListenBrainzLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.TELEGRAM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.TelegramLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.YOUTUBE_OAUTH_ROUTE
@@ -664,6 +666,9 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(LASTFM_LIBREFM_LOGIN_ROUTE) {
         LibreFmLoginScreen(navController)
+    }
+    composable(LISTENBRAINZ_LOGIN_ROUTE) {
+        ListenBrainzLoginScreen(navController)
     }
     composable(
         route = "settings/telegram?scrollTo={scrollTo}",
