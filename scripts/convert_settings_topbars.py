@@ -150,6 +150,47 @@ def extract_title_expr(block):
     return expr if expr and not expr.startswith('@') else None
 
 
+def extract_handlers(block):
+    """Extract the IconButton's onClick / onLongClick expressions from the
+    FrostedHeaderPill block — they vary per page (navController::navigateUp,
+    onNavigateUp, ...) and must be preserved verbatim."""
+    m = re.search(r'IconButton\s*\(', block)
+    if not m:
+        return None, None
+    open_idx = m.end() - 1
+    close_idx = match_paren(block, open_idx)
+    if close_idx < 0:
+        return None, None
+    args = block[open_idx + 1:close_idx]
+
+    def grab(name):
+        for m2 in re.finditer(re.escape(name) + r'\s*=\s*', args):
+            j = m2.end()
+            d = 0
+            k = j
+            while k < len(args):
+                ch = args[k]
+                if ch in '([{':
+                    d += 1
+                elif ch in ')]}':
+                    if d == 0:
+                        break
+                    d -= 1
+                elif ch == '"' and d == 0:
+                    k += 1
+                    while k < len(args) and args[k] != '"':
+                        if args[k] == '\\':
+                            k += 1
+                        k += 1
+                elif ch == ',' and d == 0:
+                    break
+                k += 1
+            return args[j:k].strip()
+        return None
+
+    return grab('onClick'), grab('onLongClick')
+
+
 def convert_file(path):
     src = open(path, encoding="utf-8").read()
     original = src
@@ -177,12 +218,19 @@ def convert_file(path):
         if title_expr is None:
             break
 
+        on_back, on_long = extract_handlers(block)
+        if on_back is None:
+            break
+
+        long_line = (
+            f'                    onBackLongClick = {on_long},\n' if on_long else ''
+        )
         replacement = (
             'topBar = {\n'
             '                SettingsPageTopBar(\n'
             f'                    titleText = {title_expr},\n'
-            '                    onBack = navController::navigateUp,\n'
-            '                    onBackLongClick = navController::backToMain,\n'
+            f'                    onBack = {on_back},\n'
+            f'{long_line}'
             '                )\n'
             '            }'
         )

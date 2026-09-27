@@ -33,6 +33,7 @@ import androidx.media3.exoplayer.audio.AudioOutput
 import androidx.media3.exoplayer.audio.AudioOutputProvider
 import androidx.media3.exoplayer.audio.AudioOutputProvider.FormatConfig
 import androidx.media3.exoplayer.audio.AudioOutputProvider.FormatSupport
+import androidx.media3.exoplayer.audio.AudioOutputProvider.Listener
 import androidx.media3.exoplayer.audio.AudioOutputProvider.OutputConfig
 import androidx.media3.exoplayer.audio.AudioTrackAudioOutputProvider
 import java.util.concurrent.CopyOnWriteArraySet

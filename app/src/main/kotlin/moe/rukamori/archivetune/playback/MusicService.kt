@@ -299,6 +299,7 @@ import moe.rukamori.archivetune.db.entities.AlbumEntity
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.db.entities.Event
 import moe.rukamori.archivetune.db.entities.FormatEntity
+import moe.rukamori.archivetune.db.entities.isLossless
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.RelatedSongMap
 import moe.rukamori.archivetune.db.entities.Song
@@ -9747,7 +9748,7 @@ class MusicService :
         val engaged = floatDspEnabled && format != null &&
             (
                 format.isLossless() ||
-                    (format.bitrate ?: 0L) >= HIGH_QUALITY_BITRATE ||
+                    format.bitrate >= HIGH_QUALITY_BITRATE ||
                     (format.sampleRate ?: 0) >= 88_200
                 )
         primaryFloatDspProcessor.outputFloat = usbSinkActiveNow
@@ -10602,7 +10603,7 @@ class MusicService :
         /** Streams at or above this bitrate count as "high quality" for the
          * 32-bit float DSP engagement (below lossless but well above the
          * 128-160 kbps YouTube baseline). */
-        const val HIGH_QUALITY_BITRATE = 320_000L
+        const val HIGH_QUALITY_BITRATE = 320_000
         const val DEFAULT_SMART_FALLBACK_MS = 6_000L
         const val FILTER_ENTRY_HZ = 7_000.0
         const val FILTER_FLOOR_HZ = 300.0

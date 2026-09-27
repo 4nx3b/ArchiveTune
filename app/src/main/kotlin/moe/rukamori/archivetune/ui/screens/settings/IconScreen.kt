@@ -215,8 +215,8 @@ private fun IconScreenContent(
         topBar = {
                 SettingsPageTopBar(
                     titleText = stringResource(R.string.app_icon),
-                    onBack = navController::navigateUp,
-                    onBackLongClick = navController::backToMain,
+                    onBack = onNavigateUp,
+                    onBackLongClick = onNavigateHome,
                 )
             },
     ) { innerPadding ->
