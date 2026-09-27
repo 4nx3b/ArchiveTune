@@ -43,6 +43,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,6 +53,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.glassAwareCardBorder
 import moe.rukamori.archivetune.ui.component.glassAwareCardColor
@@ -75,8 +80,11 @@ object SettingsCardDimensions {
     val RowHorizontalPadding = 16.dp
     val RowVerticalPadding = 10.dp
 
-    /** Icon size — 20-22dp system-style, per the reference. */
-    val RowIconSize = 22.dp
+    /** Icon slot — the leading width the divider insets to. */
+    val RowIconSize = 28.dp
+
+    /** The glyph inside the colorful tile (iOS ~17-18pt inside a 29pt tile). */
+    val RowIconGlyphSize = 18.dp
 
     /** Gap between icon and label. */
     val IconLabelGap = 14.dp
@@ -191,10 +199,16 @@ private fun dividerColor(): Color {
 }
 
 /**
- * The reference row: [icon] [title (+subtitle)] [badge/value] [chevron].
+ * The reference row: [icon tile] [title (+subtitle)] [badge/value] [chevron].
  *
- * Neutral, thin, system-style iconography; a restrained accent only on the
- * icon tint (ArchiveTune's identity); chevron only when the row navigates.
+ * iOS Settings-style colorful iconography: each row's glyph sits on a small
+ * rounded-square tile filled with the row's accent color (a fixed vivid
+ * palette per section, set in SettingsDataBuilders — not the old single
+ * theme-primary tint). Rows that carry a connected-account profile picture
+ * ([SettingsItem.iconUrl], e.g. the signed-in Google account) render that
+ * image as a circular avatar in the same slot, with the tile glyph peeking
+ * through until the image loads (and if it ever fails). Chevron only when
+ * the row navigates.
  */
 @Composable
 fun SettingsListRow(
@@ -231,35 +245,12 @@ fun SettingsListRow(
                     vertical = SettingsCardDimensions.RowVerticalPadding,
                 ),
     ) {
-        Box(
-            modifier = Modifier.size(SettingsCardDimensions.RowIconSize),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (item.showUpdateIndicator) {
-                BadgedBox(
-                    badge = {
-                        Badge(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(9.dp),
-                        )
-                    },
-                ) {
-                    Icon(
-                        painter = item.icon,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(SettingsCardDimensions.RowIconSize),
-                    )
-                }
-            } else {
-                Icon(
-                    painter = item.icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(SettingsCardDimensions.RowIconSize),
-                )
-            }
-        }
+        SettingsRowLeadingIcon(
+            icon = item.icon,
+            iconUrl = item.iconUrl,
+            accentColor = item.accentColor,
+            showUpdateIndicator = item.showUpdateIndicator,
+        )
 
         Spacer(Modifier.width(SettingsCardDimensions.IconLabelGap))
 
@@ -310,5 +301,93 @@ fun SettingsListRow(
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
             modifier = Modifier.size(18.dp),
         )
+    }
+}
+
+/**
+ * The row's leading icon slot: a small rounded-square tile filled with the
+ * row's accent color carrying a white glyph (iOS Settings-style colorful
+ * icons), or — when the row carries a connected-account profile picture — a
+ * circular [AsyncImage] avatar layered OVER the same tile, so the glyph shows
+ * through while the image loads and remains as the fallback if it fails.
+ */
+@Composable
+private fun SettingsRowLeadingIcon(
+    icon: androidx.compose.ui.graphics.painter.Painter,
+    iconUrl: String?,
+    accentColor: Color,
+    showUpdateIndicator: Boolean,
+) {
+    val tileColor = accentColor.takeIf { it.isSpecified } ?: MaterialTheme.colorScheme.primary
+    val tileShape = RoundedCornerShape(8.dp)
+    val avatarShape = androidx.compose.foundation.shape.CircleShape
+    val context = LocalContext.current
+    val requestPx =
+        with(LocalDensity.current) { SettingsCardDimensions.RowIconSize.roundToPx() }
+    val avatarRequest =
+        remember(context, iconUrl, requestPx) {
+            iconUrl
+                ?.takeIf(String::isNotBlank)
+                ?.let {
+                    ImageRequest
+                        .Builder(context)
+                        .data(it)
+                        .size(requestPx)
+                        .build()
+                }
+        }
+
+    val tile: @Composable () -> Unit = {
+        Box(
+            modifier =
+                Modifier
+                    .size(SettingsCardDimensions.RowIconSize)
+                    .clip(tileShape)
+                    .background(tileColor),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = icon,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(SettingsCardDimensions.RowIconGlyphSize),
+            )
+        }
+    }
+
+    // The avatar layers over the tile: while the image is loading (or if it
+    // fails) the tile glyph beneath still shows, so the slot is never empty.
+    val leading: @Composable () -> Unit = {
+        if (avatarRequest != null) {
+            Box(modifier = Modifier.size(SettingsCardDimensions.RowIconSize)) {
+                tile()
+                AsyncImage(
+                    model = avatarRequest,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier =
+                        Modifier
+                            .size(SettingsCardDimensions.RowIconSize)
+                            .clip(avatarShape),
+                )
+            }
+        } else {
+            tile()
+        }
+    }
+
+    if (showUpdateIndicator) {
+        BadgedBox(
+            badge = {
+                Badge(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(9.dp),
+                )
+            },
+        ) {
+            leading()
+        }
+    } else {
+        leading()
     }
 }

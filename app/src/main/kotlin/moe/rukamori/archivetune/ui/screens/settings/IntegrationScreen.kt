@@ -63,9 +63,18 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
+import moe.rukamori.archivetune.constants.DiscordAvatarUrlKey
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,6 +85,10 @@ fun IntegrationScreen(
 ) {
     val (listenBrainzEnabled, onListenBrainzEnabledChange) = rememberPreference(ListenBrainzEnabledKey, false)
     val (listenBrainzToken) = rememberPreference(ListenBrainzTokenKey, "")
+
+    // The connected Discord account's avatar (persisted after authorization)
+    // — shown in the Discord row's icon slot when present.
+    val (discordAvatarUrl) = rememberPreference(DiscordAvatarUrlKey, "")
 
     val (manualSourceLogin, _) = rememberPreference(ManualSourceLoginEnabledKey, false)
     val (appleMusicToken, _) = rememberPreference(AppleMusicMediaUserTokenKey, "")
@@ -146,7 +159,13 @@ fun IntegrationScreen(
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.ai_integration)) },
                         description = stringResource(R.string.ai_integration_desc),
-                        icon = { Icon(painterResource(R.drawable.ai), null) },
+                        icon = {
+                            Icon(
+                                painterResource(R.drawable.ai),
+                                null,
+                                tint = SettingsIconPalette.AiIntegration,
+                            )
+                        },
                         onClick = { navController.navigate("settings/ai_integration") },
                     )
                 }
@@ -160,7 +179,7 @@ fun IntegrationScreen(
                     PreferenceEntry(
                         modifier = positions.modifierFor("discord_account"),
                         title = { Text(stringResource(R.string.discord_integration)) },
-                        icon = { Icon(painterResource(R.drawable.discord), null) },
+                        icon = { DiscordAccountIcon(avatarUrl = discordAvatarUrl) },
                         onClick = {
                             navController.navigate("settings/discord")
                         },
@@ -180,7 +199,13 @@ fun IntegrationScreen(
                         modifier = positions.modifierFor("applemusic"),
                         title = { Text(stringResource(R.string.applemusic_settings)) },
                         description = stringResource(R.string.applemusic_helper),
-                        icon = { Icon(painterResource(R.drawable.album), null) },
+                        icon = {
+                            Icon(
+                                painterResource(R.drawable.album),
+                                null,
+                                tint = SettingsIconPalette.AppleMusic,
+                            )
+                        },
                         onClick = { navController.navigate("settings/applemusic") },
                     )
                 }
@@ -190,7 +215,13 @@ fun IntegrationScreen(
                         modifier = positions.modifierFor("tidal"),
                         title = { Text(stringResource(R.string.tidal_integration)) },
                         description = stringResource(R.string.tidal_integration_description),
-                        icon = { Icon(painterResource(R.drawable.provider_tidal), null) },
+                        icon = {
+                            Icon(
+                                painterResource(R.drawable.provider_tidal),
+                                null,
+                                tint = SettingsIconPalette.Tidal,
+                            )
+                        },
                         onClick = {
                             navController.navigate("settings/tidal")
                         },
@@ -202,7 +233,13 @@ fun IntegrationScreen(
                         modifier = positions.modifierFor("qobuz"),
                         title = { Text(stringResource(R.string.qobuz_integration)) },
                         description = stringResource(R.string.qobuz_integration_description),
-                        icon = { Icon(painterResource(R.drawable.provider_qobuz), null) },
+                        icon = {
+                            Icon(
+                                painterResource(R.drawable.provider_qobuz),
+                                null,
+                                tint = SettingsIconPalette.Qobuz,
+                            )
+                        },
                         onClick = {
                             navController.navigate("settings/qobuz")
                         },
@@ -214,7 +251,13 @@ fun IntegrationScreen(
                         modifier = positions.modifierFor("deezer"),
                         title = { Text(stringResource(R.string.deezer_integration)) },
                         description = stringResource(R.string.deezer_integration_description),
-                        icon = { Icon(painterResource(R.drawable.provider_deezer), null) },
+                        icon = {
+                            Icon(
+                                painterResource(R.drawable.provider_deezer),
+                                null,
+                                tint = SettingsIconPalette.Deezer,
+                            )
+                        },
                         onClick = {
                             navController.navigate("settings/deezer")
                         },
@@ -226,7 +269,13 @@ fun IntegrationScreen(
                         modifier = positions.modifierFor("amazon"),
                         title = { Text(stringResource(R.string.source_amazon)) },
                         description = stringResource(R.string.amazon_login_description),
-                        icon = { Icon(painterResource(R.drawable.login), null) },
+                        icon = {
+                            Icon(
+                                painterResource(R.drawable.login),
+                                null,
+                                tint = SettingsIconPalette.Amazon,
+                            )
+                        },
                         onClick = {
                             navController.navigate("settings/amazon")
                         },
@@ -242,7 +291,13 @@ fun IntegrationScreen(
                         modifier = positions.modifierFor("qqmusic"),
                         title = { Text(stringResource(R.string.source_qq_music)) },
                         description = stringResource(R.string.qq_music_enabled_desc),
-                        icon = { Icon(painterResource(R.drawable.ic_music), null) },
+                        icon = {
+                            Icon(
+                                painterResource(R.drawable.ic_music),
+                                null,
+                                tint = SettingsIconPalette.QqMusic,
+                            )
+                        },
                         onClick = {
                             navController.navigate("settings/qqmusic")
                         },
@@ -254,7 +309,13 @@ fun IntegrationScreen(
                         modifier = positions.modifierFor("telegram"),
                         title = { Text(stringResource(R.string.telegram_integration)) },
                         description = stringResource(R.string.telegram_integration_description),
-                        icon = { Icon(painterResource(R.drawable.provider_telegram), null) },
+                        icon = {
+                            Icon(
+                                painterResource(R.drawable.provider_telegram),
+                                null,
+                                tint = SettingsIconPalette.Telegram,
+                            )
+                        },
                         onClick = {
                             navController.navigate("settings/telegram")
                         },
@@ -292,7 +353,13 @@ fun IntegrationScreen(
                     PreferenceEntry(
                         modifier = positions.modifierFor("lastfm_account"),
                         title = { Text(stringResource(R.string.lastfm_integration)) },
-                        icon = { Icon(painterResource(R.drawable.token), null) },
+                        icon = {
+                            Icon(
+                                painterResource(R.drawable.token),
+                                null,
+                                tint = SettingsIconPalette.LastFm,
+                            )
+                        },
                         onClick = {
                             navController.navigate("settings/lastfm")
                         },
@@ -303,7 +370,13 @@ fun IntegrationScreen(
                     SwitchPreference(
                         title = { Text(stringResource(R.string.listenbrainz_scrobbling)) },
                         description = stringResource(R.string.listenbrainz_scrobbling_description),
-                        icon = { Icon(painterResource(R.drawable.token), null) },
+                        icon = {
+                            Icon(
+                                painterResource(R.drawable.token),
+                                null,
+                                tint = SettingsIconPalette.ListenBrainz,
+                            )
+                        },
                         checked = listenBrainzEnabled,
                         onCheckedChange = onListenBrainzEnabledChange,
                     )
@@ -321,7 +394,13 @@ fun IntegrationScreen(
                                 },
                             )
                         },
-                        icon = { Icon(painterResource(R.drawable.token), null) },
+                        icon = {
+                            Icon(
+                                painterResource(R.drawable.token),
+                                null,
+                                tint = SettingsIconPalette.ListenBrainz,
+                            )
+                        },
                         onClick = { navController.navigate(LISTENBRAINZ_LOGIN_ROUTE) },
                     )
                 }
@@ -335,7 +414,13 @@ fun IntegrationScreen(
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.cross_service_import_entry_title)) },
                         description = stringResource(R.string.cross_service_import_entry_desc),
-                        icon = { Icon(painterResource(R.drawable.playlist_import), null) },
+                        icon = {
+                            Icon(
+                                painterResource(R.drawable.playlist_import),
+                                null,
+                                tint = SettingsIconPalette.CrossServiceImport,
+                            )
+                        },
                         onClick = { showCrossServiceImport = true },
                     )
                 }
@@ -368,6 +453,55 @@ fun IntegrationScreen(
         SpotifyErrorDialog(
             message = error,
             onDismiss = spotifyAccountViewModel::dismissError,
+        )
+    }
+}
+
+/**
+ * The Discord row's icon: the connected account's avatar when one is
+ * persisted, layered over the blurple-tinted glyph so the brand mark still
+ * shows while the image loads (and stays as the fallback if it fails).
+ */
+@Composable
+private fun DiscordAccountIcon(avatarUrl: String) {
+    val context = LocalContext.current
+    val requestPx = with(LocalDensity.current) { 44.dp.roundToPx() }
+    val avatarRequest =
+        remember(context, avatarUrl, requestPx) {
+            avatarUrl
+                .takeIf(String::isNotBlank)
+                ?.let {
+                    ImageRequest
+                        .Builder(context)
+                        .data(it)
+                        .size(requestPx)
+                        .build()
+                }
+        }
+
+    if (avatarRequest == null) {
+        Icon(
+            painter = painterResource(R.drawable.discord),
+            contentDescription = null,
+            tint = SettingsIconPalette.DiscordExperimental,
+        )
+        return
+    }
+
+    Box(modifier = Modifier.size(44.dp)) {
+        Icon(
+            painter = painterResource(R.drawable.discord),
+            contentDescription = null,
+            tint = SettingsIconPalette.DiscordExperimental,
+        )
+        AsyncImage(
+            model = avatarRequest,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier =
+                Modifier
+                .fillMaxSize()
+                .clip(CircleShape),
         )
     }
 }

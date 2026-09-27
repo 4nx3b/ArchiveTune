@@ -20,6 +20,13 @@
  * border treatment in both glass and opaque modes (the old mixed
  * white-hairline / theme-outline / 14dp-shadow edges read as inconsistent
  * black borders around the card).
+ *
+ * 2026-09 (round 2): the glass edge's refraction strength is now a FIXED
+ * pixel amount instead of scaling with the card's dimensions — the lens used
+ * to displace up to size/5 px at the inner edge, which grew with every stacked
+ * message and read as a dark band INSIDE the card that got more visible the
+ * taller the card became. The reply action is an icon-only button with clear
+ * space from the stacked messages above it.
  */
 
 package moe.rukamori.archivetune.ui.screens
@@ -40,7 +47,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -81,7 +87,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.FilledTonalButton
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -179,15 +184,19 @@ fun InAppChatNotificationPopup(
             if (glassActive) {
                 // Liquid glass: frost plus the lens refraction the app's glass
                 // pills carry, over the throttled menu recorder (the only recorder
-                // whose subtree excludes this card).
+                // whose subtree excludes this card). The lens displacement is a
+                // FIXED pixel amount (the same recipe as the chat overflow
+                // popup): it must NOT scale with the card's size, or the inner
+                // edge builds an ever-wider dark refraction band as messages
+                // stack and the card grows.
                 Modifier.drawBackdrop(
                     backdrop = backdrop!!,
                     effects = {
                         colorControls(saturation = 1.6f)
-                        blur(24.dp.toPx())
+                        blur(20.dp.toPx())
                         lens(
-                            refractionHeight = 22f.dp.toPx(),
-                            refractionAmount = size.minDimension / 5f,
+                            refractionHeight = 16f.dp.toPx(),
+                            refractionAmount = 32f.dp.toPx(),
                             depthEffect = false,
                             chromaticAberration = false,
                         )
@@ -264,6 +273,10 @@ fun InAppChatNotificationPopup(
                         .heightIn(max = InAppNotificationMaxCardHeight)
                         .clickable(onClick = onOpenChat)
                         .padding(horizontal = 12.dp, vertical = 10.dp),
+                // Breathing room between the header, the stacked messages and
+                // the action row — the actions used to sit flush against the
+                // last message.
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 // Header: title + dismiss.
                 Row(
@@ -359,31 +372,27 @@ fun InAppChatNotificationPopup(
                     }
                 }
 
-                // Actions: Reply always (a filled tonal button — it has to read
-                // as the card's primary action at a glance); Mark-as-read on
-                // mentions. Same row, same dimensions in both glass and opaque
-                // modes.
+                // Actions: Reply is an ICON-ONLY button (just the reply glyph,
+                // no label — it sat too close to the messages with a text
+                // button's visual weight); Mark-as-read stays a quiet text
+                // button on mentions. Same row in both glass and opaque modes.
                 var replying by remember { mutableStateOf(false) }
                 var replyText by remember { mutableStateOf("") }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    FilledTonalButton(
+                    IconButton(
                         onClick = { replying = !replying },
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                        modifier = Modifier.height(36.dp),
+                        modifier = Modifier.size(34.dp),
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.reply),
-                            contentDescription = null,
-                            modifier = Modifier.size(15.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = stringResource(R.string.listen_together_in_app_notification_reply),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
+                            contentDescription = stringResource(
+                                R.string.listen_together_in_app_notification_reply,
+                            ),
+                            tint = cardInk,
+                            modifier = Modifier.size(17.dp),
                         )
                     }
                     if (hasMention) {
