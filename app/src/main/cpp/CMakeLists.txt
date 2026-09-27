@@ -52,3 +52,28 @@ target_link_libraries(archivetune_analysis ${log-lib})
 # -z max-page-size=16384 is a superset of 4KB alignment, so 4KB devices are
 # unaffected; APK-side alignment of the uncompressed .so is handled by AGP.
 target_link_options(archivetune_analysis PRIVATE "-Wl,-z,max-page-size=16384")
+
+# ---------------------------------------------------------------------------
+# archivetune_dsp: the 32-bit float DSP chain + the AAudio exclusive output
+# (USB-direct float playback). A separate shared library from the analyzer so
+# loading analysis (optional) and loading the DSP playback path stay
+# independent; the same conventions apply (16KB pages, -fexceptions for the
+# JNI bad_alloc guards, no -ffast-math).
+# ---------------------------------------------------------------------------
+add_library(archivetune_dsp SHARED
+    ${ARCHIVETUNE_NATIVE_DIR}/dsp/float_dsp.cpp
+    ${ARCHIVETUNE_NATIVE_DIR}/dsp/aaudio_output.cpp
+    jni/dsp_jni.cpp
+)
+
+target_include_directories(archivetune_dsp PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${ARCHIVETUNE_NATIVE_DIR}
+)
+
+target_compile_options(archivetune_dsp PRIVATE -O3 -fvisibility=hidden -fexceptions)
+
+find_library(log-lib-dsp log)
+target_link_libraries(archivetune_dsp ${log-lib-dsp} aaudio)
+
+target_link_options(archivetune_dsp PRIVATE "-Wl,-z,max-page-size=16384")

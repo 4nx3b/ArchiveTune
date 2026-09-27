@@ -64,6 +64,8 @@ import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.ArtworkProviderOrderKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
+import moe.rukamori.archivetune.constants.FloatDspEnabledKey
+import moe.rukamori.archivetune.constants.UsbExclusiveAudioKey
 import moe.rukamori.archivetune.constants.AutomixEnabledKey
 import moe.rukamori.archivetune.constants.AutomixPerformanceMode
 import moe.rukamori.archivetune.constants.AutomixPerformanceModeKey
@@ -155,6 +157,16 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
     val (audioOffload, onAudioOffloadChange) =
         rememberPreference(
             AudioOffload,
+            defaultValue = false,
+        )
+    val (floatDsp, onFloatDspChange) =
+        rememberPreference(
+            FloatDspEnabledKey,
+            defaultValue = false,
+        )
+    val (usbExclusiveAudio, onUsbExclusiveAudioChange) =
+        rememberPreference(
+            UsbExclusiveAudioKey,
             defaultValue = false,
         )
 
@@ -585,9 +597,44 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                                 onSkipSilenceChange(false)
                                 onCrossfadeEnabledChange(false)
                                 onAutomixEnabledChange(false)
+                                onUsbExclusiveAudioChange(false)
                             }
                         },
                     )
+                }
+
+                item {
+                    Column(modifier = positions.modifierFor("float_dsp")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.float_dsp)) },
+                            description = stringResource(R.string.float_dsp_desc),
+                            icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                            checked = floatDsp,
+                            onCheckedChange = onFloatDspChange,
+                        )
+                    }
+                }
+
+                item {
+                    Column(modifier = positions.modifierFor("usb_exclusive_audio")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.usb_exclusive_audio)) },
+                            description = stringResource(R.string.usb_exclusive_audio_desc),
+                            icon = { Icon(painterResource(R.drawable.solar_volume_up_linear), null) },
+                            checked = usbExclusiveAudio,
+                            onCheckedChange = { enabled ->
+                                onUsbExclusiveAudioChange(enabled)
+                                if (enabled) {
+                                    // One exclusive stream only: the blending
+                                    // engines and offload each hold their own
+                                    // output path.
+                                    onAudioOffloadChange(false)
+                                    onCrossfadeEnabledChange(false)
+                                    onAutomixEnabledChange(false)
+                                }
+                            },
+                        )
+                    }
                 }
 
                 item {
