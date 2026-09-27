@@ -131,6 +131,8 @@ import moe.rukamori.archivetune.constants.AudioPlaybackSpeedPitchMatchKey
 import moe.rukamori.archivetune.constants.EqualizerAudioEffectsEnabledKey
 import moe.rukamori.archivetune.playback.EqReverbPreset
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import moe.rukamori.archivetune.ui.component.LocalUnglassColorScheme
+import moe.rukamori.archivetune.ui.component.UnglassedDialogTheme
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.EqualizerEffect
 import moe.rukamori.archivetune.viewmodels.EqualizerProfileUiModel
@@ -980,22 +982,28 @@ private fun SwitchSection(
     }
 
     if (showDialog && infoTooltip != null) {
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text(stringResource(R.string.eq_information)) },
-            text = { Text(infoTooltip) },
-            confirmButton = {
-                TextButton(onClick = { showDialog = false }) {
-                    Text(stringResource(R.string.got_it))
-                }
-            },
-            icon = {
-                Icon(
-                    painter = painterResource(R.drawable.info),
-                    contentDescription = null,
-                )
-            },
-        )
+        // Unglassed: the dialog renders inside the glass menu's color scheme,
+        // whose container colors are near-transparent — the raw AlertDialog
+        // then draws with no readable background. Re-applying the unglassed
+        // scheme gives it the standard opaque container.
+        UnglassedDialogTheme {
+            AlertDialog(
+                onDismissRequest = { showDialog = false },
+                title = { Text(stringResource(R.string.eq_information)) },
+                text = { Text(infoTooltip) },
+                confirmButton = {
+                    TextButton(onClick = { showDialog = false }) {
+                        Text(stringResource(R.string.got_it))
+                    }
+                },
+                icon = {
+                    Icon(
+                        painter = painterResource(R.drawable.info),
+                        contentDescription = null,
+                    )
+                },
+            )
+        }
     }
 }
 
@@ -1307,6 +1315,18 @@ private fun ReverbSection(
         val index = presetValue.toInt().coerceIn(0, 6)
 
         var expanded by remember { mutableStateOf(false) }
+        // The dropdown panel renders with the glass menu scheme's container
+        // colors (near-transparent) when liquid glass is on; resolve the
+        // panel + field colors from the UNGLASSED scheme so both stay opaque
+        // and readable.
+        val unglassedScheme = LocalUnglassColorScheme.current ?: MaterialTheme.colorScheme
+        val dropdownContainer = unglassedScheme.surfaceContainerHigh
+        val dropdownFieldColors =
+            ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                containerColor = unglassedScheme.surfaceContainerLowest,
+                focusedContainerColor = unglassedScheme.surfaceContainerLowest,
+                unfocusedContainerColor = unglassedScheme.surfaceContainerLowest,
+            )
 
         ExposedDropdownMenuBox(
             expanded = expanded,
@@ -1319,13 +1339,14 @@ private fun ReverbSection(
                 readOnly = true,
                 label = { Text(stringResource(R.string.eq_preset)) },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                colors = dropdownFieldColors,
                 modifier = Modifier.menuAnchor().fillMaxWidth(),
                 enabled = enabled && interactionEnabled,
             )
             ExposedDropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
+                containerColor = dropdownContainer,
             ) {
                 presets.forEachIndexed { i, presetName ->
                     DropdownMenuItem(
@@ -1412,24 +1433,26 @@ private fun SaveProfileDialog(
     onSave: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(text = stringResource(R.string.eq_save_profile)) },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = onNameChange,
-                label = { Text(text = stringResource(R.string.eq_profile_name)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        },
-        confirmButton = {
-            KeepStatusBarHiddenInDialog()
-            TextButton(onClick = onSave, enabled = name.isNotBlank()) { Text(text = stringResource(R.string.save)) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(text = stringResource(R.string.eq_close)) } },
-    )
+    UnglassedDialogTheme {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(text = stringResource(R.string.eq_save_profile)) },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = onNameChange,
+                    label = { Text(text = stringResource(R.string.eq_profile_name)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                KeepStatusBarHiddenInDialog()
+                TextButton(onClick = onSave, enabled = name.isNotBlank()) { Text(text = stringResource(R.string.save)) }
+            },
+            dismissButton = { TextButton(onClick = onDismiss) { Text(text = stringResource(R.string.eq_close)) } },
+        )
+    }
 }
 
 @Composable
@@ -1440,24 +1463,26 @@ private fun ManageProfilesDialog(
     onExport: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(text = stringResource(R.string.eq_profiles)) },
-        text = {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().height(360.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(count = profiles.size, key = { profiles[it].id }, contentType = { "profile" }) { index ->
-                    ProfileRow(profiles[index], onApply, onDelete, onExport)
+    UnglassedDialogTheme {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(text = stringResource(R.string.eq_profiles)) },
+            text = {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().height(360.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(count = profiles.size, key = { profiles[it].id }, contentType = { "profile" }) { index ->
+                        ProfileRow(profiles[index], onApply, onDelete, onExport)
+                    }
                 }
-            }
-        },
-        confirmButton = {
-            KeepStatusBarHiddenInDialog()
-            TextButton(onClick = onDismiss) { Text(text = stringResource(R.string.eq_close)) }
-        },
-    )
+            },
+            confirmButton = {
+                KeepStatusBarHiddenInDialog()
+                TextButton(onClick = onDismiss) { Text(text = stringResource(R.string.eq_close)) }
+            },
+        )
+    }
 }
 
 @Composable

@@ -524,6 +524,15 @@ enum class AutomixPerformanceMode(val inferenceThreads: Int) {
 
 val AutomixEnabledKey = booleanPreferencesKey("automixEnabled")
 val AutomixPerformanceModeKey = stringPreferencesKey("automixPerformanceMode")
+
+/** 32-bit float DSP chain (native): DC blocker + soft-knee limiter + TPDF
+ *  dither, auto-engaged for lossless / high-quality streams. */
+val FloatDspEnabledKey = booleanPreferencesKey("floatDspEnabled")
+
+/** USB-exclusive audio output: an AAudio EXCLUSIVE float stream pinned to the
+ *  USB DAC, bypassing the framework mixer. Mutually exclusive with offload,
+ *  crossfade and automix (two players cannot hold one exclusive stream). */
+val UsbExclusiveAudioKey = booleanPreferencesKey("usbExclusiveAudio")
 val AutoLoadMoreKey = booleanPreferencesKey("autoLoadMore")
 val AutoDownloadOnLikeKey = booleanPreferencesKey("autoDownloadOnLike")
 val AutoSkipNextOnErrorKey = booleanPreferencesKey("autoSkipNextOnError")

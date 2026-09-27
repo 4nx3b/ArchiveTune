@@ -144,6 +144,8 @@ import moe.rukamori.archivetune.cast.CastPlaybackRepositoryLocator
 import moe.rukamori.archivetune.cast.CastScreenState
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
+import moe.rukamori.archivetune.constants.FloatDspEnabledKey
+import moe.rukamori.archivetune.constants.UsbExclusiveAudioKey
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedKey
 import moe.rukamori.archivetune.constants.AudioPlaybackPitchKey
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedPitchMatchKey
@@ -331,6 +333,8 @@ import moe.rukamori.archivetune.playback.artwork.ResolvedArtwork
 import moe.rukamori.archivetune.playback.artwork.isLocalArtworkUri
 import moe.rukamori.archivetune.playback.smart.CrossfadeMode
 import moe.rukamori.archivetune.playback.smart.SmartFadeAnalyzer
+import moe.rukamori.archivetune.playback.dsp.FloatDspProcessor
+import moe.rukamori.archivetune.playback.dsp.UsbExclusiveAudioOutputProvider
 import moe.rukamori.archivetune.playback.smart.SmartFadeRuntimeState
 import moe.rukamori.archivetune.playback.smart.SmartFadeSettings
 import moe.rukamori.archivetune.playback.smart.SmartAnalysis
@@ -722,10 +726,34 @@ class MusicService :
     // WHICH filters ride the blend. One analysis at a time, one plan at a time.
     private var smartFadeEnabled = false
     private var smartFadeAnalyzer: SmartFadeAnalyzer? = null
+
+    // ---- 32-bit float DSP + USB-exclusive output ----
+    // The DSP tail runs for lossless/high-quality streams (engagement decided
+    // per track from currentFormat); USB-exclusive swaps the sink's audio
+    // output to an AAudio exclusive float stream whenever a USB DAC is the
+    // active route and the toggle is on. See FloatDspProcessor and
+    // UsbExclusiveAudioOutputProvider.
+    @Volatile
+    private var usbExclusiveAudioEnabled = false
+
+    @Volatile
+    private var floatDspEnabled = false
+
+    @Volatile
+    private var usbSinkActiveNow = false
+
+    private val primaryFloatDspProcessor = FloatDspProcessor()
     private var primaryTransitionFilter = TransitionFilterProcessor()
 
     @Volatile
     private var secondaryTransitionFilter: TransitionFilterProcessor? = null
+
+    @Volatile
+    private var secondaryFloatDspProcessor: FloatDspProcessor? = null
+
+    /** Latest persisted format row for the current track — drives DSP engagement. */
+    @Volatile
+    private var currentFormatEntity: FormatEntity? = null
 
     /** The user's playback parameters, captured before a smart blend stretches
      * the incoming track, restored after promotion. */
@@ -780,6 +808,14 @@ class MusicService :
         val second: B,
         val third: C,
         val fourth: D,
+    )
+
+    private data class Penta<A, B, C, D, E>(
+        val first: A,
+        val second: B,
+        val third: C,
+        val fourth: D,
+        val fifth: E,
     )
 
     private class StaleDiscordSyncException : CancellationException("Stale Discord sync request")
@@ -1084,7 +1120,7 @@ class MusicService :
             ExoPlayer
                 .Builder(this)
                 .setMediaSourceFactory(createMediaSourceFactory())
-                .setRenderersFactory(createRenderersFactory(primaryStereoPanProcessor, primaryTransitionFilter))
+                .setRenderersFactory(createRenderersFactory(primaryStereoPanProcessor, primaryTransitionFilter, primaryFloatDspProcessor))
                 .setLoadControl(createPrimaryLoadControl())
                 .setTrackSelector(DefaultTrackSelector(this, SafeTrackSelectionFactory()))
                 .setHandleAudioBecomingNoisy(true)
@@ -1435,6 +1471,46 @@ class MusicService :
             .distinctUntilChanged()
             .collectLatest(scope) { mode ->
                 SmartFadeSettings.performanceMode.value = mode
+            }
+
+        // ---- 32-bit float DSP + USB-exclusive output toggles ---------------------
+        // USB-exclusive is incompatible with the blending engines for the same
+        // reason offload is (two players cannot both hold an exclusive stream),
+        // and the settings UI enforces the same exclusions.
+        combine(
+            dataStore.data.map { it[FloatDspEnabledKey] ?: false },
+            dataStore.data.map { it[UsbExclusiveAudioKey] ?: false },
+            dataStore.data.map { it[CrossfadeEnabledKey] ?: false },
+            dataStore.data.map { it[AutomixEnabledKey] ?: false },
+            dataStore.data.map { it[AudioOffload] ?: false },
+        ) { dsp, usbExclusive, crossfade, automix, offload ->
+            Penta(dsp, usbExclusive, crossfade, automix, offload)
+        }.distinctUntilChanged()
+            .collectLatest(scope) { (dsp, usbExclusive, crossfade, automix, offload) ->
+                floatDspEnabled = dsp
+                val effectiveUsbExclusive =
+                    usbExclusive && !crossfade && !automix && !offload &&
+                        isUsbSinkCurrentlyActive()
+                usbExclusiveAudioEnabled = effectiveUsbExclusive
+                usbSinkActiveNow = effectiveUsbExclusive
+                applyFloatDspEngagement()
+                Timber.tag(TAG).d(
+                    "Audio engine: floatDsp=%s usbExclusive=%s (requested=%s)",
+                    dsp,
+                    effectiveUsbExclusive,
+                    usbExclusive,
+                )
+            }
+
+        // The DSP engages per track: lossless or genuinely high-bitrate
+        // streams get the 32-bit float chain (DC blocker + soft-knee limiter
+        // + TPDF dither on the 16-bit reduction). Engagement is refreshed at
+        // every track transition, which is also the only safe moment for the
+        // processor to (re)configure.
+        currentFormat
+            .collectLatest(scope) { format ->
+                currentFormatEntity = format
+                applyFloatDspEngagement()
             }
 
         dataStore.data
@@ -3300,10 +3376,16 @@ class MusicService :
         secondaryStereoPanProcessor = secondaryStereoPan
         val secondaryTransition = TransitionFilterProcessor()
         secondaryTransitionFilter = secondaryTransition
+        // The secondary (crossfade/automix) player never drives the USB-
+        // exclusive output — crossfade/automix are mutually exclusive with it
+        // (same as offload) — but it still carries a DSP tail so its side of a
+        // blend is processed consistently with the primary.
+        val secondaryFloatDsp = FloatDspProcessor()
+        secondaryFloatDspProcessor = secondaryFloatDsp
         return ExoPlayer
             .Builder(this)
             .setMediaSourceFactory(createMediaSourceFactory())
-            .setRenderersFactory(createRenderersFactory(secondaryStereoPan, secondaryTransition))
+            .setRenderersFactory(createRenderersFactory(secondaryStereoPan, secondaryTransition, secondaryFloatDsp))
             .setLoadControl(createCrossfadeLoadControl())
             .setTrackSelector(DefaultTrackSelector(this, SafeTrackSelectionFactory()))
             .setHandleAudioBecomingNoisy(true)
@@ -9640,6 +9722,42 @@ class MusicService :
         }
     }
 
+    /**
+     * True when the active audio route is a USB sink right now — the gate for
+     * the USB-exclusive AAudio output (in addition to the user's toggle and
+     * the blending-engine exclusions).
+     */
+    private fun isUsbSinkCurrentlyActive(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        return runCatching {
+            audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { device ->
+                device.isSink && device.type in USB_SINK_DEVICE_TYPES
+            }
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Pushes the 32-bit float DSP engagement (and float-output mode) into
+     * every live processor instance. Engagement: the DSP runs for lossless
+     * streams and genuinely high-bitrate masters — exactly the material whose
+     * extra word length the float chain preserves.
+     */
+    private fun applyFloatDspEngagement() {
+        val format = currentFormatEntity
+        val engaged = floatDspEnabled && format != null &&
+            (
+                format.isLossless() ||
+                    (format.bitrate ?: 0L) >= HIGH_QUALITY_BITRATE ||
+                    (format.sampleRate ?: 0) >= 88_200
+                )
+        primaryFloatDspProcessor.outputFloat = usbSinkActiveNow
+        primaryFloatDspProcessor.setEngaged(engaged)
+        secondaryFloatDspProcessor?.let {
+            it.outputFloat = false
+            it.setEngaged(engaged)
+        }
+    }
+
     private fun updateAudioOffload(enabled: Boolean) {
         val effectiveEnabled = enabled && !crossfadeEnabled
         runCatching {
@@ -9701,6 +9819,7 @@ class MusicService :
     private fun createRenderersFactory(
         stereoPanProcessor: StereoPanAudioProcessor,
         transitionFilter: TransitionFilterProcessor,
+        floatDspProcessor: FloatDspProcessor,
     ) =
         object : DefaultRenderersFactory(this) {
             init {
@@ -9714,16 +9833,26 @@ class MusicService :
                 enableAudioTrackPlaybackParams: Boolean,
             ) = DefaultAudioSink
                 .Builder(context)
+                // Float output stays off at the SINK level: the 32-bit float
+                // DSP tail (floatDspProcessor) owns the encoding decision so
+                // the chain's existing 16-bit processors are untouched. When
+                // USB-exclusive output is active the tail emits float and the
+                // AAudio stream consumes it directly.
                 .setEnableFloatOutput(false)
                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                .setAudioOutputProvider(
+                    UsbExclusiveAudioOutputProvider(context) { usbExclusiveAudioEnabled },
+                )
                 .setAudioProcessorChain(
                     DefaultAudioSink.DefaultAudioProcessorChain(
                         SonicAudioProcessor(),
                         HapticsPcmProcessor(engineProvider = { musicHapticsEngine }),
                         stereoPanProcessor,
-                        // Transition DSP last in the chain, after widening and
-                        // any future EQ, exactly as BitChord places it.
+                        // Transition DSP after widening, exactly as BitChord
+                        // places it; the 32-bit float DSP tail converts the
+                        // chain's output when engaged.
                         transitionFilter,
+                        floatDspProcessor,
                     ),
                 ).build()
         }
@@ -10461,6 +10590,19 @@ class MusicService :
          * worker is single-threaded, so an unbounded resolve starves both the
          * outgoing and the incoming track's status. */
         const val SMART_FADE_RESOLVE_TIMEOUT_MS = 45_000L
+
+        /** USB output device types eligible for the exclusive AAudio path. */
+        val USB_SINK_DEVICE_TYPES =
+            intArrayOf(
+                android.media.AudioDeviceInfo.TYPE_USB_DEVICE,
+                android.media.AudioDeviceInfo.TYPE_USB_HEADSET,
+                android.media.AudioDeviceInfo.TYPE_USB_ACCESSORY,
+            )
+
+        /** Streams at or above this bitrate count as "high quality" for the
+         * 32-bit float DSP engagement (below lossless but well above the
+         * 128-160 kbps YouTube baseline). */
+        const val HIGH_QUALITY_BITRATE = 320_000L
         const val DEFAULT_SMART_FALLBACK_MS = 6_000L
         const val FILTER_ENTRY_HZ = 7_000.0
         const val FILTER_FLOOR_HZ = 300.0
