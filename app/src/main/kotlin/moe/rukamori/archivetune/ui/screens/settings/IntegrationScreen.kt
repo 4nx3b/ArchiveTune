@@ -94,7 +94,7 @@ fun IntegrationScreen(
     val (showSpotifyPlaylists, onShowSpotifyPlaylistsChange) = rememberPreference(ShowSpotifyPlaylistsKey, false)
     var showSpotifyLogin by rememberSaveable { mutableStateOf(false) }
 
-    var showCrossServiceImport = remember { mutableStateOf(false) }
+    var showCrossServiceImport by remember { mutableStateOf(false) }
 
     LaunchedEffect(spotifyState.isAuthenticated) {
         if (spotifyState.isAuthenticated) {
