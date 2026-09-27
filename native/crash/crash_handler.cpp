@@ -24,6 +24,7 @@
 
 #include <cstdarg>
 #include <cinttypes>
+#include <cstdio>
 #include <cstring>
 
 #include <fcntl.h>
