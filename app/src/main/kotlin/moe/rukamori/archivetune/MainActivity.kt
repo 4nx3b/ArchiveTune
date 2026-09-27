@@ -691,6 +691,11 @@ class MainActivity : ComponentActivity() {
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
+        // Surface any crash logs the previous session left behind (copies
+        // them to Download/ArchiveTune and toasts). Registered before anything
+        // else can fail.
+        moe.rukamori.archivetune.utils.CrashReporter.onStartup(this)
+
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val display =

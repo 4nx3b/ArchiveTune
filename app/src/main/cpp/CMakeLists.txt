@@ -77,3 +77,28 @@ find_library(log-lib-dsp log)
 target_link_libraries(archivetune_dsp ${log-lib-dsp} aaudio)
 
 target_link_options(archivetune_dsp PRIVATE "-Wl,-z,max-page-size=16384")
+
+# ---------------------------------------------------------------------------
+# archivetune_crash: the always-loaded crash log capture. A tiny standalone
+# library (no dependencies beyond libc/log) so it can be loaded first thing
+# at app start, before any playback or analysis library. It installs
+# async-signal-safe handlers for the fatal signals and writes a minimal
+# report (registers + /proc/self/maps) that CrashReporter.kt enriches with
+# the GlobalLog breadcrumbs of the dying session and copies to user-visible
+# storage on the next start.
+# ---------------------------------------------------------------------------
+add_library(archivetune_crash SHARED
+    ${ARCHIVETUNE_NATIVE_DIR}/crash/crash_handler.cpp
+)
+
+target_include_directories(archivetune_crash PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${ARCHIVETUNE_NATIVE_DIR}
+)
+
+target_compile_options(archivetune_crash PRIVATE -O2 -fvisibility=hidden -fexceptions)
+
+find_library(log-lib-crash log)
+target_link_libraries(archivetune_crash ${log-lib-crash})
+
+target_link_options(archivetune_crash PRIVATE "-Wl,-z,max-page-size=16384")

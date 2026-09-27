@@ -597,7 +597,7 @@ fun CommentTogetherScreen(navController: NavController) {
                 if (chatGlassBackdrop != null) {
                     LiquidGlassActionPill(
                         backdrop = chatGlassBackdrop,
-                        modifier = Modifier.weight(1f, fill = false),
+                        modifier = Modifier,
                         scrim = wallpaperGlassScrim,
                     ) {
                         Icon(
@@ -617,11 +617,18 @@ fun CommentTogetherScreen(navController: NavController) {
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
-                                .weight(1f, fill = false)
-                                .widthIn(max = 200.dp)
-                                .padding(end = 14.dp),
+                                .padding(end = 14.dp)
+                                .widthIn(max = 200.dp),
                         )
                     }
+
+                    // The overflow pill sits at the FAR RIGHT of the chat
+                    // screen — a flexible spacer absorbs all remaining header
+                    // width between the title pill and it (the title pill used
+                    // to carry weight(1f, fill=false), which only shrinks it to
+                    // content width and left the overflow pill glued to the
+                    // room name instead of the corner).
+                    Spacer(Modifier.weight(1f))
 
                     // The overflow pill (top-right): wallpaper controls and
                     // the notification mute live behind it. Same glass, same
@@ -647,7 +654,7 @@ fun CommentTogetherScreen(navController: NavController) {
                     Surface(
                         shape = RoundedCornerShape(24.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
-                        modifier = Modifier.weight(1f, fill = false),
+                        modifier = Modifier,
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { navController.navigateUp() }) {
@@ -662,12 +669,12 @@ fun CommentTogetherScreen(navController: NavController) {
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .weight(1f, fill = false)
-                                    .widthIn(max = 200.dp),
+                                modifier = Modifier.widthIn(max = 200.dp),
                             )
                         }
                     }
+
+                    Spacer(Modifier.weight(1f))
 
                     // Opaque twin of the overflow pill.
                     var overflowIconBounds by remember { mutableStateOf(Rect.Zero) }

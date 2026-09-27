@@ -184,17 +184,27 @@ fun LyricsMenu(
     // as .txt. The SAF launcher's MIME is fixed at registration, so one
     // launcher per family is registered unconditionally and the item picks
     // the one matching the detected format.
+    //
+    // CRITICAL: the payload is captured at CLICK time, not at callback time.
+    // The system file picker keeps the activity stopped for easily more than
+    // the 5s WhileSubscribed timeout of playerConnection.currentLyrics, so by
+    // the time the callback fires the flow has reset to its null initialValue
+    // and re-reading lyricsProvider() would write an EMPTY file (the original
+    // bug). pendingExportPayload holds the text that was on screen when the
+    // user tapped Export.
     val exportLyricsText = lyricsProvider()?.lyrics.orEmpty()
     val exportFormat = remember(exportLyricsText) { detectLyricsExportFormat(exportLyricsText) }
     val exportFileBase = remember(exportFormat) {
         val metadata = mediaMetadataProvider()
         sanitizeExportFileBase("${metadata.artists.joinToString(", ") { it.name }} - ${metadata.title}")
     }
+    var pendingExportPayload by remember { mutableStateOf<String?>(null) }
 
     fun writeExportLyrics(uri: android.net.Uri?) {
         if (uri == null) return
-        val payload = lyricsProvider()?.lyrics.orEmpty()
-        val ok =
+        val payload = pendingExportPayload.orEmpty()
+        pendingExportPayload = null
+        val ok = payload.isNotBlank() &&
             runCatching {
                 context.contentResolver.openOutputStream(uri)?.use { stream ->
                     stream.write(payload.toByteArray(Charsets.UTF_8))
@@ -219,6 +229,23 @@ fun LyricsMenu(
         rememberLauncherForActivityResult(
             androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain"),
         ) { uri -> writeExportLyrics(uri) }
+
+    // Declared after the launchers it drives (Kotlin local functions follow
+    // lexical declaration order for captures).
+    fun launchExportLyrics() {
+        val payload = lyricsProvider()?.lyrics.orEmpty()
+        if (payload.isBlank()) {
+            Toast.makeText(context, R.string.export_lyrics_failed, Toast.LENGTH_SHORT).show()
+            return
+        }
+        pendingExportPayload = payload
+        val fileName = "${exportFileBase}.${exportFormat.extension}"
+        when (exportFormat) {
+            LyricsExportFormat.TTML -> exportTtmlLauncher.launch(fileName)
+            LyricsExportFormat.LRC -> exportLrcLauncher.launch(fileName)
+            LyricsExportFormat.PLAIN -> exportTxtLauncher.launch(fileName)
+        }
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.refetchCompletionEvents.collect {
@@ -877,14 +904,7 @@ fun LyricsMenu(
                         iconRes = R.drawable.download,
                         isDestructive = false,
                         enabled = lyricsText.isNotBlank(),
-                        onClick = {
-                            val fileName = "${exportFileBase}.${exportFormat.extension}"
-                            when (exportFormat) {
-                                LyricsExportFormat.TTML -> exportTtmlLauncher.launch(fileName)
-                                LyricsExportFormat.LRC -> exportLrcLauncher.launch(fileName)
-                                LyricsExportFormat.PLAIN -> exportTxtLauncher.launch(fileName)
-                            }
-                        },
+                        onClick = { launchExportLyrics() },
                     ),
                 )
 

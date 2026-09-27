@@ -3654,3 +3654,19 @@ Work Log:
 Stage Summary:
 - 39 app files + lyrics submodule bump (714754f -> 5727bed, pushed).
 - dev push + CI monitoring next; PR #216 continues to carry dev -> main.
+
+---
+Task ID: 76
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 4-item user bug batch — silent crash fix + on-device crash log files, empty lyrics export, LT chat overflow position, ListenBrainz webauth 404 + auto token fetch
+
+Work Log:
+- Silent crash (N1b, the fix): use-after-free in AaudioExclusiveAudioOutput — write() blocked in native AAudioStream_write for up to 1s and then dereferenced the stream handle (xRunCount/position) while release() DELETED the native object on another thread; the race is a bare SIGSEGV with no Java exception (exactly "crashes silently with no crash log"). write() is now fully @Synchronized against the lifecycle methods (release/pause bounded by the same write timeout). FloatDspProcessor's dspHandle made @Volatile (torn 64-bit reads on armeabi-v7a) and its create/release/setEngaged lifecycle serialized behind handleLock (service thread vs playback thread); the queueInput hot path stays lock-free (same-thread contract with onReset).
+- Crash log files (N1a, the capture): new libarchivetune_crash (native/crash/crash_handler.cpp, CMake target, 16KB-aligned) installs async-signal-safe SIGSEGV/SIGBUS/SIGABRT/SIGFPE/SIGILL handlers with an altstack, writes a native_crash_<ts>.trace (registers per-ABI + /proc/self/maps for offline addr2line) and re-raises so the system tombstone is preserved; SIGTRAP deliberately left alone (debugger-owned). CrashReporter.kt: session-breadcrumb mirror (GlobalLog ring flushed to session_log.txt every 4s, bounded 512KB with tail-rotate), Java-crash reports (header + stack + breadcrumbs) written from App.kt's existing uncaught-exception handler before the DebugActivity hand-off, and onStartup() (MainActivity) which copies unsurfaced native/java reports to Download/ArchiveTune via MediaStore (legacy File path pre-Q), attaches the dying session's breadcrumb log to native traces, toasts the count, and prunes to 10 files.
+- Lyrics export (N2): the SAF file picker backgrounds the app longer than the 5s WhileSubscribed timeout of playerConnection.currentLyrics, so the flow reset to null and the callback re-read lyricsProvider() at exactly the wrong moment — empty file every time. The payload is now captured into pendingExportPayload at click time; the callback writes the captured text and toasts failure when it is blank.
+- LT chat overflow (N3): the header's title pill carried weight(1f, fill=false), which only shrinks it to content width and left the overflow pill glued to the room name. Weight removed from both the glass pill and the opaque twin, a Spacer(weight(1f)) inserted before the overflow pill — it now sits at the right corner of the chat screen.
+- ListenBrainz (N4): the fallback loaded /login/ which is NOT a route of LB's React router (renders the site's 404 page), and the OAuth path pointed at musicbrainz.org/oauth/authorize instead of /oauth2/authorize. The default flow now loads listenbrainz.org/settings/ (LB 302s to the real sign-in with next=/settings/), and onPageFinished scrapes the token automatically: every LB page embeds <script id="global-react-props"> with current_user.auth_token (verified against listenbrainz-server's webserver/utils.py), with the settings page's own <input id="auth-token"> as second strategy; the token is validated via /1/validate-token before saving, and the paste-token button stays as a manual escape hatch. Subtitle string added for the auto flow.
+
+Stage Summary:
+- 9 modified files + 2 new (CrashReporter.kt, native/crash/), +226/-61.
+- dev push + CI monitoring next; PR #216 continues to carry dev -> main.

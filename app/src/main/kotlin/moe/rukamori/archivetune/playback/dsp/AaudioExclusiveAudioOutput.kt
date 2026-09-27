@@ -106,8 +106,20 @@ class AaudioExclusiveAudioOutput(
         started = false
     }
 
+    /**
+     * Fully synchronized against the lifecycle methods: write() blocks in
+     * native code for up to [WRITE_TIMEOUT_MS] and reads through the stream
+     * handle afterwards (xRunCount/position), while release() DELETES the
+     * native object. An unsynchronized write racing a release is a
+     * use-after-free that takes the whole process down as a bare SIGSEGV —
+     * no Java exception, no crash dialog, nothing in the app's own logs.
+     * Holding this monitor for the duration of the write is the price of
+     * making the pair safe; release/pause simply wait out the in-flight
+     * write (bounded by the same timeout).
+     */
+    @Synchronized
     override fun write(buffer: ByteBuffer, encodedAccessUnitCount: Int, presentationTimeUs: Long): Boolean {
-        val current = stream ?: synchronized(this) { ensureStream() }
+        val current = stream ?: ensureStream()
             ?: // The exclusive stream could not be opened (device gone, HAL
                 // refused): report a recoverable write failure so the sink's
                 // error path takes over instead of spinning on a null output.
@@ -121,12 +133,10 @@ class AaudioExclusiveAudioOutput(
         if (written < 0) {
             // A disconnected USB DAC: drop the stream so a later write (or the
             // provider's next configure) re-resolves the route.
-            synchronized(this) {
-                stream?.close()
-                stream?.release()
-                stream = null
-                started = false
-            }
+            stream?.close()
+            stream?.release()
+            stream = null
+            started = false
             throw AudioOutput.WriteException(written, false)
         }
         // Advance the buffer over what the stream consumed (the sink retries

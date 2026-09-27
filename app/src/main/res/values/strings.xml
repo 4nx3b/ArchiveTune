@@ -1111,10 +1111,12 @@
     <string name="edit_listenbrainz_token">Edit ListenBrainz token</string>
     <string name="listenbrainz_login_title">ListenBrainz sign-in</string>
     <string name="listenbrainz_login_subtitle_oauth">Authorize ArchiveTune on MusicBrainz — you\'ll return here automatically</string>
+    <string name="listenbrainz_login_subtitle_auto">Sign in with your MusicBrainz account — your user token is fetched automatically</string>
     <string name="listenbrainz_login_subtitle_manual">Sign in, open Settings → your user token, copy it, then tap the button below</string>
     <string name="listenbrainz_login_paste_token">I copied my token — finish sign-in</string>
     <string name="listenbrainz_login_success">Signed in to ListenBrainz as %s</string>
     <string name="listenbrainz_login_failed">ListenBrainz sign-in failed — check the token and try again</string>
+    <string name="crash_log_saved_to_downloads">%1$d crash log(s) saved to Download/%2$s</string>
     <string name="listenbrainz_clipboard_empty">No token found on the clipboard — copy it from the ListenBrainz settings page first</string>
     <string name="discord_activity_name">Activity name</string>
     <string name="discord_activity_details">Activity details</string>
