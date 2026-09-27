@@ -9,6 +9,7 @@
 #ifndef ARCHIVETUNE_NATIVE_DSP_FLOAT_DSP_H_
 #define ARCHIVETUNE_NATIVE_DSP_FLOAT_DSP_H_
 
+#include <atomic>
 #include <cstdint>
 #include <cstddef>
 #include <vector>
@@ -45,8 +46,18 @@ public:
     /** Ceiling for the limiter, in dBFS (<= 0). */
     void setLimiterCeilingDb(float ceilingDb);
 
-    /** In-place processing of interleaved float PCM. */
-    void process(float* data, size_t frames);
+    /**
+     * In-place processing of interleaved float PCM.
+     *
+     * @param channels the channel count of THIS buffer. The instance was
+     *        constructed for one specific channel count and its per-channel
+     *        state is sized accordingly; a buffer whose layout differs from
+     *        the construction layout is left untouched (returns without
+     *        processing) rather than walked out of bounds — the Kotlin owner
+     *        recreates the handle at format changes, and this guard is the
+     *        last line of defence against any path that slips past it.
+     */
+    void process(float* data, size_t frames, int channels);
 
     /**
      * Converts interleaved float PCM (already processed) to int16 with TPDF
@@ -62,7 +73,10 @@ private:
     int sampleRate_;
     int channels_;
 
-    bool engaged_;
+    // Atomic: setEngaged() arrives on the service thread while process()
+    // runs on the playback thread — a plain bool there is a data race with
+    // no synchronization anywhere else in the chain.
+    std::atomic<bool> engaged_;
 
     // DC blocker state (per channel).
     std::vector<float> dcXm1_;

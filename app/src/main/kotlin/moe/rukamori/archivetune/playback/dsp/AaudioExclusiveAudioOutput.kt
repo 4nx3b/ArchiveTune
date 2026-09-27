@@ -28,6 +28,7 @@ import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.SystemClock
+import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.util.Util
@@ -69,11 +70,25 @@ class AaudioExclusiveAudioOutput(
             exclusive = true,
         )
         if (result != 0 || !opened.isExclusive()) {
+            // The one log that answers "is the USB-exclusive path actually on":
+            // the HAL either refused exclusive sharing outright (result != 0,
+            // common on devices whose USB HAL only supports shared streams) or
+            // silently demoted us to shared — both mean we fall back to the
+            // stock AudioTrack path for this track.
+            Log.w(
+                TAG,
+                "USB-exclusive AAudio stream NOT engaged (result=$result exclusive=${opened.isExclusive()} deviceId=$deviceId) — falling back to the standard output",
+            )
             opened.release()
             return null
         }
         stream = opened
         lastXRunCount = 0
+        Log.i(
+            TAG,
+            "USB-exclusive AAudio stream OPEN: rate=${opened.sampleRate()} channels=${opened.channelCount()} " +
+                "deviceId=$deviceId bufferCapacity=${opened.bufferCapacityFrames()} — 32-bit float direct to the DAC",
+        )
         return opened
     }
 
@@ -131,6 +146,7 @@ class AaudioExclusiveAudioOutput(
         if (frames <= 0) return true
         val written = current.write(buffer, frames, channelCount, isFloat, volume, WRITE_TIMEOUT_MS)
         if (written < 0) {
+            Log.w(TAG, "USB-exclusive AAudio write failed (code=$written) — dropping the stream; the provider re-resolves the route")
             // A disconnected USB DAC: drop the stream so a later write (or the
             // provider's next configure) re-resolves the route.
             stream?.close()
@@ -230,6 +246,7 @@ class AaudioExclusiveAudioOutput(
     }
 
     companion object {
+        private const val TAG = "UsbExclusiveAudio"
         private const val WRITE_TIMEOUT_MS = 1000
 
         /** Mirrors AAUDIO_ERROR_INVALID_STATE from the NDK headers. */

@@ -494,11 +494,17 @@ class MusicService :
     private val audioDeviceCallback =
         object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<AudioDeviceInfo>) {
-                if (addedDevices.any { it.isSink }) onAudioOutputDeviceChanged()
+                if (addedDevices.any { it.isSink }) {
+                    refreshUsbExclusiveRoute()
+                    onAudioOutputDeviceChanged()
+                }
             }
 
             override fun onAudioDevicesRemoved(removedDevices: Array<AudioDeviceInfo>) {
-                if (removedDevices.any { it.isSink }) onAudioOutputDeviceChanged()
+                if (removedDevices.any { it.isSink }) {
+                    refreshUsbExclusiveRoute()
+                    onAudioOutputDeviceChanged()
+                }
             }
         }
 
@@ -742,6 +748,13 @@ class MusicService :
 
     @Volatile
     private var usbSinkActiveNow = false
+
+    /** Raw prefs feeding the USB-exclusive gate (minus the live device state). */
+    @Volatile
+    private var usbExclusiveRequested = false
+
+    @Volatile
+    private var audioOffloadPrefEnabled = false
 
     private val primaryFloatDspProcessor = FloatDspProcessor()
     private var primaryTransitionFilter = TransitionFilterProcessor()
@@ -1489,17 +1502,21 @@ class MusicService :
         }.distinctUntilChanged()
             .collectLatest(scope) { (dsp, usbExclusive, crossfade, automix, offload) ->
                 floatDspEnabled = dsp
-                val effectiveUsbExclusive =
-                    usbExclusive && !crossfade && !automix && !offload &&
-                        isUsbSinkCurrentlyActive()
-                usbExclusiveAudioEnabled = effectiveUsbExclusive
-                usbSinkActiveNow = effectiveUsbExclusive
-                applyFloatDspEngagement()
+                // Only the STATIC half is stored here. The device half (is a
+                // USB sink attached right now?) is re-evaluated by
+                // refreshUsbExclusiveRoute(), which also runs from the audio
+                // device callback — plugging a DAC after launch must engage
+                // the path without waiting for a pref change (the original
+                // gap: the flag was only computed on pref updates, so a
+                // mid-session plug was missed and USB-exclusive never
+                // engaged).
+                usbExclusiveRequested = usbExclusive && !crossfade && !automix && !offload
+                audioOffloadPrefEnabled = offload
+                refreshUsbExclusiveRoute()
                 Timber.tag(TAG).d(
-                    "Audio engine: floatDsp=%s usbExclusive=%s (requested=%s)",
+                    "Audio engine: floatDsp=%s usbExclusiveRequested=%s",
                     dsp,
-                    effectiveUsbExclusive,
-                    usbExclusive,
+                    usbExclusiveRequested,
                 )
             }
 
@@ -9738,6 +9755,30 @@ class MusicService :
     }
 
     /**
+     * Re-evaluates the USB-exclusive gate: static half (the pref and its
+     * mutual exclusions, refreshed by the pref collector) crossed with the
+     * LIVE device state. Runs from the pref collector AND from the audio
+     * device callback, so plugging a USB DAC mid-session engages the path
+     * at the next track boundary without waiting for any pref change — the
+     * previous behaviour (pref-change-only evaluation) meant a DAC plugged
+     * after launch was never picked up.
+     */
+    private fun refreshUsbExclusiveRoute() {
+        val effective = usbExclusiveRequested && isUsbSinkCurrentlyActive()
+        if (effective != usbExclusiveAudioEnabled) {
+            usbExclusiveAudioEnabled = effective
+            Timber.tag(TAG).i(
+                "USB-exclusive output %s (requested=%s usbSinkAttached=%s)",
+                if (effective) "ENGAGED" else "disengaged",
+                usbExclusiveRequested,
+                isUsbSinkCurrentlyActive(),
+            )
+        }
+        usbSinkActiveNow = usbExclusiveAudioEnabled
+        applyFloatDspEngagement()
+    }
+
+    /**
      * Pushes the 32-bit float DSP engagement (and float-output mode) into
      * every live processor instance. Engagement: the DSP runs for lossless
      * streams and genuinely high-bitrate masters — exactly the material whose
@@ -9757,7 +9798,24 @@ class MusicService :
             it.outputFloat = false
             it.setEngaged(engaged)
         }
+        // One line per engagement CHANGE (not per call — this fires on every
+        // format/pref update): the definitive in-logcat answer to "is the
+        // 32-bit float DSP engaged for this stream".
+        val decision = Triple(engaged, usbSinkActiveNow, format?.id)
+        if (decision != lastDspEngagementDecision) {
+            lastDspEngagementDecision = decision
+            Timber.tag(TAG).i(
+                "Float DSP engaged=%s (lossless=%s bitrate=%s sampleRate=%s) floatOutputToSink=%s",
+                engaged,
+                format?.isLossless(),
+                format?.bitrate,
+                format?.sampleRate,
+                usbSinkActiveNow,
+            )
+        }
     }
+
+    private var lastDspEngagementDecision: Triple<Boolean, Boolean, String?>? = null
 
     private fun updateAudioOffload(enabled: Boolean) {
         val effectiveEnabled = enabled && !crossfadeEnabled

@@ -38,7 +38,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -181,70 +180,35 @@ fun LyricsMenu(
     // ---- Export lyrics (respective formats) ---------------------------------
     // The raw stored payload goes out in whatever format it already is:
     // TTML as .ttml, LRC/enhanced-LRC/QRC-shaped content as .lrc, plain text
-    // as .txt. The SAF launcher's MIME is fixed at registration, so one
-    // launcher per family is registered unconditionally and the item picks
-    // the one matching the detected format.
+    // as .txt.
     //
-    // CRITICAL: the payload is captured at CLICK time, not at callback time.
-    // The system file picker keeps the activity stopped for easily more than
-    // the 5s WhileSubscribed timeout of playerConnection.currentLyrics, so by
-    // the time the callback fires the flow has reset to its null initialValue
-    // and re-reading lyricsProvider() would write an EMPTY file (the original
-    // bug). pendingExportPayload holds the text that was on screen when the
-    // user tapped Export.
+    // The payload is captured at CLICK time and handed to
+    // LyricsExportCoordinator, which stages it to cacheDir and lets the
+    // ROOT-level host in MainActivity drive the SAF picker. The launchers do
+    // not live here: this composable is the transient lyrics menu, and any
+    // layout that keeps launcher + payload inside it loses them whenever the
+    // picker round-trip tears down the composition (the "empty exported
+    // file" bug — the picker creates the destination document up front, so a
+    // lost callback leaves a 0-byte file behind).
     val exportLyricsText = lyricsProvider()?.lyrics.orEmpty()
     val exportFormat = remember(exportLyricsText) { detectLyricsExportFormat(exportLyricsText) }
     val exportFileBase = remember(exportFormat) {
         val metadata = mediaMetadataProvider()
         sanitizeExportFileBase("${metadata.artists.joinToString(", ") { it.name }} - ${metadata.title}")
     }
-    var pendingExportPayload by remember { mutableStateOf<String?>(null) }
 
-    fun writeExportLyrics(uri: android.net.Uri?) {
-        if (uri == null) return
-        val payload = pendingExportPayload.orEmpty()
-        pendingExportPayload = null
-        val ok = payload.isNotBlank() &&
-            runCatching {
-                context.contentResolver.openOutputStream(uri)?.use { stream ->
-                    stream.write(payload.toByteArray(Charsets.UTF_8))
-                } != null
-            }.getOrDefault(false)
-        Toast.makeText(
-            context,
-            context.getString(if (ok) R.string.export_lyrics_saved else R.string.export_lyrics_failed),
-            Toast.LENGTH_SHORT,
-        ).show()
-    }
-
-    val exportTtmlLauncher =
-        rememberLauncherForActivityResult(
-            androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/xml"),
-        ) { uri -> writeExportLyrics(uri) }
-    val exportLrcLauncher =
-        rememberLauncherForActivityResult(
-            androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain"),
-        ) { uri -> writeExportLyrics(uri) }
-    val exportTxtLauncher =
-        rememberLauncherForActivityResult(
-            androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain"),
-        ) { uri -> writeExportLyrics(uri) }
-
-    // Declared after the launchers it drives (Kotlin local functions follow
-    // lexical declaration order for captures).
     fun launchExportLyrics() {
         val payload = lyricsProvider()?.lyrics.orEmpty()
         if (payload.isBlank()) {
             Toast.makeText(context, R.string.export_lyrics_failed, Toast.LENGTH_SHORT).show()
             return
         }
-        pendingExportPayload = payload
         val fileName = "${exportFileBase}.${exportFormat.extension}"
-        when (exportFormat) {
-            LyricsExportFormat.TTML -> exportTtmlLauncher.launch(fileName)
-            LyricsExportFormat.LRC -> exportLrcLauncher.launch(fileName)
-            LyricsExportFormat.PLAIN -> exportTxtLauncher.launch(fileName)
+        val mime = when (exportFormat) {
+            LyricsExportFormat.TTML -> moe.rukamori.archivetune.utils.LyricsExportCoordinator.MIME_XML
+            LyricsExportFormat.LRC, LyricsExportFormat.PLAIN -> moe.rukamori.archivetune.utils.LyricsExportCoordinator.MIME_TEXT
         }
+        moe.rukamori.archivetune.utils.LyricsExportCoordinator.request(context, payload, fileName, mime)
     }
 
     LaunchedEffect(viewModel) {

@@ -50,8 +50,14 @@ public:
     /**
      * Blocking write of interleaved float PCM already scaled by volume.
      * Returns frames written, or a negative AAudio error.
+     *
+     * @param channels the interleaved layout of @p data. The pointer stride
+     *        between consecutive frames comes from THIS argument, not the
+     *        stream's own channel count — the two are equal in every correct
+     *        configuration, and a mismatch is surfaced as an error instead of
+     *        walked past the end of the caller's buffer.
      */
-    int64_t write(const float* data, size_t frames, int64_t timeoutMs);
+    int64_t write(const float* data, size_t frames, int32_t channels, int64_t timeoutMs);
 
     int32_t requestStart();
     int32_t requestPause();
