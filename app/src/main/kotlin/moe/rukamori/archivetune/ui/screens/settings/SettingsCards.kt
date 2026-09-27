@@ -35,6 +35,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectIsPressedAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -127,14 +128,14 @@ fun SettingsCardSurface(
     Surface(
         shape = shape,
         color = container,
-        border = null,
         modifier =
             modifier
                 .fillMaxWidth()
                 .padding(horizontal = SettingsCardDimensions.ScreenPadding)
                 .glassAwareCardBorder(shape),
-        content = content,
-    )
+    ) {
+        content()
+    }
 }
 
 /** Small, quiet section caption above each card (the reference's captions). */

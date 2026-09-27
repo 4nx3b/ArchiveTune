@@ -47,15 +47,16 @@ int32_t AaudioExclusiveStream::open(int32_t sampleRate,
     if (deviceId > 0) {
         AAudioStreamBuilder_setDeviceId(builder, deviceId);
     }
+#if __ANDROID_API__ >= 28
+    // Usage/content-type setters are API 28+; below that the stream routes
+    // with the framework's media defaults, which match anyway.
     if (usage >= 0) {
         AAudioStreamBuilder_setUsage(builder, static_cast<aaudio_usage_t>(usage));
     }
     if (contentType >= 0) {
         AAudioStreamBuilder_setContentType(builder, static_cast<aaudio_content_type_t>(contentType));
     }
-    // Power saving OFF: the exclusive path exists precisely to avoid the
-    // framework's battery-motivated deep buffering.
-    AAudioStreamBuilder_setPowerSaveMode(builder, AAUDIO_POWERSAVE_DISABLED);
+#endif
     if (bufferCapacityFrames > 0) {
         AAudioStreamBuilder_setBufferCapacityInFrames(builder, bufferCapacityFrames);
     }
@@ -169,7 +170,11 @@ int32_t AaudioExclusiveStream::channelCount() const {
 
 int32_t AaudioExclusiveStream::sessionId() const {
     std::lock_guard<std::mutex> lock(mutex_);
+#if __ANDROID_API__ >= 28
     return open_ && stream_ != nullptr ? AAudioStream_getSessionId(stream_) : 0;
+#else
+    return 0;
+#endif
 }
 
 int64_t AaudioExclusiveStream::framesWritten() const {

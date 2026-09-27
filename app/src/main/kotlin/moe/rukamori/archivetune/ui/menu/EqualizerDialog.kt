@@ -1315,19 +1315,18 @@ private fun ReverbSection(
         val index = presetValue.toInt().coerceIn(0, 6)
 
         var expanded by remember { mutableStateOf(false) }
-        // The dropdown panel renders with the glass menu scheme's container
-        // colors (near-transparent) when liquid glass is on; resolve the
-        // panel + field colors from the UNGLASSED scheme so both stay opaque
-        // and readable.
+        // The dropdown panel + field render with the glass menu scheme's
+        // container colors (near-transparent) when liquid glass is on;
+        // re-applying the UNGLASSED scheme for this section keeps both the
+        // field and the floating panel opaque and readable.
         val unglassedScheme = LocalUnglassColorScheme.current ?: MaterialTheme.colorScheme
-        val dropdownContainer = unglassedScheme.surfaceContainerHigh
         val dropdownFieldColors =
             ExposedDropdownMenuDefaults.outlinedTextFieldColors(
-                containerColor = unglassedScheme.surfaceContainerLowest,
                 focusedContainerColor = unglassedScheme.surfaceContainerLowest,
                 unfocusedContainerColor = unglassedScheme.surfaceContainerLowest,
             )
 
+        UnglassedDialogTheme {
         ExposedDropdownMenuBox(
             expanded = expanded,
             onExpandedChange = { if (enabled && interactionEnabled) expanded = !expanded },
@@ -1346,7 +1345,6 @@ private fun ReverbSection(
             ExposedDropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
-                containerColor = dropdownContainer,
             ) {
                 presets.forEachIndexed { i, presetName ->
                     DropdownMenuItem(
@@ -1358,6 +1356,7 @@ private fun ReverbSection(
                     )
                 }
             }
+        }
         }
     }
 }

@@ -149,7 +149,6 @@ fun CustomizeBackground(navController: NavController) {
                 SettingsPageTopBar(
                     titleText = stringResource(R.string.customize_background_title),
                     onBack = navController::navigateUp,
-                    onBackLongClick = navController::backToMain,
                 )
             },
     ) { innerPadding ->
