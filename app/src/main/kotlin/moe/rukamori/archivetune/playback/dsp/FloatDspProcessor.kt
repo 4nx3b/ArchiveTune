@@ -30,6 +30,7 @@ class FloatDspProcessor : BaseAudioProcessor() {
     /** Set by the service when the current stream deserves the DSP. */
     @Volatile
     var engaged: Boolean = false
+        private set
 
     /**
      * Set by the service while a USB-exclusive float output is (about to be)
