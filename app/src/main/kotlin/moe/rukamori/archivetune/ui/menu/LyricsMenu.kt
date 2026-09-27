@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -176,6 +177,48 @@ fun LyricsMenu(
     var showLyricsSyncOffsetDialog by rememberSaveable { mutableStateOf(false) }
     val isRefetching by viewModel.isRefetching.collectAsStateWithLifecycle()
     val coroutineScope = rememberCoroutineScope()
+
+    // ---- Export lyrics (respective formats) ---------------------------------
+    // The raw stored payload goes out in whatever format it already is:
+    // TTML as .ttml, LRC/enhanced-LRC/QRC-shaped content as .lrc, plain text
+    // as .txt. The SAF launcher's MIME is fixed at registration, so one
+    // launcher per family is registered unconditionally and the item picks
+    // the one matching the detected format.
+    val exportLyricsText = lyricsProvider()?.lyrics.orEmpty()
+    val exportFormat = remember(exportLyricsText) { detectLyricsExportFormat(exportLyricsText) }
+    val exportFileBase = remember(exportFormat) {
+        val metadata = mediaMetadataProvider()
+        sanitizeExportFileBase("${metadata.artists.joinToString(", ") { it.name }} - ${metadata.title}")
+    }
+
+    fun writeExportLyrics(uri: android.net.Uri?) {
+        if (uri == null) return
+        val payload = lyricsProvider()?.lyrics.orEmpty()
+        val ok =
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { stream ->
+                    stream.write(payload.toByteArray(Charsets.UTF_8))
+                } != null
+            }.getOrDefault(false)
+        Toast.makeText(
+            context,
+            context.getString(if (ok) R.string.export_lyrics_saved else R.string.export_lyrics_failed),
+            Toast.LENGTH_SHORT,
+        ).show()
+    }
+
+    val exportTtmlLauncher =
+        rememberLauncherForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/xml"),
+        ) { uri -> writeExportLyrics(uri) }
+    val exportLrcLauncher =
+        rememberLauncherForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain"),
+        ) { uri -> writeExportLyrics(uri) }
+    val exportTxtLauncher =
+        rememberLauncherForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain"),
+        ) { uri -> writeExportLyrics(uri) }
 
     LaunchedEffect(viewModel) {
         viewModel.refetchCompletionEvents.collect {
@@ -827,6 +870,21 @@ fun LyricsMenu(
                         isDestructive = false,
                         enabled = true,
                         onClick = { showSearchDialog = true },
+                    ),
+
+                    AppleMusicLyricsMenuItem(
+                        label = stringResource(R.string.export_lyrics),
+                        iconRes = R.drawable.download,
+                        isDestructive = false,
+                        enabled = lyricsText.isNotBlank(),
+                        onClick = {
+                            val fileName = "${exportFileBase}.${exportFormat.extension}"
+                            when (exportFormat) {
+                                LyricsExportFormat.TTML -> exportTtmlLauncher.launch(fileName)
+                                LyricsExportFormat.LRC -> exportLrcLauncher.launch(fileName)
+                                LyricsExportFormat.PLAIN -> exportTxtLauncher.launch(fileName)
+                            }
+                        },
                     ),
                 )
 
@@ -1951,4 +2009,28 @@ fun AnchoredLyricsOverflowMenu(
         }
     }
 }
+
+/** The file family the stored lyrics payload exports as. */
+private enum class LyricsExportFormat(val extension: String) {
+    TTML("ttml"),
+    LRC("lrc"),
+    PLAIN("txt"),
+}
+
+private fun detectLyricsExportFormat(lyrics: String): LyricsExportFormat {
+    if (lyrics.isBlank()) return LyricsExportFormat.PLAIN
+    if (moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml(lyrics)) return LyricsExportFormat.TTML
+    // Any timed line shape — plain LRC, enhanced LRC, QRC — exports as .lrc.
+    val timedLine = Regex("""^\[.*?].*""")
+    if (lyrics.lineSequence().any { timedLine.matches(it.trim()) }) return LyricsExportFormat.LRC
+    return LyricsExportFormat.PLAIN
+}
+
+private fun sanitizeExportFileBase(raw: String): String =
+    raw
+        .map { ch -> if (ch.isLetterOrDigit() || ch in " -_()&.,'’" && !ch.isWhitespace()) ch else if (ch.isWhitespace()) ' ' else '_' }
+        .joinToString("")
+        .trim()
+        .take(120)
+        .ifBlank { "lyrics" }
 

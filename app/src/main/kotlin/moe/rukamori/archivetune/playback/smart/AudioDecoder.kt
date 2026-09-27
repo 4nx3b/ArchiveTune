@@ -124,6 +124,7 @@ object AudioDecoder {
         endSeconds: Double,
         targetSampleRate: Double? = null,
         maxSeconds: Double? = null,
+        abort: () -> Boolean = { false },
     ): Pair<Pcm, Double>? {
         if (targetSampleRate != null && targetSampleRate > 0) {
             val resampler = StreamingResampler(targetSampleRate)
@@ -133,7 +134,7 @@ object AudioDecoder {
                     ?.let { seconds -> (seconds * targetSampleRate).toLong().coerceAtLeast(1L) }
                     ?: Long.MAX_VALUE
             val decoded =
-                decodeRaw(source, startSeconds, endSeconds) { buffer, info, channels, rate ->
+                decodeRaw(source, startSeconds, endSeconds, abort) { buffer, info, channels, rate ->
                     resampler.push(toMono(buffer, info, channels), rate, budget)
                 } ?: return null
             val samples = resampler.result() ?: return null
@@ -143,7 +144,7 @@ object AudioDecoder {
         var framesDecoded = 0L
         var frameBudget = -1L
         val decoded =
-            decodeRaw(source, startSeconds, endSeconds) { buffer, info, channels, rate ->
+            decodeRaw(source, startSeconds, endSeconds, abort) { buffer, info, channels, rate ->
                 if (frameBudget < 0 && maxSeconds != null && rate > 0) {
                     frameBudget = (maxSeconds * rate).toLong().coerceAtLeast(1L)
                 }
@@ -168,13 +169,14 @@ object AudioDecoder {
         startSeconds: Double,
         endSeconds: Double,
         maxSeconds: Double? = null,
+        abort: () -> Boolean = { false },
     ): Pair<StereoPcm, Double>? {
         val left = ArrayList<FloatArray>()
         val right = ArrayList<FloatArray>()
         var framesDecoded = 0L
         var frameBudget = -1L
         val decoded =
-            decodeRaw(source, startSeconds, endSeconds) { buffer, info, channels, rate ->
+            decodeRaw(source, startSeconds, endSeconds, abort) { buffer, info, channels, rate ->
                 if (frameBudget < 0 && maxSeconds != null && rate > 0) {
                     frameBudget = (maxSeconds * rate).toLong().coerceAtLeast(1L)
                 }
@@ -212,6 +214,7 @@ object AudioDecoder {
         source: MediaDataSource,
         startSeconds: Double,
         endSeconds: Double,
+        abort: () -> Boolean = { false },
         onBuffer: (ByteBuffer, MediaCodec.BufferInfo, Int, Double) -> Boolean,
     ): Pair<Double, Double>? {
         if (endSeconds <= startSeconds) return null
@@ -250,6 +253,13 @@ object AudioDecoder {
             val deadlineUptimeMs = SystemClock.uptimeMillis() + MAX_DECODE_WALL_MS
 
             while (!outputDone) {
+                // Polled at the top of the loop (BitChord's own hardening): a
+                // decode that is no longer wanted — released analyzer, a Listen
+                // Together room joined mid-pass — is abandoned as if it had
+                // failed, dropping the tens of MB of PCM it has accumulated so
+                // far instead of carrying them to completion. `finally` below
+                // still tears the codec and extractor down.
+                if (abort()) return null
                 if (SystemClock.uptimeMillis() > deadlineUptimeMs) {
                     Log.w(TAG, "Region decode exceeded ${MAX_DECODE_WALL_MS}ms wall clock — aborting")
                     return null

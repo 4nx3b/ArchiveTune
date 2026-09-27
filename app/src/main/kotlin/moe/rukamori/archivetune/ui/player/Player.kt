@@ -176,6 +176,8 @@ import moe.rukamori.archivetune.constants.VideoQualityPreferredHeightKey
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.ShowCodecOnPlayerKey
 import moe.rukamori.archivetune.constants.SpotifyCanvasKey
+import moe.rukamori.archivetune.constants.SongCanvasDisabledKey
+import moe.rukamori.archivetune.audiosource.SongCanvasDisabled
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
 import moe.rukamori.archivetune.constants.BlurRadiusKey
@@ -1437,7 +1439,14 @@ fun BottomSheetPlayer(
                 if (country.length == 2) country.lowercase(Locale.ROOT) else "us"
             }
         val trackIsMusicVideo = mediaMetadata?.isMusicVideo == true
-        val canvasOptionsEnabled = archiveTuneCanvasEnabled || spotifyCanvasEnabled
+        // Per-song "Disable canvas" (player overflow menu): a disabled song
+        // plays its static artwork, in every player style.
+        val (songCanvasDisabledRaw, _) = rememberPreference(SongCanvasDisabledKey, "")
+        val songCanvasDisabledForCurrent =
+            remember(songCanvasDisabledRaw, mediaMetadata?.id) {
+                SongCanvasDisabled.isDisabled(songCanvasDisabledRaw.ifBlank { null }, mediaMetadata?.id.orEmpty())
+            }
+        val canvasOptionsEnabled = (archiveTuneCanvasEnabled || spotifyCanvasEnabled) && !songCanvasDisabledForCurrent
         val shouldUseV7Canvas =
             canvasOptionsEnabled &&
                 (playerDesignStyle == PlayerDesignStyle.V7 ||

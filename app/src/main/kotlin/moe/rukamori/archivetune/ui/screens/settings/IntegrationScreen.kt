@@ -48,11 +48,9 @@ import moe.rukamori.archivetune.constants.TidalAccessTokenKey
 import moe.rukamori.archivetune.spotify.SpotifyAccountViewModel
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
-import moe.rukamori.archivetune.ui.component.InfoLabel
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
-import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.menu.CrossServiceImportPlaylistDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -76,7 +74,7 @@ fun IntegrationScreen(
     spotifyAccountViewModel: SpotifyAccountViewModel = hiltViewModel(),
 ) {
     val (listenBrainzEnabled, onListenBrainzEnabledChange) = rememberPreference(ListenBrainzEnabledKey, false)
-    val (listenBrainzToken, onListenBrainzTokenChange) = rememberPreference(ListenBrainzTokenKey, "")
+    val (listenBrainzToken) = rememberPreference(ListenBrainzTokenKey, "")
 
     val (manualSourceLogin, _) = rememberPreference(ManualSourceLoginEnabledKey, false)
     val (appleMusicToken, _) = rememberPreference(AppleMusicMediaUserTokenKey, "")
@@ -96,8 +94,7 @@ fun IntegrationScreen(
     val (showSpotifyPlaylists, onShowSpotifyPlaylistsChange) = rememberPreference(ShowSpotifyPlaylistsKey, false)
     var showSpotifyLogin by rememberSaveable { mutableStateOf(false) }
 
-    var showListenBrainzTokenEditor = remember { mutableStateOf(false) }
-    var showCrossServiceImport by remember { mutableStateOf(false) }
+    var showCrossServiceImport = remember { mutableStateOf(false) }
 
     LaunchedEffect(spotifyState.isAuthenticated) {
         if (spotifyState.isAuthenticated) {
@@ -339,16 +336,14 @@ fun IntegrationScreen(
                         title = {
                             Text(
                                 if (listenBrainzToken.isBlank()) {
-                                    stringResource(
-                                        R.string.set_listenbrainz_token,
-                                    )
+                                    stringResource(R.string.set_listenbrainz_token)
                                 } else {
                                     stringResource(R.string.edit_listenbrainz_token)
                                 },
                             )
                         },
                         icon = { Icon(painterResource(R.drawable.token), null) },
-                        onClick = { showListenBrainzTokenEditor.value = true },
+                        onClick = { navController.navigate(LISTENBRAINZ_LOGIN_ROUTE) },
                     )
                 }
             }
@@ -374,29 +369,6 @@ fun IntegrationScreen(
         )
         }
 }
-
-    if (showListenBrainzTokenEditor.value) {
-        TextFieldDialog(
-            initialTextFieldValue =
-                androidx.compose.ui.text.input
-                    .TextFieldValue(listenBrainzToken),
-            onDone = { data ->
-                onListenBrainzTokenChange(data)
-                showListenBrainzTokenEditor.value = false
-            },
-            onDismiss = { showListenBrainzTokenEditor.value = false },
-            singleLine = true,
-            maxLines = 1,
-
-            masked = true,
-            isInputValid = {
-                it.isNotEmpty()
-            },
-            extraContent = {
-                InfoLabel(text = stringResource(R.string.listenbrainz_scrobbling_description))
-            },
-        )
-    }
 
     CrossServiceImportPlaylistDialog(
         isVisible = showCrossServiceImport,

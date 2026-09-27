@@ -18,6 +18,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -27,6 +31,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +45,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -51,6 +58,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -58,6 +67,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -65,6 +75,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -77,10 +88,14 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -89,6 +104,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
@@ -98,6 +114,10 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.effects.lens
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.Dispatchers
@@ -110,6 +130,7 @@ import moe.rukamori.archivetune.LocalListenTogetherManager
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.ListenTogetherChatMutedKey
 import moe.rukamori.archivetune.constants.ListenTogetherChatWallpaperKey
 import moe.rukamori.archivetune.constants.ListenTogetherServerUrlKey
 import moe.rukamori.archivetune.listentogether.ChatMessagePayload
@@ -161,6 +182,14 @@ fun CommentTogetherScreen(navController: NavController) {
     var showGifPicker by remember { mutableStateOf(false) }
     var attachmentAnchor by remember { mutableStateOf<Rect?>(null) }
     var jumpTargetKey by remember { mutableStateOf<String?>(null) }
+
+    // The chat's overflow menu (top-right glass pill): holds the wallpaper
+    // controls and the one-tap notification mute, so the composer's paperclip
+    // only ever means attachments.
+    var overflowAnchor by remember { mutableStateOf<Rect?>(null) }
+
+    // One-tap mute for BOTH the in-app popup and the shade notification.
+    var chatMuted by rememberPreference(ListenTogetherChatMutedKey, false)
 
     // The local chat wallpaper (device-only, never synced, never seen by other
     // members) rendered behind the conversation.
@@ -340,21 +369,27 @@ fun CommentTogetherScreen(navController: NavController) {
         }
     }
 
-    // ---- in-chat mention popup --------------------------------------------------
-    // A mention that lands while the user is INSIDE the chat raises a top popup
-    // (not just the header badge): it stays until the user jumps to the mention
-    // or explicitly dismisses it — a transient toast is too easy to miss.
-    var mentionPopup by remember { mutableStateOf<ChatMessagePayload?>(null) }
+    // ---- in-chat mention queue -----------------------------------------------
+    // Mentions stack like pinned messages: the MOST RECENT one shows in the
+    // compact chip above the composer; jumping to it consumes that entry and
+    // the next most recent takes its place, until the queue empties. The chip
+    // carries the remaining count as a badge on the @ glyph.
+    val mentionQueue = remember { mutableStateListOf<ChatMessagePayload>() }
     var lastSeenMentionCount by remember { mutableStateOf(0) }
     LaunchedEffect(mentionCount) {
         if (mentionCount > lastSeenMentionCount) {
             val myName = manager.currentUsername
-            mentionPopup = messages.lastOrNull { message ->
-                !isOwnMessage(message) && message.mentions.any { it.equals(myName ?: "", ignoreCase = true) }
+            // All mention messages not already queued, oldest→newest; inserted
+            // at the front in reverse so the NEWEST mention ends up first.
+            val fresh = messages.filter { message ->
+                !isOwnMessage(message) &&
+                    message.mentions.any { it.equals(myName ?: "", ignoreCase = true) } &&
+                    mentionQueue.none { it.timestamp == message.timestamp && it.userId == message.userId }
             }
+            mentionQueue.addAll(0, fresh.asReversed())
         }
         lastSeenMentionCount = mentionCount
-        if (mentionCount == 0) mentionPopup = null
+        if (mentionCount == 0) mentionQueue.clear()
     }
 
     // ---- wallpaper picker --------------------------------------------------------
@@ -587,6 +622,26 @@ fun CommentTogetherScreen(navController: NavController) {
                                 .padding(end = 14.dp),
                         )
                     }
+
+                    // The overflow pill (top-right): wallpaper controls and
+                    // the notification mute live behind it. Same glass, same
+                    // wallpaper-aware scrim as the back pill.
+                    var overflowIconBounds by remember { mutableStateOf(Rect.Zero) }
+                    LiquidGlassActionPill(
+                        backdrop = chatGlassBackdrop,
+                        scrim = wallpaperGlassScrim,
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.more_vert),
+                            contentDescription = stringResource(R.string.listen_together_chat_overflow),
+                            tint = headerContentColor,
+                            modifier = Modifier
+                                .onGloballyPositioned { overflowIconBounds = it.boundsInRoot() }
+                                .clickable { overflowAnchor = overflowIconBounds }
+                                .padding(12.dp)
+                                .size(24.dp),
+                        )
+                    }
                 } else {
                     // Glass disabled: the same header, plain surfaces.
                     Surface(
@@ -613,37 +668,30 @@ fun CommentTogetherScreen(navController: NavController) {
                             )
                         }
                     }
+
+                    // Opaque twin of the overflow pill.
+                    var overflowIconBounds by remember { mutableStateOf(Rect.Zero) }
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
+                    ) {
+                        IconButton(
+                            onClick = { overflowAnchor = overflowIconBounds },
+                            modifier = Modifier.onGloballyPositioned { overflowIconBounds = it.boundsInRoot() },
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.more_vert),
+                                contentDescription = stringResource(R.string.listen_together_chat_overflow),
+                            )
+                        }
+                    }
                 }
             }
-            } // end header-overlay Box (haze band + glass pill)
+            } // end header-overlay Box (haze band + glass pills)
 
-            // The in-chat mention popup: persists until jumped-to or dismissed.
-            // Compact, tucked tight under the pill, liquid glass when the mode
-            // is on and the same shape opaque when it is not; the mentioner's
-            // profile picture leads the row.
-            mentionPopup?.let { popup ->
-                Spacer(Modifier.height(4.dp))
-                MentionAlertPopup(
-                    userId = popup.userId,
-                    username = popup.username,
-                    snippet = popup.sharedTrack?.title
-                        ?: if (popup.gifUrl != null) "GIF" else popup.message,
-                    glassBackdrop = chatGlassBackdrop,
-                    scrim = wallpaperGlassScrim,
-                    contentColor = headerContentColor,
-                    onJump = {
-                        val forwardIndex = messages.indexOfFirst {
-                            it.timestamp == popup.timestamp && it.userId == popup.userId
-                        }
-                        if (forwardIndex >= 0) {
-                            jumpToMessage(forwardIndex, "${popup.userId}:${popup.timestamp}")
-                        }
-                        manager.markMentionsSeen()
-                        mentionPopup = null
-                    },
-                    onDismiss = { mentionPopup = null },
-                )
-            }
+            // (The in-chat mention indicator no longer lives in the header
+            // stack: it is a compact chip floating above the composer, on the
+            // left — see the composer column below.)
 
             // The pinned-message carousel rides at the bottom of the floating
             // header stack: the list reserves the whole stack's height as top
@@ -689,6 +737,44 @@ fun CommentTogetherScreen(navController: NavController) {
                     .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             if (chatSupported) {
+                // The mention chip: a COMPACT pill (just the @ glyph with the
+                // remaining-mention count badge and the mentioner's avatar)
+                // floating above the composer on the LEFT, with a small gap to
+                // the input capsule — never flush against it. Tapping jumps to
+                // the most recent mention and consumes it; the next most
+                // recent then takes its place, pinned-message style.
+                if (mentionQueue.isNotEmpty()) {
+                    val mention = mentionQueue.first()
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(start = 6.dp, bottom = 6.dp),
+                    ) {
+                        MentionAlertChip(
+                            mention = mention,
+                            count = mentionQueue.size,
+                            glassBackdrop = chatGlassBackdrop,
+                            scrim = wallpaperGlassScrim,
+                            contentColor = headerContentColor,
+                            onJump = {
+                                val forwardIndex = messages.indexOfFirst {
+                                    it.timestamp == mention.timestamp && it.userId == mention.userId
+                                }
+                                if (forwardIndex >= 0) {
+                                    jumpToMessage(forwardIndex, "${mention.userId}:${mention.timestamp}")
+                                }
+                                mentionQueue.removeAt(0)
+                                if (mentionQueue.isEmpty()) manager.markMentionsSeen()
+                            },
+                            onDismiss = {
+                                mentionQueue.clear()
+                                manager.markMentionsSeen()
+                            },
+                        )
+                    }
+                }
+
                 // @-mention autocomplete: appears while the composer's text
                 // ends in an @token, listing the room's other members.
                 val mentionCandidates = remember(roomState, userId) {
@@ -851,14 +937,13 @@ fun CommentTogetherScreen(navController: NavController) {
     }
 
     // Attachment menu: liquid-glass morph popup over the composer with
-    // Song, GIF and wallpaper entries (see AttachmentMenuPopup). The wallpaper
-    // controls moved here from the composer's kebab so the input box keeps
-    // only the paperclip and the send button.
+    // Song and GIF entries (see AttachmentMenuPopup). The wallpaper controls
+    // moved to the chat's top-right overflow menu, so the paperclip only
+    // ever means attachments.
     attachmentAnchor?.let { anchor ->
         AttachmentMenuPopup(
             anchor = anchor,
             backdrop = chatGlassBackdrop,
-            wallpaperSet = chatWallpaper.isNotBlank(),
             scrimAlpha = if (chatWallpaper.isNotBlank()) 0.45f else 0.30f,
             onPickSong = {
                 showSongPicker = true
@@ -871,98 +956,112 @@ fun CommentTogetherScreen(navController: NavController) {
                     showGifPicker = true
                 }
             },
+            onDismiss = { attachmentAnchor = null },
+        )
+    }
+
+    // The chat overflow menu (top-right pill): wallpaper controls + the
+    // one-tap notification mute, morphing in from the icon's corner.
+    overflowAnchor?.let { anchor ->
+        ChatOverflowMenuPopup(
+            anchor = anchor,
+            backdrop = chatGlassBackdrop,
+            wallpaperSet = chatWallpaper.isNotBlank(),
+            muted = chatMuted,
+            scrimAlpha = if (chatWallpaper.isNotBlank()) 0.45f else 0.30f,
             onPickWallpaper = {
                 wallpaperPicker.launch(arrayOf("image/*"))
             },
             onRemoveWallpaper = {
                 chatWallpaper = ""
             },
-            onDismiss = { attachmentAnchor = null },
+            onToggleMute = {
+                chatMuted = !chatMuted
+            },
+            onDismiss = { overflowAnchor = null },
         )
     }
 }
 
 /**
- * The in-chat mention alert: a compact top pill that appears the moment
- * someone @-mentions the user while they are reading the chat. It never
- * auto-hides — only jumping to the mention or the dismiss button clears it,
- * so a mention can't slip by unnoticed.
+ * The compact mention chip: JUST the @ glyph (with the remaining-mention count
+ * as an overlay badge) and the mentioner's profile picture — no name, no
+ * message text, no full-width row with trailing dead space. It floats above
+ * the composer on the left with a small gap to the input capsule.
  *
  * Liquid glass when the mode is on (same surface treatment as the header
- * pill, scrim polarity from the measured wallpaper); with the mode off the
- * exact same shape and dimensions render opaque. The mentioner's profile
- * picture leads the row instead of a generic @ glyph.
+ * pills, scrim polarity from the measured wallpaper); with the mode off the
+ * exact same shape and dimensions render opaque. Tapping jumps to the most
+ * recent mention; the trailing close clears every queued mention.
  */
 @Composable
-private fun MentionAlertPopup(
-    userId: String,
-    username: String,
-    snippet: String,
+private fun MentionAlertChip(
+    mention: ChatMessagePayload,
+    count: Int,
     glassBackdrop: moe.rukamori.archivetune.ui.component.PlatformBackdrop?,
     scrim: Color?,
     contentColor: Color,
     onJump: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val alertShape = RoundedCornerShape(20.dp)
-    val rowModifier = Modifier
-        .fillMaxWidth()
-        .padding(horizontal = 14.dp)
+    val chipShape = RoundedCornerShape(18.dp)
 
     val surfaceModifier = if (glassBackdrop != null) {
-        rowModifier
+        Modifier
             .liquidGlass(
                 backdrop = glassBackdrop,
-                shape = alertShape,
+                shape = chipShape,
                 interactive = false,
                 blurRadius = LiquidGlassPillBlurRadius,
                 scrim = scrim,
             )
     } else {
-        rowModifier
-            .shadow(8.dp, alertShape)
+        Modifier
+            .shadow(6.dp, chipShape)
             .background(
                 MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.96f),
-                alertShape,
+                chipShape,
             )
     }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
         modifier = surfaceModifier
             .clickable(onClick = onJump)
-            .padding(start = 10.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
+            .padding(start = 10.dp, end = 2.dp, top = 5.dp, bottom = 5.dp),
     ) {
+        // The @ glyph with the remaining-mention count as an overlay badge —
+        // the chip's whole identity in one glance.
+        BadgedBox(
+            badge = {
+                if (count > 1) {
+                    Badge {
+                        Text(
+                            text = count.coerceAtMost(99).toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
+            },
+        ) {
+            Text(
+                text = "@",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+                color = if (glassBackdrop != null) {
+                    contentColor
+                } else {
+                    MaterialTheme.colorScheme.onTertiaryContainer
+                },
+            )
+        }
         ChatAvatar(
-            userId = userId,
-            fallbackName = username,
+            userId = mention.userId,
+            fallbackName = mention.username,
             size = 26.dp,
         )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "$username ${stringResource(R.string.listen_together_chat_mentioned_you)}",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = if (glassBackdrop != null) contentColor else MaterialTheme.colorScheme.onTertiaryContainer,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (snippet.isNotBlank()) {
-                Text(
-                    text = snippet,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (glassBackdrop != null) {
-                        contentColor.copy(alpha = 0.78f)
-                    } else {
-                        MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
-                    },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        IconButton(onClick = onDismiss, modifier = Modifier.size(30.dp)) {
+        IconButton(onClick = onDismiss, modifier = Modifier.size(26.dp)) {
             Icon(
                 painter = painterResource(R.drawable.close),
                 contentDescription = null,
@@ -971,9 +1070,247 @@ private fun MentionAlertPopup(
                 } else {
                     MaterialTheme.colorScheme.onTertiaryContainer
                 },
-                modifier = Modifier.size(15.dp),
+                modifier = Modifier.size(14.dp),
             )
         }
+    }
+}
+
+/**
+ * The chat's overflow popup: opens attached to the top-right overflow pill,
+ * morphing in from its corner (spring scale + fade, the same recipe as the
+ * message-actions and attachment popups) over liquid glass sampled from the
+ * locally-recorded chat layer — opaque twin of the same dimensions when the
+ * glass mode is off. Holds the wallpaper controls and the notification mute.
+ */
+@Composable
+private fun ChatOverflowMenuPopup(
+    anchor: Rect,
+    backdrop: moe.rukamori.archivetune.ui.component.PlatformBackdrop?,
+    wallpaperSet: Boolean,
+    muted: Boolean,
+    scrimAlpha: Float = 0.30f,
+    onPickWallpaper: () -> Unit,
+    onRemoveWallpaper: () -> Unit,
+    onToggleMute: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+
+    var dismissed by remember { mutableStateOf(false) }
+    val scaleAnim = remember { Animatable(0.4f) }
+    val alphaAnim = remember { Animatable(0f) }
+
+    var popupWidthPx by remember { mutableStateOf(0) }
+    var popupHeightPx by remember { mutableStateOf(0) }
+    var overlayWidthPx by remember { mutableStateOf(0) }
+    var overlayHeightPx by remember { mutableStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        if (dismissed) return@LaunchedEffect
+        val scaleJob = scope.launch {
+            scaleAnim.animateTo(1f, spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow))
+        }
+        val alphaJob = scope.launch { alphaAnim.animateTo(1f, tween(180)) }
+        scaleJob.join()
+        alphaJob.join()
+    }
+
+    LaunchedEffect(dismissed) {
+        if (!dismissed) return@LaunchedEffect
+        val scaleJob = scope.launch {
+            scaleAnim.animateTo(0.4f, spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMedium))
+        }
+        val alphaJob = scope.launch { alphaAnim.animateTo(0f, tween(160)) }
+        scaleJob.join()
+        alphaJob.join()
+        onDismiss()
+    }
+
+    fun placement(): IntOffset {
+        val marginPx = with(density) { 12.dp.toPx() }.toInt()
+        val width = if (popupWidthPx > 0) popupWidthPx else with(density) { 220.dp.toPx() }.toInt()
+        val height = if (popupHeightPx > 0) popupHeightPx else with(density) { 132.dp.toPx() }.toInt()
+        val screenW = if (overlayWidthPx > 0) overlayWidthPx else width + 2 * marginPx
+        val screenH = if (overlayHeightPx > 0) overlayHeightPx else 2000
+        // Attached to the overflow icon (top-right): right-aligned with the
+        // anchor and opening DOWNWARDS from it, clamped on screen.
+        val x = (anchor.right.toInt() - width)
+            .coerceIn(marginPx, (screenW - width - marginPx).coerceAtLeast(marginPx))
+        val y = (anchor.bottom.toInt() + with(density) { 8.dp.toPx() }.toInt())
+            .coerceAtMost((screenH - height - marginPx).coerceAtLeast(marginPx))
+        return IntOffset(x, y)
+    }
+
+    val popupShape = RoundedCornerShape(18.dp)
+    val overlayScrimAlpha = 0.18f * alphaAnim.value
+
+    val frostedModifier =
+        remember(backdrop, scrimAlpha) {
+            if (backdrop != null) {
+                Modifier.drawBackdrop(
+                    backdrop = backdrop,
+                    effects = {
+                        colorControls(saturation = 1.7f)
+                        blur(20f.dp.toPx())
+                        lens(
+                            refractionHeight = 16f.dp.toPx(),
+                            refractionAmount = 40f.dp.toPx(),
+                        )
+                    },
+                    onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
+                    onDrawSurface = {
+                        drawRect(Color.Black.copy(alpha = scrimAlpha))
+                    },
+                    shape = { popupShape },
+                )
+            } else {
+                Modifier
+                    .background(Color(0xF226262B), popupShape)
+                    .border(1.dp, Color.White.copy(alpha = 0.12f), popupShape)
+            }
+        }
+
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .onSizeChanged { size ->
+                    overlayWidthPx = size.width
+                    overlayHeightPx = size.height
+                }
+                .background(Color.Black.copy(alpha = overlayScrimAlpha))
+                .combinedClickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { if (!dismissed) dismissed = true },
+                ),
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .offset { placement() }
+                    .onSizeChanged { size ->
+                        popupWidthPx = size.width
+                        popupHeightPx = size.height
+                    }
+                    .widthIn(min = 180.dp, max = 250.dp)
+                    .graphicsLayer {
+                        this.alpha = alphaAnim.value
+                        this.scaleX = scaleAnim.value
+                        this.scaleY = scaleAnim.value
+                        // Morph from the anchor's own corner (top-right).
+                        this.transformOrigin = TransformOrigin(1f, 0f)
+                        this.shadowElevation = 18.dp.toPx()
+                        this.shape = popupShape
+                        this.clip = false
+                    }
+                    .clip(popupShape)
+                    .then(frostedModifier)
+                    .combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                    )
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+        ) {
+            OverflowOptionRow(
+                icon = R.drawable.image,
+                label = stringResource(R.string.listen_together_chat_set_wallpaper),
+                description = stringResource(R.string.listen_together_chat_wallpaper_hint),
+            ) {
+                onPickWallpaper()
+                if (!dismissed) dismissed = true
+            }
+
+            if (wallpaperSet) {
+                OverflowDivider()
+                OverflowOptionRow(
+                    icon = R.drawable.hide_image,
+                    label = stringResource(R.string.listen_together_chat_remove_wallpaper),
+                    description = stringResource(R.string.listen_together_chat_wallpaper_hint),
+                ) {
+                    onRemoveWallpaper()
+                    if (!dismissed) dismissed = true
+                }
+            }
+
+            OverflowDivider()
+            OverflowOptionRow(
+                icon = if (muted) R.drawable.volume_off else R.drawable.ic_notification,
+                label = stringResource(R.string.listen_together_chat_mute_notifications),
+                description = stringResource(R.string.listen_together_chat_mute_notifications_desc),
+                trailing = {
+                    // The mute is a live toggle: flipping it keeps the popup
+                    // open so the state is immediately visible on the switch.
+                    Switch(
+                        checked = muted,
+                        onCheckedChange = { onToggleMute() },
+                        modifier = Modifier.height(24.dp),
+                    )
+                },
+            ) {
+                onToggleMute()
+            }
+        }
+    }
+}
+
+@Composable
+private fun OverflowDivider() {
+    Spacer(
+        modifier =
+            Modifier
+                .padding(horizontal = 6.dp, vertical = 5.dp)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.14f)),
+    )
+}
+
+@Composable
+private fun OverflowOptionRow(
+    icon: Int,
+    label: String,
+    description: String,
+    trailing: (@Composable () -> Unit)? = null,
+    onClick: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 10.dp, vertical = 10.dp),
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = label,
+            tint = Color.White,
+            modifier = Modifier.size(22.dp),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleSmall,
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.7f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        trailing?.invoke()
     }
 }
 

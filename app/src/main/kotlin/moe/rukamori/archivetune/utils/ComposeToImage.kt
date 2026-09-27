@@ -733,8 +733,14 @@ object ComposeToImage {
                 }
 
             if (fittedArt != null) {
-                val blurPx = shareOptions.sanitizedBlurRadius.roundToInt().coerceIn(1, 48)
-                val blurredBackground = stackBlur(fittedArt, blurPx)
+                // Resolution-normalised: the slider's px value is interpreted
+                // against a 900px reference (the preview's size), so preview
+                // and export show the SAME image — the old absolute px radius
+                // read 3.4x weaker on the 3072px export than on the preview,
+                // which is why the sliders appeared to "not work" while sharing.
+                val blurScale = maxOf(canvasWidth, canvasHeight) / 900f
+                val blurPx = (shareOptions.sanitizedBlurRadius * blurScale).roundToInt().coerceIn(1, 256)
+                val blurredBackground = stackBlurScaled(fittedArt, blurPx)
                 canvas.drawBitmap(blurredBackground, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
             } else {
                 canvas.drawColor(bgColor)
@@ -770,8 +776,9 @@ object ComposeToImage {
                 }
 
             if (fittedArt != null) {
-                val frostedPx = (shareOptions.sanitizedBlurRadius + 10f).coerceIn(8f, 48f).roundToInt()
-                val frostedCrop = stackBlur(fittedArt, frostedPx)
+                val blurScale = maxOf(canvasWidth, canvasHeight) / 900f
+                val frostedPx = ((shareOptions.sanitizedBlurRadius + 10f) * blurScale).coerceIn(8f, 256f).roundToInt()
+                val frostedCrop = stackBlurScaled(fittedArt, frostedPx)
                 canvas.withClip(glassPath) {
                     drawBitmap(frostedCrop, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
                 }
@@ -978,6 +985,32 @@ object ComposeToImage {
         val metrics = paint.fontMetrics
         val baseline = centerY - (metrics.ascent + metrics.descent) / 2f
         canvas.drawText(text, x, baseline, paint)
+    }
+
+    /**
+     * [stackBlur] with a downscale pass for big canvases/radii: a 3072px
+     * export at a resolution-normalised radius of ~170px would otherwise run
+     * the stack kernel over ~8M pixels at a 170-wide window. Blurring a
+     * ≤1024px proxy with the proportionally-scaled radius and upscaling is
+     * visually identical at those magnitudes and an order of magnitude
+     * cheaper.
+     */
+    private fun stackBlurScaled(
+        source: Bitmap,
+        radiusPx: Int,
+    ): Bitmap {
+        val maxDim = maxOf(source.width, source.height)
+        val proxyTarget = 1024
+        if (maxDim <= proxyTarget || radiusPx <= 1) {
+            return stackBlur(source, radiusPx)
+        }
+        val scale = proxyTarget.toFloat() / maxDim
+        val proxyW = (source.width * scale).toInt().coerceAtLeast(1)
+        val proxyH = (source.height * scale).toInt().coerceAtLeast(1)
+        val proxy = Bitmap.createScaledBitmap(source, proxyW, proxyH, true)
+        val proxyRadius = (radiusPx * scale).roundToInt().coerceAtLeast(1)
+        val blurred = stackBlur(proxy, proxyRadius)
+        return Bitmap.createScaledBitmap(blurred, source.width, source.height, true)
     }
 
     private fun stackBlur(

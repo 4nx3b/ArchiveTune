@@ -49,7 +49,12 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
         duration: Int,
     ): Result<String> = runCatching {
         val ttml = fetchTtml(title, artist, album) ?: throw IllegalStateException("No Apple Music lyrics for $title — $artist")
-        ttmlToLrc(ttml)
+        // The raw TTML goes out unchanged: syllable-lyrics responses carry
+        // word-level <span begin/end> timing that the app's TTML parser and
+        // word-synced renderers consume directly. The old path collapsed it
+        // to line-synced LRC (stripping every span), which silently downgraded
+        // Apple Music from a word-synced source to a line-synced one.
+        ttml
     }
 
     override suspend fun getAllLyrics(
@@ -150,53 +155,5 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
     private suspend fun fetchFallbackToken(): String {
         return AppleMusicProvider.devTokenProvider?.invoke()?.takeIf { it.isNotBlank() }
             ?: "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiIsImtpZCI6IldlYlBsYXlLaWQifQ.eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzg2NjMyOTI0LCJleHAiOjE3OTI2ODA5MjQsInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSJdfQ.hBgj61sZf-y7bmuvT-joXAUAcf7TVJ51732xnH5vFkLHOmsQHxVqGMYUuI4h8c0-RX3fRY3moylhLW8fewFJyw"
-    }
-
-    private fun ttmlToLrc(ttml: String): String {
-        val pRegex = Regex("""<p[^>]*begin="([^"]+)"[^>]*>(.*?)</p>""", RegexOption.DOT_MATCHES_ALL)
-        val spanRegex = Regex("""<span[^>]*>.*?</span>""")
-        val sb = StringBuilder()
-        for (m in pRegex.findAll(ttml)) {
-            val begin = m.groupValues[1]
-            var text = m.groupValues[2]
-
-            text = text.replace(Regex("""<span[^>]*>"""), "")
-                .replace("</span>", " ")
-                .replace(Regex("""<[^>]+>"""), "")
-                .replace("&amp;", "&")
-                .replace("&lt;", "<")
-                .replace("&gt;", ">")
-                .replace("&quot;", "\"")
-                .replace("&#39;", "'")
-                .trim()
-                .replace(Regex("""\s+"""), " ")
-            if (text.isBlank()) continue
-            val sec = parseTimeSec(begin)
-            sb.append(formatLrc(sec)).append(text).append('\n')
-        }
-        if (sb.isEmpty()) {
-            return ttml.replace(Regex("""<[^>]+>"""), "\n").trim()
-        }
-        return sb.toString().trimEnd()
-    }
-
-    private fun parseTimeSec(raw: String): Double {
-        val parts = raw.split(":")
-        return try {
-            when (parts.size) {
-                1 -> parts[0].toDouble()
-                2 -> parts[0].toDouble() * 60 + parts[1].toDouble()
-                3 -> parts[0].toDouble() * 3600 + parts[1].toDouble() * 60 + parts[2].toDouble()
-                else -> 0.0
-            }
-        } catch (_: Exception) { 0.0 }
-    }
-
-    private fun formatLrc(sec: Double): String {
-        val totalMs = (sec * 1000).toLong()
-        val min = totalMs / 60000
-        val secPart = (totalMs % 60000) / 1000
-        val ms = totalMs % 1000
-        return String.format("[%02d:%02d.%02d]", min, secPart, ms / 10)
     }
 }

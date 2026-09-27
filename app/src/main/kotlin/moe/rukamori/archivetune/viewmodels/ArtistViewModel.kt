@@ -266,6 +266,10 @@ class ArtistViewModel
                         firstSongId = topSong.id,
                         firstSongTitle = topSong.title,
                         firstSongArtist = artistName,
+                        // The artist page only ever plays the standalone
+                        // ArchiveTune/BetterLyrics canvas — never a Spotify
+                        // canvas, not even a cached one.
+                        allowSpotify = false,
                     )
                 }.getOrNull()
             canvasArtwork.value = artwork

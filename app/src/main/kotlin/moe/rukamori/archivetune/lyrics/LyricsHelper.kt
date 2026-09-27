@@ -168,11 +168,18 @@ class LyricsHelper
         private suspend fun tryFetchWordSyncedFromPriorityProviders(
             mediaMetadata: MediaMetadata,
         ): LyricsResult? {
+            // Apple Music (syllable TTML) and KuGou (QRC) now belong in the
+            // word-synced racing set alongside the original three — both were
+            // previously demoted to the sequential chain, with Apple Music's
+            // word timings stripped on conversion to LRC and KuGou only ever
+            // asked for plain LRC.
             val wordSyncCapable: List<LyricsProvider> =
                 listOf(
                     BetterLyricsProvider,
                     YouLyPlusLyricsProvider,
                     UnisonLyricsProvider,
+                    AppleMusicAccountLyricsProvider,
+                    KuGouLyricsProvider,
                 )
 
             val artist = mediaMetadata.artists.joinToString { it.name }

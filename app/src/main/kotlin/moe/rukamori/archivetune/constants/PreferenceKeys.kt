@@ -45,6 +45,7 @@ val ShowPlayerVolumeBarKey = booleanPreferencesKey("showPlayerVolumeBar")
 val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
 val ArchiveTuneCanvasKey = booleanPreferencesKey("archiveTuneCanvas")
 val SpotifyCanvasKey = booleanPreferencesKey("spotifyCanvas")
+val SongCanvasDisabledKey = stringPreferencesKey("songCanvasDisabled")
 val AndroidAutoOnlineRecommendationsKey = booleanPreferencesKey("androidAutoOnlineRecommendations")
 val AndroidAutoOnlineVoiceSearchKey = booleanPreferencesKey("androidAutoOnlineVoiceSearch")
 val AndroidAutoLocalSongsKey = booleanPreferencesKey("androidAutoLocalSongs")
@@ -1282,6 +1283,7 @@ val AudioSourceOrderKey = stringPreferencesKey("audioSourceOrder")
 val SongSourceOverrideKey = stringPreferencesKey("songSourceOverride")
 
 val SongSourceQobuzTrackIdKey = stringPreferencesKey("songSourceQobuzTrackId")
+val SongSourceDeezerTrackIdKey = stringPreferencesKey("songSourceDeezerTrackId")
 
 val SongSourceQobuzBackupVideoIdKey = stringPreferencesKey("songSourceQobuzBackupVideoId")
 

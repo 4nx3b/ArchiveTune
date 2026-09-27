@@ -251,27 +251,14 @@ object DeezerAudioProvider {
 
             lastResolvedTrackId = trackId
             val stream =
-                Resolved(
-                    uri = DeezerCrypto.buildUri(media.url, trackId, session.masterSecret),
-                    mimeType = if (media.flac) MIME_FLAC else MIME_MPEG,
-
-                    codecs = if (media.flac) "flac" else "mp3",
-                    contentLength = media.contentLength,
-
-                    label =
-                        when (media.format.uppercase()) {
-                            FORMAT_FLAC -> "Deezer FLAC"
-                            FORMAT_MP3_320 -> "Deezer MP3 320"
-                            FORMAT_MP3_128 -> "Deezer MP3 128"
-                            else -> "Deezer"
-                        },
+                buildResolvedStream(
+                    session = session,
+                    media = media,
+                    trackId = trackId,
                     matchedTitle = match.title,
                     matchedArtist = match.artists.firstOrNull(),
                     matchedAlbum = match.album,
                     matchedDurationMs = match.durationMs,
-
-                    sampleRate = if (media.flac) 44_100 else null,
-                    bitDepth = if (media.flac) 16 else null,
                 )
             streamCache[cacheKey] = CachedStream(stream, System.currentTimeMillis() + STREAM_CACHE_MS)
             return stream
@@ -280,6 +267,98 @@ object DeezerAudioProvider {
         failureCache[cacheKey] = System.currentTimeMillis() + FAILURE_CACHE_MS
         return null
     }
+
+    /**
+     * Resolves the EXACT track picked in the "play from search" popup — no
+     * fuzzy re-matching against the currently-playing song's metadata, which
+     * used to silently substitute a different master (or miss the match gate
+     * entirely and fall back to YouTube) even though the user had already
+     * picked the right track.
+     */
+    suspend fun resolveByTrackId(
+        trackId: String,
+        format: String,
+    ): Resolved? {
+        if (trackId.isBlank()) return null
+        val accounts = accounts()
+        if (accounts.isEmpty()) return null
+
+        val now = System.currentTimeMillis()
+        val cacheKey = "id:$trackId:$format"
+        streamCache[cacheKey]?.let { cached ->
+            if (cached.expiresAt > now) return cached.stream
+            streamCache.remove(cacheKey)
+        }
+        failureCache[cacheKey]?.let { failedUntil ->
+            if (failedUntil > now) return null
+            failureCache.remove(cacheKey)
+        }
+
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val ordered = accounts.sortedByDescending { it.premium }
+            for (account in ordered) {
+                val session =
+                    runCatching { session(account) }
+                        .onFailure { Timber.tag(TAG).w(it, "session failed for pooled account") }
+                        .getOrNull() ?: continue
+                val media =
+                    runCatching { requestUrl(session, trackId, format) }
+                        .onFailure { Timber.tag(TAG).w(it, "get_url failed for track %s", trackId) }
+                        .getOrNull()
+                if (media == null) {
+                    sessions.remove(account.arl)
+                    continue
+                }
+                lastResolvedTrackId = trackId
+                val stream =
+                    buildResolvedStream(
+                        session = session,
+                        media = media,
+                        trackId = trackId,
+                        matchedTitle = null,
+                        matchedArtist = null,
+                        matchedAlbum = null,
+                        matchedDurationMs = null,
+                    )
+                streamCache[cacheKey] = CachedStream(stream, System.currentTimeMillis() + STREAM_CACHE_MS)
+                return@withContext stream
+            }
+            failureCache[cacheKey] = System.currentTimeMillis() + FAILURE_CACHE_MS
+            null
+        }
+    }
+
+    private fun buildResolvedStream(
+        session: Session,
+        media: Media,
+        trackId: String,
+        matchedTitle: String?,
+        matchedArtist: String?,
+        matchedAlbum: String?,
+        matchedDurationMs: Long?,
+    ): Resolved =
+        Resolved(
+            uri = DeezerCrypto.buildUri(media.url, trackId, session.masterSecret),
+            mimeType = if (media.flac) MIME_FLAC else MIME_MPEG,
+
+            codecs = if (media.flac) "flac" else "mp3",
+            contentLength = media.contentLength,
+
+            label =
+                when (media.format.uppercase()) {
+                    FORMAT_FLAC -> "Deezer FLAC"
+                    FORMAT_MP3_320 -> "Deezer MP3 320"
+                    FORMAT_MP3_128 -> "Deezer MP3 128"
+                    else -> "Deezer"
+                },
+            matchedTitle = matchedTitle,
+            matchedArtist = matchedArtist,
+            matchedAlbum = matchedAlbum,
+            matchedDurationMs = matchedDurationMs,
+
+            sampleRate = if (media.flac) 44_100 else null,
+            bitDepth = if (media.flac) 16 else null,
+        )
 
     private fun session(account: PoolAccountManager.DeezerPoolAccount): Session {
         val now = System.currentTimeMillis()
@@ -574,40 +653,94 @@ object DeezerAudioProvider {
         val trimmed = term.trim()
         if (trimmed.isEmpty()) return emptyList()
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            runCatching {
-                val encoded = java.net.URLEncoder.encode(trimmed, "UTF-8")
-                val req =
-                    Request
-                        .Builder()
-                        .url("https://api.deezer.com/search?q=$encoded&limit=$limit")
-                        .header("Accept", "application/json")
-                        .build()
-                client.newCall(req).execute().use { res ->
-                    if (!res.isSuccessful) {
-                        Timber.tag(TAG).w("searchCandidates HTTP %d for '%s'", res.code, trimmed)
-                        return@use emptyList<Metadata>()
+            val viaPublicApi =
+                runCatching {
+                    val encoded = java.net.URLEncoder.encode(trimmed, "UTF-8")
+                    val req =
+                        Request
+                            .Builder()
+                            .url("https://api.deezer.com/search?q=$encoded&limit=$limit")
+                            .header("Accept", "application/json")
+                            .build()
+                    client.newCall(req).execute().use { res ->
+                        if (!res.isSuccessful) {
+                            Timber.tag(TAG).w("searchCandidates HTTP %d for '%s'", res.code, trimmed)
+                            return@use emptyList<Metadata>()
+                        }
+                        val data =
+                            JSONObject(res.body?.string() ?: return@use emptyList<Metadata>())
+                                .optJSONArray("data") ?: return@use emptyList<Metadata>()
+                        (0 until data.length()).mapNotNull { i ->
+                            val obj = data.optJSONObject(i) ?: return@mapNotNull null
+                            val title = obj.optString("title").ifBlank { return@mapNotNull null }
+                            Metadata(
+                                trackId = obj.optLong("id").toString(),
+                                title = title,
+                                artist = obj.optJSONObject("artist")?.optString("name")?.ifBlank { null },
+                                album = obj.optJSONObject("album")?.optString("title")?.ifBlank { null },
+                                isrc = obj.optString("isrc").ifBlank { null },
+                                durationMs = obj.optLong("duration", 0L).takeIf { it > 0 }?.times(1000L),
+                                previewUrl = obj.optString("preview").ifBlank { null },
+                                coverUrl = obj.optJSONObject("album")?.optString("cover_big")?.ifBlank { null },
+                            )
+                        }
                     }
-                    val data =
-                        JSONObject(res.body?.string() ?: return@use emptyList<Metadata>())
-                            .optJSONArray("data") ?: return@use emptyList<Metadata>()
-                    (0 until data.length()).mapNotNull { i ->
-                        val obj = data.optJSONObject(i) ?: return@mapNotNull null
-                        val title = obj.optString("title").ifBlank { return@mapNotNull null }
-                        Metadata(
-                            trackId = obj.optLong("id").toString(),
-                            title = title,
-                            artist = obj.optJSONObject("artist")?.optString("name")?.ifBlank { null },
-                            album = obj.optJSONObject("album")?.optString("title")?.ifBlank { null },
-                            isrc = obj.optString("isrc").ifBlank { null },
-                            durationMs = obj.optLong("duration", 0L).takeIf { it > 0 }?.times(1000L),
-                            previewUrl = obj.optString("preview").ifBlank { null },
-                            coverUrl = obj.optJSONObject("album")?.optString("cover_big")?.ifBlank { null },
-                        )
-                    }
-                }
-            }.onFailure { Timber.tag(TAG).w(it, "searchCandidates failed for '%s'", trimmed) }
-                .getOrDefault(emptyList())
+                }.onFailure { Timber.tag(TAG).w(it, "searchCandidates failed for '%s'", trimmed) }
+                    .getOrDefault(emptyList())
+            if (viaPublicApi.isNotEmpty()) {
+                viaPublicApi
+            } else {
+                // The public REST API is geo-unavailable in some regions where
+                // the logged-in web session still works (an ARL login in India,
+                // for instance): fall back to the same gw-light `search.music`
+                // gateway the matcher uses, so the "play from search" popup
+                // still returns results.
+                searchCandidatesViaGateway(trimmed, limit)
+            }
         }
+    }
+
+    private fun searchCandidatesViaGateway(
+        term: String,
+        limit: Int,
+    ): List<Metadata> {
+        val accounts = accounts()
+        if (accounts.isEmpty()) return emptyList()
+        for (account in accounts.sortedByDescending { it.premium }) {
+            val session =
+                runCatching { session(account) }
+                    .onFailure { Timber.tag(TAG).w(it, "gateway search: session failed") }
+                    .getOrNull() ?: continue
+            val results =
+                runCatching {
+                    val payload =
+                        JSONObject()
+                            .put("query", term)
+                            .put("start", 0)
+                            .put("nb", limit)
+                    val json = gateway(session.arl, session.apiToken, "search.music", payload)
+                    json.optJSONObject("results")?.optJSONArray("data") ?: JSONArray()
+                }.onFailure { Timber.tag(TAG).w(it, "gateway search failed for '%s'", term) }
+                    .getOrNull() ?: continue
+            val mapped =
+                (0 until results.length()).mapNotNull { i ->
+                    val obj = results.optJSONObject(i) ?: return@mapNotNull null
+                    val id = obj.optString("SNG_ID").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    val title = obj.optString("SNG_TITLE").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    Metadata(
+                        trackId = id,
+                        title = title,
+                        artist = obj.optString("ART_NAME").takeIf { it.isNotBlank() },
+                        album = obj.optString("ALB_TITLE").takeIf { it.isNotBlank() },
+                        isrc = obj.optString("ISRC").takeIf { it.isNotBlank() },
+                        durationMs = obj.optLong("DURATION", 0L).takeIf { it > 0 }?.times(1000L),
+                        previewUrl = null,
+                        coverUrl = null,
+                    )
+                }
+            if (mapped.isNotEmpty()) return mapped
+        }
+        return emptyList()
     }
 
     private fun buildSearchQuery(query: Query): String {

@@ -361,6 +361,39 @@ object SongSourceOverride {
     }
 }
 
+/**
+ * Per-song "Disable canvas" map (the player's overflow menu): a song id
+ * present in the map suppresses canvas playback for that song so the static
+ * artwork shows instead. Same DataStore string-map shape as
+ * [SongSourceOverride], but boolean-valued — the value is the presence of the
+ * id itself.
+ */
+object SongCanvasDisabled {
+    fun parse(raw: String?): Set<String> =
+        raw
+            ?.split(';')
+            ?.mapNotNull { it.trim().takeIf(String::isNotEmpty) }
+            ?.toSet()
+            ?: emptySet()
+
+    fun serialize(ids: Set<String>): String = ids.joinToString(";")
+
+    fun isDisabled(
+        raw: String?,
+        songId: String,
+    ): Boolean = songId in parse(raw)
+
+    fun withDisabled(
+        raw: String?,
+        songId: String,
+        disabled: Boolean,
+    ): String {
+        val ids = parse(raw).toMutableSet()
+        if (disabled) ids.add(songId) else ids.remove(songId)
+        return serialize(ids)
+    }
+}
+
 object SongSourceQobuzTrackId {
     fun parse(raw: String?): Map<String, String> {
         if (raw.isNullOrBlank()) return emptyMap()
@@ -409,4 +442,23 @@ object SongSourceQobuzBackupVideoId {
         songId: String,
         videoId: String?,
     ): String = SongSourceQobuzTrackId.withOverride(raw, songId, videoId)
+}
+
+/** Per-song Deezer track id picked in the "play from search" popup: playback
+ *  resolves that EXACT track instead of fuzzy re-matching metadata. */
+object SongSourceDeezerTrackId {
+    fun parse(raw: String?): Map<String, String> = SongSourceQobuzTrackId.parse(raw)
+
+    fun serialize(map: Map<String, String>): String = SongSourceQobuzTrackId.serialize(map)
+
+    fun get(
+        raw: String?,
+        songId: String,
+    ): String? = SongSourceQobuzTrackId.get(raw, songId)
+
+    fun withOverride(
+        raw: String?,
+        songId: String,
+        trackId: String?,
+    ): String = SongSourceQobuzTrackId.withOverride(raw, songId, trackId)
 }

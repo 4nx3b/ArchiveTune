@@ -118,15 +118,17 @@ def unused_imports(src: str, filename: str):
         "rem", "div", "compareTo", "contains", "invoke", "inc", "dec",
         "not", "unaryPlus", "unaryMinus", "rangeTo", "rangeUntil", "plusAssign",
     }
-    imports = re.findall(r"^import\s+(?:[\w.]+\.)?(\w+)(?:\s+as\s+(\w+))?[^\n]*$", src, re.M)
+    imports = re.findall(r"^(?:import\s+(?:[\w.]+\.)?(\w+)(?:\s+as\s+(\w+))?[^\n]*|import\s+([\w.]+\.\*))$", src, re.M)
     body = "\n".join(l for l in src.split("\n") if not l.startswith("import ") and not l.startswith("package "))
     dead = []
-    for simple, alias in imports:
+    for simple, alias, star in imports:
+        # star imports and wildcard: NEVER removed — the old simple-name
+        # regex reduced `import x.y.material3.*` to "material3" (never a word
+        # in the body), silently deleting live wildcard imports.
+        if star is not None or simple == "*":
+            continue
         name = alias or simple
         if name in OPERATOR_NAMES:
-            continue
-        # star imports and wildcard: skip removal
-        if simple == "*":
             continue
         if not re.search(r"\b" + re.escape(name) + r"\b", body):
             # keep imports referenced in comments-only? comments are stripped later;

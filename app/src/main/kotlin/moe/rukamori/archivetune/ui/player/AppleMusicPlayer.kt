@@ -290,9 +290,12 @@ fun AppleMusicPlayerContent(
 
     var queueOpen by remember { mutableStateOf(false) }
 
-    var lyricsOpen by remember { mutableStateOf(false) }
+    // Landscape is LYRICS-FIRST (the reference arrangement): the right half
+    // shows the lyric sheet from the first frame and the controls stay hidden
+    // until a tap pokes them out. Portrait opens on the artwork as before.
+    var lyricsOpen by remember(landscape) { mutableStateOf(landscape) }
 
-    LaunchedEffect(mediaMetadata.id) { lyricsOpen = false }
+    LaunchedEffect(mediaMetadata.id) { lyricsOpen = landscape }
 
     val lyricsMode by rememberEnumPreference(LyricsModeKey, defaultValue = LyricsMode.ENHANCED)
 
@@ -330,13 +333,33 @@ fun AppleMusicPlayerContent(
     val (autoHideLyricsPlayerControls, onAutoHideLyricsPlayerControlsChange) =
         rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = true)
 
-    var playerControlsExpanded by remember { mutableStateOf(true) }
+    var playerControlsExpanded by remember { mutableStateOf(!landscape) }
     var controlsRevealToken by remember { mutableIntStateOf(0) }
     val autoHideDelayMs = AppleMusicLyricsControlsAutoHideDelayMs
     val playerExpanded = state.isExpanded
 
-    LaunchedEffect(lyricsOpen, queueOpen) {
+    LaunchedEffect(lyricsOpen, queueOpen, controlsRevealToken, autoHideLyricsPlayerControls, showLyricsPlayerControls, playerExpanded) {
+        // The reveal effect doubles as the "lyrics/queue closed → controls
+        // reappear" reset (lyricsOpen/queueOpen are keys). In landscape the
+        // lyrics own the right half from the start: the controls must stay
+        // hidden until an actual gesture pokes them (token != 0), and a song
+        // change (no key here changes) must not flash them over the lyrics.
+        if (landscape && lyricsOpen && controlsRevealToken == 0) {
+            playerControlsExpanded = false
+            return@LaunchedEffect
+        }
         playerControlsExpanded = true
+        if (!shouldAutoHideAppleMusicControls(lyricsOpen, queueOpen, autoHideLyricsPlayerControls)) {
+            return@LaunchedEffect
+        }
+        if (!playerExpanded) {
+            return@LaunchedEffect
+        }
+        if (lyricsOpen && !showLyricsPlayerControls) {
+            return@LaunchedEffect
+        }
+        delay(autoHideDelayMs)
+        playerControlsExpanded = false
     }
 
     val pokePlayerControlsVisibility: () -> Unit = remember { { controlsRevealToken++ } }
@@ -406,7 +429,7 @@ fun AppleMusicPlayerContent(
 
     var canvasVisibleForLyrics by remember { mutableStateOf(true) }
     LaunchedEffect(lyricsOpen) {
-        if (lyricsOpen) {
+        if (lyricsOpen && !landscape) {
             canvasVisibleForLyrics = true
             delay(AmLyricsBackdropMorphMs.toLong())
             canvasVisibleForLyrics = false
@@ -445,7 +468,9 @@ fun AppleMusicPlayerContent(
 
     val lyricsBackdropProgress =
         animateFloatAsState(
-            targetValue = if (lyricsOpen) 1f else 0f,
+            // In landscape the artwork column stays on screen beside the
+            // lyric sheet, so the ambient canvas backdrop keeps breathing.
+            targetValue = if (lyricsOpen && !landscape) 1f else 0f,
             animationSpec =
                 tween(
                     durationMillis = AmLyricsBackdropMorphMs,
@@ -791,13 +816,16 @@ fun AppleMusicPlayerContent(
                             .weight(1f)
                             .fillMaxHeight(),
                 ) {
-                    // The landscape hero artwork: as large as the half allows,
-                    // with equal side margins, so it sits perfectly centred —
-                    // and the title block below inherits the exact same width.
+                    // The landscape hero artwork: large enough to read as the
+                    // hero of the half but with real breathing room to the
+                    // screen edges (the previous size filled the half minus
+                    // 32dp and visually touched the screen end), centred with
+                    // equal side margins; the title block below inherits the
+                    // exact same width so name and artwork share one column.
                     val landscapeArtworkSize =
-                        (maxWidth - 32.dp)
-                            .coerceAtMost(maxHeight * 0.86f)
-                            .coerceAtLeast(280.dp)
+                        (maxWidth - 72.dp)
+                            .coerceAtMost(maxHeight * 0.80f)
+                            .coerceAtLeast(240.dp)
 
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,

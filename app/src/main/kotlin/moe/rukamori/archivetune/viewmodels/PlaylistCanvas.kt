@@ -23,6 +23,7 @@ internal suspend fun fetchPlaylistCanvasArtwork(
     firstSongArtist: String?,
     firstSongAlbumTitle: String? = null,
     spotifyTrackId: String? = null,
+    allowSpotify: Boolean = true,
 ): CanvasArtwork? {
     if (firstSongId.isNullOrBlank() || firstSongTitle.isNullOrBlank()) return null
 
@@ -33,15 +34,24 @@ internal suspend fun fetchPlaylistCanvasArtwork(
     val country = Locale.getDefault().country
     val storefront = if (country.length == 2) country.lowercase(Locale.ROOT) else "us"
 
-    return resolveCanvasArtworkForPlayback(
-        mediaId = firstSongId,
-        songTitleRaw = firstSongTitle,
-        artistNameRaw = firstSongArtist.orEmpty(),
-        storefront = storefront,
-        requireVertical = false,
-        allowNetwork = true,
-        albumTitle = firstSongAlbumTitle,
-        trySpotifyCanvas = true,
-        spotifyTrackId = spotifyTrackId,
-    )
+    val resolved =
+        resolveCanvasArtworkForPlayback(
+            mediaId = firstSongId,
+            songTitleRaw = firstSongTitle,
+            artistNameRaw = firstSongArtist.orEmpty(),
+            storefront = storefront,
+            requireVertical = false,
+            allowNetwork = true,
+            albumTitle = firstSongAlbumTitle,
+            trySpotifyCanvas = allowSpotify,
+            spotifyTrackId = spotifyTrackId,
+        ) ?: return null
+    // Spotify-off callers (the artist page, which must only ever play the
+    // standalone ArchiveTune/BetterLyrics artist canvas) also refuse cached
+    // Spotify entries — the resolver's cache-first path returns those
+    // regardless of the trySpotifyCanvas flag.
+    if (!allowSpotify && resolved.inferredProvider() == CanvasArtwork.PROVIDER_SPOTIFY) {
+        return null
+    }
+    return resolved
 }

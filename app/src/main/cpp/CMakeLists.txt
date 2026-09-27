@@ -44,3 +44,11 @@ target_compile_options(archivetune_analysis PRIVATE -O3 -fvisibility=hidden -fex
 
 find_library(log-lib log)
 target_link_libraries(archivetune_analysis ${log-lib})
+
+# 16KB page-size support (ported from BitChord's own fix, 77cd233): Android
+# 15+ 16KB-page kernels refuse to map LOAD segments aligned only to 4KB — on
+# those devices an unaligned libarchivetune_analysis.so either fails to load
+# (analysis silently unavailable) or takes the process down at dlopen time.
+# -z max-page-size=16384 is a superset of 4KB alignment, so 4KB devices are
+# unaffected; APK-side alignment of the uncompressed .so is handled by AGP.
+target_link_options(archivetune_analysis PRIVATE "-Wl,-z,max-page-size=16384")

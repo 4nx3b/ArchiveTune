@@ -32,7 +32,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.min
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -98,6 +97,18 @@ class SmartFadeAnalyzer(
          * gambling the process.
          */
         private const val MIN_FREE_HEAP_BYTES = 96L * 1024 * 1024
+
+        /**
+         * Cap on in-memory analyses: each result carries downbeats, energy
+         * curves and vocal masks (~10–50 KB), and an unbounded map grows into
+         * precisely the sustained pressure the heap guard watches for. Older
+         * entries are evicted least-recently-inserted; the on-disk store keeps
+         * every usable result, so an evicted track is re-restored on demand.
+         */
+        private const val MAX_IN_MEMORY_RESULTS = 64
+
+        /** A heap deferral is a retryable miss, NOT a strike — see [request]. */
+        private object Deferred
     }
 
     private val appContext = context.applicationContext
@@ -108,6 +119,9 @@ class SmartFadeAnalyzer(
     private val results = ConcurrentHashMap<String, TrackAnalysis>()
     private val running = ConcurrentHashMap.newKeySet<String>()
     private val shortDecodes = ConcurrentHashMap<String, Int>()
+
+    /** Insertion order for the in-memory result LRU — see [MAX_IN_MEMORY_RESULTS]. */
+    private val resultOrder = java.util.concurrent.ConcurrentLinkedDeque<String>()
 
     /** Set by [release]; the worker checks it between pipeline stages so a
      * teardown-time analysis stops at the next boundary instead of holding
@@ -144,6 +158,22 @@ class SmartFadeAnalyzer(
     /** True once [trackId] has a result, including a failure. */
     fun isAnalysed(trackId: String): Boolean = results.containsKey(trackId)
 
+    /**
+     * Stores a result and keeps the in-memory map bounded — see
+     * [MAX_IN_MEMORY_RESULTS]. `remove(key, value)` guards the race where the
+     * same track was re-analysed after an eviction: only the stale slot is
+     * dropped, never the fresher put.
+     */
+    private fun recordResult(trackId: String, analysis: TrackAnalysis) {
+        results[trackId] = analysis
+        resultOrder.addLast(trackId)
+        while (resultOrder.size > MAX_IN_MEMORY_RESULTS) {
+            val oldestKey = resultOrder.pollFirst() ?: break
+            val oldest = results[oldestKey] ?: continue
+            results.remove(oldestKey, oldest)
+        }
+    }
+
     /** True while a decode and inference for [trackId] is in flight. */
     fun isAnalysing(trackId: String): Boolean = trackId in running
 
@@ -174,7 +204,7 @@ class SmartFadeAnalyzer(
                     // re-earn from audio a result that was already on disk.
                     val stored = store.load(trackId)
                     if (stored != null && stored.isUsable) {
-                        results[trackId] = stored
+                        recordResult(trackId, stored)
                         Log.d(TAG, "Restored analysis for $trackId: bpm=${stored.bpm} conf=${stored.beatConfidence}")
                         return@execute
                     }
@@ -188,25 +218,36 @@ class SmartFadeAnalyzer(
                         },
                     )
                     val analysis = analyze(trackId, uri, durationSeconds)
-                    val strikes = shortDecodes[trackId] ?: 0
-                    if (analysis == null) {
+                    if (analysis === Deferred) {
+                        // Low heap headroom: retried on a later tick with no
+                        // strike recorded. Counting these toward the write-off
+                        // used to permanently fail tracks after three ticks of
+                        // memory pressure — a false FAILED the UI then showed
+                        // for the rest of the session.
+                        Log.d(TAG, "Deferring analysis of $trackId (retryable)")
+                    } else if (analysis == null) {
+                        val strikes = shortDecodes[trackId] ?: 0
                         if (strikes + 1 >= MAX_SHORT_DECODE_STRIKES) {
                             // Write it off rather than re-reading it every tick.
-                            results[trackId] = empty(trackId, durationSeconds)
+                            recordResult(trackId, empty(trackId, durationSeconds))
                             shortDecodes.remove(trackId)
                         } else {
                             shortDecodes[trackId] = strikes + 1
                         }
                     } else {
-                        results[trackId] = analysis
+                        // The only non-null, non-Deferred outcomes are
+                        // TrackAnalysis results — the worker is single-threaded
+                        // so the cast just documents that contract.
+                        val result = analysis as TrackAnalysis
+                        recordResult(trackId, result)
                         shortDecodes.remove(trackId)
-                        if (analysis.isUsable) {
-                            store.save(trackId, analysis)
+                        if (result.isUsable) {
+                            store.save(trackId, result)
                         }
                     }
                 } catch (t: Throwable) {
                     Log.w(TAG, "Analysis of $trackId failed", t)
-                    results[trackId] = empty(trackId, durationSeconds)
+                    recordResult(trackId, empty(trackId, durationSeconds))
                 } finally {
                     running.remove(trackId)
                 }
@@ -251,12 +292,13 @@ class SmartFadeAnalyzer(
     // Analysis pipeline
     // ------------------------------------------------------------------
 
-    /** A null result means "not now, try again" (short decode, missing bytes). */
+    /** A null result means "not now, try again" (short decode, missing bytes);
+     * [Deferred] means "not now, low heap — retry without striking". */
     private fun analyze(
         trackId: String,
         uri: Uri,
         durationSeconds: Double,
-    ): TrackAnalysis? {
+    ): Any? {
         val local = LocalAudioSource.isLocal(uri)
 
         var effectiveDuration = durationSeconds
@@ -282,7 +324,7 @@ class SmartFadeAnalyzer(
         // track is retried by the poll loop on a later tick.
         if (!hasHeapHeadroom()) {
             Log.d(TAG, "Deferring analysis of $trackId: low heap headroom")
-            return null
+            return Deferred
         }
 
         // Stage breadcrumbs: every crash report from here on names the exact
@@ -323,7 +365,7 @@ class SmartFadeAnalyzer(
                 downbeats = features.downbeats,
             )
             if (early.isUsable) {
-                results[trackId] = early
+                recordResult(trackId, early)
                 store.save(trackId, early)
                 Log.d(TAG, "Early analysis for $trackId: bpm=${features.bpm} (models still refining)")
             }
@@ -335,7 +377,7 @@ class SmartFadeAnalyzer(
         if (released) return null
         if (!hasHeapHeadroom()) {
             Log.d(TAG, "Deferring model passes of $trackId: low heap headroom")
-            return null
+            return Deferred
         }
         Log.d(TAG, "stage=decode-region track=$trackId")
         val openTrackSource: () -> MediaDataSource? = { openSource(trackId, uri, local) }
@@ -426,6 +468,7 @@ class SmartFadeAnalyzer(
                     effectiveDuration,
                     targetSampleRate = structRate,
                     maxSeconds = effectiveDuration * STRUCT_DECODE_HEADROOM + STRUCT_DECODE_SLACK_SECONDS,
+                    abort = { released },
                 )
             } ?: return null
         val (pcm, _) = decoded
@@ -471,6 +514,7 @@ class SmartFadeAnalyzer(
                     startSeconds,
                     endSeconds,
                     maxSeconds = (endSeconds - startSeconds) * REGION_DECODE_HEADROOM + REGION_DECODE_SLACK_SECONDS,
+                    abort = { released },
                 )
             } ?: return null
         val (stereo, actualStart) = decoded
@@ -592,8 +636,10 @@ class SmartFadeAnalyzer(
     private fun analysisFileFor(trackId: String): File {
         val dir = File(appContext.filesDir, STORE_DIR)
         if (!dir.isDirectory) dir.mkdirs()
-        // Hashed names: stable across sessions and safe for any id shape.
-        return File(dir, Integer.toHexString(trackId.hashCode()))
+        // Hashed names, keyed by hash AND length (the same scheme as the
+        // results store): a plain hashCode hex used to let two distinct ids
+        // collide onto one file, silently analysing the wrong audio.
+        return File(dir, "${Integer.toHexString(trackId.hashCode())}_${trackId.length}")
     }
 
     /** Downloads the low-quality analysis rendition for [trackId]. */
@@ -663,6 +709,10 @@ private class FileMediaDataSource(
 ) : MediaDataSource() {
     private val handle = RandomAccessFile(file, "r")
 
+    // Synchronized: MediaDataSource consumers are documented as needing to be
+    // called from one thread, but nothing enforces it — a future multi-threaded
+    // reader would otherwise interleave seek+read pairs and corrupt the stream.
+    @Synchronized
     override fun readAt(
         position: Long,
         buffer: ByteArray,
@@ -680,8 +730,10 @@ private class FileMediaDataSource(
         return if (read == 0) -1 else read
     }
 
+    @Synchronized
     override fun getSize(): Long = handle.length()
 
+    @Synchronized
     override fun close() {
         handle.close()
     }

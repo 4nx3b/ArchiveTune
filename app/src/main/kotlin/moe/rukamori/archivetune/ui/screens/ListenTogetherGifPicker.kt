@@ -103,19 +103,17 @@ private const val GIF_SEARCH_DEBOUNCE_MS = 400L
 /**
  * Liquid-glass attachment menu anchored to the composer's paperclip button:
  * opens with the same morph (spring scale + fade from the anchor) the message
- * actions popup uses, over a locally-recorded chat backdrop, with divider
- * rules between the options — Song, GIF and the chat wallpaper (set/remove).
+ * actions popup uses, over a locally-recorded chat backdrop. Song and GIF
+ * attachments only — the wallpaper controls live in the chat's top-right
+ * overflow menu now.
  */
 @Composable
 internal fun AttachmentMenuPopup(
     anchor: Rect,
     backdrop: PlatformBackdrop?,
-    wallpaperSet: Boolean,
     scrimAlpha: Float = 0.30f,
     onPickSong: () -> Unit,
     onPickGif: () -> Unit,
-    onPickWallpaper: () -> Unit,
-    onRemoveWallpaper: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val density = LocalDensity.current
@@ -261,44 +259,6 @@ internal fun AttachmentMenuPopup(
             ) {
                 onPickGif()
                 if (!dismissed) dismissed = true
-            }
-
-            Spacer(
-                modifier =
-                    Modifier
-                        .padding(horizontal = 6.dp, vertical = 5.dp)
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(Color.White.copy(alpha = 0.14f)),
-            )
-
-            AttachmentOptionRow(
-                icon = R.drawable.image,
-                label = stringResource(R.string.listen_together_chat_set_wallpaper),
-                description = stringResource(R.string.listen_together_chat_wallpaper_hint),
-            ) {
-                onPickWallpaper()
-                if (!dismissed) dismissed = true
-            }
-
-            if (wallpaperSet) {
-                Spacer(
-                    modifier =
-                        Modifier
-                            .padding(horizontal = 6.dp, vertical = 5.dp)
-                            .fillMaxWidth()
-                            .height(1.dp)
-                            .background(Color.White.copy(alpha = 0.14f)),
-                )
-
-                AttachmentOptionRow(
-                    icon = R.drawable.hide_image,
-                    label = stringResource(R.string.listen_together_chat_remove_wallpaper),
-                    description = stringResource(R.string.listen_together_chat_wallpaper_hint),
-                ) {
-                    onRemoveWallpaper()
-                    if (!dismissed) dismissed = true
-                }
             }
         }
     }
