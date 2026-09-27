@@ -95,6 +95,8 @@ import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_DEFAULT
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_RANGE
+import moe.rukamori.archivetune.ui.component.glassAwareCardBorder
+import moe.rukamori.archivetune.ui.component.glassAwareCardColor
 import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -107,10 +109,16 @@ val LocalPreferenceGroupPosition = compositionLocalOf<PreferenceGroupPosition?> 
 
 private val PreferenceGroupLargeCorner = 28.dp
 private val PreferenceGroupSmallCorner = 6.dp
-private val PreferenceGroupHorizontalPadding = 26.dp
-private val PreferenceEntryMinHeight = 88.dp
-private val PreferenceEntryHorizontalPadding = 22.dp
-private val PreferenceEntryVerticalPadding = 18.dp
+private val PreferenceGroupHorizontalPadding = 16.dp
+private val PreferenceEntryMinHeight = 56.dp
+private val PreferenceEntryHorizontalPadding = 16.dp
+private val PreferenceEntryVerticalPadding = 10.dp
+
+/** iOS-style: the unified group card's corner radius. */
+private val PreferenceGroupCardCorner = 20.dp
+
+/** iOS-style: the row icon's size (system-like, 20-22dp). */
+private val PreferenceEntryIconSize = 22.dp
 
 @Composable
 private fun rememberPreferenceIconShape(): Shape = MaterialShapes.Ghostish.toShape()
@@ -181,7 +189,6 @@ fun PreferenceEntry(
         remember(groupPosition) {
             preferenceItemShapeForPosition(groupPosition)
         }
-    val preferenceIconShape = rememberPreferenceIconShape()
     val resolvedShape = shape ?: preferenceItemShape
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -215,29 +222,30 @@ fun PreferenceEntry(
                     modifier =
                         Modifier
                             .align(Alignment.CenterVertically)
-                            .size(44.dp)
-                            .clip(preferenceIconShape),
+                            .size(PreferenceEntryIconSize),
                     contentAlignment = Alignment.Center,
                 ) {
                     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.primary) {
                         icon()
                     }
                 }
-                Spacer(Modifier.width(16.dp))
+                Spacer(Modifier.width(14.dp))
             }
 
             Column(
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier.weight(1f),
             ) {
-                ProvideTextStyle(MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) {
+                // iOS-style typography: 16sp medium, not the heavy Bold the
+                // old segmented cards used — restrained hierarchy.
+                ProvideTextStyle(MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)) {
                     title()
                 }
                 if (description != null) {
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.height(1.dp))
                     Text(
                         text = description,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -249,29 +257,46 @@ fun PreferenceEntry(
                 Box(modifier = Modifier.align(Alignment.CenterVertically)) {
                     trailingContent()
                 }
+            } else if (onClick != null && !inGroup) {
+                // Standalone (card) entries keep the disclosure chevron too.
+                Spacer(Modifier.width(6.dp))
+                Icon(
+                    painter = painterResource(R.drawable.chevron_right),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                    modifier = Modifier.align(Alignment.CenterVertically).size(18.dp),
+                )
             }
         }
     }
 
-    Card(
-        shape = resolvedShape,
-        colors =
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = if (inGroup) 0.dp else 16.dp,
-                    vertical = if (inGroup) 0.dp else 3.dp,
-                ).graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                },
-    ) {
-        rowContent()
+    if (inGroup) {
+        // Inside a PreferenceGroup the GROUP draws the unified translucent
+        // card (see PreferenceGroup); the row renders bare on top of it.
+        Box(modifier = modifier.fillMaxWidth()) {
+            rowContent()
+        }
+    } else {
+        Card(
+            shape = resolvedShape,
+            colors =
+                CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = 16.dp,
+                        vertical = 3.dp,
+                    ).graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    },
+        ) {
+            rowContent()
+        }
     }
 }
 
@@ -1308,30 +1333,43 @@ fun PreferenceGroup(
         if (title != null) {
             PreferenceGroupTitle(
                 title = title,
-                modifier = Modifier.padding(horizontal = PreferenceGroupHorizontalPadding),
+                modifier = Modifier.padding(horizontal = PreferenceGroupHorizontalPadding + 8.dp),
             )
         }
 
-        Column(
+        // ONE unified translucent card per section (the reference's grouped
+        // rounded surface): every child renders as a row inside it, separated
+        // by hairline dividers, instead of each being its own card.
+        val cardShape = RoundedCornerShape(PreferenceGroupCardCorner)
+        val cardColor = glassAwareCardColor()
+        androidx.compose.material3.Surface(
+            shape = cardShape,
+            color = cardColor,
+            border = null,
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = PreferenceGroupHorizontalPadding),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+                    .padding(horizontal = PreferenceGroupHorizontalPadding)
+                    .glassAwareCardBorder(cardShape),
         ) {
-            scope.items.forEachIndexed { index, itemContent ->
-                val position =
-                    when {
-                        itemCount == 1 -> PreferenceGroupPosition.Single
-                        index == 0 -> PreferenceGroupPosition.First
-                        index == itemCount - 1 -> PreferenceGroupPosition.Last
-                        else -> PreferenceGroupPosition.Middle
+            Column {
+                scope.items.forEachIndexed { index, itemContent ->
+                    if (index > 0) {
+                        PreferenceGroupDivider()
                     }
-                CompositionLocalProvider(
-                    LocalPreferenceInGroup provides true,
-                    LocalPreferenceGroupPosition provides position,
-                ) {
-                    itemContent()
+                    val position =
+                        when {
+                            itemCount == 1 -> PreferenceGroupPosition.Single
+                            index == 0 -> PreferenceGroupPosition.First
+                            index == itemCount - 1 -> PreferenceGroupPosition.Last
+                            else -> PreferenceGroupPosition.Middle
+                        }
+                    CompositionLocalProvider(
+                        LocalPreferenceInGroup provides true,
+                        LocalPreferenceGroupPosition provides position,
+                    ) {
+                        itemContent()
+                    }
                 }
             }
         }
@@ -1341,7 +1379,11 @@ fun PreferenceGroup(
 @Composable
 fun PreferenceGroupDivider(modifier: Modifier = Modifier) {
     HorizontalDivider(
-        modifier = modifier.padding(start = 60.dp),
+        modifier = modifier.padding(
+            start = PreferenceEntryHorizontalPadding +
+                PreferenceEntryIconSize +
+                14.dp,
+        ),
         thickness = 0.5.dp,
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
     )
@@ -1352,11 +1394,13 @@ fun PreferenceGroupTitle(
     title: String,
     modifier: Modifier = Modifier,
 ) {
+    // The reference's section captions: small, quiet, secondary ink — not
+    // shouting in the accent color.
     Text(
         text = title,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+        modifier = modifier.padding(vertical = 7.dp),
     )
 }

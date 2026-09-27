@@ -14,10 +14,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -33,7 +29,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,7 +41,6 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -393,7 +387,7 @@ fun SettingsScreen(
                         unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                     ),
                     modifier = Modifier
-                        .padding(horizontal = SettingsDimensions.SegmentedGroupHorizontalPadding)
+                        .padding(horizontal = SettingsCardDimensions.ScreenPadding)
                         .fillMaxWidth(),
                 )
             }
@@ -414,7 +408,7 @@ fun SettingsScreen(
                             result.parentRoute?.let(navController::navigate) ?: result.onClick()
                         },
                         modifier = Modifier.padding(
-                            horizontal = SettingsDimensions.SegmentedGroupHorizontalPadding,
+                            horizontal = SettingsCardDimensions.ScreenPadding,
                             vertical = 4.dp,
                         ),
                     )
@@ -425,7 +419,7 @@ fun SettingsScreen(
                         text = stringResource(R.string.no_results_found),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(
-                            horizontal = SettingsDimensions.SegmentedGroupHorizontalPadding,
+                            horizontal = SettingsCardDimensions.ScreenPadding,
                             vertical = 16.dp,
                         ),
                     )
@@ -437,31 +431,15 @@ fun SettingsScreen(
                             key = "settings_group_spacing_$groupIndex",
                             contentType = "settings_group_spacing",
                         ) {
-                            Spacer(modifier = Modifier.height(SettingsDimensions.SectionSpacing))
+                            Spacer(modifier = Modifier.height(SettingsCardDimensions.GroupSpacing))
                         }
                     }
 
-                    itemsIndexed(
-                        items = group.items,
-                        key = { _, item -> item.key },
-                        contentType = { _, _ -> "settings_segment" },
-                    ) { index, settingsItem ->
-                        SettingsSegmentedItem(
-                            item = settingsItem,
-                            index = index,
-                            count = group.items.size,
-                            modifier =
-                                Modifier
-                                    .padding(horizontal = SettingsDimensions.SegmentedGroupHorizontalPadding)
-                                    .padding(
-                                        bottom =
-                                            if (index < group.items.lastIndex) {
-                                                SettingsDimensions.SegmentedItemGap
-                                            } else {
-                                                0.dp
-                                            },
-                                    ),
-                        )
+                    item(
+                        key = "settings_group_$groupIndex",
+                        contentType = "settings_group_card",
+                    ) {
+                        SettingsGroupCard(group = group)
                     }
                 }
             }
@@ -469,7 +447,6 @@ fun SettingsScreen(
 
                 SettingsHomeStyleHeader(
                     glassHeader = glassHeader,
-                    listState = listState,
                     onBack = navController::navigateUp,
                     onBackLongClick = navController::backToMain,
                     onSearch = {
@@ -486,7 +463,6 @@ fun SettingsScreen(
 @Composable
 private fun BoxScope.SettingsHomeStyleHeader(
     glassHeader: GlassScreenHeader,
-    listState: LazyListState,
     onBack: () -> Unit,
     onBackLongClick: () -> Unit,
     onSearch: () -> Unit,
@@ -543,37 +519,36 @@ private fun BoxScope.SettingsHomeStyleHeader(
             }
         }
 
-        val isScrolling by remember {
-            derivedStateOf {
-                listState.firstVisibleItemIndex > 0 ||
-                    listState.firstVisibleItemScrollOffset > 200
-            }
-        }
-        AnimatedVisibility(
-            visible = isScrolling,
-            enter = fadeIn(animationSpec = tween(180)),
-            exit = fadeOut(animationSpec = tween(140)),
-            modifier = Modifier.align(Alignment.CenterEnd),
-        ) {
-            if (backdrop != null) {
-                LiquidGlassIconButton(
-                    backdrop = backdrop,
-                    painter = painterResource(R.drawable.search),
-                    contentDescription = stringResource(R.string.search),
-                    modifier = Modifier.padding(end = 12.dp),
+        // The reference header carries the search button permanently — the
+        // same circular glass treatment as the back button, mirrored
+        // top-right. It scrolls the list up to the inline search field.
+        if (backdrop != null) {
+            LiquidGlassIconButton(
+                backdrop = backdrop,
+                painter = painterResource(R.drawable.search),
+                contentDescription = stringResource(R.string.search),
+                modifier =
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 12.dp),
+                onClick = onSearch,
+            )
+        } else {
+            FrostedHeaderPill(
+                modifier =
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 8.dp),
+                plain = true,
+            ) {
+                IconButton(
                     onClick = onSearch,
-                )
-            } else {
-                FrostedHeaderPill(modifier = Modifier.padding(end = 8.dp), plain = true) {
-                    IconButton(
-                        onClick = onSearch,
-                        onLongClick = {},
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.search),
-                            contentDescription = stringResource(R.string.search),
-                        )
-                    }
+                    onLongClick = {},
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.search),
+                        contentDescription = stringResource(R.string.search),
+                    )
                 }
             }
         }
