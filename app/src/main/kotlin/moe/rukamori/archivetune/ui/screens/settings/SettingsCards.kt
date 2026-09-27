@@ -34,7 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectIsPressedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -107,9 +107,15 @@ fun SettingsGroupCard(
                     if (index > 0) {
                         SettingsRowDivider()
                     }
+                    val itemTrailing: (@Composable () -> Unit)? =
+                        if (rowTrailing != null) {
+                            { rowTrailing(item) }
+                        } else {
+                            null
+                        }
                     SettingsListRow(
                         item = item,
-                        trailing = rowTrailing?.let { it(item) },
+                        trailing = itemTrailing,
                     )
                 }
             }
