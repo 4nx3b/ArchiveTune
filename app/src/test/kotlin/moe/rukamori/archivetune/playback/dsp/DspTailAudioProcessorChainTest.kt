@@ -14,6 +14,7 @@ import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
+import java.nio.ByteBuffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -23,6 +24,12 @@ class DspTailAudioProcessorChainTest {
 
     private class PassthroughProcessor : BaseAudioProcessor() {
         override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat = inputAudioFormat
+
+        override fun queueInput(inputBuffer: ByteBuffer) {
+            val remaining = inputBuffer.remaining()
+            if (remaining == 0) return
+            replaceOutputBuffer(remaining).put(inputBuffer).flip()
+        }
     }
 
     @Test
