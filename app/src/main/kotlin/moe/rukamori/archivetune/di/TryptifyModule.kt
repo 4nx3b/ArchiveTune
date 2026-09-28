@@ -16,8 +16,10 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
+import tf.monochrome.android.data.db.dao.EqPresetDao
 import tf.monochrome.android.data.db.dao.FileBackedEqPresetDao
 import tf.monochrome.android.data.db.dao.FileBackedMixPresetDao
+import tf.monochrome.android.data.db.dao.MixPresetDao
 import tf.monochrome.android.data.preferences.PreferencesManager
 import tf.monochrome.android.data.api.HeadphoneAutoEqApi
 import tf.monochrome.android.data.api.SquiglinkApi
@@ -32,14 +34,17 @@ object TryptifyModule {
     fun provideTryptifyPreferences(@ApplicationContext context: Context): PreferencesManager =
         PreferencesManager(context)
 
+    // The repositories and ViewModels inject the DAO INTERFACES (Tryptify's
+    // own types), so the providers bind the interfaces to the file-backed
+    // implementations.
     @Provides
     @Singleton
-    fun provideEqPresetDao(@ApplicationContext context: Context): FileBackedEqPresetDao =
+    fun provideEqPresetDao(@ApplicationContext context: Context): EqPresetDao =
         FileBackedEqPresetDao(context)
 
     @Provides
     @Singleton
-    fun provideMixPresetDao(@ApplicationContext context: Context): FileBackedMixPresetDao =
+    fun provideMixPresetDao(@ApplicationContext context: Context): MixPresetDao =
         FileBackedMixPresetDao(context)
 
     @Provides
