@@ -59,16 +59,23 @@ class TryptifyEngineController(
         // double-correction guard: when system-wide AutoEQ is ON the in-app
         // correction is bypassed because the global output mix already
         // corrects this app's audio too).
+        // combine() has typed overloads only up to five flows — nest one.
+        val eqCore =
+            combine(
+                preferences.eqEnabled,
+                preferences.eqBandsJson,
+                preferences.eqBandsRJson,
+                preferences.eqStereoMode,
+                preferences.eqPreamp,
+            ) { enabled, bandsJson, bandsRJson, stereo, preamp ->
+                EqCore(enabled, bandsJson, bandsRJson, stereo, preamp)
+            }
         combine(
-            preferences.eqEnabled,
-            preferences.eqBandsJson,
-            preferences.eqBandsRJson,
-            preferences.eqStereoMode,
-            preferences.eqPreamp,
+            eqCore,
             preferences.systemToneControls,
             preferences.systemWideAutoEqEnabled,
-        ) { enabled, bandsJson, bandsRJson, stereo, preamp, tone, systemWide ->
-            EqApply(enabled, bandsJson, bandsRJson, stereo, preamp, tone, systemWide)
+        ) { core, tone, systemWide ->
+            EqApply(core.enabled, core.bandsJson, core.bandsRJson, core.stereo, core.preamp, tone, systemWide)
         }.distinctUntilChanged()
             .onEach { applyEqSettings(it) }
             .launchIn(scope)
@@ -164,6 +171,14 @@ class TryptifyEngineController(
             paramEq.applyBands(bands, preamp.toFloat(), enabled)
         }
     }
+
+    private data class EqCore(
+        val enabled: Boolean,
+        val bandsJson: String?,
+        val bandsRJson: String?,
+        val stereo: Boolean,
+        val preamp: Double,
+    )
 
     private data class EqApply(
         val enabled: Boolean,

@@ -10,7 +10,7 @@
 
 package com.lastwave.app.data.local
 
-import androidx.datastore.preferences.core.DataStore
+import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
