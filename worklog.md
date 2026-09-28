@@ -3706,3 +3706,21 @@ Stage Summary:
 - USB-exclusive: mid-session DAC plug now engages (was impossible before); engagement now logs unambiguously; automix/crossfade/offload suspension unchanged by design.
 - Lyrics export rewritten onto the coordinator; every lifecycle path that previously produced empty files now writes the payload or reports a failure toast.
 - native_crash_1790532676.txt still wanted for symbolication if the crash recurs after this fix.
+
+---
+Task ID: 38
+Agent: Super Z (main agent, session web-e130fa90)
+Task: "Check the crashlog file again and fix automix crash" + UnhandledAudioFormatException(AudioFormat[44100, 2ch, encoding=4]) — the automix-crash RECURRENCE on v16.0 (the uploaded native_crash_1790556870.txt again never reached /upload; the pasted error was the payload)
+
+Work Log:
+- Context: the user's v16.0 build (021389ca3, Sep 18) predates BOTH native fixes (273a19f84 AAudio UAF, ba55f4a9b FloatDsp handle overrun) — so the SIGSEGV part of the recurrence is already fixed on dev, just not shipped to the user.
+- Root-caused the pasted Java-side crash (code 5001 ERROR_CODE_AUDIO_TRACK_INIT_FAILED, MediaCodecAudioRenderer, format=audio/raw [2, 44100], cause AudioSink.ConfigurationException -> UnhandledAudioFormatException ENCODING_PCM_FLOAT): DefaultAudioSink.DefaultAudioProcessorChain appends its own SilenceSkippingAudioProcessor + SonicAudioProcessor AFTER every vararg processor — so the 16-bit-only silence trimmer sat BEHIND floatDspProcessor. Whenever the DSP engaged with USB-exclusive output active (usbSinkActiveNow=true -> outputFloat=true -> emits float at the next track configure), the trimmer's onConfigure threw — BaseAudioProcessor always invokes onConfigure, even on inactive processors. Verified against media3 1.6/1.7.1/1.8/1.9.3/1.10.1/1.11.1 sources (dl.google.com sources jars): the vararg constructor has always had this append-at-end behaviour; the previous session's "the DSP sits at the tail" comment was the intent, not the reality.
+- Fix: new DspTailAudioProcessorChain (playback/dsp/) implementing androidx.media3.common.audio.AudioProcessorChain directly — [user processors, silence trim, sonic] then the DSP as the TRUE tail (the only safe position for an encoding flip). skipSilenceEnabled / playbackParameters / getMediaDuration / getSkippedOutputFrameCount wire to the in-chain instances exactly like DefaultAudioProcessorChain. Also drops the previously-dead SonicAudioProcessor() vararg (never received setSpeed/setPitch — the appended default did). Field named chainProcessors to avoid the getAudioProcessors() JVM signature clash (the same trap as task-75's FloatDspProcessor.engaged).
+- Crossfade hardening: secondaryCrossfadeListener.onPlayerError previously rescheduled unconditionally — a persistently failing incoming track looped prepare -> error -> reschedule. Now 3 consecutive failures on the same media id suspend crossfade for that track (MAX_CONSECUTIVE_CROSSFADE_FAILURES); resets on successful startCrossfade and onMediaItemTransition.
+- Regression test DspTailAudioProcessorChainTest: locks the ordering (DSP tail LAST), skip-silence wiring (isActive after enable+configure), playback-params pass-through. CI round 1 caught the stub missing queueInput (BaseAudioProcessor leaves it abstract) — fixed in 5d2cc9903.
+- Both players (primary + secondary crossfade) get the fix via the shared createRenderersFactory.
+
+Stage Summary:
+- dev @ 5d2cc9903: automix/float crash fixed structurally — nothing runs after the encoding-flipping DSP tail; crossfade error loop bounded.
+- The SIGSEGV half of the user's recurrence rides in ba55f4a9b (already on dev, missing from their v16.0 install) — both halves reach the user on the next dev/main build.
+- PR check build (compile+test+lint) green on 5d2cc9903; release/nightly matrix monitored to completion.
