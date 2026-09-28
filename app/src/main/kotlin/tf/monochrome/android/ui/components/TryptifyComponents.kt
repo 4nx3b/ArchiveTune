@@ -135,21 +135,13 @@ fun Modifier.liquidGlass(
     this
         .clip(shape)
         .drawBehind {
+            // Translucent primary tint behind the content, hairline rim on
+            // top — both clipped to [shape], which is the whole glass look
+            // minus Tryptify's AGSL refraction shader.
             drawRect(tint)
-            val stroke = Stroke(width = 1.dp.toPx())
-            drawPath(
-                androidx.compose.ui.graphics.Path().apply {
-                    addRect(
-                        androidx.compose.ui.geometry.Rect(
-                            left = stroke.width / 2,
-                            top = stroke.width / 2,
-                            right = size.width - stroke.width / 2,
-                            bottom = size.height - stroke.width / 2,
-                        ),
-                    ),
-                },
+            drawRect(
                 color = rim,
-                style = stroke,
+                style = Stroke(width = 1.dp.toPx()),
             )
         }
 }

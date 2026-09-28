@@ -107,6 +107,15 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
 
+        // The LastWave engine links Google Oboe (prefab), which requires the
+        // shared C++ STL. All of the app's native targets then build against
+        // c++_shared so one STL serves every library.
+        externalNativeBuild {
+            cmake {
+                arguments += "-DANDROID_STL=c++_shared"
+            }
+        }
+
         val lastfmApiKey =
             localProperties.getProperty("LASTFM_API_KEY")
                 ?: System.getenv("LASTFM_API_KEY")
