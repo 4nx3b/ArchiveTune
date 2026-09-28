@@ -218,35 +218,6 @@ android {
                 ).trim()
         buildConfigField("String", "AMAZON_LWA_CLIENT_ID", "\"$amazonLwaClientId\"")
 
-        // QQ Music partner programme (TME OpenAPI / QPlay). Everything defaults to blank, and the
-        // provider refuses to resolve while any of the three is unset: there is no public
-        // personal-developer playback API, so a build without a partnership cannot reach QQ Music at
-        // all, and the endpoint is left for the maintainer's own partnership documents rather than
-        // being guessed at here.
-        val qqPartnerAppId =
-            (
-                localProperties.getProperty("QQ_PARTNER_APP_ID")
-                    ?: System.getenv("QQ_PARTNER_APP_ID")
-                    ?: ""
-                ).trim()
-        buildConfigField("String", "QQ_PARTNER_APP_ID", "\"$qqPartnerAppId\"")
-
-        val qqPartnerAppKey =
-            (
-                localProperties.getProperty("QQ_PARTNER_APP_KEY")
-                    ?: System.getenv("QQ_PARTNER_APP_KEY")
-                    ?: ""
-                ).trim()
-        buildConfigField("String", "QQ_PARTNER_APP_KEY", "\"$qqPartnerAppKey\"")
-
-        val qqPartnerApiBase =
-            (
-                localProperties.getProperty("QQ_PARTNER_API_BASE")
-                    ?: System.getenv("QQ_PARTNER_API_BASE")
-                    ?: ""
-                ).trim().trimEnd('/')
-        buildConfigField("String", "QQ_PARTNER_API_BASE", "\"$qqPartnerApiBase\"")
-
         val nightlyBuildHash =
             (
                 localProperties.getProperty("NIGHTLY_BUILD_HASH")
@@ -534,6 +505,10 @@ dependencies {
 
     implementation(libs.media3)
     implementation("androidx.media3:media3-exoplayer-hls:${libs.versions.media3.get()}")
+    // LastWave audio engine output backend (Oboe/AAudio, prefab)
+    implementation("com.google.oboe:oboe:1.10.0")
+    // LastWave's userspace USB Audio Class driver module (exclusive USB DAC)
+    implementation(project(":audio:decent-usb-audio-driver"))
     implementation(libs.media3.session)
 
     // Automix: the Beat This! beat/downbeat and open-unmix vocal models run

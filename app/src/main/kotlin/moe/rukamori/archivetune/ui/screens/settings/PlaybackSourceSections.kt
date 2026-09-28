@@ -60,14 +60,9 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.constants.AudioSourceOrderKey
 import moe.rukamori.archivetune.constants.AudioSourceType
-import moe.rukamori.archivetune.constants.AppleMusicQuality
-import moe.rukamori.archivetune.constants.AppleMusicQualityKey
 import moe.rukamori.archivetune.constants.DeezerAudioQuality
 import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
-import moe.rukamori.archivetune.constants.AmazonEnabledKey
-import moe.rukamori.archivetune.constants.QqMusicEnabledKey
-import moe.rukamori.archivetune.constants.AppleMusicSourceEnabledKey
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
 import moe.rukamori.archivetune.constants.SaavnAudioQuality
@@ -119,7 +114,6 @@ private fun AudioSourceType.displayName(context: android.content.Context): Strin
         AudioSourceType.DEEZER -> context.getString(R.string.source_deezer)
         AudioSourceType.APPLE -> context.getString(R.string.source_apple_music)
         AudioSourceType.AMAZON -> context.getString(R.string.source_amazon)
-        AudioSourceType.QQ -> context.getString(R.string.source_qq_music)
         AudioSourceType.JIOSAAVN -> context.getString(R.string.source_jiosaavn)
         AudioSourceType.YOUTUBE -> context.getString(R.string.source_youtube)
     }
@@ -133,8 +127,6 @@ private fun AudioSourceType.iconRes(): Int =
         AudioSourceType.APPLE -> R.drawable.ic_music
 
         AudioSourceType.AMAZON -> R.drawable.ic_music
-        // Same stand-in for QQ Music.
-        AudioSourceType.QQ -> R.drawable.ic_music
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
@@ -151,9 +143,6 @@ internal fun PlaybackSourceSections(
     val (tidalEnabled, onTidalEnabledChange) = rememberPreference(TidalEnabledKey, true)
     val (qobuzEnabled, onQobuzEnabledChangeRaw) = rememberPreference(QobuzEnabledKey, false)
     val (deezerEnabled, onDeezerEnabledChangeRaw) = rememberPreference(DeezerEnabledKey, false)
-    val (appleMusicEnabled, onAppleMusicEnabledChangeRaw) = rememberPreference(AppleMusicSourceEnabledKey, true)
-    val (amazonEnabled, onAmazonEnabledChangeRaw) = rememberPreference(AmazonEnabledKey, false)
-    val (qqMusicEnabled, onQqMusicEnabledChange) = rememberPreference(QqMusicEnabledKey, false)
     val (deezerQuality, onDeezerQualityChange) =
         rememberEnumPreference(DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
     val (jioSaavnEnabled, onJioSaavnEnabledChange) = rememberPreference(JioSaavnEnabledKey, false)
@@ -174,22 +163,6 @@ internal fun PlaybackSourceSections(
     }
     val onDeezerEnabledChange: (Boolean) -> Unit = { enabled ->
         onDeezerEnabledChangeRaw(enabled)
-        if (enabled && PoolAccountManager.isEnabled) {
-            scope.launch(Dispatchers.IO) {
-                runCatching { PoolAccountManager.refresh(context, force = true) }
-            }
-        }
-    }
-    val onAppleMusicEnabledChange: (Boolean) -> Unit = { enabled ->
-        onAppleMusicEnabledChangeRaw(enabled)
-        if (enabled && PoolAccountManager.isEnabled) {
-            scope.launch(Dispatchers.IO) {
-                runCatching { PoolAccountManager.refresh(context, force = true) }
-            }
-        }
-    }
-    val onAmazonEnabledChange: (Boolean) -> Unit = { enabled ->
-        onAmazonEnabledChangeRaw(enabled)
         if (enabled && PoolAccountManager.isEnabled) {
             scope.launch(Dispatchers.IO) {
                 runCatching { PoolAccountManager.refresh(context, force = true) }
@@ -236,8 +209,6 @@ internal fun PlaybackSourceSections(
         rememberPreference(QobuzBackupEndpointsKey, "")
     var showQobuzBackupEndpointsDialog by rememberSaveable { mutableStateOf(false) }
     var qobuzBackupEndpointsDraft by rememberSaveable { mutableStateOf("") }
-    val (appleMusicQuality, onAppleMusicQualityChange) =
-        rememberEnumPreference(AppleMusicQualityKey, AppleMusicQuality.LOSSLESS)
 
     val (animatedCovers, onAnimatedCoversChange) =
         rememberPreference(TidalAnimatedCoversEnabledKey, false)
@@ -247,9 +218,18 @@ internal fun PlaybackSourceSections(
             AudioSourceConfig.parseOrder(sourceOrderRaw.ifBlank { null })
         }
 
+    // The picker only ever offers chain-eligible sources: Apple Music,
+    // Amazon Music and Deezer left the preferred-sources list, and QQ Music
+    // is gone from the app entirely.
+    val chainEligibleSources =
+        remember {
+            AudioSourceType.entries.filterNot {
+                it == AudioSourceType.APPLE || it == AudioSourceType.AMAZON || it == AudioSourceType.DEEZER
+            }
+        }
     val dialogOrder =
         remember(sourceOrder) {
-            val missing = AudioSourceType.entries.filterNot { it in sourceOrder }
+            val missing = chainEligibleSources.filterNot { it in sourceOrder }
             if (missing.isEmpty()) {
                 sourceOrder
             } else {
@@ -265,10 +245,11 @@ internal fun PlaybackSourceSections(
             AudioSourceType.TIDAL -> tidalEnabled
             AudioSourceType.QOBUZ -> qobuzEnabled
             AudioSourceType.QOBUZ_BACKUP -> qobuzBackupEnabled
-            AudioSourceType.DEEZER -> deezerEnabled
-            AudioSourceType.APPLE -> appleMusicEnabled
-            AudioSourceType.AMAZON -> amazonEnabled
-            AudioSourceType.QQ -> qqMusicEnabled
+            // Deezer/Apple/Amazon left the preferred-sources chain; their
+            // entries here only keep the when exhaustive.
+            AudioSourceType.DEEZER -> false
+            AudioSourceType.APPLE -> false
+            AudioSourceType.AMAZON -> false
             AudioSourceType.JIOSAAVN -> jioSaavnEnabled
             AudioSourceType.YOUTUBE -> true
         }
@@ -286,9 +267,8 @@ internal fun PlaybackSourceSections(
                 AudioSourceType.QOBUZ -> if (!qobuzEnabled) onQobuzEnabledChange(true)
                 AudioSourceType.QOBUZ_BACKUP -> if (!qobuzBackupEnabled) onQobuzBackupEnabledChange(true)
                 AudioSourceType.DEEZER -> if (!deezerEnabled) onDeezerEnabledChange(true)
-                AudioSourceType.APPLE -> if (!appleMusicEnabled) onAppleMusicEnabledChange(true)
-                AudioSourceType.AMAZON -> if (!amazonEnabled) onAmazonEnabledChange(true)
-                AudioSourceType.QQ -> if (!qqMusicEnabled) onQqMusicEnabledChange(true)
+                AudioSourceType.APPLE -> Unit
+                AudioSourceType.AMAZON -> Unit
                 AudioSourceType.JIOSAAVN -> if (!jioSaavnEnabled) onJioSaavnEnabledChange(true)
                 AudioSourceType.YOUTUBE -> Unit
             }
@@ -657,47 +637,6 @@ internal fun PlaybackSourceSections(
         }
     }
 
-    PreferenceGroup(title = stringResource(R.string.applemusic_settings)) {
-        item {
-            SwitchPreference(
-                modifier = positions.modifierFor("applemusic_enable"),
-                title = { Text(stringResource(R.string.applemusic_enable)) },
-                description = stringResource(R.string.applemusic_enable_description),
-                icon = { Icon(painterResource(R.drawable.ic_music), null) },
-                checked = appleMusicEnabled,
-                onCheckedChange = onAppleMusicEnabledChange,
-            )
-        }
-        item {
-            EnumListPreference(
-                title = { Text(stringResource(R.string.applemusic_quality)) },
-                description = stringResource(R.string.applemusic_quality_desc),
-                icon = { Icon(painterResource(R.drawable.ic_music), null) },
-                selectedValue = appleMusicQuality,
-                onValueSelected = onAppleMusicQualityChange,
-                valueText = {
-                    when (it) {
-                        AppleMusicQuality.AAC -> stringResource(R.string.applemusic_quality_aac)
-                        AppleMusicQuality.LOSSLESS -> stringResource(R.string.applemusic_quality_lossless)
-                        AppleMusicQuality.HI_RES_LOSSLESS -> stringResource(R.string.applemusic_quality_hires)
-                    }
-                },
-            )
-        }
-        item {
-            PreferenceEntry(
-                title = { Text(stringResource(R.string.applemusic_settings)) },
-                description = stringResource(R.string.applemusic_helper_short),
-                icon = { Icon(painterResource(R.drawable.ic_music), null) },
-                onClick = { navController.navigate("settings/applemusic") },
-            )
-        }
-
-        item {
-            SourceCheckRow(source = AudioSourceType.APPLE, positions = positions)
-        }
-    }
-
     PreferenceGroup(title = stringResource(R.string.deezer_specific)) {
         item {
             SwitchPreference(
@@ -730,33 +669,6 @@ internal fun PlaybackSourceSections(
 
         item {
             SourceCheckRow(source = AudioSourceType.DEEZER, positions = positions)
-        }
-    }
-
-    PreferenceGroup(title = stringResource(R.string.source_amazon)) {
-        item {
-            SwitchPreference(
-                modifier = positions.modifierFor("amazon_enable"),
-                title = { Text(stringResource(R.string.amazon_enable)) },
-                description = stringResource(R.string.amazon_enable_description),
-                icon = { Icon(painterResource(R.drawable.ic_music), null) },
-                checked = amazonEnabled,
-                onCheckedChange = onAmazonEnabledChange,
-            )
-        }
-
-        item {
-            PreferenceEntry(
-                modifier = positions.modifierFor("amazon_manage_account"),
-                title = { Text(stringResource(R.string.source_amazon)) },
-                description = stringResource(R.string.amazon_login_description),
-                icon = { Icon(painterResource(R.drawable.integration), null) },
-                onClick = { navController.navigate("settings/amazon") },
-            )
-        }
-
-        item {
-            SourceCheckRow(source = AudioSourceType.AMAZON, positions = positions)
         }
     }
 

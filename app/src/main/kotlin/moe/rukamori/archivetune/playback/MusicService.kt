@@ -146,6 +146,8 @@ import moe.rukamori.archivetune.cast.CastScreenState
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.FloatDspEnabledKey
+import moe.rukamori.archivetune.constants.LastwaveAudioProcessingKey
+import moe.rukamori.archivetune.constants.TryptifyAudioProcessingKey
 import moe.rukamori.archivetune.constants.UsbExclusiveAudioKey
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedKey
 import moe.rukamori.archivetune.constants.AudioPlaybackPitchKey
@@ -246,10 +248,6 @@ import moe.rukamori.archivetune.constants.AmazonAccountPremiumKey
 import moe.rukamori.archivetune.constants.AmazonSessionKey
 import moe.rukamori.archivetune.constants.AmazonAudioQuality
 import moe.rukamori.archivetune.constants.AmazonAudioQualityKey
-import moe.rukamori.archivetune.constants.QqMusicEnabledKey
-import moe.rukamori.archivetune.constants.QqAudioQuality
-import moe.rukamori.archivetune.constants.QqMusicAudioQualityKey
-import moe.rukamori.archivetune.qqmusic.QqMusicProvider
 import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
 import moe.rukamori.archivetune.constants.SaavnAudioQuality
 import moe.rukamori.archivetune.constants.SaavnAudioQualityKey
@@ -267,6 +265,7 @@ import moe.rukamori.archivetune.audiosource.SongSourceOverride
 import moe.rukamori.archivetune.audiosource.SongSourceQobuzBackupVideoId
 import moe.rukamori.archivetune.audiosource.SongSourceQobuzTrackId
 import moe.rukamori.archivetune.audiosource.SongSourceDeezerTrackId
+import moe.rukamori.archivetune.audiosource.SongSourceTidalTrackId
 import moe.rukamori.archivetune.audiosource.TitleMatch
 import moe.rukamori.archivetune.audiosource.pcmBitrateOrNull
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
@@ -763,6 +762,108 @@ class MusicService :
     private val primaryFloatDspProcessor = FloatDspProcessor()
     private var primaryTransitionFilter = TransitionFilterProcessor()
 
+    // ---- Ported audio engines: Tryptify (https://github.com/tryptz/Tryptify)
+    // and LastWave-native (https://github.com/Clash-Projects/LastWave-native) ----
+    // Exactly one of them can own the DSP tail; the router re-evaluates the
+    // choice at every track configure from the live fields below. The engine
+    // instances are process singletons — stateful processors must never be
+    // shared across two players, so only the PRIMARY player routes through
+    // them (crossfade's secondary keeps the stock chain, exactly as USB-
+    // exclusive already does).
+    @Volatile
+    private var tryptifyAudioProcessing = false
+
+    @Volatile
+    private var lastwaveAudioProcessing = false
+
+    private val tryptifyPreferences by lazy {
+        tf.monochrome.android.data.preferences.PreferencesManager(this)
+    }
+
+    private val tryptifyMixBus by lazy {
+        tf.monochrome.android.audio.dsp.MixBusProcessor(
+            tf.monochrome.android.audio.dsp.oxford.InflatorEffect(),
+            tf.monochrome.android.audio.dsp.oxford.CompressorEffect(),
+            tf.monochrome.android.audio.dsp.crossfeed.CrossfeedEffect(),
+        )
+    }
+
+    private val tryptifyAutoEq by lazy { tf.monochrome.android.audio.eq.AutoEqProcessor() }
+
+    private val tryptifyParamEq by lazy { tf.monochrome.android.audio.eq.ParametricEqProcessor() }
+
+    private val tryptifyDspManager by lazy {
+        tf.monochrome.android.audio.dsp.DspEngineManager(tryptifyMixBus, tryptifyPreferences)
+    }
+
+    private val tryptifyUsbDriver by lazy { tf.monochrome.android.audio.usb.LibusbUacDriver(this) }
+
+    private val tryptifyBypassVolume by lazy { tf.monochrome.android.audio.usb.BypassVolumeController() }
+
+    private val tryptifyEngineController by lazy {
+        TryptifyEngineController(
+            context = this,
+            scope = scope,
+            mixBus = tryptifyMixBus,
+            autoEq = tryptifyAutoEq,
+            paramEq = tryptifyParamEq,
+            preferences = tryptifyPreferences,
+            dspManager = tryptifyDspManager,
+        )
+    }
+
+    private val lastwaveEngineScope by lazy {
+        kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default,
+        )
+    }
+
+    private val lastwaveSettings by lazy {
+        com.lastwave.app.data.local.SettingsPreferences(dataStore)
+    }
+
+    private val lastwaveEqualizer by lazy {
+        com.lastwave.app.data.local.EqualizerPreferences(dataStore)
+    }
+
+    private val lastwaveEngine by lazy {
+        com.lastwave.app.playback.NativeAudioEngine(
+            lastwaveSettings,
+            lastwaveEqualizer,
+            lastwaveEngineScope,
+        )
+    }
+
+    private val lastwaveProcessor by lazy {
+        com.lastwave.app.playback.NativePcmAudioProcessor(lastwaveEngine)
+    }
+
+    private val lastwaveExclusiveUsb by lazy {
+        com.lastwave.app.playback.ExclusiveUsbOutput(this)
+    }
+
+    /** LastWave's framework-level bit-perfect path (Android 14+ preferred
+     *  mixer attributes) for when the engine is on but USB-exclusive is off. */
+    private val lastwaveUsbBitPerfect by lazy {
+        com.lastwave.app.playback.UsbBitPerfectOutput(
+            runCatching { getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager }.getOrNull(),
+        )
+    }
+
+    /** The engine-routing DSP tail that replaces the bare FloatDspProcessor
+     *  in the primary player's processor chain. */
+    private val primaryEngineRouter by lazy {
+        AudioEngineRouterProcessor(
+            tryptifyEnabled = { tryptifyAudioProcessing },
+            lastwaveEnabled = { lastwaveAudioProcessing },
+            tryptifyMixBus = tryptifyMixBus,
+            tryptifyAutoEq = tryptifyAutoEq,
+            tryptifyParamEq = tryptifyParamEq,
+            lastwaveProcessor = lastwaveProcessor,
+            stockDsp = primaryFloatDspProcessor,
+        )
+    }
+
     @Volatile
     private var secondaryTransitionFilter: TransitionFilterProcessor? = null
 
@@ -1138,6 +1239,18 @@ class MusicService :
         ensureScopesActive()
 
         musicHapticsEngine = SpatialFlowHapticEngine(this)
+
+        // Warm the ported audio engines off the main thread: constructing
+        // them dlopens libmonochrome_dsp / liblastwave_audio and creates the
+        // native engine handles (NativeAudioEngine's init collectors start
+        // here too). The engine router probes availability lazily per track,
+        // so a failure here only means the corresponding engine stays off.
+        ioScope.launch {
+            runCatching { tryptifyEngineController.start() }
+                .onFailure { Timber.tag(TAG).w(it, "Tryptify engine controller failed to start") }
+            runCatching { lastwaveEngine.isAvailable }
+                .onFailure { Timber.tag(TAG).w(it, "Lastwave engine unavailable") }
+        }
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1542,6 +1655,42 @@ class MusicService :
                     dsp,
                     usbExclusiveRequested,
                 )
+            }
+
+        // ---- Ported audio engines: Tryptify / Lastwave --------------------------
+        // Exactly one engine may own the DSP tail. The settings UI writes the
+        // pair exclusively; this collector also normalizes any other writer
+        // (restored backups, direct DataStore edits) so the pair can never be
+        // simultaneously on. Tryptify wins ties (first-listed toggle).
+        combine(
+            dataStore.data.map { it[TryptifyAudioProcessingKey] ?: false },
+            dataStore.data.map { it[LastwaveAudioProcessingKey] ?: false },
+        ) { tryptify, lastwave -> tryptify to lastwave }
+            .distinctUntilChanged()
+            .collectLatest(scope) { (tryptify, lastwave) ->
+                val lastwaveEffective = lastwave && !tryptify
+                if (tryptifyAudioProcessing != tryptify || lastwaveAudioProcessing != lastwaveEffective) {
+                    Timber.tag(TAG).i(
+                        "Audio engine selection: tryptify=%s lastwave=%s (raw lastwave=%s normalized off — engines are exclusive)",
+                        tryptify,
+                        lastwaveEffective,
+                        lastwave,
+                    )
+                }
+                tryptifyAudioProcessing = tryptify
+                lastwaveAudioProcessing = lastwaveEffective
+                if (lastwave && tryptify) {
+                    dataStore.edit { it[LastwaveAudioProcessingKey] = false }
+                }
+                if (tryptify) {
+                    tryptifyEngineController.setEngineActive(true)
+                }
+                // LastWave's framework-level bit-perfect path (Android 14+
+                // preferred mixer attributes) applies whenever the Lastwave
+                // engine is on but USB-exclusive is not the active route —
+                // mirroring upstream's applyDacRoutingFor() fallback tier.
+                lastwaveUsbBitPerfect.setEnabled(lastwaveEffective && !usbSinkActiveNow)
+                applyFloatDspEngagement()
             }
 
         // The DSP engages per track: lossless or genuinely high-bitrate
@@ -7473,6 +7622,8 @@ class MusicService :
         val directQobuzBackupVideoId: String? = null,
 
         val directDeezerTrackId: String? = null,
+
+        val directTidalTrackId: String? = null,
     )
 
     private fun sourceResolutionChain(): List<AudioSourceType> {
@@ -7506,7 +7657,6 @@ class MusicService :
             AudioSourceType.DEEZER -> dataStore.get(DeezerEnabledKey, false)
             AudioSourceType.APPLE -> dataStore.get(AppleMusicSourceEnabledKey, true)
             AudioSourceType.AMAZON -> dataStore.get(AmazonEnabledKey, false)
-            AudioSourceType.QQ -> dataStore.get(QqMusicEnabledKey, false)
             AudioSourceType.JIOSAAVN -> dataStore.get(JioSaavnEnabledKey, false)
         }
 
@@ -7552,6 +7702,11 @@ class MusicService :
             runBlocking { dataStore.data.first()[SongSourceDeezerTrackIdKey] }
         }.getOrNull()
         val directDeezerTrackId = SongSourceDeezerTrackId.get(deezerTrackIdRaw, mediaId)
+
+        val tidalTrackIdRaw = runCatching {
+            runBlocking { dataStore.data.first()[SongSourceTidalTrackIdKey] }
+        }.getOrNull()
+        val directTidalTrackId = SongSourceTidalTrackId.get(tidalTrackIdRaw, mediaId)
         return SourceQuery(
             mediaId = mediaId,
             title = title,
@@ -7562,6 +7717,7 @@ class MusicService :
             directQobuzTrackId = directQobuzTrackId,
             directQobuzBackupVideoId = directQobuzBackupVideoId,
             directDeezerTrackId = directDeezerTrackId,
+            directTidalTrackId = directTidalTrackId,
         )
     }
 
@@ -7618,7 +7774,13 @@ class MusicService :
         val resolved = resolvedSourcesByMediaId[mediaId].orEmpty()
         val override = SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
 
-        return AudioSourceConfig.DEFAULT_ORDER.filter {
+        // The per-song picker offers the automatic chain plus Deezer (removed
+        // from the preferred order but still pickable per song). Apple Music
+        // and Amazon Music are not offered anymore — their sign-in UI and
+        // source toggles are gone; the provider code stays for lyrics,
+        // metadata and the catalogue. QQ Music is removed entirely.
+        val pickerSources = AudioSourceConfig.DEFAULT_ORDER + AudioSourceType.DEEZER
+        return pickerSources.distinct().filter {
             it == AudioSourceType.YOUTUBE ||
                 it in resolved ||
                 it == override ||
@@ -7679,6 +7841,30 @@ class MusicService :
                         prefs[SongSourceDeezerTrackIdKey],
                         mediaId,
                         deezerTrackId,
+                    )
+                }
+            }
+        }
+        setSongSourceOverrideInternal(mediaId, source, qobuzTrackId = null, qobuzBackupVideoId = null)
+    }
+
+    /**
+     * Pins the exact Tidal track picked in the source-search popup: playback
+     * resolves that track id directly (no fuzzy re-match that could miss the
+     * metadata gate and fall back to YouTube — the reported bug).
+     */
+    fun setSongSourceOverrideWithTidalTrackId(
+        mediaId: String,
+        source: AudioSourceType?,
+        tidalTrackId: String?,
+    ) {
+        runCatching {
+            runBlocking {
+                dataStore.edit { prefs ->
+                    prefs[SongSourceTidalTrackIdKey] = SongSourceTidalTrackId.withOverride(
+                        prefs[SongSourceTidalTrackIdKey],
+                        mediaId,
+                        tidalTrackId,
                     )
                 }
             }
@@ -7946,11 +8132,6 @@ class MusicService :
                             trusted = overrideIsSourceOverride && override == AudioSourceType.AMAZON,
                         )
                     AudioSourceType.JIOSAAVN -> resolveJioSaavnStream(query)
-                    AudioSourceType.QQ ->
-                        resolveQqStream(
-                            query,
-                            trusted = overrideIsSourceOverride && override == AudioSourceType.QQ,
-                        )
                     AudioSourceType.YOUTUBE -> null
                 }
             if (stream == null) {
@@ -8319,82 +8500,6 @@ class MusicService :
         return null
     }
 
-    /**
-     * QQ Music — Tencent's partner API only.
-     *
-     * Declines (null) whenever the build has no partnership credentials, the catalogue has no hit,
-     * the track is offered only in an encrypted container, or the match gate will not accept the
-     * candidate. There is no vkey construction and no `u.y.qq.com` call anywhere behind this: the
-     * provider builds requests with the partner's own app id and signature, and a track it cannot
-     * get a plain URL for is reported unavailable rather than worked around.
-     */
-    private fun resolveQqStream(
-        query: SourceQuery,
-        trusted: Boolean,
-    ): DirectStream? {
-        if (!QqMusicProvider.isConfigured()) {
-            if (!qqInertLogged) {
-                qqInertLogged = true
-                Timber
-                    .tag("MusicService")
-                    .i("QQ Music: no partner credentials in this build — the source stays inert")
-            }
-            return null
-        }
-
-        val quality =
-            runCatching {
-                QqAudioQuality.valueOf(
-                    dataStore.get(QqMusicAudioQualityKey, QqAudioQuality.Default.name),
-                )
-            }.getOrDefault(QqAudioQuality.Default)
-
-        val searchQuery =
-            listOfNotNull(query.title, query.artists.firstOrNull())
-                .joinToString(" ")
-                .trim()
-        if (searchQuery.isEmpty()) return null
-
-        val candidates = runBlocking(Dispatchers.IO) { QqMusicProvider.searchCandidates(searchQuery, quality) }
-        for (candidate in candidates) {
-            val url = runBlocking(Dispatchers.IO) { QqMusicProvider.resolveStream(candidate.mid, quality) } ?: continue
-            val placeholder =
-                DirectStream(
-                    uri = url,
-                    mimeType = "audio/mp4",
-                    codecs = "",
-                    contentLength = null,
-                    label = "QQ Music ${quality.name}",
-                    source = AudioSourceType.QQ,
-                    matchedTitle = candidate.title,
-                    matchedArtist = candidate.artist,
-                    matchedAlbum = candidate.album,
-                    matchedDurationMs = candidate.durationMs,
-                    trustedDirectId = trusted,
-                )
-            val match =
-                if (trusted) {
-                    TitleMatch.Result(true, 1.0, 1.0, 1.0, 1.0, "per-song override bypass")
-                } else {
-                    TitleMatch.evaluate(
-                        wantedTitle = query.title,
-                        wantedArtists = query.artists,
-                        wantedAlbum = query.album,
-                        wantedDurationMs = query.durationMs,
-                        stream = placeholder,
-                    )
-                }
-            if (!match.accepted) continue
-            Timber
-                .tag("MusicService")
-                .i("QQ Music resolved \"%s\" as %s", query.title, candidate.mid)
-            return placeholder
-        }
-        return null
-    }
-
-    @Volatile
-    private var qqInertLogged = false
 
     @Volatile
     private var amazonInertLogged = false
@@ -8427,6 +8532,58 @@ class MusicService :
     private fun resolveTidalStream(query: SourceQuery): DirectStream? {
         val quality = parseTidalAudioQuality()
         Timber.tag("MusicService").d("Tidal resolve start | quality=%s accountFirst=%s", quality.name, dataStore.get(TidalAccountFirstKey, true))
+
+        // The exact track picked in the popup resolves directly — no fuzzy
+        // re-match that could substitute a different master or miss the gate
+        // and drop to YouTube (the "selecting Tidal falls back to YouTube"
+        // bug). Tried against the user account and every pool account before
+        // any search-based tier runs.
+        val directTrackId = query.directTidalTrackId?.takeIf { it.isNotBlank() }
+        if (directTrackId != null) {
+            val apiQuality =
+                when (quality) {
+                    TidalAudioQuality.HI_RES_LOSSLESS -> "HI_RES_LOSSLESS"
+                    TidalAudioQuality.FLAC -> "LOSSLESS"
+                    TidalAudioQuality.AAC_320 -> "HIGH"
+                }
+            fun attemptDirect(accessToken: String): DirectStream? =
+                runBlocking(Dispatchers.IO) {
+                    TidalAccountManager.resolveDirectStreamByTrackId(
+                        accessToken = accessToken,
+                        trackId = directTrackId,
+                        durationMs = query.durationMs,
+                        audioQuality = apiQuality,
+                        cacheDir = cacheDir,
+                    )
+                }
+
+            ensureValidTidalToken()?.let { token ->
+                runCatching { attemptDirect(token) }
+                    .onFailure { Timber.tag("MusicService").w(it, "Tidal direct track resolve failed (account) for %s", query.mediaId) }
+                    .getOrNull()
+                    ?.let { return it }
+            }
+            for (poolAccount in PoolAccountManager.tidalAccounts()) {
+                runCatching { attemptDirect(poolAccount.token) }
+                    .onFailure {
+                        if (TidalAccountManager.isUnauthorized(it)) {
+                            PoolAccountManager.report("tidal", "account", poolAccount.id, "dead")
+                        } else {
+                            Timber.tag("MusicService").w(it, "Tidal direct track resolve failed (pool) for %s", query.mediaId)
+                        }
+                    }
+                    .getOrNull()
+                    ?.let {
+                        Timber.tag("MusicService").d("Tidal direct track resolved via pool account (premium=%s)", poolAccount.premium)
+                        PoolAccountManager.noteAccountSuccess("tidal", poolAccount.id)
+                        return it
+                    }
+            }
+            Timber.tag("MusicService").w(
+                "Tidal direct track %s unresolved by account/pool — falling through to search tiers",
+                directTrackId,
+            )
+        }
 
         if (dataStore.get(TidalAccountFirstKey, true)) {
             val apiQuality =
@@ -9806,6 +9963,10 @@ class MusicService :
             )
         }
         usbSinkActiveNow = usbExclusiveAudioEnabled
+        // The LastWave bit-perfect mixer-attribute path only runs while the
+        // usbdevfs exclusive route is NOT the active one (they are upstream's
+        // alternative tiers, never stacked).
+        lastwaveUsbBitPerfect.setEnabled(lastwaveAudioProcessing && !usbSinkActiveNow)
         applyFloatDspEngagement()
     }
 
@@ -9823,6 +9984,11 @@ class MusicService :
                     format.bitrate >= HIGH_QUALITY_BITRATE ||
                     (format.sampleRate ?: 0) >= 88_200
                 )
+        // The engine router owns the primary tail: engines process every
+        // track while enabled (their own toggles are the engagement gate);
+        // float emission mirrors the stock discipline — snapshot at the next
+        // configure. The stock path keeps its per-stream quality gate.
+        primaryEngineRouter.outputFloat = usbSinkActiveNow
         primaryFloatDspProcessor.outputFloat = usbSinkActiveNow
         primaryFloatDspProcessor.setEngaged(engaged)
         secondaryFloatDspProcessor?.let {
@@ -9836,12 +10002,14 @@ class MusicService :
         if (decision != lastDspEngagementDecision) {
             lastDspEngagementDecision = decision
             Timber.tag(TAG).i(
-                "Float DSP engaged=%s (lossless=%s bitrate=%s sampleRate=%s) floatOutputToSink=%s",
+                "Float DSP engaged=%s (lossless=%s bitrate=%s sampleRate=%s) floatOutputToSink=%s engines(tryptify=%s lastwave=%s)",
                 engaged,
                 format?.isLossless(),
                 format?.bitrate,
                 format?.sampleRate,
                 usbSinkActiveNow,
+                tryptifyAudioProcessing,
+                lastwaveAudioProcessing,
             )
         }
     }
@@ -9923,15 +10091,29 @@ class MusicService :
                 enableAudioTrackPlaybackParams: Boolean,
             ) = DefaultAudioSink
                 .Builder(context)
-                // Float output stays off at the SINK level: the 32-bit float
-                // DSP tail (floatDspProcessor) owns the encoding decision so
-                // the chain's existing 16-bit processors are untouched. When
-                // USB-exclusive output is active the tail emits float and the
-                // AAudio stream consumes it directly.
+                // Float output stays off at the SINK level: the DSP tail
+                // (floatDspProcessor, or the engine router wrapping it) owns
+                // the encoding decision so the chain's existing 16-bit
+                // processors are untouched. When USB-exclusive output is
+                // active the tail emits float and the exclusive stream
+                // consumes it directly.
                 .setEnableFloatOutput(false)
                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                 .setAudioOutputProvider(
-                    UsbExclusiveAudioOutputProvider(context) { usbExclusiveAudioEnabled },
+                    UsbExclusiveAudioOutputProvider(context) { usbExclusiveAudioEnabled }
+                        .withEngines(
+                            engineSelection = {
+                                when {
+                                    tryptifyAudioProcessing -> AudioEngineKind.TRYPTIFY
+                                    lastwaveAudioProcessing -> AudioEngineKind.LASTWAVE
+                                    else -> AudioEngineKind.NONE
+                                }
+                            },
+                            tryptifyDriver = tryptifyUsbDriver,
+                            tryptifyVolume = tryptifyBypassVolume,
+                            lastwaveExclusiveUsb = lastwaveExclusiveUsb,
+                            permissionScope = ioScope,
+                        ),
                 )
                 .setAudioProcessorChain(
                     // DefaultAudioProcessorChain appends its own silence trimmer
@@ -9954,7 +10136,16 @@ class MusicService :
                             // chain's output when engaged.
                             transitionFilter,
                         ),
-                        tailProcessor = floatDspProcessor,
+                        tailProcessor = if (floatDspProcessor === primaryFloatDspProcessor) {
+                            // The primary player's tail is the engine router:
+                            // Tryptify / Lastwave / stock FloatDsp, re-decided
+                            // per track. The secondary crossfade player keeps
+                            // the bare stock tail — engine processors are
+                            // stateful singletons shared by no two players.
+                            primaryEngineRouter
+                        } else {
+                            floatDspProcessor
+                        },
                     ),
                 ).build()
         }

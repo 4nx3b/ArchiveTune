@@ -63,6 +63,7 @@ class BackupArchiveRepository
             val includeLibrary = BackupArchiveCategory.LIBRARY in categories
             val includeLyrics = BackupArchiveCategory.LYRICS in categories
             val includeCanvas = BackupArchiveCategory.CANVAS in categories
+            val includeFonts = BackupArchiveCategory.FONTS in categories
             val settingsExcludedKeys = if (includeAccount) emptySet() else ACCOUNT_PREFERENCE_KEYS
             val dbFile = context.getDatabasePath(InternalDatabase.DB_NAME)
             val dbFiles =
@@ -82,6 +83,12 @@ class BackupArchiveRepository
                 } else {
                     emptyList()
                 }
+            val fontFiles =
+                if (includeFonts) {
+                    listCustomFontFiles()
+                } else {
+                    emptyList()
+                }
 
             val totalUnits =
                 (if (includeSettings) 1 else 0) +
@@ -89,7 +96,8 @@ class BackupArchiveRepository
                     (if (includeLyrics) 1 else 0) +
                     (if (includeLibrary) 1 else 0) +
                     dbFiles.size +
-                    canvasFiles.size
+                    canvasFiles.size +
+                    fontFiles.size
             val unitSpan = 100f / totalUnits.coerceAtLeast(1)
             var completedUnits = 0
             var lastProgress: BackupArchiveProgress? = null
@@ -144,38 +152,34 @@ class BackupArchiveRepository
                     writeSettingsToXml(zipStream, settingsExcludedKeys)
                     zipStream.closeEntry()
                     completedUnits++
+                }
 
-                    val fontsDir = java.io.File(context.filesDir, CUSTOM_FONTS_DIR_NAME)
-                    val fontFiles =
-                        if (fontsDir.isDirectory) {
-                            fontsDir.listFiles { file -> file.isFile && file.name.endsWith(".ttf", ignoreCase = true) }
-                                ?.sortedBy { it.name }
-                                ?: emptyList()
-                        } else {
-                            emptyList()
-                        }
-                    if (fontFiles.isNotEmpty()) {
-                        val buffer = ByteArray(BUFFER_SIZE)
-                        fontFiles.forEach { file ->
-                            val fileSize = file.length().coerceAtLeast(1L)
-                            var bytesCopied = 0L
-                            emit(BackupArchiveStep.COPY_CUSTOM_FONTS, file.name)
-                            zipStream.putNextEntry(ZipEntry("$FONTS_ZIP_PREFIX/${file.name}"))
-                            FileInputStream(file).use { input ->
-                                while (true) {
-                                    val read = input.read(buffer)
-                                    if (read <= 0) break
-                                    zipStream.write(buffer, 0, read)
-                                    bytesCopied += read
-                                    emit(
-                                        step = BackupArchiveStep.COPY_CUSTOM_FONTS,
-                                        fileName = file.name,
-                                        unitFraction = bytesCopied.toFloat() / fileSize.toFloat(),
-                                    )
-                                }
+                // Custom fonts are their own backup category: the picker in the
+                // backup dialog controls them independently of the settings
+                // XML (fonts used to ride along with Settings before the
+                // split; restores still accept fonts/ entries from either).
+                if (includeFonts && fontFiles.isNotEmpty()) {
+                    val buffer = ByteArray(BUFFER_SIZE)
+                    fontFiles.forEach { file ->
+                        val fileSize = file.length().coerceAtLeast(1L)
+                        var bytesCopied = 0L
+                        emit(BackupArchiveStep.COPY_CUSTOM_FONTS, file.name)
+                        zipStream.putNextEntry(ZipEntry("$FONTS_ZIP_PREFIX/${file.name}"))
+                        FileInputStream(file).use { input ->
+                            while (true) {
+                                val read = input.read(buffer)
+                                if (read <= 0) break
+                                zipStream.write(buffer, 0, read)
+                                bytesCopied += read
+                                emit(
+                                    step = BackupArchiveStep.COPY_CUSTOM_FONTS,
+                                    fileName = file.name,
+                                    unitFraction = bytesCopied.toFloat() / fileSize.toFloat(),
+                                )
                             }
-                            zipStream.closeEntry()
                         }
+                        zipStream.closeEntry()
+                        completedUnits++
                     }
                 }
 
@@ -234,6 +238,14 @@ class BackupArchiveRepository
                     }
                 }
             }
+        }
+
+        private fun listCustomFontFiles(): List<java.io.File> {
+            val fontsDir = java.io.File(context.filesDir, CUSTOM_FONTS_DIR_NAME)
+            if (!fontsDir.isDirectory) return emptyList()
+            return fontsDir.listFiles { file -> file.isFile && file.name.endsWith(".ttf", ignoreCase = true) }
+                ?.sortedBy { it.name }
+                ?: emptyList()
         }
 
         private fun canvasCacheFiles(): List<java.io.File> {
@@ -368,6 +380,7 @@ enum class BackupArchiveCategory {
     LIBRARY,
     ACCOUNT,
     SETTINGS,
+    FONTS,
     LYRICS,
     CANVAS,
 }

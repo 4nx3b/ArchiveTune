@@ -102,3 +102,124 @@ find_library(log-lib-crash log)
 target_link_libraries(archivetune_crash ${log-lib-crash})
 
 target_link_options(archivetune_crash PRIVATE "-Wl,-z,max-page-size=16384")
+
+# ---------------------------------------------------------------------------
+# Tryptify audio engine (ported from https://github.com/tryptz/Tryptify,
+# app/src/main/cpp/dsp — vendored under tryptify/dsp). The C++17 mixing
+# console: 4 mix buses + master, 36 snapin processor types, Oxford
+# Inflator/Compressor, NEON auto-vectorization, lock-free atomics for
+# parameter hand-off. Engaged when "Enable Tryptify Audio Processing" is on;
+# Kotlin wrapper keeps the tf.monochrome.android.audio.dsp package so the
+# JNI symbols bind without edits.
+# ---------------------------------------------------------------------------
+add_library(monochrome_dsp SHARED
+    tryptify/dsp/dsp_engine.cpp
+    tryptify/dsp/dsp_jni.cpp
+    tryptify/dsp/oxford/oxford_jni.cpp
+)
+
+target_include_directories(monochrome_dsp PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tryptify/dsp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tryptify/dsp/util
+    ${CMAKE_CURRENT_SOURCE_DIR}/tryptify/dsp/snapins
+    ${CMAKE_CURRENT_SOURCE_DIR}/tryptify/dsp/oxford
+)
+
+target_compile_features(monochrome_dsp PRIVATE cxx_std_17)
+target_compile_options(monochrome_dsp PRIVATE
+    -O3 -ffast-math -fno-exceptions -fno-rtti
+    $<$<STREQUAL:${ANDROID_ABI},arm64-v8a>:-march=armv8-a+simd>
+)
+set_target_properties(monochrome_dsp PROPERTIES DEBUG_POSTFIX "")
+
+find_library(log-lib-monochrome-dsp log)
+target_link_libraries(monochrome_dsp android ${log-lib-monochrome-dsp})
+
+target_link_options(monochrome_dsp PRIVATE "-Wl,-z,max-page-size=16384")
+
+# ---------------------------------------------------------------------------
+# Tryptify libusb UAC1/UAC2 bit-perfect USB-DAC driver (ported from
+# Tryptify's app/src/main/cpp/usb + the vendored libusb at
+# third_party/libusb). Claims the AudioStreaming interface from the kernel
+# and drives the isochronous endpoint directly with asynchronous-feedback
+# pacing; the JNI surface is Kotlin's tf.monochrome.android.audio.usb
+# .LibusbUacDriver.
+# ---------------------------------------------------------------------------
+set(LIBUSB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/libusb)
+add_library(usb1.0 STATIC
+    ${LIBUSB_DIR}/libusb/core.c
+    ${LIBUSB_DIR}/libusb/descriptor.c
+    ${LIBUSB_DIR}/libusb/hotplug.c
+    ${LIBUSB_DIR}/libusb/io.c
+    ${LIBUSB_DIR}/libusb/sync.c
+    ${LIBUSB_DIR}/libusb/strerror.c
+    ${LIBUSB_DIR}/libusb/os/linux_usbfs.c
+    ${LIBUSB_DIR}/libusb/os/events_posix.c
+    ${LIBUSB_DIR}/libusb/os/threads_posix.c
+    ${LIBUSB_DIR}/libusb/os/linux_netlink.c
+)
+target_include_directories(usb1.0 PUBLIC
+    ${LIBUSB_DIR}/libusb
+    ${LIBUSB_DIR}/libusb/os
+    ${LIBUSB_DIR}/android   # config.h with autotools-generated #defines
+)
+target_compile_options(usb1.0 PRIVATE
+    -fvisibility=hidden
+    -Wno-unused-parameter
+    -Wno-unused-but-set-variable
+)
+set_target_properties(usb1.0 PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(monochrome_usb SHARED
+    tryptify/usb/usb_jni.cpp
+    tryptify/usb/libusb_uac_driver.cpp
+)
+target_include_directories(monochrome_usb PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tryptify/usb
+    ${LIBUSB_DIR}/libusb
+)
+target_compile_features(monochrome_usb PRIVATE cxx_std_17)
+target_compile_options(monochrome_usb PRIVATE -O3 -fno-exceptions -fno-rtti)
+set_target_properties(monochrome_usb PROPERTIES DEBUG_POSTFIX "")
+target_link_libraries(monochrome_usb android log usb1.0)
+
+target_link_options(monochrome_usb PRIVATE "-Wl,-z,max-page-size=16384")
+
+# ---------------------------------------------------------------------------
+# LastWave audio engine (ported from https://github.com/Clash-Projects/
+# LastWave-native, app/src/main/cpp — vendored under lastwave/). Oboe/AAudio
+# output engine + the 15-band graphic EQ + "Studio Master Clarity" DSP
+# chain + libsoxr HQ resampling. Engaged when "Enable Lastwave Audio
+# Processing" is on; the Kotlin wrapper keeps the com.lastwave.app.playback
+# package so NativeBridge's JNI symbols bind without edits. libsoxr 0.1.3
+# is vendored at third_party/soxr (LGPL, built as its own shared library
+# exactly like LastWave builds it — unversioned SONAME for APK packaging).
+# ---------------------------------------------------------------------------
+set(SOXR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/soxr)
+list(APPEND CMAKE_MODULE_PATH "${SOXR_DIR}/cmake/Modules")
+set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_LSR_TESTS OFF CACHE BOOL "" FORCE)
+set(WITH_LSR_BINDINGS OFF CACHE BOOL "" FORCE)
+set(WITH_OPENMP OFF CACHE BOOL "" FORCE)
+set(WITH_CR32S OFF CACHE BOOL "" FORCE)
+set(WITH_CR64S OFF CACHE BOOL "" FORCE)
+set(WITH_PFFFT OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+add_subdirectory("${SOXR_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/soxr" EXCLUDE_FROM_ALL)
+set_target_properties(soxr PROPERTIES VERSION "" SOVERSION "")
+
+find_package(oboe REQUIRED CONFIG)
+
+add_library(lastwave_audio SHARED
+    lastwave/AudioEngine.cpp
+    lastwave/DspProcessor.cpp
+    lastwave/NativeBridge.cpp
+)
+target_include_directories(lastwave_audio PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/lastwave
+    "${SOXR_DIR}/src"
+)
+target_link_libraries(lastwave_audio PRIVATE oboe::oboe soxr android log)
+
+target_link_options(lastwave_audio PRIVATE "-Wl,-z,max-page-size=16384")

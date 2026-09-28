@@ -327,6 +327,31 @@ object TidalAccountManager {
             )
         }
 
+    /**
+     * Resolves playback info for an EXACT track id — the track the user picked
+     * in the source-search popup. No search, no fuzzy re-match: a hit here is
+     * always the intended track, and a miss is a real miss (the resolver then
+     * walks its remaining tiers).
+     */
+    suspend fun resolveDirectStreamByTrackId(
+        accessToken: String,
+        trackId: String,
+        durationMs: Long?,
+        audioQuality: String,
+        cacheDir: File,
+        preferLiveDash: Boolean = false,
+    ): DirectStream? =
+        withContext(Dispatchers.IO) {
+            resolvePlaybackInfo(
+                accessToken = accessToken,
+                trackId = trackId,
+                audioQuality = audioQuality,
+                durationMs = durationMs,
+                cacheDir = cacheDir,
+                preferLiveDash = preferLiveDash,
+            )
+        }
+
     private fun searchTrack(
         accessToken: String,
         title: String,

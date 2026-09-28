@@ -28,6 +28,8 @@ import moe.rukamori.archivetune.constants.SpotifyCanvasKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.FloatDspEnabledKey
+import moe.rukamori.archivetune.constants.LastwaveAudioProcessingKey
+import moe.rukamori.archivetune.constants.TryptifyAudioProcessingKey
 import moe.rukamori.archivetune.constants.UsbExclusiveAudioKey
 import moe.rukamori.archivetune.constants.AutoDownloadOnLikeKey
 import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
@@ -380,6 +382,8 @@ fun buildSettingsGroups(
                 SettingsChild("Audio offload", "audio_offload", listOf("offload", "audio offload", "hardware decoder")) { SearchResultSwitch(AudioOffload, false) },
                 SettingsChild("32-bit float DSP", "float_dsp", listOf("dsp", "float", "32-bit", "limiter", "dither", "lossless dsp", "bit perfect")) { SearchResultSwitch(FloatDspEnabledKey, false) },
                 SettingsChild("USB exclusive output", "usb_exclusive_audio", listOf("usb", "exclusive", "dac", "bit perfect", "direct", "aaudio")) { SearchResultSwitch(UsbExclusiveAudioKey, false) },
+                SettingsChild("Enable Tryptify Audio Processing", "tryptify_audio_processing", listOf("tryptify", "dsp engine", "autoeq", "equalizer", "bit perfect", "usb dac", "libusb", "oxford", "mixing console")) { SearchResultSwitch(TryptifyAudioProcessingKey, false) },
+                SettingsChild("Enable Lastwave Audio Processing", "lastwave_audio_processing", listOf("lastwave", "lastwave-native", "dsp engine", "clarity", "studio master", "oboe", "soxr", "bit perfect", "usb dac", "graphic eq")) { SearchResultSwitch(LastwaveAudioProcessingKey, false) },
                 SettingsChild("Seek seconds add-up", "seek_seconds", listOf("seek", "skip", "forward", "rewind", "seconds")) { SearchResultSwitch(SeekExtraSeconds, false) },
                 SettingsChild("Pause on device mute", "pause_mute", listOf("mute", "pause mute", "headphone", "silence detect")) { SearchResultSwitch(PauseOnDeviceMuteKey, false) },
                 SettingsChild("Device mute recovery volume", "device_mute_recovery_volume", listOf("recovery volume", "mute recovery", "volume restore")),
@@ -419,7 +423,6 @@ fun buildSettingsGroups(
                 SettingsChild("Deezer audio quality", "deezer_audio_quality", listOf("deezer quality", "deezer audio quality", "deezer flac")),
                 SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("jiosaavn", "jio saavn", "saavn", "enable jiosaavn", "indian music")) { SearchResultSwitch(JioSaavnEnabledKey, false) },
                 SettingsChild("JioSaavn audio quality", "jiosaavn_audio_quality", listOf("jiosaavn quality", "saavn quality", "jiosaavn audio quality")),
-                SettingsChild("Enable Amazon Music source", "amazon_enable", listOf("amazon", "amazon music", "enable amazon", "amazon source", "amazon hd")),
             ),
         )
 
@@ -440,39 +443,6 @@ fun buildSettingsGroups(
             ),
         )
 
-    val amazon =
-        SettingsItem(
-            key = "amazon",
-            icon = painterResource(R.drawable.login),
-            title = "Amazon Music",
-            subtitle = "Amazon Music account and audio source",
-            accentColor = SettingsIconPalette.Amazon,
-            keywords = listOf("amazon", "amazon music", "amazon login", "amazon hd", "amazon ultra hd"),
-            onClick = { navController.navigate("settings/amazon") },
-            hidden = true,
-            children = listOf(
-                SettingsChild("Sign in to Amazon Music", "amazon_login", listOf("amazon login", "amazon sign in", "connect amazon")),
-                SettingsChild("Sign out of Amazon Music", "amazon_sign_out", listOf("amazon logout", "amazon sign out", "disconnect amazon")),
-                SettingsChild("Amazon audio quality", "amazon_audio_quality", listOf("amazon quality", "amazon hd", "amazon ultra hd")),
-            ),
-        )
-    // Sources → QQ Music sub-page. The screen is the source's only entry point, so the search
-    // entry is the only other way to reach the partnership requirement it explains.
-    val qqMusic =
-        SettingsItem(
-            key = "qqmusic",
-            icon = painterResource(R.drawable.ic_music),
-            title = "QQ Music",
-            subtitle = "QQ Music audio source (partner programme)",
-            accentColor = SettingsIconPalette.QqMusic,
-            keywords = listOf("qq", "qq music", "qqmusic", "tencent", "tme", "qplay", "partner"),
-            onClick = { navController.navigate("settings/qqmusic") },
-            hidden = true,
-            children = listOf(
-                SettingsChild("Enable QQ Music", "qq_music_enabled", listOf("qq music enable", "turn on qq music")),
-                SettingsChild("QQ Music quality", "qq_music_quality", listOf("qq quality", "qq lossless", "qq flac")),
-            ),
-        )
     // Sources → Deezer sub-page.
     val deezer =
         SettingsItem(
@@ -689,7 +659,6 @@ fun buildSettingsGroups(
             keywords = listOf("integration", "lastfm", "last.fm", "libre.fm", "scrobble", "scrobbling", "discord", "listenbrainz", "spotify", "apple music"),
             onClick = { navController.navigate("settings/integration") },
             children = listOf(
-                SettingsChild("Apple Music login", "applemusic", listOf("apple music", "applemusic", "itunes", "music kit", "apple login", "apple music login")),
                 SettingsChild("Last.fm scrobbling", "lastfm_scrobbling", listOf("lastfm", "last.fm", "libre.fm", "scrobble", "scrobbling", "listens")) { SearchResultSwitch(EnableLastFMScrobblingKey, false) },
                 SettingsChild("Last.fm account", "lastfm_account", listOf("lastfm account", "lastfm login", "lastfm session", "lastfm username")),
                 SettingsChild("Last.fm options", "lastfm_options", listOf("lastfm options", "lastfm settings", "scrobble toggle", "now playing")),
@@ -1106,8 +1075,6 @@ fun buildSettingsGroups(
                     playback,
                     sources,
                     jioSaavn,
-                    amazon,
-                    qqMusic,
                     deezer,
                     lyrics,
                     lyricsProviders,

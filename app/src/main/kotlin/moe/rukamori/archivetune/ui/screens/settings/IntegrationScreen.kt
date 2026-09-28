@@ -91,18 +91,14 @@ fun IntegrationScreen(
     val (discordAvatarUrl) = rememberPreference(DiscordAvatarUrlKey, "")
 
     val (manualSourceLogin, _) = rememberPreference(ManualSourceLoginEnabledKey, false)
-    val (appleMusicToken, _) = rememberPreference(AppleMusicMediaUserTokenKey, "")
 
     val (deezerArl, _) = rememberPreference(DeezerArlKey, "")
     val (tidalAccessToken, _) = rememberPreference(TidalAccessTokenKey, "")
     val (qobuzTokens, _) = rememberPreference(QobuzTokensKey, "")
-    val (amazonAccountName, _) = rememberPreference(AmazonAccountNameKey, "")
     val showDeezerRow = manualSourceLogin || deezerArl.isNotBlank()
-    val showAmazonRow = manualSourceLogin || amazonAccountName.isNotBlank()
     val showTidalRow = manualSourceLogin || tidalAccessToken.isNotBlank()
     val showQobuzRow = manualSourceLogin || qobuzTokens.isNotBlank()
 
-    val showAppleMusicGroup = manualSourceLogin || appleMusicToken.isNotBlank()
 
     val spotifyState by spotifyAccountViewModel.uiState.collectAsStateWithLifecycle()
     val (showSpotifyPlaylists, onShowSpotifyPlaylistsChange) = rememberPreference(ShowSpotifyPlaylistsKey, false)
@@ -188,28 +184,9 @@ fun IntegrationScreen(
             }
 
             PreferenceGroup(
-                modifier =
-                    positions
-                        .modifierFor("apple_music")
-                        .then(positions.modifierFor("music_sources")),
+                modifier = positions.modifierFor("music_sources"),
                 title = stringResource(R.string.music_sources),
             ) {
-                item(visible = showAppleMusicGroup) {
-                    PreferenceEntry(
-                        modifier = positions.modifierFor("applemusic"),
-                        title = { Text(stringResource(R.string.applemusic_settings)) },
-                        description = stringResource(R.string.applemusic_helper),
-                        icon = {
-                            Icon(
-                                painterResource(R.drawable.album),
-                                null,
-                                tint = SettingsIconPalette.AppleMusic,
-                            )
-                        },
-                        onClick = { navController.navigate("settings/applemusic") },
-                    )
-                }
-
                 item(visible = showTidalRow) {
                     PreferenceEntry(
                         modifier = positions.modifierFor("tidal"),
@@ -260,46 +237,6 @@ fun IntegrationScreen(
                         },
                         onClick = {
                             navController.navigate("settings/deezer")
-                        },
-                    )
-                }
-
-                item(visible = showAmazonRow) {
-                    PreferenceEntry(
-                        modifier = positions.modifierFor("amazon"),
-                        title = { Text(stringResource(R.string.source_amazon)) },
-                        description = stringResource(R.string.amazon_login_description),
-                        icon = {
-                            Icon(
-                                painterResource(R.drawable.login),
-                                null,
-                                tint = SettingsIconPalette.Amazon,
-                            )
-                        },
-                        onClick = {
-                            navController.navigate("settings/amazon")
-                        },
-                    )
-                }
-
-                // QQ Music's settings screen is its only entry point: the source is not part of the
-                // shipped order, so there is no row for it in the playback-sources list to reach it
-                // from. Always visible, because the screen itself is where the partnership
-                // requirement is explained.
-                item {
-                    PreferenceEntry(
-                        modifier = positions.modifierFor("qqmusic"),
-                        title = { Text(stringResource(R.string.source_qq_music)) },
-                        description = stringResource(R.string.qq_music_enabled_desc),
-                        icon = {
-                            Icon(
-                                painterResource(R.drawable.ic_music),
-                                null,
-                                tint = SettingsIconPalette.QqMusic,
-                            )
-                        },
-                        onClick = {
-                            navController.navigate("settings/qqmusic")
                         },
                     )
                 }

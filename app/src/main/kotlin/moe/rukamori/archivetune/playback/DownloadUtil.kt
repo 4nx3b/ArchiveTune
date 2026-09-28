@@ -53,12 +53,8 @@ import moe.rukamori.archivetune.constants.SaavnAudioQuality
 import moe.rukamori.archivetune.constants.SaavnAudioQualityKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
 import moe.rukamori.archivetune.constants.TidalAudioQualityKey
-import moe.rukamori.archivetune.constants.AppleMusicQuality
-import moe.rukamori.archivetune.constants.AppleMusicQualityKey
 import moe.rukamori.archivetune.constants.toFormatId
 import moe.rukamori.archivetune.constants.toFormatName
-import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
-import moe.rukamori.archivetune.applemusic.AppleMusicVirtualStream
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.audiosource.DirectStream
 import moe.rukamori.archivetune.audiosource.TitleMatch
@@ -149,7 +145,6 @@ class DownloadUtil
         private val tidalAudioQuality by enumPreference(context, TidalAudioQualityKey, TidalAudioQuality.FLAC)
         private val saavnAudioQuality by enumPreference(context, SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320)
         private val deezerAudioQuality by enumPreference(context, DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
-        private val appleMusicQuality by enumPreference(context, AppleMusicQualityKey, AppleMusicQuality.LOSSLESS)
         private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val songUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
 
@@ -418,22 +413,13 @@ class DownloadUtil
                                 codecs = resolved.codecs,
                                 contentLength = resolved.contentLength,
                             )
-                            if (targetSource == DownloadSource.APPLE) {
-                                val appleFile = runCatching { File(resolved.uri.toUri().path ?: "") }.getOrNull()
-                                if (appleFile != null && appleFile.isFile &&
-                                    copyLocalFileIntoPlayerCache(appleFile, requestKey)
-                                ) {
-                                    return@Factory dataSpec
-                                }
-                            } else {
-                                return@Factory dataSpec
-                                    .buildUpon()
-                                    .setKey(requestKey)
-                                    .setUri(resolved.uri.toUri())
-                                    .setHttpRequestHeaders(
-                                        dataSpec.httpRequestHeaders + requiredHeadersFor(resolved.uri),
-                                    ).build()
-                            }
+                            return@Factory dataSpec
+                                .buildUpon()
+                                .setKey(requestKey)
+                                .setUri(resolved.uri.toUri())
+                                .setHttpRequestHeaders(
+                                    dataSpec.httpRequestHeaders + requiredHeadersFor(resolved.uri),
+                                ).build()
                         }
                     }
                 }
@@ -705,16 +691,6 @@ class DownloadUtil
                         )
                         val cacheKey = DownloadSourceConfig.downloadCacheKey(source, mediaId)
 
-                        if (source == DownloadSource.APPLE) {
-                            val appleFile = runCatching { File(resolved.uri.toUri().path ?: "") }.getOrNull()
-                            if (appleFile != null && appleFile.isFile &&
-                                copyLocalFileIntoPlayerCache(appleFile, cacheKey)
-                            ) {
-                                return cacheKey
-                            }
-                            continue
-                        }
-
                         val fetched = runCatching {
                             fetchStreamIntoPlayerCache(resolved.uri, cacheKey, resolved.contentLength)
                         }.isSuccess
@@ -876,20 +852,6 @@ class DownloadUtil
                     contentLength = resolved.contentLength,
                 )
 
-                if (source == DownloadSource.APPLE) {
-                    val appleKey = DownloadSourceConfig.downloadCacheKey(source, mediaId)
-                    val appleFile = runCatching { File(resolved.uri.toUri().path ?: "") }.getOrNull()
-                    if (appleFile != null && appleFile.isFile &&
-                        copyLocalFileIntoPlayerCache(appleFile, appleKey)
-                    ) {
-                        return dataSpec.buildUpon()
-                            .setKey(appleKey)
-                            .build()
-                    }
-
-                    continue
-                }
-
                 return dataSpec.buildUpon()
                     .setUri(resolved.uri.toUri())
                     .setKey(DownloadSourceConfig.downloadCacheKey(source, mediaId))
@@ -959,164 +921,8 @@ class DownloadUtil
                     qualityApiValue = saavnAudioQuality.toApiValue(),
                 )?.let { ResolvedStreamData(it.uri, it.mimeType, it.codecs, it.contentLength) }
             }
-            DownloadSource.APPLE -> {
-                resolveAppleDownloadStream(mediaId, title, artists, album, durationMs)
-            }
-
-            DownloadSource.AMAZON -> null
             DownloadSource.AUTO, DownloadSource.YOUTUBE_MUSIC -> null
         }
-
-        private fun resolveAppleDownloadStream(
-            mediaId: String,
-            title: String,
-            artists: List<String>,
-            album: String?,
-            durationMs: Long?,
-        ): ResolvedStreamData? {
-            if (AppleMusicAudioProvider.mediaUserToken() == null ||
-                AppleMusicAudioProvider.devToken() == null
-            ) {
-                Timber.tag("DownloadUtil").d("Apple Music source: missing tokens (sign in via Settings → Apple Music)")
-                return null
-            }
-            val candidates =
-                runBlocking(Dispatchers.IO) {
-                    AppleMusicAudioProvider.resolveCandidates(
-                        title = title,
-                        artists = artists,
-                        album = album,
-                        durationMs = durationMs,
-                        quality = appleMusicQuality,
-                    )
-                }
-            if (candidates.isEmpty()) return null
-
-            var winner: AppleMusicAudioProvider.AppleMusicStream? = null
-            var bestScore = -1.0
-            for (candidate in candidates) {
-                val stream =
-                    DirectStream(
-                        uri = "apple-pending:${candidate.songId}",
-                        mimeType = "audio/mp4",
-                        codecs =
-                            if (candidate.flavor.contains("ctrp", ignoreCase = true) &&
-                                candidate.flavor.filter(Char::isDigit).toIntOrNull()?.let { it > 320 } == true
-                            ) {
-                                "alac"
-                            } else {
-                                "mp4a.40.2"
-                            },
-                        contentLength = candidate.contentLength,
-                        label = "Apple Music ${candidate.flavor}",
-                        source = AudioSourceType.APPLE,
-                        matchedTitle = candidate.matchedTitle,
-                        matchedArtist = candidate.matchedArtist,
-                        matchedAlbum = candidate.matchedAlbum,
-                        matchedDurationMs = candidate.matchedDurationMs,
-                    )
-                val match = TitleMatch.evaluate(
-                    wantedTitle = title,
-                    wantedArtists = artists,
-                    wantedAlbum = album,
-                    wantedDurationMs = durationMs,
-                    stream = stream,
-                )
-                if (match.accepted && match.score > bestScore) {
-                    winner = candidate
-                    bestScore = match.score
-                }
-            }
-            val candidate = winner ?: return null
-
-            return try {
-                val file = appleDownloadStreamFile(mediaId)
-                if (!file.exists() || file.length() == 0L) {
-                    val built =
-                        AppleMusicVirtualStream.build(
-                            mediaOkHttpClient,
-                            candidate.playlistUrl,
-                            candidate.keyIdHex,
-                        )
-                    file.writeBytes(built.bytes)
-                }
-                Timber
-                    .tag("DownloadUtil")
-                    .i("Apple Music resolved [%s] for \"%s\" (%d KB)", candidate.flavor, title, file.length() / 1024)
-                ResolvedStreamData(
-                    uri = Uri.fromFile(file).toString(),
-                    mimeType = "audio/mp4",
-                    codecs =
-                        if (candidate.flavor.contains("ctrp", ignoreCase = true) &&
-                            candidate.flavor.filter(Char::isDigit).toIntOrNull()?.let { it > 320 } == true
-                        ) {
-                            "alac"
-                        } else {
-                            "mp4a.40.2"
-                        },
-                    contentLength = file.length(),
-                )
-            } catch (err: Throwable) {
-                Timber.tag("DownloadUtil").w(err, "Apple Music virtual stream failed for \"%s\"", title)
-                null
-            }
-        }
-
-        private fun appleDownloadStreamFile(mediaId: String): File {
-            val dir = File(appContext.cacheDir, "applemusic").apply { mkdirs() }
-            val files = dir.listFiles()?.sortedBy { it.lastModified() } ?: emptyList()
-            var total = files.sumOf { it.length() }
-            for (f in files) {
-                if (total <= 300L * 1024 * 1024) break
-                total -= f.length()
-                f.delete()
-            }
-            return File(dir, "$mediaId.m4a")
-        }
-
-        private fun copyLocalFileIntoPlayerCache(
-            file: File,
-            cacheKey: String,
-        ): Boolean =
-            runCatching {
-                val length = file.length()
-                if (length <= 0L) return@runCatching false
-                val dataSpec =
-                    DataSpec.Builder()
-                        .setUri(Uri.fromFile(file))
-                        .setKey(cacheKey)
-                        .setPosition(0L)
-                        .setLength(length)
-                        .build()
-                val cacheSink =
-                    CacheDataSink
-                        .Factory()
-                        .setCache(playerCache)
-                        .setBufferSize(DOWNLOAD_WRITE_BUFFER_SIZE)
-                        .setFragmentSize(DOWNLOAD_FRAGMENT_SIZE)
-                        .createDataSink()
-                val buffer = ByteArray(DOWNLOAD_WRITE_BUFFER_SIZE)
-                cacheSink.open(dataSpec)
-                try {
-                    file.inputStream().use { input ->
-                        while (true) {
-                            val read = input.read(buffer)
-                            if (read < 0) break
-                            cacheSink.write(buffer, 0, read)
-                        }
-                    }
-                } finally {
-                    runCatching { cacheSink.close() }
-                }
-                val spans = playerCache.getCachedSpans(cacheKey)
-                if (spans.isEmpty()) return@runCatching false
-                val cachedBytes = spans.sumOf { it.length }
-                if (cachedBytes < length) {
-                    runCatching { playerCache.removeResource(cacheKey) }
-                    return@runCatching false
-                }
-                true
-            }.getOrDefault(false)
 
         private fun requiredHeadersFor(uri: String): Map<String, String> =
             if (runCatching { uri.toUri().host }.getOrNull()?.endsWith("kouzu.in") == true) {

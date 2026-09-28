@@ -242,16 +242,28 @@ object TitleMatch {
 }
 
 object AudioSourceConfig {
+    // Apple Music, Amazon Music, QQ Music and Deezer were removed from the
+    // preferred playback sources: the automatic resolution chain now runs
+    // Tidal -> Qobuz -> Qobuz backup -> JioSaavn -> YouTube. Deezer (and the
+    // kept Apple/Amazon provider code) remain reachable through the
+    // per-song source picker and the pool; QQ Music is gone from the app.
     val DEFAULT_ORDER: List<AudioSourceType> =
         listOf(
             AudioSourceType.TIDAL,
             AudioSourceType.QOBUZ,
             AudioSourceType.QOBUZ_BACKUP,
-            AudioSourceType.DEEZER,
-            AudioSourceType.APPLE,
             AudioSourceType.JIOSAAVN,
             AudioSourceType.YOUTUBE,
         )
+
+    /**
+     * Sources that were part of the preferred order once but must never
+     * re-enter the automatic chain — orders saved before their removal keep
+     * them serialized, and parseOrder resurrects stored entries verbatim
+     * otherwise.
+     */
+    private val RETIRED_FROM_CHAIN =
+        setOf(AudioSourceType.APPLE, AudioSourceType.AMAZON, AudioSourceType.DEEZER)
 
     private val ALWAYS_ENABLED = setOf(AudioSourceType.YOUTUBE)
 
@@ -264,6 +276,7 @@ object AudioSourceConfig {
                 ?.split(',')
                 ?.mapNotNull { parseType(it) }
                 ?.distinct()
+                ?.filterNot { it in RETIRED_FROM_CHAIN }
                 .orEmpty()
         if (stored.isEmpty()) return DEFAULT_ORDER
 
@@ -319,6 +332,8 @@ object AudioSourceConfig {
         rawOrder: String?,
         source: AudioSourceType,
     ): String {
+        // Retired sources can never (re-)enter the automatic chain.
+        if (source in RETIRED_FROM_CHAIN) return parseOrder(rawOrder).joinToString(",") { it.name }
         val parsed = parseOrder(rawOrder)
         if (source in parsed) return parsed.joinToString(",") { it.name }
         val above = parsed.filterNot { it == AudioSourceType.YOUTUBE }
@@ -425,6 +440,25 @@ object SongSourceQobuzTrackId {
         if (trackId == null) map.remove(songId) else map[songId] = trackId
         return serialize(map)
     }
+}
+
+/** Per-song Tidal track id picked in the "play from search" popup: playback
+ *  resolves that EXACT track instead of fuzzy re-matching metadata. */
+object SongSourceTidalTrackId {
+    fun parse(raw: String?): Map<String, String> = SongSourceQobuzTrackId.parse(raw)
+
+    fun serialize(map: Map<String, String>): String = SongSourceQobuzTrackId.serialize(map)
+
+    fun get(
+        raw: String?,
+        songId: String,
+    ): String? = SongSourceQobuzTrackId.get(raw, songId)
+
+    fun withOverride(
+        raw: String?,
+        songId: String,
+        trackId: String?,
+    ): String = SongSourceQobuzTrackId.withOverride(raw, songId, trackId)
 }
 
 object SongSourceQobuzBackupVideoId {
