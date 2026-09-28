@@ -89,6 +89,7 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.analytics.PlaybackStats
 import androidx.media3.exoplayer.analytics.PlaybackStatsListener
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -334,6 +335,7 @@ import moe.rukamori.archivetune.playback.artwork.ResolvedArtwork
 import moe.rukamori.archivetune.playback.artwork.isLocalArtworkUri
 import moe.rukamori.archivetune.playback.smart.CrossfadeMode
 import moe.rukamori.archivetune.playback.smart.SmartFadeAnalyzer
+import moe.rukamori.archivetune.playback.dsp.DspTailAudioProcessorChain
 import moe.rukamori.archivetune.playback.dsp.FloatDspProcessor
 import moe.rukamori.archivetune.playback.dsp.UsbExclusiveAudioOutputProvider
 import moe.rukamori.archivetune.playback.smart.SmartFadeRuntimeState
@@ -718,6 +720,8 @@ class MusicService :
     private var crossfadeJob: Job? = null
     private var secondaryCrossfadePlayer: ExoPlayer? = null
     private var secondaryCrossfadeTarget: CrossfadeTarget? = null
+    private var crossfadeConsecutiveFailures = 0
+    private var crossfadeFailureMediaId: String? = null
     private var isCrossfading = false
     private var crossfadeHandoffInProgress = false
     private var crossfadeBaseVolume = 1f
@@ -798,8 +802,28 @@ class MusicService :
             override fun onPlayerError(error: PlaybackException) {
                 Timber.tag(TAG).w(error, "Secondary crossfade player failed")
                 scope.launch {
+                    val failingMediaId = player.currentMediaItem?.mediaId
+                    if (failingMediaId != null && failingMediaId == crossfadeFailureMediaId) {
+                        crossfadeConsecutiveFailures++
+                    } else {
+                        crossfadeConsecutiveFailures = 1
+                        crossfadeFailureMediaId = failingMediaId
+                    }
                     cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
-                    scheduleCrossfade()
+                    if (crossfadeConsecutiveFailures >= MAX_CONSECUTIVE_CROSSFADE_FAILURES) {
+                        // The incoming track persistently fails to initialise (e.g. an
+                        // audio format the chain cannot configure). Rescheduling would
+                        // loop prepare -> error -> reschedule on the same target and burn
+                        // CPU; the queue will reach the track naturally and surface the
+                        // error through the primary player's own recovery paths instead.
+                        Timber.tag(TAG).w(
+                            "Secondary crossfade player failed %d times in a row; suspending crossfade for %s",
+                            crossfadeConsecutiveFailures,
+                            failingMediaId,
+                        )
+                    } else {
+                        scheduleCrossfade()
+                    }
                 }
             }
         }
@@ -3430,6 +3454,10 @@ class MusicService :
         val smart = plan != null
         val cueTimeMs = if (smart) (plan!!.incomingCueTime * 1000).roundToLong().coerceAtLeast(0L) else 0L
         val incomingPlayer = prepareSecondaryCrossfadePlayer(target, cueTimeMs) ?: return
+        // The incoming stream initialised cleanly — clear the consecutive-failure
+        // guard so a future error starts counting from scratch.
+        crossfadeConsecutiveFailures = 0
+        crossfadeFailureMediaId = null
         val outgoingMediaId = player.currentMediaItem?.mediaId ?: return
         val generation = crossfadeGeneration.incrementAndGet()
 
@@ -6200,6 +6228,9 @@ class MusicService :
     ) {
         super.onMediaItemTransition(mediaItem, reason)
         mediaItem?.metadata?.let { queuedMetadataByMediaId[mediaItem.mediaId] = it }
+
+        crossfadeConsecutiveFailures = 0
+        crossfadeFailureMediaId = null
 
         initialBufferRecoveryJob?.cancel()
         initialBufferRecoveryJob = null
@@ -9903,15 +9934,27 @@ class MusicService :
                     UsbExclusiveAudioOutputProvider(context) { usbExclusiveAudioEnabled },
                 )
                 .setAudioProcessorChain(
-                    DefaultAudioSink.DefaultAudioProcessorChain(
-                        SonicAudioProcessor(),
-                        HapticsPcmProcessor(engineProvider = { musicHapticsEngine }),
-                        stereoPanProcessor,
-                        // Transition DSP after widening, exactly as BitChord
-                        // places it; the 32-bit float DSP tail converts the
-                        // chain's output when engaged.
-                        transitionFilter,
-                        floatDspProcessor,
+                    // DefaultAudioProcessorChain appends its own silence trimmer
+                    // and Sonic AFTER every vararg processor — which put the
+                    // 16-bit-only SilenceSkippingAudioProcessor behind the float
+                    // DSP tail: whenever the DSP engaged with USB-exclusive
+                    // output (float emission) the trimmer's onConfigure threw
+                    // UnhandledAudioFormatException (crash code 5001). The
+                    // DspTail chain keeps silence + speed/pitch in the 16-bit
+                    // domain and makes the DSP the true tail — the only safe
+                    // place for the encoding flip.
+                    DspTailAudioProcessorChain(
+                        silenceSkippingAudioProcessor = SilenceSkippingAudioProcessor(),
+                        sonicAudioProcessor = SonicAudioProcessor(),
+                        preProcessors = arrayOf(
+                            HapticsPcmProcessor(engineProvider = { musicHapticsEngine }),
+                            stereoPanProcessor,
+                            // Transition DSP after widening, exactly as BitChord
+                            // places it; the 32-bit float DSP tail converts the
+                            // chain's output when engaged.
+                            transitionFilter,
+                        ),
+                        tailProcessor = floatDspProcessor,
                     ),
                 ).build()
         }
@@ -10627,6 +10670,7 @@ class MusicService :
         const val CROSSFADE_END_GUARD_MS = 150L
         const val CROSSFADE_PREPARE_AHEAD_MS = 30_000L
         const val CROSSFADE_READY_TIMEOUT_MS = 5_000L
+        const val MAX_CONSECUTIVE_CROSSFADE_FAILURES = 3
         const val CROSSFADE_HANDOFF_BUFFER_MS = 5_000L
         const val CROSSFADE_AUDIO_ADVANCE_TIMEOUT_MS = 2_000L
         const val CROSSFADE_AUDIO_ADVANCE_POLL_MS = 80L
