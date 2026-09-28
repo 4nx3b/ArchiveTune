@@ -65,6 +65,8 @@ import moe.rukamori.archivetune.constants.ArtworkProviderOrderKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.FloatDspEnabledKey
+import moe.rukamori.archivetune.constants.LastwaveAudioProcessingKey
+import moe.rukamori.archivetune.constants.TryptifyAudioProcessingKey
 import moe.rukamori.archivetune.constants.UsbExclusiveAudioKey
 import moe.rukamori.archivetune.constants.AutomixEnabledKey
 import moe.rukamori.archivetune.constants.AutomixPerformanceMode
@@ -168,6 +170,16 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
     val (usbExclusiveAudio, onUsbExclusiveAudioChange) =
         rememberPreference(
             UsbExclusiveAudioKey,
+            defaultValue = false,
+        )
+    val (tryptifyAudioProcessing, onTryptifyAudioProcessingChange) =
+        rememberPreference(
+            TryptifyAudioProcessingKey,
+            defaultValue = false,
+        )
+    val (lastwaveAudioProcessing, onLastwaveAudioProcessingChange) =
+        rememberPreference(
+            LastwaveAudioProcessingKey,
             defaultValue = false,
         )
 
@@ -610,6 +622,49 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                                     onAudioOffloadChange(false)
                                     onCrossfadeEnabledChange(false)
                                     onAutomixEnabledChange(false)
+                                }
+                            },
+                        )
+                    }
+                }
+
+                item {
+                    // The ported Tryptify engine: C++17 mixing console + Oxford
+                    // effects + measurement-driven AutoEQ + its libusb UAC
+                    // bit-perfect USB-DAC driver (when USB-exclusive is on).
+                    // Enabling it adds the "Tryptify EQ" tab to the Equalizer.
+                    Column(modifier = positions.modifierFor("tryptify_audio_processing")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.tryptify_audio_processing)) },
+                            description = stringResource(R.string.tryptify_audio_processing_desc),
+                            icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                            checked = tryptifyAudioProcessing,
+                            onCheckedChange = { enabled ->
+                                onTryptifyAudioProcessingChange(enabled)
+                                if (enabled) {
+                                    // Exactly one engine may own the DSP tail.
+                                    onLastwaveAudioProcessingChange(false)
+                                }
+                            },
+                        )
+                    }
+                }
+
+                item {
+                    // The ported LastWave-native engine: its native Oboe/soxr
+                    // DSP (15-band graphic EQ + Studio Master Clarity) and
+                    // usbdevfs exclusive USB-DAC driver / bit-perfect mixer
+                    // attributes (when USB-exclusive is on).
+                    Column(modifier = positions.modifierFor("lastwave_audio_processing")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.lastwave_audio_processing)) },
+                            description = stringResource(R.string.lastwave_audio_processing_desc),
+                            icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                            checked = lastwaveAudioProcessing,
+                            onCheckedChange = { enabled ->
+                                onLastwaveAudioProcessingChange(enabled)
+                                if (enabled) {
+                                    onTryptifyAudioProcessingChange(false)
                                 }
                             },
                         )

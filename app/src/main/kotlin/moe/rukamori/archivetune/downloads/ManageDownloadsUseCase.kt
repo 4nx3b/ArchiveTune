@@ -284,8 +284,6 @@ class ManageDownloadsUseCase
             when (DownloadSourceConfig.downloadSourceForCacheKey(downloadId)) {
                 DownloadSource.QOBUZ -> "Qobuz"
                 DownloadSource.TIDAL -> "Tidal"
-                DownloadSource.APPLE -> "Apple Music"
-                DownloadSource.AMAZON -> "Amazon Music"
                 DownloadSource.DEEZER -> "Deezer"
                 DownloadSource.JIOSAAVN -> "JioSaavn"
                 DownloadSource.QOBUZ_BACKUP -> "Qobuz Backup"

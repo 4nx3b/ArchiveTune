@@ -51,10 +51,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -129,11 +132,16 @@ import moe.rukamori.archivetune.constants.AudioPlaybackPitchKey
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedKey
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedPitchMatchKey
 import moe.rukamori.archivetune.constants.EqualizerAudioEffectsEnabledKey
+import moe.rukamori.archivetune.constants.LastwaveAudioProcessingKey
+import moe.rukamori.archivetune.constants.TryptifyAudioProcessingKey
 import moe.rukamori.archivetune.playback.EqReverbPreset
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 import moe.rukamori.archivetune.ui.component.LocalUnglassColorScheme
 import moe.rukamori.archivetune.ui.component.UnglassedDialogTheme
 import moe.rukamori.archivetune.utils.rememberPreference
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import moe.rukamori.archivetune.viewmodels.EqualizerEffect
 import moe.rukamori.archivetune.viewmodels.EqualizerProfileUiModel
 import moe.rukamori.archivetune.viewmodels.EqualizerScreenState
@@ -276,6 +284,33 @@ private fun AudioEffectsContent(
 
     var selectedTab by rememberSaveable { mutableStateOf(0) }
 
+    // Ported engine tabs: Tryptify EQ (the full AutoEQ + parametric EQ
+    // surface) and Lastwave EQ (the 15-band graphic EQ + Studio Master
+    // Clarity family) appear only while their engine is enabled.
+    val (tryptifyAudioProcessing) = rememberPreference(TryptifyAudioProcessingKey, defaultValue = false)
+    val (lastwaveAudioProcessing) = rememberPreference(LastwaveAudioProcessingKey, defaultValue = false)
+
+    // Engine turned off while its tab was open: bounce back to the stock
+    // Equalizer tab on the next frame (never write state mid-composition).
+    if (selectedTab == 2 && !tryptifyAudioProcessing) {
+        LaunchedEffect(Unit) { selectedTab = 0 }
+    }
+    if (selectedTab == 3 && !lastwaveAudioProcessing) {
+        LaunchedEffect(Unit) { selectedTab = 0 }
+    }
+
+    // The Tryptify / Lastwave tabs host the ported engines' own screens,
+    // which manage their own scrolling — they must not sit inside this
+    // tab's verticalScroll Column.
+    if (selectedTab == 2 && tryptifyAudioProcessing) {
+        TryptifyEqHost(onBack = { selectedTab = 0 })
+        return
+    }
+    if (selectedTab == 3 && lastwaveAudioProcessing) {
+        LastwaveEqHost(onBack = { selectedTab = 0 })
+        return
+    }
+
     var showProcessingCard by remember { mutableStateOf(false) }
     var observed8DEnabled by remember { mutableStateOf(model.eightDEnabled) }
     LaunchedEffect(model.eightDEnabled) {
@@ -308,10 +343,14 @@ private fun AudioEffectsContent(
             Text(
                 text =
                     stringResource(
-                        if (selectedTab == 0) {
-                            R.string.eq_tab_equalizer
-                        } else {
-                            R.string.eq_audio_effects
+                        when (selectedTab) {
+                            2 -> R.string.eq_tab_tryptify
+                            3 -> R.string.eq_tab_lastwave
+                            else -> if (selectedTab == 0) {
+                                R.string.eq_tab_equalizer
+                            } else {
+                                R.string.eq_audio_effects
+                            }
                         },
                     ),
                 style = MaterialTheme.typography.headlineMedium,
@@ -360,6 +399,22 @@ private fun AudioEffectsContent(
                 onClick = { selectedTab = 1 },
                 modifier = Modifier.weight(1f),
             )
+            if (tryptifyAudioProcessing) {
+                CategoryPill(
+                    label = stringResource(R.string.eq_tab_tryptify),
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            if (lastwaveAudioProcessing) {
+                CategoryPill(
+                    label = stringResource(R.string.eq_tab_lastwave),
+                    selected = selectedTab == 3,
+                    onClick = { selectedTab = 3 },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
 
         val columns = if (isLandscape) 2 else 1
@@ -1571,4 +1626,326 @@ private fun EqualizerMessage(
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Ported engine EQ tabs
+// ---------------------------------------------------------------------------
+
+/**
+ * The Tryptify EQ tab: the complete ported Tryptify equalizer surface. The
+ * AutoEQ sub-tab is Tryptify's EqualizerScreen (measurement smoothing, per-ear
+ * calibration, headphone selection with rig filters, targets + custom target
+ * import, algorithm choice, band count / max-frequency, preamp + automatic
+ * preamp, tone shelves, saved presets, export, parametric band editing, help
+ * + tutorial); the Parametric EQ sub-tab is Tryptify's standalone
+ * ParametricEqScreen (its own enable, preamp, band list with spectrum
+ * preview, presets + APO/CSV import). Together they carry every EQ setting
+ * the Tryptify app exposes.
+ */
+@Composable
+private fun TryptifyEqHost(onBack: () -> Unit) {
+    var subTab by rememberSaveable { mutableStateOf(0) }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
+            .statusBarsPadding(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            CategoryPill(
+                label = "AutoEQ",
+                selected = subTab == 0,
+                onClick = { subTab = 0 },
+                modifier = Modifier.weight(1f),
+            )
+            CategoryPill(
+                label = "Parametric EQ",
+                selected = subTab == 1,
+                onClick = { subTab = 1 },
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Box(modifier = Modifier.weight(1f)) {
+            if (subTab == 0) {
+                tf.monochrome.android.ui.eq.EqualizerScreen(onBack = onBack)
+            } else {
+                tf.monochrome.android.ui.eq.ParametricEqScreen(onBack = onBack)
+            }
+        }
+    }
+}
+
+/**
+ * The Lastwave EQ tab: the ported LastWave-native equalizer surface — the
+ * 15-band ISO graphic EQ (band sliders, the 12 curated presets + Custom, the
+ * enable switch) plus the Studio Master Clarity family (enhancer switch,
+ * clarity preset, Atmos bypass). Every setting writes the same lw_eq_* /
+ * lw_music_enhancer / lw_clarity_* keys the ported engine collects, so the
+ * native DSP chain picks changes up live.
+ */
+@Composable
+private fun LastwaveEqHost(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val (eqEnabled, onEqEnabledChange) =
+        rememberPreference(LastwaveKeys.LW_EQ_ENABLED, defaultValue = false)
+    val (presetName, onPresetNameChange) =
+        rememberPreference(LastwaveKeys.LW_EQ_PRESET, defaultValue = "Default")
+    val (gainsCsv, onGainsCsvChange) =
+        rememberPreference(LastwaveKeys.LW_EQ_GAINS, defaultValue = "")
+    val (clarityEnabled, onClarityEnabledChange) =
+        rememberPreference(LastwaveKeys.LW_MUSIC_ENHANCER, defaultValue = true)
+    val (clarityPreset, onClarityPresetChange) =
+        rememberPreference(LastwaveKeys.LW_CLARITY_PRESET, defaultValue = 0)
+    val (clarityAtmosBypass, onClarityAtmosBypassChange) =
+        rememberPreference(LastwaveKeys.LW_CLARITY_ATMOS_BYPASS, defaultValue = false)
+
+    fun decodeGains(): List<Float> {
+        val fromPreset = com.lastwave.app.data.local.EqualizerPresets.byName(presetName)
+        val stored = gainsCsv.split(',').mapNotNull { it.trim().toFloatOrNull() }
+        return when {
+            stored.size == com.lastwave.app.data.local.EQ_BAND_FREQS_HZ.size -> stored
+            fromPreset != null -> fromPreset.gainsDb
+            else -> com.lastwave.app.data.local.EqualizerPresets.FLAT.gainsDb
+        }
+    }
+
+    fun encodeGains(gains: List<Float>): String =
+        gains.joinToString(",") { gain ->
+            "%.1f".format(java.util.Locale.ROOT, gain.coerceIn(-8f, 8f))
+        }
+
+    val gains = decodeGains()
+    val scrollState = rememberScrollState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
+            .statusBarsPadding()
+            .verticalScroll(scrollState)
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 120.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.eq_tab_lastwave),
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(top = 8.dp),
+            )
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.eq_close),
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            CategoryPill(
+                label = "15-band EQ",
+                selected = true,
+                onClick = { },
+                modifier = Modifier.weight(1f),
+            )
+            CategoryPill(
+                label = "Clarity",
+                selected = clarityEnabled,
+                onClick = { onClarityEnabledChange(!clarityEnabled) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        // ── Enable switch ──
+        SectionContainer {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Equalizer",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "LastWave-native 15-band ISO graphic EQ (±8 dB), applied by the native engine on every track.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = eqEnabled, onCheckedChange = onEqEnabledChange)
+            }
+        }
+
+        // ── Presets ──
+        SectionContainer {
+            Column {
+                Text(
+                    text = "Preset",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp),
+                ) {
+                    items(com.lastwave.app.data.local.EqualizerPresets.ALL) { preset ->
+                        val selected = presetName.equals(preset.name, ignoreCase = true)
+                        FilterChip(
+                            selected = selected,
+                            onClick = {
+                                onPresetNameChange(preset.name)
+                                onGainsCsvChange(encodeGains(preset.gainsDb))
+                                onEqEnabledChange(true)
+                            },
+                            label = { Text(preset.name) },
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Band sliders ──
+        SectionContainer {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "Bands",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                com.lastwave.app.data.local.EQ_BAND_FREQS_HZ.forEachIndexed { index, hz ->
+                    val label = com.lastwave.app.data.local.eqBandLabel(hz)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.requiredWidth(44.dp),
+                        )
+                        Slider(
+                            value = gains.getOrElse(index) { 0f },
+                            onValueChange = { value ->
+                                val next = gains.toMutableList().also { it[index] = value }
+                                onGainsCsvChange(encodeGains(next))
+                            },
+                            onValueChangeFinished = {
+                                // Manual edits leave the preset list — exactly
+                                // like upstream's setBandGain.
+                                onPresetNameChange(com.lastwave.app.data.local.EqualizerPresets.CUSTOM_NAME)
+                            },
+                            valueRange = -8f..8f,
+                            steps = 31,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 8.dp),
+                            enabled = eqEnabled,
+                        )
+                        Text(
+                            text = "%+.1f dB".format(java.util.Locale.ROOT, gains.getOrElse(index) { 0f }),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.requiredWidth(64.dp),
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Studio Master Clarity ──
+        SectionContainer {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Studio Master Clarity",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "The ported engine's subsonic filter, bass/boxiness shaping, presence lift, air shelf, mono-bass and harmonic exciter chain.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = clarityEnabled, onCheckedChange = onClarityEnabledChange)
+                }
+                Text(
+                    text = "Clarity preset",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        com.lastwave.app.playback.ClarityPresets.REFERENCE,
+                        com.lastwave.app.playback.ClarityPresets.SPEAKER,
+                        com.lastwave.app.playback.ClarityPresets.HEADPHONE,
+                        com.lastwave.app.playback.ClarityPresets.DAC,
+                    ).forEach { preset ->
+                        FilterChip(
+                            selected = clarityPreset == preset.index,
+                            onClick = { onClarityPresetChange(preset.index) },
+                            label = { Text(preset.displayName) },
+                        )
+                    }
+                }
+                Text(
+                    text = com.lastwave.app.playback.ClarityPresets.ALL
+                        .firstOrNull { it.index == clarityPreset }?.description.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Dolby Atmos bypass",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "Keep the clarity chain flat while Atmos content plays.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = clarityAtmosBypass, onCheckedChange = onClarityAtmosBypassChange)
+                }
+            }
+        }
+    }
+}
+
+/** LastWave-native preference keys, mirrored 1:1 from upstream. */
+private object LastwaveKeys {
+    val LW_EQ_ENABLED = booleanPreferencesKey("lw_eq_enabled")
+    val LW_EQ_PRESET = stringPreferencesKey("lw_eq_preset")
+    val LW_EQ_GAINS = stringPreferencesKey("lw_eq_gains")
+    val LW_MUSIC_ENHANCER = booleanPreferencesKey("lw_music_enhancer")
+    val LW_CLARITY_PRESET = intPreferencesKey("lw_clarity_preset")
+    val LW_CLARITY_ATMOS_BYPASS = booleanPreferencesKey("lw_clarity_atmos_bypass")
 }

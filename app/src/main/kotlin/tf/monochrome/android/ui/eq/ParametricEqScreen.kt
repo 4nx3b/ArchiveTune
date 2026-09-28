@@ -1,0 +1,452 @@
+package tf.monochrome.android.ui.eq
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.Slider
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import tf.monochrome.android.domain.model.EqPreset
+import tf.monochrome.android.ui.components.bounceClick
+import tf.monochrome.android.ui.components.liquidGlass
+import tf.monochrome.android.ui.navigation.LocalMiniPlayerInset
+
+@Composable
+fun ParametricEqScreen(
+    onBack: () -> Unit,
+    viewModel: ParametricEqViewModel = hiltViewModel()
+) {
+    val enabled by viewModel.enabled.collectAsStateWithLifecycle()
+    val currentBands by viewModel.currentBands.collectAsStateWithLifecycle()
+    val currentPreamp by viewModel.currentPreamp.collectAsStateWithLifecycle()
+    val activePreset by viewModel.activePreset.collectAsStateWithLifecycle()
+    val allPresets by viewModel.allPresets.collectAsStateWithLifecycle()
+    val spectrumEnabled by viewModel.spectrumAnalyzerEnabled.collectAsStateWithLifecycle()
+    val spectrumBins by viewModel.spectrumAnalyzer.spectrumBins.collectAsStateWithLifecycle()
+
+    if (spectrumEnabled) {
+        DisposableEffect(Unit) {
+            viewModel.spectrumAnalyzer.acquire()
+            onDispose { viewModel.spectrumAnalyzer.release() }
+        }
+    }
+
+    // Surface preset save/load/persist errors that the ViewModel reports but
+    // no screen was collecting (silent failures / silent corrupted-load).
+    val eqError by viewModel.error.collectAsStateWithLifecycle()
+    val eqErrorContext = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(eqError) {
+        eqError?.let {
+            android.widget.Toast.makeText(eqErrorContext, it, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.clearError()
+        }
+    }
+
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var showImportSheet by remember { mutableStateOf(false) }
+    var saveName by remember { mutableStateOf("") }
+    var saveDescription by remember { mutableStateOf("") }
+    var presetToDelete by remember { mutableStateOf<EqPreset?>(null) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 32.dp + LocalMiniPlayerInset.current)
+        ) {
+            // Title
+            item {
+              tf.monochrome.android.devedit.DevEditable("peq_title_section", Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 4.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "PARAMETRIC EQ",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 2.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            "Free-form tone shaping on top of AutoEQ.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = enabled, onCheckedChange = { viewModel.setEnabled(it) })
+                }
+              }
+            }
+
+            // Mini preview graph with live spectrum behind the EQ curve
+            item {
+              tf.monochrome.android.devedit.DevEditable("peq_preview_graph", Modifier.fillMaxWidth()) {
+                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    // Feed the spectrum INTO the graph — it draws it over its own
+                    // (opaque) background and under the EQ curve. A separate
+                    // overlay behind the graph was hidden by that background on
+                    // every theme except the transparent 'Clear' one.
+                    FrequencyResponseGraph(
+                        originalCurve = emptyList(),
+                        targetCurve = emptyList(),
+                        eqBands = currentBands,
+                        preamp = currentPreamp,
+                        centerOnZero = true,
+                        showLegend = false,
+                        maxAbsDragGain = EqLimits.PARAMETRIC_MAX_BAND_DB,
+                        spectrumBins = if (spectrumEnabled) spectrumBins else FloatArray(0),
+                        spectrumColor = MaterialTheme.colorScheme.primary,
+                        onBandDragged = { bandId, freq, gain ->
+                            viewModel.updateBandByDrag(bandId, freq, gain)
+                        },
+                    )
+                }
+              }
+            }
+
+            // Preamp — same placement as the AutoEQ page: under the graph.
+            item {
+              tf.monochrome.android.devedit.DevEditable("peq_preamp_slider", Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Preamp",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "${currentPreamp.toInt()} dB",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Slider(
+                        value = if (currentPreamp.isNaN()) 0f else currentPreamp.coerceIn(-24f, 24f),
+                        onValueChange = { viewModel.setPreamp(it) },
+                        valueRange = -24f..24f,
+                        steps = 47,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+              }
+            }
+
+            // Bands — edited inline with the same rows as the AutoEQ screen
+            // (type selector, freq/gain/Q sliders), replacing the separate
+            // Edit page hop.
+            item {
+                Text(
+                    "BANDS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp)
+                )
+            }
+            items(currentBands, key = { it.id }) { band ->
+                EqBandSlider(
+                    band = band,
+                    onBandChanged = { viewModel.updateBand(it) },
+                    onDelete = { viewModel.removeBand(band.id) },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
+
+            // Add band + profile actions. A COLUMN of rows — these were once
+            // stacked in a Box, which drew Save and Import on top of each
+            // other as one garbled row.
+            item {
+              tf.monochrome.android.devedit.DevEditable("peq_actions", Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .liquidGlass(shape = RoundedCornerShape(12.dp))
+                            .bounceClick(onClick = { viewModel.addBand() })
+                            .padding(vertical = 12.dp, horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            "Add band",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .liquidGlass(shape = RoundedCornerShape(12.dp))
+                            .bounceClick(onClick = {
+                                saveName = ""
+                                saveDescription = ""
+                                showSaveDialog = true
+                            })
+                            .padding(vertical = 12.dp, horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Save,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            "Save current as profile",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .liquidGlass(shape = RoundedCornerShape(12.dp))
+                            .bounceClick(onClick = { showImportSheet = true })
+                            .padding(vertical = 12.dp, horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.UploadFile,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            "Import profile (APO txt / CSV)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+              }
+            }
+
+            // Saved profiles
+            if (allPresets.isNotEmpty()) {
+                item {
+                  tf.monochrome.android.devedit.DevEditable("peq_saved_profiles_header", Modifier.fillMaxWidth()) {
+                    Text(
+                        "SAVED PROFILES",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp)
+                    )
+                  }
+                }
+
+                items(items = allPresets, key = { it.id }) { preset ->
+                    val isActive = activePreset?.id == preset.id
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .liquidGlass(shape = RoundedCornerShape(10.dp))
+                            .bounceClick(onClick = { viewModel.loadPreset(preset.id) })
+                    ) {
+                        EqProfileMiniGraph(
+                            bands = preset.bands,
+                            preamp = preset.preamp,
+                            gainRange = EqLimits.PARAMETRIC_MAX_BAND_DB,
+                            modifier = Modifier.fillMaxWidth().padding(2.dp)
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            if (isActive) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = "Active",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    preset.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+                                    color = when {
+                                        preset.isCorrupted -> MaterialTheme.colorScheme.error
+                                        isActive -> MaterialTheme.colorScheme.primary
+                                        else -> MaterialTheme.colorScheme.onSurface
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    if (preset.isCorrupted) "Corrupted — cannot load"
+                                    else "${preset.bands.size} bands",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (preset.isCorrupted) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            IconButton(
+                                onClick = { presetToDelete = preset },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Delete profile",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showImportSheet) {
+        ImportEqProfileSheet(
+            maxBandGainDb = EqLimits.PARAMETRIC_MAX_BAND_DB,
+            onDismiss = { showImportSheet = false },
+            onImport = { left, right, name ->
+                (left ?: right)?.let { viewModel.importApoProfile(it, name, apply = true) }
+            },
+        )
+    }
+
+    if (showSaveDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveDialog = false },
+            title = { Text("Save Profile") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = saveName,
+                        onValueChange = { saveName = it },
+                        label = { Text("Profile name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = saveDescription,
+                        onValueChange = { saveDescription = it },
+                        label = { Text("Description (optional)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (saveName.isNotBlank()) {
+                        viewModel.saveAsPreset(saveName.trim(), saveDescription.trim())
+                        showSaveDialog = false
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    presetToDelete?.let { preset ->
+        AlertDialog(
+            onDismissRequest = { presetToDelete = null },
+            title = { Text("Delete Profile") },
+            text = { Text("Delete \"${preset.name}\"?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deletePreset(preset.id)
+                    presetToDelete = null
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { presetToDelete = null }) { Text("Cancel") }
+            }
+        )
+    }
+}
+

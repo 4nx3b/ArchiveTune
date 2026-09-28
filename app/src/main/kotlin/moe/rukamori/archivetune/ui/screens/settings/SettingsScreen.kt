@@ -136,7 +136,6 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
             "tidal_audio_quality", "tidal_animated_covers", "tidal_manage_instances",
             "qobuz_enable", "qobuz_audio_quality", "qobuz_backup_enable", "qobuz_manage_instances",
             "deezer_enable", "deezer_audio_quality", "jiosaavn_enable", "jiosaavn_audio_quality",
-            "amazon_enable",
         )
         own("sources", "deezer", "deezer_enable", "deezer_audio_quality")
         own("qobuz", "sources", "qobuz")
@@ -163,9 +162,7 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
             "playback" -> "settings/player"
             "sources" -> "settings/sources"
             "android_auto" -> "settings/android_auto"
-            "applemusic" -> "settings/applemusic"
             "jiosaavn" -> "settings/jiosaavn"
-            "amazon" -> "settings/amazon"
             "deezer" -> "settings/deezer"
             "lyrics" -> "settings/lyrics"
             "lyrics_providers" -> "settings/lyrics/providers"
@@ -216,6 +213,26 @@ fun SettingsScreen(
     val context = LocalContext.current
     val isAndroid12OrLater = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val listState = rememberLazyListState()
+
+    // True only while the list is actually scrolled (not parked at the top):
+    // drives the search pill's appearance. Reading it through derivedStateOf
+    // keeps the item add/remove to scroll-boundary changes instead of every
+    // pixel.
+    val isScrolledPastTop =
+        remember {
+            androidx.compose.runtime.derivedStateOf {
+                listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
+            }
+        }
+
+    // The header's search icon pins the pill open (scrolling to the top would
+    // otherwise hide it again, leaving the icon useless). The pin lifts once
+    // the query is cleared and the list is back at rest at the top.
+    var searchPinned by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(searchQuery, isScrolledPastTop.value) {
+        if (searchQuery.isBlank() && !isScrolledPastTop.value) searchPinned = false
+    }
+    val searchBarVisible = searchPinned || isScrolledPastTop.value || searchQuery.isNotBlank()
     val coroutineScope = rememberCoroutineScope()
 
     val storagePermission =
@@ -376,7 +393,10 @@ fun SettingsScreen(
                 }
             }
 
-            item(key = "search_bar", contentType = "search_bar") {
+            // The search pill only appears once the user starts scrolling away
+            // from the very top of the page — at rest the header stays clean and
+            // the header's search icon scrolls you back up to reveal it.
+            if (searchBarVisible) item(key = "search_bar", contentType = "search_bar") {
                 TextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
@@ -465,6 +485,7 @@ fun SettingsScreen(
                     onBack = navController::navigateUp,
                     onBackLongClick = navController::backToMain,
                     onSearch = {
+                        searchPinned = true
                         coroutineScope.launch {
                             listState.animateScrollToItem(0)
                         }

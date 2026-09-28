@@ -92,6 +92,7 @@ enum class BackupCategory {
     LIBRARY,
     ACCOUNT,
     SETTINGS,
+    FONTS,
     LYRICS,
     CANVAS,
 }
@@ -841,10 +842,14 @@ class BackupRestoreViewModel
 
                     val includeStatsMerge = !includeLibrary && hasStats
                     val includeLyricsMerge = includeLyrics && LyricsBackup.ZIP_ENTRY_NAME in entryNames
+                    val includeFonts = BackupCategory.FONTS in categories
                     val restoreEntries =
                         entryNames.filter { name ->
                             (includeSettings && (name == SETTINGS_XML_FILENAME || name == SETTINGS_FILENAME)) ||
-                                (includeSettings && name.startsWith("$FONTS_ZIP_PREFIX/")) ||
+                                // Fonts ride their own category now; the
+                                // includeSettings half keeps legacy archives
+                                // (whose fonts lived under Settings) restorable.
+                                ((includeSettings || includeFonts) && name.startsWith("$FONTS_ZIP_PREFIX/")) ||
                                 (includeStatsMerge && name == StatsBackup.ZIP_ENTRY_NAME) ||
                                 (includeLyricsMerge && name == LyricsBackup.ZIP_ENTRY_NAME) ||
                                 (includeCanvas && name.startsWith("$CANVAS_ZIP_PREFIX/")) ||
@@ -1289,9 +1294,13 @@ class BackupRestoreViewModel
                         val hasDb = entryNames.any { it.startsWith(InternalDatabase.DB_NAME) }
                         val hasLyrics = LyricsBackup.ZIP_ENTRY_NAME in entryNames
                         val hasCanvas = entryNames.any { it.startsWith("$CANVAS_ZIP_PREFIX/") }
+                        val hasFonts = entryNames.any { it.startsWith("$FONTS_ZIP_PREFIX/") }
                         if (hasSettings) {
                             categories.add(BackupCategory.SETTINGS)
                             categories.add(BackupCategory.ACCOUNT)
+                        }
+                        if (hasFonts) {
+                            categories.add(BackupCategory.FONTS)
                         }
                         if (hasDb) {
                             categories.add(BackupCategory.LIBRARY)

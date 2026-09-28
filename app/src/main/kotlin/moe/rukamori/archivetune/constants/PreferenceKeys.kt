@@ -258,10 +258,6 @@ enum class DownloadSource {
     QOBUZ_BACKUP,
     TIDAL,
 
-    APPLE,
-
-    AMAZON,
-
     DEEZER,
 
     JIOSAAVN,
@@ -279,16 +275,13 @@ object DownloadSourceConfig {
             DownloadSource.QOBUZ,
             DownloadSource.QOBUZ_BACKUP,
             DownloadSource.TIDAL,
-            DownloadSource.APPLE,
-
-            DownloadSource.AMAZON,
             DownloadSource.DEEZER,
             DownloadSource.JIOSAAVN,
             DownloadSource.YOUTUBE_MUSIC,
         )
 
     val REQUIRES_POOL: Set<DownloadSource> =
-        setOf(DownloadSource.QOBUZ, DownloadSource.TIDAL, DownloadSource.DEEZER, DownloadSource.AMAZON)
+        setOf(DownloadSource.QOBUZ, DownloadSource.TIDAL, DownloadSource.DEEZER)
 
     val YOUTUBE_MUSIC_CACHE_KEY_PREFIX = "ytm:"
 
@@ -329,6 +322,8 @@ object DownloadSourceConfig {
         runCatching { DownloadSource.valueOf(name.trim().uppercase()) }.getOrNull()
 
     fun parseOrder(rawOrder: String?): List<DownloadSource> {
+        // Removed sources (Apple Music, Amazon Music) drop out automatically:
+        // parseType's valueOf fails for names no longer in the enum.
         val stored =
             rawOrder
                 ?.split(',')
@@ -531,8 +526,25 @@ val FloatDspEnabledKey = booleanPreferencesKey("floatDspEnabled")
 
 /** USB-exclusive audio output: an AAudio EXCLUSIVE float stream pinned to the
  *  USB DAC, bypassing the framework mixer. Mutually exclusive with offload,
- *  crossfade and automix (two players cannot hold one exclusive stream). */
+ *  crossfade and automix (two players cannot hold one exclusive stream).
+ *  With an audio engine engaged, the exclusive route switches to that
+ *  engine's own bit-perfect USB driver (Tryptify libusb UAC / LastWave
+ *  usbdevfs) instead of the AAudio stream. */
 val UsbExclusiveAudioKey = booleanPreferencesKey("usbExclusiveAudio")
+
+/** Enable Tryptify Audio Processing: routes the DSP tail through the ported
+ *  Tryptify engine (C++17 mixing console + Oxford effects + measurement-driven
+ *  AutoEQ + parametric EQ) and, with USB-exclusive on, the libusb UAC1/UAC2
+ *  bit-perfect USB-DAC driver. Mutually exclusive with the Lastwave engine. */
+val TryptifyAudioProcessingKey = booleanPreferencesKey("tryptifyAudioProcessing")
+
+/** Enable Lastwave Audio Processing: routes the DSP tail through the ported
+ *  LastWave-native engine (native Oboe/soxr DSP with its 15-band graphic EQ +
+ *  Studio Master Clarity chain) and, with USB-exclusive on, the usbdevfs
+ *  exclusive USB-DAC driver plus the bit-perfect mixer attributes path.
+ *  Mutually exclusive with the Tryptify engine. */
+val LastwaveAudioProcessingKey = booleanPreferencesKey("lastwaveAudioProcessing")
+
 val AutoLoadMoreKey = booleanPreferencesKey("autoLoadMore")
 val AutoDownloadOnLikeKey = booleanPreferencesKey("autoDownloadOnLike")
 val AutoSkipNextOnErrorKey = booleanPreferencesKey("autoSkipNextOnError")
@@ -1255,36 +1267,12 @@ enum class AudioSourceType {
     DEEZER,
     APPLE,
     AMAZON,
-    QQ,
     JIOSAAVN,
     YOUTUBE,
 }
 
-// ---------------------------------------------------------------------------
-// QQ Music source
-// ---------------------------------------------------------------------------
-// QQ Music's catalogue and playback exist through Tencent's partner program only (TME OpenAPI /
-// QPlay). There is no public personal-developer playback API, so this source ships compiled but
-// unreachable: it declines every track until the build carries partner credentials
-// (BuildConfig.QQ_PARTNER_APP_ID) and the user turns the source on. It is deliberately not in
-// DEFAULT_ORDER — like Amazon, it joins the order by hand, after the maintainer has a partnership.
-//
-// The web endpoints (u.y.qq.com musicu.fcg) and the leaked vkey signing scheme are not used here
-// and must not be added: building against them is what the boundaries for this source forbid.
-val QqMusicEnabledKey = booleanPreferencesKey("qqMusicEnabled")
-
-val QqMusicAudioQualityKey = stringPreferencesKey("qqMusicAudioQuality")
-
-enum class QqAudioQuality {
-    LOSSLESS,
-    HIGH,
-    STANDARD,
-    ;
-
-    companion object {
-        val Default = HIGH
-    }
-}
+// QQ Music integration removed: the whole partner-program integration
+// (provider, settings, chain entry, enum value) is gone from the app.
 
 // CSV of AudioSourceType names, highest priority first. Empty = built-in default order.
 val AudioSourceOrderKey = stringPreferencesKey("audioSourceOrder")
@@ -1293,6 +1281,11 @@ val SongSourceOverrideKey = stringPreferencesKey("songSourceOverride")
 
 val SongSourceQobuzTrackIdKey = stringPreferencesKey("songSourceQobuzTrackId")
 val SongSourceDeezerTrackIdKey = stringPreferencesKey("songSourceDeezerTrackId")
+
+/** Per-song Tidal track id picked in the "play from search" popup: playback
+ *  resolves that EXACT track instead of fuzzy re-matching metadata (the fix
+ *  for "picking a Tidal search result falls back to YouTube"). */
+val SongSourceTidalTrackIdKey = stringPreferencesKey("songSourceTidalTrackId")
 
 val SongSourceQobuzBackupVideoIdKey = stringPreferencesKey("songSourceQobuzBackupVideoId")
 
