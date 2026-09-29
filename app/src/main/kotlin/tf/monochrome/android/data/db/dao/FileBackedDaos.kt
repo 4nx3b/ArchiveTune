@@ -23,7 +23,9 @@ import tf.monochrome.android.data.db.entity.MixPresetEntity
 
 private class JsonStore<T>(
     private val file: File,
-    private val serializer: (T) -> String,
+    // The whole list is serialised in one atomic write (see mutate()), so the
+    // serializer takes the complete snapshot, not a single element.
+    private val serializer: (List<T>) -> String,
     private val deserializer: (String) -> List<T>,
 ) {
     private val state = MutableStateFlow(load())

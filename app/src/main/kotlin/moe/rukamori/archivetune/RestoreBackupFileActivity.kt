@@ -213,6 +213,7 @@ private fun RestoreOptionsDialog(
                     BackupCategory.LIBRARY -> R.string.backup_category_library
                     BackupCategory.ACCOUNT -> R.string.backup_category_account
                     BackupCategory.SETTINGS -> R.string.backup_category_settings
+                    BackupCategory.FONTS -> R.string.backup_category_fonts
                     BackupCategory.LYRICS -> R.string.backup_category_lyrics
                     BackupCategory.CANVAS -> R.string.backup_category_canvas
                 }
@@ -221,6 +222,7 @@ private fun RestoreOptionsDialog(
                     BackupCategory.LIBRARY -> R.string.backup_category_library_desc
                     BackupCategory.ACCOUNT -> R.string.backup_category_account_desc
                     BackupCategory.SETTINGS -> R.string.backup_category_settings_desc
+                    BackupCategory.FONTS -> R.string.backup_category_fonts_desc
                     BackupCategory.LYRICS -> R.string.backup_category_lyrics_desc
                     BackupCategory.CANVAS -> R.string.backup_category_canvas_desc
                 }
@@ -229,6 +231,7 @@ private fun RestoreOptionsDialog(
                     BackupCategory.LIBRARY -> R.drawable.library_music
                     BackupCategory.ACCOUNT -> R.drawable.account
                     BackupCategory.SETTINGS -> R.drawable.settings
+                    BackupCategory.FONTS -> R.drawable.text_fields
                     BackupCategory.LYRICS -> R.drawable.lyrics
                     BackupCategory.CANVAS -> R.drawable.motion_photos_on
                 }
