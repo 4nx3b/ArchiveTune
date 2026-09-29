@@ -140,7 +140,7 @@ import moe.rukamori.archivetune.ui.menu.SelectionMediaMetadataMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
-import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -294,10 +294,13 @@ fun HistoryScreen(
 
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
+    // Cover-driven glass gating: the header pills stay glass for as long as
+    // they are on screen and leave composition only once the player sheet's
+    // edge has climbed past them (LiquidGlassActionPill fades the dissolve).
+    val playerSheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            !lyricsFullScreen && !playerSheetOverlayActive
+            !lyricsFullScreen && playerSheetOverlayFraction < 1f
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
     val surfaceColor = MaterialTheme.colorScheme.surface
     val backdrop = rememberBackdrop(surfaceColor)

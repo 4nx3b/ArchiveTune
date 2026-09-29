@@ -785,6 +785,66 @@ fun AppleMusicPlayerContent(
                             .weight(1f)
                             .fillMaxHeight(),
                 ) {
+                    // Canvas songs go FULL-BLEED in landscape: the loop plays
+                    // at the half's full height (top edge to the bottom
+                    // controls strip), the COMPLETE frame at FIT — never
+                    // ZOOM-cropped — and it never reaches past the middle into
+                    // the lyrics half. The title block rides over the canvas
+                    // foot on a gradient scrim so it needs no space of its own.
+                    // Non-canvas songs keep the hero-artwork + title column.
+                    val landscapeCanvasFullBleed = canvasActive && !videoShowing
+                    if (landscapeCanvasFullBleed) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .padding(bottom = contentBottomPadding),
+                        ) {
+                            AppleMusicSharpArtwork(
+                                artworkRequest = artworkRequest,
+                                artworkUrl = artworkUrl,
+                                canvasPrimaryUrl = canvasPrimaryUrl,
+                                canvasFallbackUrl = canvasFallbackUrl,
+                                isPlaying = isPlaying,
+                                fadeBottom = false,
+                                videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
+                                isMusicVideo = mediaMetadata.isMusicVideo,
+                                landscape = true,
+                                landscapeCanvasFullBleed = true,
+                                fadeRightEdge = false,
+                                artworkCornerRadiusDp = artworkCornerRadiusDp,
+                                canvasLoopSync = canvasLoopSync,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+
+                            // Title over the canvas foot: the canvas keeps the
+                            // whole height; the scrim keeps the text readable
+                            // over live video.
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .fillMaxWidth()
+                                        .background(
+                                            Brush.verticalGradient(
+                                                0f to Color.Transparent,
+                                                0.3f to Color.Black.copy(alpha = 0.35f),
+                                                1f to Color.Black.copy(alpha = 0.6f),
+                                            ),
+                                        ),
+                            ) {
+                                AppleMusicLandscapeTitleBlock(
+                                    mediaMetadata = mediaMetadata,
+                                    currentSongLiked = currentSongLiked,
+                                    titleActions = titleActions,
+                                    onToggleLike = playerConnection::toggleLike,
+                                    onMoreClick = onMoreClick,
+                                    onMorePositioned = { moreIconBounds = it },
+                                    contentWidth = null,
+                                )
+                            }
+                        }
+                    } else {
                     // The landscape hero artwork: large enough to read as the
                     // hero of the half but with real breathing room to the
                     // screen edges (the previous size filled the half minus
@@ -845,6 +905,7 @@ fun AppleMusicPlayerContent(
                             onMorePositioned = { moreIconBounds = it },
                             contentWidth = landscapeArtworkSize,
                         )
+                    }
                     }
                 }
                 Box(
@@ -1203,6 +1264,8 @@ private fun AppleMusicSharpArtwork(
 
     landscapeArtworkSize: Dp? = null,
 
+    landscapeCanvasFullBleed: Boolean = false,
+
     fadeRightEdge: Boolean = false,
 
     showCanvas: Boolean = true,
@@ -1360,7 +1423,15 @@ private fun AppleMusicSharpArtwork(
                 primaryUrl = canvasPrimaryUrl,
                 fallbackUrl = canvasFallbackUrl,
                 isPlaying = isPlaying,
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                // Full-bleed landscape canvas: the COMPLETE loop at FIT — the
+                // whole frame, never ZOOM-cropped — filling the half's height
+                // and centred inside it, well clear of the lyrics half.
+                resizeMode =
+                    if (landscapeCanvasFullBleed) {
+                        AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    } else {
+                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    },
                 loopSyncLeader = canvasLoopSync,
                 modifier = canvasModifier,
             )

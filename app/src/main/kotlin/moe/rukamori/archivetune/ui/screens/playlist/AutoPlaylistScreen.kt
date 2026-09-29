@@ -100,7 +100,7 @@ import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
-import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
@@ -347,9 +347,10 @@ fun AutoPlaylistScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
+    val playerSheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
     val layerBackdropActive =
-        liquidGlassHeaderActive && !lyricsFullScreen && !playerSheetOverlayActive && screenSettled
+        liquidGlassHeaderActive && !lyricsFullScreen && screenSettled &&
+            playerSheetOverlayFraction < 1f
 
     val backdrop = rememberBackdrop(surfaceColor)
 

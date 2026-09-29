@@ -215,6 +215,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.aod.ACTION_AOD_MODE
 import moe.rukamori.archivetune.constants.AppBarHeight
+import moe.rukamori.archivetune.constants.PlayerHeaderGlassFadeRamp
 import moe.rukamori.archivetune.constants.SheetOverlayEpsilon
 import moe.rukamori.archivetune.constants.AppFontPreference
 import moe.rukamori.archivetune.constants.AppLanguageKey
@@ -1698,6 +1699,34 @@ class MainActivity : ComponentActivity() {
                         )
                     val effectiveTopInset = effectiveStatusBarTop
 
+                    // Liquid-glass header fade driven by the sheet's actual top edge
+                    // (maxHeight - value): 0 while the header pills are visibly on
+                    // screen, ramping to 1 only as the sheet's edge climbs past the
+                    // pill zone (status bar + 12dp padding + 48dp pill, plus a fade
+                    // ramp above it). Unlike isPlayerSheetOverlayActive — which flips
+                    // the moment the sheet leaves the mini-player bound and visibly
+                    // swaps glass pills for plain headers mid-transition — pills stay
+                    // glass for exactly as long as they are on screen, then dissolve
+                    // behind the sheet. On collapse they fade back in as the edge
+                    // retreats, instead of popping in when the sheet lands.
+                    val playerSheetOverlayFraction by remember(
+                        playerBottomSheetState,
+                        effectiveStatusBarTop,
+                        maxHeight,
+                    ) {
+                        derivedStateOf {
+                            val sheetEdgeFromTop = maxHeight - playerBottomSheetState.value
+                            val pillZoneBottom = effectiveStatusBarTop + 60.dp
+                            val fadeStart = pillZoneBottom + PlayerHeaderGlassFadeRamp
+                            if (fadeStart <= pillZoneBottom) {
+                                if (sheetEdgeFromTop <= pillZoneBottom) 1f else 0f
+                            } else {
+                                ((fadeStart - sheetEdgeFromTop) / (fadeStart - pillZoneBottom))
+                                    .coerceIn(0f, 1f)
+                            }
+                        }
+                    }
+
                     LaunchedEffect(isYearInMusicScreen, playerConnection) {
                         val connection = playerConnection ?: return@LaunchedEffect
                         val player = connection.player
@@ -2122,6 +2151,7 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
                         moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive provides isPlayerSheetOverlayActive,
+                        moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction provides playerSheetOverlayFraction,
                     ) {
                         Row(
                             modifier =

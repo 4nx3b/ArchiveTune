@@ -60,9 +60,23 @@ import androidx.compose.runtime.setValue
 private const val CanvasPlaybackStallCheckIntervalMs = 1_000L
 private const val CanvasPlaybackStallTimeoutMs = 5_000L
 
-private const val CanvasSyncPublishIntervalMs = 500L
-private const val CanvasSyncCheckIntervalMs = 1_000L
-private const val CanvasSyncDriftThresholdMs = 350L
+private const val CanvasSyncPublishIntervalMs = 50L
+private const val CanvasSyncCheckIntervalMs = 100L
+
+/** Drift above which the follower engages the smooth rate lock (a small
+ *  playback-speed delta that converges without a visible frame jump). */
+private const val CanvasSyncRateLockThresholdMs = 45L
+
+/** Drift above which the follower gives up on smooth convergence and seeks. */
+private const val CanvasSyncSeekThresholdMs = 400L
+
+/** Milliseconds of drift that maps to a 100% speed delta before clamping:
+ *  a 100 ms error drives roughly 1.05x/0.95x — invisible on a silent loop,
+ *  and it burns the error off in about two seconds. */
+private const val CanvasSyncRateLockSpanMs = 2_000f
+
+/** Clamp for the rate-lock speed delta. */
+private const val CanvasSyncMaxRateLockDelta = 0.05f
 
 val LocalPlayerSheetVisible = staticCompositionLocalOf { true }
 
@@ -246,6 +260,9 @@ fun CanvasArtworkPlayer(
     }
 
     // Publish this instance's playback position for the blurred backdrop twin.
+    // 20 Hz is deliberately over-sampled: the follower's rate lock compares
+    // against this value, so a stale sample would show up as phase noise in
+    // the correction loop.
     if (loopSyncLeader != null) {
         LaunchedEffect(exoPlayer, currentUrl) {
             while (isActive) {
@@ -256,7 +273,10 @@ fun CanvasArtworkPlayer(
         }
     }
 
-    // Align this instance to the sharp twin's position whenever they drift apart.
+    // Align this instance to the sharp twin's position. Small drift is
+    // converged with a proportional playback-rate lock (no frame jump — a
+    // canvas loop is silent, so ±5% speed is invisible); only large drift
+    // (initial join, a stall, a pause mismatch) takes a hard seek.
     if (loopSyncFollower != null) {
         LaunchedEffect(exoPlayer, currentUrl, hasPlaybackFailed) {
             while (isActive) {
@@ -268,10 +288,34 @@ fun CanvasArtworkPlayer(
                     val target = loopSyncFollower.leaderPositionMs
                     if (
                         target != Long.MIN_VALUE &&
-                        loopSyncFollower.leaderSource == currentUrl &&
-                        kotlin.math.abs(exoPlayer.currentPosition - target) > CanvasSyncDriftThresholdMs
+                        loopSyncFollower.leaderSource == currentUrl
                     ) {
-                        exoPlayer.seekTo(target.coerceAtLeast(0L))
+                        val errorMs = target - exoPlayer.currentPosition
+                        val currentSpeed = exoPlayer.playbackParameters.speed
+                        when {
+                            kotlin.math.abs(errorMs) > CanvasSyncSeekThresholdMs -> {
+                                exoPlayer.seekTo(target.coerceAtLeast(0L))
+                                if (currentSpeed != 1f) exoPlayer.setPlaybackSpeed(1f)
+                            }
+
+                            kotlin.math.abs(errorMs) > CanvasSyncRateLockThresholdMs -> {
+                                val speed =
+                                    (1f + errorMs / CanvasSyncRateLockSpanMs)
+                                        .coerceIn(
+                                            1f - CanvasSyncMaxRateLockDelta,
+                                            1f + CanvasSyncMaxRateLockDelta,
+                                        )
+                                if (kotlin.math.abs(speed - currentSpeed) > 0.0005f) {
+                                    exoPlayer.setPlaybackSpeed(speed)
+                                }
+                            }
+
+                            else -> {
+                                if (kotlin.math.abs(1f - currentSpeed) > 0.0005f) {
+                                    exoPlayer.setPlaybackSpeed(1f)
+                                }
+                            }
+                        }
                     }
                 }
                 delay(CanvasSyncCheckIntervalMs)
@@ -384,6 +428,51 @@ fun CanvasArtworkPlayer(
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (!shouldPlay || hasPlaybackFailed || exoPlayer.playerError != null) return
                     exoPlayer.setCanvasPlayback(isPlaying = true)
+                    // Follower: snap to the leader the instant we become READY,
+                    // BEFORE the first rendered frame — otherwise the blurred
+                    // twin starts at its own loop origin and shows the wrong
+                    // part of the loop for up to a check interval.
+                    if (playbackState == Player.STATE_READY && loopSyncFollower != null) {
+                        val target = loopSyncFollower.leaderPositionMs
+                        if (
+                            target != Long.MIN_VALUE &&
+                            loopSyncFollower.leaderSource == currentUrl
+                        ) {
+                            exoPlayer.seekTo(target.coerceAtLeast(0L))
+                        }
+                    }
+                }
+
+                override fun onPositionDiscontinuity(
+                    oldPosition: Player.PositionInfo,
+                    newPosition: Player.PositionInfo,
+                    reason: Int,
+                ) {
+                    if (reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION) return
+                    when {
+                        // Leader wrapped around the loop: publish immediately so
+                        // the follower corrects within one frame instead of up to
+                        // a publish interval later.
+                        loopSyncLeader != null -> {
+                            loopSyncLeader.leaderSource = currentUrl
+                            loopSyncLeader.leaderPositionMs = exoPlayer.currentPosition
+                        }
+
+                        // Follower wrapped but the leader has not (residual drift
+                        // near the loop boundary): re-align instantly so the two
+                        // never show opposite ends of the loop at the same time.
+                        loopSyncFollower != null -> {
+                            val target = loopSyncFollower.leaderPositionMs
+                            if (
+                                target != Long.MIN_VALUE &&
+                                loopSyncFollower.leaderSource == currentUrl &&
+                                kotlin.math.abs(newPosition.positionMs - target) >
+                                    CanvasSyncRateLockThresholdMs
+                            ) {
+                                exoPlayer.seekTo(target.coerceAtLeast(0L))
+                            }
+                        }
+                    }
                 }
 
                 override fun onPlayWhenReadyChanged(

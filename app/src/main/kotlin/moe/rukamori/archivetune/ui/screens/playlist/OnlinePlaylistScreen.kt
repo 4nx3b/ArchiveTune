@@ -142,6 +142,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.OnlinePlaylistViewModel
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
@@ -216,8 +217,10 @@ fun OnlinePlaylistScreen(
     val screenSettled = rememberLayerBackdropSettled()
 
     val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
+    val playerSheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
     val layerBackdropActive =
-        liquidGlassHeaderActive && !lyricsFullScreen && !playerSheetOverlayActive && screenSettled
+        liquidGlassHeaderActive && !lyricsFullScreen && screenSettled &&
+            playerSheetOverlayFraction < 1f
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
