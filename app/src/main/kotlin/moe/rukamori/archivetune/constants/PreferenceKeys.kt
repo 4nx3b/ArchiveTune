@@ -500,6 +500,7 @@ val AudioPlaybackSpeedKey = floatPreferencesKey("audioPlaybackSpeed")
 val AudioPlaybackSpeedPitchMatchKey = booleanPreferencesKey("audioPlaybackSpeedPitchMatch")
 val AudioPlaybackPitchKey = floatPreferencesKey("audioPlaybackPitch")
 val AudioNormalizationKey = booleanPreferencesKey("audioNormalization")
+val ReplayGainModeKey = stringPreferencesKey("replayGainMode")
 val AudioOffload = booleanPreferencesKey("audioOffload")
 val CrossfadeEnabledKey = booleanPreferencesKey("crossfadeEnabled")
 val CrossfadeDurationKey = floatPreferencesKey("crossfadeDuration")
@@ -570,6 +571,7 @@ val EqualizerEnabledKey = booleanPreferencesKey("equalizerEnabled")
 val EqualizerAudioEffectsEnabledKey = booleanPreferencesKey("audioEffectsEnabled")
 val EqualizerControlModeKey = stringPreferencesKey("equalizerControlMode")
 val EqualizerBandLevelsMbKey = stringPreferencesKey("equalizerBandLevelsMb")
+val EqualizerBandFreqsKey = stringPreferencesKey("equalizerBandFreqsHz")
 val EqualizerAutoHeadroomEnabledKey = booleanPreferencesKey("equalizerAutoHeadroomEnabled")
 val EqualizerOutputGainEnabledKey = booleanPreferencesKey("equalizerOutputGainEnabled")
 val EqualizerOutputGainMbKey = intPreferencesKey("equalizerOutputGainMb")
@@ -1191,6 +1193,18 @@ enum class TidalAudioQuality {
     AAC_320,
     FLAC,
     HI_RES_LOSSLESS,
+}
+
+/**
+ * ReplayGain loudness-correction mode. When enabled, per-track/per-album gain
+ * tags parsed from local files take precedence over the API loudness metadata
+ * during playback normalization — lossless libraries play at a consistent
+ * loudness instead of sitting quieter than normalized streaming tracks.
+ */
+enum class ReplayGainMode {
+    OFF,
+    TRACK,
+    ALBUM,
 }
 
 enum class AppleMusicQuality {

@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -25,8 +27,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -34,14 +38,20 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.content.Intent
+import android.net.Uri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AmazonAccountNameKey
 import moe.rukamori.archivetune.constants.DeezerArlKey
 import moe.rukamori.archivetune.constants.ListenBrainzEnabledKey
 import moe.rukamori.archivetune.constants.ListenBrainzTokenKey
 import moe.rukamori.archivetune.constants.AppleMusicMediaUserTokenKey
 import moe.rukamori.archivetune.constants.ManualSourceLoginEnabledKey
+import moe.rukamori.archivetune.constants.PoolApiKeyKey
 import moe.rukamori.archivetune.constants.QobuzTokensKey
 import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
 import moe.rukamori.archivetune.constants.TidalAccessTokenKey
@@ -53,6 +63,7 @@ import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.menu.CrossServiceImportPlaylistDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.foundation.layout.asPaddingValues
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
@@ -105,6 +116,13 @@ fun IntegrationScreen(
     var showSpotifyLogin by rememberSaveable { mutableStateOf(false) }
 
     var showCrossServiceImport by remember { mutableStateOf(false) }
+    var showPoolApiKeyEditor by remember { mutableStateOf(false) }
+
+    val (poolApiKey, onPoolApiKeyChange) = rememberPreference(PoolApiKeyKey, "")
+    var poolRefreshing by remember { mutableStateOf(false) }
+    var poolRefreshMessage by remember { mutableStateOf<String?>(null) }
+    val poolScope = rememberCoroutineScope()
+    val poolContext = LocalContext.current
 
     LaunchedEffect(spotifyState.isAuthenticated) {
         if (spotifyState.isAuthenticated) {
@@ -362,6 +380,98 @@ fun IntegrationScreen(
                     )
                 }
             }
+
+            // ── Source Pool ──
+            // Community pool of shared Tidal/Qobuz/Deezer/Apple accounts. The v2
+            // protocol (X-Pool-Client: v2 + AES-256-GCM enc:1: fields keyed to the
+            // user's API key) is handled by PoolAccountManager/PoolCrypto; this group
+            // only surfaces the key entry + manual refresh.
+            PreferenceGroup(
+                modifier = positions.modifierFor("source_pool"),
+                title = stringResource(R.string.pool_api_key_title),
+            ) {
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.pool_api_key_label)) },
+                        description = if (poolApiKey.isBlank()) {
+                            stringResource(R.string.pool_api_key_help)
+                        } else {
+                            poolApiKey.take(8) + "…"
+                        },
+                        icon = { Icon(painterResource(R.drawable.token), null) },
+                        onClick = { showPoolApiKeyEditor = true },
+                    )
+                }
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.pool_get_key_title)) },
+                        description = stringResource(R.string.pool_get_key_description),
+                        icon = { Icon(painterResource(R.drawable.language), null) },
+                        onClick = {
+                            runCatching {
+                                poolContext.startActivity(
+                                    Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse(BuildConfig.SOURCE_PROVIDER_URL),
+                                    ),
+                                )
+                            }
+                        },
+                    )
+                }
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.pool_refresh_title)) },
+                        description = stringResource(R.string.pool_refresh_description),
+                        icon = {
+                            if (poolRefreshing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                Icon(painterResource(R.drawable.sync), null)
+                            }
+                        },
+                        isEnabled = !poolRefreshing && BuildConfig.SOURCE_PROVIDER_URL.isNotBlank(),
+                        onClick = {
+                            if (poolRefreshing) return@PreferenceEntry
+                            poolRefreshing = true
+                            poolRefreshMessage = null
+                            poolScope.launch(Dispatchers.IO) {
+                                val refreshed = PoolAccountManager.refresh(poolContext, force = true)
+                                val accounts = PoolAccountManager.tidalAccounts()
+                                val message =
+                                    if (refreshed) {
+                                        poolContext.getString(
+                                            R.string.pool_refresh_done,
+                                            accounts.size,
+                                            PoolAccountManager.qobuzAccounts().size,
+                                            PoolAccountManager.deezerAccounts().size,
+                                        )
+                                    } else {
+                                        PoolAccountManager.lastFeedError
+                                            ?: poolContext.getString(R.string.pool_refresh_failed)
+                                    }
+                                withContext(Dispatchers.Main) {
+                                    poolRefreshMessage = message
+                                    poolRefreshing = false
+                                }
+                            }
+                        },
+                    )
+                }
+                poolRefreshMessage?.let { message ->
+                    item {
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            }
         }
 
         ScreenHeaderHaze(
@@ -375,6 +485,25 @@ fun IntegrationScreen(
         isVisible = showCrossServiceImport,
         onDismiss = { showCrossServiceImport = false },
     )
+
+    if (showPoolApiKeyEditor) {
+        TextFieldDialog(
+            initialTextFieldValue =
+                androidx.compose.ui.text.input
+                    .TextFieldValue(poolApiKey),
+            onDone = { key ->
+                onPoolApiKeyChange(key.trim())
+                showPoolApiKeyEditor = false
+            },
+            onDismiss = { showPoolApiKeyEditor = false },
+            singleLine = true,
+            maxLines = 1,
+            isInputValid = { true },
+            extraContent = {
+                InfoLabel(text = stringResource(R.string.pool_api_key_help))
+            },
+        )
+    }
 
     if (showSpotifyLogin) {
         SpotifyLoginSheet(

@@ -92,8 +92,13 @@ import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.utils.AudioOutputStats
+import moe.rukamori.archivetune.utils.AudioOutputStatsProvider
 import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -466,6 +471,7 @@ private fun DebugTimestampItem(
 private fun NerdStatsSection(playerConnection: moe.rukamori.archivetune.playback.PlayerConnection?) {
     if (playerConnection == null) return
 
+    val context = LocalContext.current
     val currentFormat by playerConnection.currentFormat.collectAsStateWithLifecycle(initialValue = null)
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val player = playerConnection.player
@@ -477,6 +483,11 @@ private fun NerdStatsSection(playerConnection: moe.rukamori.archivetune.playback
     var playbackSpeed by remember { mutableStateOf(1.0f) }
 
     var fallbackSizeBytes by remember { mutableStateOf<Long?>(null) }
+    var outputStats by remember { mutableStateOf<AudioOutputStats?>(null) }
+
+    LaunchedEffect(Unit) {
+        outputStats = withContext(Dispatchers.IO) { AudioOutputStatsProvider.resolve(context) }
+    }
 
     LaunchedEffect(Unit) {
         while (isActive) {
@@ -587,6 +598,14 @@ private fun NerdStatsSection(playerConnection: moe.rukamori.archivetune.playback
                             icon = R.drawable.waves,
                             label = stringResource(R.string.sample_rate_label),
                             value = if (sampleRateKhz > 0) "$sampleRateKhz kHz" else stringResource(R.string.unknown_sample_rate),
+                            modifier = Modifier.weight(1f),
+                        )
+
+                        val outputRate = outputStats?.mixSampleRate ?: 0
+                        NerdStatChip(
+                            icon = R.drawable.solar_hertz,
+                            label = stringResource(R.string.output_mix_rate),
+                            value = if (outputRate > 0) "${outputRate / 1000} kHz" else stringResource(R.string.unknown_sample_rate),
                             modifier = Modifier.weight(1f),
                         )
 

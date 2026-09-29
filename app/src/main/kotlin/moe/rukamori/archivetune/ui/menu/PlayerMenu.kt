@@ -109,7 +109,6 @@ import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.db.entities.ArtistEntity
-import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
@@ -350,7 +349,10 @@ fun PlayerMenu(
     }
     val availableSources =
         remember(mediaMetadata.id, showSourceDialog, sourceRevision) {
+            // Apple Music is excluded from the Play From popup per product decision —
+            // it stays available as a global playback source, just not as a per-song pick.
             playerConnection.service.availableSourcesForSong(mediaMetadata.id)
+                .filter { it != AudioSourceType.APPLE }
         }
 
     if (showSourceDialog) {
@@ -1573,7 +1575,6 @@ private suspend fun searchOneSource(
     saavnLabel: String,
     losslessLabel: String,
     deezerLabel: String,
-    appleQualityLabel: String?,
     context: android.content.Context,
 ): List<SourceSearchResult> =
     withContext(Dispatchers.IO) {
@@ -1702,20 +1703,8 @@ private suspend fun searchOneSource(
             }
 
             AudioSourceType.APPLE -> {
-                runCatching { AppleMusicAudioProvider.searchCandidates(query, limit = 8) }
-                    .getOrDefault(emptyList())
-                    .map { candidate ->
-                        SourceSearchResult(
-                            source = AudioSourceType.APPLE,
-                            trackId = candidate.songId,
-                            title = candidate.title,
-                            artist = candidate.artist.orEmpty(),
-                            thumbnailUrl = candidate.thumbnailUrl,
-                            durationMs = candidate.durationMs,
-                            qualityLabel = appleQualityLabel,
-                            songItem = null,
-                        )
-                    }
+                // Apple Music is excluded from the Play From popup — never searched.
+                emptyList()
             }
 
             AudioSourceType.JIOSAAVN -> {
@@ -1775,11 +1764,8 @@ private fun SongSourceDialog(
             if (availability.manualPremium || availability.pooledPremium > 0) losslessLabel else mp3Label
         }
 
-    val appleQualityLabel =
-        remember(losslessLabel) {
-            if (AppleMusicAudioProvider.isAvailable()) losslessLabel else null
-        }
-
+    // Apple Music is intentionally NOT offered in the Play From popup (neither the
+    // per-song radio list nor the cross-service search pills).
     val searchableSources =
         listOf(
             AudioSourceType.YOUTUBE,
@@ -1787,7 +1773,6 @@ private fun SongSourceDialog(
             AudioSourceType.QOBUZ,
             AudioSourceType.QOBUZ_BACKUP,
             AudioSourceType.DEEZER,
-            AudioSourceType.APPLE,
             AudioSourceType.JIOSAAVN,
         )
 
@@ -1814,7 +1799,6 @@ private fun SongSourceDialog(
                                     saavnLabel = saavnLabel,
                                     losslessLabel = losslessLabel,
                                     deezerLabel = deezerLabel,
-                                    appleQualityLabel = appleQualityLabel,
                                     context = context,
                                 )
                             }.getOrDefault(emptyList())

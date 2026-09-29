@@ -2678,9 +2678,12 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                     AnimatedVisibility(
-                                        visible =
-                                            active ||
-                                                navBackStackEntry?.destination?.route?.startsWith(OnlineSearchResultRoutePrefix) == true,
+                                        // The collapsed search bar no longer pins itself to the
+                                        // top of the search-RESULTS route: that page now owns a
+                                        // bottom liquid-glass search pill (back pill + search pill
+                                        // + category chips, see SearchResultsScaffold.kt). TopSearch
+                                        // only remains for the full-screen active overlay.
+                                        visible = active,
                                         enter = fadeIn(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 300)),
                                         exit = fadeOut(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 200)),
                                     ) {
@@ -3186,6 +3189,7 @@ class MainActivity : ComponentActivity() {
                                         homeScrollConnection = homeScrollBehavior.nestedScrollConnection,
                                         searchScrollConnection = searchScrollBehavior.nestedScrollConnection,
                                         onlineSearchSort = onlineSearchSort,
+                                        onOnlineSearchSortChange = { onlineSearchSort = it },
                                     )
                                 }
                             }

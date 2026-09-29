@@ -66,6 +66,8 @@ import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.ArtworkProviderOrderKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
+import moe.rukamori.archivetune.constants.ReplayGainMode
+import moe.rukamori.archivetune.constants.ReplayGainModeKey
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.FloatDspEnabledKey
 import moe.rukamori.archivetune.constants.LastwaveAudioProcessingKey
@@ -159,6 +161,11 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(
             AudioNormalizationKey,
             defaultValue = true,
+        )
+    val (replayGainMode, onReplayGainModeChange) =
+        rememberEnumPreference(
+            ReplayGainModeKey,
+            defaultValue = ReplayGainMode.OFF,
         )
     val (audioOffload, onAudioOffloadChange) =
         rememberPreference(
@@ -639,6 +646,27 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             icon = { Icon(painterResource(R.drawable.volume_up), null) },
                             checked = audioNormalization,
                             onCheckedChange = onAudioNormalizationChange,
+                        )
+                    }
+                }
+                item {
+                    Column(modifier = positions.modifierFor("replay_gain")) {
+                        EnumListPreference(
+                            title = { Text(stringResource(R.string.replay_gain)) },
+                            description = stringResource(R.string.replay_gain_desc),
+                            icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                            selectedValue = replayGainMode,
+                            valueText = { mode ->
+                                stringResource(
+                                    when (mode) {
+                                        ReplayGainMode.OFF -> R.string.replay_gain_off
+                                        ReplayGainMode.TRACK -> R.string.replay_gain_track
+                                        ReplayGainMode.ALBUM -> R.string.replay_gain_album
+                                    },
+                                )
+                            },
+                            onValueSelected = onReplayGainModeChange,
+                            isEnabled = audioNormalization,
                         )
                     }
                 }

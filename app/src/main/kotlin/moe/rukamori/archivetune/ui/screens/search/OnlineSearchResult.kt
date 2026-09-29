@@ -11,7 +11,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -23,9 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.items
@@ -37,13 +35,16 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,9 +61,10 @@ import androidx.navigation.NavController
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.SearchProvider
+import moe.rukamori.archivetune.constants.SearchSource
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_ALBUM
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_ARTIST
@@ -83,9 +85,9 @@ import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
-import moe.rukamori.archivetune.ui.component.ChipsRow
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.SearchSourcePicker
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
@@ -93,15 +95,19 @@ import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeArtistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubePlaylistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.viewmodels.OnlineSearchSort
 import moe.rukamori.archivetune.viewmodels.OnlineSearchViewModel
 import androidx.compose.runtime.getValue
+import moe.rukamori.archivetune.viewmodels.PODCAST_SEARCH_FILTER
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun OnlineSearchResult(
     navController: NavController,
     searchSort: OnlineSearchSort,
+    onSearchSortChange: (OnlineSearchSort) -> Unit = {},
     viewModel: OnlineSearchViewModel = hiltViewModel(),
 ) {
     val menuState = LocalMenuState.current
@@ -124,6 +130,23 @@ fun OnlineSearchResult(
 
     val coroutineScope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
+
+    // ── Bottom search field state (seeded from the route, re-search navigates) ──
+    var fieldQuery by rememberSaveable(viewModel.query) { mutableStateOf(viewModel.query) }
+    val navigateWithQuery: (String, SearchProvider) -> Unit = { text, provider ->
+        if (text.isNotBlank()) {
+            val replacementRoute = onlineSearchResultRoute(text, provider)
+            val currentDestinationId = navController.currentDestination?.id
+            if (currentDestinationId != null) {
+                navController.navigate(replacementRoute) {
+                    popUpTo(currentDestinationId) { inclusive = true }
+                    launchSingleTop = true
+                }
+            } else {
+                navController.navigate(replacementRoute)
+            }
+        }
+    }
 
     val searchFilter by viewModel.filter.collectAsStateWithLifecycle()
     val searchSummary = viewModel.summaryPage
@@ -267,7 +290,7 @@ fun OnlineSearchResult(
                                             }
                                         playerConnection.playQueue(
                                             YouTubeQueue(
-                                                WatchEndpoint(videoId = item.id),
+                                                item.endpoint ?: WatchEndpoint(videoId = item.id),
                                                 seedMetadata,
                                             ),
                                         )
@@ -305,63 +328,33 @@ fun OnlineSearchResult(
         )
     }
 
-    Column(
+    // ── Layout: transparent haze top (like Home) + bottom glass pills ──
+    val barState = rememberSearchResultsBarState()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+    val playerAwareBottomPadding =
+        LocalPlayerAwareWindowInsets.current
+            .only(WindowInsetsSides.Bottom)
+            .asPaddingValues()
+            .calculateBottomPadding()
+
+    Box(
         modifier =
             Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
     ) {
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 0.dp,
-            shadowElevation = 1.dp,
-            modifier =
-                Modifier
-
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top).add(WindowInsets(top = AppBarHeight)))
-                    .fillMaxWidth(),
-        ) {
-            ChipsRow(
-                chips =
-                    listOf(
-                        null to stringResource(R.string.filter_all),
-                        FILTER_SONG to stringResource(R.string.filter_songs),
-                        FILTER_VIDEO to stringResource(R.string.filter_videos),
-                        FILTER_ALBUM to stringResource(R.string.filter_albums),
-                        FILTER_ARTIST to stringResource(R.string.filter_artists),
-                        FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
-                        FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
-                    ),
-                currentValue = searchFilter,
-                onValueUpdate = {
-                    if (viewModel.filter.value != it) {
-                        viewModel.filter.value = it
-                    }
-                    coroutineScope.launch {
-                        lazyListState.animateScrollToItem(0)
-                    }
-                },
-                icons =
-                    mapOf(
-                        null to R.drawable.search,
-                        FILTER_SONG to R.drawable.music_note,
-                        FILTER_VIDEO to R.drawable.slow_motion_video,
-                        FILTER_ALBUM to R.drawable.album,
-                        FILTER_ARTIST to R.drawable.person,
-                        FILTER_COMMUNITY_PLAYLIST to R.drawable.queue_music,
-                        FILTER_FEATURED_PLAYLIST to R.drawable.playlist_play,
-                    ),
-            )
-        }
-
         LazyColumn(
             state = lazyListState,
             contentPadding =
                 LocalPlayerAwareWindowInsets.current
                     .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
-                    .add(WindowInsets(top = 8.dp))
+                    .add(WindowInsets(top = systemBarsTopPadding + 8.dp))
+                    .add(WindowInsets(bottom = SearchResultsOverlayReserve))
                     .asPaddingValues(),
-            modifier = Modifier.weight(1f),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .searchResultsBarSource(barState),
         ) {
             if (searchFilter == null) {
                 allModeSections.forEachIndexed { index, summary ->
@@ -463,5 +456,73 @@ fun OnlineSearchResult(
                 }
             }
         }
+
+        // Transparent blurred top, exactly like the home screen.
+        ScreenHeaderHaze(
+            hazeState = barState.haze,
+            systemBarsTopPadding = systemBarsTopPadding + 8.dp,
+        )
+
+        // Bottom chrome: category pills above the back + search glass pills.
+        SearchResultsBottomOverlay(
+            state = barState,
+            query = fieldQuery,
+            onQueryChange = { fieldQuery = it },
+            onSearch = { navigateWithQuery(it, viewModel.searchProvider) },
+            onBack = { navController.navigateUp() },
+            onBackLongClick = { navController.backToMain() },
+            placeholder = stringResource(R.string.search_yt_music),
+            bottomPadding = playerAwareBottomPadding,
+            trailing = {
+                SearchSourcePicker(
+                    currentScope = SearchSource.ONLINE,
+                    currentProvider = viewModel.searchProvider,
+                    onSelection = { _, provider ->
+                        navigateWithQuery(fieldQuery.ifBlank { viewModel.query }, provider)
+                    },
+                    includeLocal = false,
+                )
+                SearchResultsSortMenu(
+                    selectedSort = searchSort,
+                    onSortSelected = onSearchSortChange,
+                )
+            },
+            chipsRow = {
+                GlassFilterChipsRow(
+                    state = barState,
+                    chips =
+                        listOf(
+                            null to stringResource(R.string.filter_all),
+                            FILTER_SONG to stringResource(R.string.filter_songs),
+                            FILTER_VIDEO to stringResource(R.string.filter_videos),
+                            FILTER_ALBUM to stringResource(R.string.filter_albums),
+                            FILTER_ARTIST to stringResource(R.string.filter_artists),
+                            FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
+                            FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
+                            PODCAST_SEARCH_FILTER to stringResource(R.string.filter_podcasts),
+                        ),
+                    currentValue = searchFilter,
+                    onValueUpdate = {
+                        if (viewModel.filter.value != it) {
+                            viewModel.filter.value = it
+                        }
+                        coroutineScope.launch {
+                            lazyListState.animateScrollToItem(0)
+                        }
+                    },
+                    icons =
+                        mapOf(
+                            null to R.drawable.search,
+                            FILTER_SONG to R.drawable.music_note,
+                            FILTER_VIDEO to R.drawable.slow_motion_video,
+                            FILTER_ALBUM to R.drawable.album,
+                            FILTER_ARTIST to R.drawable.person,
+                            FILTER_COMMUNITY_PLAYLIST to R.drawable.queue_music,
+                            FILTER_FEATURED_PLAYLIST to R.drawable.playlist_play,
+                            PODCAST_SEARCH_FILTER to R.drawable.podcasts,
+                        ),
+                )
+            },
+        )
     }
 }

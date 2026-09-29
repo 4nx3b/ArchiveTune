@@ -1047,4 +1047,11 @@
     <!-- Amazon Music catalog search (search-from popup + results screen; anonymous, no sign-in). -->
     <string name="search_amazon">Search Amazon Music</string>
     <string name="amazon_track_unavailable">Amazon Music track could not be mapped to a playable source.</string>
+    <string name="output_route">Output</string>
+    <string name="output_device">Device</string>
+    <string name="output_device_rates">Device sample rates</string>
+    <string name="output_mix_rate">Android mix rate</string>
+    <string name="output_conversion">Sample-rate conversion</string>
+    <string name="output_no_conversion">None — matches the output route</string>
+    <string name="media_info_title">Track info</string>
 </resources>
