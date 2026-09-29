@@ -3724,3 +3724,23 @@ Stage Summary:
 - dev @ 5d2cc9903: automix/float crash fixed structurally — nothing runs after the encoding-flipping DSP tail; crossfade error loop bounded.
 - The SIGSEGV half of the user's recurrence rides in ba55f4a9b (already on dev, missing from their v16.0 install) — both halves reach the user on the next dev/main build.
 - PR check build (compile+test+lint) green on 5d2cc9903; release/nightly matrix monitored to completion.
+
+---
+Task ID: 41
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 5-item batch — (1) port audit vs Tryptify/LastWave-native upstreams, (2) engine feature toggles only with engines on + everything wired to the live audio chain, (3) Developer-options audio stream diagnostics panel (collapsed by default), (4) restore settings lost after the redesign, (5) dead code + comment block removal
+
+Work Log:
+- Cloned both upstreams; audited: missing from the port were stretch (signalsmith + StretchAudioProcessor + native), pipeline/ (AudioPipeline/Monitor/OutputDeviceProbe), UsbAudioRouter, PitchRatio, 2 PreferencesManager keys; deliberately skipped atmos (mysofa + E-AC3 sources), projectM (own visualizer stack), loudness pass (media3-extractor classpath).
+- Vendored third_party/signalsmith-stretch + monochrome_stretch CMake target; wired upstream's transport stages (VariRate + Stretch) INTO the engine router chain, Sonic pinned to unity via DspTailAudioProcessorChain's new engineTransportActive path; media-duration accounting follows the resampler ratio.
+- Router chain is now upstream's full order (ToFloat > ChannelDetector > Downmix > MixBus > AutoEQ > ParamEQ > SpectrumTap > VariRate > Stretch); 24/32-bit decodes no longer fall back to stock; >2ch folds through DownmixProcessor.
+- Renderer float decode (setEnableAudioFloatOutput) with an engine on — lifts the 16-bit decode ceiling; StereoPan + TransitionFilter got float I/O so they survive float decode.
+- SystemAudioEqController now STARTED from TryptifyEngineController (the system-wide AutoEQ toggle previously only bypassed the in-app EQ — a real gimmick, fixed); USB DAC framework pin (UsbAudioRouter + setPreferredAudioDevice); multichannel-downmix pref feeds DownmixProcessor; DSP block size + spectrum analyzer + FFT size surfaced in PlayerSettings while Tryptify is on; USB-exclusive toggle only visible with an engine on (engine-specific descriptions), stock float-DSP toggle only with NO engine.
+- Developer options: Audio Pipeline panel (upstream's 5 stages), fed by a real AnalyticsListener (decoder format/name), the shared ChannelDetector/OutputDeviceProbe singletons, EngineRuntime (new service->UI bridge publishing engine/USB-stream state), tryptify prefs. Collapsed by default at both levels, tap-to-expand.
+- Settings audit: string-reference audit found no unintentional losses (the "missing" ones were the engine toggles + 4 orphaned strings); AOD auto-timer description restored; orphaned aod on-screen-dim strings + AodAutoOnScreenDimKey removed.
+- Comment-wall strip over 101 ported-tree files (repo's lexer-based stripper, license headers kept); 7 dead files deleted (MixPresetRepository, PitchRatio, EqProcessor, LibusbAudioSink, MixPresetFile, SpectrumAnalyzer UI class, unwired TryptifyAudioProcessorChain — its split logic lives in DspTailAudioProcessorChain).
+- CI round 1 red: EngineRuntime import missing, duplicate javax.inject.Inject, 6-flow combine, FormatEntity (not media3 Format) fields — fixed in bdfda96d7.
+
+Stage Summary:
+- dev @ bdfda96d7: full Tryptify engine surface ported AND wired; every engine toggle now drives a live code path; Audio Pipeline diagnostics panel live in Developer options; ported tree stripped and dead-code-free.
+- NOTE: the reference screenshot (Screenshot_2026-09-29-00-49-35-450_com.codetrio.spatialflow.jpg) never reached /upload — the panel was built from the user's description + Tryptify's upstream AudioPipelinePanel (the same five-stage design). If re-uploaded, align labels.
