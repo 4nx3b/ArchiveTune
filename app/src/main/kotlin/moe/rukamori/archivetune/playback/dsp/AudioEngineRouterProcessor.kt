@@ -8,7 +8,6 @@ import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import com.lastwave.app.playback.NativePcmAudioProcessor
 import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import tf.monochrome.android.audio.dsp.ChannelDetectorProcessor
 import tf.monochrome.android.audio.dsp.DownmixProcessor
 import tf.monochrome.android.audio.dsp.DspNativeLoader
@@ -47,15 +46,29 @@ class AudioEngineRouterProcessor(
     @Volatile
     var outputFloat: Boolean = false
 
+    /**
+     * The encoding of the bytes the active engine path actually emits — NOT
+     * the encoding this processor declares downstream. The Tryptify chain
+     * passes its input encoding through (16-bit in, 16-bit out — every stage
+     * accepts both), and the sink's ToInt16PcmAudioProcessor guarantees 16-bit
+     * reaches this processor whenever sink-side float output is off (always,
+     * with the custom chain installed). LastWave's NativePcmAudioProcessor is
+     * the opposite: it always emits float regardless of input. Treating the
+     * chain bytes as float when they are 16-bit packs two shorts into one
+     * garbage float and halves the frame count — audio at 2x speed, pure
+     * distortion, and a playback position that outruns the feed until the
+     * track stalls. The emit path below branches on this field instead
+     * (through [EnginePcmCodec]).
+     */
     @Volatile
-    private var activeOutputFloat: Boolean = false
+    private var engineDataEncoding: Int = C.ENCODING_PCM_16BIT
 
     @Volatile
     var activeEngine: Engine = Engine.NONE
         private set
 
-    private var downconvertScratch: ByteBuffer = ByteBuffer.allocateDirect(0)
-        .order(ByteOrder.nativeOrder())
+    @Volatile
+    private var activeOutputFloat: Boolean = false
 
     private val tryptifyChain = tf.monochrome.android.audio.usb.AudioProcessorChain(
         listOf(
@@ -100,12 +113,16 @@ class AudioEngineRouterProcessor(
             Engine.TRYPTIFY -> {
 
                 val chainOut = tryptifyChain.configure(inputAudioFormat)
+                engineDataEncoding =
+                    chainOut.encoding.takeIf { it > 0 } ?: inputAudioFormat.encoding
                 val outEncoding =
                     if (activeOutputFloat) C.ENCODING_PCM_FLOAT else C.ENCODING_PCM_16BIT
                 if (changed) {
                     Log.i(
                         TAG,
                         "Tryptify engine ENGAGED (rate=${inputAudioFormat.sampleRate} ch=${inputAudioFormat.channelCount} " +
+                            "in=${encodingName(inputAudioFormat.encoding)} " +
+                            "chainData=${encodingName(engineDataEncoding)} " +
                             "floatOut=$activeOutputFloat chainOut=${chainOut.encoding})",
                     )
                 }
@@ -127,13 +144,17 @@ class AudioEngineRouterProcessor(
                     activeEngine = Engine.NONE
                     return configureStock(inputAudioFormat)
                 }
+                // NativePcmAudioProcessor always emits float (its onConfigure
+                // declares ENCODING_PCM_FLOAT whatever came in).
+                engineDataEncoding = C.ENCODING_PCM_FLOAT
                 val outEncoding =
                     if (activeOutputFloat) C.ENCODING_PCM_FLOAT else C.ENCODING_PCM_16BIT
                 if (changed) {
                     Log.i(
                         TAG,
                         "Lastwave engine ENGAGED (rate=${inputAudioFormat.sampleRate} ch=${inputAudioFormat.channelCount} " +
-                            "floatOut=$activeOutputFloat out=${lastwaveOut.sampleRate}Hz)",
+                            "in=${encodingName(inputAudioFormat.encoding)} " +
+                            "chainData=float floatOut=$activeOutputFloat out=${lastwaveOut.sampleRate}Hz)",
                     )
                 }
                 AudioProcessor.AudioFormat(
@@ -160,6 +181,11 @@ class AudioEngineRouterProcessor(
     }
 
     private fun queueTryptify(inputBuffer: ByteBuffer) {
+        // Membership follows the live isActive() of every stage: a speed
+        // change flips VariRate's ratio-driven isActive mid-track, and
+        // without this refresh the resampler would stay out of the pipeline
+        // until the next configure (the speed change silently lost).
+        tryptifyChain.refreshActive()
         val chainOut = tryptifyChain.process(inputBuffer)
         emitEngineOutput(chainOut)
     }
@@ -178,32 +204,13 @@ class AudioEngineRouterProcessor(
 
     private fun emitEngineOutput(engineOutput: ByteBuffer) {
         if (!engineOutput.hasRemaining()) return
-        if (activeOutputFloat) {
-            replaceOutputBuffer(engineOutput.remaining()).put(engineOutput).flip()
-        } else {
-            val pcm16 = floatToPcm16(engineOutput)
-            replaceOutputBuffer(pcm16.remaining()).put(pcm16).flip()
-        }
-    }
-
-    private fun floatToPcm16(input: ByteBuffer): ByteBuffer {
-        val frames = input.remaining() / (4 * outputAudioFormat.channelCount)
-        val samples = frames * outputAudioFormat.channelCount
-        if (downconvertScratch.capacity() < samples * 2) {
-            downconvertScratch = ByteBuffer.allocateDirect(samples * 2)
-                .order(ByteOrder.nativeOrder())
-        } else {
-            downconvertScratch.clear()
-        }
-        val srcPos = input.position()
-        for (i in 0 until samples) {
-            val f = input.getFloat(srcPos + (i shl 2))
-            val clamped = if (f > 1f) 1f else if (f < -1f) -1f else f
-            downconvertScratch.putShort(i shl 1, (clamped * 32767f).toInt().toShort())
-        }
-        downconvertScratch.position(0)
-        downconvertScratch.limit(samples * 2)
-        return downconvertScratch
+        val encoded = EnginePcmCodec.encode(
+            data = engineOutput,
+            dataIsFloat = engineDataEncoding == C.ENCODING_PCM_FLOAT,
+            outputFloat = activeOutputFloat,
+            channels = outputAudioFormat.channelCount,
+        )
+        replaceOutputBuffer(encoded.remaining()).put(encoded).flip()
     }
 
     override fun onFlush() {
@@ -218,13 +225,26 @@ class AudioEngineRouterProcessor(
         stockDsp.reset()
         activeEngine = Engine.NONE
         activeOutputFloat = false
+        engineDataEncoding = C.ENCODING_PCM_16BIT
     }
 
     override fun onQueueEndOfStream() {
-        tryptifyMixBus.queueEndOfStream()
-        tryptifyAutoEq.queueEndOfStream()
-        tryptifyParamEq.queueEndOfStream()
-        runCatching { lastwaveProcessor.queueEndOfStream() }
+        // Forward EOS through the whole Tryptify chain (VariRate flushes its
+        // sinc tail at EOS) and drain whatever the chain still holds, then
+        // emit it — previously the tail frames were dropped at every track
+        // end, and LastWave's resampler flush output was created but never
+        // read.
+        val tryptifyTail = tryptifyChain.queueEndOfStreamAndDrain()
+        if (tryptifyTail.hasRemaining()) {
+            emitEngineOutput(tryptifyTail)
+        }
+        runCatching {
+            lastwaveProcessor.queueEndOfStream()
+            val lastwaveTail = lastwaveProcessor.output
+            if (lastwaveTail.hasRemaining()) {
+                emitEngineOutput(lastwaveTail)
+            }
+        }
         stockDsp.queueEndOfStream()
     }
 
@@ -239,6 +259,14 @@ class AudioEngineRouterProcessor(
             val ok = runCatching { DspNativeLoader.ensureLoaded() }.isSuccess
             tryptifyNativeProbe = ok
             return ok
+        }
+
+        internal fun encodingName(encoding: Int): String = when (encoding) {
+            C.ENCODING_PCM_16BIT -> "pcm16"
+            C.ENCODING_PCM_FLOAT -> "float"
+            C.ENCODING_PCM_24BIT -> "pcm24"
+            C.ENCODING_PCM_32BIT -> "pcm32"
+            else -> "encoding[$encoding]"
         }
     }
 }

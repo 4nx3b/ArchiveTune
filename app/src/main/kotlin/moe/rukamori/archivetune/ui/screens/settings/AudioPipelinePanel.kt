@@ -54,6 +54,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.playback.dsp.EngineRuntime
 import tf.monochrome.android.audio.dsp.ChannelDetectorProcessor
+import tf.monochrome.android.audio.dsp.DspEngineManager
+import tf.monochrome.android.audio.dsp.SnapinType
 import tf.monochrome.android.audio.eq.SpectrumAnalyzerTap
 import tf.monochrome.android.audio.pipeline.AudioPipelineInputs
 import tf.monochrome.android.audio.pipeline.AudioPipelineMonitor
@@ -70,8 +72,9 @@ import tf.monochrome.android.data.repository.EqRepository
  * decoder facts from the service-side [AudioPipelineMonitor], the chain's
  * measured input from [ChannelDetectorProcessor], the output route from
  * [OutputDeviceProbe] and [EngineRuntime], the engine's own prefs for block
- * size / preset, and the spectrum tap's FFT size. Everything is
- * WhileSubscribed — nothing polls while the panel is shut.
+ * size / preset, the mixer's live stereo-width snapin, and the spectrum
+ * tap's FFT size. Everything is WhileSubscribed — nothing polls while the
+ * panel is shut.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @dagger.hilt.android.lifecycle.HiltViewModel
@@ -82,6 +85,7 @@ class AudioPipelineViewModel @Inject constructor(
     outputProbe: OutputDeviceProbe,
     preferences: PreferencesManager,
     eqRepository: EqRepository,
+    dspEngine: DspEngineManager,
 ) : ViewModel() {
 
     private data class Polled(
@@ -112,16 +116,40 @@ class AudioPipelineViewModel @Inject constructor(
             }
         }
 
+    /**
+     * The mixer's live Stereo snapin width (upstream's contract): null when
+     * the mixer has no non-bypassed stereo stage at all, 0 dB when it has
+     * one doing nothing. Read from parameter slot 1 like upstream's
+     * STEREO_WIDTH_PARAM.
+     */
+    private val stereoWidthDb: kotlinx.coroutines.flow.Flow<Float?> = combine(
+        dspEngine.enabled,
+        dspEngine.buses,
+    ) { enabled, buses ->
+        if (!enabled) return@combine null
+        buses.asSequence()
+            .flatMap { it.plugins.asSequence() }
+            .firstOrNull { !it.bypassed && it.type == SnapinType.STEREO }
+            ?.let { stereo -> stereo.parameters[STEREO_WIDTH_PARAM] }
+    }
+
+    private data class DspFacts(
+        val blockFrames: Int,
+        val eqPresetName: String?,
+        val stereoWidthDb: Float?,
+        val deviceName: String?,
+    )
+
     val inputs: StateFlow<AudioPipelineInputs?> = combine(
         monitor.stream,
         monitor.decoderName,
         channelDetector.state,
         polled,
-        combine(preferences.dspBlockSize, eqPresetName, outputProbe.routed) { block, eq, routed ->
-            Triple(block, eq, routed?.name)
+        combine(preferences.dspBlockSize, eqPresetName, stereoWidthDb, outputProbe.routed) { block, eq, width, routed ->
+            DspFacts(block, eq, width, routed?.name)
         },
     ) { stream, decoder, chain, poll, dsp ->
-        buildInputs(stream, decoder, chain, poll, dsp.first, dsp.second, dsp.third)
+        buildInputs(stream, decoder, chain, poll, dsp)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(POLL_INTERVAL_MS), null)
 
     private fun buildInputs(
@@ -129,9 +157,7 @@ class AudioPipelineViewModel @Inject constructor(
         decoder: String?,
         chain: ChannelDetectorProcessor.ChannelState?,
         poll: Polled,
-        dspBlock: Int,
-        eqName: String?,
-        deviceName: String?,
+        dsp: DspFacts,
     ): AudioPipelineInputs {
         val runtime = EngineRuntime
         val usbExclusive = runtime.usbExclusiveActive
@@ -177,11 +203,12 @@ class AudioPipelineViewModel @Inject constructor(
                 )
             },
             speedRatio = 1f,
-            dspBlockFrames = dspBlock,
-            eqPresetName = eqName,
+            dspBlockFrames = dsp.blockFrames,
+            eqPresetName = dsp.eqPresetName,
+            stereoWidthDb = dsp.stereoWidthDb,
             visualizerFftSize = poll.fftSize,
             outputPath = path,
-            deviceName = deviceName,
+            deviceName = dsp.deviceName,
             halSampleRateHz = poll.halSampleRateHz,
             usb = usbStream,
         )
@@ -189,6 +216,9 @@ class AudioPipelineViewModel @Inject constructor(
 
     private companion object {
         const val POLL_INTERVAL_MS = 1000L
+
+        /** Upstream's STEREO_WIDTH_PARAM — parameter slot 1 of the snapin. */
+        const val STEREO_WIDTH_PARAM = 1
     }
 }
 

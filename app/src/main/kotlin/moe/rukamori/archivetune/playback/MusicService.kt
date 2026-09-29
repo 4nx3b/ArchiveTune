@@ -10261,12 +10261,15 @@ class MusicService :
                 setEnableDecoderFallback(true)
                 setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                 // Decode to 32-bit float whenever an engine owns the DSP tail
-                // (upstream Tryptify's lesson): this is what lifts the 16-bit
-                // decode ceiling — codecs that support float output hand the
-                // chain genuine 24-bit mantissa audio instead of 16-bit, and
-                // the engine tail (or USB-exclusive packing) carries it out.
-                // The SINK-side float flag stays off either way (see
-                // buildAudioSink) so the custom processor chain survives.
+                // (upstream Tryptify's lesson). NOTE: with the custom
+                // processor chain installed, the sink's int pipeline
+                // (ToInt16PcmAudioProcessor) still normalises the renderer's
+                // float back to 16-bit BEFORE the chain — the engine tail
+                // handles either encoding (AudioEngineRouterProcessor branches
+                // on what the chain actually emits). The flag is kept because
+                // it costs nothing when codecs lack float output, and it is
+                // what an exclusive-path wrapper sink would need to carry
+                // 24-bit mantissas end to end (upstream's architecture).
                 // Read once per player build: flipping an engine toggle takes
                 // full effect after the playback service restarts.
                 if (tryptifyAudioProcessing || lastwaveAudioProcessing) {
