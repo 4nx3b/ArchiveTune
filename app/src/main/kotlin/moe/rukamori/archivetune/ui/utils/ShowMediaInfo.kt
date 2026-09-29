@@ -81,7 +81,6 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.utils.AudioOutputStats
 import moe.rukamori.archivetune.utils.AudioOutputStatsProvider
-import moe.rukamori.archivetune.utils.numberFormatter
 import android.text.format.Formatter
 
 private enum class MediaInfoTab(
