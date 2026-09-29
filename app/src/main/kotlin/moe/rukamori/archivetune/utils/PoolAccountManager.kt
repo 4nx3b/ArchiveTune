@@ -18,6 +18,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.BuildConfig
+import moe.rukamori.archivetune.constants.PoolApiKeyKey
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -283,7 +284,16 @@ object PoolAccountManager {
                     lastFeedError = null
                     Timber.tag(TAG).d("No Source Pool URL configured; nothing to refresh")
                 } else {
-                    val readKey = BuildConfig.SOURCE_PROVIDER_KEY
+                    // User-supplied key (Integration settings) wins over the
+                    // build-time one: the v2 pool encrypts account fields to
+                    // the caller's OWN key, so the key the user pasted is the
+                    // one that can decrypt what the pool serves them.
+                    val userKey =
+                        runCatching { context.dataStore.getAsync(PoolApiKeyKey) }
+                            .getOrNull()
+                            ?.trim()
+                            .orEmpty()
+                    val readKey = userKey.ifBlank { BuildConfig.SOURCE_PROVIDER_KEY }
                     poolApiKey = readKey.ifBlank { null }
 
                     var result = fetchAccounts(context, url, readKey)

@@ -1304,6 +1304,13 @@ val AudioSearchSourceKey = stringPreferencesKey("audioSearchSource")
 
 val TidalAccountFirstKey = booleanPreferencesKey("tidalAccountFirst")
 
+/** User-supplied Source Pool API key (Integration settings entry). When set
+ *  it overrides the build-time SOURCE_PROVIDER_KEY for every pool request —
+ *  the v2 protocol keys the AES-256-GCM account decryption to the caller's
+ *  own key, so a user key must reach [PoolAccountManager] rather than being
+ *  baked in at build time. */
+val PoolApiKeyKey = stringPreferencesKey("poolApiKey")
+
 val DeezerEnabledKey = booleanPreferencesKey("deezerEnabled")
 
 val DeezerArlKey = stringPreferencesKey("deezerArl")
