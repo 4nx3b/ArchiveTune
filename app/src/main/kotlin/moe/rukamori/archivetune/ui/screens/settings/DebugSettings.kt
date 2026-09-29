@@ -468,7 +468,6 @@ private fun AudioPipelineDiagnosticSection(
     playerConnection: moe.rukamori.archivetune.playback.PlayerConnection,
 ) {
     val currentFormat by playerConnection.currentFormat.collectAsStateWithLifecycle(initialValue = null)
-    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
 
     // Playback parameters carry no Compose-observable flow; poll them like
     // NerdStatsSection does its live counters.
@@ -482,17 +481,10 @@ private fun AudioPipelineDiagnosticSection(
 
     AudioPipelineSection(
         speedRatio = playbackSpeed,
-        taggedCodec = currentFormat?.mimeType?.substringAfterLast('/')?.uppercase(),
-        taggedBitDepth = currentFormat?.pcmEncoding?.let { enc ->
-            when (enc) {
-                androidx.media3.common.C.ENCODING_PCM_16BIT -> 16
-                androidx.media3.common.C.ENCODING_PCM_24BIT -> 24
-                androidx.media3.common.C.ENCODING_PCM_32BIT -> 32
-                androidx.media3.common.C.ENCODING_PCM_FLOAT -> 32
-                else -> null
-            }
-        },
-        taggedBitRateKbps = currentFormat?.averageBitrate?.takeIf { it > 0 }?.let { (it + 500) / 1000 },
+        taggedCodec = currentFormat?.codecs?.takeIf { it.isNotBlank() }
+            ?: currentFormat?.mimeType?.substringAfterLast('/')?.uppercase(),
+        taggedBitDepth = null,
+        taggedBitRateKbps = currentFormat?.bitrate?.takeIf { it > 0 }?.let { (it + 500) / 1000 },
         deviceName = null,
     )
 }

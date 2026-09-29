@@ -101,10 +101,10 @@ class AudioPipelineViewModel @Inject constructor(
         }
     }
 
-    private val eqPresetName = preferences.eqActivePresetId
+    private val eqPresetName: kotlinx.coroutines.flow.Flow<String?> = preferences.eqActivePresetId
         .flatMapLatest { id ->
             if (id.isNullOrBlank()) {
-                flowOf(null)
+                flowOf<String?>(null)
             } else {
                 eqRepository.getPresetByIdFlow(id).let { p ->
                     flow { p.collect { emit(it?.name) } }
@@ -117,7 +117,6 @@ class AudioPipelineViewModel @Inject constructor(
         monitor.decoderName,
         channelDetector.state,
         polled,
-        engineRuntime,
         combine(preferences.dspBlockSize, eqPresetName, outputProbe.routed) { block, eq, routed ->
             Triple(block, eq, routed?.name)
         },
