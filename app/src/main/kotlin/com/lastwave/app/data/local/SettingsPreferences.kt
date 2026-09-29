@@ -1,12 +1,4 @@
-/*
- * Focused SettingsPreferences subset for the ported LastWave-native audio
- * stack. LastWave's full class covers the whole app; the audio engine only
- * reads the Studio Master Clarity family (lw_music_enhancer /
- * lw_clarity_preset / lw_clarity_atmos_bypass) plus the bit-perfect flag,
- * so this port keeps those exact keys and defaults over ArchiveTune's shared
- * DataStore, plus the setters the settings UI needs. Key names are identical
- * to upstream so state round-trips 1:1.
- */
+
 
 package com.lastwave.app.data.local
 

@@ -1,16 +1,5 @@
 package tf.monochrome.android.audio.usb
 
-/**
- * Snapshot of what the libusb iso pump is actually doing. Surfaced to
- * the Settings UI so the user can verify their hi-res file isn't being
- * silently downsampled — "192 kHz · 24-bit · async feedback ✓" beats a
- * binary "Streaming" badge.
- *
- * Mirrors the native [LibusbUacDriver::nativeActiveStream] long[]
- * layout. The native side packs in a fixed order; [fromLongArray]
- * decodes by position. Adding fields means appending to both ends in
- * lockstep — no tagged-field tolerance, so don't reorder.
- */
 data class BypassDiagnostics(
     val sampleRateHz: Int,
     val bitsPerSample: Int,
@@ -19,13 +8,13 @@ data class BypassDiagnostics(
     val altSetting: Int,
     val endpointAddress: Int,
     val maxPacketSize: Int,
-    /** Iso transfer interval. HS: 2^(bInterval-1) microframes; FS: ms. */
+
     val bInterval: Int,
-    /** 0x0100 = UAC1, 0x0200 = UAC2. */
+
     val uacVersion: Int,
-    /** UAC2 clock-source entity ID that accepted SET_CUR. 0 = UAC1 / unset. */
+
     val clockSourceId: Int,
-    /** Async feedback IN endpoint address; 0 means the device is sync/adaptive. */
+
     val feedbackEndpointAddress: Int,
     val isHighSpeed: Boolean,
     val bytesPerSample: Int,
@@ -33,7 +22,6 @@ data class BypassDiagnostics(
     val hasFeedbackEndpoint: Boolean get() = feedbackEndpointAddress != 0
     val isUac2: Boolean get() = uacVersion >= 0x0200
 
-    /** "192 kHz" / "44.1 kHz" / "1.5 MHz". */
     fun rateLabel(): String {
         val hz = sampleRateHz
         return when {
@@ -43,15 +31,12 @@ data class BypassDiagnostics(
         }
     }
 
-    /** "USB 2.0 High-Speed" / "USB 1.1 Full-Speed". */
     fun speedLabel(): String =
         if (isHighSpeed) "USB 2.0 HS" else "USB 1.1 FS"
 
-    /** "UAC2" / "UAC1" — what spec version the device negotiated under. */
     fun uacLabel(): String = if (isUac2) "UAC2" else "UAC1"
 
     companion object {
-        /** Field count in the long[] returned by nativeActiveStream. */
         private const val FIELD_COUNT = 13
 
         fun fromLongArray(packed: LongArray?): BypassDiagnostics? {
@@ -75,16 +60,6 @@ data class BypassDiagnostics(
     }
 }
 
-/**
- * One subrange entry from the device's GET_RANGE table on a clock
- * entity. UAC2 §5.2.1: most DACs report each supported discrete rate
- * with min == max; some interfaces with a continuous PLL report a
- * proper [min, max] window with a non-zero resolution step.
- *
- * For UAC1 devices (no clock entities), the native side synthesises
- * entries with [clockId] = 0 from the AS_FORMAT_TYPE descriptor's
- * sample-frequency table.
- */
 data class ClockRateRange(
     val clockId: Int,
     val minHz: Int,
@@ -93,7 +68,6 @@ data class ClockRateRange(
 ) {
     val isDiscrete: Boolean get() = minHz == maxHz
 
-    /** "44.1 kHz" for discrete, "44.1–768 kHz" for continuous. */
     fun label(): String {
         fun fmt(hz: Int) = when {
             hz <= 0 -> "—"
@@ -105,7 +79,6 @@ data class ClockRateRange(
     }
 
     companion object {
-        /** Decodes the flat int[] (clockId, minHz, maxHz, resHz)+ packing. */
         fun decodeAll(packed: IntArray?): List<ClockRateRange> {
             if (packed == null || packed.size < 4) return emptyList()
             val out = ArrayList<ClockRateRange>(packed.size / 4)
@@ -126,44 +99,21 @@ data class ClockRateRange(
     }
 }
 
-/**
- * Categorised reason the most recent [LibusbUacDriver.start] failed.
- * Order MUST match the native [StartError] enum in libusb_uac_driver.h.
- *
- * Each value carries enough context for the UI to write actionable
- * advice without having to parse the detail string. The detail string
- * is a separate field on [LibusbUacDriver.lastStartError] for the
- * cases where the category isn't enough.
- */
 enum class StartError(val code: Int) {
     Ok(0),
 
-    /** start() called before open() — driver bug or torn-down state. */
     NoDevice(1),
 
-    /** Descriptor walk found no AS alt with the requested rate/bits/channels. */
     NoMatchingAlt(2),
 
-    /** libusb_claim_interface failed — usually the kernel UAC driver
-     *  still owns the streaming interface. Fix: Developer Options →
-     *  Disable USB audio routing → ON. */
     ClaimInterfaceFailed(3),
 
-    /** libusb_set_interface_alt_setting failed — rare, suggests the
-     *  device went away mid-negotiation. */
     SetAltFailed(4),
 
-    /** SET_CUR / GET_CUR fell through every clock candidate. The
-     *  device runs a fixed-rate clock that doesn't match the source
-     *  file, or the clock-entity topology is non-obvious. */
     SetSampleRateFailed(5),
 
-    /** libusb_alloc_transfer returned null — OOM or libusb internal failure. */
     IsoPumpAllocFailed(6),
 
-    /** Initial libusb_submit_transfer failed — broken endpoint
-     *  configuration on the device, or the kernel reclaimed the
-     *  interface between claim and submit. */
     IsoPumpSubmitFailed(7);
 
     companion object {
@@ -171,16 +121,10 @@ enum class StartError(val code: Int) {
     }
 }
 
-/**
- * Pair of [StartError] code + native detail message. The Settings UI
- * looks up [actionableMessage] for the headline, then optionally
- * shows [detail] as a "see logs" expandable.
- */
 data class StartFailure(
     val code: StartError,
     val detail: String,
 ) {
-    /** User-facing one-liner derived purely from the category. */
     fun actionableMessage(): String = when (code) {
         StartError.Ok ->
             ""

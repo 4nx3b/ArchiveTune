@@ -21,11 +21,6 @@ enum class NativePcmEncoding(internal val nativeValue: Int, internal val bytesPe
     PCM_FLOAT(3, 4),
 }
 
-/**
- * Process-wide owner of the C++17 DSP/Oboe engine. Normal app playback enters
- * through [NativeProcessingAudioSink] as decoded Float32 PCM. When Oboe cannot
- * open, the same native DSP feeds the platform AudioTrack compatibility path.
- */
 @Singleton
 class NativeAudioEngine @Inject constructor(
     settingsPreferences: SettingsPreferences,
@@ -48,9 +43,6 @@ class NativeAudioEngine @Inject constructor(
     val isAvailable: Boolean
         get() = nativeHandle != 0L
 
-    /** System audio-effects mode: while true the engine holds a flat feed
-     *  and ignores pref-driven DSP pushes (they resume on restore). Set by
-     *  the player, which re-pushes user prefs when the mode ends. */
     @Volatile var systemFlattened = false
 
     init {
@@ -81,7 +73,6 @@ class NativeAudioEngine @Inject constructor(
         }
     }
 
-    /** Opens a stereo Float32 Oboe output stream. Zero asks Android for its native rate. */
     fun start(preferredOutputSampleRate: Int = 0): Boolean =
         withHandle(false) { nativeStart(it, preferredOutputSampleRate.coerceAtLeast(0)) }
 
@@ -89,15 +80,9 @@ class NativeAudioEngine @Inject constructor(
         withHandle(Unit) { nativeStop(it) }
     }
 
-    /** True while an Oboe stream is open; callers can reuse it without a reopen pop. */
     val isRunning: Boolean
         get() = withHandle(false, ::nativeIsRunning)
 
-    /**
-     * Drops queued output and resets fade/prebuffer state while keeping the
-     * stream open. Seeks and track transitions reuse this instead of a full
-     * stop/start cycle, which is audible as a click on several OEM stacks.
-     */
     fun flushOutput() {
         withHandle(Unit) { nativeFlushOutput(it) }
     }
@@ -110,28 +95,18 @@ class NativeAudioEngine @Inject constructor(
         withHandle(Unit) { nativeSetOutputVolume(it, volume.coerceIn(0f, 1f)) }
     }
 
-    /** Thread-safe; native DSP crossfades wet/dry over exactly 50 ms.
-     *  Dropped while [systemFlattened] — external effects own the feed. */
     fun setStudioMasterClarity(enabled: Boolean) {
         if (systemFlattened) return
         withHandle(Unit) { nativeSetStudioMasterClarity(it, enabled) }
     }
 
-    /** Thread-safe; completely bypasses all native DSP for bit-exact output. */
     fun setBitPerfect(enabled: Boolean) {
         withHandle(Unit) { nativeSetBitPerfect(it, enabled) }
     }
 
-    /**
-     * Read-back of the actual native bypass state (both DSP instances).
-     * Lets callers separate bitPerfectRequested from bitPerfectActuallyActive:
-     * false when the engine is unavailable or the flag never landed.
-     */
     fun isBitPerfectActive(): Boolean =
         withHandle(false, ::nativeIsBitPerfect)
 
-    /** Updates the native 15-band EQ; its gains are smoothed in C++.
-     *  Dropped while [systemFlattened] — external effects own the feed. */
     fun setEqualizer(enabled: Boolean, gainsDb: FloatArray) {
         if (systemFlattened) return
         require(gainsDb.size == EQUALIZER_BAND_COUNT) { "Expected 15 equalizer bands" }
@@ -142,17 +117,11 @@ class NativeAudioEngine @Inject constructor(
         withHandle(Unit) { nativeSetEqualizer(it, enabled, safeGains) }
     }
 
-    /**
-     * Clarity wet/dry mix in 0..1. Defaults to 1.0, which reproduces the
-     * shipping curve sample-exactly; lower values blend toward dry.
-     * Thread-safe; smoothed on the native 50 ms ramp.
-     */
     fun setClarityWet(wet: Float) {
         if (systemFlattened) return
         withHandle(Unit) { nativeSetClarityWet(it, wet.coerceIn(0f, 1f)) }
     }
 
-    /** Per-stage clarity trims in dB ([ClarityPresets.TRIM_COUNT] stages, +-12 dB). */
     fun setClarityTrims(trimsDb: FloatArray) {
         if (systemFlattened) return
         require(trimsDb.size == ClarityPresets.TRIM_COUNT) { "Expected 8 clarity trims" }
@@ -163,16 +132,11 @@ class NativeAudioEngine @Inject constructor(
         withHandle(Unit) { nativeSetClarityTrims(it, safeTrims) }
     }
 
-    /** Applies a [ClarityPreset] by index; see [ClarityPresets] for the trim data. */
     fun setClarityPreset(preset: ClarityPreset) {
         if (systemFlattened) return
         withHandle(Unit) { nativeSetClarityPreset(it, preset.index) }
     }
 
-    /**
-     * Atmos-aware bypass: while true the native clarity chain fully bypasses
-     * (multichannel-safe), independent of the on/off toggle.
-     */
     fun setClarityAtmosBypass(bypass: Boolean) {
         if (systemFlattened) return
         withHandle(Unit) { nativeSetClarityAtmosBypass(it, bypass) }
@@ -190,7 +154,6 @@ class NativeAudioEngine @Inject constructor(
         }
     }
 
-    /** Processes decoded Media3 PCM into an interleaved direct Float32 buffer. */
     internal fun processMediaPcm(
         input: ByteBuffer,
         inputByteOffset: Int,
@@ -226,11 +189,6 @@ class NativeAudioEngine @Inject constructor(
         withHandle(Unit) { nativeResetMediaProcessor(it) }
     }
 
-    /**
-     * Enqueues little-endian mono/stereo PCM from a direct [ByteBuffer]. Returns
-     * input frames accepted. A short return means the producer must retry the
-     * unconsumed frames after Oboe frees ring-buffer space.
-     */
     fun writePcm(
         buffer: ByteBuffer,
         frameCount: Int,
@@ -265,7 +223,6 @@ class NativeAudioEngine @Inject constructor(
         return accepted
     }
 
-    /** Enqueues Float32 PCM already processed at the active Oboe sample rate. */
     internal fun writeProcessedPcm(
         buffer: ByteBuffer,
         frameCount: Int,
@@ -298,7 +255,6 @@ class NativeAudioEngine @Inject constructor(
         return accepted
     }
 
-    /** Drains libsoxr's delayed sinc tail at end-of-stream. */
     fun flushResampler() {
         withHandle(Unit) { nativeFlushResampler(it) }
     }
@@ -306,7 +262,6 @@ class NativeAudioEngine @Inject constructor(
     val outputSampleRate: Int
         get() = withHandle(0, ::nativeOutputSampleRate)
 
-    /** The rate requested when opening the current stream (0 = let Android choose). */
     val requestedSampleRate: Int
         get() = withHandle(0, ::nativeRequestedSampleRate)
 
@@ -319,15 +274,12 @@ class NativeAudioEngine @Inject constructor(
     val underrunCount: Long
         get() = withHandle(0L, ::nativeUnderrunCount)
 
-    /** Streams opened since process start — cumulative across stop/start cycles. */
     val streamOpenCount: Long
         get() = withHandle(0L, ::nativeStreamOpenCount)
 
-    /** Fatal stream errors that triggered an automatic in-place rebuild. */
     val streamRestartCount: Long
         get() = withHandle(0L, ::nativeStreamRestartCount)
 
-    /** Times the device substituted a different rate than requested. */
     val rateAdaptationCount: Long
         get() = withHandle(0L, ::nativeRateAdaptationCount)
 
@@ -354,9 +306,7 @@ class NativeAudioEngine @Inject constructor(
                 try {
                     block(handle)
                 } catch (error: LinkageError) {
-                    // A stale/split APK can load the library yet still miss an
-                    // individual JNI symbol. Disable native processing for the
-                    // rest of this process instead of crashing playback/UI.
+
                     nativeHandle = 0L
                     Log.e(TAG, "Native audio call failed; falling back to Android audio", error)
                     fallback

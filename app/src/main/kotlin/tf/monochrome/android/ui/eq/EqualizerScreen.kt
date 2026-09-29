@@ -109,8 +109,6 @@ fun EqualizerScreen(
     val smoothing by viewModel.smoothing.collectAsStateWithLifecycle()
     val algorithm by viewModel.algorithm.collectAsStateWithLifecycle()
 
-    // Which ear the graph, band list and export operate on. Off-stereo this is
-    // always the left/mono channel, so everything below reduces to the old UI.
     val editRight = stereoMode && editChannel == EqChannel.RIGHT
     val activeBands = if (editRight) currentBandsR else currentBands
     val activeMeasurement =
@@ -121,9 +119,6 @@ fun EqualizerScreen(
     val availableHeadphones by viewModel.availableHeadphones.collectAsStateWithLifecycle()
     val showTutorial by viewModel.showTutorial.collectAsStateWithLifecycle()
 
-    // rememberSaveable for dialog visibility + typed input so a background
-    // process death (e.g. while a SAF picker is up) doesn't drop a half-filled
-    // save/target dialog or reset the expanded sections.
     var showSaveDialog by rememberSaveable { mutableStateOf(false) }
     var showTargetMenu by remember { mutableStateOf(false) }
     var showHeadphoneSelect by remember { mutableStateOf(false) }
@@ -143,7 +138,6 @@ fun EqualizerScreen(
 
     val context = LocalContext.current
 
-    // Surface a toast when a band drag hit the AutoEQ cap, so the clamp isn't silent.
     LaunchedEffect(viewModel) {
         viewModel.bandClampEvents.collect { cap ->
             Toast.makeText(
@@ -154,7 +148,6 @@ fun EqualizerScreen(
         }
     }
 
-    // File picker for measurement import
     val measurementFilePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
@@ -175,7 +168,6 @@ fun EqualizerScreen(
         }
     }
 
-    // File picker for custom target import
     val targetFilePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
@@ -194,8 +186,6 @@ fun EqualizerScreen(
         }
     }
 
-    // Export EQ: serialize the current bands to an EqualizerAPO-style
-    // ParametricEQ.txt (widely importable) and save via SAF.
     var pendingEqExport by remember { mutableStateOf<String?>(null) }
     val eqExportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
@@ -217,7 +207,6 @@ fun EqualizerScreen(
         }
     }
 
-    // AutoEQ tutorial dialog (first visit)
     if (showTutorial) {
         AutoEqTutorialDialog(onDismiss = { viewModel.dismissTutorial() })
     }
@@ -232,7 +221,6 @@ fun EqualizerScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 32.dp + LocalMiniPlayerInset.current)
         ) {
-            // ─── Title Section ───
             item {
               tf.monochrome.android.devedit.DevEditable("eq_title_section", Modifier.fillMaxWidth()) {
                 Column(
@@ -284,21 +272,10 @@ fun EqualizerScreen(
               }
             }
 
-            // ─── Interactive Frequency Graph ───
             item {
               tf.monochrome.android.devedit.DevEditable("eq_graph", Modifier.fillMaxWidth()) {
                 Column {
-                    // ── Measurement smoothing ──
-                    // Discrete fractional-octave steps, applied to the
-                    // measurement before the optimizer runs. Displayed curves
-                    // smooth along with it so what you see is what gets EQ'd.
-                    //
-                    // Committed on release, not per frame. Every value change
-                    // re-smooths BOTH ears' measurements (a triangular window
-                    // whose radius reaches 40 points at 100 %) and hands the
-                    // graph fresh curve objects, which re-derives the whole
-                    // response — far too much to run at drag rate. A local
-                    // float keeps the thumb and the % label live meanwhile.
+
                     var smoothingDrag by remember(smoothing) { mutableFloatStateOf(smoothing) }
                     Row(
                         modifier = Modifier
@@ -314,7 +291,7 @@ fun EqualizerScreen(
                         )
                         Slider(
                             value = smoothingDrag,
-                            // 1 % increments, SeapEngine's scale.
+
                             onValueChange = { smoothingDrag = it.roundToInt().toFloat().coerceIn(0f, 100f) },
                             onValueChangeFinished = { viewModel.setSmoothing(smoothingDrag) },
                             valueRange = 0f..100f,
@@ -343,8 +320,7 @@ fun EqualizerScreen(
                             )
                         }
                     }
-                    // Graph shows the SMOOTHED measurements — the same curves
-                    // the optimizer actually corrects at this slider setting.
+
                     val displayMeasurement = remember(activeMeasurement, smoothing) {
                         AutoEqEngine.smoothCurve(activeMeasurement, smoothing)
                     }
@@ -373,7 +349,6 @@ fun EqualizerScreen(
               }
             }
 
-            // ─── Preamp (right under the graph it applies to) ───
             item {
               tf.monochrome.android.devedit.DevEditable("eq_preamp_slider", Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -406,7 +381,6 @@ fun EqualizerScreen(
               }
             }
 
-            // ─── Algorithm selector — applies on the next AutoEQ press ───
             item {
               tf.monochrome.android.devedit.DevEditable("eq_algorithm_row", Modifier.fillMaxWidth()) {
                 Row(
@@ -432,12 +406,11 @@ fun EqualizerScreen(
               }
             }
 
-            // ─── AutoEQ (reprocess at current smoothing/target/params) ───
             item {
               tf.monochrome.android.devedit.DevEditable("eq_autoeq_button", Modifier.fillMaxWidth()) {
                 GradientAutoEqButton(
                     isCalculating = isCalculating,
-                    // Re-press mid-computation is a race, not a retry.
+
                     onClick = { if (!isCalculating) viewModel.runAutoEq() },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -446,7 +419,6 @@ fun EqualizerScreen(
               }
             }
 
-            // ─── Bass / treble tone shelves (shares the player's tone setting) ───
             item {
                 tf.monochrome.android.ui.player.ToneControlsPanel(
                     tone = toneControls,
@@ -457,7 +429,6 @@ fun EqualizerScreen(
                 )
             }
 
-            // ─── Automatic preamp toggle ───
             item {
               tf.monochrome.android.devedit.DevEditable("eq_auto_preamp_toggle", Modifier.fillMaxWidth()) {
                 Row(
@@ -486,13 +457,11 @@ fun EqualizerScreen(
               }
             }
 
-            // ─── Headphone Model Selector ───
             item {
               tf.monochrome.android.devedit.DevEditable("eq_headphone_selector", Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                     SectionLabel("HEADPHONE MODEL")
 
-                    // ── 2-channel (per-ear) switch ──
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -641,8 +610,7 @@ fun EqualizerScreen(
                             }
                         )
                     }
-                    // Entry point for the guided measurement-calibration flow,
-                    // which was fully built but previously unreachable.
+
                     TextButton(onClick = { showProfileImport = true }) {
                         Icon(
                             Icons.Default.UploadFile,
@@ -657,7 +625,6 @@ fun EqualizerScreen(
               }
             }
 
-            // ─── Target Curve Selector ───
             item {
               tf.monochrome.android.devedit.DevEditable("eq_target_selector", Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
@@ -727,7 +694,6 @@ fun EqualizerScreen(
               }
             }
 
-            // ─── Parameters Row (Filter Bands / Max Hz / Sample Rate) ───
             item {
               tf.monochrome.android.devedit.DevEditable("eq_parameters_row", Modifier.fillMaxWidth()) {
                 Row(
@@ -756,7 +722,6 @@ fun EqualizerScreen(
               }
             }
 
-            // ─── Action Row (Download + AutoEQ Button) ───
             item {
               tf.monochrome.android.devedit.DevEditable("eq_action_row", Modifier.fillMaxWidth()) {
                 Row(
@@ -813,7 +778,6 @@ fun EqualizerScreen(
               }
             }
 
-            // ─── Saved Profiles Section ───
             item {
               tf.monochrome.android.devedit.DevEditable("eq_saved_profiles_header", Modifier.fillMaxWidth()) {
                Column {
@@ -887,7 +851,6 @@ fun EqualizerScreen(
                                 .liquidGlass(shape = RoundedCornerShape(10.dp))
                                 .bounceClick(onClick = { viewModel.loadPreset(preset.id) })
                         ) {
-                            // Mini graph
                             EqProfileMiniGraph(
                                 bands = preset.bands,
                                 preamp = preset.preamp,
@@ -895,7 +858,7 @@ fun EqualizerScreen(
                                     .fillMaxWidth()
                                     .padding(horizontal = 2.dp, vertical = 2.dp)
                             )
-                            // Info row
+
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -955,7 +918,6 @@ fun EqualizerScreen(
                 }
             }
 
-            // ─── Database Section ───
             item {
               tf.monochrome.android.devedit.DevEditable("eq_database_section", Modifier.fillMaxWidth()) {
                 Column(
@@ -1013,7 +975,6 @@ fun EqualizerScreen(
               }
             }
 
-            // ─── Error Display ───
             if (!error.isNullOrEmpty()) {
                 item {
                     Text(
@@ -1032,7 +993,6 @@ fun EqualizerScreen(
                 }
             }
 
-            // ─── Collapsible EQ Bands Section ───
             item {
               tf.monochrome.android.devedit.DevEditable("eq_bands_header", Modifier.fillMaxWidth()) {
                Column {
@@ -1067,7 +1027,6 @@ fun EqualizerScreen(
             }
 
             if (showBandsExpanded) {
-                // Band sliders
                 items(activeBands) { band ->
                     EqBandSlider(
                         band = band,
@@ -1076,7 +1035,6 @@ fun EqualizerScreen(
                     )
                 }
 
-                // Action buttons
                 item {
                   tf.monochrome.android.devedit.DevEditable("eq_bands_action_buttons", Modifier.fillMaxWidth()) {
                     Row(
@@ -1119,8 +1077,6 @@ fun EqualizerScreen(
             }
         }
     }
-
-    // ─── Dialogs ───
 
     if (showSaveDialog) {
         AlertDialog(
@@ -1232,7 +1188,6 @@ fun EqualizerScreen(
         )
     }
 
-
     presetToDelete?.let { preset ->
         AlertDialog(
             onDismissRequest = { presetToDelete = null },
@@ -1256,7 +1211,7 @@ fun EqBandSlider(
     band: EqBand,
     onBandChanged: (EqBand) -> Unit,
     modifier: Modifier = Modifier,
-    // Parametric rows are removable; AutoEQ rows (fixed band count) pass null.
+
     onDelete: (() -> Unit)? = null,
 ) {
     Column(
@@ -1265,7 +1220,6 @@ fun EqBandSlider(
             .liquidGlass(shape = RoundedCornerShape(8.dp))
             .padding(12.dp)
     ) {
-        // --- Filter type ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1311,7 +1265,6 @@ fun EqBandSlider(
         }
         Spacer(modifier = Modifier.height(8.dp))
 
-        // --- Frequency Slider ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1333,10 +1286,9 @@ fun EqBandSlider(
             },
             modifier = Modifier.fillMaxWidth().height(32.dp)
         )
-        
+
         Spacer(modifier = Modifier.height(8.dp))
-        
-        // --- Gain Slider ---
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1362,8 +1314,7 @@ fun EqBandSlider(
             steps = 2 * EqLimits.AUTOEQ_MAX_BAND_DB.toInt() - 1,
             modifier = Modifier.fillMaxWidth().height(32.dp)
         )
-        
-        // --- Q-Factor Slider ---
+
         if (band.q > 0f) {
             Spacer(modifier = Modifier.height(8.dp))
             Row(
@@ -1384,11 +1335,6 @@ fun EqBandSlider(
     }
 }
 
-/**
- * squig-style sample switcher: ▲/▼ step through a measurement's published
- * sweeps (L → L1 → L2 → …, wrapping) with the current sample shown between
- * the arrows.
- */
 @Composable
 private fun SampleStepper(
     label: String,
@@ -1428,17 +1374,11 @@ private fun SampleStepper(
     }
 }
 
-// ─── Utility functions ───
-
 private fun formatFreqLabel(freq: Float): String = "${(freq / 1000).toInt()}k"
 
 private fun parseFreqLabel(label: String): Float =
     label.removeSuffix("k").toFloat() * 1000f
 
-/**
- * Serialize the current EQ to EqualizerAPO-style ParametricEQ text, which
- * Wavelet, Poweramp, RootlessJamesDSP and most parametric EQs can import.
- */
 private fun buildParametricEqText(
     bands: List<tf.monochrome.android.domain.model.EqBand>,
     preamp: Float,

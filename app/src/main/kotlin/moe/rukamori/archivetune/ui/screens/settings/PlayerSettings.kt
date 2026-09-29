@@ -44,6 +44,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +57,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
@@ -182,6 +185,47 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             LastwaveAudioProcessingKey,
             defaultValue = false,
         )
+
+    // ── Tryptify engine feature prefs (upstream's own settings surface,
+    // read/written through the ported PreferencesManager so the live
+    // collectors in the playback service see the changes) ─────────────────
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val tryptifyPrefs =
+        remember(context) {
+            tf.monochrome.android.data.preferences.PreferencesManager(context)
+        }
+    val tryptifyUsbPin by tryptifyPrefs.usbBitPerfectEnabled.collectAsStateWithLifecycle(false)
+    val onTryptifyUsbPinChange: (Boolean) -> Unit = { enabled ->
+        scope.launch { tryptifyPrefs.setUsbBitPerfectEnabled(enabled) }
+    }
+    val tryptifySystemWideEq by tryptifyPrefs.systemWideAutoEqEnabled.collectAsStateWithLifecycle(false)
+    val onTryptifySystemWideEqChange: (Boolean) -> Unit = { enabled ->
+        scope.launch { tryptifyPrefs.setSystemWideAutoEqEnabled(enabled) }
+    }
+    val tryptifyDownmixOn by tryptifyPrefs.multichannelDownmixEnabled.collectAsStateWithLifecycle(true)
+    val onTryptifyDownmixChange: (Boolean) -> Unit = { enabled ->
+        scope.launch { tryptifyPrefs.setMultichannelDownmixEnabled(enabled) }
+    }
+    val tryptifyBlockSize by tryptifyPrefs.dspBlockSize.collectAsStateWithLifecycle(1024)
+    val tryptifySpectrumOn by tryptifyPrefs.spectrumAnalyzerEnabled.collectAsStateWithLifecycle(true)
+    val onTryptifySpectrumChange: (Boolean) -> Unit = { enabled ->
+        scope.launch { tryptifyPrefs.setSpectrumAnalyzerEnabled(enabled) }
+    }
+    val tryptifyFftSize by tryptifyPrefs.spectrumFftSize.collectAsStateWithLifecycle(8192)
+    var showTryptifyBlockSizeDialog by rememberSaveable { mutableStateOf(false) }
+    var showTryptifyFftDialog by rememberSaveable { mutableStateOf(false) }
+    val tryptifyBlockSizeLabel = remember(tryptifyBlockSize) {
+        when {
+            tryptifyBlockSize >= 1024 && tryptifyBlockSize % 1024 == 0 -> "${tryptifyBlockSize / 1024}K"
+            else -> tryptifyBlockSize.toString()
+        }
+    }
+    val usbRouter = remember(context) { tf.monochrome.android.audio.UsbAudioRouter(context) }
+    val usbDevice by usbRouter.usbOutputDevice.collectAsStateWithLifecycle(initialValue = null)
+    val tryptifyUsbPinSubtitle = usbDevice?.let { device ->
+        context.getString(R.string.tryptify_usb_pin_on, usbRouter.describe(device))
+    }
 
     val (seekExtraSeconds, onSeekExtraSeconds) =
         rememberPreference(
@@ -353,6 +397,28 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
     if (showTagsManagementDialog) {
         TagsManagementDialog(
             onDismiss = { showTagsManagementDialog = false },
+        )
+    }
+
+    if (showTryptifyBlockSizeDialog) {
+        TryptifyBlockSizeDialog(
+            current = tryptifyBlockSize,
+            onDismiss = { showTryptifyBlockSizeDialog = false },
+            onPick = { size ->
+                scope.launch { tryptifyPrefs.setDspBlockSize(size) }
+                showTryptifyBlockSizeDialog = false
+            },
+        )
+    }
+
+    if (showTryptifyFftDialog) {
+        TryptifyFftSizeDialog(
+            current = tryptifyFftSize,
+            onDismiss = { showTryptifyFftDialog = false },
+            onPick = { size ->
+                scope.launch { tryptifyPrefs.setSpectrumFftSize(size) }
+                showTryptifyFftDialog = false
+            },
         )
     }
 
@@ -594,7 +660,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                     )
                 }
 
-                item {
+                item(visible = !tryptifyAudioProcessing && !lastwaveAudioProcessing) {
                     Column(modifier = positions.modifierFor("float_dsp")) {
                         SwitchPreference(
                             title = { Text(stringResource(R.string.float_dsp)) },
@@ -606,11 +672,20 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 }
 
-                item {
+                // The engine-owned exclusive route: only reachable while an
+                // engine is enabled (its driver serves the stream); without an
+                // engine there is no exclusive route to configure.
+                item(visible = tryptifyAudioProcessing || lastwaveAudioProcessing) {
                     Column(modifier = positions.modifierFor("usb_exclusive_audio")) {
                         SwitchPreference(
                             title = { Text(stringResource(R.string.usb_exclusive_audio)) },
-                            description = stringResource(R.string.usb_exclusive_audio_desc),
+                            description = stringResource(
+                                if (tryptifyAudioProcessing) {
+                                    R.string.usb_exclusive_audio_tryptify_desc
+                                } else {
+                                    R.string.usb_exclusive_audio_lastwave_desc
+                                },
+                            ),
                             icon = { Icon(painterResource(R.drawable.solar_volume_up_linear), null) },
                             checked = usbExclusiveAudio,
                             onCheckedChange = { enabled ->
@@ -667,6 +742,103 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                                     onTryptifyAudioProcessingChange(false)
                                 }
                             },
+                        )
+                    }
+                }
+
+                // ── Tryptify engine features (visible only while the engine
+                // is on; every one is wired to the live audio chain) ────────
+                item(visible = tryptifyAudioProcessing) {
+                    Column(modifier = positions.modifierFor("tryptify_usb_pin")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.tryptify_usb_pin)) },
+                            description = tryptifyUsbPinSubtitle
+                                ?: stringResource(R.string.tryptify_usb_pin_desc),
+                            icon = { Icon(painterResource(R.drawable.solar_volume_up_linear), null) },
+                            checked = tryptifyUsbPin,
+                            onCheckedChange = { onTryptifyUsbPinChange(it) },
+                        )
+                    }
+                }
+
+                item(visible = tryptifyAudioProcessing) {
+                    Column(modifier = positions.modifierFor("tryptify_system_wide_autoeq")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.tryptify_system_wide_autoeq)) },
+                            description = stringResource(R.string.tryptify_system_wide_autoeq_desc),
+                            icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                            checked = tryptifySystemWideEq,
+                            onCheckedChange = { onTryptifySystemWideEqChange(it) },
+                        )
+                    }
+                }
+
+                item(visible = tryptifyAudioProcessing) {
+                    Column(modifier = positions.modifierFor("tryptify_multichannel_downmix")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.tryptify_multichannel_downmix)) },
+                            description = stringResource(R.string.tryptify_multichannel_downmix_desc),
+                            icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                            checked = tryptifyDownmixOn,
+                            onCheckedChange = { onTryptifyDownmixChange(it) },
+                        )
+                    }
+                }
+
+                item(visible = tryptifyAudioProcessing) {
+                    Column(modifier = positions.modifierFor("tryptify_dsp_block_size")) {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.tryptify_dsp_block_size)) },
+                            description = stringResource(R.string.tryptify_dsp_block_size_desc),
+                            icon = { Icon(painterResource(R.drawable.info), null) },
+                            trailingContent = {
+                                Text(
+                                    text = tryptifyBlockSizeLabel,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            },
+                            onClick = { showTryptifyBlockSizeDialog = true },
+                        )
+                    }
+                }
+
+                item(visible = tryptifyAudioProcessing) {
+                    Column(modifier = positions.modifierFor("tryptify_spectrum")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.tryptify_spectrum_analyzer)) },
+                            description = stringResource(R.string.tryptify_spectrum_analyzer_desc),
+                            icon = { Icon(painterResource(R.drawable.stats), null) },
+                            checked = tryptifySpectrumOn,
+                            onCheckedChange = { onTryptifySpectrumChange(it) },
+                        )
+                    }
+                }
+
+                item(visible = tryptifyAudioProcessing && tryptifySpectrumOn) {
+                    Column(modifier = positions.modifierFor("tryptify_spectrum_fft")) {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.tryptify_spectrum_fft_size)) },
+                            description = stringResource(R.string.tryptify_spectrum_fft_size_desc),
+                            icon = { Icon(painterResource(R.drawable.stats), null) },
+                            trailingContent = {
+                                Text(
+                                    text = "$tryptifyFftSize",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            },
+                            onClick = { showTryptifyFftDialog = true },
+                        )
+                    }
+                }
+
+                item(visible = lastwaveAudioProcessing) {
+                    Column(modifier = positions.modifierFor("lastwave_engine_hint")) {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.lastwave_eq_tab_hint)) },
+                            description = stringResource(R.string.lastwave_eq_tab_hint_desc),
+                            icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                         )
                     }
                 }
@@ -1288,4 +1460,101 @@ private fun PreloadSongsPreference(
         onClick = { showDialog = true },
         isEnabled = isEnabled,
     )
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun TryptifyBlockSizeDialog(
+    current: Int,
+    onDismiss: () -> Unit,
+    onPick: (Int) -> Unit,
+) {
+    DefaultDialog(
+        onDismiss = onDismiss,
+        buttons = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        },
+    ) {
+        Column(modifier = Modifier.padding(top = 4.dp)) {
+            Text(
+                text = stringResource(R.string.tryptify_dsp_block_size),
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+            Text(
+                text = stringResource(R.string.tryptify_dsp_block_size_desc),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+            // The upstream chip row, laid out as wrap rows of selectable chips.
+            androidx.compose.foundation.layout.FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                tf.monochrome.android.data.preferences.PreferencesManager.DSP_BLOCK_SIZES.forEach { size ->
+                    androidx.compose.material3.FilterChip(
+                        selected = size == current,
+                        onClick = { onPick(size) },
+                        label = {
+                            Text(
+                                if (size >= 1024 && size % 1024 == 0) {
+                                    "${size / 1024}K"
+                                } else {
+                                    size.toString()
+                                },
+                            )
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun TryptifyFftSizeDialog(
+    current: Int,
+    onDismiss: () -> Unit,
+    onPick: (Int) -> Unit,
+) {
+    DefaultDialog(
+        onDismiss = onDismiss,
+        buttons = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        },
+    ) {
+        Column(modifier = Modifier.padding(top = 4.dp)) {
+            Text(
+                text = stringResource(R.string.tryptify_spectrum_fft_size),
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+            Text(
+                text = stringResource(R.string.tryptify_spectrum_fft_size_desc),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+            androidx.compose.foundation.layout.FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                listOf(4096, 8192, 16384).forEach { size ->
+                    androidx.compose.material3.FilterChip(
+                        selected = size == current,
+                        onClick = { onPick(size) },
+                        label = { Text(size.toString()) },
+                    )
+                }
+            }
+        }
+    }
 }

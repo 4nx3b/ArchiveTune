@@ -229,3 +229,30 @@ target_include_directories(lastwave_audio PRIVATE
 target_link_libraries(lastwave_audio PRIVATE oboe::oboe soxr android log)
 
 target_link_options(lastwave_audio PRIVATE "-Wl,-z,max-page-size=16384")
+
+# ---------------------------------------------------------------------------
+# Tryptify pitch shifter (signalsmith-stretch, vendored at
+# third_party/signalsmith-stretch): independent transposition — pitch that
+# moves without dragging tempo with it, which resampling cannot do and
+# Sonic's speech-tuned WSOLA does badly on music. Header-only engine compiled
+# into this one translation unit; no external dependency beyond the NDK.
+# ---------------------------------------------------------------------------
+add_library(monochrome_stretch SHARED
+    tryptify/stretch/stretch_jni.cpp
+)
+
+target_include_directories(monochrome_stretch PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/signalsmith-stretch
+)
+
+target_compile_features(monochrome_stretch PRIVATE cxx_std_17)
+
+target_compile_options(monochrome_stretch PRIVATE
+    -O3 -fno-exceptions -fno-rtti
+    $<$<STREQUAL:${ANDROID_ABI},arm64-v8a>:-march=armv8-a+simd>
+)
+
+set_target_properties(monochrome_stretch PROPERTIES DEBUG_POSTFIX "")
+target_link_libraries(monochrome_stretch log)
+
+target_link_options(monochrome_stretch PRIVATE "-Wl,-z,max-page-size=16384")

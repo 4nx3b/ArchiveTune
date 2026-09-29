@@ -17,11 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-/**
- * The "?" tutorial for the AutoEQ screen — same shape as the Oxford
- * Inflator/Compressor instruction sheets: a bottom sheet of short
- * heading + body sections, opened from a HelpOutline button in the header.
- */
 private data class HelpSection(val heading: String, val body: String)
 
 private fun autoEqHelpSections(): List<HelpSection> = listOf(

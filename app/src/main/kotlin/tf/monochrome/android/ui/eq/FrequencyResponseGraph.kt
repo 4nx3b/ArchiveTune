@@ -51,23 +51,12 @@ import kotlin.math.sqrt
 
 private const val MIN_FREQ = 20f
 private const val MAX_FREQ = 20000f
-private const val DB_RANGE = 40f // Fixed dB range matching SeapEngine reference
+private const val DB_RANGE = 40f
 private const val GRAPH_PADDING_LEFT = 0f
 private const val GRAPH_PADDING_RIGHT = 40f
 private const val GRAPH_PADDING_TOP = 12f
 private const val GRAPH_PADDING_BOTTOM = 20f
 
-/**
- * Interactive frequency response graph matching SeapEngine's visual style.
- *
- * Uses normalization-based centering (250Hz-2500Hz average) and a fixed
- * dB range for consistent proportions that match the reference implementation.
- *
- * Shows three curves:
- * - Original measurement (primary color, semi-transparent)
- * - Target curve (primary color, dashed)
- * - Corrected curve (white, solid) with draggable EQ band dots
- */
 @Composable
 fun FrequencyResponseGraph(
     originalCurve: List<FrequencyPoint>,
@@ -81,38 +70,28 @@ fun FrequencyResponseGraph(
     spectrumColor: Color? = null,
     centerOnZero: Boolean = false,
     showLegend: Boolean = true,
-    // Absolute cap used when mapping a drag's Y-pixel back to a gain value.
-    // Defaults to the AutoEQ cap; Parametric EQ callers pass EqLimits.PARAMETRIC_MAX_BAND_DB.
+
     maxAbsDragGain: Float = EqLimits.AUTOEQ_MAX_BAND_DB,
-    // Read-only overlay of the OTHER ear in 2-channel mode: its measurement
-    // and bands render as stroke-only curves behind the primary channel, with
-    // no drag dots — edits always go through the primary channel props.
+
     secondaryMeasurement: List<FrequencyPoint> = emptyList(),
     secondaryBands: List<EqBand>? = null,
-    // True when the PRIMARY (edited) channel is the right ear. Callers pass
-    // the active ear as primary, so without this the legend would label the
-    // right ear's curves "L meas"/"L EQ" whenever the Right chip is selected.
+
     primaryIsRight: Boolean = false,
 ) {
     val primary = MaterialTheme.colorScheme.primary
 
-    // Calculate normalization offset (average gain in 250-2500Hz midband)
-    // This centers the graph around the measurement's midband level, matching SeapEngine.
-    // For the Parametric EQ editor (no measurement data), centerOnZero forces 0 dB center.
     val zeroOffset = remember(originalCurve, targetCurve, centerOnZero) {
         when {
             centerOnZero -> 0f
             originalCurve.isNotEmpty() -> getNormalizationOffset(originalCurve)
             targetCurve.isNotEmpty() -> getNormalizationOffset(targetCurve)
-            else -> 75f // Reasonable default for SPL data
+            else -> 75f
         }
     }
 
-    // Fixed dB range centered on the normalization point
     val minGain = zeroOffset - (DB_RANGE / 2f)
     val maxGain = zeroOffset + (DB_RANGE / 2f)
 
-    // Normalize target to measurement's midband level
     val targetNormOffset = remember(originalCurve, targetCurve) {
         if (originalCurve.isNotEmpty() && targetCurve.isNotEmpty()) {
             val measNorm = getNormalizationOffset(originalCurve)
@@ -127,25 +106,9 @@ fun FrequencyResponseGraph(
         } else targetCurve
     }
 
-    // ── The shared evaluation axis ────────────────────────────────────────
-    // Every curve below is a sum of the same per-band biquad responses over the
-    // same frequencies, so the axis and its phase tables are built ONCE and the
-    // band responses are computed ONCE per band. Previously each curve walked
-    // its own grid calling the per-point entry point, which redesigns the
-    // filter (sin/cos/pow/sqrt + an allocation) for every single point: a drag
-    // frame with a 500-point measurement and 10 bands re-derived ~15,000
-    // biquads on the main thread, three times over for the three curves.
-    //
-    // The measurement's own frequencies when there is one, otherwise a log grid
-    // (parametric mode). The per-band profile lines used to fall back to a
-    // coarser 96-point grid of their own; they share this one now — same span,
-    // smoother lines, and no second axis to evaluate against.
     val gridFreqs = remember(originalCurve) { buildGrid(originalCurve) }
     val grid = remember(gridFreqs, sampleRate) { AutoEqEngine.ResponseGrid(gridFreqs, sampleRate) }
 
-    // Per-band dB response on that axis. Keyed on the BANDS alone: the preamp
-    // and the normalization offset only shift the sum, so dragging the preamp
-    // no longer redesigns a single filter.
     val bandResponses = remember(grid, eqBands) {
         eqBands.filter { it.enabled }.map { it to grid.response(it) }
     }
@@ -157,9 +120,6 @@ fun FrequencyResponseGraph(
         }
     }
 
-    // Calculate corrected curve.
-    //  - With measurement: measurement + EQ bands + preamp
-    //  - Without measurement (parametric EQ mode): pure EQ response + preamp around the zero baseline
     val correctedCurve = remember(gridFreqs, originalCurve, eqSum, preamp, zeroOffset) {
         val hasMeasurement = originalCurve.isNotEmpty()
         List(gridFreqs.size) { i ->
@@ -168,9 +128,6 @@ fun FrequencyResponseGraph(
         }.filter { it.gain.isFinite() }
     }
 
-    // Secondary (other-ear) corrected curve, mirroring correctedCurve. Falls
-    // back to the primary measurement when the other ear has no curve of its
-    // own yet, so the overlay still shows what that ear's bands would do.
     val secondaryFreqs = remember(secondaryMeasurement, gridFreqs) {
         if (secondaryMeasurement.isNotEmpty()) {
             FloatArray(secondaryMeasurement.size) { secondaryMeasurement[it].freq }
@@ -202,16 +159,9 @@ fun FrequencyResponseGraph(
     var selectedBandId by remember { mutableIntStateOf(-1) }
     var isDragging by remember { mutableStateOf(false) }
 
-    // Curves hidden via legend taps. Plain remember, not saveable: a hidden
-    // curve reappearing after process death is harmless, and a Set isn't
-    // Bundle-friendly anyway. Keys: measL / target / eqL / measR / eqR.
     var hiddenCurves by remember { mutableStateOf(setOf<String>()) }
     val eqDotsHidden by rememberUpdatedState("eqL" in hiddenCurves)
 
-    // The pointer gestures below are keyed on Unit so they are NOT torn down and
-    // restarted every time a band drag mutates `eqBands` (which froze the drag
-    // mid-gesture). All the values they need are read through updated-state
-    // holders so the once-created gesture coroutines still see live data.
     val latestEqBands by rememberUpdatedState(eqBands)
     val latestCorrected by rememberUpdatedState(correctedCurve)
     val latestPreamp by rememberUpdatedState(preamp)
@@ -222,23 +172,16 @@ fun FrequencyResponseGraph(
     val latestMaxAbsDragGain by rememberUpdatedState(maxAbsDragGain)
     val latestOnBandDragged by rememberUpdatedState(onBandDragged)
 
-    // Per-band contribution curves for the profile-line pass (drawn behind the
-    // response). These are the same per-band responses the corrected curve is
-    // summed from, just offset to the baseline instead of added together — so
-    // the profile pass costs a list wrap, not a second round of filter design.
     val bandContributions = remember(bandResponses, gridFreqs, zeroOffset) {
         bandResponses.filter { (band, _) -> band.gain != 0f }.map { (band, response) ->
             band to List(response.size) { i -> FrequencyPoint(gridFreqs[i], zeroOffset + response[i]) }
         }
     }
 
-    // Semi-transparent panel: the graph reads as a dark glass sheet over the
-    // screen background instead of a solid card.
     val graphBackground = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f)
     val legendBackground = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
     val legendLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
-    // Theme-aware curve colors (were hardcoded white → invisible on the light
-    // theme). The target uses `primary` to match its "Target (Primary)" legend.
+
     val curveNeutral = MaterialTheme.colorScheme.onSurface
     Box(
         modifier = modifier
@@ -267,12 +210,9 @@ fun FrequencyResponseGraph(
                     if (onBandDragged == null) return@pointerInput
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        // Hidden dots must not be silently draggable.
+
                         if (eqDotsHidden) return@awaitEachGesture
-                        // Grab the band nearest the finger's landing point. If none
-                        // is under it, bail without consuming so the enclosing
-                        // pager / scroll gets the drag instead of the graph
-                        // swallowing it.
+
                         val bandId = findNearestBand(
                             down.position, latestEqBands, latestCorrected,
                             latestPreamp, latestSampleRate,
@@ -289,9 +229,7 @@ fun FrequencyResponseGraph(
                             if (!change.pressed) break
                             val pos = change.position
                             if (!started) {
-                                // Wait for real movement before claiming the band,
-                                // so a stationary press still reaches the tap
-                                // detector (which toggles selection).
+
                                 if ((pos - down.position).getDistance() < touchSlop) continue
                                 started = true
                                 selectedBandId = bandId
@@ -312,17 +250,12 @@ fun FrequencyResponseGraph(
             val w = size.width
             val h = size.height
 
-            // Grid
             drawGrid(w, h, minGain, maxGain, zeroOffset)
 
-            // dB labels on right — relative to the centre line
             drawDbLabels(w, h, minGain, maxGain, zeroOffset)
 
-            // Frequency labels at bottom
             drawFreqLabels(w, h)
 
-            // FFT spectrum behind curves — uses the active theme's primary color,
-            // modulated per-bin by the EQ response (bright on boost, shadow on cut).
             if (spectrumBins.isNotEmpty() && spectrumColor != null) {
                 drawSpectrum(
                     bins = spectrumBins,
@@ -335,30 +268,20 @@ fun FrequencyResponseGraph(
                 )
             }
 
-            // Correction-gap shading: the region between the measurement and
-            // the target IS the problem the EQ exists to fix. Shading it makes
-            // "why does the correction curve look like that" readable at a
-            // glance — the correction mirrors this shape.
             if (originalCurve.size > 1 && normalizedTarget.size > 1 &&
                 "measL" !in hiddenCurves && "target" !in hiddenCurves
             ) {
                 drawCurveGap(originalCurve, normalizedTarget, primary.copy(alpha = 0.08f), w, h, minGain, maxGain)
             }
 
-            // Original measurement curve — an INPUT, drawn thinner and dimmer
-            // than the corrected result so the eye lands on the outcome first.
             if (originalCurve.size > 1 && "measL" !in hiddenCurves) {
                 drawCurve(originalCurve, Color(0xFF4A9EFF).copy(alpha = 0.8f), w, h, minGain, maxGain, 3f)
             }
 
-            // Target curve (dashed) — the other input, same receded weight.
             if (normalizedTarget.size > 1 && "target" !in hiddenCurves) {
                 drawDashedCurve(normalizedTarget, primary.copy(alpha = 0.85f), w, h, minGain, maxGain, 3f)
             }
 
-            // Other ear (2-channel mode): stroke-only so it reads as context
-            // behind the primary channel's filled curve, drawn first so the
-            // primary stays on top.
             if (secondaryMeasurement.size > 1 && "measR" !in hiddenCurves) {
                 drawCurve(secondaryMeasurement, Color(0xFF4A9EFF).copy(alpha = 0.35f), w, h, minGain, maxGain, 2.5f)
             }
@@ -366,12 +289,6 @@ fun FrequencyResponseGraph(
                 drawCurve(secondaryCorrected, Color(0xFFFFB300), w, h, minGain, maxGain, 3.5f)
             }
 
-            // Corrected curve (bright red solid) with fabfilter pro-q 3 style fill
-            // Per-band profile curves, drawn BEHIND the frequency response:
-            // one thin semi-transparent line per enabled band, hue-mapped along
-            // the log-frequency axis (yellow/green lows → cyan/blue mids →
-            // violet/magenta highs). Lines only — no fills, no markers. The
-            // selected band's line draws brighter and thicker.
             if ("eqL" !in hiddenCurves) {
                 for ((band, pts) in bandContributions) {
                     val t = (ln(band.freq.coerceAtLeast(20f) / 20f) / ln(1000f)).coerceIn(0f, 1f)
@@ -390,30 +307,22 @@ fun FrequencyResponseGraph(
                 drawFilledCurve(correctedCurve, Color(0xFFFF4444), w, h, minGain, maxGain, zeroOffset, 4f)
             }
 
-            // EQ band dots ride the corrected curve, so they hide with it.
-            // Above ten bands the dots switch to compact handles — numbers and
-            // full-size circles at 31 bands are a wall that buries the very
-            // curve they annotate; the selected band always gets full detail.
             val compactDots = eqBands.count { it.enabled } > 10
             if ("eqL" !in hiddenCurves) eqBands.forEach { band ->
                 if (!band.enabled) return@forEach
-                // Find normalized positions
+
                 val dotX = freqToX(band.freq, w)
                 val bandGain = bandDotGain(band, correctedCurve, eqBands, preamp, zeroOffset, sampleRate)
                 val dotY = gainToY(bandGain, h, minGain, maxGain)
 
                 val isSelected = selectedBandId == band.id
 
-                // The selected band's contribution already draws highlighted in
-                // the per-band profile pass above; here only the tooltip.
                 if (isSelected) {
-                    // Floating Tooltip
                     val infoText =
                         "${band.freq.toInt()} Hz  ${"%.1f".format(band.gain)} dB  Q ${"%.2f".format(band.q)}"
                     val paint = android.graphics.Paint().apply {
                         color = android.graphics.Color.WHITE
-                        // sp (not raw px) so the label scales with display
-                        // density and the user's font-size setting.
+
                         textSize = 12.sp.toPx()
                         textAlign = android.graphics.Paint.Align.CENTER
                         isFakeBoldText = true
@@ -431,9 +340,6 @@ fun FrequencyResponseGraph(
                     drawContext.canvas.nativeCanvas.drawText(infoText, dotX, rectTop, paint)
                 }
 
-                // Colour encodes what the band DOES — green boosts, red cuts,
-                // grey ≈ flat — instead of the old frequency-rainbow, which was
-                // decorative but said nothing about the band's effect.
                 val bandColor = when {
                     band.gain > 0.25f -> Color(0xFF4CAF50)
                     band.gain < -0.25f -> Color(0xFFE53935)
@@ -441,8 +347,7 @@ fun FrequencyResponseGraph(
                 }
 
                 if (isSelected) {
-                    // Vertical guide so the band's frequency reads against the
-                    // axis while dragging.
+
                     drawLine(
                         color = curveNeutral.copy(alpha = 0.25f),
                         start = Offset(dotX, GRAPH_PADDING_TOP),
@@ -461,20 +366,19 @@ fun FrequencyResponseGraph(
                     compactDots -> 6.5f
                     else -> 15f
                 }
-                // Main dot shadow/border
+
                 drawCircle(
                     color = Color.Black,
                     radius = dotRadius + 2f,
                     center = Offset(dotX, dotY)
                 )
 
-                // Main dot
                 drawCircle(
                     color = bandColor,
                     radius = dotRadius,
                     center = Offset(dotX, dotY)
                 )
-                // White border
+
                 drawCircle(
                     color = curveNeutral,
                     radius = dotRadius,
@@ -488,9 +392,6 @@ fun FrequencyResponseGraph(
                     )
                 )
 
-                // Band number, so a dot maps to its row in the list below.
-                // Compact handles skip it (unreadable at that size and count);
-                // the selected band always shows its number.
                 if (!compactDots || isSelected) {
                     val numPaint = android.graphics.Paint().apply {
                         color = android.graphics.Color.WHITE
@@ -509,15 +410,9 @@ fun FrequencyResponseGraph(
             }
         }
 
-        // Legend overlay (hidden in parametric-only mode since there's no
-        // measurement/target curve). Every entry is a toggle: tapping hides or
-        // shows its curve, and the entry dims while hidden. In 2-channel mode
-        // the other ear's curves get their own entries.
         if (showLegend) {
             val stereo = secondaryBands != null
-            // Slot keys stay fixed (measL = primary slot); LABELS follow the
-            // ear actually occupying the slot, so switching the edit chip
-            // never misattributes one ear's curve to the other.
+
             val p1 = if (primaryIsRight) "R" else "L"
             val p2 = if (primaryIsRight) "L" else "R"
             val entries = buildList {
@@ -584,18 +479,13 @@ private fun LegendDot(
     }
 }
 
-/**
- * Compact read-only mini graph showing per-band filter shapes for a profile card.
- * No axes, labels, or interaction — just the colored band fills on a dark background.
- */
 @Composable
 fun EqProfileMiniGraph(
     bands: List<EqBand>,
     modifier: Modifier = Modifier,
     preamp: Float = 0f,
     sampleRate: Float = 48000f,
-    // ±dB display range. Defaults to the AutoEQ cap; Parametric profile previews pass
-    // EqLimits.PARAMETRIC_MAX_BAND_DB so bigger boosts/cuts aren't clipped off visually.
+
     gainRange: Float = EqLimits.AUTOEQ_MAX_BAND_DB,
 ) {
     if (bands.isEmpty()) return
@@ -615,7 +505,6 @@ fun EqProfileMiniGraph(
             val midY = h / 2f
             val yScale = midY / gainRange
 
-            // Zero center line
             drawLine(
                 color = zeroLineColor,
                 start = Offset(0f, midY),
@@ -623,7 +512,6 @@ fun EqProfileMiniGraph(
                 strokeWidth = 1f
             )
 
-            // Draw each band as a filled shape from zero line
             val freqPoints = buildFreqSamples(MIN_FREQ, MAX_FREQ, 256)
 
             bands.forEach { band ->
@@ -654,7 +542,7 @@ fun EqProfileMiniGraph(
                         linePath.lineTo(x, y)
                     }
                 }
-                // Close fill back to zero line
+
                 val lastX = freqToX(freqPoints.last(), w)
                 val firstX = freqToX(freqPoints.first(), w)
                 fillPath.lineTo(lastX, midY)
@@ -668,11 +556,6 @@ fun EqProfileMiniGraph(
     }
 }
 
-/**
- * The frequency axis every band response is evaluated on: the measurement's own
- * points when there is a measurement, otherwise a log-spaced grid spanning the
- * graph (parametric mode, where there is nothing to anchor to).
- */
 private fun buildGrid(measurement: List<FrequencyPoint>): FloatArray {
     if (measurement.isNotEmpty()) {
         return FloatArray(measurement.size) { measurement[it].freq }
@@ -693,12 +576,6 @@ private fun buildFreqSamples(minF: Float, maxF: Float, count: Int): List<Float> 
     }
 }
 
-// ===== Normalization (matching SeapEngine) =====
-
-/**
- * Calculate average gain between 250Hz and 2500Hz for normalization.
- * Matches SeapEngine's getNormalizationOffset function.
- */
 private fun getNormalizationOffset(data: List<FrequencyPoint>): Float {
     var sum = 0f
     var count = 0
@@ -710,8 +587,6 @@ private fun getNormalizationOffset(data: List<FrequencyPoint>): Float {
     }
     return if (count > 0) sum / count else interpolateGain(1000f, data)
 }
-
-// ===== Coordinate conversion =====
 
 private fun freqToX(freq: Float, width: Float): Float {
     val logFreq = log10(freq.coerceIn(MIN_FREQ, MAX_FREQ))
@@ -743,23 +618,11 @@ private fun yToGain(
     maxAbsDragGain: Float = EqLimits.AUTOEQ_MAX_BAND_DB,
 ): Float {
     val ratio = ((height - GRAPH_PADDING_BOTTOM) - y) / (height - GRAPH_PADDING_TOP - GRAPH_PADDING_BOTTOM)
-    // The graph's gain axis is centered on zeroOffset (the SPL normalization
-    // level on the AutoEQ screen, ~75 dB), but band gains are stored relative
-    // to zero and drawn at band.gain + zeroOffset (see findNearestBand). The
-    // inverse mapping must subtract the offset before clamping — without it,
-    // the absolute SPL value (always >> maxAbsDragGain) pegged every drag at
-    // +maxAbsDragGain.
+
     return (minGain + ratio.coerceIn(0f, 1f) * (maxGain - minGain) - zeroOffset)
         .coerceIn(-maxAbsDragGain, maxAbsDragGain)
 }
 
-/**
- * The Y-gain a band's dot is actually DRAWN at: the corrected curve's value at
- * the band frequency (or, with no measurement, the summed biquad response around
- * the zero baseline). Hit-testing must use this same value — the dots sit on the
- * corrected curve, not at the raw `band.gain + zeroOffset`, so tapping the dot
- * where it's shown previously missed the band on peaky/overlapping filters.
- */
 private fun bandDotGain(
     band: EqBand,
     correctedCurve: List<FrequencyPoint>,
@@ -806,20 +669,11 @@ private fun findNearestBand(
     return nearest
 }
 
-/**
- * Linear interpolation of [curve] at [freq]. Binary search, not a scan: the
- * band dots call this once per band inside the draw pass, and the gap shading
- * calls it 258 times, all against a curve that can run to several hundred
- * points — the scan made those passes quadratic in the measurement's length.
- * Measurement curves are ascending in frequency, which is what makes the
- * search valid; the scan relied on the same ordering.
- */
 private fun interpolateGain(freq: Float, curve: List<FrequencyPoint>): Float {
     if (curve.isEmpty()) return 0f
     if (freq <= curve.first().freq) return curve.first().gain
     if (freq >= curve.last().freq) return curve.last().gain
-    // Largest index whose frequency is <= freq; the guards above put it in
-    // 0..size-2, so `hi` is always a valid right-hand neighbour.
+
     var lo = 0
     var hi = curve.size - 1
     while (hi - lo > 1) {
@@ -832,8 +686,6 @@ private fun interpolateGain(freq: Float, curve: List<FrequencyPoint>): Float {
     return curve[lo].gain + t * (curve[hi].gain - curve[lo].gain)
 }
 
-// ===== Drawing functions =====
-
 private fun DrawScope.drawGrid(
     width: Float,
     height: Float,
@@ -844,23 +696,19 @@ private fun DrawScope.drawGrid(
     val gridColor = Color(0x18FFFFFF)
     val zeroLineColor = Color(0x30FFFFFF)
 
-    // Vertical frequency lines
     val freqs = listOf(20f, 50f, 100f, 200f, 500f, 1000f, 2000f, 5000f, 10000f, 20000f)
     freqs.forEach { freq ->
         val x = freqToX(freq, width)
         drawLine(gridColor, Offset(x, GRAPH_PADDING_TOP), Offset(x, height - GRAPH_PADDING_BOTTOM), 1f)
     }
 
-    // Horizontal dB lines — use fixed step based on range
     val range = maxGain - minGain
     val step = when {
         range > 60 -> 10f
         range > 30 -> 5f
         else -> 5f
     }
-    // Step on RELATIVE dB so lines land exactly on the ±labels, with the
-    // centre (0 dB) line emphasized — it is the "no change" reference the
-    // whole graph reads against.
+
     var rel = kotlin.math.ceil((minGain - zeroOffset) / step) * step
     while (rel + zeroOffset <= maxGain) {
         val y = gainToY(rel + zeroOffset, height, minGain, maxGain)
@@ -896,10 +744,7 @@ private fun DrawScope.drawDbLabels(
         textAlign = android.graphics.Paint.Align.LEFT
         isAntiAlias = true
     }
-    // Labels are RELATIVE to the centre line ("+5", "0", "−5"), not raw SPL.
-    // The axis is normalized to the measurement's midband level, so absolute
-    // numbers like "73" carried no meaning a user could act on — what matters
-    // is how far above or below neutral the curve sits.
+
     var rel = kotlin.math.ceil((minGain - zeroOffset) / step) * step
     while (rel + zeroOffset <= maxGain) {
         val g = rel + zeroOffset
@@ -936,11 +781,6 @@ private fun DrawScope.drawFreqLabels(width: Float, height: Float) {
     }
 }
 
-/**
- * Translucent fill between two curves — used to shade the measurement↔target
- * gap. Both are resampled onto a shared log-frequency grid over their
- * overlapping range, so differing point densities can't shear the polygon.
- */
 private fun DrawScope.drawCurveGap(
     a: List<FrequencyPoint>,
     b: List<FrequencyPoint>,
@@ -1018,11 +858,6 @@ private fun DrawScope.drawDashedCurve(
     )
 }
 
-/**
- * Render FFT spectrum bins as a smooth Catmull-Rom envelope with vertical
- * gradient fill (FabFilter Pro-Q style). Bins span MIN_FREQ..MAX_FREQ on a
- * log axis; magnitudes are dB relative to 0 dB center.
- */
 private fun DrawScope.drawSpectrum(
     bins: FloatArray,
     color: Color,
@@ -1039,7 +874,6 @@ private fun DrawScope.drawSpectrum(
     val topY = GRAPH_PADDING_TOP
     val bottomY = height - GRAPH_PADDING_BOTTOM
 
-    // Precompute bin x/y in screen space
     val xs = FloatArray(n)
     val ys = FloatArray(n)
     for (i in 0 until n) {
@@ -1050,8 +884,6 @@ private fun DrawScope.drawSpectrum(
         ys[i] = gainToY(binGain, height, minGain, maxGain).coerceIn(topY, bottomY)
     }
 
-    // Build a smooth envelope path using Catmull-Rom -> cubic Bézier interpolation.
-    // This gives the flowing, continuously-curved look of FabFilter Pro-Q.
     val envelope = Path().apply {
         moveTo(xs[0], ys[0])
         for (i in 0 until n - 1) {
@@ -1067,7 +899,6 @@ private fun DrawScope.drawSpectrum(
         }
     }
 
-    // Filled body — vertical gradient from envelope top down to graph bottom.
     val fill = Path().apply {
         addPath(envelope)
         lineTo(xs[n - 1], bottomY)
@@ -1087,7 +918,6 @@ private fun DrawScope.drawSpectrum(
         )
     )
 
-    // Soft envelope outline for definition.
     drawPath(envelope, color.copy(alpha = 0.85f), style = Stroke(width = 1.5f))
 }
 
@@ -1108,7 +938,7 @@ private fun DrawScope.drawFilledCurve(
             lineTo(freqToX(curve[i].freq, width), gainToY(curve[i].gain, height, minGain, maxGain))
         }
     }
-    
+
     val zeroY = gainToY(zeroOffset, height, minGain, maxGain).coerceIn(GRAPH_PADDING_TOP, height - GRAPH_PADDING_BOTTOM)
     val fillPath = Path().apply {
         addPath(path)
@@ -1116,7 +946,7 @@ private fun DrawScope.drawFilledCurve(
         lineTo(freqToX(curve[0].freq, width), zeroY)
         close()
     }
-    
+
     drawPath(
         path = fillPath,
         brush = Brush.verticalGradient(
@@ -1125,6 +955,6 @@ private fun DrawScope.drawFilledCurve(
             endY = zeroY
         )
     )
-    
+
     drawPath(path, lineColor, style = Stroke(width = strokeWidth))
 }

@@ -1,14 +1,4 @@
-/*
- * Self-contained UI component shims for the ported Tryptify EQ screens.
- *
- * Tryptify's bounceClick / glassSqueeze / liquidGlass / SearchOverlay live on
- * top of its own theme + AGSL glass stack; those pull in the whole Monochrome
- * design system. These reimplement the same interaction contracts (identical
- * signatures) with plain Compose — press-scale bounce, a frosted-tint glass
- * surface, and a search bar that reports its measured height as a content
- * inset — so every ported EQ control keeps its intended feel without porting
- * Tryptify's entire UI kit.
- */
+
 
 package tf.monochrome.android.ui.components
 
@@ -61,13 +51,11 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/** Spring used by every press-bounce in the ported screens. */
 val PressSpring = spring<Float>(
     dampingRatio = Spring.DampingRatioMediumBouncy,
     stiffness = 900f,
 )
 
-/** Motion-reduction hook: always off in the ArchiveTune port. */
 @Composable
 fun reduceMotion(): Boolean = false
 
@@ -120,11 +108,6 @@ fun Modifier.bounceCombinedClick(
         )
 }
 
-/**
- * Tryptify's frosted-glass surface, sans the AGSL shader stack: a translucent
- * primary tint painted behind the content, a hairline rim along [shape], and
- * the same call-site contract. Reads clean on light and dark themes alike.
- */
 fun Modifier.liquidGlass(
     shape: Shape = CircleShape,
     tintAlpha: Float = 0.15f,
@@ -135,9 +118,7 @@ fun Modifier.liquidGlass(
     this
         .clip(shape)
         .drawBehind {
-            // Translucent primary tint behind the content, hairline rim on
-            // top — both clipped to [shape], which is the whole glass look
-            // minus Tryptify's AGSL refraction shader.
+
             drawRect(tint)
             drawRect(
                 color = rim,
@@ -146,10 +127,6 @@ fun Modifier.liquidGlass(
         }
 }
 
-/**
- * GlassPress: the shared press state object behind glassSqueeze. The scale is
- * animated from the interaction source; ripples stay off.
- */
 class GlassPress {
     internal val interactions = MutableInteractionSource()
     internal var boxSize: androidx.compose.ui.unit.IntSize =
@@ -191,11 +168,6 @@ fun Modifier.glassSqueeze(
         )
 }
 
-/**
- * SearchOverlay: a glass search bar that reports the room it takes as a
- * content inset (rows start below it, then scroll under it — Tryptify's
- * layout contract, kept exactly).
- */
 @Composable
 fun SearchOverlay(
     open: Boolean,

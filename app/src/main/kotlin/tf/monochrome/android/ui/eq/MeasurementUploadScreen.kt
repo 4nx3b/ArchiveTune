@@ -48,15 +48,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tf.monochrome.android.domain.model.EqTarget
 import tf.monochrome.android.ui.navigation.LocalMiniPlayerInset
 
-/**
- * MeasurementUploadScreen - Advanced calibration with headphone measurement upload
- *
- * Features:
- * - Paste raw frequency response CSV data
- * - Select target curve for calibration
- * - Set number of EQ bands
- * - Auto-calculate optimal EQ from measurement
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MeasurementUploadScreen(
@@ -87,11 +78,7 @@ fun MeasurementUploadScreen(
                 android.widget.Toast.makeText(context, "Couldn't read the selected file", android.widget.Toast.LENGTH_SHORT).show()
             } else {
                 measurementData = rawData
-                // Pull the file's display name off the SAF URI and use it as
-                // the headphone name (sans extension). This is what makes
-                // every file-pick upload auto-save under the Uploaded chip
-                // without the user having to type anything. Only fills the
-                // field when blank so a user who typed first isn't clobbered.
+
                 if (headphoneName.isBlank()) {
                     val displayName = context.contentResolver.query(
                         uri,
@@ -118,7 +105,6 @@ fun MeasurementUploadScreen(
             .verticalScroll(rememberScrollState())
             .padding(bottom = LocalMiniPlayerInset.current)
     ) {
-        // Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -138,7 +124,6 @@ fun MeasurementUploadScreen(
 
         Divider(modifier = Modifier.padding(horizontal = 16.dp))
 
-        // Instructions
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -184,7 +169,6 @@ fun MeasurementUploadScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Headphone Name
         OutlinedTextField(
             value = headphoneName,
             onValueChange = { headphoneName = it },
@@ -197,7 +181,6 @@ fun MeasurementUploadScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Measurement Data Input
         Text(
             "Frequency Response CSV Data",
             style = MaterialTheme.typography.labelLarge,
@@ -255,7 +238,6 @@ fun MeasurementUploadScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Target Curve Selector
         Text(
             "Target Curve",
             style = MaterialTheme.typography.labelLarge,
@@ -272,7 +254,6 @@ fun MeasurementUploadScreen(
                 Text(selectedTarget.label)
             }
 
-            // Target dropdown menu (simplified - could use DropdownMenu)
             if (showTargetMenu) {
                 Box(
                     modifier = Modifier
@@ -304,7 +285,6 @@ fun MeasurementUploadScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Band Count Selector
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -341,7 +321,6 @@ fun MeasurementUploadScreen(
 
         Divider(modifier = Modifier.padding(horizontal = 16.dp))
 
-        // Error message
         if (!error.isNullOrEmpty()) {
             Box(
                 modifier = Modifier
@@ -361,7 +340,6 @@ fun MeasurementUploadScreen(
             }
         }
 
-        // Success message
         if (calculationAttempted && error.isNullOrEmpty() && currentBands.isNotEmpty()) {
             Box(
                 modifier = Modifier
@@ -383,7 +361,6 @@ fun MeasurementUploadScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Action Buttons
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -400,7 +377,6 @@ fun MeasurementUploadScreen(
 
             OutlinedButton(
                 onClick = {
-                    // Clear and reset
                     measurementData = ""
                     bandCount = 10f
                     calculationAttempted = false
@@ -418,10 +394,7 @@ fun MeasurementUploadScreen(
                 onClick = {
                     calculationAttempted = true
                     viewModel.setBandCount(bandCount.toInt())
-                    // When the user gave the upload a name, persist it as a
-                    // first-class entry so it appears under the "Uploaded"
-                    // rig chip on the next browse. Anonymous uploads stay
-                    // transient (one-shot calibration only).
+
                     if (headphoneName.isNotBlank()) {
                         viewModel.addUploadedMeasurement(headphoneName, measurementData)
                     }
@@ -446,7 +419,6 @@ fun MeasurementUploadScreen(
             }
         }
 
-        // Close button when complete
         if (calculationAttempted && error.isNullOrEmpty() && currentBands.isNotEmpty()) {
             OutlinedButton(
                 onClick = {

@@ -20,24 +20,11 @@ import java.net.URL
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
-/**
- * SquiglinkApi - Aggregates headphone measurements from CrinGraph-compatible
- * squig.link instances. Each instance publishes a brand-grouped index at
- * <host>/data/phone_book.json; raw FR data lives at <host>/data/<name> L.txt
- * and "<name> R.txt" for the left/right channels.
- *
- * Twelve sources are queried in parallel on first fetch; per-source failures
- * are silent so one dead host doesn't poison the whole list. Cache TTL
- * matches the AutoEq path (24 h).
- */
 class SquiglinkApi {
     companion object {
         private const val TAG = "SquiglinkApi"
         private val CACHE_TTL_MS = TimeUnit.HOURS.toMillis(24)
 
-        // Verified rigs come from public posts; unverified ones are tagged
-        // UNKNOWN rather than guessed — the rig filter UI surfaces those
-        // separately so the user can reclassify without code changes.
         private val SOURCES = listOf(
             Source("https://squig.link", "Super* Review", MeasurementRig.IEC_711_CLONE, null),
             Source("https://precog.squig.link", "Precogvision", MeasurementRig.IEC_711_CLONE, "in-ear"),
@@ -58,7 +45,7 @@ class SquiglinkApi {
         val host: String,
         val label: String,
         val rig: MeasurementRig,
-        // "in-ear", "over-ear", or null for mixed/unknown.
+
         val type: String?,
     )
 
@@ -81,11 +68,6 @@ class SquiglinkApi {
         }
     }
 
-    /**
-     * Fetch the raw FR text for a single squig.link measurement. Tries the L
-     * channel first (the convention CrinGraph follows when only one channel is
-     * present) and falls back to R if L 404s.
-     */
     suspend fun fetchMeasurementText(host: String, fileName: String): String? =
         withContext(Dispatchers.IO) {
             for (channel in arrayOf("L", "R")) {
@@ -95,28 +77,12 @@ class SquiglinkApi {
             null
         }
 
-    /**
-     * Fetch exactly ONE channel's FR text ("L" or "R"); null when that channel
-     * isn't published. No fallback on purpose — per-ear calibration needs to
-     * know the difference between "here is the right ear" and "here is
-     * whatever existed".
-     */
     suspend fun fetchMeasurementChannelText(host: String, fileName: String, channel: String): String? =
         withContext(Dispatchers.IO) { fetchChannel(host, fileName, channel) }
 
     private fun fetchChannel(host: String, fileName: String, channel: String): String? =
         fetchChannelWithSample(host, fileName, channel)?.first
 
-    /**
-     * Like [fetchMeasurementChannelText] but also reports WHICH sample file
-     * answered ("L" or "L1"), so the sample stepper knows its starting point.
-     *
-     * Two live naming conventions. Single-sample instances publish
-     * "<name> L.txt"; multi-sample rigs number their sweeps with NO
-     * un-numbered alias — Listener's GRAS publishes only "<name> L1.txt" —
-     * so the first sample is the fallback. (Verified live: precog serves
-     * "… L.txt" and 404s "… L1.txt"; listener is the exact inverse.)
-     */
     suspend fun fetchMeasurementChannel(
         host: String,
         fileName: String,
@@ -136,16 +102,9 @@ class SquiglinkApi {
         return null
     }
 
-    /** Fetch one exact sample file ("L2", "R3", …); null when not published. */
     suspend fun fetchMeasurementSampleText(host: String, fileName: String, sample: String): String? =
         withContext(Dispatchers.IO) { fetchSampleUrl(host, fileName, sample) }
 
-    /**
-     * Which sample files exist for a channel — probes "<name> L.txt" and
-     * "<name> L1..L6.txt" with HEAD requests (headers only, no body). Called
-     * lazily on first stepper use and cached by the caller, so browsing never
-     * pays for it.
-     */
     suspend fun listSamples(host: String, fileName: String, channelPrefix: String): List<String> =
         withContext(Dispatchers.IO) {
             val candidates = listOf(channelPrefix) + (1..6).map { "$channelPrefix$it" }
@@ -185,18 +144,6 @@ class SquiglinkApi {
         emptyList()
     }
 
-    /**
-     * Canonical CrinGraph schema (verified against 12 live instances):
-     *
-     *   [{ "name": "<brand>", "phones": [
-     *       { "name": "<model>", "file": "<basename>" | ["v1","v2",...],
-     *         "suffix": ["", "(variant tag)", ...] }, ... ]}]
-     *
-     * `file` may be a string OR an array of variant basenames; when it's an
-     * array the parallel `suffix` array tags each variant ("(Spring tips)",
-     * "(ANC On)", etc.) and we emit one entry per variant. Optional fields
-     * (reviewScore / reviewLink / price / shopLink) are ignored.
-     */
     private fun parsePhoneBook(body: String, src: Source): List<Headphone> {
         val root = runCatching { json.parseToJsonElement(body) }.getOrNull() ?: return emptyList()
         val brands = (root as? JsonArray) ?: return emptyList()
@@ -240,7 +187,6 @@ class SquiglinkApi {
         return out
     }
 
-    /** Returns (suffixTag, fileBasename) pairs for the variants in a phone entry. */
     private fun extractVariants(phoneObj: JsonObject, fallbackName: String): List<Pair<String, String>> {
         val fileEl = phoneObj["file"] ?: return listOf("" to fallbackName)
         val suffixEl = phoneObj["suffix"] as? JsonArray

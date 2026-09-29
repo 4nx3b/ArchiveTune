@@ -48,13 +48,8 @@ class EqViewModel @Inject constructor(
     private val headphoneRepository: HeadphoneRepository,
     private val preferences: PreferencesManager
 ) : ViewModel() {
-
-    // ===== Tutorial State =====
-
     private val _showTutorial = MutableStateFlow(false)
     val showTutorial: StateFlow<Boolean> = _showTutorial.asStateFlow()
-
-    // ===== UI State =====
 
     private val _eqEnabled = MutableStateFlow(false)
     val eqEnabled: StateFlow<Boolean> = _eqEnabled.asStateFlow()
@@ -68,34 +63,23 @@ class EqViewModel @Inject constructor(
     private val _currentBands = MutableStateFlow<List<EqBand>>(emptyList())
     val currentBands: StateFlow<List<EqBand>> = _currentBands.asStateFlow()
 
-    // ── 2-channel (per-ear) calibration ────────────────────────────────
     private val _stereoMode = MutableStateFlow(false)
     val stereoMode: StateFlow<Boolean> = _stereoMode.asStateFlow()
 
-    // Right-ear bands. Only applied while stereo mode is on, but retained
-    // across the toggle so switching off and back on is non-destructive.
     private val _currentBandsR = MutableStateFlow<List<EqBand>>(emptyList())
     val currentBandsR: StateFlow<List<EqBand>> = _currentBandsR.asStateFlow()
 
     private val _originalMeasurementR = MutableStateFlow<List<FrequencyPoint>>(emptyList())
     val originalMeasurementR: StateFlow<List<FrequencyPoint>> = _originalMeasurementR.asStateFlow()
 
-    // Which ear band edits and measurement loads target while stereo is on.
     private val _editChannel = MutableStateFlow(EqChannel.LEFT)
     val editChannel: StateFlow<EqChannel> = _editChannel.asStateFlow()
 
-    // Names of the per-ear measurement selections for the channel dropdowns.
-    // Session-scoped: the curves themselves are restored across restarts, the
-    // labels aren't (they'd need their own keys for marginal value).
     private val _measurementLabelL = MutableStateFlow<String?>(null)
     val measurementLabelL: StateFlow<String?> = _measurementLabelL.asStateFlow()
     private val _measurementLabelR = MutableStateFlow<String?>(null)
     val measurementLabelR: StateFlow<String?> = _measurementLabelR.asStateFlow()
 
-    // Sample stepping (squig.link publishes numbered sweeps: L1/L2/L3…).
-    // The loaded measurement is kept per ear so the ▲▼ stepper can re-fetch a
-    // different sample; the sample name drives the stepper's label and
-    // visibility (null = no steppable measurement loaded on that ear).
     private var selectedMeasL: tf.monochrome.android.domain.model.AutoEqMeasurement? = null
     private var selectedMeasR: tf.monochrome.android.domain.model.AutoEqMeasurement? = null
     private val sampleListCache = mutableMapOf<String, List<String>>()
@@ -104,13 +88,9 @@ class EqViewModel @Inject constructor(
     private val _measurementSampleR = MutableStateFlow<String?>(null)
     val measurementSampleR: StateFlow<String?> = _measurementSampleR.asStateFlow()
 
-    // Measurement smoothing, SeapEngine-style percent (0–100; 0 = off).
-    // Session-scoped.
     private val _smoothing = MutableStateFlow(0f)
     val smoothing: StateFlow<Float> = _smoothing.asStateFlow()
 
-    // Fitting algorithm — selectable so shelf-ends and peaking-only stacks
-    // can be A/B'd on the same measurement. Applies on the next AutoEQ press.
     private val _algorithm = MutableStateFlow(tf.monochrome.android.audio.eq.AutoEqAlgorithm.PEAKING)
     val algorithm: StateFlow<tf.monochrome.android.audio.eq.AutoEqAlgorithm> = _algorithm.asStateFlow()
 
@@ -118,10 +98,6 @@ class EqViewModel @Inject constructor(
         _algorithm.value = algorithm
     }
 
-    // ONE mutation job at a time. AutoEq presses, sample steps and measurement
-    // loads cancel-and-replace each other; the join guarantees the previous
-    // job's writes (and its finally) fully complete before the next starts, so
-    // per-ear state can never end up torn across two sources.
     private var fitJob: Job? = null
 
     private fun launchFit(block: suspend CoroutineScope.() -> Unit) {
@@ -132,11 +108,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Fit settings snapshotted ONCE per user action and threaded through every
-     * per-ear fit of that action — a slider moved mid-computation must never
-     * leave the two ears corrected at different settings.
-     */
     private data class FitSettings(
         val smoothing: Float,
         val bandCount: Int,
@@ -154,22 +125,15 @@ class EqViewModel @Inject constructor(
     private val _currentPreamp = MutableStateFlow(0f)
     val currentPreamp: StateFlow<Float> = _currentPreamp.asStateFlow()
 
-    // Automatic preamp: when on, the preamp is derived from the bands (see
-    // applyAutoPreamp) and the manual slider is disabled in the UI.
     private val _autoPreamp = MutableStateFlow(false)
     val autoPreamp: StateFlow<Boolean> = _autoPreamp.asStateFlow()
 
-    // Bass/treble tone shelves — the SAME shared preference the player's Audio
-    // tools panel edits. Instant local state for smooth knobs, debounced persist.
     private val _toneControls =
         MutableStateFlow(tf.monochrome.android.domain.model.ToneControls.DEFAULT)
     val toneControls: StateFlow<tf.monochrome.android.domain.model.ToneControls> =
         _toneControls.asStateFlow()
     private var tonePersistJob: kotlinx.coroutines.Job? = null
 
-    // Drag-tail persistence. One Json instance rather than one per save (these
-    // used to be constructed per call, i.e. per drag frame), and one in-flight
-    // job per key so a coalesced write can be superseded by the next edit.
     private val persistJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
     private var bandsPersistJob: kotlinx.coroutines.Job? = null
     private var bandsRPersistJob: kotlinx.coroutines.Job? = null
@@ -184,8 +148,6 @@ class EqViewModel @Inject constructor(
     private val _isCalculating = MutableStateFlow(false)
     val isCalculating: StateFlow<Boolean> = _isCalculating.asStateFlow()
 
-    // Fires when a band drag exceeded the AutoEQ gain cap and got clamped, so the
-    // UI can surface a transient toast instead of silently discarding the overshoot.
     private val _bandClampEvents = MutableSharedFlow<Float>(extraBufferCapacity = 1)
     val bandClampEvents: SharedFlow<Float> = _bandClampEvents.asSharedFlow()
 
@@ -197,8 +159,6 @@ class EqViewModel @Inject constructor(
 
     private val _presetCount = MutableStateFlow(0)
     val presetCount: StateFlow<Int> = _presetCount.asStateFlow()
-
-    // ===== Headphone Selection State =====
 
     private val _availableHeadphones = MutableStateFlow<List<Headphone>>(emptyList())
     val availableHeadphones: StateFlow<List<Headphone>> = _availableHeadphones.asStateFlow()
@@ -212,21 +172,14 @@ class EqViewModel @Inject constructor(
     private val _headphoneSearchQuery = MutableStateFlow("")
     val headphoneSearchQuery: StateFlow<String> = _headphoneSearchQuery.asStateFlow()
 
-    // ===== AutoEQ Parameters =====
-
     private val _bandCount = MutableStateFlow(10)
     val bandCount: StateFlow<Int> = _bandCount.asStateFlow()
 
     private val _maxFrequency = MutableStateFlow(16000f)
     val maxFrequency: StateFlow<Float> = _maxFrequency.asStateFlow()
 
-
-    // ===== Uploaded user measurements =====
-
     private val _uploadedHeadphones = MutableStateFlow<List<Headphone>>(emptyList())
     val uploadedHeadphones: StateFlow<List<Headphone>> = _uploadedHeadphones.asStateFlow()
-
-    // ===== Rig filter (new index) =====
 
     private val _selectedRig = MutableStateFlow<tf.monochrome.android.domain.model.MeasurementRig?>(null)
     val selectedRig: StateFlow<tf.monochrome.android.domain.model.MeasurementRig?> = _selectedRig.asStateFlow()
@@ -248,8 +201,6 @@ class EqViewModel @Inject constructor(
     val originalMeasurement: StateFlow<List<FrequencyPoint>> = _originalMeasurement.asStateFlow()
 
     private val _customTargets = MutableStateFlow<List<EqTarget>>(emptyList())
-
-    // ===== Initialization =====
 
     init {
         loadInitialState()
@@ -299,21 +250,11 @@ class EqViewModel @Inject constructor(
             }
         }
 
-        // Restore bands + preset + headphone from persistent storage.
-        // NOTE: use Flow.first() to await the first DataStore emission;
-        // the previous stateIn(...).value pattern raced and almost always
-        // returned the null initial value before the prefs read landed,
-        // which made every restore here silently no-op.
         viewModelScope.launch {
             val presetId = preferences.eqActivePresetId.first()
 
             if (presetId != null) {
-                // The id and the preset it names arrive by different roads on a
-                // fresh device: the id inside the synced settings blob, the
-                // preset as a row the library pull writes. Read first, and only
-                // wait if it is genuinely not here yet. Bounded, because a
-                // preset deleted on another device is never coming, and the
-                // headphone and measurement restores below still have to run.
+
                 val preset = eqRepository.getPresetById(presetId)
                     ?: withTimeoutOrNull(PRESET_RESTORE_WAIT_MS) {
                         eqRepository.getPresetByIdFlow(presetId).filterNotNull().first()
@@ -326,7 +267,6 @@ class EqViewModel @Inject constructor(
                         ?: FrequencyTargets.getHarmanOverEar2018()
                 }
             } else {
-                // No active preset — restore raw bands from DataStore
                 val bandsJson = preferences.eqBandsJson.first()
                 if (!bandsJson.isNullOrBlank()) {
                     try {
@@ -340,16 +280,12 @@ class EqViewModel @Inject constructor(
                 }
             }
 
-            // Restore saved headphone
             val headphoneId = preferences.eqSelectedHeadphoneId.first()
             val headphoneName = preferences.eqSelectedHeadphoneName.first()
             if (headphoneId != null && headphoneName != null) {
                 _selectedHeadphone.value = Headphone(id = headphoneId, name = headphoneName)
             }
 
-            // Restore user-uploaded headphone measurements so the "Uploaded"
-            // chip in HeadphoneSelectScreen has its rows even before any
-            // remote source has loaded.
             val uploadedJson = preferences.eqUploadedHeadphonesJson.first()
             try {
                 val jsonParser = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
@@ -360,8 +296,6 @@ class EqViewModel @Inject constructor(
                 _uploadedHeadphones.value = uploads
             } catch (_: Exception) { }
 
-            // Restore the cached measurement curve so the FR graph repopulates
-            // immediately when the EQ screen reopens, no network round-trip.
             val measurementJson = preferences.eqMeasurementJson.first()
             if (!measurementJson.isNullOrBlank()) {
                 try {
@@ -374,8 +308,6 @@ class EqViewModel @Inject constructor(
                 } catch (_: Exception) { }
             }
 
-            // Restore 2-channel state: the switch, right-ear bands, right-ear
-            // measurement. All three survive the switch being off.
             _stereoMode.value = preferences.eqStereoMode.first()
             val bandsRJson = preferences.eqBandsRJson.first()
             if (!bandsRJson.isNullOrBlank()) {
@@ -409,12 +341,6 @@ class EqViewModel @Inject constructor(
             preferences.eqAutoPreamp.collect { _autoPreamp.value = it }
         }
 
-        // Automatic preamp re-tracks through this single collector rather than
-        // per-call-site hooks, so EVERY gain mutation path is covered — band
-        // drags/sliders, preset loads, AutoEQ runs, imports, reset, restore,
-        // AND the tone knobs (the shelves are a serial stage after the EQ, so
-        // their boosts eat the same headroom). Toggling auto on also lands
-        // here, since _autoPreamp is a source.
         viewModelScope.launch {
             combine(
                 _currentBands, _currentBandsR, _stereoMode, _toneControls, _autoPreamp,
@@ -423,11 +349,6 @@ class EqViewModel @Inject constructor(
             }.collect { src -> if (src.auto) applyAutoPreamp(src) }
         }
 
-        // Resolve the custom-targets list AND the selected target together so
-        // the selection restores against freshly-parsed customs. The previous
-        // two independent collectors raced: the target id usually emitted
-        // before the customs JSON, so a saved custom target resolved to null
-        // and the selection silently reverted to the default on every restart.
         viewModelScope.launch {
             combine(
                 preferences.eqTargetId,
@@ -465,11 +386,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    // ===== User Actions =====
-
-    /**
-     * Toggle EQ on/off
-     */
     fun toggleEq() {
         val newState = !_eqEnabled.value
         viewModelScope.launch {
@@ -479,9 +395,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Enable EQ
-     */
     fun enableEq() {
         viewModelScope.launch {
             preferences.setEqEnabled(true)
@@ -489,9 +402,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Disable EQ
-     */
     fun disableEq() {
         viewModelScope.launch {
             preferences.setEqEnabled(false)
@@ -500,25 +410,10 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * System-wide AutoEQ is a sub-toggle of the equalizer: it is only offered
-     * while the EQ is on, and it publishes the same correction to the device's
-     * global output mix. Turning the equalizer off therefore has to clear it, or
-     * [SystemAudioEqController] — which watches only the system-wide flag, never
-     * `eqEnabled` — keeps the session-0 effect attached with nothing on screen
-     * left to switch it off.
-     *
-     * `PlayerViewModel.setAutoEqEnabled` has always done this; the Settings and
-     * Equalizer-screen toggles write the same preference and did not, so turning
-     * the EQ off from either of those left the global effect running.
-     */
     private suspend fun clearSystemWide() {
         preferences.setSystemWideAutoEqEnabled(false)
     }
 
-    /**
-     * Load a preset
-     */
     fun loadPreset(presetId: String) {
         viewModelScope.launch {
             val preset = eqRepository.getPresetById(presetId) ?: return@launch
@@ -530,9 +425,6 @@ class EqViewModel @Inject constructor(
             _currentBands.value = preset.bands
             _currentPreamp.value = preset.preamp
 
-            // A stereo preset restores its right ear and re-enables 2-channel
-            // mode; a mono preset mirrors L into R so, if stereo is on, both
-            // ears follow the preset instead of R keeping a stale curve.
             val presetR = preset.bandsR
             if (presetR != null) {
                 _currentBandsR.value = presetR
@@ -542,34 +434,25 @@ class EqViewModel @Inject constructor(
                     preferences.setEqStereoMode(true)
                 }
             } else if (_stereoMode.value && _currentBandsR.value.isNotEmpty()) {
-                // Only while 2-channel is ON. With the switch off, the stored
-                // right-ear bands are dormant by design — overwriting them here
-                // would destroy the calibration the toggle promised to keep.
+
                 _currentBandsR.value = preset.bands
                 saveBandsRToPreferences(preset.bands)
             }
 
-            // Update preferences
             preferences.setEqActivePreset(presetId)
             persistPreamp(preset.preamp.toDouble())
             preferences.setEqTarget(preset.targetId)
 
-            // Update UI
             val target = FrequencyTargets.getTargetById(preset.targetId)
             if (target != null) {
                 _selectedTarget.value = target
             }
 
-            // Serialize and save bands
             saveBandsToPreferences(preset.bands)
         }
     }
 
-    /**
-     * Update an individual band
-     */
     fun updateBand(bandId: Int, newBand: EqBand) {
-        // In 2-channel mode edits land on whichever ear is selected.
         if (_stereoMode.value && _editChannel.value == EqChannel.RIGHT) {
             val updatedR = _currentBandsR.value.toMutableList()
             val indexR = updatedR.indexOfFirst { it.id == bandId }
@@ -589,17 +472,10 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Update preamp gain. Clamped so |preamp| + peakBandGain stays within the
-     * AutoEQ total-headroom budget. Otherwise the filter cascade can clip at
-     * resonant peaks before the downstream limiter engages.
-     */
     fun setPreamp(preamp: Float) {
-        // The slider is disabled while automatic preamp owns the value; this
-        // guard is belt-and-braces against a race on the toggle.
+
         if (_autoPreamp.value) return
-        // The shared preamp guards BOTH ears' headroom — clamp against the
-        // hotter one, exactly as applyAutoPreamp does.
+
         val peakL = _currentBands.value.maxOfOrNull { kotlin.math.abs(it.gain) } ?: 0f
         val peakR = if (_stereoMode.value) {
             _currentBandsR.value.maxOfOrNull { kotlin.math.abs(it.gain) } ?: 0f
@@ -608,16 +484,10 @@ class EqViewModel @Inject constructor(
         val headroom = (EqLimits.AUTOEQ_MAX_TOTAL_DB - peakBand).coerceAtLeast(0f)
         val clamped = preamp.coerceIn(-headroom, headroom)
         _currentPreamp.value = clamped
-        // Same drag-tail treatment as the bands: the slider is continuous and
-        // the audio path re-applies the whole chain off this preference.
+
         persistPreamp(clamped.toDouble(), coalesce = true)
     }
 
-    /**
-     * Single writer for the preamp preference, so an immediate write (reset,
-     * preset load, auto-preamp) always cancels a drag's pending tail rather
-     * than being overwritten by it a moment later.
-     */
     private fun persistPreamp(value: Double, coalesce: Boolean = false) {
         preampPersistJob?.cancel()
         preampPersistJob = viewModelScope.launch {
@@ -626,29 +496,15 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Toggle automatic preamp. While on, the preamp always sits at minus the
-     * PEAK of the combined magnitude response of the EQ bands plus the tone
-     * shelves, so the summed filter gain can never push the signal above
-     * 0 dBFS; it re-tracks on every band or tone change via the combine
-     * collector in [loadInitialState]. Turning it off simply leaves the last
-     * auto value in place for the slider to take over.
-     */
     fun setAutoPreamp(enabled: Boolean) {
         _autoPreamp.value = enabled
         viewModelScope.launch { preferences.setEqAutoPreamp(enabled) }
     }
 
-    /**
-     * 2-channel (per-ear) switch. Turning it off is non-destructive: the
-     * right-ear bands stay in DataStore and come straight back on re-enable —
-     * only the flag changes what the audio path applies.
-     */
     fun setStereoMode(enabled: Boolean) {
         _stereoMode.value = enabled
         if (enabled && _currentBandsR.value.isEmpty() && _currentBands.value.isNotEmpty()) {
-            // First enable: seed the right ear from the left so the sound is
-            // unchanged until a right-channel measurement is picked.
+
             _currentBandsR.value = _currentBands.value
             saveBandsRToPreferences(_currentBands.value)
         }
@@ -660,21 +516,10 @@ class EqViewModel @Inject constructor(
         _editChannel.value = channel
     }
 
-    /**
-     * Measurement smoothing percent (0–100, SeapEngine's scale). Preview
-     * only: the graph's curves smooth immediately, but corrections are NOT
-     * re-derived until the AutoEQ button is pressed — SeapEngine's Generate
-     * semantics, and it keeps slider drags from thrashing the audio path.
-     */
     fun setSmoothing(fraction: Float) {
         _smoothing.value = fraction
     }
 
-    /**
-     * Single choke point for the optimizer: every path (database select,
-     * stereo pair, file import, sample stepping, manual re-run) funnels
-     * through here so smoothing is applied uniformly.
-     */
     private suspend fun runEngine(
         measurement: List<FrequencyPoint>,
         target: List<FrequencyPoint>,
@@ -690,12 +535,6 @@ class EqViewModel @Inject constructor(
         )
     }
 
-    /**
-     * Step the loaded squig.link measurement to its next/previous published
-     * sample (L1 → L2 → …, wrapping) and recompute that ear's correction from
-     * the new sweep. Which samples exist is discovered once per
-     * measurement+channel with HEAD probes and cached for the session.
-     */
     fun cycleMeasurementSample(channel: EqChannel, forward: Boolean) {
         val meas = (if (channel == EqChannel.RIGHT) selectedMeasR else selectedMeasL) ?: return
         val prefix = if (channel == EqChannel.RIGHT) "R" else "L"
@@ -704,10 +543,7 @@ class EqViewModel @Inject constructor(
                 _isCalculating.value = true
                 _error.value = null
                 val key = meas.host + "|" + meas.fileName + "|" + prefix
-                // Cache only non-empty lists: sampleExists maps network
-                // failures to false, so an empty result usually means the
-                // probe couldn't reach the server, not that no samples exist —
-                // caching it would kill the stepper for the whole session.
+
                 val samples = sampleListCache[key]
                     ?: headphoneRepository.listMeasurementSamples(meas, prefix)
                         .also { if (it.isNotEmpty()) sampleListCache[key] = it }
@@ -773,35 +609,20 @@ class EqViewModel @Inject constructor(
     )
 
     private fun applyAutoPreamp(src: PreampSources) {
-        // Fold the tone shelves in as the same EqBands the audio path runs
-        // (toBands() is empty when the tone stage is switched off — a bypass).
+
         val toneBands = src.tone.toBands()
-        // ONE shared preamp sized to the hotter ear. Per-channel preamps would
-        // silently re-tilt L/R balance; the curves carry any intended
-        // asymmetry, the preamp only guards headroom.
+
         val peakL = combinedPeakBoostDb(src.bandsL + toneBands, MODEL_SAMPLE_RATE)
         val peakR = if (src.stereo && src.bandsR.isNotEmpty()) {
             combinedPeakBoostDb(src.bandsR + toneBands, MODEL_SAMPLE_RATE)
         } else 0f
         val auto = -maxOf(peakL, peakR)
-        // Epsilon gate: skips the DataStore write when nothing changed (e.g.
-        // cut-only band edits) and settles the collector after a preset load
-        // briefly sets the stored preamp before the recompute lands.
+
         if (kotlin.math.abs(auto - _currentPreamp.value) < 0.01f) return
         _currentPreamp.value = auto
         persistPreamp(auto.toDouble())
     }
 
-    /**
-     * Peak of the summed filter magnitude response in dB, evaluated on a log-
-     * frequency grid plus every filter's centre frequency (a peaking filter's
-     * maximum sits exactly at its centre, so no narrow peak can fall between
-     * grid points). Using the real response — the same RBJ biquad math the
-     * audio path runs — means overlapping boosts are compensated by what they
-     * actually sum to, and boosts at far-apart frequencies aren't over-
-     * compensated the way naive per-stage max-gain addition would.
-     * Never negative: a cut-only setup needs no preamp.
-     */
     private fun combinedPeakBoostDb(bands: List<EqBand>, sampleRate: Float): Float {
         val active = bands.filter { it.enabled }
         if (active.isEmpty()) return 0f
@@ -826,20 +647,11 @@ class EqViewModel @Inject constructor(
 
         const val AUTO_PREAMP_GRID_POINTS = 96
 
-        /** Drag-tail delay before a continuous edit reaches DataStore. */
         const val PERSIST_DEBOUNCE_MS = 120L
 
-        // Canonical rate for the fit/graph response model. With matched
-        // (decramped) coefficients the modeled response is rate-invariant to
-        // within a few tenths of a dB — playback always configures its filters
-        // at the stream's real rate and both land on the same analog
-        // prototype — so the old user-facing sample-rate selector was retired.
         const val MODEL_SAMPLE_RATE = 48000f
     }
 
-    /**
-     * Select target curve
-     */
     fun selectTarget(targetId: String) {
         val target = FrequencyTargets.getTargetById(targetId)
             ?: _customTargets.value.find { it.id == targetId }
@@ -850,9 +662,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Reset all bands to flat
-     */
     fun resetToFlat() {
         val flatBands = _currentBands.value.map { band ->
             band.copy(gain = 0f)
@@ -860,8 +669,7 @@ class EqViewModel @Inject constructor(
         _currentBands.value = flatBands
         _currentPreamp.value = 0f
         saveBandsToPreferences(flatBands)
-        // Flatten the right ear too — reset means silence the whole correction,
-        // not just the ear currently selected for editing.
+
         if (_currentBandsR.value.isNotEmpty()) {
             val flatR = _currentBandsR.value.map { it.copy(gain = 0f) }
             _currentBandsR.value = flatR
@@ -870,9 +678,6 @@ class EqViewModel @Inject constructor(
         persistPreamp(0.0)
     }
 
-    /**
-     * Save current bands as a custom preset
-     */
     fun saveAsPreset(presetName: String, description: String = "") {
         viewModelScope.launch {
             try {
@@ -881,8 +686,7 @@ class EqViewModel @Inject constructor(
                     name = presetName,
                     description = description,
                     bands = _currentBands.value,
-                    // Only a stereo save carries R — a mono preset stays null
-                    // so loading it drives both ears from the left list.
+
                     bandsR = if (_stereoMode.value) _currentBandsR.value else null,
                     preamp = _currentPreamp.value,
                     targetId = _selectedTarget.value.id,
@@ -900,13 +704,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Import parsed EqualizerAPO profiles from the L/R panes: always saved as
-     * ONE preset (right ear in bandsR when both panes were filled), optionally
-     * applied. A both-panes import switches 2-channel mode on — distinct
-     * per-ear stacks are meaningless without it. Preamp is shared, so the
-     * safer (more negative) of the two wins.
-     */
     fun importApoProfile(
         left: tf.monochrome.android.data.import_.ParsedEqProfile?,
         right: tf.monochrome.android.data.import_.ParsedEqProfile?,
@@ -916,16 +713,12 @@ class EqViewModel @Inject constructor(
         val primary = left ?: right ?: return
         viewModelScope.launch {
             try {
-                // Re-id sequentially: band ids key the UI's selection and the
-                // file's own filter numbers may repeat or skip.
+
                 val bandsL = primary.bands.mapIndexed { i, b -> b.copy(id = i) }
                 val bandsR = if (left != null && right != null) {
                     right.bands.mapIndexed { i, b -> b.copy(id = i) }
                 } else null
-                // Never trust a file with the headroom budget: clamp exactly
-                // as the manual slider does, against the hotter ear's peak. An
-                // unbounded file preamp would otherwise reach the audio path
-                // directly — and the import force-enables the EQ.
+
                 val rawPreamp = minOf(primary.preamp, right?.preamp ?: primary.preamp)
                 val peak = maxOf(
                     bandsL.maxOfOrNull { kotlin.math.abs(it.gain) } ?: 0f,
@@ -937,8 +730,7 @@ class EqViewModel @Inject constructor(
                     id = "custom_preset_${System.currentTimeMillis()}",
                     name = name,
                     description = "Imported EqualizerAPO profile",
-                    // Restart restores the active preset's target; an empty id
-                    // would silently reset the user's target choice to Harman.
+
                     targetId = _selectedTarget.value.id,
                     targetName = _selectedTarget.value.label,
                     bands = bandsL,
@@ -958,21 +750,18 @@ class EqViewModel @Inject constructor(
                             preferences.setEqStereoMode(true)
                         }
                     } else if (_stereoMode.value && _currentBandsR.value.isNotEmpty()) {
-                        // Mono import while stereo is on: both ears follow it,
-                        // same rule as loading a mono preset.
+
                         _currentBandsR.value = bandsL
                         saveBandsRToPreferences(bandsL)
                     }
                     _activePreset.value = preset
                     preferences.setEqActivePreset(preset.id)
-                    // Auto-preamp recomputes from the bands on its own; only a
-                    // manual preamp adopts the file's value.
+
                     if (!_autoPreamp.value) {
                         _currentPreamp.value = preamp
                         persistPreamp(preamp.toDouble())
                     }
-                    // "Upload" means HEAR it — enabling beats silently
-                    // importing into a bypassed EQ.
+
                     if (!_eqEnabled.value) enableEq()
                 }
                 _error.value = null
@@ -982,9 +771,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Delete a custom preset
-     */
     fun deletePreset(presetId: String) {
         viewModelScope.launch {
             try {
@@ -1002,9 +788,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Search presets by name
-     */
     fun searchPresets(query: String) {
         viewModelScope.launch {
             eqRepository.searchPresets(query).collect { results ->
@@ -1013,12 +796,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Calculate optimal EQ from headphone measurement
-     *
-     * @param measurementCsv Raw frequency response measurement (CSV format)
-     * @param bandCount Number of EQ bands to generate (typically 10)
-     */
     fun calculateAutoEq(measurementCsv: String) {
         launchFit {
             try {
@@ -1055,23 +832,16 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Load available headphones from GitHub AutoEq repository
-     */
     fun loadAvailableHeadphones() {
         viewModelScope.launch {
             try {
                 _headphonesLoading.value = true
                 _error.value = null
 
-                // Seed with uploaded entries immediately so the Uploaded
-                // section has rows during the multi-second remote round-trip,
-                // not just after it returns.
                 _availableHeadphones.value = _uploadedHeadphones.value
 
                 headphoneRepository.getAllHeadphones().collect { headphones ->
-                    // Uploaded entries lead the list so they're always
-                    // discoverable, even before remote sources finish loading.
+
                     _availableHeadphones.value = _uploadedHeadphones.value + headphones
                     _headphonesLoading.value = false
                 }
@@ -1082,9 +852,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Drop a previously-saved upload by id and update the available list.
-     */
     fun removeUploadedMeasurement(headphoneId: String) {
         viewModelScope.launch {
             val updated = _uploadedHeadphones.value.filter { it.id != headphoneId }
@@ -1105,11 +872,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Persist a user-uploaded measurement as a named Headphone with embedded
-     * FR data, then merge it into _availableHeadphones so it shows up under
-     * the "Uploaded" rig chip immediately.
-     */
     fun addUploadedMeasurement(name: String, csv: String) {
         viewModelScope.launch {
             val trimmedName = name.trim().ifBlank { return@launch }
@@ -1150,9 +912,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Search headphones from GitHub AutoEq repository
-     */
     fun searchAvailableHeadphones(query: String) {
         _headphoneSearchQuery.value = query
         viewModelScope.launch {
@@ -1171,10 +930,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Select a headphone and load its measurement (legacy path: picks the
-     * headphone's first available AutoEq measurement).
-     */
     fun selectHeadphone(headphone: Headphone) {
         _selectedHeadphone.value = headphone
         viewModelScope.launch {
@@ -1183,11 +938,6 @@ class EqViewModel @Inject constructor(
         loadHeadphonePreset(headphone.name)
     }
 
-    /**
-     * Select a specific measurement (squig.link or AutoEq) for a headphone.
-     * Used by the rig-filtered headphone browser, where each row binds to one
-     * concrete measurement rather than the whole headphone.
-     */
     fun selectMeasurement(
         headphone: Headphone,
         measurement: tf.monochrome.android.domain.model.AutoEqMeasurement,
@@ -1210,12 +960,6 @@ class EqViewModel @Inject constructor(
         } catch (_: Exception) { }
     }
 
-    /**
-     * Load a squig.link L/R measurement pair and compute BOTH ears' corrections
-     * in one go. Returns false when neither channel file exists (caller falls
-     * back to the single-file path). A missing single channel borrows the other
-     * ear's curve, and the labels say which file each ear actually got.
-     */
     private suspend fun loadStereoPair(
         measurement: tf.monochrome.android.domain.model.AutoEqMeasurement,
     ): Boolean {
@@ -1231,8 +975,7 @@ class EqViewModel @Inject constructor(
 
         val target = _selectedTarget.value.data
         if (target.isEmpty()) {
-            // Handled here (error surfaced) — returning true stops the caller
-            // from re-fetching just to hit the same wall.
+
             _error.value = "Target curve not available"
             return true
         }
@@ -1285,9 +1028,6 @@ class EqViewModel @Inject constructor(
             _isCalculating.value = true
             _error.value = null
 
-            // 2-channel mode + squig.link: the source publishes true per-ear
-            // files ("<name> L.txt"/"<name> R.txt"), so one selection from the
-            // primary picker fills BOTH ears with their own corrections.
             if (channel == EqChannel.LEFT && _stereoMode.value &&
                 measurement.target == "squiglink" &&
                 measurement.rig != tf.monochrome.android.domain.model.MeasurementRig.UPLOADED
@@ -1296,11 +1036,9 @@ class EqViewModel @Inject constructor(
                     _isCalculating.value = false
                     return
                 }
-                // Neither channel file exists — fall through to the generic path.
+
             }
 
-            // Uploaded measurements carry their FR data inline on the
-            // Headphone — short-circuit the remote fetch.
             var sampleUsed: String? = null
             val parsed = if (measurement.rig == tf.monochrome.android.domain.model.MeasurementRig.UPLOADED) {
                 _uploadedHeadphones.value
@@ -1308,9 +1046,7 @@ class EqViewModel @Inject constructor(
                     ?.data
                     ?: emptyList()
             } else {
-                // squig.link: prefer the exact channel file for the ear being
-                // loaded — the old L-then-R fallback handed the RIGHT picker
-                // the left ear's data whenever an L file existed.
+
                 val csvData = if (measurement.target == "squiglink") {
                     val want = if (channel == EqChannel.RIGHT) "R" else "L"
                     val other = if (channel == EqChannel.RIGHT) "L" else "R"
@@ -1373,11 +1109,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Load preset and apply AutoEQ for a specific headphone
-     *
-     * Fetches measurement from GitHub AutoEq, parses it, and calculates optimal bands
-     */
     fun loadHeadphonePreset(headphoneName: String) {
         viewModelScope.launch {
             try {
@@ -1385,8 +1116,7 @@ class EqViewModel @Inject constructor(
                 _error.value = null
 
                 val headphoneId = headphoneName.replace(" ", "_").lowercase()
-                // Pass the original name through so the repo's fallback URLs
-                // can hit case-sensitive GitHub paths like "AKG K371".
+
                 val measurementResult = headphoneRepository.loadHeadphoneMeasurement(
                     headphoneId,
                     headphoneName
@@ -1431,9 +1161,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Refresh headphone list from GitHub
-     */
     fun refreshHeadphones() {
         viewModelScope.launch {
             headphoneRepository.refreshCache()
@@ -1441,14 +1168,9 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Clear any error messages
-     */
     fun clearError() {
         _error.value = null
     }
-
-    // ===== AutoEQ Parameter Actions =====
 
     fun setBandCount(count: Int) {
         _bandCount.value = count
@@ -1459,7 +1181,6 @@ class EqViewModel @Inject constructor(
     }
 
     fun updateBandByDrag(bandId: Int, newFreq: Float, newGain: Float) {
-        // Graph drags edit whichever ear is selected in 2-channel mode.
         val editRight = _stereoMode.value && _editChannel.value == EqChannel.RIGHT
         val updatedBands =
             (if (editRight) _currentBandsR.value else _currentBands.value).toMutableList()
@@ -1490,11 +1211,7 @@ class EqViewModel @Inject constructor(
             try {
                 _isCalculating.value = true
                 _error.value = null
-                // Reprocess is explicit: the smoothing slider only previews,
-                // and this press re-derives EVERY ear that has a measurement.
-                // Measurements and settings are read INSIDE the serialized job
-                // — reading them at press time raced an in-flight sample step,
-                // fitting an ear from a measurement it no longer shows.
+
                 val settings = fitSettings()
                 val measL = _originalMeasurement.value
                 val measR =
@@ -1529,11 +1246,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    // ===== File Import =====
-
-    /**
-     * Import measurement from raw file contents (read by UI via ContentResolver)
-     */
     fun importMeasurementData(rawData: String, channel: EqChannel = EqChannel.LEFT) {
         launchFit {
             try {
@@ -1549,8 +1261,7 @@ class EqViewModel @Inject constructor(
 
                 if (channel == EqChannel.RIGHT) {
                     if (!_stereoMode.value) {
-                        // A right-ear import is meaningless with 2-channel off:
-                        // the data would be neither audible nor visible.
+
                         _stereoMode.value = true
                         preferences.setEqStereoMode(true)
                     }
@@ -1591,9 +1302,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Import a custom target curve from raw file contents
-     */
     fun importCustomTarget(rawData: String, label: String) {
         viewModelScope.launch {
             try {
@@ -1610,11 +1318,9 @@ class EqViewModel @Inject constructor(
                 _customTargets.value = updatedCustoms
                 _availableTargets.value = FrequencyTargets.getAllTargets() + updatedCustoms
 
-                // Select the new target
                 _selectedTarget.value = newTarget
                 preferences.setEqTarget(id)
 
-                // Persist
                 saveCustomTargets(updatedCustoms, rawData = mapOf(id to rawData))
                 _error.value = null
             } catch (e: Exception) {
@@ -1623,9 +1329,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Delete a custom target
-     */
     fun deleteCustomTarget(targetId: String) {
         viewModelScope.launch {
             val updatedCustoms = _customTargets.value.filter { it.id != targetId }
@@ -1649,11 +1352,6 @@ class EqViewModel @Inject constructor(
         try {
             val jsonParser = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
-            // Load existing stored data to preserve raw strings. Must await
-            // the actual DataStore emission: the previous stateIn(...).value
-            // read raced and returned the "[]" initial value, so every save
-            // wiped the rawData of all targets not passed in `rawData` —
-            // importing or deleting one custom target erased the others.
             val existingJson = preferences.eqCustomTargetsJson.first()
             val existingStored = try {
                 jsonParser.decodeFromString<List<StoredCustomTarget>>(existingJson)
@@ -1677,20 +1375,6 @@ class EqViewModel @Inject constructor(
         }
     }
 
-    // ===== Private Helpers =====
-
-    /**
-     * Persist the band list.
-     *
-     * [coalesce] is for the continuous edits — a slider or graph drag, which
-     * fires dozens of times a second. Each save JSON-encodes every band and
-     * writes DataStore, and the audio path listens to that key: without
-     * coalescing, one drag rebuilt the entire biquad chain (and re-read the
-     * whole preference blob everywhere else watching it) on every frame. The
-     * value still lands a beat after the finger stops. Structural changes
-     * (presets, AutoEQ results, add/remove, import) leave it off and write
-     * straight through — they happen once and must not be lost to a cancel.
-     */
     private fun saveBandsToPreferences(bands: List<EqBand>, coalesce: Boolean = false) {
         bandsPersistJob?.cancel()
         bandsPersistJob = viewModelScope.launch {
@@ -1723,5 +1407,4 @@ class EqViewModel @Inject constructor(
     )
 }
 
-/** Which ear a band edit or measurement load targets in 2-channel mode. */
 enum class EqChannel { LEFT, RIGHT }

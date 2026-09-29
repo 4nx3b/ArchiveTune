@@ -19,15 +19,7 @@ private val Context.usbExclusiveDataStore: DataStore<Preferences> by preferences
     name = USB_EXCLUSIVE_PREFS_NAME,
 )
 
-/**
- * Standalone toggle for USB exclusive (bit-perfect) output.
- *
- * Uses its own DataStore file so the flag stays independent of the main
- * settings store. Disabled by default: every read fails closed to `false`,
- * so playback behavior is unchanged until the toggle is explicitly enabled.
- */
 object UsbExclusivePrefs {
-
     private val KEY_ENABLED = booleanPreferencesKey("usb_exclusive_enabled")
 
     fun enabledFlow(context: Context): Flow<Boolean> =
@@ -41,10 +33,6 @@ object UsbExclusivePrefs {
         }
     }
 
-    /**
-     * Synchronous-friendly read for threads that cannot collect a Flow
-     * (e.g. the renderer factory thread). Returns `false` on timeout or error.
-     */
     suspend fun isEnabledNow(context: Context, timeoutMs: Long = 500L): Boolean =
         withTimeoutOrNull(timeoutMs) { enabledFlow(context).first() } ?: false
 }

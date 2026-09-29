@@ -75,8 +75,6 @@ fun ParametricEqScreen(
         }
     }
 
-    // Surface preset save/load/persist errors that the ViewModel reports but
-    // no screen was collecting (silent failures / silent corrupted-load).
     val eqError by viewModel.error.collectAsStateWithLifecycle()
     val eqErrorContext = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(eqError) {
@@ -102,7 +100,6 @@ fun ParametricEqScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 32.dp + LocalMiniPlayerInset.current)
         ) {
-            // Title
             item {
               tf.monochrome.android.devedit.DevEditable("peq_title_section", Modifier.fillMaxWidth()) {
                 Row(
@@ -138,14 +135,10 @@ fun ParametricEqScreen(
               }
             }
 
-            // Mini preview graph with live spectrum behind the EQ curve
             item {
               tf.monochrome.android.devedit.DevEditable("peq_preview_graph", Modifier.fillMaxWidth()) {
                 Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    // Feed the spectrum INTO the graph — it draws it over its own
-                    // (opaque) background and under the EQ curve. A separate
-                    // overlay behind the graph was hidden by that background on
-                    // every theme except the transparent 'Clear' one.
+
                     FrequencyResponseGraph(
                         originalCurve = emptyList(),
                         targetCurve = emptyList(),
@@ -164,7 +157,6 @@ fun ParametricEqScreen(
               }
             }
 
-            // Preamp — same placement as the AutoEQ page: under the graph.
             item {
               tf.monochrome.android.devedit.DevEditable("peq_preamp_slider", Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -195,9 +187,6 @@ fun ParametricEqScreen(
               }
             }
 
-            // Bands — edited inline with the same rows as the AutoEQ screen
-            // (type selector, freq/gain/Q sliders), replacing the separate
-            // Edit page hop.
             item {
                 Text(
                     "BANDS",
@@ -217,9 +206,6 @@ fun ParametricEqScreen(
                 )
             }
 
-            // Add band + profile actions. A COLUMN of rows — these were once
-            // stacked in a Box, which drew Save and Import on top of each
-            // other as one garbled row.
             item {
               tf.monochrome.android.devedit.DevEditable("peq_actions", Modifier.fillMaxWidth()) {
                 Column(
@@ -300,7 +286,6 @@ fun ParametricEqScreen(
               }
             }
 
-            // Saved profiles
             if (allPresets.isNotEmpty()) {
                 item {
                   tf.monochrome.android.devedit.DevEditable("peq_saved_profiles_header", Modifier.fillMaxWidth()) {

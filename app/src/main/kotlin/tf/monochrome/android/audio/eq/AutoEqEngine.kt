@@ -13,40 +13,12 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.max
 
-/**
- * AutoEqEngine — Headphone correction filter generator.
- * Greedy iterative algorithm matching the SeapEngine implementation.
- */
-/**
- * How the correction stack is fitted.
- *
- * [PEAKING] — the classic greedy fit: every band is a bell, including at the
- * frequency extremes.
- *
- * [SHELF_ENDS] — fits a low shelf and a high shelf FIRST, then bells on the
- * residual. Engineering rationale: headphone deviations at the extremes are
- * broad tilts (bass roll-off/boost, treble tilt), not resonances — a shelf
- * matches that shape with one filter where bells leave ripple, extrapolates
- * gracefully below/above the measurement's reliable range (rig bass data
- * under ~40 Hz is seal-dependent noise), and carries no resonant overshoot
- * into the preamp headroom budget.
- */
 enum class AutoEqAlgorithm(val label: String) {
     PEAKING("Peaking"),
     SHELF_ENDS("Shelf ends"),
 }
 
 object AutoEqEngine {
-
-    /**
-     * Measurement smoothing, ported verbatim from SeapEngine's graph tool
-     * (the `a7` helper): a triangular-weighted moving average whose window
-     * radius grows with the 0–100 % slider — radius = floor(percent / 2.5)
-     * POINTS, weights 1 − |offset|/(radius+1). Index-based on purpose:
-     * measurement files are log-spaced in frequency, so a point window IS an
-     * octave window, and matching SeapEngine exactly means a profile tuned
-     * there reproduces identically here. 0 % (or <3 points) is a no-op.
-     */
     fun smoothCurve(
         points: List<FrequencyPoint>,
         percent: Float,
@@ -87,24 +59,6 @@ object AutoEqEngine {
         return magnitudeDb(c, cos(phi), cos(2.0 * phi)).toFloat()
     }
 
-    /**
-     * A fixed frequency axis with its cos(φ)/cos(2φ) tables precomputed, for
-     * evaluating whole band curves at once.
-     *
-     * [calculateBiquadResponse] is the per-point entry point, and it redesigns
-     * the filter on every call — sin/cos/pow/sqrt plus an allocation for ONE
-     * frequency. Drawing a band's curve through it costs that whole design pass
-     * per pixel, and the UI draws every band over a several-hundred-point grid
-     * on every drag frame, so a single slider drag was re-deriving thousands of
-     * biquads a second on the main thread.
-     *
-     * The coefficients are fixed per band and the phase terms are fixed per
-     * frequency, which is the same split the optimizer's refinement pass
-     * already exploits: design once per band, then a transcendental-free
-     * magnitude per point against the shared tables. Results are identical to
-     * calling [calculateBiquadResponse] per point — this only stops repeating
-     * work whose inputs never changed.
-     */
     class ResponseGrid(freqs: FloatArray, private val sampleRate: Float = DEFAULT_SAMPLE_RATE) {
         private val cosPhi = DoubleArray(freqs.size)
         private val cos2Phi = DoubleArray(freqs.size)
@@ -119,7 +73,6 @@ object AutoEqEngine {
             }
         }
 
-        /** Adds [band]'s dB response onto [out] in place. Disabled bands are a no-op. */
         fun accumulate(band: EqBand, out: FloatArray) {
             if (!band.enabled) return
             val c = AutoEqEngine.coeffsFor(band, sampleRate)
@@ -128,21 +81,12 @@ object AutoEqEngine {
             }
         }
 
-        /** This band's dB response across the whole axis. */
         fun response(band: EqBand): FloatArray = FloatArray(size).also { accumulate(band, it) }
 
-        /** The summed dB response of [bands] across the whole axis. */
         fun sum(bands: List<EqBand>): FloatArray =
             FloatArray(size).also { out -> bands.forEach { accumulate(it, out) } }
     }
 
-    /**
-     * Normalized RBJ coefficients for a band. Split out of the response
-     * calculation because they are FIXED per band — only the phase term varies
-     * per evaluation frequency. The refinement pass exploits this: coefficients
-     * once per candidate, then a transcendental-free magnitude per grid point
-     * against precomputed cos(φ)/cos(2φ) tables.
-     */
     private class BiquadCoeffs(
         val b0: Double, val b1: Double, val b2: Double,
         val a1: Double, val a2: Double,
@@ -154,11 +98,6 @@ object AutoEqEngine {
         val A = 10.0.pow(band.gain.toDouble() / 40.0)
         val cosW0 = cos(w0)
 
-        // Coefficients per filter type, mirroring the audio path so the
-        // displayed/fitted response matches what actually plays: PEAKING uses
-        // the same matched-Z (Vicanek) coefficients as AutoEqProcessor's 1x
-        // chain — keeping the optimizer's model, the graph, and the audio in
-        // agreement near Nyquist — with RBJ as the shelf/degenerate fallback.
         val m = when (band.type) {
             FilterType.PEAKING -> matchedPeakingCoefficients(
                 sampleRate.toDouble(), band.freq.toDouble(),
@@ -205,7 +144,6 @@ object AutoEqEngine {
         return BiquadCoeffs(b0 * inv, b1 * inv, b2 * inv, a1 * inv, a2 * inv)
     }
 
-    /** |H| in dB at a grid point, given cos(φ) and cos(2φ). Pure arithmetic. */
     private fun magnitudeDb(c: BiquadCoeffs, cp: Double, c2p: Double): Double {
         val num = c.b0 * c.b0 + c.b1 * c.b1 + c.b2 * c.b2 +
             2.0 * (c.b0 * c.b1 + c.b1 * c.b2) * cp + 2.0 * c.b0 * c.b2 * c2p
@@ -245,7 +183,6 @@ object AutoEqEngine {
     ): List<EqBand> {
         val offset = getNormalizationOffset(target) - getNormalizationOffset(measurement)
 
-        // Error curve: positive = above target (need cut), negative = below (need boost)
         val error = measurement.map { p ->
             FrequencyPoint(p.freq, (p.gain + offset) - interpolate(p.freq, target))
         }.toMutableList()
@@ -253,18 +190,13 @@ object AutoEqEngine {
         val bands = mutableListOf<EqBand>()
 
         if (algorithm == AutoEqAlgorithm.SHELF_ENDS) {
-            // Low shelf: corner at AutoEq's conventional 105 Hz, gain fitted to
-            // the mean error below it. Full ±12 range — bass boosts are the
-            // shelf's whole job.
+
             fitEndShelf(
                 error, FilterType.LOWSHELF,
                 corner = 105f, regionLo = minFrequency, regionHi = 105f,
                 maxBoost = MAX_BOOST, sampleRate = sampleRate, id = bands.size,
             )?.let(bands::add)
-            // High shelf: corner at 10 kHz (pulled down when the fit range
-            // ends earlier). Boost capped at 4 dB — the plateau spans the
-            // whole top octave, where measurement confidence and hearing-
-            // damage risk both argue for restraint; cuts keep the full range.
+
             val hiCorner = kotlin.math.min(10_000f, maxFrequency * 0.75f)
             fitEndShelf(
                 error, FilterType.HIGHSHELF,
@@ -279,18 +211,15 @@ object AutoEqEngine {
             var peakFreq = 1000.0
             var peakIdx = 0
 
-            // Scan: find largest weighted deviation (both positive and negative)
             for (j in error.indices) {
                 val freq = error[j].freq.toDouble()
                 if (freq < minFrequency || freq > maxFrequency) continue
 
-                // 3-point smooth
                 var v = error[j].gain.toDouble()
                 if (j > 0 && j < error.size - 1) {
                     v = (error[j - 1].gain + v + error[j + 1].gain) / 3.0
                 }
 
-                // Priority weighting
                 val priority = priorityWeight(freq)
 
                 val weightedAbs = abs(v * priority)
@@ -302,21 +231,17 @@ object AutoEqEngine {
                 }
             }
 
-            // Invert for correction
             var gain = -maxDev
 
-            // Treble safety: taper max boost in highs
             var safeBoost = MAX_BOOST
             if (peakFreq > 3000.0) safeBoost = 6.0
             if (peakFreq > 6000.0) safeBoost = 3.0
 
-            // Asymmetric clamping
             if (gain > safeBoost) gain = safeBoost
             if (gain < -MAX_CUT) gain = -MAX_CUT
 
             if (abs(gain) < 0.2) break
 
-            // Q calculation: half-energy bandwidth
             val targetEnergy = maxDev / 2.0
             var lowerFreq = peakFreq
             var upperFreq = peakFreq
@@ -339,11 +264,10 @@ object AutoEqEngine {
 
             var q = sqrt(2.0.pow(bandwidth)) / (2.0.pow(bandwidth) - 1.0)
 
-            // Constraints
             if (q < MIN_Q) q = MIN_Q
             if (q > MAX_Q) q = MAX_Q
-            if (peakFreq > 5000.0 && q > 3.0) q = 3.0  // treble safety
-            if (gain > 0.0 && q > 2.0) q = 2.0          // boost safety
+            if (peakFreq > 5000.0 && q > 3.0) q = 3.0
+            if (gain > 0.0 && q > 2.0) q = 2.0
 
             val newBand = EqBand(
                 id = bands.size,
@@ -355,21 +279,14 @@ object AutoEqEngine {
             )
             bands.add(newBand)
 
-            // Update error curve
             for (j in error.indices) {
                 val response = calculateBiquadResponse(error[j].freq, newBand, sampleRate)
                 error[j] = FrequencyPoint(error[j].freq, error[j].gain + response)
             }
         }
 
-        // Cyclic refinement: the greedy loop froze each band at fit time, so
-        // early choices never adapt to later ones — exactly what starves
-        // low band counts. Re-fitting each band against the residual all the
-        // OTHERS leave lets a small stack cooperate like a jointly-optimized
-        // one.
         refineBands(bands, error, minFrequency, maxFrequency, sampleRate)
 
-        // Sort by frequency, re-index
         return bands.sortedBy { it.freq }.mapIndexed { idx, b -> b.copy(id = idx) }
     }
 
@@ -380,7 +297,6 @@ object AutoEqEngine {
         else          -> 0.25
     }
 
-    /** Frequency-dependent boost/cut clamp shared by the greedy fit and refinement. */
     private fun clampGain(g: Double, type: FilterType, freq: Double): Double {
         val boostCap = when {
             type == FilterType.LOWSHELF -> MAX_BOOST
@@ -392,18 +308,6 @@ object AutoEqEngine {
         return g.coerceIn(-MAX_CUT, boostCap)
     }
 
-    /**
-     * Cyclic coordinate descent over the fitted stack (a few sweeps):
-     * for each band, remove its response from the residual, then re-fit it on
-     * what the OTHER bands actually leave behind — frequency and Q over a
-     * local log-grid (shelves keep their corner and slope; only their gain
-     * refits), gain in closed form by weighted least squares. The dB response
-     * of an RBJ filter is near-linear in its gain setting for the ranges used
-     * here, which is what makes the closed-form gain valid; candidates are
-     * still SCORED with the exact response, so the approximation only picks
-     * the search point, never the final answer. Bands another band fully
-     * absorbed (|gain| < 0.2 dB) are dropped rather than left as noise.
-     */
     private fun refineBands(
         bands: MutableList<EqBand>,
         residual: MutableList<FrequencyPoint>,
@@ -415,9 +319,6 @@ object AutoEqEngine {
         if (bands.isEmpty()) return
         val n = residual.size
 
-        // Phase tables: cos(φ)/cos(2φ) per grid point, computed ONCE. Every
-        // candidate evaluation after this is pure arithmetic — the win that
-        // makes a wide candidate grid and multiple sweeps cost milliseconds.
         val cp = DoubleArray(n)
         val c2p = DoubleArray(n)
         val weights = DoubleArray(n)
@@ -434,13 +335,11 @@ object AutoEqEngine {
         for (sweep in 0 until sweeps) {
             for (k in bands.indices) {
                 val band = bands[k]
-                // Residual with band k's contribution removed.
+
                 val ck = coeffsFor(band, sampleRate)
                 val eWo = DoubleArray(n)
                 for (j in 0 until n) eWo[j] = res[j] - magnitudeDb(ck, cp[j], c2p[j])
 
-                // ±half-octave in frequency, 0.5–2× in Q — wide enough to walk
-                // out of a bad greedy seed over a few sweeps.
                 val freqCands: List<Float>
                 val qCands: List<Float>
                 if (band.type == FilterType.PEAKING) {
@@ -461,9 +360,6 @@ object AutoEqEngine {
                     var qc = qc0
                     if (band.type == FilterType.PEAKING && fc > 5000f && qc > 3f) qc = 3f
 
-                    // Closed-form gain from the +1 dB basis shape (RBJ dB
-                    // response is near-linear in gain at these ranges); the
-                    // exact response still does the scoring below.
                     val cProbe = coeffsFor(band.copy(freq = fc, q = qc, gain = 1f), sampleRate)
                     var num = 0.0
                     var den = 1e-9
@@ -493,7 +389,6 @@ object AutoEqEngine {
                 for (j in 0 until n) res[j] = eWo[j] + magnitudeDb(cBest, cp[j], c2p[j])
             }
 
-            // Converged? Stop early rather than burning identical sweeps.
             var total = 0.0
             for (j in 0 until n) total += weights[j] * res[j] * res[j]
             if (prevTotal - total < prevTotal * 0.005) break
@@ -504,14 +399,6 @@ object AutoEqEngine {
         bands.removeAll { abs(it.gain) < 0.2f }
     }
 
-    /**
-     * Fits one end shelf to the mean residual error over [regionLo, regionHi]
-     * and subtracts its real (RBJ) response from the error curve. Returns null
-     * when the region is empty or the fitted gain is below 1 dB — a broadband
-     * tilt under 1 dB sits at the just-noticeable difference, and residual
-     * sub-dB offsets also appear spuriously whenever midband normalization
-     * shifts the whole curve. Not worth a filter slot either way.
-     */
     private fun fitEndShelf(
         error: MutableList<FrequencyPoint>,
         type: FilterType,
@@ -536,7 +423,6 @@ object AutoEqEngine {
         if (gain < -MAX_CUT) gain = -MAX_CUT
         if (abs(gain) < 1.0) return null
 
-        // Butterworth shoulder: monotonic, no corner overshoot to re-correct.
         val band = EqBand(
             id = id,
             type = type,

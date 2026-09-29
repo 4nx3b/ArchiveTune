@@ -78,6 +78,7 @@ class TransitionFilterProcessor : BaseAudioProcessor() {
 
     private var channelCount = 0
     private var sampleRate = 0
+    private var isFloat = false
 
     private var currentLowPassHz = OPEN_HZ
     private var currentHighPassHz = OFF_HZ
@@ -120,16 +121,20 @@ class TransitionFilterProcessor : BaseAudioProcessor() {
      * Phase 3 one, with nothing anywhere saying why.
      */
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
-        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT || inputAudioFormat.channelCount < 1) {
+        if (inputAudioFormat.channelCount < 1 ||
+            (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT &&
+                inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT)
+        ) {
             Log.w(
                 TAG,
                 "Transition filtering inactive: encoding=${inputAudioFormat.encoding} " +
-                    "channels=${inputAudioFormat.channelCount} is not 16-bit PCM",
+                    "channels=${inputAudioFormat.channelCount} is not 16-bit/float PCM",
             )
             return AudioProcessor.AudioFormat.NOT_SET
         }
         channelCount = inputAudioFormat.channelCount
         sampleRate = inputAudioFormat.sampleRate
+        isFloat = inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT
         lowState = FloatArray(channelCount * STAGES * 2)
         highState = FloatArray(channelCount * STAGES * 2)
         currentLowPassHz = targetLowPassHz
@@ -154,7 +159,8 @@ class TransitionFilterProcessor : BaseAudioProcessor() {
     }
 
     override fun queueInput(inputBuffer: java.nio.ByteBuffer) {
-        val bytesPerFrame = BYTES_PER_SAMPLE * channelCount
+        val bytesPerSample = if (isFloat) 4 else BYTES_PER_SAMPLE
+        val bytesPerFrame = bytesPerSample * channelCount
         if (bytesPerFrame == 0) return
         val frameCount = inputBuffer.remaining() / bytesPerFrame
         if (frameCount == 0) return
@@ -190,10 +196,19 @@ class TransitionFilterProcessor : BaseAudioProcessor() {
 
             repeat(block) {
                 for (channel in 0 until channelCount) {
-                    var sample = inputBuffer.short.toFloat()
+                    var sample = if (isFloat) {
+                        // Scale onto the internal PCM-16 calibration, back out below.
+                        inputBuffer.float * 32767f
+                    } else {
+                        inputBuffer.short.toFloat()
+                    }
                     if (lowOn) sample = lowPass(channel, sample)
                     if (highOn) sample = highPass(channel, sample)
-                    outputBuffer.putShort(clampToShort(sample))
+                    if (isFloat) {
+                        outputBuffer.putFloat(sample / 32767f)
+                    } else {
+                        outputBuffer.putShort(clampToShort(sample))
+                    }
                 }
             }
             remaining -= block

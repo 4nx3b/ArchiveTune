@@ -2,15 +2,6 @@ package tf.monochrome.android.audio.dsp.preset
 
 import tf.monochrome.android.audio.dsp.SnapinType
 
-/**
- * Builds DSP-engine state JSON for hard-coded presets.
- *
- * The native engine (`DspEngine::loadStateJson`) consumes a flat structure:
- * `{ "buses": [ {gain,pan,muted,soloed,inputEnabled,plugins:[{type,bypassed,dryWet,params:[...]}]} x5 ] }`.
- * `params` is a flat array indexed by each processor's parameter enum, so this
- * builder starts from the processor defaults and applies typed overrides — no
- * hand-counting of array positions.
- */
 object MixPresetBuilder {
     fun build(block: PresetScope.() -> Unit): String =
         PresetScope().apply(block).toJson()
@@ -19,13 +10,11 @@ object MixPresetBuilder {
 class PresetScope {
     private val buses = Array(5) { BusScope(it) }
 
-    /** Configure a mix bus (0-3) or the master bus (4). */
     fun bus(index: Int, gainDb: Float = 0f, block: BusScope.() -> Unit) {
         buses[index].gainDb = gainDb
         buses[index].block()
     }
 
-    /** Configure the master bus (index 4). */
     fun master(gainDb: Float = 0f, block: BusScope.() -> Unit) = bus(4, gainDb, block)
 
     fun toJson(): String {
@@ -45,12 +34,6 @@ class BusScope(private val index: Int) {
     var pan: Float = 0f
     private val plugins = mutableListOf<PluginEntry>()
 
-    /**
-     * Add a processor to this bus. [overrides] are `(paramIndex to value)` pairs
-     * applied on top of [MixPresetParams.defaults]; [dryWet] is the plugin-level
-     * dry/wet blend (0..1, named-only — most demo effects keep this at 1 and
-     * shape the blend via the processor's own MIX parameter).
-     */
     fun plugin(type: SnapinType, vararg overrides: Pair<Int, Float>, dryWet: Float = 1f) {
         val params = MixPresetParams.defaults(type).copyOf()
         for ((idx, value) in overrides) {
@@ -91,7 +74,6 @@ private class PluginEntry(
     }
 }
 
-/** Default parameter arrays for the processors used by the built-in catalog. */
 object MixPresetParams {
     fun defaults(type: SnapinType): FloatArray = when (type) {
         SnapinType.REVERB -> floatArrayOf(20f, 2f, 50f, 50f, 70f, 0.8f, 20f, 8000f, 80f, 30f, 100f, 30f)
@@ -105,8 +87,6 @@ object MixPresetParams {
         else -> floatArrayOf()
     }
 }
-
-// ── Parameter indices (mirror the native processor enums) ───────────────────
 
 object ReverbP {
     const val PRE_DELAY = 0

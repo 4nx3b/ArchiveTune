@@ -13,15 +13,6 @@ import tf.monochrome.android.domain.model.MeasurementRig
 import java.net.URL
 import java.util.concurrent.TimeUnit
 
-/**
- * HeadphoneAutoEqApi - Fetches headphone profiles from jaakkopasanen/AutoEq GitHub repo
- *
- * Repo structure: results/{source}/{type}/{headphone_name}/
- * e.g. results/oratory1990/over-ear/Sennheiser HD 600/
- *
- * Uses the Git Trees API (recursive) to fetch the full file tree in a single call,
- * then parses headphone entries from the paths.
- */
 class HeadphoneAutoEqApi {
     companion object {
         private const val TAG = "HeadphoneAutoEqApi"
@@ -33,19 +24,12 @@ class HeadphoneAutoEqApi {
             "https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/master"
         private val CACHE_TTL_MS = TimeUnit.HOURS.toMillis(24)
 
-        // Known measurement sources in the results/ folder
         private val KNOWN_TYPES = setOf("over-ear", "in-ear", "earbud")
     }
 
     private var cachedHeadphones: List<Headphone>? = null
     private var lastFetchTime: Long = 0L
 
-    /**
-     * Fetch all headphones from the AutoEq repo using Git Trees API.
-     *
-     * Parses paths like: results/oratory1990/over-ear/AKG K240 Studio
-     * Deduplicates by headphone name (same model from multiple sources → multiple measurements).
-     */
     suspend fun fetchHeadphones(): Result<List<Headphone>> = withContext(Dispatchers.IO) {
         try {
             if (isCacheValid()) {
@@ -73,18 +57,12 @@ class HeadphoneAutoEqApi {
 
             data class HeadphoneEntry(
                 val name: String,
-                val type: String,      // over-ear, in-ear, earbud
-                val source: String,    // oratory1990, crinacle, Rtings, etc.
-                val path: String,      // headphone result folder path in repo
+                val type: String,
+                val source: String,
+                val path: String,
                 val rig: MeasurementRig
             )
 
-            // A headphone result folder is any directory under results/ that
-            // holds a measurement CSV. Keying discovery on the CSV blob — not
-            // an assumed folder depth — means every source is read regardless
-            // of how it nests rig / form-factor folders (oratory1990 uses a
-            // bare "over-ear", Rtings uses "HMS II.3 over-ear", crinacle uses
-            // "GRAS 43AG-7 over-ear", etc.).
             val headphoneFolders = mutableSetOf<String>()
             for (item in tree) {
                 val obj = item.jsonObject
@@ -101,7 +79,7 @@ class HeadphoneAutoEqApi {
             val entries = mutableListOf<HeadphoneEntry>()
             for (folder in headphoneFolders) {
                 val parts = folder.split("/")
-                // results / source / [ ...rig & form-factor folders... ] / name
+
                 if (parts.size < 3) continue
 
                 val source = parts[1]
@@ -114,7 +92,6 @@ class HeadphoneAutoEqApi {
                 entries.add(HeadphoneEntry(hpName, hpType, source, folder, rig))
             }
 
-            // Group by headphone name → deduplicate, merge measurements
             val grouped = entries.groupBy { it.name }
             val headphones = grouped.map { (name, group) ->
                 val primaryType = group.first().type
@@ -146,23 +123,13 @@ class HeadphoneAutoEqApi {
         }
     }
 
-    /**
-     * Fetch measurement CSV for a specific headphone.
-     *
-     * `headphoneId` is the normalized (lowercase, underscored) id used for
-     * cache/preferences lookup. `headphoneName` is the original-case display
-     * name. The GitHub raw URLs are case-sensitive, so the fallback paths
-     * need the original name — passing only the lowercased id silently
-     * breaks lookups like "AKG K371" vs "akg k371".
-     */
     suspend fun fetchHeadphoneMeasurement(
         headphoneId: String,
         headphoneName: String = ""
     ): Result<String> =
         withContext(Dispatchers.IO) {
             try {
-                // Cache lookup is case-insensitive so we're tolerant of either
-                // the normalized id or any mixed-case variant the caller passes.
+
                 val headphone = cachedHeadphones?.find {
                     it.id.equals(headphoneId, ignoreCase = true) ||
                         it.name.equals(headphoneName, ignoreCase = true)
@@ -171,7 +138,6 @@ class HeadphoneAutoEqApi {
                 val basePath = measurement?.path
 
                 if (basePath != null) {
-                    // Try known measurement file names
                     val fileNames = listOfNotNull(
                         headphone.name.let { "$it.csv" },
                         "raw.csv"
@@ -187,8 +153,6 @@ class HeadphoneAutoEqApi {
                     }
                 }
 
-                // Fallback: try common patterns using the original-case name
-                // when available (falls back to de-underscored id if not).
                 val encodedName = headphoneName.ifBlank { headphoneId.replace("_", " ") }
                 val fallbackUrls = listOf(
                     "$RAW_BASE/results/oratory1990/over-ear/$encodedName/$encodedName.csv",
@@ -211,12 +175,6 @@ class HeadphoneAutoEqApi {
             }
         }
 
-    /**
-     * Fetch the measurement CSV for a specific measurement by its repo path.
-     * Unlike [fetchHeadphoneMeasurement] this targets the exact source folder,
-     * so picking a headphone's Rtings entry loads Rtings data even when the
-     * same headphone also carries oratory1990/crinacle measurements.
-     */
     suspend fun fetchMeasurementByPath(
         basePath: String,
         headphoneName: String,
@@ -253,13 +211,6 @@ class HeadphoneAutoEqApi {
     private fun isCacheValid(): Boolean =
         cachedHeadphones != null && (System.currentTimeMillis() - lastFetchTime) < CACHE_TTL_MS
 
-    /**
-     * Map an AutoEq source name (the first path component under `results/`)
-     * to the rig that source publicly uses. Crinacle splits by form factor:
-     * over-ear runs on a GRAS 43AG-7, in-ear on a 711 clone. Anything not in
-     * this map falls through to UNKNOWN so the rig filter can group them
-     * separately.
-     */
     private fun rigFor(source: String, type: String): MeasurementRig = when (source.lowercase()) {
         "oratory1990" -> MeasurementRig.GRAS_43AC_10
         "crinacle" -> if (type == "over-ear") MeasurementRig.GRAS_43AG_7 else MeasurementRig.IEC_711_CLONE
@@ -268,12 +219,6 @@ class HeadphoneAutoEqApi {
         else -> MeasurementRig.UNKNOWN
     }
 
-    /**
-     * Find the form factor among a headphone folder's intermediate path
-     * segments. Sources name this folder either bare ("over-ear") or with the
-     * rig prefixed ("HMS II.3 over-ear", "GRAS 43AG-7 in-ear"), so we match on
-     * a form-factor suffix. Returns null when no segment carries one.
-     */
     private fun detectType(segments: List<String>): String? {
         for (segment in segments) {
             val s = segment.trim().lowercase()
@@ -284,12 +229,6 @@ class HeadphoneAutoEqApi {
         return null
     }
 
-    /**
-     * Find the acoustic rig among a headphone folder's intermediate path
-     * segments (e.g. "HMS II.3 over-ear" → HMS II.3). Returns null when no
-     * segment names a recognised rig, letting the caller fall back to the
-     * per-source default.
-     */
     private fun detectRig(segments: List<String>): MeasurementRig? {
         for (segment in segments) {
             val rig = rigFromLabel(segment)
@@ -298,7 +237,6 @@ class HeadphoneAutoEqApi {
         return null
     }
 
-    /** Map a rig folder label to the rig enum. */
     private fun rigFromLabel(label: String): MeasurementRig = when {
         label.contains("5128") -> MeasurementRig.BK_5128
         label.contains("4620") -> MeasurementRig.BK_4620

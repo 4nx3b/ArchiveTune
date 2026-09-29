@@ -23,34 +23,9 @@ import javax.inject.Singleton
 import kotlin.math.abs
 import kotlin.math.log10
 
-/**
- * Passive channel detector that taps the decoded stream without altering it.
- *
- * Sits at the very HEAD of the AudioProcessor chain — before the Atmos
- * renderer and the stereo fold-down — so it sees the source exactly as the
- * decoder emits it. Two jobs:
- *
- *  1. Format identification (always on, free): every reconfigure publishes
- *     the incoming channel count, the assumed layout name ("5.1", "7.1",
- *     "9.1.6", …) and per-channel names matching [DownmixProcessor]'s
- *     order tables, plus sample rate / encoding.
- *  2. Per-channel activity metering (on demand): while at least one UI
- *     subscriber holds an [acquire], the audio thread tracks a running
- *     peak per input channel and a ~10 Hz coroutine publishes decayed
- *     dBFS peaks. That answers "is this 16-ch file REALLY 9.1.6, and
- *     which channels actually carry signal?" — Media3 only reports a
- *     count, never a mask, so measuring is the only way to know.
- *
- * Pass-through follows SpectrumAnalyzerTap: index-based reads (no
- * asFloatBuffer()/asShortBuffer() view allocations on the audio thread)
- * and a reused direct output buffer. Metering costs one abs()+max per
- * sample per channel and only while the detector UI is visible.
- */
 @Singleton
 @OptIn(UnstableApi::class)
 class ChannelDetectorProcessor @Inject constructor() : AudioProcessor {
-
-    /** Snapshot of the detected input. [peaksDb] is per-channel dBFS (decayed). */
     data class ChannelState(
         val channelCount: Int,
         val sampleRate: Int,
@@ -73,9 +48,6 @@ class ChannelDetectorProcessor @Inject constructor() : AudioProcessor {
     private var outputBuffer: ByteBuffer = AudioProcessor.EMPTY_BUFFER
     private var inputEnded = false
 
-    // Linear running peaks, one slot per input channel. Written on the audio
-    // thread (monotonic max), read + decayed by the publisher coroutine. The
-    // unguarded float races are benign for metering.
     @Volatile private var peaks = FloatArray(0)
     @Volatile private var meterActive = false
 
@@ -87,12 +59,6 @@ class ChannelDetectorProcessor @Inject constructor() : AudioProcessor {
     private val _state = MutableStateFlow<ChannelState?>(null)
     val state: StateFlow<ChannelState?> = _state.asStateFlow()
 
-    /**
-     * Reference-count meter subscribers (same contract as
-     * SpectrumAnalyzerTap): pair each [acquire] with exactly one [release],
-     * wired from a DisposableEffect. Format identification stays live either
-     * way; only the per-channel peak scan is gated.
-     */
     fun acquire() {
         val count = subscriberCount.incrementAndGet()
         if (count == 1) {
@@ -118,8 +84,7 @@ class ChannelDetectorProcessor @Inject constructor() : AudioProcessor {
         publishJob = scope.launch {
             while (isActive) {
                 publishState()
-                // Read-then-decay so a steady tone holds and silence falls
-                // ~14 dB/s (0.72^10 ≈ −14 dB over ten 100 ms ticks).
+
                 val p = peaks
                 for (c in p.indices) p[c] *= 0.72f
                 delay(100)
@@ -132,7 +97,7 @@ class ChannelDetectorProcessor @Inject constructor() : AudioProcessor {
         publishJob?.cancel()
         publishJob = null
         java.util.Arrays.fill(peaks, 0f)
-        publishState() // leave the format info up, peaks floored
+        publishState()
     }
 
     private fun publishState() {
@@ -156,10 +121,7 @@ class ChannelDetectorProcessor @Inject constructor() : AudioProcessor {
         )
     }
 
-    /** Test/diagnostic hook: copy of the current linear per-channel peaks. */
     fun currentPeaks(): FloatArray = peaks.copyOf()
-
-    // ── AudioProcessor (pure pass-through) ──────────────────────────────
 
     override fun configure(inputAudioFormat: AudioFormat): AudioFormat {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT &&
@@ -206,8 +168,6 @@ class ChannelDetectorProcessor @Inject constructor() : AudioProcessor {
             }
         }
 
-        // Pass through unmodified (same narrowed-limit bulk copy as
-        // SpectrumAnalyzerTap — no duplicate() wrapper allocation).
         if (outputBuffer.capacity() < byteCount) {
             outputBuffer = ByteBuffer.allocateDirect(byteCount).order(ByteOrder.nativeOrder())
         } else {
@@ -255,13 +215,10 @@ class ChannelDetectorProcessor @Inject constructor() : AudioProcessor {
     }
 
     companion object {
-        /** Meter floor; also what an idle/silent channel reports. */
         const val PEAK_FLOOR_DB = -120f
 
-        /** A channel above this (decayed) peak is considered active. */
         const val ACTIVE_THRESHOLD_DB = -60f
 
-        /** Human name for a channel count, matching DownmixProcessor's tables. */
         fun layoutName(count: Int): String = when (count) {
             1 -> "Mono"
             2 -> "Stereo"
@@ -275,11 +232,6 @@ class ChannelDetectorProcessor @Inject constructor() : AudioProcessor {
             else -> "$count ch"
         }
 
-        /**
-         * Assumed channel order per count — MUST stay in sync with
-         * [DownmixProcessor]'s RAW_L_ROWS tables. Counts without a known
-         * layout get generic "Ch n" labels.
-         */
         fun channelNames(count: Int): List<String> = when (count) {
             1 -> listOf("M")
             2 -> listOf("FL", "FR")

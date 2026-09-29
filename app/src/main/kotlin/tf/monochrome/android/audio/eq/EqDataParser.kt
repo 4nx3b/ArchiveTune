@@ -5,28 +5,7 @@ import tf.monochrome.android.domain.model.FilterType
 import tf.monochrome.android.domain.model.FrequencyPoint
 import java.util.Locale
 
-/**
- * Parser for frequency response data and parametric EQ formats.
- *
- * Handles:
- * - Raw measurement data (CSV/TXT format with frequency and gain columns)
- * - Parametric EQ filter notation (Preamp, Filter lines)
- * - Multiple delimiters (comma, semicolon, tab, whitespace)
- * - European number format (comma as decimal separator)
- */
 object EqDataParser {
-
-    /**
-     * Parse raw frequency response measurement data
-     *
-     * Supports:
-     * - Header detection (looks for 'freq'/'frequency' and 'raw'/'spl'/'gain'/'db' columns)
-     * - Multiple delimiters (semicolon, comma, tab, whitespace)
-     * - European format (comma decimals)
-     *
-     * @param rawData Raw text data with frequency/gain pairs
-     * @return List of FrequencyPoint objects sorted by frequency
-     */
     fun parseRawData(rawData: String): List<FrequencyPoint> {
         if (rawData.isEmpty()) return emptyList()
 
@@ -35,7 +14,6 @@ object EqDataParser {
 
         val firstLine = lines[0].trim()
 
-        // Determine delimiter
         val delimiter = when {
             firstLine.contains(';') -> ";"
             firstLine.contains(',') -> ","
@@ -43,7 +21,6 @@ object EqDataParser {
             else -> "\\s+"
         }
 
-        // Detect columns
         var freqIdx = 0
         var gainIdx = 1
 
@@ -88,7 +65,6 @@ object EqDataParser {
             var freqStr = parts[freqIdx].trim()
             var gainStr = parts[gainIdx].trim()
 
-            // Handle European format
             if (delimiter != ",") {
                 if (freqStr.contains(',')) freqStr = freqStr.replace(',', '.')
                 if (gainStr.contains(',')) gainStr = gainStr.replace(',', '.')
@@ -105,19 +81,6 @@ object EqDataParser {
         return points.sortedBy { it.freq }
     }
 
-    /**
-     * Parse parametric EQ notation
-     *
-     * Format:
-     * ```
-     * Preamp: -6.9 dB
-     * Filter 1: ON PK Fc 105 Hz Gain -2.6 dB Q 1.41
-     * Filter 2: ON LS Fc 40 Hz Gain 0.5 dB Q 0.707
-     * ```
-     *
-     * @param text Parametric EQ text representation
-     * @return Pair of (bands, preamp gain)
-     */
     fun parseParametricEQ(text: String): Pair<List<EqBand>, Float> {
         val lines = text.split('\n')
         var preamp = 0f
@@ -128,7 +91,6 @@ object EqDataParser {
             val l = line.trim()
             if (l.isEmpty() || l.startsWith('#')) continue
 
-            // Parse preamp
             if (l.lowercase().startsWith("preamp:")) {
                 val match = Regex("""Preamp:\s*([-\d.]+)\s*dB""", RegexOption.IGNORE_CASE).find(l)
                 if (match != null) {
@@ -137,7 +99,6 @@ object EqDataParser {
                 continue
             }
 
-            // Parse filter
             if (l.lowercase().startsWith("filter")) {
                 val pattern = Regex(
                     """Filter\s+\d+:\s+(ON|OFF)\s+(PK|LS|HS)\s+Fc\s+([\d.]+)\s+Hz\s+Gain\s+([-\d.]+)\s+dB\s+Q\s+([\d.]+)""",
@@ -174,19 +135,10 @@ object EqDataParser {
         return Pair(bands, preamp)
     }
 
-    /**
-     * Apply smoothing to frequency response data
-     *
-     * Uses a triangular window to preserve peaks better than simple average.
-     *
-     * @param data Input frequency points
-     * @param strength Smoothing strength 0-100 (0 = no smoothing)
-     * @return Smoothed frequency points
-     */
     fun applySmoothing(data: List<FrequencyPoint>, strength: Int): List<FrequencyPoint> {
         if (data.size < 3 || strength <= 0) return data
 
-        val windowSize = maxOf(1, strength / 3) // Scale strength to window size
+        val windowSize = maxOf(1, strength / 3)
 
         return data.indices.map { i ->
             var sumGain = 0f
@@ -195,7 +147,6 @@ object EqDataParser {
             for (j in -windowSize..windowSize) {
                 val idx = i + j
                 if (idx in data.indices) {
-                    // Triangular weight
                     val weight = 1.0f - (kotlin.math.abs(j.toFloat()) / (windowSize + 1))
                     sumGain += data[idx].gain * weight
                     totalWeight += weight
@@ -209,9 +160,6 @@ object EqDataParser {
         }
     }
 
-    /**
-     * Convert EQ bands to parametric EQ text format
-     */
     fun bandToParametricEQ(bands: List<EqBand>, preamp: Float = 0f): String {
         val sb = StringBuilder()
         sb.append(String.format(Locale.US, "Preamp: %.1f dB\n", preamp))

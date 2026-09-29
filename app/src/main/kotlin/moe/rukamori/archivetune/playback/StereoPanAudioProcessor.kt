@@ -38,8 +38,10 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
     }
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat =
-        if (inputAudioFormat.encoding == C.ENCODING_PCM_16BIT && inputAudioFormat.channelCount == STEREO_CHANNEL_COUNT) {
-
+        if ((inputAudioFormat.encoding == C.ENCODING_PCM_16BIT ||
+            inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT) &&
+            inputAudioFormat.channelCount == STEREO_CHANNEL_COUNT
+        ) {
             inputAudioFormat
         } else {
             AudioProcessor.AudioFormat.NOT_SET
@@ -50,11 +52,12 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
         if (!inputBuffer.hasRemaining()) return
 
         val format = inputAudioFormat
+        val floatIn = format.encoding == C.ENCODING_PCM_FLOAT
         val balanceNow = balance
         val rotationOn = rotationEnabled
         val balanceOn = abs(balanceNow) > BALANCE_EPSILON
         if (
-            format.encoding != C.ENCODING_PCM_16BIT ||
+            (!floatIn && format.encoding != C.ENCODING_PCM_16BIT) ||
             format.channelCount != STEREO_CHANNEL_COUNT ||
             format.sampleRate <= 0 ||
             (!rotationOn && !balanceOn)
@@ -66,8 +69,9 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
         val sampleRate = format.sampleRate
 
         val history = ensureEchoHistory(sampleRate)
-        val frameCount = inputBuffer.remaining() / (BYTES_PER_SAMPLE * STEREO_CHANNEL_COUNT)
-        val output = replaceOutputBuffer(frameCount * BYTES_PER_SAMPLE * STEREO_CHANNEL_COUNT)
+        val bytesPerSample = if (floatIn) 4 else 2
+        val frameCount = inputBuffer.remaining() / (bytesPerSample * STEREO_CHANNEL_COUNT)
+        val output = replaceOutputBuffer(frameCount * bytesPerSample * STEREO_CHANNEL_COUNT)
 
         val speedHz = rotationSpeedHz
         val phaseStep = 2.0 * PI * speedHz / sampleRate
@@ -89,8 +93,17 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
         var writeIndex = echoWriteIndex
 
         repeat(frameCount) {
-            val inLeft = inputBuffer.short.toInt()
-            val inRight = inputBuffer.short.toInt()
+            val inLeft: Float
+            val inRight: Float
+            if (floatIn) {
+                // Normalise float [-1,1] onto the PCM-16 scale the internal
+                // math (limiter ceiling, echo gains) is calibrated against.
+                inLeft = inputBuffer.float * 32767f
+                inRight = inputBuffer.float * 32767f
+            } else {
+                inLeft = inputBuffer.short.toFloat()
+                inRight = inputBuffer.short.toFloat()
+            }
 
             val left: Float
             val right: Float
@@ -103,8 +116,8 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
                 right = inRight * modRight
                 localPhase += phaseStep
             } else {
-                left = inLeft.toFloat()
-                right = inRight.toFloat()
+                left = inLeft
+                right = inRight
             }
 
             var outLeft = left * balanceLeft * dryGain
@@ -124,13 +137,18 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
             }
 
             if (rotationOn) {
-                history[writeIndex * STEREO_CHANNEL_COUNT] = inLeft.toShort()
-                history[writeIndex * STEREO_CHANNEL_COUNT + 1] = inRight.toShort()
+                history[writeIndex * STEREO_CHANNEL_COUNT] = clampToPcm16(inLeft)
+                history[writeIndex * STEREO_CHANNEL_COUNT + 1] = clampToPcm16(inRight)
                 writeIndex = (writeIndex + 1) % framesCount
             }
 
-            output.putShort(clampToPcm16(outLeft))
-            output.putShort(clampToPcm16(outRight))
+            if (floatIn) {
+                output.putFloat(outLeft / 32767f)
+                output.putFloat(outRight / 32767f)
+            } else {
+                output.putShort(clampToPcm16(outLeft))
+                output.putShort(clampToPcm16(outRight))
+            }
         }
 
         phase = localPhase % (2.0 * PI)

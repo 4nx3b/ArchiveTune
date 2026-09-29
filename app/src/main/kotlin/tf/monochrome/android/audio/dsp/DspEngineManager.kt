@@ -40,8 +40,6 @@ class DspEngineManager @Inject constructor(
     private val _buses = MutableStateFlow(BusConfig.defaultBuses())
     val buses: StateFlow<List<BusConfig>> = _buses.asStateFlow()
 
-    // Meter levels — polled from the UI once per display frame
-    // [peakL, peakR, holdL, holdR] per bus = 4 floats each
     private val levelsBuffer = FloatArray(TOTAL_BUSES * 4)
     private val _busLevels = MutableStateFlow(List(TOTAL_BUSES) { BusLevels() })
     val busLevels: StateFlow<List<BusLevels>> = _busLevels.asStateFlow()
@@ -49,8 +47,6 @@ class DspEngineManager @Inject constructor(
     private val _clipped = MutableStateFlow(false)
     val clipped: StateFlow<Boolean> = _clipped.asStateFlow()
 
-    // Live audio tap for the FX-chain visualizations. Buffers are reused every
-    // poll (see FxTapFrame docs); only the frame wrapper is allocated at 60 Hz.
     private val fxMetersRaw = FloatArray(MAX_PLUGINS_PER_BUS * 2)
     private val fxMetersSmoothed = FloatArray(MAX_PLUGINS_PER_BUS * 2) { -60f }
     private var fxMetersBus = -1
@@ -71,15 +67,11 @@ class DspEngineManager @Inject constructor(
                 if (json != "{}") preferences.setDspStateJson(json)
             }
         }
-        // Push the user-selected DSP block size into the processor whenever
-        // it changes. The processor honours it on the next queueInput call.
+
         scope.launch {
             preferences.dspBlockSize.collect { processor.setBlockSize(it) }
         }
-        // Master "DSP mixer off" toggle becomes a true bypass on the audio
-        // thread — no deinterleave, no nativeProcess, no Oxford, no
-        // interleave — so flipping it off should leave audio identical to
-        // a build with no DSP wired in at all.
+
         scope.launch {
             preferences.dspEnabled.collect { enabled ->
                 processor.setBypassed(!enabled)
@@ -87,21 +79,6 @@ class DspEngineManager @Inject constructor(
         }
     }
 
-    /**
-     * The live state, captured the instant it changes.
-     *
-     * The DataStore write below is debounced by half a second, which is right
-     * for flash but wrong as a source of truth: the native engine is destroyed
-     * and rebuilt whenever the audio format changes — a track at a different
-     * sample rate is enough — and whatever reapplies state to the new engine
-     * has to reapply what the user *has*, not what was last written. Reading
-     * the preference there meant a knob moved less than 500 ms before a track
-     * change was reverted to its previous value, and then saved in that
-     * reverted state, which made it permanent.
-     *
-     * Serialising here costs one native call per edit. The write is what is
-     * expensive and the write is still debounced.
-     */
     @Volatile private var liveStateJson: String? = null
 
     private fun requestSave() {
@@ -109,28 +86,12 @@ class DspEngineManager @Inject constructor(
         saveSignal.tryEmit(Unit)
     }
 
-    /**
-     * Push the state back into a freshly rebuilt engine.
-     *
-     * Prefers the in-memory copy over the persisted one for the reason above,
-     * and falls back to the preference only when there is no in-memory state
-     * yet — which is startup, and startup goes through [restoreState] anyway.
-     */
     suspend fun reapplyAfterEngineRecreated() {
         val json = liveStateJson ?: preferences.dspStateJson.first()
         if (!json.isNullOrEmpty() && json != "{}") loadStateJson(json)
         processor.setMixBypassed(!_enabled.value)
     }
 
-    /**
-     * Back to a bare mixer: no plugins anywhere, every bus at unity and centre,
-     * nothing muted or soloed, and input on bus 1 alone.
-     *
-     * Driven through the ordinary setters rather than by loading a hand-written
-     * default JSON, so native, the Kotlin mirror and the save all move together
-     * through paths that are already exercised — a reset that half-applied
-     * would be worse than no reset button.
-     */
     fun resetToDefaults() {
         for (bus in _buses.value) {
             for (slot in bus.plugins.indices.reversed()) removePlugin(bus.index, slot)
@@ -156,7 +117,7 @@ class DspEngineManager @Inject constructor(
                 holdDbR = levelsBuffer[b * 4 + 3]
             )
         }
-        // Check clipping
+
         if (processor.nativeGetAndResetClipped(ptr)) {
             _clipped.value = true
         }
@@ -166,12 +127,6 @@ class DspEngineManager @Inject constructor(
         _clipped.value = false
     }
 
-    /**
-     * Poll the per-plugin tap meters and post-fader waveform for [busIndex]
-     * into [fxTap]. Called once per display frame (60 or 120 Hz); meters get
-     * instant attack and a wall-clock ~45 dB/s release, so the fall speed is
-     * the same at any poll rate and short transients stay visible.
-     */
     fun pollFxTap(busIndex: Int) {
         val ptr = processor.getEnginePtr()
         if (ptr == 0L) return
@@ -204,18 +159,12 @@ class DspEngineManager @Inject constructor(
     companion object {
         private const val TOTAL_BUSES = 5
 
-        // Mirrors MAX_PLUGINS_PER_BUS in dsp_engine.h — native refuses inserts past this.
         const val MAX_PLUGINS_PER_BUS = 16
 
-        // FX-chain scope tap: samples fetched per poll (~21 ms at 48 kHz).
-        // Must be <= WAVE_TAP_SIZE in dsp_engine.h.
         const val FX_WAVE_SAMPLES = 1024
 
-        // Tap meter release in dB/s of wall-clock time — poll-rate independent.
         private const val FX_METER_RELEASE_DB_PER_SEC = 45f
 
-        // Parameter bounds — mirror the native clamps in dsp_engine.cpp / snapin_processor.h.
-        // Clamping in Kotlin keeps the StateFlow value in sync with what native actually stores.
         const val MIN_BUS_GAIN_DB = -60f
         const val MAX_BUS_GAIN_DB = 12f
         const val MIN_PAN = -1f
@@ -225,14 +174,13 @@ class DspEngineManager @Inject constructor(
     }
 
     private fun sanitizeParam(value: Float): Float {
-        // Plugin parameter ranges vary per processor; the native side clamps to its own range.
-        // Here we only reject NaN/Inf so they never reach the native atomics or StateFlow.
+
         return if (value.isFinite()) value else 0f
     }
 
     fun setEnabled(enabled: Boolean) {
         _enabled.value = enabled
-        // Bypass mix bus plugins when mixer DSP is off; master bus (AutoEQ) keeps running
+
         processor.setMixBypassed(!enabled)
         scope.launch { preferences.setDspEnabled(enabled) }
     }
@@ -249,8 +197,6 @@ class DspEngineManager @Inject constructor(
         _enabled.value = enabled
         processor.setMixBypassed(!enabled)
     }
-
-    // ── Bus controls ────────────────────────────────────────────────────
 
     fun setBusGain(busIndex: Int, gainDb: Float) {
         val clamped = (if (gainDb.isFinite()) gainDb else 0f)
@@ -290,8 +236,6 @@ class DspEngineManager @Inject constructor(
         requestSave()
     }
 
-    // ── Plugin chain ────────────────────────────────────────────────────
-
     fun addPlugin(busIndex: Int, slotIndex: Int, type: SnapinType): Int {
         val ptr = processor.getEnginePtr()
         if (ptr == 0L) return -1
@@ -303,7 +247,7 @@ class DspEngineManager @Inject constructor(
                     slotIndex = resultSlot,
                     typeOrdinal = type.ordinal
                 ))
-                // Re-index
+
                 bus.copy(plugins = plugins.mapIndexed { i, p -> p.copy(slotIndex = i) })
             }
             requestSave()
@@ -383,7 +327,6 @@ class DspEngineManager @Inject constructor(
         requestSave()
     }
 
-    /** Per-plugin oversampling: 1 (off), 2, or 4. Snaps other values down. */
     fun setPluginOversampling(busIndex: Int, slotIndex: Int, factor: Int) {
         val snapped = if (factor >= 4) 4 else if (factor >= 2) 2 else 1
         val ptr = processor.getEnginePtr()
@@ -398,14 +341,10 @@ class DspEngineManager @Inject constructor(
         requestSave()
     }
 
-    // ── Plugin state reset (for gapless track transitions) ───────────────
-
     fun resetPluginState() {
         val ptr = processor.getEnginePtr()
         if (ptr != 0L) processor.nativeResetPluginState(ptr)
     }
-
-    // ── State serialization ─────────────────────────────────────────────
 
     fun getStateJson(): String {
         val ptr = processor.getEnginePtr()
@@ -416,11 +355,9 @@ class DspEngineManager @Inject constructor(
     fun loadStateJson(json: String) {
         val ptr = processor.getEnginePtr()
         if (ptr != 0L) processor.nativeLoadStateJson(ptr, json)
-        // Sync Kotlin state from the loaded JSON
+
         _buses.value = parseBusConfigsFromJson(json)
     }
-
-    // ── Internal ────────────────────────────────────────────────────────
 
     private fun updateBus(busIndex: Int, transform: (BusConfig) -> BusConfig) {
         _buses.value = _buses.value.map { bus ->

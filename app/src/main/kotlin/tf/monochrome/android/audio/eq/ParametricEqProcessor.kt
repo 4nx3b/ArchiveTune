@@ -18,17 +18,9 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/**
- * Standalone general-purpose parametric EQ AudioProcessor. Independent of AutoEQ,
- * so users can chain both (AutoEQ for headphone correction + Parametric for tone shaping).
- *
- * Sits in the ExoPlayer pipeline *after* AutoEQ. Uses RBJ Audio EQ Cookbook biquad
- * filters (peaking, low shelf, high shelf).
- */
 @Singleton
 @OptIn(UnstableApi::class)
 class ParametricEqProcessor @Inject constructor() : AudioProcessor {
-
     private var pendingFormat = AudioFormat.NOT_SET
     private var inputFormat = AudioFormat.NOT_SET
     private var outputBuffer: ByteBuffer = AudioProcessor.EMPTY_BUFFER
@@ -37,9 +29,6 @@ class ParametricEqProcessor @Inject constructor() : AudioProcessor {
     private var scratchL = FloatArray(0)
     private var scratchR = FloatArray(0)
 
-    // Group the three UI-thread writes into one immutable snapshot published atomically.
-    // The audio thread reads the reference once per block — guaranteed to see a consistent
-    // (enabled, preamp, bands) triple, never a half-updated one.
     private data class Snapshot(
         val enabled: Boolean,
         val preampLinear: Float,
@@ -76,10 +65,7 @@ class ParametricEqProcessor @Inject constructor() : AudioProcessor {
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
         if (inputAudioFormat.channelCount > 2) {
-            // Multichannel passthrough (downmix toggle off): go inactive
-            // instead of failing playback — EQ simply doesn't apply. Clear
-            // both trackers so isActive() reads false immediately (Media3's
-            // pipeline checkState()s active processors against NOT_SET).
+
             pendingFormat = AudioFormat.NOT_SET
             inputFormat = AudioFormat.NOT_SET
             return AudioFormat.NOT_SET
@@ -111,8 +97,6 @@ class ParametricEqProcessor @Inject constructor() : AudioProcessor {
             scratchR = FloatArray(numFrames)
         }
 
-        // Deinterleave with index-based reads — no asFloatBuffer / asShortBuffer
-        // view allocations on the audio thread.
         val startPos = inputBuffer.position()
         if (inputChannels == 1) {
             if (encoding == C.ENCODING_PCM_FLOAT) {
@@ -159,7 +143,7 @@ class ParametricEqProcessor @Inject constructor() : AudioProcessor {
         } else {
             outputBuffer.clear()
         }
-        // Interleave via positional put* — no view allocations on the hot path.
+
         if (encoding == C.ENCODING_PCM_FLOAT) {
             for (i in 0 until numFrames) {
                 val off = i * 8
@@ -197,7 +181,7 @@ class ParametricEqProcessor @Inject constructor() : AudioProcessor {
             if (formatChanged) {
                 inputFormat = pendingFormat
                 sampleRate = inputFormat.sampleRate.toDouble()
-                // Force filter rebuild on next block (sample-rate-dependent coefficients).
+
                 appliedSnapshot = null
             }
             pendingFormat = AudioFormat.NOT_SET
@@ -289,7 +273,6 @@ class ParametricEqProcessor @Inject constructor() : AudioProcessor {
                 }
             }
             if (abs(na0) < 1e-20 || !na0.isFinite()) {
-                // Degenerate coefficient — fall back to passthrough instead of emitting NaN/Inf audio.
                 b0 = 1f; b1 = 0f; b2 = 0f; a1 = 0f; a2 = 0f
                 z1 = 0f; z2 = 0f
                 return

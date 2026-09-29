@@ -27,11 +27,8 @@ class ParametricEqViewModel @Inject constructor(
     private val preferences: PreferencesManager,
     val spectrumAnalyzer: SpectrumAnalyzerTap
 ) : ViewModel() {
-
     private val json = Json { ignoreUnknownKeys = true }
 
-    // Drag-tail persistence: one in-flight job per key, so a coalesced write
-    // can be superseded by the next edit instead of stacking up per frame.
     private var bandsPersistJob: kotlinx.coroutines.Job? = null
     private var preampPersistJob: kotlinx.coroutines.Job? = null
 
@@ -59,7 +56,6 @@ class ParametricEqViewModel @Inject constructor(
     private val _fftSize = MutableStateFlow(SpectrumAnalyzerTap.FFT_SIZE_LOW)
     val fftSize: StateFlow<Int> = _fftSize.asStateFlow()
 
-    // --- Spectrum preferences exposed for the preview overlay ---
     val spectrumAnalyzerEnabled: StateFlow<Boolean> = preferences.spectrumAnalyzerEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
@@ -74,11 +70,7 @@ class ParametricEqViewModel @Inject constructor(
             repository.getAllPresets().collect { _allPresets.value = it }
         }
         viewModelScope.launch {
-            // Restore bands from persistent storage. Await the first real
-            // DataStore emission with first(): the previous stateIn(...).value
-            // pattern raced and almost always read the null initial value, so
-            // saved bands never restored and the next saveBands() overwrote
-            // them with the defaults.
+
             val bandsJson = preferences.paramEqBandsJson.first()
             if (!bandsJson.isNullOrBlank()) {
                 try {
@@ -88,8 +80,7 @@ class ParametricEqViewModel @Inject constructor(
             }
             val activeId = preferences.paramEqActivePresetId.first()
             if (activeId != null) {
-                // See EqViewModel: the active id and the preset row arrive by
-                // different roads, so read first and wait only if it is missing.
+
                 _activePreset.value = repository.getPresetById(activeId)
                     ?: withTimeoutOrNull(PRESET_RESTORE_WAIT_MS) {
                         repository.getPresetByIdFlow(activeId).filterNotNull().first()
@@ -139,7 +130,7 @@ class ParametricEqViewModel @Inject constructor(
 
     fun addBand() {
         val bands = _currentBands.value
-        // Place new band at midpoint of widest gap on the log-frequency axis
+
         val sorted = bands.sortedBy { it.freq }
         var newFreq = 1000f
         if (sorted.size >= 2) {
@@ -232,11 +223,6 @@ class ParametricEqViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Import a parsed EqualizerAPO profile: saved as a Parametric profile,
-     * optionally loaded as the live curve. Mono by design — per-ear EQ lives
-     * on the AutoEQ surface.
-     */
     fun importApoProfile(
         profile: tf.monochrome.android.data.import_.ParsedEqProfile,
         name: String,
@@ -257,8 +243,7 @@ class ParametricEqViewModel @Inject constructor(
                 if (apply) {
                     _currentBands.value = bands
                     saveBands(bands)
-                    // A file's preamp is untrusted input — clamp to the range
-                    // the page's own slider allows.
+
                     val preamp = profile.preamp.coerceIn(-24f, 24f)
                     _currentPreamp.value = preamp
                     persistPreamp(preamp.toDouble())
@@ -301,16 +286,6 @@ class ParametricEqViewModel @Inject constructor(
         _error.value = null
     }
 
-    /**
-     * Persist the band list.
-     *
-     * [coalesce] is for the continuous edits — a band slider or a graph drag,
-     * which fire dozens of times a second. Each save JSON-encodes every band
-     * and writes DataStore, and the audio path re-applies the parametric chain
-     * off that key, so an uncoalesced drag rebuilt every filter on every frame.
-     * Structural changes (add/remove, preset load, reset) write straight
-     * through — they happen once and must not be lost to a cancel.
-     */
     private fun saveBands(bands: List<EqBand>, coalesce: Boolean = false) {
         bandsPersistJob?.cancel()
         bandsPersistJob = viewModelScope.launch {
@@ -324,7 +299,6 @@ class ParametricEqViewModel @Inject constructor(
         }
     }
 
-    /** Single writer for the preamp, so an immediate write always beats a pending drag tail. */
     private fun persistPreamp(value: Double, coalesce: Boolean = false) {
         preampPersistJob?.cancel()
         preampPersistJob = viewModelScope.launch {
@@ -344,7 +318,6 @@ class ParametricEqViewModel @Inject constructor(
     private companion object {
         const val PRESET_RESTORE_WAIT_MS = 8_000L
 
-        /** Drag-tail delay before a continuous edit reaches DataStore. */
         const val PERSIST_DEBOUNCE_MS = 120L
     }
 }

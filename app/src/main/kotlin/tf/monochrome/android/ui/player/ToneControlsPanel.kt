@@ -19,17 +19,6 @@ import androidx.compose.ui.unit.sp
 import kotlin.math.abs
 import tf.monochrome.android.domain.model.ToneControls
 
-/**
- * Bass / treble tone shelves, shared by the player and the AutoEQ screen —
- * one panel over [ToneControls] so both surfaces read and write the same
- * setting (the shelves run after the AutoEQ correction in the system-wide
- * effect, see ToneControls.toBands()).
- *
- * Two gain sliders in the model's own ±12 dB window; the cutoff/Q stay at
- * the model defaults because upstream exposes them nowhere else either. A
- * centred slider is a true no-op (gain 0 disables the shelf), so no extra
- * reset affordance is needed.
- */
 @Composable
 fun ToneControlsPanel(
     tone: ToneControls,

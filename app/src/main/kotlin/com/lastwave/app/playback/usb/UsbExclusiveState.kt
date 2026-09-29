@@ -21,13 +21,6 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Availability/activity state for USB exclusive output.
- *
- * [isAvailable] tracks whether a USB audio peripheral is currently attached.
- * [isActive] is true only when the exclusive toggle is enabled and a device
- * is attached. Both default to `false`.
- */
 @Singleton
 class UsbExclusiveState @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -67,7 +60,6 @@ class UsbExclusiveState @Inject constructor(
         scope.launch { refresh() }
     }
 
-    /** Re-checks USB bus presence; safe to call from anywhere. */
     fun refresh() {
         val attached = runCatching {
             val manager = context.getSystemService(Context.USB_SERVICE) as android.hardware.usb.UsbManager

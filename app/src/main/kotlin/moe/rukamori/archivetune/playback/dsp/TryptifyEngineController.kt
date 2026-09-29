@@ -1,22 +1,5 @@
 @file:OptIn(androidx.media3.common.util.UnstableApi::class)
 
-/*
- * ArchiveTune (2026)
- * © Rukamori — github.com/rukamori
- * GPL-3.0 License | Contributors: see git history
- *
- * Service-side glue for the ported Tryptify engine, ported from Tryptify's
- * PlaybackService wiring (https://github.com/tryptz/Tryptify):
- *  - collects the AutoEQ preferences (bands L/R, stereo mode, preamp, tone
- *    shelves, system-wide flag) and pushes them into AutoEqProcessor;
- *  - collects the Parametric EQ preferences and pushes them into
- *    ParametricEqProcessor;
- *  - restores the mixing-console state whenever the native engine is
- *    (re)created (DspEngineManager's engineReady contract);
- *  - turns the mixer master toggle on when the engine is engaged so the
- *    C++ chain actually processes (its default is bypassed).
- */
-
 package moe.rukamori.archivetune.playback.dsp
 
 import android.content.Context
@@ -47,6 +30,8 @@ class TryptifyEngineController(
     val paramEq: ParametricEqProcessor,
     val preferences: PreferencesManager,
     val dspManager: DspEngineManager,
+
+    private val systemEq: tf.monochrome.android.audio.eq.SystemAudioEqController,
 ) {
     private val appContext = context.applicationContext
     private val json = Json { ignoreUnknownKeys = true }
@@ -55,11 +40,10 @@ class TryptifyEngineController(
     private var engineEverReady = false
 
     fun start() {
-        // EQ + tone + system-wide combined state -> AutoEqProcessor (the
-        // double-correction guard: when system-wide AutoEQ is ON the in-app
-        // correction is bypassed because the global output mix already
-        // corrects this app's audio too).
-        // combine() has typed overloads only up to five flows — nest one.
+
+        runCatching { systemEq.start() }
+            .onFailure { Log.w(TAG, "system-wide AutoEQ controller failed to start", it) }
+
         val eqCore =
             combine(
                 preferences.eqEnabled,
@@ -80,7 +64,6 @@ class TryptifyEngineController(
             .onEach { applyEqSettings(it) }
             .launchIn(scope)
 
-        // Parametric EQ state -> ParametricEqProcessor
         combine(
             preferences.paramEqEnabled,
             preferences.paramEqBandsJson,
@@ -93,8 +76,6 @@ class TryptifyEngineController(
             }
             .launchIn(scope)
 
-        // Mixer state lifecycle: restore once the native engine exists, and
-        // re-apply (preferring the live in-memory state) on every rebuild.
         mixBus.engineReady
             .onEach { ready ->
                 if (!ready) return@onEach
@@ -116,12 +97,6 @@ class TryptifyEngineController(
             .launchIn(scope)
     }
 
-    /**
-     * The engine's master switch: engaging the Tryptify engine turns the
-     * Tryptify mixer master toggle on so the C++ chain processes (its
-     * default state is bypassed); disengaging leaves the internal state
-     * untouched — the router simply stops routing audio through it.
-     */
     fun setEngineActive(active: Boolean) {
         if (active) {
             scope.launch {
@@ -135,8 +110,7 @@ class TryptifyEngineController(
     private fun applyEqSettings(cfg: EqApply) {
         runCatching {
             if (cfg.systemWide) {
-                // The system-wide effect already corrects this app's audio;
-                // in-app AutoEQ bypassed to avoid a double correction.
+
                 autoEq.applyBands(emptyList(), 0f, false)
                 return
             }
@@ -147,11 +121,9 @@ class TryptifyEngineController(
                     emptyList()
                 }
             val autoL = decode(cfg.bandsJson)
-            // 2-channel mode gives the right ear its own curve; with the
-            // switch off (or no R curve saved yet) the left list drives both.
+
             val autoR = if (cfg.stereo) decode(cfg.bandsRJson).ifEmpty { autoL } else autoL
-            // Tone shelves are ear-agnostic: appended to both channels so
-            // bass/treble stay centred regardless of the calibration split.
+
             val toneBands = cfg.tone.toBands()
             val bandsL = autoL + toneBands
             val bandsR = autoR + toneBands

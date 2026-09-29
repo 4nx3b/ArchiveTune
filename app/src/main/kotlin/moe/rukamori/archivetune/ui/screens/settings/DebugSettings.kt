@@ -61,6 +61,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -267,6 +268,13 @@ fun DebugSettings(navController: NavController) {
                     NerdStatsSection(playerConnection = playerConnection)
                 }
             }
+
+            // The extensive audio-stream diagnostics: the whole signal path
+            // (track → decoder → resampler → DSP → output), collapsed by
+            // default, expanded on tap.
+            if (playerConnection != null) {
+                AudioPipelineDiagnosticSection(playerConnection = playerConnection)
+            }
             }
 
             ScreenHeaderHaze(
@@ -453,6 +461,40 @@ private fun DebugTimestampItem(
             fontWeight = FontWeight.Medium,
         )
     }
+}
+
+@Composable
+private fun AudioPipelineDiagnosticSection(
+    playerConnection: moe.rukamori.archivetune.playback.PlayerConnection,
+) {
+    val currentFormat by playerConnection.currentFormat.collectAsStateWithLifecycle(initialValue = null)
+    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
+
+    // Playback parameters carry no Compose-observable flow; poll them like
+    // NerdStatsSection does its live counters.
+    var playbackSpeed by remember { mutableFloatStateOf(1f) }
+    LaunchedEffect(playerConnection) {
+        while (isActive) {
+            playbackSpeed = playerConnection.player.playbackParameters.speed
+            delay(1000)
+        }
+    }
+
+    AudioPipelineSection(
+        speedRatio = playbackSpeed,
+        taggedCodec = currentFormat?.mimeType?.substringAfterLast('/')?.uppercase(),
+        taggedBitDepth = currentFormat?.pcmEncoding?.let { enc ->
+            when (enc) {
+                androidx.media3.common.C.ENCODING_PCM_16BIT -> 16
+                androidx.media3.common.C.ENCODING_PCM_24BIT -> 24
+                androidx.media3.common.C.ENCODING_PCM_32BIT -> 32
+                androidx.media3.common.C.ENCODING_PCM_FLOAT -> 32
+                else -> null
+            }
+        },
+        taggedBitRateKbps = currentFormat?.averageBitrate?.takeIf { it > 0 }?.let { (it + 500) / 1000 },
+        deviceName = null,
+    )
 }
 
 @Composable

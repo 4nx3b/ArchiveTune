@@ -658,6 +658,27 @@
     <string name="float_dsp_desc">Native 32-bit float processing (DC blocker, soft-knee limiter, TPDF dither) applied automatically to lossless and high-quality streams</string>
     <string name="usb_exclusive_audio">USB exclusive output</string>
     <string name="usb_exclusive_audio_desc">Drive a USB DAC directly with an exclusive 32-bit float stream, bypassing the system mixer. Engages from the next track whenever a USB device is connected — including one plugged in mid-session; incompatible with offload, crossfade and automix (they suspend it while active). With Tryptify or Lastwave processing enabled, the exclusive route switches to that engine\'s own bit-perfect USB driver.</string>
+    <string name="usb_exclusive_audio_tryptify_desc">Tryptify\'s libusb UAC1/UAC2 driver claims the AudioStreaming interface and drives the isochronous endpoint directly — bit-perfect, 24-bit-first packing, no Android mixer in the path. Engages from the next track with a USB DAC attached; incompatible with offload, crossfade and automix.</string>
+    <string name="usb_exclusive_audio_lastwave_desc">Lastwave\'s usbdevfs driver claims the DAC and runs its 80-URB isochronous ring with hardware Feature-Unit volume — bit-perfect, no Android mixer in the path. Engages from the next track with a USB DAC attached; incompatible with offload, crossfade and automix.</string>
+    <string name="tryptify_usb_pin">USB DAC bit-perfect routing</string>
+    <string name="tryptify_usb_pin_desc">Pin the player\'s output to the attached USB DAC via the framework (setPreferredAudioDevice), so the system mix-rate downsampler stops touching sample rates the DAC supports natively. Plug in a DAC to start routing.</string>
+    <string name="tryptify_usb_pin_on">On → %1$s</string>
+    <string name="tryptify_system_wide_autoeq">System-wide AutoEQ</string>
+    <string name="tryptify_system_wide_autoeq_desc">Publish your AutoEQ curve + tone shelves to the device\'s global output mix (DynamicsProcessing, legacy Equalizer fallback). The in-app correction is bypassed while this runs to avoid double correction; some devices ignore the global effect entirely.</string>
+    <string name="tryptify_multichannel_downmix">Fold multichannel to stereo</string>
+    <string name="tryptify_multichannel_downmix_desc">5.1/7.1 sources are folded down through the DSP/EQ chain (fixed gain matrix). Off = multichannel passes through untouched with the engines idle for those tracks. Applies from the next track.</string>
+    <string name="tryptify_dsp_block_size">DSP block size</string>
+    <string name="tryptify_dsp_block_size_desc">The C++ mixing console\'s processing quantum: smaller = lower latency and faster parameter response at more CPU; larger = lower CPU. Default 1024 frames.</string>
+    <string name="tryptify_spectrum_analyzer">Spectrum analyzer</string>
+    <string name="tryptify_spectrum_analyzer_desc">The live FFT tap behind the parametric EQ editor\'s spectrum preview. Runs on the engine chain; disabling saves the per-block FFT on the audio thread.</string>
+    <string name="tryptify_spectrum_fft_size">Spectrum FFT size</string>
+    <string name="tryptify_spectrum_fft_size_desc">Frequency resolution of the analyzer: 4096 / 8192 (default) / 16384 points. Larger resolves finer detail with more latency in the preview.</string>
+    <string name="lastwave_eq_tab_hint">Lastwave EQ &amp; Clarity</string>
+    <string name="lastwave_eq_tab_hint_desc">The 15-band graphic EQ, Studio Master Clarity, clarity output presets and spatial bypass live in the Lastwave EQ tab of the Equalizer (player menu → Equalizer). Every setting there writes the same keys the native engine collects.</string>
+    <string name="audio_pipeline_title">Audio Pipeline</string>
+    <string name="audio_pipeline_subtitle">The whole signal path, stage by stage — tap to expand</string>
+    <string name="audio_pipeline_waiting">Waiting for the playback service…</string>
+    <string name="audio_pipeline_bypassed">bypassed</string>
     <string name="tryptify_audio_processing">Enable Tryptify Audio Processing</string>
     <string name="tryptify_audio_processing_desc">Ported from Tryptify: the C++17 DSP mixing console (Oxford Inflator/Compressor, crossfeed), measurement-driven headphone AutoEQ and parametric EQ — plus its libusb UAC bit-perfect USB-DAC driver whenever USB exclusive output is on. Adds the Tryptify EQ tab to the Equalizer. Mutually exclusive with Lastwave Audio Processing; takes effect from the next track.</string>
     <string name="lastwave_audio_processing">Enable Lastwave Audio Processing</string>

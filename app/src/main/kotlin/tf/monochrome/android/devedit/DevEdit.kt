@@ -1,9 +1,4 @@
-/*
- * DevEditable shim for the ported Tryptify EQ screens. Upstream this wrapper
- * powers an internal dev-tools overlay (long-press to tweak padding/etc.);
- * inside ArchiveTune it is a pure pass-through so the ported screens keep
- * their structure without porting the whole dev-tools subsystem.
- */
+
 
 package tf.monochrome.android.devedit
 
