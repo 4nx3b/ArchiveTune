@@ -37,6 +37,14 @@ val AppBarHeight = 64.dp
  *  than this. Drives LocalPlayerSheetOverlayActive (liquid glass gating). */
 val SheetOverlayEpsilon = 2.dp
 
+/** Height of the fade ramp for liquid-glass header pills as the player
+ *  sheet's top edge climbs past the pill zone (status bar + 12dp + 48dp).
+ *  The pills stay fully glass until the edge is this far below the zone,
+ *  then dissolve smoothly to nothing exactly as they get covered — and fade
+ *  back in along the same ramp as the sheet retreats. Drives
+ *  LocalPlayerSheetOverlayFraction. */
+val PlayerHeaderGlassFadeRamp = 96.dp
+
 val ListItemHeight = 72.dp
 val SuggestionItemHeight = 56.dp
 val SearchFilterHeight = 48.dp

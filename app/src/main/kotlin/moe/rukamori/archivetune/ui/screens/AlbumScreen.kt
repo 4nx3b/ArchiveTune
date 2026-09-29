@@ -101,6 +101,7 @@ import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import moe.rukamori.archivetune.db.entities.Album
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.playback.queues.LocalAlbumRadio
@@ -184,8 +185,10 @@ fun AlbumScreen(
     val screenSettled = rememberLayerBackdropSettled()
 
     val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
+    val playerSheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
     val layerBackdropActive =
-        liquidGlassHeaderActive && !lyricsFullScreen && !playerSheetOverlayActive && screenSettled
+        liquidGlassHeaderActive && !lyricsFullScreen && screenSettled &&
+            playerSheetOverlayFraction < 1f
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 

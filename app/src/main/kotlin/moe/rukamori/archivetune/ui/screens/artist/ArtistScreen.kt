@@ -114,6 +114,7 @@ import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
@@ -208,8 +209,10 @@ fun ArtistScreen(
     val screenSettled = rememberLayerBackdropSettled()
 
     val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
+    val playerSheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
     val layerBackdropActive =
-        liquidGlassHeaderActive && !lyricsFullScreen && !playerSheetOverlayActive && screenSettled
+        liquidGlassHeaderActive && !lyricsFullScreen && screenSettled &&
+            playerSheetOverlayFraction < 1f
     val isArtistBlocked = (blockState as? ArtistBlockState.Success)?.isBlocked == true
 
     BackHandler {

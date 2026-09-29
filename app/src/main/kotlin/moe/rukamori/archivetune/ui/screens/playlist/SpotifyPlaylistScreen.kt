@@ -106,6 +106,7 @@ import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
@@ -385,8 +386,10 @@ fun SpotifyPlaylistScreen(
     val screenSettled = rememberLayerBackdropSettled()
 
     val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
+    val playerSheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
     val layerBackdropActive =
-        liquidGlassHeaderActive && !lyricsFullScreen && !playerSheetOverlayActive && screenSettled
+        liquidGlassHeaderActive && !lyricsFullScreen && screenSettled &&
+            playerSheetOverlayFraction < 1f
 
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 

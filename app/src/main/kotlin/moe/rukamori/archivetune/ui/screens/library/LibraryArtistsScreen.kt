@@ -94,7 +94,7 @@ import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.menu.ArtistMenu
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
-import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -129,9 +129,10 @@ fun LibraryArtistsScreen(
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
     val screenSettled = rememberLayerBackdropSettled()
 
-    val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
+    val playerSheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
     val layerBackdropActive =
-        liquidGlassHeaderActive && !lyricsFullScreen && !playerSheetOverlayActive && screenSettled
+        liquidGlassHeaderActive && !lyricsFullScreen && screenSettled &&
+            playerSheetOverlayFraction < 1f
     val surfaceColor = MaterialTheme.colorScheme.surface
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 

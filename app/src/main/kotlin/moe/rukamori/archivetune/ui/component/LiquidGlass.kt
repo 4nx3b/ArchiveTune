@@ -72,6 +72,7 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.getValue
@@ -305,9 +306,17 @@ fun LiquidGlassActionPill(
     scrim: Color? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
+    // Header pills fade with the player sheet's top edge instead of being
+    // hard-swapped at the mini-player bound: while any part of the pill is
+    // still on screen it stays glass; it dissolves only as the sheet covers
+    // it, and fades back in as the sheet retreats. Defaults to 1f (fully
+    // visible) outside the NavHost scope — the player sheet itself never
+    // sees this local.
+    val sheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
     Row(
         modifier =
             modifier
+                .graphicsLayer { alpha = 1f - sheetOverlayFraction }
                 .height(48.dp)
                 .liquidGlass(
                     backdrop = backdrop,

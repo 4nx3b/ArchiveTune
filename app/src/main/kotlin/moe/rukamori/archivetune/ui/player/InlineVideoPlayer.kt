@@ -156,6 +156,21 @@ val LocalPlayerLyricsFullScreen = compositionLocalOf { false }
  *  pages (mini↔fullscreen and the lyrics morph). */
 val LocalPlayerSheetOverlayActive = compositionLocalOf { false }
 
+/** 0..1 fade for on-screen liquid-glass header pills driven by the player
+ *  sheet's actual top edge: 0 = sheet at/below the mini-player bound (pills
+ *  fully visible), 1 = the sheet's edge has climbed past the header pill
+ *  zone (pills fully covered). Provided ONLY around the NavHost screen
+ *  content — never inside the player sheet itself.
+ *
+ *  This exists because flipping glass off the moment the sheet leaves the
+ *  mini-player bound (LocalPlayerSheetOverlayActive) swaps the glass pills
+ *  for the plain headers while they are still plainly visible mid-transition,
+ *  and swaps them back abruptly the instant the sheet lands. Driving the
+ *  fade from the sheet edge instead keeps pills glass for exactly as long
+ *  as they are on screen and dissolves them only as the sheet covers them,
+ *  in both directions. */
+val LocalPlayerSheetOverlayFraction = compositionLocalOf { 0f }
+
 val LocalMiniPlayerDocked = compositionLocalOf { false }
 
 @Composable

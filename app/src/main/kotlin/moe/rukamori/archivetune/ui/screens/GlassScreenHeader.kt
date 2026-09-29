@@ -37,7 +37,7 @@ import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
-import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.runtime.getValue
 
@@ -52,10 +52,13 @@ class GlassScreenHeader(
 fun rememberGlassScreenHeader(): GlassScreenHeader {
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    // Glass pauses while the player sheet slides over the screen: the live
-    // lens/blur shaders under a translating sheet were the playlist-page
-    // transition jank (mini↔fullscreen, lyrics morph).
-    val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
+    // Glass follows the sheet's actual top edge now: pills stay glass for as
+    // long as they are on screen (LiquidGlassActionPill fades them out only
+    // as the sheet's edge climbs past the pill zone) and the record detaches
+    // once the header is fully covered — instead of hard-swapping glass for
+    // plain headers the moment the sheet leaves the mini-player bound, which
+    // was plainly visible mid-transition and popped back on collapse.
+    val playerSheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
     val surfaceColor = MaterialTheme.colorScheme.surface
 
     val backdrop = rememberBackdrop(surfaceColor)
@@ -64,7 +67,7 @@ fun rememberGlassScreenHeader(): GlassScreenHeader {
         liquidGlassEnabled &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             !lyricsFullScreen &&
-            !playerSheetOverlayActive
+            playerSheetOverlayFraction < 1f
     return GlassScreenHeader(
         liquidGlassActive = active,
         backdrop = if (active) backdrop else null,
