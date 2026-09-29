@@ -1238,6 +1238,11 @@
     <string name="sources_tidal_token_help">Paste a Tidal o2_refresh token (the long JWT with \"type\":\"o2_refresh\" in its middle segment). The app exchanges it for fresh access tokens automatically. User ID is read from the token itself — no extra fields needed.</string>
     <string name="sources_tidal_token_verified">Tidal token verified — account connected.</string>
     <string name="sources_tidal_token_failed">Tidal could not refresh that token — it may be expired or revoked.</string>
+    <string name="pool_api_key_title">Source Pool</string>
+    <string name="pool_api_key_label">Pool API key</string>
+    <string name="pool_api_key_help">Paste your Source Pool API key. Account fields the pool serves encrypted are keyed to your own key, so a personal key is what unlocks them.</string>
+    <string name="pool_get_key_title">Get an API key</string>
+    <string name="pool_get_key_description">Open the Source Pool page to request a key</string>
     <string name="pool_refresh_title">Refresh from pool</string>
     <string name="pool_refresh_description">Pull the latest shared accounts and instances from the community source pool</string>
     <string name="pool_refreshing">Refreshing from pool…</string>
