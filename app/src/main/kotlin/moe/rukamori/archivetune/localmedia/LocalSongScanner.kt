@@ -29,6 +29,7 @@ import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.db.entities.SongAlbumMap
 import moe.rukamori.archivetune.db.entities.SongArtistMap
 import moe.rukamori.archivetune.db.entities.SongEntity
+import moe.rukamori.archivetune.audiosource.ReplayGainTagParser
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import timber.log.Timber
 import java.io.File
@@ -210,6 +211,8 @@ class LocalSongScanner
                                 loudnessDb = if (isFileUnchanged) existingFormat!!.loudnessDb else null,
                                 perceptualLoudnessDb = if (isFileUnchanged) existingFormat!!.perceptualLoudnessDb else null,
                                 playbackUrl = null,
+                                replayGainTrackDb = track.replayGain?.trackDb ?: existingFormat?.replayGainTrackDb,
+                                replayGainAlbumDb = track.replayGain?.albumDb ?: existingFormat?.replayGainAlbumDb,
                             ),
                         )
                         deleteSongArtistMaps(track.id)
@@ -404,6 +407,17 @@ class LocalSongScanner
                                     mimeType = mimeType,
                                 )?.let(LyricsUtils::lyricsOrNotFound)
                                 ?.takeIf { lyrics -> lyrics != LyricsEntity.LYRICS_NOT_FOUND }
+                        // ReplayGain/R128 tags power per-track loudness correction for the
+                        // lossless library; skipped when the file already carried tags and
+                        // its bytes are unchanged (existing tags are preserved below).
+                        val replayGain =
+                            runCatching {
+                                ReplayGainTagParser.parse(
+                                    resolver = context.contentResolver,
+                                    uri = contentUri,
+                                    displayName = displayName,
+                                )
+                            }.getOrNull()
                         tracks +=
                             LocalTrackRecord(
                                 id = contentUri.toString(),
@@ -431,6 +445,7 @@ class LocalSongScanner
                                 mimeType = mimeType,
                                 thumbnailUrl = thumbnailUrl,
                                 embeddedLyrics = embeddedLyrics,
+                                replayGain = replayGain,
                             )
                     }
                 }
@@ -719,6 +734,7 @@ class LocalSongScanner
             val mimeType: String,
             val thumbnailUrl: String?,
             val embeddedLyrics: String?,
+            val replayGain: ReplayGainTagParser.ReplayGain?,
         )
 
         private data class LocalArtistRecord(

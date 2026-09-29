@@ -51,6 +51,25 @@ enum class OnlineSearchSort {
     VIEWS,
 }
 
+/**
+ * Client-side pseudo filter for the "Podcasts" category pill. YouTube Music has no
+ * podcast search parameter, so this filter harvests podcast episodes (SongItems whose
+ * watch endpoint musicVideoType starts with MUSIC_VIDEO_TYPE_PODCAST) out of the
+ * song/video search result sets instead. The sentinel value never collides with a
+ * real InnerTube filter param.
+ */
+val PODCAST_SEARCH_FILTER = YouTube.SearchFilter("CLIENT_PODCASTS_CATEGORY")
+
+private fun YTItem.isPodcastEpisode(): Boolean {
+    val musicVideoType =
+        (this as? SongItem)
+            ?.endpoint
+            ?.watchEndpointMusicSupportedConfigs
+            ?.watchEndpointMusicConfig
+            ?.musicVideoType
+    return musicVideoType != null && musicVideoType.startsWith("MUSIC_VIDEO_TYPE_PODCAST")
+}
+
 @HiltViewModel
 class OnlineSearchViewModel
     @Inject
@@ -147,6 +166,10 @@ class OnlineSearchViewModel
             if (viewStateMap.containsKey(filterKey) || !loadingFilters.add(filterKey)) return
 
             try {
+                if (filter == PODCAST_SEARCH_FILTER) {
+                    loadPodcastFilter()
+                    return
+                }
                 YouTube
                     .search(query, filter)
                     .onSuccess { result ->
@@ -171,6 +194,34 @@ class OnlineSearchViewModel
                     }
             } finally {
                 loadingFilters.remove(filterKey)
+            }
+        }
+
+        /**
+         * Podcasts category: no server-side filter exists, so the episodes hidden by
+         * [filterUnsupportedEpisodes] in the Songs/Videos categories are collected here
+         * into their own page (no continuation — a single harvest per query).
+         */
+        private suspend fun loadPodcastFilter() {
+            try {
+                val episodes =
+                    (
+                        YouTube.search(query, FILTER_SONG).getOrNull()?.items.orEmpty() +
+                            YouTube.search(query, FILTER_VIDEO).getOrNull()?.items.orEmpty()
+                        )
+                        .filter { it.isPodcastEpisode() }
+                        .distinctBy { it.id }
+                val aiContentFilterPolicy = loadAiContentFilterPolicy()
+                viewStateMap[PODCAST_SEARCH_FILTER.value] =
+                    ItemsPage(
+                        filterAiContent(
+                            episodes,
+                            aiContentFilterPolicy,
+                        ),
+                        null,
+                    )
+            } finally {
+                loadingFilters.remove(PODCAST_SEARCH_FILTER.value)
             }
         }
 

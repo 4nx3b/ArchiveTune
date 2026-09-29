@@ -9,7 +9,48 @@ package moe.rukamori.archivetune.lastfm.models
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonTransformingSerializer
+
+/**
+ * Last.fm returns `"track": { … }` (a single JSON object) instead of an array when
+ * the list holds exactly one entry — sparse accounts, single scrobble days, one
+ * top artist. Without this normalization the whole response fails to decode and
+ * the dashboard renders empty. Mirrors LastWave's RecentTracksListSerializer.
+ */
+private fun singleObjectAsArray(element: JsonElement): JsonElement =
+    when (element) {
+        is JsonArray -> element
+        is JsonNull -> JsonArray(emptyList())
+        else -> JsonArray(listOf(element))
+    }
+
+object UserImageListSerializer : JsonTransformingSerializer<List<UserImage>>(ListSerializer(UserImage.serializer())) {
+    override fun transformDeserialize(element: JsonElement): JsonElement = singleObjectAsArray(element)
+}
+
+object RecentTrackListSerializer : JsonTransformingSerializer<List<RecentTrack>>(ListSerializer(RecentTrack.serializer())) {
+    override fun transformDeserialize(element: JsonElement): JsonElement = singleObjectAsArray(element)
+}
+
+object TopTrackListSerializer : JsonTransformingSerializer<List<TopTrack>>(ListSerializer(TopTrack.serializer())) {
+    override fun transformDeserialize(element: JsonElement): JsonElement = singleObjectAsArray(element)
+}
+
+object TopArtistListSerializer : JsonTransformingSerializer<List<TopArtist>>(ListSerializer(TopArtist.serializer())) {
+    override fun transformDeserialize(element: JsonElement): JsonElement = singleObjectAsArray(element)
+}
+
+object TopAlbumListSerializer : JsonTransformingSerializer<List<TopAlbum>>(ListSerializer(TopAlbum.serializer())) {
+    override fun transformDeserialize(element: JsonElement): JsonElement = singleObjectAsArray(element)
+}
+
+object LastFmTagListSerializer : JsonTransformingSerializer<List<LastFmTag>>(ListSerializer(LastFmTag.serializer())) {
+    override fun transformDeserialize(element: JsonElement): JsonElement = singleObjectAsArray(element)
+}
 
 @Serializable
 data class UserInfoResponse(
@@ -22,7 +63,7 @@ data class UserInfo(
     val name: String? = null,
     val realname: String? = null,
     val url: String? = null,
-    val image: List<UserImage>? = null,
+    @Serializable(with = UserImageListSerializer::class) val image: List<UserImage>? = null,
     val country: String? = null,
     val age: Int? = null,
     val gender: String? = null,
@@ -53,7 +94,7 @@ data class RecentTracksResponse(
 
 @Serializable
 data class RecentTracks(
-    val track: List<RecentTrack> = emptyList(),
+    @Serializable(with = RecentTrackListSerializer::class) val track: List<RecentTrack> = emptyList(),
     @SerialName("@attr") val attr: RecentTracksAttr? = null,
 )
 
@@ -73,7 +114,7 @@ data class RecentTrack(
     val album: RecentTrackAlbum? = null,
     val url: String? = null,
     val date: RecentTrackDate? = null,
-    val image: List<UserImage>? = null,
+    @Serializable(with = UserImageListSerializer::class) val image: List<UserImage>? = null,
     @SerialName("@attr") val attr: RecentTrackAttr? = null,
 ) {
     val isNowPlaying: Boolean get() = attr?.nowplaying == "true"
@@ -109,7 +150,7 @@ data class TopTracksResponse(
 
 @Serializable
 data class TopTracks(
-    val track: List<TopTrack> = emptyList(),
+    @Serializable(with = TopTrackListSerializer::class) val track: List<TopTrack> = emptyList(),
     @SerialName("@attr") val attr: TopTracksAttr? = null,
 )
 
@@ -128,7 +169,7 @@ data class TopTrack(
     @SerialName("playcount") private val _playcount: String? = null,
     val artist: RecentTrackArtist? = null,
     val url: String? = null,
-    val image: List<UserImage>? = null,
+    @Serializable(with = UserImageListSerializer::class) val image: List<UserImage>? = null,
     @SerialName("@attr") val attr: TopTrackAttr? = null,
 ) {
     val playcount: Int? get() = _playcount?.toIntOrNull()
@@ -152,7 +193,7 @@ data class TrackInfo(
 
 @Serializable
 data class TopTags(
-    val tag: List<LastFmTag> = emptyList(),
+    @Serializable(with = LastFmTagListSerializer::class) val tag: List<LastFmTag> = emptyList(),
 )
 
 @Serializable
@@ -167,7 +208,7 @@ data class TopArtistsResponse(
 
 @Serializable
 data class TopArtists(
-    val artist: List<TopArtist> = emptyList(),
+    @Serializable(with = TopArtistListSerializer::class) val artist: List<TopArtist> = emptyList(),
     @SerialName("@attr") val attr: TopArtistsAttr? = null,
 )
 
@@ -185,7 +226,7 @@ data class TopArtist(
     val name: String? = null,
     @SerialName("playcount") private val _playcount: String? = null,
     val url: String? = null,
-    val image: List<UserImage>? = null,
+    @Serializable(with = UserImageListSerializer::class) val image: List<UserImage>? = null,
     @SerialName("@attr") val attr: TopTrackAttr? = null,
 ) {
     val playcount: Int? get() = _playcount?.toIntOrNull()
@@ -198,7 +239,7 @@ data class TopAlbumsResponse(
 
 @Serializable
 data class TopAlbums(
-    val album: List<TopAlbum> = emptyList(),
+    @Serializable(with = TopAlbumListSerializer::class) val album: List<TopAlbum> = emptyList(),
     @SerialName("@attr") val attr: TopAlbumsAttr? = null,
 )
 
@@ -217,7 +258,7 @@ data class TopAlbum(
     @SerialName("playcount") private val _playcount: String? = null,
     val artist: RecentTrackArtist? = null,
     val url: String? = null,
-    val image: List<UserImage>? = null,
+    @Serializable(with = UserImageListSerializer::class) val image: List<UserImage>? = null,
     @SerialName("@attr") val attr: TopTrackAttr? = null,
 ) {
     val playcount: Int? get() = _playcount?.toIntOrNull()

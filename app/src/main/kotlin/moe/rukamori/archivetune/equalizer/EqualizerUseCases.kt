@@ -14,6 +14,7 @@ import moe.rukamori.archivetune.playback.EqCapabilities
 import moe.rukamori.archivetune.playback.EqProfile
 import moe.rukamori.archivetune.playback.EqReverbPreset
 import moe.rukamori.archivetune.playback.EqSettings
+import moe.rukamori.archivetune.playback.mapBandLevelsByFrequency
 import javax.inject.Inject
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -53,9 +54,9 @@ class ObserveEqualizerUseCase
             repository.observe().map { snapshot ->
                 val capabilities = snapshot.capabilities
                 val normalizedLevels =
-                    resampleLevels(
-                        levelsMb = snapshot.settings.bandLevelsMb,
-                        targetCount = capabilities?.bandCount ?: snapshot.settings.bandLevelsMb.size,
+                    normalizedDeviceLevels(
+                        settings = snapshot.settings,
+                        capabilities = capabilities,
                     )
                 EqualizerConfiguration(
                     controlMode = snapshot.controlMode,
@@ -81,7 +82,8 @@ class UpdateEqualizerUseCase
             targetLevelMb: Int,
             configuration: EqualizerConfiguration,
         ) {
-            repository.updateBandLevels(adjustToneBands(tone, targetLevelMb, configuration))
+            val levels = adjustToneBands(tone, targetLevelMb, configuration)
+            repository.updateBandLevels(levels, configuration.capabilities?.centerFreqHz.orEmpty())
         }
 
         fun adjustToneBands(
@@ -90,7 +92,7 @@ class UpdateEqualizerUseCase
             configuration: EqualizerConfiguration,
         ): List<Int> {
             val capabilities = configuration.capabilities ?: return configuration.settings.bandLevelsMb
-            val current = resampleLevels(configuration.settings.bandLevelsMb, capabilities.bandCount).toMutableList()
+            val current = normalizedDeviceLevels(configuration.settings, capabilities).toMutableList()
             val indices = equalizerToneIndices(tone, capabilities.centerFreqHz, capabilities.bandCount)
             if (indices.isEmpty()) return current
             val average = indices.sumOf { current[it] } / indices.size
@@ -108,17 +110,23 @@ class UpdateEqualizerUseCase
         ) {
             val capabilities = configuration.capabilities ?: return
             if (index !in 0 until capabilities.bandCount) return
-            val levels = resampleLevels(configuration.settings.bandLevelsMb, capabilities.bandCount).toMutableList()
+            val levels = normalizedDeviceLevels(configuration.settings, capabilities).toMutableList()
             levels[index] = levelMb.coerceIn(capabilities.minBandLevelMb, capabilities.maxBandLevelMb)
-            repository.updateBandLevels(levels)
+            repository.updateBandLevels(levels, capabilities.centerFreqHz)
         }
 
         suspend fun resetBands(configuration: EqualizerConfiguration) {
             val count = configuration.capabilities?.bandCount ?: return
-            repository.updateBandLevels(List(count) { 0 })
+            repository.updateBandLevels(
+                List(count) { 0 },
+                configuration.capabilities?.centerFreqHz.orEmpty(),
+            )
         }
 
-        suspend fun updateBandLevels(levelsMb: List<Int>) = repository.updateBandLevels(levelsMb)
+        suspend fun updateBandLevels(
+            levelsMb: List<Int>,
+            freqsHz: List<Int> = emptyList(),
+        ) = repository.updateBandLevels(levelsMb, freqsHz)
 
         suspend fun setOutputGainEnabled(enabled: Boolean) = repository.setOutputGainEnabled(enabled)
 
@@ -193,6 +201,23 @@ class ApplyEqualizerPresetUseCase
                 }
             }
     }
+
+/**
+ * Projects the stored curve onto the current device's bands: frequency-aware when
+ * the save carries its band centers (Tryptify technique), index-based fallback for
+ * legacy saves without frequencies.
+ */
+internal fun normalizedDeviceLevels(
+    settings: EqSettings,
+    capabilities: EqCapabilities?,
+): List<Int> {
+    val targetCount = capabilities?.bandCount ?: settings.bandLevelsMb.size
+    return mapBandLevelsByFrequency(
+        levelsMb = settings.bandLevelsMb,
+        sourceFreqHz = settings.bandFreqsHz,
+        targetFreqHz = capabilities?.centerFreqHz.orEmpty(),
+    ) ?: resampleLevels(settings.bandLevelsMb, targetCount)
+}
 
 internal fun resampleLevels(
     levelsMb: List<Int>,

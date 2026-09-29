@@ -56,6 +56,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
@@ -760,23 +761,14 @@ fun AppleMusicPlayerContent(
         }
 
         if (landscape) {
+            // Landscape (user request): tapping anywhere must NOT reveal the
+            // controls — the old pointerInput poke handler is gone. The layout
+            // itself is the artwork-first arrangement: left half = hero artwork
+            // + title block, right half = lyrics-first with the controls column.
             Row(
                 modifier =
                     Modifier
-                        .fillMaxSize()
-
-                        .onGloballyPositioned { tapAreaRootOrigin = it.boundsInRoot().topLeft }
-
-                        .pointerInput(lyricsOpen, queueOpen) {
-                            if (!lyricsOpen && !queueOpen) return@pointerInput
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false)
-
-                                if (!moreIconBounds.contains(down.position + tapAreaRootOrigin)) {
-                                    pokePlayerControlsVisibility()
-                                }
-                            }
-                        },
+                        .fillMaxSize(),
             ) {
                 // Left half: the artwork with the song title and artist
                 // directly beneath it — Apple Music's own landscape

@@ -157,6 +157,8 @@ import moe.rukamori.archivetune.constants.AudioPlaybackSpeedPitchMatchKey
 import moe.rukamori.archivetune.constants.AutomixEnabledKey
 import moe.rukamori.archivetune.constants.AutomixPerformanceMode
 import moe.rukamori.archivetune.constants.AutomixPerformanceModeKey
+import moe.rukamori.archivetune.constants.ReplayGainMode
+import moe.rukamori.archivetune.constants.ReplayGainModeKey
 import moe.rukamori.archivetune.constants.DefaultMetadataSourceKey
 import moe.rukamori.archivetune.constants.MetadataSource
 import moe.rukamori.archivetune.constants.PreloadSongsCountKey
@@ -181,6 +183,7 @@ import moe.rukamori.archivetune.constants.Equalizer8DSpeedKey
 import moe.rukamori.archivetune.constants.EqualizerAudioEffectsEnabledKey
 import moe.rukamori.archivetune.constants.EqualizerAutoHeadroomEnabledKey
 import moe.rukamori.archivetune.constants.EqualizerBalanceKey
+import moe.rukamori.archivetune.constants.EqualizerBandFreqsKey
 import moe.rukamori.archivetune.constants.EqualizerBandLevelsMbKey
 import moe.rukamori.archivetune.constants.EqualizerBassBoostEnabledKey
 import moe.rukamori.archivetune.constants.EqualizerBassBoostStrengthKey
@@ -733,6 +736,7 @@ class MusicService :
 
     private val tidalActiveMediaIds = ConcurrentHashMap.newKeySet<String>()
     private var audioNormalizationEnabled = true
+    private var replayGainMode = ReplayGainMode.OFF
     var playerVolume = MutableStateFlow(1f)
     private val audioFocusVolumeFactor = MutableStateFlow(1f)
     private var effectiveVolumeRampJob: Job? = null
@@ -1899,11 +1903,20 @@ class MusicService :
             dataStore.data
                 .map { it[AudioNormalizationKey] ?: true }
                 .distinctUntilChanged(),
-        ) { mediaId, format, normalizeAudio ->
-            normalizeAudio to resolveAudioNormalizationFactor(mediaId, format, normalizeAudio)
+            dataStore.data
+                .map { prefs ->
+                    prefs[ReplayGainModeKey]?.let { raw ->
+                        runCatching { ReplayGainMode.valueOf(raw) }.getOrNull()
+                    } ?: ReplayGainMode.OFF
+                }
+                .distinctUntilChanged(),
+        ) { mediaId, format, normalizeAudio, replayGainMode ->
+            (normalizeAudio to replayGainMode) to
+                resolveAudioNormalizationFactor(mediaId, format, normalizeAudio, replayGainMode)
         }.distinctUntilChanged()
-            .collectLatest(scope) { (normalizeAudio, factor) ->
-                audioNormalizationEnabled = normalizeAudio
+            .collectLatest(scope) { (settings, factor) ->
+                audioNormalizationEnabled = settings.first
+                replayGainMode = settings.second
                 normalizeFactor.value = factor
             }
 
@@ -4258,16 +4271,37 @@ class MusicService :
     private fun calculateAudioNormalizationFactor(
         format: FormatEntity?,
         normalizeAudio: Boolean,
+        replayGainMode: ReplayGainMode = ReplayGainMode.OFF,
     ): Float {
-        Timber.tag("AudioNormalization").d("Audio normalization enabled: $normalizeAudio")
+        Timber.tag("AudioNormalization").d("Audio normalization enabled: $normalizeAudio, replayGainMode: $replayGainMode")
         Timber
             .tag(
                 "AudioNormalization",
-            ).d("Format loudnessDb: ${format?.loudnessDb}, perceptualLoudnessDb: ${format?.perceptualLoudnessDb}")
+            ).d("Format loudnessDb: ${format?.loudnessDb}, perceptualLoudnessDb: ${format?.perceptualLoudnessDb}, rgTrack: ${format?.replayGainTrackDb}, rgAlbum: ${format?.replayGainAlbumDb}")
 
         if (!normalizeAudio) {
             Timber.tag("AudioNormalization").d("Normalization disabled - using factor 1.0")
             return 1f
+        }
+
+        // ReplayGain tags (when the user enables them) take precedence over the
+        // API loudness metadata: they describe the file that is actually playing.
+        // Tag values are "gain to reach the -18 LUFS RG2 reference", i.e.
+        // loudness = REFERENCE - gain, which then feeds the same factor math.
+        val replayGainDb =
+            when (replayGainMode) {
+                ReplayGainMode.OFF -> null
+                ReplayGainMode.TRACK -> format?.replayGainTrackDb
+                ReplayGainMode.ALBUM -> format?.replayGainAlbumDb ?: format?.replayGainTrackDb
+            }?.takeIf { it.isFinite() }
+        if (replayGainDb != null) {
+            val rgLoudness = REPLAY_GAIN_REFERENCE_LUFS - replayGainDb
+            val rgFactor = 10f.pow(-rgLoudness.toFloat() / 20f)
+            if (rgFactor.isFinite()) {
+                val clamped = rgFactor.coerceIn(MIN_AUDIO_NORMALIZATION_FACTOR, MAX_AUDIO_NORMALIZATION_FACTOR)
+                Timber.tag("AudioNormalization").i("ReplayGain factor from %.2f dB tag: %f".format(replayGainDb, clamped))
+                return clamped
+            }
         }
 
         val loudnessDb = format?.normalizationLoudnessDb()
@@ -4295,6 +4329,7 @@ class MusicService :
         mediaId: String?,
         format: FormatEntity?,
         normalizeAudio: Boolean,
+        replayGainMode: ReplayGainMode = ReplayGainMode.OFF,
     ): Float {
         val currentMediaId = mediaId?.takeIf { it.isNotBlank() } ?: return 1f
         if (!normalizeAudio) {
@@ -4307,7 +4342,7 @@ class MusicService :
         }
 
         if (format?.id == currentMediaId) {
-            val factor = calculateAudioNormalizationFactor(format, normalizeAudio = true)
+            val factor = calculateAudioNormalizationFactor(format, normalizeAudio = true, replayGainMode = replayGainMode)
             audioNormalizationFactorCache[currentMediaId] = factor
             return factor
         }
@@ -5624,9 +5659,19 @@ class MusicService :
         return runCatching { EqualizerJson.json.decodeFromString<List<Int>>(raw) }.getOrNull() ?: emptyList()
     }
 
+    private fun decodeBandFreqsHz(raw: String?): List<Int> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching { EqualizerJson.json.decodeFromString<List<Int>>(raw) }.getOrNull() ?: emptyList()
+    }
+
     private fun encodeBandLevelsMb(levelsMb: List<Int>): String =
         runCatching {
             EqualizerJson.json.encodeToString(levelsMb)
+        }.getOrNull().orEmpty()
+
+    private fun encodeBandFreqsHz(freqsHz: List<Int>): String =
+        runCatching {
+            EqualizerJson.json.encodeToString(freqsHz)
         }.getOrNull().orEmpty()
 
     private fun readEqSettingsFromPrefs(prefs: Preferences): EqSettings {
@@ -5648,6 +5693,7 @@ class MusicService :
             balance = if (audioEffectsEnabled) (prefs[EqualizerBalanceKey] ?: 0f).coerceIn(-1f, 1f) else 0f,
             eightDEnabled = (prefs[Equalizer8DEnabledKey] ?: false) && audioEffectsEnabled,
             eightDSpeedHz = (prefs[Equalizer8DSpeedKey] ?: 0.2f).coerceIn(0.03f, 0.25f),
+            bandFreqsHz = decodeBandFreqsHz(prefs[EqualizerBandFreqsKey]),
         )
     }
 
@@ -5660,6 +5706,7 @@ class MusicService :
             dataStore.edit { prefs ->
                 prefs[EqualizerEnabledKey] = true
                 prefs[EqualizerBandLevelsMbKey] = encoded
+                prefs[EqualizerBandFreqsKey] = encodeBandFreqsHz(caps?.centerFreqHz.orEmpty())
                 prefs[EqualizerSelectedProfileIdKey] = "flat"
             }
         }
@@ -5681,6 +5728,12 @@ class MusicService :
                         eq.getBandLevel(band.toShort()).toInt()
                     } ?: 0
                 }
+            val centerFreqs =
+                (0 until bandCount).map { band ->
+                    readAudioEffectValue("equalizer center frequency for band $band") {
+                        eq.getCenterFreq(band.toShort())
+                    } ?: 0
+                }
 
             val encoded = encodeBandLevelsMb(levels)
             if (encoded.isBlank()) return@launch
@@ -5689,6 +5742,7 @@ class MusicService :
                 dataStore.edit { prefs ->
                     prefs[EqualizerEnabledKey] = true
                     prefs[EqualizerBandLevelsMbKey] = encoded
+                    prefs[EqualizerBandFreqsKey] = encodeBandFreqsHz(centerFreqs)
                     prefs[EqualizerSelectedProfileIdKey] = "system:$presetIndex"
                 }
             }
@@ -5869,7 +5923,17 @@ class MusicService :
         val maxMb =
             caps?.maxBandLevelMb ?: readAudioEffectValue("equalizer maximum band level") { eq.bandLevelRange.getOrNull(1)?.toInt() } ?: 1500
 
-        val levels = resampleLevelsByIndex(settings.bandLevelsMb, bandCount)
+        // Frequency-aware projection (Tryptify technique): when the saved curve carries
+        // its band centers, re-project onto THIS device's band centers in log-frequency
+        // space instead of index space — index interpolation warps curves across
+        // devices with different band counts/layouts.
+        val deviceFreqs = caps?.centerFreqHz.orEmpty()
+        val levels =
+            mapBandLevelsByFrequency(
+                levelsMb = settings.bandLevelsMb,
+                sourceFreqHz = settings.bandFreqsHz,
+                targetFreqHz = deviceFreqs,
+            ) ?: resampleLevelsByIndex(settings.bandLevelsMb, bandCount)
         runCatching { eq.enabled = settings.enabled }
 
         for (band in 0 until bandCount) {
@@ -5888,7 +5952,17 @@ class MusicService :
         }
 
         loudnessEnhancer?.let { le ->
-            val automaticHeadroomMb = -(levels.maxOrNull()?.coerceAtLeast(0) ?: 0)
+            // Adjacent positive bands sum in the cascade; compensating only the max
+            // band under-cuts the real peak and lets boosted curves clip. Sum the
+            // neighbor overlap for a conservative approximation of the true peak.
+            val approxPeakMb =
+                levels.indices.maxOfOrNull { i ->
+                    val own = levels[i].coerceAtLeast(0)
+                    val left = levels.getOrNull(i - 1)?.coerceAtLeast(0) ?: 0
+                    val right = levels.getOrNull(i + 1)?.coerceAtLeast(0) ?: 0
+                    own + (left + right) / 2
+                } ?: 0
+            val automaticHeadroomMb = -approxPeakMb
             val gainMb =
                 when {
                     settings.autoHeadroomEnabled -> automaticHeadroomMb
@@ -9498,7 +9572,7 @@ class MusicService :
                 perceptualLoudnessDb = perceptualLoudnessDb,
                 playbackUrl = nonNullPlayback.playbackTracking?.videostatsPlaybackUrl?.baseUrl,
             )
-        val resolvedNormalizationFactor = calculateAudioNormalizationFactor(formatEntity, normalizeAudio = true)
+        val resolvedNormalizationFactor = calculateAudioNormalizationFactor(formatEntity, normalizeAudio = true, replayGainMode = replayGainMode)
         audioNormalizationFactorCache[mediaId] = resolvedNormalizationFactor
         scope.launch {
             if (currentMediaMetadata.value?.id == mediaId &&
@@ -11147,6 +11221,7 @@ class MusicService :
         const val MIN_AUDIO_FOCUS_VOLUME_FACTOR = 0.2f
         const val MIN_AUDIO_NORMALIZATION_FACTOR = 0.25f
         const val MAX_AUDIO_NORMALIZATION_FACTOR = 1.414f
+        const val REPLAY_GAIN_REFERENCE_LUFS = -18.0
         const val EFFECTIVE_VOLUME_RAMP_FRAME_MS = 16L
         const val EFFECTIVE_VOLUME_RAMP_UP_MS = 350L
         const val EFFECTIVE_VOLUME_RAMP_DOWN_MS = 180L

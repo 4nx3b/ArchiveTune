@@ -30,20 +30,18 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -56,16 +54,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AccountImageUrlKey
 import moe.rukamori.archivetune.constants.AppBarHeight
-import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
-import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.glassAwareSurface
 import moe.rukamori.archivetune.ui.component.LocalSettingsDialogShowing
 import moe.rukamori.archivetune.ui.component.rememberSettingsDialogHostState
@@ -73,6 +68,9 @@ import moe.rukamori.archivetune.ui.screens.GlassScreenHeader
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.glassHeaderSource
 import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
+import moe.rukamori.archivetune.ui.screens.search.SearchResultsBottomOverlay
+import moe.rukamori.archivetune.ui.screens.search.SearchResultsOverlayReserve
+import moe.rukamori.archivetune.ui.screens.search.toSearchResultsBarState
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.Updater
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -214,30 +212,6 @@ fun SettingsScreen(
     val isAndroid12OrLater = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val listState = rememberLazyListState()
 
-    // Declared ahead of the scroll-visibility block below, which reads it.
-    var searchQuery by remember { mutableStateOf("") }
-
-    // True only while the list is actually scrolled (not parked at the top):
-    // drives the search pill's appearance. Reading it through derivedStateOf
-    // keeps the item add/remove to scroll-boundary changes instead of every
-    // pixel.
-    val isScrolledPastTop =
-        remember {
-            androidx.compose.runtime.derivedStateOf {
-                listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
-            }
-        }
-
-    // The header's search icon pins the pill open (scrolling to the top would
-    // otherwise hide it again, leaving the icon useless). The pin lifts once
-    // the query is cleared and the list is back at rest at the top.
-    var searchPinned by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
-    androidx.compose.runtime.LaunchedEffect(searchQuery, isScrolledPastTop.value) {
-        if (searchQuery.isBlank() && !isScrolledPastTop.value) searchPinned = false
-    }
-    val searchBarVisible = searchPinned || isScrolledPastTop.value || searchQuery.isNotBlank()
-    val coroutineScope = rememberCoroutineScope()
-
     val storagePermission =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             Manifest.permission.READ_MEDIA_AUDIO
@@ -355,7 +329,7 @@ fun SettingsScreen(
                         PaddingValues(
 
                             top = systemBarsTopPadding + AppBarHeight + 8.dp,
-                            bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
+                            bottom = playerAwareBottomPadding + SearchResultsOverlayReserve,
                         ),
                 ) {
             if (hasUpdate && !isUpdateDismissed && searchQuery.isBlank()) {
@@ -395,41 +369,7 @@ fun SettingsScreen(
                 }
             }
 
-            // The search pill only appears once the user starts scrolling away
-            // from the very top of the page — at rest the header stays clean and
-            // the header's search icon scrolls you back up to reveal it.
-            if (searchBarVisible) item(key = "search_bar", contentType = "search_bar") {
-                TextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = {
-                        Text(
-                            text = stringResource(R.string.search_settings),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            painter = painterResource(R.drawable.search),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(28.dp),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        focusedIndicatorColor = MaterialTheme.colorScheme.primary,
-                        unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                    ),
-                    modifier = Modifier
-                        .padding(horizontal = SettingsCardDimensions.ScreenPadding)
-                        .fillMaxWidth(),
-                )
-            }
-
-            item(key = "search_spacing", contentType = "spacing") {
+            item(key = "search_spacing_top", contentType = "spacing") {
                 Spacer(modifier = Modifier.height(SettingsDimensions.SectionSpacing))
             }
 
@@ -484,12 +424,29 @@ fun SettingsScreen(
 
                 SettingsHomeStyleHeader(
                     glassHeader = glassHeader,
+                )
+
+                // Bottom chrome: back pill + settings-search pill on the same line,
+                // mirroring the search-results layout. The in-list search field and
+                // the top-bar search/back icons are gone — search lives down here now.
+                SearchResultsBottomOverlay(
+                    state = glassHeader.toSearchResultsBarState(),
+                    query = searchQuery,
+                    onQueryChange = { searchQuery = it },
+                    onSearch = { },
                     onBack = navController::navigateUp,
                     onBackLongClick = navController::backToMain,
-                    onSearch = {
-                        searchPinned = true
-                        coroutineScope.launch {
-                            listState.animateScrollToItem(0)
+                    placeholder = stringResource(R.string.search_settings),
+                    bottomPadding = playerAwareBottomPadding,
+                    trailing = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }, onLongClick = {}) {
+                                Icon(
+                                    painter = painterResource(R.drawable.close),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     },
                 )
@@ -501,9 +458,6 @@ fun SettingsScreen(
 @Composable
 private fun BoxScope.SettingsHomeStyleHeader(
     glassHeader: GlassScreenHeader,
-    onBack: () -> Unit,
-    onBackLongClick: () -> Unit,
-    onSearch: () -> Unit,
 ) {
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -528,67 +482,5 @@ private fun BoxScope.SettingsHomeStyleHeader(
             maxLines = 1,
             modifier = Modifier.align(Alignment.Center),
         )
-
-        val backdrop = glassHeader.backdrop
-        if (backdrop != null) {
-            LiquidGlassIconButton(
-                backdrop = backdrop,
-                painter = painterResource(R.drawable.arrow_back),
-                contentDescription = stringResource(R.string.back_button_desc),
-                modifier =
-                    Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = 12.dp),
-                onClick = onBack,
-            )
-        } else {
-            IconButton(
-                onClick = onBack,
-                onLongClick = onBackLongClick,
-                modifier =
-                    Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = 12.dp),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.arrow_back),
-                    contentDescription = stringResource(R.string.back_button_desc),
-                )
-            }
-        }
-
-        // The reference header carries the search button permanently — the
-        // same circular glass treatment as the back button, mirrored
-        // top-right. It scrolls the list up to the inline search field.
-        if (backdrop != null) {
-            LiquidGlassIconButton(
-                backdrop = backdrop,
-                painter = painterResource(R.drawable.search),
-                contentDescription = stringResource(R.string.search),
-                modifier =
-                    Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 12.dp),
-                onClick = onSearch,
-            )
-        } else {
-            FrostedHeaderPill(
-                modifier =
-                    Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 8.dp),
-                plain = true,
-            ) {
-                IconButton(
-                    onClick = onSearch,
-                    onLongClick = {},
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.search),
-                        contentDescription = stringResource(R.string.search),
-                    )
-                }
-            }
-        }
     }
 }

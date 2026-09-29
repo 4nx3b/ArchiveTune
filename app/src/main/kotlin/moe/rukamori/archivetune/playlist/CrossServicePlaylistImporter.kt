@@ -48,7 +48,6 @@ object CrossServicePlaylistImporter {
         YOUTUBE_MUSIC("YouTube Music"),
         SPOTIFY("Spotify"),
         APPLE_MUSIC("Apple Music"),
-        AMAZON_MUSIC("Amazon Music"),
         TIDAL("Tidal"),
         QOBUZ("Qobuz"),
         DEEZER("Deezer"),
@@ -74,7 +73,6 @@ object CrossServicePlaylistImporter {
         url.contains("music.youtube.com") || url.contains("youtube.com/playlist") -> ImportSource.YOUTUBE_MUSIC
         url.contains("spotify.com") || url.startsWith("spotify:") -> ImportSource.SPOTIFY
         url.contains("music.apple.com") -> ImportSource.APPLE_MUSIC
-        url.contains("music.amazon.com") -> ImportSource.AMAZON_MUSIC
         url.contains("tidal.com") -> ImportSource.TIDAL
         url.contains("qobuz.com") -> ImportSource.QOBUZ
         url.contains("deezer.com") -> ImportSource.DEEZER
@@ -110,13 +108,12 @@ object CrossServicePlaylistImporter {
                 }
                 ImportSource.SPOTIFY -> fetchSpotifyPlaylist(url)
                 ImportSource.APPLE_MUSIC -> fetchAppleMusicPlaylist(url)
-                ImportSource.AMAZON_MUSIC -> fetchAmazonMusicPlaylist(url)
                 ImportSource.TIDAL -> fetchTidalPlaylist(url, credentials)
                 ImportSource.QOBUZ -> fetchQobuzPlaylist(url, credentials)
                 ImportSource.DEEZER -> fetchDeezerPlaylist(url)
                 ImportSource.UNKNOWN -> error(
                     "Unrecognized URL — supported: YouTube Music, Spotify, Apple Music, " +
-                        "Amazon Music, Tidal, Qobuz, Deezer",
+                        "Tidal, Qobuz, Deezer",
                 )
             }
         }
@@ -388,62 +385,6 @@ object CrossServicePlaylistImporter {
                 for (i in 0 until node.length()) collectAppleMusicTracks(node.opt(i), into)
             }
         }
-    }
-
-    private suspend fun fetchAmazonMusicPlaylist(url: String): ResolvedImport {
-        val html = fetchText(url)
-        val id = extractAmazonPlaylistId(url) ?: url
-        val title = extractAmazonMusicTitle(html)
-        val tracks = parseAmazonMusicTracks(html)
-        return ResolvedImport(
-            source = ImportSource.AMAZON_MUSIC,
-            sourcePlaylistId = id,
-            title = title,
-            thumbnailUrl = null,
-            tracks = tracks,
-        )
-    }
-
-    private fun extractAmazonPlaylistId(url: String): String? {
-        val m = Pattern.compile("playlists/([A-Z0-9]+)").matcher(url)
-        return if (m.find()) m.group(1) else null
-    }
-
-    private fun extractAmazonMusicTitle(html: String): String {
-        val og = Pattern.compile("<meta[^>]+property=\"og:title\"[^>]+content=\"([^\"]+)\"").matcher(html)
-        if (og.find()) return unescapeJson(og.group(1))
-        val title = Pattern.compile("<title>([^<]+)</title>").matcher(html)
-        if (title.find()) {
-            val raw = title.group(1).trim()
-
-            return raw.substringBefore(" |").ifBlank { raw }
-        }
-        return "Amazon Music Playlist"
-    }
-
-    private fun parseAmazonMusicTracks(html: String): List<ForeignTrack> {
-        val tracks = mutableListOf<ForeignTrack>()
-
-        val regex = Pattern.compile("\\{\"title\":\"([^\"]{2,120})\",\"artist\":\"([^\"]+)\"")
-        val m = regex.matcher(html)
-        while (m.find()) {
-            tracks.add(ForeignTrack(
-                title = unescapeJson(m.group(1)),
-                artist = unescapeJson(m.group(2)),
-            ))
-        }
-
-        if (tracks.isEmpty()) {
-            val alt = Pattern.compile("\\{\"trackName\":\"([^\"]{2,120})\",\"artistName\":\"([^\"]+)\"")
-            val am = alt.matcher(html)
-            while (am.find()) {
-                tracks.add(ForeignTrack(
-                    title = unescapeJson(am.group(1)),
-                    artist = unescapeJson(am.group(2)),
-                ))
-            }
-        }
-        return tracks.distinctBy { it.title to it.artist }
     }
 
     private suspend fun fetchTidalPlaylist(url: String, credentials: Credentials): ResolvedImport {

@@ -129,6 +129,7 @@ fun NavGraphBuilder.navigationBuilder(
     homeScrollConnection: NestedScrollConnection? = null,
     searchScrollConnection: NestedScrollConnection? = null,
     onlineSearchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,
+    onOnlineSearchSortChange: (OnlineSearchSort) -> Unit = {},
 ) {
     composable(Screens.Home.route) {
         if (rememberHomeSource() == HomeSource.SPOTIFY) {
@@ -296,6 +297,7 @@ fun NavGraphBuilder.navigationBuilder(
         OnlineSearchResult(
             navController = navController,
             searchSort = onlineSearchSort,
+            onSearchSortChange = onOnlineSearchSortChange,
         )
     }
     composable(

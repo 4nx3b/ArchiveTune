@@ -17,6 +17,9 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import timber.log.Timber
 import kotlin.math.min
 
+/** A listen shorter than this never becomes a scrobble (Last.fm's own floor). */
+private const val MIN_SCROBBLE_THRESHOLD_MS = 30_000L
+
 class ScrobbleManager(
     private val scope: CoroutineScope,
     var minSongDuration: Int = 30,
@@ -29,6 +32,14 @@ class ScrobbleManager(
     private var songStartedAt: Long = 0L
     private var songStarted = false
     var useNowPlaying = true
+
+    /**
+     * LastWave-style double-scrobble guard: once the timer fires for a song, the
+     * same song can never arm a second countdown. Previously scrobbleRemainingMillis
+     * was left > 0 by the timer path and a subsequent onSongResume re-armed a full
+     * countdown and scrobbled the same track twice.
+     */
+    private var scrobbledForId: String? = null
 
     private var currentMetadata: MediaMetadata? = null
     private var currentThresholdMillis: Long = 0L
@@ -44,6 +55,7 @@ class ScrobbleManager(
         currentMetadata = null
         currentThresholdMillis = 0L
         scrobbleTimerRunning = false
+        scrobbledForId = null
     }
 
     fun onSongStart(
@@ -52,6 +64,9 @@ class ScrobbleManager(
     ) {
         if (metadata == null) return
 
+        // A fresh playback (new song, repeat-one restart, replay from the queue)
+        // legitimately re-arms scrobbling; only pause/resume must never re-arm it.
+        scrobbledForId = null
         flushPendingScrobbleIfNeeded()
         songStartedAt = System.currentTimeMillis() / 1000
         songStarted = true
@@ -82,16 +97,31 @@ class ScrobbleManager(
         scrobbleJob?.cancel()
         val resolvedDuration = duration?.toInt()?.div(1000) ?: metadata.duration
 
-        if (resolvedDuration <= minSongDuration) {
+        // Short tracks (< minSongDuration) never scrobbled before; LastWave's rule:
+        // a 30-second floor applies to the threshold, not to eligibility — a 40 s
+        // track still scrobbles once 30 s of it have played.
+        val thresholdMillis =
+            if (resolvedDuration > 0) {
+                min(
+                    resolvedDuration * 1000L * scrobbleDelayPercent.toLong(),
+                    scrobbleDelaySeconds * 1000L,
+                )
+            } else {
+                scrobbleDelaySeconds * 1000L
+            }.coerceAtLeast(MIN_SCROBBLE_THRESHOLD_MS)
+
+        if (scrobbledForId == metadata.id) {
+            // Already scrobbled this playback of the song (e.g. timer fired, then the
+            // same item restarted via a queue loop without an intervening song).
             currentMetadata = metadata
             currentThresholdMillis = 0L
+            scrobbleRemainingMillis = 0L
             scrobbleTimerRunning = false
             return
         }
 
-        val threshold = resolvedDuration * 1000L * scrobbleDelayPercent
-        scrobbleRemainingMillis = min(threshold.toLong(), scrobbleDelaySeconds * 1000L)
-        currentThresholdMillis = scrobbleRemainingMillis
+        scrobbleRemainingMillis = thresholdMillis
+        currentThresholdMillis = thresholdMillis
         currentMetadata = metadata
 
         if (scrobbleRemainingMillis <= 0) {
@@ -126,6 +156,7 @@ class ScrobbleManager(
     private fun resumeScrobbleTimer(metadata: MediaMetadata) {
         if (scrobbleTimerRunning) return
         if (scrobbleRemainingMillis <= 0) return
+        if (scrobbledForId == metadata.id) return
 
         val current = currentMetadata
         if (current != null && !sameSong(current, metadata)) return
@@ -186,6 +217,8 @@ class ScrobbleManager(
     }
 
     private fun scrobbleSong(metadata: MediaMetadata) {
+        scrobbledForId = metadata.id
+        scrobbleRemainingMillis = 0L
         scope.launch {
             LastFM
                 .scrobble(
