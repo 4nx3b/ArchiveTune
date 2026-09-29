@@ -672,37 +672,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 }
 
-                // The engine-owned exclusive route: only reachable while an
-                // engine is enabled (its driver serves the stream); without an
-                // engine there is no exclusive route to configure.
-                item(visible = tryptifyAudioProcessing || lastwaveAudioProcessing) {
-                    Column(modifier = positions.modifierFor("usb_exclusive_audio")) {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.usb_exclusive_audio)) },
-                            description = stringResource(
-                                if (tryptifyAudioProcessing) {
-                                    R.string.usb_exclusive_audio_tryptify_desc
-                                } else {
-                                    R.string.usb_exclusive_audio_lastwave_desc
-                                },
-                            ),
-                            icon = { Icon(painterResource(R.drawable.solar_volume_up_linear), null) },
-                            checked = usbExclusiveAudio,
-                            onCheckedChange = { enabled ->
-                                onUsbExclusiveAudioChange(enabled)
-                                if (enabled) {
-                                    // One exclusive stream only: the blending
-                                    // engines and offload each hold their own
-                                    // output path.
-                                    onAudioOffloadChange(false)
-                                    onCrossfadeEnabledChange(false)
-                                    onAutomixEnabledChange(false)
-                                }
-                            },
-                        )
-                    }
-                }
-
                 item {
                     // The ported Tryptify engine: C++17 mixing console + Oxford
                     // effects + measurement-driven AutoEQ + its libusb UAC
@@ -839,6 +808,38 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             title = { Text(stringResource(R.string.lastwave_eq_tab_hint)) },
                             description = stringResource(R.string.lastwave_eq_tab_hint_desc),
                             icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                        )
+                    }
+                }
+
+                // The engine-owned exclusive route sits BELOW both engines'
+                // feature blocks: every engine-dependent setting must appear
+                // under the toggle that enables it, and this one belongs to
+                // whichever engine is on (its driver serves the stream).
+                item(visible = tryptifyAudioProcessing || lastwaveAudioProcessing) {
+                    Column(modifier = positions.modifierFor("usb_exclusive_audio")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.usb_exclusive_audio)) },
+                            description = stringResource(
+                                if (tryptifyAudioProcessing) {
+                                    R.string.usb_exclusive_audio_tryptify_desc
+                                } else {
+                                    R.string.usb_exclusive_audio_lastwave_desc
+                                },
+                            ),
+                            icon = { Icon(painterResource(R.drawable.solar_volume_up_linear), null) },
+                            checked = usbExclusiveAudio,
+                            onCheckedChange = { enabled ->
+                                onUsbExclusiveAudioChange(enabled)
+                                if (enabled) {
+                                    // One exclusive stream only: the blending
+                                    // engines and offload each hold their own
+                                    // output path.
+                                    onAudioOffloadChange(false)
+                                    onCrossfadeEnabledChange(false)
+                                    onAutomixEnabledChange(false)
+                                }
+                            },
                         )
                     }
                 }
