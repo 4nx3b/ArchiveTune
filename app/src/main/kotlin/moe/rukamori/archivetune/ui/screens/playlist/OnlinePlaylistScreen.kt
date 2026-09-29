@@ -141,6 +141,7 @@ import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.OnlinePlaylistViewModel
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
 import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
@@ -214,7 +215,9 @@ fun OnlinePlaylistScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
+    val layerBackdropActive =
+        liquidGlassHeaderActive && !lyricsFullScreen && !playerSheetOverlayActive && screenSettled
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -479,7 +482,7 @@ fun OnlinePlaylistScreen(
                                         ?.takeIf { pageCanvasEnabled },
                                 canvasFallbackUrl = canvasArtwork?.videoUrl?.takeIf { pageCanvasEnabled },
                                 canvasIsPlaying = true,
-                                canvasVisible = !lyricsFullScreen,
+                                canvasVisible = !lyricsFullScreen && !playerSheetOverlayActive,
                                 onShuffle =
                                     playlist.shuffleEndpoint?.let { shuffleEndpoint ->
                                         {

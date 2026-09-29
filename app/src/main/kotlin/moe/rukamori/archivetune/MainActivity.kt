@@ -215,6 +215,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.aod.ACTION_AOD_MODE
 import moe.rukamori.archivetune.constants.AppBarHeight
+import moe.rukamori.archivetune.constants.SheetOverlayEpsilon
 import moe.rukamori.archivetune.constants.AppFontPreference
 import moe.rukamori.archivetune.constants.AppLanguageKey
 import moe.rukamori.archivetune.constants.AodAutoStartScreenOffKey
@@ -1635,6 +1636,20 @@ class MainActivity : ComponentActivity() {
 
                     var isPlayerLyricsFullScreen by remember { mutableStateOf(false) }
 
+                    // True for the WHOLE window in which the player sheet is
+                    // visually above its mini-player bound — expanding, expanded
+                    // OR collapsing (isExpandedOrExpanding misses the collapse
+                    // direction). Gates the NavHost-level liquid glass + frosted
+                    // layer recording while the fullscreen player slides over
+                    // the content; provided to screens so playlist glass and
+                    // hero canvases pause under the sheet too.
+                    val isPlayerSheetOverlayActive by remember(playerBottomSheetState) {
+                        derivedStateOf {
+                            playerBottomSheetState.value >
+                                playerBottomSheetState.collapsedBound + SheetOverlayEpsilon
+                        }
+                    }
+
                     val shouldHideStatusBars =
                         hideStatusBar ||
                             isYearInMusicScreen ||
@@ -2106,6 +2121,7 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.player.LocalRootOverlayActive provides rootOverlayActive,
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
+                        moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive provides isPlayerSheetOverlayActive,
                     ) {
                         Row(
                             modifier =
@@ -3116,7 +3132,12 @@ class MainActivity : ComponentActivity() {
                                                     Modifier
                                                 },
                                             ).then(
-                                                if (navBarFrostedBackdrop != null) {
+                                                if (navBarFrostedBackdrop != null && !isPlayerSheetOverlayActive) {
+                                                    // The record below re-records the ENTIRE NavHost
+                                                    // every draw frame; while the player sheet slides
+                                                    // over the content it is pure wasted GPU work (the
+                                                    // frosted consumers are fading out anyway), and it
+                                                    // was half of the playlist-transition jank.
                                                     Modifier
                                                         .onGloballyPositioned { coordinates ->
                                                             navBarFrostedBackdrop.contentOffsetInRoot =
@@ -3127,11 +3148,21 @@ class MainActivity : ComponentActivity() {
                                                             }
                                                             drawLayer(navBarFrostedBackdrop.layer)
                                                         }
+                                                } else if (navBarFrostedBackdrop != null) {
+                                                    // Overlay active: keep drawing the last recorded
+                                                    // layer (content stays visible) but stop recording.
+                                                    Modifier
+                                                        .onGloballyPositioned { coordinates ->
+                                                            navBarFrostedBackdrop.contentOffsetInRoot =
+                                                                coordinates.positionInRoot()
+                                                        }.drawWithContent {
+                                                            drawLayer(navBarFrostedBackdrop.layer)
+                                                        }
                                                 } else {
                                                     Modifier
                                                 },
                                             ).then(
-                                                if (liquidGlassBackdrop != null && !isPlayerLyricsFullScreen) {
+                                                if (liquidGlassBackdrop != null && !isPlayerLyricsFullScreen && !isPlayerSheetOverlayActive) {
                                                     Modifier.layerBackdrop(liquidGlassBackdrop)
                                                 } else {
                                                     Modifier

@@ -261,6 +261,61 @@ original app.
   matching the title/artist), so wrapped lines never run under the like/
   comment/share buttons
 
+## Fixes (16.0.5 follow-up)
+
+- **Track Info & Specs in the player overflow menu**: the whole truth about the
+  playing track — codec, bit depth, sample rate, bitrate, channels, the
+  provider that actually won the stream (with delivery protocol and the
+  standby pipeline), loudness with the live normalization factor, duration,
+  file size, engine, decoder, signal path, USB DAC identity and hardware
+  clock — as a full page opened from a list row (not a pill), updating live
+  while it is open. The old Developer-options Audio Pipeline section is gone:
+  the diagnostics live where the track plays now
+- **Automix no longer mutes the blend**: the incoming player was paused
+  whenever the OUTGOING player's isPlaying flipped false — including the
+  outgoing's end-of-item pause (which the playWhenReady handler deliberately
+  plays the incoming across) and transient buffering stalls. The ramp froze
+  mid-blend with both sides silent until promotion. The secondary now only
+  ever resumes; real user pauses are mirrored by the playWhenReady path and
+  the ramp loop itself. The promoted player's DSP tail also keeps receiving
+  engagement updates after the next secondary player is built
+- **Engine switching takes effect on the current song**: flipping
+  Tryptify <-> LastWave used to leave the OLD engine's chain routing audio
+  until the next track (or a service restart) — and the system-wide AutoEQ
+  stayed attached forever after leaving Tryptify. The router now re-routes
+  mid-track at the next audio buffer (rate/channel-mismatch cases defer
+  safely to the next configure), and the system-wide EQ gates on the engine
+  both ways. Per-engine settings were already separate — they persist and
+  reapply on switch
+- **Apple Music landscape opens with controls hidden**: a stale duplicate
+  auto-hide effect was force-showing the controls over the lyrics for five
+  seconds before hiding them; only the guarded effect remains. The landscape
+  artwork is a touch smaller and nudged down toward the half's true centre
+- **YouLyPlus karaoke words animate for their real length and merge**: the v2
+  API splits one word across several syllable entries ("e" + "nough") and
+  gives every fragment a true duration — both were being thrown away by the
+  enhanced-LRC emission (start-only tokens, next-token-start endings).
+  Emission is now YRC-style `word(start,duration)` tokens with same-word
+  fragments merged into one word, parsed with true end times; a word now
+  animates exactly as long as it is sung
+- **ListenBrainz 401 storms end**: an account-level rejection (the classic:
+  unverified MetaBrainz email) now backs all submissions off for six hours
+  and surfaces the actionable reason on the login screen instead of logging
+  one 401 per attempt; the triple-submitted playing_now per track change
+  (timeline + is-playing event batches) is deduped to one per 30 seconds
+- **Playlist-page player transitions are smooth again**: mini-player <->
+  fullscreen and the lyrics morph used to drag while a playlist page sat
+  underneath, because the entire NavHost was being re-recorded into a
+  GraphicsLayer and the playlist's live liquid-glass lenses re-ran their
+  shaders under the translating sheet every frame. All glass work now pauses
+  for the whole window the sheet is above its mini-player bound — including
+  the collapse direction, which the old gating missed — and playlist hero
+  canvases stop decoding while covered
+- **Fewer dead-thread MediaCodec warnings on backgrounding**: the canvas and
+  video artwork players detach their video surface at ON_STOP, before the
+  Compose surface is disposed underneath them, so the codec releases against
+  a live surface instead of spamming MediaCodec's EventHandler
+
 ## Podcasts
 
 - **Podcasts, ported from upstream**: search a show and it appears as its own

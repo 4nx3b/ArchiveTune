@@ -119,6 +119,8 @@ import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.constants.QobuzBackupEndpointsKey
 import moe.rukamori.archivetune.qobuz.QobuzBackupProvider
 import moe.rukamori.archivetune.ui.component.BottomSheetState
+import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
+import moe.rukamori.archivetune.ui.utils.TrackInfoAndSpecs
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.ListDialog
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
@@ -170,6 +172,7 @@ fun PlayerMenu(
     val context = LocalContext.current
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
+    val bottomSheetPageState = LocalBottomSheetPageState.current
     val deviceMusicVolumeController = rememberDeviceMusicVolumeController()
     val onPlayerVolumeChange =
         remember(deviceMusicVolumeController) {
@@ -1410,6 +1413,22 @@ fun PlayerMenu(
                             thickness = 0.5.dp,
                         )
                     }
+
+                    ListItem(
+                        headlineContent = { Text(text = stringResource(R.string.track_info_specs)) },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.graphic_eq),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                bottomSheetPageState.show { TrackInfoAndSpecs() }
+                                onDismiss()
+                            },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
 
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.details)) },

@@ -37,6 +37,7 @@ import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.runtime.getValue
 
@@ -51,6 +52,10 @@ class GlassScreenHeader(
 fun rememberGlassScreenHeader(): GlassScreenHeader {
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
+    // Glass pauses while the player sheet slides over the screen: the live
+    // lens/blur shaders under a translating sheet were the playlist-page
+    // transition jank (mini↔fullscreen, lyrics morph).
+    val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
     val surfaceColor = MaterialTheme.colorScheme.surface
 
     val backdrop = rememberBackdrop(surfaceColor)
@@ -58,7 +63,8 @@ fun rememberGlassScreenHeader(): GlassScreenHeader {
     val active =
         liquidGlassEnabled &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            !lyricsFullScreen
+            !lyricsFullScreen &&
+            !playerSheetOverlayActive
     return GlassScreenHeader(
         liquidGlassActive = active,
         backdrop = if (active) backdrop else null,

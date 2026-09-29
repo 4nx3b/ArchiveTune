@@ -39,14 +39,18 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.datastore.preferences.core.edit
 import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
@@ -177,6 +181,10 @@ fun ListenBrainzLoginScreen(navController: NavController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val handled = remember { AtomicBoolean(false) }
+    // Actionable auth feedback: when the server hard-rejects listens (the
+    // classic case is an unverified MetaBrainz email) the banner tells the
+    // user exactly what to fix instead of every listen failing silently.
+    val authIssue by ListenBrainzManager.authIssueFlow.collectAsStateWithLifecycle()
 
     fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -197,6 +205,8 @@ fun ListenBrainzLoginScreen(navController: NavController) {
                 prefs[ListenBrainzTokenKey] = token
                 prefs[ListenBrainzEnabledKey] = true
             }
+            // New credentials: any old 401 backoff is obsolete.
+            ListenBrainzManager.resetAuthState()
             withContext(Dispatchers.Main) {
                 toast(context.getString(R.string.listenbrainz_login_success, userName))
                 navController.navigateUp()
@@ -278,6 +288,21 @@ fun ListenBrainzLoginScreen(navController: NavController) {
                 stringResource(R.string.listenbrainz_login_subtitle_oauth)
             } else {
                 stringResource(R.string.listenbrainz_login_subtitle_auto)
+            },
+        banner =
+            authIssue?.let { issue ->
+                {
+                    Surface(
+                        color = Color(0x33F44336),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = issue,
+                            color = Color(0xFFFFB4AB),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        )
+                    }
+                }
             },
         footer = {
             Button(

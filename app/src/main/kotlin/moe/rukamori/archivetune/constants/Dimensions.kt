@@ -32,6 +32,11 @@ val MiniPlayerBottomSpacing = 4.dp
 val QueuePeekHeight = 64.dp
 val AppBarHeight = 64.dp
 
+/** Sheet-above-collapsed tolerance: the player sheet counts as "overlaying"
+ *  content once it has visually left its mini-player rest bound by more
+ *  than this. Drives LocalPlayerSheetOverlayActive (liquid glass gating). */
+val SheetOverlayEpsilon = 2.dp
+
 val ListItemHeight = 72.dp
 val SuggestionItemHeight = 56.dp
 val SearchFilterHeight = 48.dp

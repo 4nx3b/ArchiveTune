@@ -100,6 +100,7 @@ import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
 import moe.rukamori.archivetune.db.entities.Album
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.playback.queues.LocalAlbumRadio
@@ -182,7 +183,9 @@ fun AlbumScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
+    val layerBackdropActive =
+        liquidGlassHeaderActive && !lyricsFullScreen && !playerSheetOverlayActive && screenSettled
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -353,7 +356,7 @@ fun AlbumScreen(
                         canvasFallbackUrl = canvasArtwork?.videoUrl?.takeIf { albumCanvasEnabled },
                         canvasIsPlaying = true,
 
-                        canvasVisible = !lyricsFullScreen,
+                        canvasVisible = !lyricsFullScreen && !playerSheetOverlayActive,
                         onShuffle =
                             if (albumWithSongs.songs.isEmpty()) {
                                 null
