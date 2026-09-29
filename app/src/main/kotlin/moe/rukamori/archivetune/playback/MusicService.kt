@@ -8589,6 +8589,31 @@ class MusicService :
         }
     }
 
+    /**
+     * Cache file for an Apple stream (cacheDir/applemusic/<mediaId>.m4a), built via [build]
+     * when missing, with a simple prune: oldest files go first past ~300 MB.
+     */
+    private fun appleStreamFile(
+        mediaId: String,
+        quality: AppleMusicQuality,
+        build: () -> ByteArray,
+    ): java.io.File {
+        val dir = java.io.File(cacheDir, "applemusic").apply { mkdirs() }
+        val files = dir.listFiles()?.sortedBy { it.lastModified() } ?: emptyList()
+        var total = files.sumOf { it.length() }
+        for (f in files) {
+            if (total <= 300L * 1024 * 1024) break
+            total -= f.length()
+            f.delete()
+        }
+        val safeId = mediaId.replace(Regex("[^A-Za-z0-9_-]"), "_")
+
+        val out = java.io.File(dir, "${safeId}_${quality.name.lowercase()}_v2.m4a")
+        if (out.exists() && out.length() > 0) return out
+        out.writeBytes(build())
+        return out
+    }
+
     private fun resolveTidalStream(query: SourceQuery): DirectStream? {
         val quality = parseTidalAudioQuality()
         Timber.tag("MusicService").d("Tidal resolve start | quality=%s accountFirst=%s", quality.name, dataStore.get(TidalAccountFirstKey, true))

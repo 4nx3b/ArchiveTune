@@ -260,6 +260,10 @@ fun SettingsScreen(
     // picture instead of a generic account glyph.
     val (accountImageUrl) = rememberPreference(AccountImageUrlKey, "")
 
+    // The bottom-chrome search field's live query (SearchResultsBottomOverlay
+    // owns the visuals; this state feeds SettingsSearch filtering).
+    var searchQuery by remember { mutableStateOf("") }
+
     val allSettingsGroups =
         buildSettingsGroups(
             navController = navController,

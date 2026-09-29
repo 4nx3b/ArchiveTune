@@ -36,6 +36,7 @@ import moe.rukamori.archivetune.equalizer.ObserveEqualizerUseCase
 import moe.rukamori.archivetune.equalizer.UpdateEqualizerUseCase
 import moe.rukamori.archivetune.equalizer.equalizerToneIndices
 import moe.rukamori.archivetune.equalizer.normalizedDeviceLevels
+import moe.rukamori.archivetune.equalizer.resampleLevels
 import moe.rukamori.archivetune.playback.EqProfile
 import moe.rukamori.archivetune.playback.EqReverbPreset
 import javax.inject.Inject
