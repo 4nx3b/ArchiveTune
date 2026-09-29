@@ -55,12 +55,15 @@ import moe.rukamori.archivetune.constants.PoolApiKeyKey
 import moe.rukamori.archivetune.constants.QobuzTokensKey
 import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
 import moe.rukamori.archivetune.constants.TidalAccessTokenKey
+import androidx.compose.ui.text.input.TextFieldValue
 import moe.rukamori.archivetune.spotify.SpotifyAccountViewModel
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.InfoLabel
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.menu.CrossServiceImportPlaylistDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.PoolAccountManager
@@ -488,9 +491,7 @@ fun IntegrationScreen(
 
     if (showPoolApiKeyEditor) {
         TextFieldDialog(
-            initialTextFieldValue =
-                androidx.compose.ui.text.input
-                    .TextFieldValue(poolApiKey),
+            initialTextFieldValue = TextFieldValue(poolApiKey),
             onDone = { key ->
                 onPoolApiKeyChange(key.trim())
                 showPoolApiKeyEditor = false

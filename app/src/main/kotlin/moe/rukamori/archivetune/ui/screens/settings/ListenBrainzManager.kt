@@ -82,7 +82,7 @@ object ListenBrainzManager {
      */
     private fun extractArtistName(song: Song): String =
         song.artists
-            .mapNotNull { it.artist.name.takeIf(String::isNotBlank) }
+            .mapNotNull { it.name.takeIf(String::isNotBlank) }
             .joinToString(" & ")
             .ifBlank { "Unknown Artist" }
 
@@ -116,7 +116,7 @@ object ListenBrainzManager {
         val metadata = JSONObject()
         metadata.put("artist_name", extractArtistName(song))
         metadata.put("track_name", song.title)
-        song.album?.album?.title?.takeIf(String::isNotBlank)?.let {
+        song.album?.title?.takeIf(String::isNotBlank)?.let {
             metadata.put("release_name", it)
         }
         metadata.put("additional_info", buildAdditionalInfo(durationMs, extraFields))
