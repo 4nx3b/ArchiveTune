@@ -44,6 +44,7 @@ object LyricsUtils {
     private val INLINE_MILLISECONDS_TIME_REGEX = Regex("""<\d{1,8}(?:,\d{1,8})?>""")
     private val YRC_LINE_REGEX = Regex("""\[(\d{1,8}),\d{1,8}\](.*)""")
     private val YRC_WORD_TIME_REGEX = Regex("""\(\d{1,8},\d{1,8}(?:,\d{1,8})?\)""")
+    private val YRC_WORD_TOKEN_REGEX = Regex("""(.*?)\((\d{1,8}),(\d{1,8})(?:,\d{1,8})?\)""")
     private val QrcTranslationLineRegex = Regex("""^\[(\d{1,8}),(\d{1,8})](.*)$""")
     private val QrcWordTimingDetectRegex = Regex("""\(\d{1,8},\d{1,8}(?:,\d{1,8})?\)""")
 
@@ -594,8 +595,11 @@ object LyricsUtils {
 
         return normalized.lineSequence().any { line ->
             LINE_REGEX.containsMatchIn(line) &&
-                (ENHANCED_LRC_WORD_TIME_REGEX.containsMatchIn(line) ||
-                    INLINE_MILLISECONDS_TIME_REGEX.containsMatchIn(line))
+                (
+                    ENHANCED_LRC_WORD_TIME_REGEX.containsMatchIn(line) ||
+                        INLINE_MILLISECONDS_TIME_REGEX.containsMatchIn(line) ||
+                        YRC_WORD_TIME_REGEX.containsMatchIn(line)
+                )
         }
     }
 
@@ -876,7 +880,9 @@ object LyricsUtils {
         val times = matchResult.groupValues[1]
         val rawText = matchResult.groupValues[3]
         val text = cleanInlineWordTimingText(rawText)
-        val inlineWords = extractEnhancedLrcWordTimestamps(rawText)
+        val inlineWords =
+            extractEnhancedLrcWordTimestamps(rawText)
+                ?: extractYrcWordTimestamps(rawText)
         val timeMatchResults = TIME_REGEX.findAll(times)
 
         return timeMatchResults
@@ -960,6 +966,41 @@ object LyricsUtils {
             words.add(
                 WordTimestamp(
                     text = textWithGap,
+                    startTime = startMs / 1000.0,
+                    endTime = maxOf(endMs, startMs + MIN_WORD_DURATION_MS) / 1000.0,
+                ),
+            )
+        }
+        return words.takeIf { it.isNotEmpty() }
+    }
+
+    private fun extractYrcWordTimestamps(rawText: String): List<WordTimestamp>? {
+        // YRC-style word tokens inside a standard LRC line:
+        // `[00:27.395]I (27395,154)been (27549,191)tryna (27740,337)call(28077,883)`
+        // — emitted by the YouLyPlus provider, which carries the API's real
+        // per-word DURATIONS (an enhanced-LRC `<start>` token can only encode
+        // a start, forcing the end to "next token's start", which truncated
+        // long-held words). The lazy text capture keeps a word's trailing
+        // space exactly like the enhanced path, so verbatim word renderers
+        // still lay the line out correctly.
+        if (!YRC_WORD_TIME_REGEX.containsMatchIn(rawText)) return null
+        val tokens = YRC_WORD_TOKEN_REGEX.findAll(rawText).toList()
+        if (tokens.isEmpty()) return null
+
+        val words = mutableListOf<WordTimestamp>()
+        tokens.forEach { token ->
+            val wordText =
+                token.groupValues[1]
+                    .replace(WHITESPACE_REGEX, " ")
+                    .trim { it.isWhitespace() || it == NBSP }
+                    .let { if (token.groupValues[1].endsWith(" ")) "$it " else it }
+            if (wordText.isBlank()) return@forEach
+            val startMs = token.groupValues[2].toLongOrNull() ?: return@forEach
+            val durationMs = token.groupValues[3].toLongOrNull() ?: return@forEach
+            val endMs = startMs + durationMs.coerceAtLeast(0L)
+            words.add(
+                WordTimestamp(
+                    text = wordText,
                     startTime = startMs / 1000.0,
                     endTime = maxOf(endMs, startMs + MIN_WORD_DURATION_MS) / 1000.0,
                 ),

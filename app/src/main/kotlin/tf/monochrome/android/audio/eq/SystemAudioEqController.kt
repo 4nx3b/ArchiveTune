@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import moe.rukamori.archivetune.R
@@ -48,6 +49,38 @@ class SystemAudioEqController @Inject constructor(
     private val _active = MutableStateFlow(false)
     val active: StateFlow<Boolean> = _active.asStateFlow()
 
+    /** The global effect may only run while the Tryptify ENGINE owns the
+     *  chain. Switching to LastWave (or no engine) previously left the
+     *  device-global DynamicsProcessing attached — the user kept hearing
+     *  Tryptify's curve over every other engine's output. */
+    @Volatile
+    private var engineActive = true
+
+    fun setEngineActive(active: Boolean) {
+        if (engineActive == active) return
+        engineActive = active
+        scope.launch {
+            val cfg = currentCfg()
+            if (cfg != null && cfg.enabled && engineActive) {
+                applyGlobal(cfg.bandsJson, cfg.preamp, cfg.tone)
+                updateNotification(true)
+            } else {
+                release()
+                updateNotification(false)
+            }
+        }
+    }
+
+    private suspend fun currentCfg(): Cfg? =
+        runCatching {
+            Cfg(
+                enabled = preferences.systemWideAutoEqEnabled.first(),
+                bandsJson = preferences.eqBandsJson.first(),
+                preamp = preferences.eqPreamp.first(),
+                tone = preferences.systemToneControls.first(),
+            )
+        }.getOrNull()
+
     @OptIn(FlowPreview::class)
     fun start() {
         synchronized(lock) {
@@ -66,9 +99,9 @@ class SystemAudioEqController @Inject constructor(
 
                 .debounce(70L)
                 .collectLatest { cfg ->
-                    if (cfg.enabled) applyGlobal(cfg.bandsJson, cfg.preamp, cfg.tone) else release()
+                    if (cfg.enabled && engineActive) applyGlobal(cfg.bandsJson, cfg.preamp, cfg.tone) else release()
 
-                    updateNotification(cfg.enabled)
+                    updateNotification(cfg.enabled && engineActive)
                 }
         }
     }

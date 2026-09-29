@@ -70,6 +70,18 @@ class AudioEngineRouterProcessor(
     @Volatile
     private var activeOutputFloat: Boolean = false
 
+    /** Set by the service when the engine preference pair flips mid-track:
+     *  the playback thread re-evaluates the engine at the next queueInput and
+     *  re-routes WITHOUT waiting for the next onConfigure (track change) or a
+     *  service restart — the old engine's processing stops and the new one
+     *  starts within one buffer (~tens of milliseconds). */
+    @Volatile
+    private var reevaluateRequested: Boolean = false
+
+    fun requestEngineReevaluate() {
+        reevaluateRequested = true
+    }
+
     private val tryptifyChain = tf.monochrome.android.audio.usb.AudioProcessorChain(
         listOf(
             ToFloatPcmAudioProcessor(),
@@ -173,11 +185,119 @@ class AudioEngineRouterProcessor(
 
     override fun queueInput(inputBuffer: ByteBuffer) {
         if (!inputBuffer.hasRemaining()) return
+        if (reevaluateRequested) {
+            reevaluateRequested = false
+            rerouteEngineIfChanged()
+        }
         when (activeEngine) {
             Engine.TRYPTIFY -> queueTryptify(inputBuffer)
             Engine.LASTWAVE -> queueLastwave(inputBuffer)
             Engine.NONE -> queueStock(inputBuffer)
         }
+    }
+
+    /**
+     * Mid-stream engine switch: re-run the configure-time engine decision on
+     * the PLAYBACK thread and, when the winner changed, flush the old path and
+     * configure the new one against the SAME input format. The sink contract
+     * (this processor's declared output format) is untouched — [activeOutputFloat]
+     * keeps the encoding the sink negotiated, and [EnginePcmCodec] converts the
+     * new path's data encoding to it. When the new engine path would declare a
+     * different sample rate or channel count than the sink is running at (a
+     * resampling engine mid-chain), the switch is deferred to the next natural
+     * onConfigure instead of corrupting the stream.
+     */
+    private fun rerouteEngineIfChanged() {
+        val input = inputAudioFormat
+        if (input == AudioProcessor.AudioFormat.NOT_SET) return
+        engineAvailableTryptify = tryptifyNativeAvailable()
+        engineAvailableLastwave = lastwaveProcessor.isAvailable
+        val desired =
+            when {
+                tryptifyEnabled() && engineAvailableTryptify -> Engine.TRYPTIFY
+                lastwaveEnabled() && engineAvailableLastwave -> Engine.LASTWAVE
+                else -> Engine.NONE
+            }
+        if (desired == activeEngine) return
+
+        val declaredOut = outputAudioFormat
+        // Locals only — nothing commits until every deferral check passes.
+        var newDataEncoding = input.encoding
+        val newOut: AudioProcessor.AudioFormat =
+            when (desired) {
+                Engine.TRYPTIFY -> {
+                    val chainOut = tryptifyChain.configure(input)
+                    newDataEncoding =
+                        chainOut.encoding.takeIf { it > 0 } ?: input.encoding
+                    AudioProcessor.AudioFormat(
+                        chainOut.sampleRate.takeIf { it > 0 } ?: input.sampleRate,
+                        chainOut.channelCount.takeIf { it > 0 } ?: input.channelCount,
+                        if (activeOutputFloat) C.ENCODING_PCM_FLOAT else C.ENCODING_PCM_16BIT,
+                    )
+                }
+                Engine.LASTWAVE -> {
+                    if (input.channelCount > 2) {
+                        logSwitchDeferred("lastwave rejects >2ch")
+                        return
+                    }
+                    val out =
+                        runCatching { lastwaveProcessor.configure(input) }
+                            .getOrElse { AudioProcessor.AudioFormat.NOT_SET }
+                    if (out == AudioProcessor.AudioFormat.NOT_SET) {
+                        logSwitchDeferred("lastwave configure failed")
+                        return
+                    }
+                    newDataEncoding = C.ENCODING_PCM_FLOAT
+                    AudioProcessor.AudioFormat(
+                        out.sampleRate,
+                        out.channelCount,
+                        if (activeOutputFloat) C.ENCODING_PCM_FLOAT else C.ENCODING_PCM_16BIT,
+                    )
+                }
+                Engine.NONE -> {
+                    val out =
+                        runCatching { stockDsp.configure(input) }
+                            .getOrElse { AudioProcessor.AudioFormat.NOT_SET }
+                    out
+                }
+            }
+        if (newOut == AudioProcessor.AudioFormat.NOT_SET) {
+            logSwitchDeferred("new path refused the format")
+            return
+        }
+        if (declaredOut != AudioProcessor.AudioFormat.NOT_SET &&
+            newOut.sampleRate != declaredOut.sampleRate &&
+            (newOut.sampleRate > 0 && declaredOut.sampleRate > 0)
+        ) {
+            logSwitchDeferred("rate ${newOut.sampleRate}!=${declaredOut.sampleRate}")
+            return
+        }
+        if (declaredOut != AudioProcessor.AudioFormat.NOT_SET &&
+            newOut.channelCount != declaredOut.channelCount &&
+            (newOut.channelCount > 0 && declaredOut.channelCount > 0)
+        ) {
+            logSwitchDeferred("channels ${newOut.channelCount}!=${declaredOut.channelCount}")
+            return
+        }
+
+        val old = activeEngine
+        // Flush the abandoned path's tail so nothing stale drains later.
+        runCatching { tryptifyChain.flush() }
+        runCatching { lastwaveProcessor.flush() }
+        runCatching { stockDsp.flush() }
+        activeEngine = desired
+        engineDataEncoding = newDataEncoding
+        EngineRuntime.activeEngine = desired
+        Log.i(
+            TAG,
+            "engine SWITCHED mid-track $old -> $desired " +
+                "(in=${encodingName(input.encoding)} data=${encodingName(engineDataEncoding)} " +
+                "floatOut=$activeOutputFloat)",
+        )
+    }
+
+    private fun logSwitchDeferred(reason: String) {
+        Log.i(TAG, "engine switch deferred to next configure: $reason")
     }
 
     private fun queueTryptify(inputBuffer: ByteBuffer) {

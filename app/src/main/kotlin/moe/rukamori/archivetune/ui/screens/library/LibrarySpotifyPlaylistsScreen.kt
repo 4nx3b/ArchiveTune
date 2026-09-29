@@ -76,6 +76,7 @@ import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.menu.SpotifyPlaylistMenu
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.runtime.getValue
@@ -137,7 +138,9 @@ fun LibrarySpotifyPlaylistsScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
+    val layerBackdropActive =
+        liquidGlassHeaderActive && !lyricsFullScreen && !playerSheetOverlayActive && screenSettled
     val surfaceColor = MaterialTheme.colorScheme.surface
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 

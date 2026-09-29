@@ -269,12 +269,11 @@ fun DebugSettings(navController: NavController) {
                 }
             }
 
-            // The extensive audio-stream diagnostics: the whole signal path
-            // (track → decoder → resampler → DSP → output), collapsed by
-            // default, expanded on tap.
-            if (playerConnection != null) {
-                AudioPipelineDiagnosticSection(playerConnection = playerConnection)
-            }
+            // The Audio Pipeline diagnostics moved to the player overflow
+            // menu's "Track info & specs" page (Task: user request) — the
+            // whole signal path now lives where the track plays, in the same
+            // UI, updating live.
+
             }
 
             ScreenHeaderHaze(
@@ -461,32 +460,6 @@ private fun DebugTimestampItem(
             fontWeight = FontWeight.Medium,
         )
     }
-}
-
-@Composable
-private fun AudioPipelineDiagnosticSection(
-    playerConnection: moe.rukamori.archivetune.playback.PlayerConnection,
-) {
-    val currentFormat by playerConnection.currentFormat.collectAsStateWithLifecycle(initialValue = null)
-
-    // Playback parameters carry no Compose-observable flow; poll them like
-    // NerdStatsSection does its live counters.
-    var playbackSpeed by remember { mutableFloatStateOf(1f) }
-    LaunchedEffect(playerConnection) {
-        while (isActive) {
-            playbackSpeed = playerConnection.player.playbackParameters.speed
-            delay(1000)
-        }
-    }
-
-    AudioPipelineSection(
-        speedRatio = playbackSpeed,
-        taggedCodec = currentFormat?.codecs?.takeIf { it.isNotBlank() }
-            ?: currentFormat?.mimeType?.substringAfterLast('/')?.uppercase(),
-        taggedBitDepth = null,
-        taggedBitRateKbps = currentFormat?.bitrate?.takeIf { it > 0 }?.let { (it + 500) / 1000 },
-        deviceName = null,
-    )
 }
 
 @Composable

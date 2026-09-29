@@ -98,6 +98,14 @@ class TryptifyEngineController(
     }
 
     fun setEngineActive(active: Boolean) {
+        // The system-wide AutoEQ follows the ENGINE, not the pref: it must
+        // stop the moment Tryptify stops owning the chain (switching to
+        // LastWave used to leave the device-global DynamicsProcessing
+        // attached — the user kept hearing Tryptify's curve over the other
+        // engine's output). The user's own Tryptify prefs are never touched:
+        // per-engine customizations persist and reapply on switch-back.
+        runCatching { systemEq.setEngineActive(active) }
+            .onFailure { Log.w(TAG, "system-wide AutoEQ gate failed", it) }
         if (active) {
             scope.launch {
                 if (!preferences.dspEnabled.first()) {

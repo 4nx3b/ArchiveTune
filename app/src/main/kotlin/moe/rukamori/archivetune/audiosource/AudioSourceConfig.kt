@@ -33,6 +33,22 @@ fun DirectStream.pcmBitrateOrNull(channels: Int = 2): Int? {
     return rate * depth * channels
 }
 
+/**
+ * The stream that actually serves a track right now — published by
+ * MusicService at the moment playback resolves the DataSpec (the direct
+ * lossless sources in [DirectStream] form, YouTube on the itag format
+ * persist). MediaId-scoped so a value left over from a previous track can
+ * never be presented as current: readers filter by the live media id.
+ */
+data class CurrentStreamInfo(
+    val mediaId: String,
+    val source: AudioSourceType,
+    val label: String,
+    val protocol: String? = null,
+    val sampleRate: Int? = null,
+    val bitDepth: Int? = null,
+)
+
 object TitleMatch {
     const val ACCEPT_THRESHOLD = 0.78
     private const val TITLE_ONLY_THRESHOLD = 0.95

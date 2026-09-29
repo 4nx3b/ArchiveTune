@@ -105,6 +105,7 @@ import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
@@ -383,7 +384,9 @@ fun SpotifyPlaylistScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
+    val layerBackdropActive =
+        liquidGlassHeaderActive && !lyricsFullScreen && !playerSheetOverlayActive && screenSettled
 
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
@@ -457,7 +460,7 @@ fun SpotifyPlaylistScreen(
                                     ?.takeIf { pageCanvasEnabled },
                             canvasFallbackUrl = canvasArtwork?.videoUrl?.takeIf { pageCanvasEnabled },
                             canvasIsPlaying = true,
-                            canvasVisible = !lyricsFullScreen,
+                            canvasVisible = !lyricsFullScreen && !playerSheetOverlayActive,
                             onShuffle =
                                 if (tracks.isNotEmpty()) {
                                     { playPlaylist(shuffled = true) }

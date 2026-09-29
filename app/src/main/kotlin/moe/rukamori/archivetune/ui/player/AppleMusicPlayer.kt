@@ -404,29 +404,6 @@ fun AppleMusicPlayerContent(
         onDispose { onLyricsVisibilityChange(false) }
     }
 
-    LaunchedEffect(
-        lyricsOpen,
-        queueOpen,
-        controlsRevealToken,
-        autoHideLyricsPlayerControls,
-        showLyricsPlayerControls,
-        playerExpanded,
-        mediaMetadata.id,
-    ) {
-        playerControlsExpanded = true
-        if (!shouldAutoHideAppleMusicControls(lyricsOpen, queueOpen, autoHideLyricsPlayerControls)) {
-            return@LaunchedEffect
-        }
-        if (!playerExpanded) {
-            return@LaunchedEffect
-        }
-        if (lyricsOpen && !showLyricsPlayerControls) {
-            return@LaunchedEffect
-        }
-        delay(autoHideDelayMs)
-        playerControlsExpanded = false
-    }
-
     var canvasVisibleForLyrics by remember { mutableStateOf(true) }
     LaunchedEffect(lyricsOpen) {
         if (lyricsOpen && !landscape) {
@@ -822,10 +799,14 @@ fun AppleMusicPlayerContent(
                     // 32dp and visually touched the screen end), centred with
                     // equal side margins; the title block below inherits the
                     // exact same width so name and artwork share one column.
+                    // Sizing note (user feedback): a touch SMALLER than the
+                    // old 0.80-height cap and nudged DOWN toward the half's
+                    // true vertical centre — the title block below used to
+                    // ride the artwork high, leaving a dead zone at the top.
                     val landscapeArtworkSize =
-                        (maxWidth - 72.dp)
-                            .coerceAtMost(maxHeight * 0.80f)
-                            .coerceAtLeast(240.dp)
+                        (maxWidth - 96.dp)
+                            .coerceAtMost(maxHeight * 0.68f)
+                            .coerceAtLeast(220.dp)
 
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -839,6 +820,7 @@ fun AppleMusicPlayerContent(
                                 Modifier
                                     .weight(1f)
                                     .fillMaxWidth()
+                                    .padding(top = 32.dp)
                                     .padding(horizontal = 16.dp),
                             contentAlignment = Alignment.Center,
                         ) {

@@ -146,6 +146,16 @@ val LocalRootOverlayActive = compositionLocalOf { false }
 
 val LocalPlayerLyricsFullScreen = compositionLocalOf { false }
 
+/** True while the player bottom sheet is visually ABOVE its collapsed bound —
+ *  expanding, expanded, or collapsing (the whole animation window, not just
+ *  the settled state: `isExpandedOrExpanding` misses the collapse direction,
+ *  which was the laggy one). Screens with liquid glass read this to pause
+ *  their live blur/lens work while the fullscreen player slides over them:
+ *  recording the NavHost into a GraphicsLayer AND re-running the glass
+ *  shaders under a translating sheet was the reported jank on playlist
+ *  pages (mini↔fullscreen and the lyrics morph). */
+val LocalPlayerSheetOverlayActive = compositionLocalOf { false }
+
 val LocalMiniPlayerDocked = compositionLocalOf { false }
 
 @Composable

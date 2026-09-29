@@ -262,6 +262,7 @@ import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzBackupProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
+import moe.rukamori.archivetune.audiosource.CurrentStreamInfo
 import moe.rukamori.archivetune.audiosource.DirectStream
 import moe.rukamori.archivetune.audiosource.SongSourceOverride
 import moe.rukamori.archivetune.audiosource.SongSourceQobuzBackupVideoId
@@ -722,6 +723,14 @@ class MusicService :
     private val normalizeFactor = MutableStateFlow(1f)
     private val audioNormalizationFactorCache = ConcurrentHashMap<String, Float>()
 
+    // Track Info & Specs feed: the stream actually serving the current track
+    // (set in applyDirectStream / the YouTube format persist), plus the live
+    // normalization factor so the page can show what the player is really
+    // applying rather than a DB snapshot.
+    private val _currentStreamInfo = MutableStateFlow<CurrentStreamInfo?>(null)
+    val currentStreamInfo: StateFlow<CurrentStreamInfo?> get() = _currentStreamInfo
+    val liveNormalizeFactor: StateFlow<Float> get() = normalizeFactor
+
     private val tidalActiveMediaIds = ConcurrentHashMap.newKeySet<String>()
     private var audioNormalizationEnabled = true
     var playerVolume = MutableStateFlow(1f)
@@ -931,6 +940,14 @@ class MusicService :
 
     @Volatile
     private var secondaryFloatDspProcessor: FloatDspProcessor? = null
+
+    /** The DSP tail of the player PROMOTED out of a crossfade — the live
+     *  player once the blend is done. applyFloatDspEngagement keeps updating
+     *  it so the promoted player's chain tracks engagement changes even after
+     *  the next secondary player re-points the secondary field. Cleared when
+     *  the primary player is rebuilt (the router owns the tail again). */
+    @Volatile
+    private var promotedTailDspProcessor: FloatDspProcessor? = null
 
     /** Latest persisted format row for the current track — drives DSP engagement. */
     @Volatile
@@ -1767,9 +1784,16 @@ class MusicService :
                 if (lastwave && tryptify) {
                     dataStore.edit { it[LastwaveAudioProcessingKey] = false }
                 }
-                if (tryptify) {
-                    tryptifyEngineController.setEngineActive(true)
-                }
+                // BOTH directions: activating gates the system-wide AutoEQ ON,
+                // de-activating releases it (a leftover global DynamicsProcessing
+                // was the "I still hear Tryptify after switching engines" bug).
+                tryptifyEngineController.setEngineActive(tryptify)
+                // Re-route the live chain at the next buffer instead of waiting
+                // for the next track configure (or a service restart): the old
+                // engine's processing stops and the new engine's starts within
+                // one audio buffer. Per-engine settings live in separate prefs,
+                // so each engine's saved configuration reapplies on switch.
+                primaryEngineRouter.requestEngineReevaluate()
                 // Multichannel fold-down at the chain head (5.1/7.1 → stereo):
                 // off = multichannel passes through untouched, engines idle.
                 tryptifyDownmix.setEnabled(downmixOn)
@@ -4050,6 +4074,11 @@ class MusicService :
             localPlayer = incomingPlayer
             secondaryCrossfadePlayer = null
             secondaryCrossfadeTarget = null
+            // The promoted player's DSP tail keeps living in the audible
+            // chain — remember it so engagement updates keep reaching the
+            // LIVE player even after the next secondary build re-points the
+            // secondaryFloatDspProcessor field.
+            promotedTailDspProcessor = secondaryFloatDspProcessor
 
             val incomingItemIds =
                 (0 until incomingPlayer.mediaItemCount)
@@ -6793,9 +6822,15 @@ class MusicService :
             if (isCrossfading && !crossfadeHandoffInProgress) {
                 if (isPlaying) {
                     secondaryPlayer.play()
-                } else {
-                    secondaryPlayer.pause()
                 }
+                // Deliberately NO pause branch: the session player's
+                // isPlaying=false during a blend is either the outgoing's
+                // end-of-item pause (onPlayWhenReadyChanged above explicitly
+                // keeps the incoming rolling across it) or a transient
+                // buffering stall — pausing the incoming on those froze the
+                // ramp mid-blend and muted both sides until promotion.
+                // A real user pause is mirrored by onPlayWhenReadyChanged
+                // (crossfadePlaybackRequested) and the ramp loop itself.
             }
         }
         if (isPlaying && !isCrossfading) {
@@ -9047,6 +9082,15 @@ class MusicService :
         stream: DirectStream,
     ): DataSpec {
         Timber.tag("MusicService").i("Using %s stream for %s: %s", stream.source, mediaId, stream.label)
+        _currentStreamInfo.value =
+            CurrentStreamInfo(
+                mediaId = mediaId,
+                source = stream.source,
+                label = stream.label,
+                protocol = deriveStreamProtocol(stream.uri),
+                sampleRate = stream.sampleRate,
+                bitDepth = stream.bitDepth,
+            )
         val cacheKey = sourceCacheKey(stream.source, mediaId)
         stream.contentLength?.takeIf { it > 0L }?.let { contentLengthCache[cacheKey] = it }
         tidalActiveMediaIds.add(mediaId)
@@ -9063,6 +9107,18 @@ class MusicService :
             .setUri(stream.uri.toUri())
             .setKey(cacheKey)
             .build()
+    }
+
+    /** Coarse delivery description for the Track Info page: HLS when the URL
+     *  says so, otherwise a plain HTTPS progressive download. */
+    private fun deriveStreamProtocol(uri: String): String {
+        val lower = uri.substringBefore('?').lowercase()
+        return when {
+            lower.endsWith(".m3u8") || lower.contains(".m3u8/") || lower.contains("/hls/") ->
+                "HTTPS HLS Stream"
+            lower.startsWith("http") -> "HTTPS Progressive Stream"
+            else -> "Local File"
+        }
     }
 
     private fun persistDirectStreamFormat(
@@ -9406,6 +9462,13 @@ class MusicService :
         val format = nonNullPlayback.format
         val loudnessDb = nonNullPlayback.audioConfig?.loudnessDb
         val perceptualLoudnessDb = nonNullPlayback.audioConfig?.perceptualLoudnessDb
+        _currentStreamInfo.value =
+            CurrentStreamInfo(
+                mediaId = mediaId,
+                source = AudioSourceType.YOUTUBE,
+                label = "YouTube Music itag ${format.itag}",
+                protocol = "HTTPS Progressive Stream",
+            )
         val resolvedContentLength = format.contentLength ?: 0L
         val resolvedCodecs =
             format.mimeType
@@ -10090,6 +10153,15 @@ class MusicService :
         secondaryFloatDspProcessor?.let {
             it.outputFloat = false
             it.setEngaged(engaged)
+        }
+        // The promoted (now-live) player's tail: same discipline as the
+        // secondary it came from — float output is never routed through a
+        // non-USB sink, engagement follows the live format.
+        promotedTailDspProcessor?.let {
+            if (it !== secondaryFloatDspProcessor) {
+                it.outputFloat = false
+                it.setEngaged(engaged)
+            }
         }
         // One line per engagement CHANGE (not per call — this fires on every
         // format/pref update): the definitive in-logcat answer to "is the

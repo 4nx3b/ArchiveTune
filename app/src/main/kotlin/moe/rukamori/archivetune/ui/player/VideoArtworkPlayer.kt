@@ -1074,6 +1074,15 @@ fun rememberVideoArtworkState(
                     // streams — never let the video (or audio) restart alone.
                     exoPlayer.setVideoPlayback(shouldPlay)
                 }
+                if (event == Lifecycle.Event.ON_STOP) {
+                    // Detach the surface while it is still alive (see
+                    // CanvasArtworkPlayer's identical branch): releasing the
+                    // codec against an already-disposed Compose surface is
+                    // what produces the MediaCodec dead-thread warnings on
+                    // every app-background.
+                    runCatching { exoPlayer.setVideoSurface(null) }
+                    runCatching { exoPlayer.stop() }
+                }
             }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {

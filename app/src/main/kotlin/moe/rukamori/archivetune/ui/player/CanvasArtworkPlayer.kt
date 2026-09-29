@@ -324,6 +324,16 @@ fun CanvasArtworkPlayer(
                 ) {
                     exoPlayer.setCanvasPlayback(shouldPlay)
                 }
+                if (event == Lifecycle.Event.ON_STOP) {
+                    // Drop the video surface BEFORE the Compose surface is
+                    // disposed (children dispose first, so by the time the
+                    // DisposableEffect below releases the player the surface
+                    // is already dead). Releasing a codec against a dead
+                    // surface is what spams MediaCodec's EventHandler with
+                    // "sending message to a Handler on a dead thread".
+                    runCatching { exoPlayer.setVideoSurface(null) }
+                    runCatching { exoPlayer.stop() }
+                }
             }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {

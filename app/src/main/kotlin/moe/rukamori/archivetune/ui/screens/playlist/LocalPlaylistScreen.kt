@@ -152,6 +152,7 @@ import moe.rukamori.archivetune.viewmodels.PlaylistCoverEvent
 import moe.rukamori.archivetune.viewmodels.PlaylistCoverState
 import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import java.time.LocalDateTime
@@ -200,7 +201,9 @@ fun LocalPlaylistScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
+    val layerBackdropActive =
+        liquidGlassHeaderActive && !lyricsFullScreen && !playerSheetOverlayActive && screenSettled
     var showAssignTagsDialog by remember { mutableStateOf(false) }
 
     if (showAssignTagsDialog && playlist != null) {

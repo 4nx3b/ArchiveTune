@@ -113,6 +113,7 @@ import moe.rukamori.archivetune.constants.CONTENT_TYPE_SONG
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
@@ -206,7 +207,9 @@ fun ArtistScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
+    val layerBackdropActive =
+        liquidGlassHeaderActive && !lyricsFullScreen && !playerSheetOverlayActive && screenSettled
     val isArtistBlocked = (blockState as? ArtistBlockState.Success)?.isBlocked == true
 
     BackHandler {
@@ -518,7 +521,7 @@ fun ArtistScreen(
                                 primaryUrl = heroCanvasPrimaryUrl,
                                 fallbackUrl = heroCanvasFallbackUrl,
                                 isPlaying = true,
-                                visible = !lyricsFullScreen,
+                                visible = !lyricsFullScreen && !playerSheetOverlayActive,
                                 resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                                 modifier = Modifier.matchParentSize(),
                             )
