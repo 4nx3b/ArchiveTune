@@ -46,7 +46,6 @@ class SourceOrderTest {
 
         assertFalse(AudioSourceType.DEEZER in merged)
         assertFalse(AudioSourceType.APPLE in merged)
-        assertFalse(AudioSourceType.AMAZON in merged)
         assertEquals(
             listOf(
                 AudioSourceType.TIDAL,

@@ -907,7 +907,6 @@ private fun providerDisplayName(source: AudioSourceType): String =
         AudioSourceType.QOBUZ_BACKUP -> "Qobuz Backup (Mirror)"
         AudioSourceType.DEEZER -> "Deezer (Lossless FLAC)"
         AudioSourceType.APPLE -> "Apple Music (Catalogue)"
-        AudioSourceType.AMAZON -> "Amazon Music (Catalogue)"
         AudioSourceType.JIOSAAVN -> "JioSaavn (AAC)"
         AudioSourceType.YOUTUBE -> "YouTube Music (Standard)"
     }
@@ -919,7 +918,6 @@ private fun providerNote(source: AudioSourceType): String =
         AudioSourceType.QOBUZ_BACKUP -> "Secondary mirror • endpoint chain"
         AudioSourceType.DEEZER -> "Lossless resolver"
         AudioSourceType.APPLE -> "Metadata & lyrics tier"
-        AudioSourceType.AMAZON -> "Metadata tier"
         AudioSourceType.JIOSAAVN -> "AAC resolver"
         AudioSourceType.YOUTUBE -> "Ultimate zero-skip fallback"
     }

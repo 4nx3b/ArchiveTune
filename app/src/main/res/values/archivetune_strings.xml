@@ -1029,24 +1029,10 @@
     <string name="android_auto_for_you">For You</string>
     <string name="android_auto_library">Library</string>
 
-    <!-- Amazon Music source label (PlayerMenu / PlaybackSourceSections / download + search pickers) -->
-    <string name="source_amazon">Amazon Music</string>
 
     <!-- QQ Music settings. Playback exists through Tencent's partner programme only, so the screen
          leads with what the maintainer has to provision; see QqMusicProvider for the boundaries. -->
 
-    <!-- Amazon Music sign-in (WebView) + settings. Shaped like Deezer's: account-based, no
-         self-hosted proxy tier. Playback goes through Amazon's own Web API, which is approval-gated:
-         a build without the security profile (BuildConfig.AMAZON_LWA_CLIENT_ID) resolves nothing and
-         falls through to the next source, which is what amazon_playback_notice_* says on screen. -->
-    <string name="auth_webview_amazon_subtitle">Sign in to Amazon Music below. The session is saved automatically once you\'re signed in.</string>
-
-    <!-- Amazon Music section inside Player & Audio's source list (our fork's toggle row;
-         canary had no in-page toggle, so these two strings are this fork's extension). -->
-
-    <!-- Amazon Music catalog search (search-from popup + results screen; anonymous, no sign-in). -->
-    <string name="search_amazon">Search Amazon Music</string>
-    <string name="amazon_track_unavailable">Amazon Music track could not be mapped to a playable source.</string>
     <string name="output_route">Output</string>
     <string name="output_device">Device</string>
     <string name="output_device_rates">Device sample rates</string>

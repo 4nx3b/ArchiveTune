@@ -260,9 +260,9 @@ object TitleMatch {
 object AudioSourceConfig {
     // Apple Music, Amazon Music, QQ Music and Deezer were removed from the
     // preferred playback sources: the automatic resolution chain now runs
-    // Tidal -> Qobuz -> Qobuz backup -> JioSaavn -> YouTube. Deezer (and the
-    // kept Apple/Amazon provider code) remain reachable through the
-    // per-song source picker and the pool; QQ Music is gone from the app.
+    // Tidal -> Qobuz -> Qobuz backup -> JioSaavn -> YouTube. Deezer remains
+    // reachable through the per-song source picker and the pool; Apple Music,
+    // Amazon Music and QQ Music are gone from the app entirely.
     val DEFAULT_ORDER: List<AudioSourceType> =
         listOf(
             AudioSourceType.TIDAL,
@@ -279,7 +279,7 @@ object AudioSourceConfig {
      * otherwise.
      */
     private val RETIRED_FROM_CHAIN =
-        setOf(AudioSourceType.APPLE, AudioSourceType.AMAZON, AudioSourceType.DEEZER)
+        setOf(AudioSourceType.APPLE, AudioSourceType.DEEZER)
 
     private val ALWAYS_ENABLED = setOf(AudioSourceType.YOUTUBE)
 
@@ -335,8 +335,8 @@ object AudioSourceConfig {
     /**
      * The stored order with [source] present, sitting just above YouTube.
      *
-     * Sources outside [DEFAULT_ORDER] — Amazon and QQ, which join the chain only after the user asks
-     * for them — can never enter the order any other way: the picked order is authoritative, and the
+     * Sources outside [DEFAULT_ORDER] — Deezer, which joins the chain only after the user asks
+     * for it — can never enter the order any other way: the picked order is authoritative, and the
      * picker can only reorder what it was given. Without this, switching such a source on would
      * change a preference the resolver never consults, and the source would stay unreachable while
      * its toggle claimed otherwise.

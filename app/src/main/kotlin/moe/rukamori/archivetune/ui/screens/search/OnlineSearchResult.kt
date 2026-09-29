@@ -123,10 +123,6 @@ fun OnlineSearchResult(
         AppleMusicOnlineSearchResult(navController = navController)
         return
     }
-    if (viewModel.searchProvider == SearchProvider.AMAZON) {
-        AmazonOnlineSearchResult(navController = navController)
-        return
-    }
 
     val coroutineScope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()

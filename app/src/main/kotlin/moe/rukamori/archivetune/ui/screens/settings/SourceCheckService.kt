@@ -9,9 +9,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
-import moe.rukamori.archivetune.constants.AmazonAccountNameKey
-import moe.rukamori.archivetune.constants.AmazonAccountPremiumKey
-import moe.rukamori.archivetune.amazon.AmazonMusicProvider
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.QobuzBackupEndpointsKey
 import moe.rukamori.archivetune.utils.dataStore
@@ -72,7 +69,6 @@ object SourceCheckService {
                     AudioSourceType.QOBUZ_BACKUP -> checkQobuzBackup(context)
                     AudioSourceType.DEEZER -> checkDeezer(context)
                     AudioSourceType.APPLE -> checkAppleMusic()
-                    AudioSourceType.AMAZON -> checkAmazon(context)
                     AudioSourceType.JIOSAAVN -> checkJioSaavn()
                     AudioSourceType.YOUTUBE -> checkYouTube()
                 }
@@ -460,47 +456,6 @@ private data class CdnProbe(
                 summary = "Credentials: $origin. Verified as '${info.name}' — $tier. Deezer source is READY.",
             )
         }
-    }
-
-    private suspend fun checkAmazon(context: Context): SourceCheckResult {
-        PoolAccountManager.refresh(context, force = false)
-        val pooled = PoolAccountManager.amazonAccounts()
-        val prefs = context.dataStore.data.first()
-        val manualName = prefs[AmazonAccountNameKey]?.takeIf { it.isNotBlank() }
-        val manualPremium = prefs[AmazonAccountPremiumKey] == true
-        // The Web API is approval-gated: without the security profile this build cannot talk to
-        // Amazon at all, so credentials alone would not make the source work and reporting them as
-        // healthy would promise playback that cannot happen.
-        if (!AmazonMusicProvider.isConfigured()) {
-            return SourceCheckResult(
-                status = SourceCheckStatus.UNSUPPORTED,
-                summary = "Amazon Music needs an approved Web API security profile (AMAZON_LWA_CLIENT_ID) " +
-                    "in this build. Until the maintainer provisions one the source stays inert and " +
-                    "playback falls through to the next source.",
-            )
-        }
-        if (pooled.isEmpty() && manualName == null) {
-            return SourceCheckResult(
-                status = SourceCheckStatus.NOT_CONFIGURED,
-                summary = "No Amazon Music credentials available. Sign in via Integration → Amazon Music, " +
-                    "or re-toggle the Amazon source here to pick up shared accounts.",
-            )
-        }
-        val origin =
-            buildList {
-                if (manualName != null) {
-                    add("your own account '$manualName'${if (manualPremium) " (HD/Ultra HD)" else ""}")
-                }
-                if (pooled.isNotEmpty()) {
-                    add("${pooled.size} pool account(s), ${pooled.count { it.premium }} HD/Ultra HD")
-                }
-            }.joinToString(" + ")
-        return SourceCheckResult(
-            status = SourceCheckStatus.READY,
-            summary = "Credentials: $origin. Playback resolves through Amazon's Web API and is licensed " +
-                "by Amazon's own server for the signed-in account; the quality tier the account is " +
-                "entitled to is the tier it gets.",
-        )
     }
 
     private suspend fun checkJioSaavn(): SourceCheckResult {

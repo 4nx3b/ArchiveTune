@@ -581,8 +581,6 @@ private fun SearchEntryField(
                                                 R.string.search_source_spotify
                                             } else if (searchProvider == SearchProvider.APPLE_MUSIC) {
                                                 R.string.search_source_apple_music
-                                            } else if (searchProvider == SearchProvider.AMAZON) {
-                                                R.string.source_amazon
                                             } else {
                                                 R.string.search_yt_music
                                             }
