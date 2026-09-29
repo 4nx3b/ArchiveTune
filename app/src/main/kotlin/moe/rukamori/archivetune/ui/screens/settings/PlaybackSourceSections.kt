@@ -113,7 +113,6 @@ private fun AudioSourceType.displayName(context: android.content.Context): Strin
         AudioSourceType.QOBUZ_BACKUP -> context.getString(R.string.source_qobuz_backup)
         AudioSourceType.DEEZER -> context.getString(R.string.source_deezer)
         AudioSourceType.APPLE -> context.getString(R.string.source_apple_music)
-        AudioSourceType.AMAZON -> context.getString(R.string.source_amazon)
         AudioSourceType.JIOSAAVN -> context.getString(R.string.source_jiosaavn)
         AudioSourceType.YOUTUBE -> context.getString(R.string.source_youtube)
     }
@@ -126,7 +125,6 @@ private fun AudioSourceType.iconRes(): Int =
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
         AudioSourceType.APPLE -> R.drawable.ic_music
 
-        AudioSourceType.AMAZON -> R.drawable.ic_music
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
@@ -218,13 +216,13 @@ internal fun PlaybackSourceSections(
             AudioSourceConfig.parseOrder(sourceOrderRaw.ifBlank { null })
         }
 
-    // The picker only ever offers chain-eligible sources: Apple Music,
-    // Amazon Music and Deezer left the preferred-sources list, and QQ Music
-    // is gone from the app entirely.
+    // The picker only ever offers chain-eligible sources: Apple Music and
+    // Deezer left the preferred-sources list; Amazon Music and QQ Music are
+    // gone from the app entirely.
     val chainEligibleSources =
         remember {
             AudioSourceType.entries.filterNot {
-                it == AudioSourceType.APPLE || it == AudioSourceType.AMAZON || it == AudioSourceType.DEEZER
+                it == AudioSourceType.APPLE || it == AudioSourceType.DEEZER
             }
         }
     val dialogOrder =
@@ -245,11 +243,10 @@ internal fun PlaybackSourceSections(
             AudioSourceType.TIDAL -> tidalEnabled
             AudioSourceType.QOBUZ -> qobuzEnabled
             AudioSourceType.QOBUZ_BACKUP -> qobuzBackupEnabled
-            // Deezer/Apple/Amazon left the preferred-sources chain; their
-            // entries here only keep the when exhaustive.
+            // Deezer/Apple left the preferred-sources chain; their entries
+            // here only keep the when exhaustive.
             AudioSourceType.DEEZER -> false
             AudioSourceType.APPLE -> false
-            AudioSourceType.AMAZON -> false
             AudioSourceType.JIOSAAVN -> jioSaavnEnabled
             AudioSourceType.YOUTUBE -> true
         }
@@ -268,7 +265,6 @@ internal fun PlaybackSourceSections(
                 AudioSourceType.QOBUZ_BACKUP -> if (!qobuzBackupEnabled) onQobuzBackupEnabledChange(true)
                 AudioSourceType.DEEZER -> if (!deezerEnabled) onDeezerEnabledChange(true)
                 AudioSourceType.APPLE -> Unit
-                AudioSourceType.AMAZON -> Unit
                 AudioSourceType.JIOSAAVN -> if (!jioSaavnEnabled) onJioSaavnEnabledChange(true)
                 AudioSourceType.YOUTUBE -> Unit
             }
@@ -332,7 +328,6 @@ internal fun PlaybackSourceSections(
                         SearchProvider.YOUTUBE -> stringResource(R.string.search_source_youtube)
                         SearchProvider.SPOTIFY -> stringResource(R.string.search_source_spotify)
                         SearchProvider.APPLE_MUSIC -> stringResource(R.string.search_source_apple_music)
-                        SearchProvider.AMAZON -> stringResource(R.string.source_amazon)
                     }
                 },
                 onValueSelected = onDefaultSearchSourceChange,

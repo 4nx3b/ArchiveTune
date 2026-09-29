@@ -48,8 +48,6 @@ fun SearchSourcePicker(
                             R.drawable.spotify_icon
                         } else if (currentProvider == SearchProvider.APPLE_MUSIC) {
                             R.drawable.apple_music_icon
-                        } else if (currentProvider == SearchProvider.AMAZON) {
-                            R.drawable.ic_music
                         } else {
                             R.drawable.language
                         },
@@ -94,15 +92,6 @@ fun SearchSourcePicker(
             ) {
                 expanded = false
                 onSelection(SearchSource.ONLINE, SearchProvider.APPLE_MUSIC)
-            }
-            SearchSourceMenuItem(
-
-                label = stringResource(R.string.source_amazon),
-                iconRes = R.drawable.ic_music,
-                selected = currentScope == SearchSource.ONLINE && currentProvider == SearchProvider.AMAZON,
-            ) {
-                expanded = false
-                onSelection(SearchSource.ONLINE, SearchProvider.AMAZON)
             }
         }
     }

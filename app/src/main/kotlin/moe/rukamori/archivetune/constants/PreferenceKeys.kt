@@ -1107,7 +1107,6 @@ enum class SearchProvider {
     YOUTUBE,
     SPOTIFY,
     APPLE_MUSIC,
-    AMAZON,
 }
 
 enum class SearchSource {
@@ -1279,7 +1278,6 @@ enum class AudioSourceType {
     QOBUZ_BACKUP,
     DEEZER,
     APPLE,
-    AMAZON,
     JIOSAAVN,
     YOUTUBE,
 }
@@ -1315,40 +1313,6 @@ val DeezerAccountNameKey = stringPreferencesKey("deezerAccountName")
 val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
 
 // ---------------------------------------------------------------------------
-// Amazon Music source
-// ---------------------------------------------------------------------------
-// Shaped like Deezer rather than Tidal/Qobuz: credentials come from a signed-in account or from
-// the pool, and the instance list below only locates the metadata/search tier.
-//
-// IMPORTANT — this source stays inert until the build carries an approved Amazon Music Web API
-// security profile (BuildConfig.AMAZON_LWA_CLIENT_ID; see AmazonMusicProvider). Without one the
-// resolver declines every track and playback falls through to the next source, which is why the
-// toggle defaults OFF and the source-check row names what has to be provisioned. With one, playback
-// goes through Amazon's own playback-session endpoint and is licensed by Amazon's own Widevine
-// server for the signed-in account — no instance, proxy or key service is involved at any point.
-val AmazonEnabledKey = booleanPreferencesKey("amazonEnabled")
-
-val AmazonSessionKey = stringPreferencesKey("amazonSession")
-
-val AmazonAccountNameKey = stringPreferencesKey("amazonAccountName")
-
-val AmazonAccountPremiumKey = booleanPreferencesKey("amazonAccountPremium")
-
-val AmazonInstancesKey = stringPreferencesKey("amazonInstances")
-
-val AmazonAudioQualityKey = stringPreferencesKey("amazonAudioQuality")
-
-enum class AmazonAudioQuality {
-    ULTRA_HD,
-    HD,
-    STANDARD,
-    ;
-
-    companion object {
-        val Default = HD
-    }
-}
-
 val JioSaavnEnabledKey = booleanPreferencesKey("enableSaavnStreaming")
 
 val SaavnAudioQualityKey = stringPreferencesKey("saavnAudioQuality")

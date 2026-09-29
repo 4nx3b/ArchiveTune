@@ -146,7 +146,6 @@ internal object SettingsIconPalette {
     val Playback = Color(0xFFEF5350)
     val Sources = Color(0xFF26A69A)
     val JioSaavn = Color(0xFFFFA726)
-    val Amazon = Color(0xFFFF7043)
     val QqMusic = Color(0xFF7CB342)
     val Deezer = Color(0xFF9C27B0)
     val Lyrics = Color(0xFF42A5F5)
