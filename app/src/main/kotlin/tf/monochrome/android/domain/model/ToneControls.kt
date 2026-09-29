@@ -2,12 +2,6 @@ package tf.monochrome.android.domain.model
 
 import kotlinx.serialization.Serializable
 
-/**
- * Bass / treble tone shelves layered AFTER the AutoEQ correction in the
- * system-wide effect. A low shelf (bass) and a high shelf (treble), each with a
- * gain (dB boost/cut), a cutoff frequency, and a Q (slope/resonance "factor").
- * gain == 0 disables that shelf so a centred knob is a true no-op.
- */
 @Serializable
 data class ToneControls(
     val enabled: Boolean = true,
@@ -28,10 +22,6 @@ data class ToneControls(
         trebleQ = trebleQ.finiteOr(0.7f).coerceIn(Q_MIN, Q_MAX),
     )
 
-    /**
-     * The two shelves as [EqBand]s so the same biquad math drives audio and curve.
-     * Empty when the whole tone stage is toggled off — a true bypass.
-     */
     fun toBands(): List<EqBand> {
         if (!enabled) return emptyList()
         return listOf(
@@ -60,7 +50,6 @@ data class ToneControls(
         const val Q_MIN = 0.3f
         const val Q_MAX = 1.5f
 
-        // Sentinel ids kept clear of real AutoEQ band ids.
         private const val BASS_BAND_ID = -1001
         private const val TREBLE_BAND_ID = -1002
 

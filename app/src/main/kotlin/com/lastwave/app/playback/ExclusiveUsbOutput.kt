@@ -24,15 +24,6 @@ import java.nio.ByteOrder
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * LastWave session around the decent-player usbdevfs driver (MIT).
- *
- * PCM goes to isochronous URBs. AudioFlinger never sees the stream.
- *
- * Listening level comes from STREAM_MUSIC (volume keys). A Feature Unit that
- * changes GET_CUR keeps PCM untouched; otherwise PCM is software-scaled.
- * The gold clock check is the DAC GET_CUR rate, not a successful open.
- */
 @Singleton
 class ExclusiveUsbOutput @Inject constructor(
     @ApplicationContext context: Context,
@@ -71,8 +62,7 @@ class ExclusiveUsbOutput @Inject constructor(
     private var featureVolume: UacFeatureVolume? = null
     private var clockRechecked = false
     private var volumeReceiverRegistered = false
-    /** Last exclusive open failure, for the signal-path dialog. Cleared on
-     *  the next successful start so a stale reason never shows. */
+
     @Volatile var lastFailureReason: String? = null
         private set
     @Volatile private var lastAppliedCombined = Float.NaN
@@ -128,13 +118,11 @@ class ExclusiveUsbOutput @Inject constructor(
 
     fun usesHardwareVolume(): Boolean = active && hardwareVolume
 
-    /**
-     * PCM software gain for exclusive output. 1 when a verified Feature Unit
-     * owns listening level; otherwise STREAM_MUSIC × Media3 volume.
-     */
     fun softwareGain(): Float = if (!active || hardwareVolume) 1f else softwareGainValue
 
     fun currentRateHz(): Int = if (active) configuredRateHz else 0
+
+    fun currentBitsPerSample(): Int = if (active) activeWireBits else 0
 
     fun lastHardwareRateHz(): Int = lastHardwareRate
 
@@ -144,9 +132,7 @@ class ExclusiveUsbOutput @Inject constructor(
         val supported = supportedHz.filter { it > 0 }.toSet()
         if (supported.isEmpty()) return null
         if (sourceHz in supported) return sourceHz
-        // When a DAC lacks a high-rate 44.1 kHz crystal (88.2 / 176.4 / 352.8 / 705.6 kHz),
-        // prefer its native 48 kHz-family hardware crystal (96 / 192 / 384 / 48 kHz) where
-        // USB High-Speed 125us microframes have exact integer frame counts (12 / 24 / 48 / 6).
+
         if (sourceHz > 44100 && sourceHz % 44100 == 0) {
             val family48 = supported.filter { it % 48000 == 0 }
             if (family48.isNotEmpty()) {
@@ -155,18 +141,18 @@ class ExclusiveUsbOutput @Inject constructor(
                 if (hiRes48 != null) return hiRes48
             }
         }
-        // 1. Highest supported integer divisor in the same clock family (e.g. 192 -> 96 -> 48 kHz)
+
         val divisors = supported.filter { it < sourceHz && sourceHz % it == 0 }
         divisors.maxOrNull()?.let { return it }
-        // 2. Lowest supported integer multiple in the same clock family (e.g. 44.1 -> 88.2 kHz)
+
         val multiples = supported.filter { it > sourceHz && it % sourceHz == 0 }
         multiples.minOrNull()?.let { return it }
-        // 3. Same clock family (44.1k vs 48k), closest to source
+
         val is441 = sourceHz % 44100 == 0
         val is48 = sourceHz % 48000 == 0
         val sameFamily = supported.filter { (is441 && it % 44100 == 0) || (is48 && it % 48000 == 0) }
         sameFamily.minByOrNull { kotlin.math.abs(it - sourceHz) }?.let { return it }
-        // 4. Highest high-res rate <= sourceHz (e.g. 96 kHz or 48 kHz)
+
         val belowOrEqual = supported.filter { it <= sourceHz }
         belowOrEqual.maxOrNull()?.let { return it }
         return supported.minByOrNull { kotlin.math.abs(it - sourceHz) }
@@ -176,11 +162,6 @@ class ExclusiveUsbOutput @Inject constructor(
 
     fun isPaused(): Boolean = paused
 
-    /**
-     * Pause/resume ISO writes without tearing down the USB session or
-     * discarding already-decoded PCM in [pcmQueue]. [flush] clears the queue
-     * on explicit seek/stop.
-     */
     fun setPaused(value: Boolean) {
         paused = value
         if (value) {
@@ -191,14 +172,8 @@ class ExclusiveUsbOutput @Inject constructor(
         }
     }
 
-    /** True while the isochronous stream is still accepting PCM. */
     fun isStreamAlive(): Boolean = active && stream?.isAlive == true
 
-    /**
-     * True while PCM is actively queued/writing to the DAC or a USB write
-     * completed within the last 750 ms. Prevents the UI seekbar from advancing
-     * on wall-clock time when the USB pipeline is starved.
-     */
     fun isStreamingAudio(): Boolean {
         if (!active || paused || stream?.isAlive != true) return false
         if (writingInProgress || queuedBytes > 0) return true
@@ -206,7 +181,6 @@ class ExclusiveUsbOutput @Inject constructor(
         return last > 0L && (SystemClock.elapsedRealtime() - last) in 0L..750L
     }
 
-    /** Re-anchor the Media3 clock after an explicit seek. */
     fun noteSeek(positionUs: Long) {
         val timeUs = positionUs.coerceAtLeast(0L)
         val rate = configuredRateHz.coerceAtLeast(1)
@@ -238,14 +212,6 @@ class ExclusiveUsbOutput @Inject constructor(
         }
     }
 
-    /**
-     * Opens the exclusive stream. [rateOverrideHz] carries a same-family
-     * fallback rate (e.g. 44.1 kHz for an 88.2 kHz source) when the DAC
-     * descriptor lacks the source rate: the stream opens at the supported
-     * rate and the caller feeds already-converted PCM. Null keeps the
-     * native source-rate behavior. The clock check below compares against
-     * the actually-requested rate either way.
-     */
     fun configure(
         format: Format,
         rateOverrideHz: Int? = null,
@@ -273,9 +239,7 @@ class ExclusiveUsbOutput @Inject constructor(
         synchronized(lock) {
             if (!wanted) return false
             return runCatching {
-                // Converted fallback PCM always arrives as Float32 from the
-                // app resampler (same rule as float decoder output: 24-bit
-                // alt). Native sources keep their own packing.
+
                 configureLocked(
                     targetRate,
                     format.channelCount,
@@ -301,10 +265,7 @@ class ExclusiveUsbOutput @Inject constructor(
         val running = stream
         if (!wanted || !active || running == null || !running.isAlive) return false
         val size = buffer.remaining()
-        // Full queue means "try again", like AudioTrack. Blocking here holds
-        // ExoPlayer's playback thread, and that thread is what loads the next
-        // network bytes. A forward seek then plays the buffered couple of
-        // seconds and sticks on the loading spinner.
+
         synchronized(pcmLock) {
             if (queuedBytes > 0 && queuedBytes + size > MAX_QUEUED_BYTES) return false
         }
@@ -344,16 +305,6 @@ class ExclusiveUsbOutput @Inject constructor(
         return startMediaTimeUs + frames * C.MICROS_PER_SECOND / configuredRateHz
     }
 
-    /**
-     * Writes are blocking and consume the Media3 buffer. Reporting "pending"
-     * while the ISO stream is merely alive makes ExoPlayer wait to drain an
-     * AudioTrack that does not exist — next-track / seek stalls for seconds.
-     */
-    /**
-     * ExoPlayer treats "no pending data" as "the sink is idle" and drops to
-     * BUFFERING between DASH chunks. While exclusive USB is playing, the
-     * isochronous pipeline is that pending audio.
-     */
     fun hasPendingData(): Boolean =
         active && (queuedBytes > 0 || (!paused && stream?.isAlive == true))
 
@@ -365,19 +316,12 @@ class ExclusiveUsbOutput @Inject constructor(
             lastWriteElapsedMs = 0L
             mediaTimeBaseFrames = stream?.framesWritten ?: 0L
             startMediaTimeNeedsInit = true
-            // Seek only flushes the sink. ExoPlayer does not call play()
-            // again, so a pause flag left set here means every later buffer
-            // is refused and the DAC stays silent while the bar moves on.
+
             paused = false
             pcmLock.notifyAll()
         }
     }
 
-    /**
-     * The stream stopped without the device being closed. [flush] discards
-     * leftover URBs and marks it running again. [start] would zero the DAC
-     * clock and make the sink position jump back to the beginning.
-     */
     fun restartIfStopped(): Boolean {
         val running = stream ?: return false
         if (running.isAlive) return false
@@ -391,16 +335,9 @@ class ExclusiveUsbOutput @Inject constructor(
     }
 
     fun handleDiscontinuity() {
-        // A DASH segment boundary is not a seek. Resetting the sink clock
-        // here made ExoPlayer wait forever after the first ~5s chunk
-        // ("keeps loading") while the DAC had already stopped.
+
     }
 
-    /**
-     * ExoPlayer sink reset between items. Keep the USB session so the next
-     * configure can reuse the stream instead of closeDevice + Feature Unit
-     * re-probe (seconds of control-transfer timeouts).
-     */
     fun prepareForNextItem() {
         synchronized(pcmLock) {
             pcmQueue.clear()
@@ -482,9 +419,6 @@ class ExclusiveUsbOutput @Inject constructor(
         var effectiveEncoding = pcmEncoding
         var autoNegotiatedFallback = rateOverrideHz != null
 
-        // If the USB Clock Source / Format descriptors explicitly report the
-        // DAC's supported rates and the requested rate (e.g. 88.2 / 176.4 / 352.8 kHz)
-        // is not in that hardware table, immediately select the best supported rate.
         if (rateOverrideHz == null && hwRates.isNotEmpty() && effectiveRate !in hwRates) {
             val fallback = pickPlayableHardwareRate(effectiveRate, hwRates)
             if (fallback != null && fallback != effectiveRate) {
@@ -510,9 +444,6 @@ class ExclusiveUsbOutput @Inject constructor(
             reported = usbAudio.readSampleRate()
         }
 
-        // If the DAC's internal clock still rejected or clamped the requested rate
-        // (e.g. reported 44.1 / 48 / 96 kHz when asked for 88.2 / 176.4 / 352.8 kHz),
-        // fall back to a rate the DAC's internal clock actually locks to.
         if (reported > 0 && reported != effectiveRate) {
             val candidates = (hwRates + reported).distinct()
             val candidateRate = pickPlayableHardwareRate(sampleRate, candidates) ?: reported

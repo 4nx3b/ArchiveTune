@@ -1,6 +1,5 @@
 package tf.monochrome.android.audio.dsp
 
-// Matches SnapinType enum in snapin_processor.h — ordinal is the native int value
 enum class SnapinType(val displayName: String, val category: SnapinCategory) {
     GAIN("Gain", SnapinCategory.UTILITY),
     STEREO("Stereo", SnapinCategory.UTILITY),
@@ -40,7 +39,7 @@ enum class SnapinType(val displayName: String, val category: SnapinCategory) {
     MISSTORTION("Misstortion", SnapinCategory.DISTORTION);
 
     val isAvailable: Boolean
-        get() = true  // Every snapin in this enum has a native processor
+        get() = true
 
     companion object {
         fun fromOrdinal(ordinal: Int): SnapinType? =

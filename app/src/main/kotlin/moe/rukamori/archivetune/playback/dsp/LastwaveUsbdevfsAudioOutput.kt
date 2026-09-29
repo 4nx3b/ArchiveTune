@@ -1,24 +1,5 @@
 @file:OptIn(androidx.media3.common.util.UnstableApi::class)
 
-/*
- * ArchiveTune (2026)
- * © Rukamori — github.com/rukamori
- * GPL-3.0 License | Contributors: see git history
- *
- * LastWave-native's usbdevfs exclusive USB-DAC output as a Media3
- * [AudioOutput] (https://github.com/Clash-Projects/LastWave-native,
- * playback/ExclusiveUsbOutput.kt), handed to DefaultAudioSink by
- * [UsbExclusiveAudioOutputProvider] whenever "Enable Lastwave Audio
- * Processing" is on and USB-exclusive output is requested. The ported
- * [com.lastwave.app.playback.ExclusiveUsbOutput] keeps doing everything it
- * does upstream: claims the AudioStreaming interface away from the kernel
- * snd-usb-audio driver, picks the best alt setting / bit depth for the
- * negotiated rate (its own rate-family matching with soxr-resampled
- * fallback handled by the caller-side processor), drives the 80-URB
- * isochronous ring through the decent-usb-audio-driver module, and applies
- * UAC Feature Unit hardware volume when the DAC exposes one.
- */
-
 package moe.rukamori.archivetune.playback.dsp
 
 import android.media.AudioDeviceInfo
@@ -39,7 +20,6 @@ class LastwaveUsbdevfsAudioOutput(
     private val config: OutputConfig,
     private val exclusive: ExclusiveUsbOutput,
 ) : AudioOutput {
-
     private val listeners = CopyOnWriteArraySet<AudioOutput.Listener>()
     private var configured = false
     private var started = false
@@ -109,17 +89,14 @@ class LastwaveUsbdevfsAudioOutput(
             throw AudioOutput.WriteException(USB_ENGAGE_FAILED, true)
         }
         if (exclusive.isStreamAlive() && !exclusive.isStreamingAudio()) {
-            // The writer thread drains the queue even while the transport is
-            // settling; only a dead stream is a real failure.
+
             if (!exclusive.restartIfStopped()) {
                 Log.w(TAG, "Lastwave usbdevfs stream died mid-write — reporting a recoverable failure")
                 configured = false
                 throw AudioOutput.WriteException(USB_STREAM_DIED, true)
             }
         }
-        // The ported write() consumes the whole window or nothing (queue
-        // full = "try again", AudioTrack semantics) and already advanced the
-        // buffer position for the float path.
+
         val before = buffer.position()
         val accepted = exclusive.write(buffer, presentationTimeUs, isFloatBuffer = isFloat)
         if (!accepted) {

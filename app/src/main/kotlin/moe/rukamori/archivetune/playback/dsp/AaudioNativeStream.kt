@@ -1,40 +1,23 @@
 @file:OptIn(androidx.media3.common.util.UnstableApi::class)
 
-/*
- * ArchiveTune (2026)
- * © Rukamori — github.com/rukamori
- * GPL-3.0 License | Contributors: see git history
- *
- * Kotlin wrapper over the native AAudio exclusive stream (handle-based).
- */
-
 package moe.rukamori.archivetune.playback.dsp
 
 import java.nio.ByteBuffer
 
-/**
- * Handle wrapper around the native AAudio stream. Every method is a thin JNI
- * hop; lifecycle is owned by [AaudioExclusiveAudioOutput].
- */
 class AaudioNativeStream {
-
     var handle: Long = 0L
         private set
 
     val isOpen: Boolean
         get() = handle != 0L
 
-    /**
-     * Opens the stream. Returns 0 on success, a negative AAudio error code
-     * otherwise (exclusive denied, device gone, ...).
-     */
     fun open(
         sampleRate: Int,
         channels: Int,
         deviceId: Int,
         exclusive: Boolean,
-        usage: Int = 1, // USAGE_MEDIA
-        contentType: Int = 2, // CONTENT_TYPE_MUSIC
+        usage: Int = 1,
+        contentType: Int = 2,
         bufferCapacityFrames: Int = 0,
     ): Int {
         if (handle != 0L) release()
@@ -42,7 +25,6 @@ class AaudioNativeStream {
             sampleRate, channels, deviceId, exclusive, usage, contentType, bufferCapacityFrames,
         )
         if (handle <= 0L) {
-            // Negative handles encode the AAudio failure code.
             val error = handle.toInt()
             handle = 0L
             return if (error != 0) error else -900
@@ -50,10 +32,6 @@ class AaudioNativeStream {
         return 0
     }
 
-    /**
-     * Blocking write of the buffer's [position, limit) window. Returns frames
-     * written (>= 0) or a negative AAudio error.
-     */
     fun write(
         buffer: ByteBuffer,
         frames: Int,
@@ -147,8 +125,7 @@ class AaudioNativeStream {
 
     companion object {
         init {
-            // The shared library is loaded by FloatDsp's availability probe;
-            // this class is only used alongside the DSP path.
+
             runCatching { FloatDsp.available }
         }
     }

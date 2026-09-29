@@ -208,7 +208,6 @@
     <string name="aod_customize_auto_timer_off">Off</string>
     <string name="aod_customize_auto_timer_seconds">%1$d s</string>
     <string name="aod_customize_auto_on_screen_dim">Enter AOD when screen dims</string>
-    <string name="aod_customize_auto_on_screen_dim_desc">Holds the screen on past the system screen-off timeout and switches to AOD mode 2 seconds before the screen would have turned off. Useful while driving — AOD appears while the screen is still lit, so you can see what\'s playing without waking the device.</string>
     <string name="aod_lyrics_loading">Loading lyrics…</string>
     <string name="aod_lyrics_unavailable">No lyrics available</string>
     <string name="aod_shape_rounded">Rounded</string>
@@ -640,7 +639,6 @@
     <string name="automix_state_waiting">waiting</string>
     <string name="automix_state_failed">failed</string>
     <string name="auto_choose_playback_client">Auto choose playback client</string>
-    <string name="auto_choose_playback_client_desc">Try the fastest compatible YouTube client and fall back quickly when a client fails or times out.</string>
     <string name="auto_choose_playback_client_enabled_note">ArchiveTune chooses a compatible client using recent success, latency and failures.</string>
     <string name="auto_choose_playback_client_disabled_note">Only the selected playback client is used. Failures are reported without automatic client fallback.</string>
     <string name="player_stream_client">Playback client</string>
@@ -983,7 +981,6 @@
     <string name="yt_browser_sign_in">Sign in with browser</string>
     <string name="yt_browser_sign_in_desc">Full account: library, playlists, uploads and personalised browse.</string>
     <string name="yt_oauth_sign_in">Sign in with a code</string>
-    <string name="yt_oauth_sign_in_desc">Type a short code at google.com/device. No browser sign-in needed.</string>
     <string name="yt_oauth_sign_out">Sign out of the code session</string>
     <string name="yt_oauth_sign_out_desc">Revokes the token with Google and removes it from this device.</string>
     <string name="yt_oauth_step_open">Open google.com/device on any device, sign in to Google, then enter this code:</string>

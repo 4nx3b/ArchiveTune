@@ -1,12 +1,5 @@
 @file:OptIn(androidx.media3.common.util.UnstableApi::class)
 
-/*
- * ArchiveTune (2026)
- * © Rukamori — github.com/rukamori
- * GPL-3.0 License | Contributors: see git history
- * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
- */
-
 package moe.rukamori.archivetune.playback.dsp
 
 import androidx.media3.common.PlaybackParameters
@@ -14,40 +7,26 @@ import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.AudioProcessorChain
 import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
+import kotlin.math.abs
 
-/**
- * An [AudioProcessorChain] whose silence trimming and speed/pitch processors
- * run BEFORE the encoding-flipping DSP tail, instead of after it.
- *
- * DefaultAudioSink.DefaultAudioProcessorChain — whichever overload is used —
- * always appends its own SilenceSkippingAudioProcessor and SonicAudioProcessor
- * AFTER every processor handed to it. With the 32-bit float DSP passed as a
- * plain vararg that ordering is fatal: when the DSP is engaged with
- * USB-exclusive output it emits ENCODING_PCM_FLOAT, and the appended
- * SilenceSkippingAudioProcessor rejects float input outright with
- * UnhandledAudioFormatException (PlaybackException 5001,
- * ERROR_CODE_AUDIO_TRACK_INIT_FAILED) even while inactive — BaseAudioProcessor
- * always invokes onConfigure.
- *
- * This chain keeps the canonical media3 ordering — user processors first,
- * then silence trimming, then speed/pitch — and places the DSP after them as
- * the true tail, the only position from which an encoding flip is safe:
- * nothing downstream has to accept float, and the sink's OutputConfig mirrors
- * exactly what the tail produced for the current track.
- *
- * skipSilenceEnabled and playbackParameters (speed/pitch) are wired to the
- * same instances the chain contains, mirroring DefaultAudioProcessorChain.
- */
 class DspTailAudioProcessorChain(
     private val silenceSkippingAudioProcessor: SilenceSkippingAudioProcessor,
     private val sonicAudioProcessor: SonicAudioProcessor,
     preProcessors: Array<AudioProcessor>,
     private val tailProcessor: AudioProcessor,
+    /**
+     * Upstream Tryptify's transport stages (VariRateAudioProcessor +
+     * StretchAudioProcessor), living INSIDE the engine router's chain. When
+     * the provider returns true the speed/pitch work is routed there —
+     * Sonic is pinned to unity so nothing doubles up — and the media-duration
+     * accounting follows the resampler's ratio exactly like upstream's
+     * TryptifyAudioProcessorChain does.
+     */
+    private val engineTransportActive: () -> Boolean = { false },
+    private val engineVariRate: tf.monochrome.android.audio.resample.VariRateAudioProcessor? = null,
+    private val engineStretch: tf.monochrome.android.audio.stretch.StretchAudioProcessor? = null,
 ) : AudioProcessorChain {
 
-    // Named chainProcessors (not audioProcessors): a private Kotlin property
-    // named audioProcessors would generate a getAudioProcessors() JVM signature
-    // that clashes with the interface override below.
     private val chainProcessors: Array<AudioProcessor> =
         preProcessors +
             arrayOf(
@@ -59,8 +38,30 @@ class DspTailAudioProcessorChain(
     override fun getAudioProcessors(): Array<AudioProcessor> = chainProcessors
 
     override fun applyPlaybackParameters(playbackParameters: PlaybackParameters): PlaybackParameters {
-        sonicAudioProcessor.setSpeed(playbackParameters.speed)
-        sonicAudioProcessor.setPitch(playbackParameters.pitch)
+        val speed = playbackParameters.speed
+        val pitch = playbackParameters.pitch
+        if (engineTransportActive() && engineVariRate != null && engineStretch != null) {
+            // Upstream's split: pitch riding the tempo goes to the windowed-sinc
+            // resampler (Sonic would two-point interpolate it), everything else
+            // to Sonic — except Sonic is OUTSIDE the engine path here, so the
+            // whole job goes to the engine's stages: ratio = speed / pitch,
+            // stretch = the pure transposition.
+            val ridesTempo = abs(pitch - speed) < TOLERANCE
+            if (ridesTempo) {
+                engineVariRate.setRatio(speed)
+                engineStretch.setSemitones(0f)
+            } else {
+                engineVariRate.setRatio(speed / pitch.coerceAtLeast(0.01f))
+                engineStretch.setSemitones(12f * log2(pitch))
+            }
+            sonicAudioProcessor.setSpeed(1f)
+            sonicAudioProcessor.setPitch(1f)
+        } else {
+            engineVariRate?.setRatio(1f)
+            engineStretch?.setSemitones(0f)
+            sonicAudioProcessor.setSpeed(speed)
+            sonicAudioProcessor.setPitch(pitch)
+        }
         return playbackParameters
     }
 
@@ -69,12 +70,27 @@ class DspTailAudioProcessorChain(
         return skipSilenceEnabled
     }
 
-    override fun getMediaDuration(playoutDuration: Long): Long =
-        if (sonicAudioProcessor.isActive()) {
+    override fun getMediaDuration(playoutDuration: Long): Long {
+        if (engineTransportActive() && engineVariRate != null) {
+            val ratio = engineVariRate.getRatio()
+            return if (abs(ratio - 1f) >= TOLERANCE) {
+                (playoutDuration * ratio.toDouble()).toLong()
+            } else {
+                playoutDuration
+            }
+        }
+        return if (sonicAudioProcessor.isActive()) {
             sonicAudioProcessor.getMediaDuration(playoutDuration)
         } else {
             playoutDuration
         }
+    }
 
     override fun getSkippedOutputFrameCount(): Long = silenceSkippingAudioProcessor.getSkippedFrames()
+
+    private companion object {
+        const val TOLERANCE = 1e-4f
+    }
 }
+
+private fun log2(value: Float): Float = kotlin.math.ln(value.coerceAtLeast(1e-6f)) / kotlin.math.ln(2f)

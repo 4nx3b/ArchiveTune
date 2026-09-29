@@ -48,6 +48,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.ParserException
 import androidx.media3.common.PlaybackException
@@ -341,6 +342,7 @@ import moe.rukamori.archivetune.playback.dsp.DspTailAudioProcessorChain
 import moe.rukamori.archivetune.playback.dsp.FloatDspProcessor
 import moe.rukamori.archivetune.playback.dsp.TryptifyEngineController
 import moe.rukamori.archivetune.playback.dsp.UsbExclusiveAudioOutputProvider
+import javax.inject.Inject
 import moe.rukamori.archivetune.playback.smart.SmartFadeRuntimeState
 import moe.rukamori.archivetune.playback.smart.SmartFadeSettings
 import moe.rukamori.archivetune.playback.smart.SmartAnalysis
@@ -422,6 +424,15 @@ import kotlin.math.roundToLong
 import kotlin.time.Duration.Companion.seconds
 
 private val JIO_SAAVN_NORMALIZE_REGEX = Regex("[^a-z0-9]")
+
+/** The five engine-pref facts the service reacts to as one tuple. */
+private data class EnginePrefTuple(
+    val tryptify: Boolean,
+    val lastwave: Boolean,
+    val downmixOn: Boolean,
+    val usbPin: Boolean,
+    val usbAttached: Boolean,
+)
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class, UnstableApi::class)
 @AndroidEntryPoint
@@ -780,6 +791,10 @@ class MusicService :
     @Volatile
     private var lastwaveAudioProcessing = false
 
+    /** Tryptify's framework-level USB DAC pin (setPreferredAudioDevice). */
+    @Volatile
+    private var tryptifyUsbPinEnabled = false
+
     private val tryptifyPreferences by lazy {
         tf.monochrome.android.data.preferences.PreferencesManager(this)
     }
@@ -804,6 +819,43 @@ class MusicService :
 
     private val tryptifyBypassVolume by lazy { tf.monochrome.android.audio.usb.BypassVolumeController() }
 
+    // Upstream Tryptify's passive chain taps + fold-down, injected so the
+    // service chain and the ViewModels share the SAME singleton instances:
+    // the channel detector feeds the Developer options' Audio Pipeline
+    // panel, the spectrum tap feeds the parametric EQ visualizer (an
+    // activity-side instance would show a dead FFT), the downmix folds
+    // 5.1/7.1 down to stereo at the chain head.
+    @Inject
+    lateinit var tryptifyChannelDetector: tf.monochrome.android.audio.dsp.ChannelDetectorProcessor
+
+    @Inject
+    lateinit var tryptifyDownmix: tf.monochrome.android.audio.dsp.DownmixProcessor
+
+    @Inject
+    lateinit var tryptifySpectrumTap: tf.monochrome.android.audio.eq.SpectrumAnalyzerTap
+
+    /** What the decoder is actually emitting, for the Audio Pipeline panel. */
+    @Inject
+    lateinit var audioPipelineMonitor: tf.monochrome.android.audio.pipeline.AudioPipelineMonitor
+
+    /** The attached USB DAC, for the framework-level bit-perfect pin. */
+    @Inject
+    lateinit var tryptifyUsbRouter: tf.monochrome.android.audio.UsbAudioRouter
+
+    /** The device-global AutoEQ effect (Tryptify's system-wide toggle arm). */
+    @Inject
+    lateinit var tryptifySystemEq: tf.monochrome.android.audio.eq.SystemAudioEqController
+
+    /** Upstream's transport stages, run inside the engine chain while
+     *  Tryptify owns the tail (windowed-sinc speed resampler). */
+    @Inject
+    lateinit var tryptifyVariRate: tf.monochrome.android.audio.resample.VariRateAudioProcessor
+
+    /** Upstream's pitch shifter (signalsmith-stretch), run inside the engine
+     *  chain while Tryptify owns the tail. */
+    @Inject
+    lateinit var tryptifyStretch: tf.monochrome.android.audio.stretch.StretchAudioProcessor
+
     private val tryptifyEngineController by lazy {
         TryptifyEngineController(
             context = this,
@@ -813,6 +865,7 @@ class MusicService :
             paramEq = tryptifyParamEq,
             preferences = tryptifyPreferences,
             dspManager = tryptifyDspManager,
+            systemEq = tryptifySystemEq,
         )
     }
 
@@ -863,6 +916,11 @@ class MusicService :
             tryptifyMixBus = tryptifyMixBus,
             tryptifyAutoEq = tryptifyAutoEq,
             tryptifyParamEq = tryptifyParamEq,
+            channelDetector = tryptifyChannelDetector,
+            downmix = tryptifyDownmix,
+            spectrumTap = tryptifySpectrumTap,
+            variRate = tryptifyVariRate,
+            stretch = tryptifyStretch,
             lastwaveProcessor = lastwaveProcessor,
             stockDsp = primaryFloatDspProcessor,
         )
@@ -1254,6 +1312,20 @@ class MusicService :
                 .onFailure { Timber.tag(TAG).w(it, "Tryptify engine controller failed to start") }
             runCatching { lastwaveEngine.isAvailable }
                 .onFailure { Timber.tag(TAG).w(it, "Lastwave engine unavailable") }
+            // USB stream diagnostics for the Audio Pipeline panel: the
+            // negotiated libusb / usbdevfs streams publish as they change.
+            ioScope.launch {
+                tryptifyUsbDriver.diagnostics.collect { diag ->
+                    EngineRuntime.tryptifyUsbStream = diag?.takeIf { it.sampleRateHz > 0 }
+                }
+            }
+            ioScope.launch {
+                while (isActive) {
+                    EngineRuntime.lastwaveUsbRateHz = lastwaveExclusiveUsb.currentRateHz()
+                    EngineRuntime.lastwaveUsbBitsPerSample = lastwaveExclusiveUsb.currentBitsPerSample()
+                    delay(1000)
+                }
+            }
         }
 
         try {
@@ -1289,6 +1361,11 @@ class MusicService :
                 .build()
                 .apply {
                     addAnalyticsListener(PlaybackStatsListener(false, this@MusicService))
+                    // The Audio Pipeline panel's live feed: what the decoder
+                    // emits and which codec did the work (upstream Tryptify's
+                    // AudioPipelineMonitor contract — only the service can
+                    // see Format / decoder identity).
+                    addAnalyticsListener(pipelineAnalyticsListener())
                     addListener(audioEffectPlayerListener)
                     setOffloadEnabled(false)
                 }
@@ -1669,9 +1746,13 @@ class MusicService :
         combine(
             dataStore.data.map { it[TryptifyAudioProcessingKey] ?: false },
             dataStore.data.map { it[LastwaveAudioProcessingKey] ?: false },
-        ) { tryptify, lastwave -> tryptify to lastwave }
-            .distinctUntilChanged()
-            .collectLatest(scope) { (tryptify, lastwave) ->
+            tryptifyPreferences.multichannelDownmixEnabled,
+            tryptifyPreferences.usbBitPerfectEnabled,
+            tryptifyUsbRouter.usbOutputDevice,
+        ) { tryptify, lastwave, downmixOn, usbPin, usbDevice ->
+            EnginePrefTuple(tryptify, lastwave, downmixOn, usbPin, usbDevice != null)
+        }.distinctUntilChanged()
+            .collectLatest(scope) { (tryptify, lastwave, downmixOn, usbPin, usbAttached) ->
                 val lastwaveEffective = lastwave && !tryptify
                 if (tryptifyAudioProcessing != tryptify || lastwaveAudioProcessing != lastwaveEffective) {
                     Timber.tag(TAG).i(
@@ -1688,6 +1769,14 @@ class MusicService :
                 }
                 if (tryptify) {
                     tryptifyEngineController.setEngineActive(true)
+                }
+                // Multichannel fold-down at the chain head (5.1/7.1 → stereo):
+                // off = multichannel passes through untouched, engines idle.
+                tryptifyDownmix.setEnabled(downmixOn)
+                tryptifyUsbPinEnabled = usbPin
+                applyTryptifyUsbPin()
+                if (usbAttached && usbPin && tryptify) {
+                    Timber.tag(TAG).d("Tryptify USB pin: DAC attached, framework routing pinned")
                 }
                 // LastWave's framework-level bit-perfect path (Android 14+
                 // preferred mixer attributes) applies whenever the Lastwave
@@ -9967,10 +10056,13 @@ class MusicService :
             )
         }
         usbSinkActiveNow = usbExclusiveAudioEnabled
+        EngineRuntime.usbExclusiveActive = usbSinkActiveNow
         // The LastWave bit-perfect mixer-attribute path only runs while the
         // usbdevfs exclusive route is NOT the active one (they are upstream's
         // alternative tiers, never stacked).
         lastwaveUsbBitPerfect.setEnabled(lastwaveAudioProcessing && !usbSinkActiveNow)
+        EngineRuntime.lastwaveMixerBitPerfectActive =
+            lastwaveAudioProcessing && !usbSinkActiveNow
         applyFloatDspEngagement()
     }
 
@@ -10056,6 +10148,87 @@ class MusicService :
         }
     }
 
+    /**
+     * The Audio Pipeline panel's live feed (upstream Tryptify's
+     * audioPipelineAnalytics, verbatim semantics): the decoded stream's
+     * format, the decoder's name, and idle — the three facts only the
+     * playback service can see.
+     */
+    private fun pipelineAnalyticsListener(): AnalyticsListener = object : AnalyticsListener {
+        override fun onAudioInputFormatChanged(
+            eventTime: AnalyticsListener.EventTime,
+            format: Format,
+            decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
+        ) {
+            audioPipelineMonitor.onStreamFormat(
+                tf.monochrome.android.audio.pipeline.DecodedStream(
+                    mimeType = format.sampleMimeType,
+                    sampleRate = format.sampleRate.takeIf { it != Format.NO_VALUE },
+                    channelCount = format.channelCount.takeIf { it != Format.NO_VALUE },
+                    bitrate = format.averageBitrate.takeIf { it != Format.NO_VALUE }
+                        ?: format.bitrate.takeIf { it != Format.NO_VALUE },
+                    pcmBits = pcmBitsOf(format.pcmEncoding),
+                    pcmIsFloat = format.pcmEncoding == C.ENCODING_PCM_FLOAT,
+                ),
+            )
+        }
+
+        override fun onAudioDecoderInitialized(
+            eventTime: AnalyticsListener.EventTime,
+            decoderName: String,
+            initializedTimestampMs: Long,
+            initializationDurationMs: Long,
+        ) {
+            audioPipelineMonitor.onDecoderInitialized(decoderName)
+        }
+
+        override fun onAudioDecoderReleased(
+            eventTime: AnalyticsListener.EventTime,
+            decoderName: String,
+        ) {
+            audioPipelineMonitor.onDecoderReleased()
+        }
+
+        override fun onAudioDisabled(
+            eventTime: AnalyticsListener.EventTime,
+            decoderCounters: androidx.media3.exoplayer.DecoderCounters,
+        ) {
+            audioPipelineMonitor.onIdle()
+        }
+    }
+
+    /** PCM depth from a Media3 encoding constant, or null when it says nothing. */
+    private fun pcmBitsOf(encoding: Int): Int? = when (encoding) {
+        C.ENCODING_PCM_8BIT -> 8
+        C.ENCODING_PCM_16BIT, C.ENCODING_PCM_16BIT_BIG_ENDIAN -> 16
+        C.ENCODING_PCM_24BIT, C.ENCODING_PCM_24BIT_BIG_ENDIAN -> 24
+        C.ENCODING_PCM_32BIT, C.ENCODING_PCM_32BIT_BIG_ENDIAN -> 32
+        C.ENCODING_PCM_FLOAT -> 32
+        else -> null
+    }
+
+    /**
+     * Pins the player to the attached USB DAC via setPreferredAudioDevice
+     * while Tryptify's framework-level bit-perfect routing is on (upstream's
+     * UsbAudioRouter contract). No exclusive claim — the HAL keeps serving the
+     * DAC; the pin just stops Android's mix-rate downsampler from touching
+     * sample rates the DAC supports natively.
+     */
+    private fun applyTryptifyUsbPin() {
+        runCatching {
+            if (tryptifyAudioProcessing && tryptifyUsbPinEnabled) {
+                tryptifyUsbRouter.usbOutputDevice.value?.let { device ->
+                    localPlayer.setPreferredAudioDevice(device)
+                    EngineRuntime.tryptifyUsbPinActive = true
+                    Timber.tag(TAG).i("Tryptify USB pin engaged: ${tryptifyUsbRouter.describe(device)}")
+                    return@runCatching
+                }
+            }
+            localPlayer.setPreferredAudioDevice(null)
+            EngineRuntime.tryptifyUsbPinActive = false
+        }
+    }
+
     private fun createPrimaryLoadControl(): DefaultLoadControl =
         DefaultLoadControl
             .Builder()
@@ -10087,6 +10260,21 @@ class MusicService :
             init {
                 setEnableDecoderFallback(true)
                 setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                // Decode to 32-bit float whenever an engine owns the DSP tail
+                // (upstream Tryptify's lesson): this is what lifts the 16-bit
+                // decode ceiling — codecs that support float output hand the
+                // chain genuine 24-bit mantissa audio instead of 16-bit, and
+                // the engine tail (or USB-exclusive packing) carries it out.
+                // The SINK-side float flag stays off either way (see
+                // buildAudioSink) so the custom processor chain survives.
+                // Read once per player build: flipping an engine toggle takes
+                // full effect after the playback service restarts.
+                if (tryptifyAudioProcessing || lastwaveAudioProcessing) {
+                    setEnableAudioFloatOutput(true)
+                    EngineRuntime.rendererFloatDecode = true
+                } else {
+                    EngineRuntime.rendererFloatDecode = false
+                }
             }
 
             override fun buildAudioSink(
@@ -10155,6 +10343,27 @@ class MusicService :
                             primaryEngineRouter
                         } else {
                             floatDspProcessor
+                        },
+                        // While the Tryptify engine owns the tail, speed/pitch
+                        // ride upstream's transport stages inside the engine
+                        // chain (windowed-sinc resampler + signalsmith-stretch)
+                        // instead of Sonic — Sonic is pinned to unity so the
+                        // two never stack.
+                        engineTransportActive = {
+                            floatDspProcessor === primaryFloatDspProcessor &&
+                                tryptifyAudioProcessing &&
+                                primaryEngineRouter.activeEngine ==
+                                AudioEngineRouterProcessor.Engine.TRYPTIFY
+                        },
+                        engineVariRate = if (floatDspProcessor === primaryFloatDspProcessor) {
+                            tryptifyVariRate
+                        } else {
+                            null
+                        },
+                        engineStretch = if (floatDspProcessor === primaryFloatDspProcessor) {
+                            tryptifyStretch
+                        } else {
+                            null
                         },
                     ),
                 ).build()

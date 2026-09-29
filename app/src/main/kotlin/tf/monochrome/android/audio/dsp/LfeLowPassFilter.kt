@@ -4,23 +4,7 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-/**
- * The peqdb Downmix Renderer's optional LFE path, replicated for Tryptify's
- * stereo folds: a 4th-order Butterworth low-pass at 125 Hz on the LFE feed,
- * with the dry (non-LFE) stereo path delayed by the filter's DC group delay
- * before summing — "Butterworth 4th-order 125 Hz low-pass, with dry/non-LFE
- * path delayed before summing" — so transients stay time-aligned across the
- * two paths.
- *
- * Implementation: two cascaded RBJ low-pass biquads with the Butterworth
- * split Qs (0.54119610, 1.30656296), Direct Form II transposed. The dry
- * delay is the analog prototype's DC group delay, 2.6131/ωc seconds
- * (~3.33 ms → 160 samples at 48 kHz).
- *
- * Single-threaded use on the audio thread; [configure]/[reset] from flush().
- */
 class LfeLowPassFilter {
-
     private val b0 = FloatArray(2)
     private val b1 = FloatArray(2)
     private val b2 = FloatArray(2)
@@ -34,7 +18,6 @@ class LfeLowPassFilter {
     private var idxL = 0
     private var idxR = 0
 
-    /** Dry-path delay in samples for the configured rate (0 until configured). */
     var delaySamples: Int = 0
         private set
 
@@ -68,7 +51,6 @@ class LfeLowPassFilter {
         idxR = 0
     }
 
-    /** One LFE sample through both low-pass stages. */
     fun filterLfe(x: Float): Float {
         var v = x
         for (s in 0 until 2) {
@@ -80,7 +62,6 @@ class LfeLowPassFilter {
         return v
     }
 
-    /** Dry left sample in, delayed dry left sample out. */
     fun delayDryL(x: Float): Float {
         val out = dryL[idxL]
         dryL[idxL] = x
@@ -88,7 +69,6 @@ class LfeLowPassFilter {
         return out
     }
 
-    /** Dry right sample in, delayed dry right sample out. */
     fun delayDryR(x: Float): Float {
         val out = dryR[idxR]
         dryR[idxR] = x
@@ -99,12 +79,8 @@ class LfeLowPassFilter {
     companion object {
         const val CUTOFF_HZ = 125.0
 
-        // Butterworth 4th-order split into two biquads: Q = 1/(2·cos(π/8)),
-        // 1/(2·cos(3π/8)).
         private val STAGE_Q = doubleArrayOf(0.54119610, 1.30656296)
 
-        // Analog Butterworth DC group delay: sum of 2ζ/ωc over both stages =
-        // 2·(0.92388 + 0.38268)/ωc = 2.6131/ωc.
         private const val DC_GROUP_DELAY_S = 2.6131 / (2.0 * Math.PI * CUTOFF_HZ)
     }
 }

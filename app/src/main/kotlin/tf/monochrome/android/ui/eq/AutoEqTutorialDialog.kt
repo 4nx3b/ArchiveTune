@@ -60,7 +60,7 @@ private data class TutorialStep(
     val title: String,
     val description: String,
     val icon: ImageVector,
-    val drawableRes: String // resource name for future Gemini-generated asset
+    val drawableRes: String
 )
 
 private val tutorialSteps = listOf(
@@ -107,7 +107,6 @@ fun AutoEqTutorialDialog(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Step content with slide animation
                 AnimatedContent(
                     targetState = currentStep,
                     transitionSpec = {
@@ -131,7 +130,6 @@ fun AutoEqTutorialDialog(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        // Icon with gradient background
                         val context = LocalContext.current
                         @Suppress("DiscouragedApi", "LocalContextResourcesRead")
                         val drawableId = context.resources.getIdentifier(
@@ -139,7 +137,6 @@ fun AutoEqTutorialDialog(
                         )
 
                         if (drawableId != 0) {
-                            // Use Gemini-generated image asset
                             Image(
                                 painter = painterResource(id = drawableId),
                                 contentDescription = tutorialStep.title,
@@ -150,7 +147,6 @@ fun AutoEqTutorialDialog(
                                 contentScale = ContentScale.Crop
                             )
                         } else {
-                            // Fallback: icon with gradient circle
                             Box(
                                 modifier = Modifier
                                     .size(96.dp)
@@ -176,7 +172,6 @@ fun AutoEqTutorialDialog(
 
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        // Title
                         Text(
                             text = tutorialStep.title,
                             style = MaterialTheme.typography.titleMedium,
@@ -188,7 +183,6 @@ fun AutoEqTutorialDialog(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Description
                         Text(
                             text = tutorialStep.description,
                             style = MaterialTheme.typography.bodyMedium,
@@ -201,7 +195,6 @@ fun AutoEqTutorialDialog(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Dot indicators
                 Row(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
@@ -226,7 +219,6 @@ fun AutoEqTutorialDialog(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Navigation buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,

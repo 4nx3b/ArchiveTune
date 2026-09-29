@@ -1,8 +1,4 @@
-/*
- * EQ / AutoEQ domain models — extracted from Tryptify's domain/model/Models.kt
- * (https://github.com/tryptz/Tryptify) during the port into ArchiveTune so the
- * ported AutoEQ engine / processors / repositories keep their original types.
- */
+
 
 package tf.monochrome.android.domain.model
 
@@ -34,8 +30,7 @@ data class EqPreset(
     val name: String,
     val description: String = "",
     val bands: List<EqBand> = emptyList(),
-    // Right-ear bands when the preset was saved in 2-channel mode; null = mono
-    // (bands drives both ears).
+
     val bandsR: List<EqBand>? = null,
     val preamp: Float = 0f,
     val targetId: String = "",
@@ -43,9 +38,7 @@ data class EqPreset(
     val isCustom: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
-    // Set by EqRepository.toDomain when the stored bandsJson fails to decode.
-    // Loading a corrupted preset would silently flatten the EQ; callers should
-    // refuse to load it and surface the state instead.
+
     val isCorrupted: Boolean = false
 )
 
@@ -61,7 +54,7 @@ data class EqTarget(
 data class Headphone(
     val id: String,
     val name: String,
-    val type: String = "over-ear", // "over-ear", "in-ear", "earbud"
+    val type: String = "over-ear",
     val data: List<FrequencyPoint> = emptyList(),
     val measurements: List<AutoEqMeasurement> = emptyList()
 )
@@ -79,20 +72,13 @@ data class AutoEqMeasurement(
     val path: String,
     val fileName: String,
     val rig: MeasurementRig = MeasurementRig.UNKNOWN,
-    // Origin host for squig.link sources (e.g. "https://precog.squig.link");
-    // empty for AutoEq sources where path is the GitHub repo subpath.
+
     val host: String = ""
 )
 
-/**
- * Acoustic measurement rig used to capture a headphone's frequency response.
- * Bucket label is what the UI shows in its filter chip; ordinal controls sort
- * order so industry-grade rigs (B&K 5128, GRAS) rise above community clones.
- */
 @Serializable
 enum class MeasurementRig(val label: String) {
-    // Pinned first by ordinal so the rig filter chip row leads with the
-    // user's own measurements before any remote source.
+
     UPLOADED("Uploaded"),
     BK_5128("B&K 5128"),
     BK_4620("B&K 4620"),

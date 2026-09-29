@@ -109,7 +109,6 @@ val AodShowLyricsKey = booleanPreferencesKey("aodShowLyrics")
 
 val AodAutoTimerSecondsKey = intPreferencesKey("aodAutoTimerSeconds")
 
-val AodAutoOnScreenDimKey = booleanPreferencesKey("aodAutoOnScreenDim")
 
 val EnableMusixmatchExperimentalKey = booleanPreferencesKey("enableMusixmatchExperimental")
 val SeekExtraSeconds = booleanPreferencesKey("seekExtraSeconds")

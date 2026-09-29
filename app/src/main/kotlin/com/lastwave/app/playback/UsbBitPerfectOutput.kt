@@ -7,7 +7,6 @@ import android.media.AudioManager
 import android.media.AudioMixerAttributes
 import android.os.Build
 
-/** Requests the platform USB mode only for the PCM format actually sent to AudioTrack. */
 class UsbBitPerfectOutput(private val manager: AudioManager?) {
     private var device: AudioDeviceInfo? = null
     private var format: AudioFormat? = null
@@ -86,9 +85,7 @@ class UsbBitPerfectOutput(private val manager: AudioManager?) {
                     "BIT-PERFECT unsupported by DAC ${target.productName}: " +
                         "no BIT_PERFECT mixer mode advertised — clearing any stale preference",
                 )
-                // Must clear before returning: a previously-granted preference for this
-                // device would otherwise persist, routing PCM through the BIT_PERFECT
-                // path even though the device can't honour it (→ buzzing noise).
+
                 clear()
                 return
             }
@@ -102,9 +99,7 @@ class UsbBitPerfectOutput(private val manager: AudioManager?) {
                     "BIT-PERFECT format mismatch: want $want; DAC offers [$have] — " +
                         "clearing stale preference to prevent mis-routed PCM (buzzing)",
                 )
-                // Must clear: the previous configure may have set a BIT_PERFECT preference
-                // for a different format (e.g. 48 kHz on EarPods). Leaving it active while
-                // feeding 44.1 kHz samples produces the exact buzzing symptom reported.
+
                 clear()
                 return
             }
@@ -129,12 +124,6 @@ class UsbBitPerfectOutput(private val manager: AudioManager?) {
         }
     }
 
-    /**
-     * AudioFormat does not implement value equality, so referential `==`
-     * never matches a platform-returned descriptor against our request —
-     * every USB request silently failed and read-back was always false.
-     * Compare the fields that define the wire format instead.
-     */
     private fun sameFormat(a: AudioFormat?, b: AudioFormat?): Boolean {
         if (a == null || b == null) return a == null && b == null
         if (a === b) return true

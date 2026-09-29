@@ -6,16 +6,10 @@ import androidx.media3.common.audio.BaseAudioProcessor
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-/**
- * Converts decoded Media3 PCM to Float32 and runs the C++ DSP in place.
- * The platform fallback preserves source rates through 384 kHz. Oboe output
- * instead targets its actual device rate through the native libsoxr HQ path.
- */
 class NativePcmAudioProcessor(
     private val engine: NativeAudioEngine,
     private val maxOutputSampleRateHz: Int = MAX_OUTPUT_SAMPLE_RATE_HZ,
 ) : BaseAudioProcessor() {
-    // Written on the main thread (DAC routing), read on the renderer thread.
     @Volatile
     var nativeOutputSampleRate: Int = DEFAULT_OUTPUT_SAMPLE_RATE_HZ
         private set
@@ -39,13 +33,6 @@ class NativePcmAudioProcessor(
         configuredEndTrimFrames = endFrames.coerceIn(0, MAX_TRIM_FRAMES)
     }
 
-    /**
-     * Begins a new input stream for gapless playback without tearing down
-     * the native pipeline. Only per-stream trim accounting is reset; the
-     * libsoxr resampler and every DSP filter keep their state so consecutive
-     * same-format tracks join sample-exactly, exactly like one continuous
-     * stream. Must only be called when the core audio format is unchanged.
-     */
     fun beginStream(startFrames: Int, endFrames: Int) {
         setTrimFrameCount(startFrames, endFrames)
         startTrimFramesRemaining = configuredStartTrimFrames
@@ -53,11 +40,6 @@ class NativePcmAudioProcessor(
         retainedEndBuffer.clear()
     }
 
-    /**
-     * Total setter: out-of-range values are coerced into the supported window
-     * (null clears the override) instead of throwing and leaving a stale
-     * override from the previous track behind.
-     */
     fun setOutputSampleRateOverride(sampleRateHz: Int?) {
         outputSampleRateOverrideHz =
             sampleRateHz?.coerceIn(MIN_OUTPUT_SAMPLE_RATE_HZ, MAX_OUTPUT_SAMPLE_RATE_HZ)
@@ -219,7 +201,7 @@ class NativePcmAudioProcessor(
 
     override fun onQueueEndOfStream() {
         if (outputAudioFormat == AudioProcessor.AudioFormat.NOT_SET) return
-        // The retained input frames are encoder padding and are intentionally discarded.
+
         retainedEndBytes = 0
         val output = replaceOutputBuffer(
             RESAMPLER_FLUSH_CAPACITY_FRAMES * outputAudioFormat.bytesPerFrame,
@@ -254,9 +236,7 @@ class NativePcmAudioProcessor(
 
     private companion object {
         const val MIN_OUTPUT_SAMPLE_RATE_HZ = 8_000
-        // Matches the native engine's accepted device-rate window (384 kHz):
-        // 352.8/384 kHz Hi-Res must pass through to a capable DAC instead of
-        // being force-resampled to 192 kHz while calling it Bit-Perfect.
+
         const val MAX_OUTPUT_SAMPLE_RATE_HZ = 384_000
         const val DEFAULT_OUTPUT_SAMPLE_RATE_HZ = 48_000
         const val MAX_TRIM_FRAMES = 1_000_000

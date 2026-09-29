@@ -10,28 +10,8 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/**
- * Pure-JVM DSP kernels for the EQ processors: RBJ biquads plus the decramped
- * (matched-Z / tournament-matched) coefficient designs. Deliberately free of
- * Android/media3 imports so response behaviour can be iterated on and
- * unit-tested on a plain JVM without an Android toolchain in the loop.
- */
-
 internal enum class EqBiquadType { PEAKING, LOW_SHELF, HIGH_SHELF }
 
-/**
- * Matched-Z ("decramped") peaking coefficients after M. Vicanek, "Matched
- * Second Order Digital Filters" (2016), §4.4: poles from impulse invariance
- * (no peak narrowing towards Nyquist), numerator solved so that DC gain is
- * unity, the center-frequency gain is exact, and the response has its
- * extremum at the center — landing on the analog prototype the correction
- * curves are designed against instead of the bilinear transform's cramped
- * shape. At 48 kHz this reduces the top-octave error of an 18 kHz band from
- * ~4 dB (RBJ) to ~0.15 dB.
- *
- * Returns normalized [b0, b1, b2, a1, a2] (a0 = 1), or null when any
- * coefficient degenerates (caller falls back to RBJ).
- */
 internal fun matchedPeakingCoefficients(
     sr: Double,
     freq: Double,
@@ -41,11 +21,9 @@ internal fun matchedPeakingCoefficients(
     if (sr <= 0.0 || !freq.isFinite() || !q.isFinite() || !gainDb.isFinite()) return null
     val f = freq.coerceIn(1.0, sr * 0.499)
     val qq = q.coerceAtLeast(0.05)
-    val g = 10.0.pow(gainDb / 20.0)          // linear peak amplitude gain
+    val g = 10.0.pow(gainDb / 20.0)
     val w0 = 2.0 * Math.PI * f / sr
 
-    // Poles: impulse-invariance mapping of s² + 2·qp·ω0·s + ω0²,
-    // with 2·qp = 1/(√G·Q) from the analog prototype's denominator.
     val qp = 1.0 / (2.0 * sqrt(g) * qq)
     val a2 = exp(-2.0 * qp * w0)
     val a1 = if (qp <= 1.0) {
@@ -54,7 +32,6 @@ internal fun matchedPeakingCoefficients(
         -2.0 * exp(-qp * w0) * cosh(sqrt(qp * qp - 1.0) * w0)
     }
 
-    // Numerator via the φ-basis magnitude match (Vicanek eqs. 26/27, 44/45, 29).
     val p1 = sin(w0 / 2.0).let { it * it }
     val p0 = 1.0 - p1
     val p2 = 4.0 * p0 * p1
@@ -79,21 +56,6 @@ internal fun matchedPeakingCoefficients(
     return if (out.all { it.isFinite() }) out else null
 }
 
-/**
- * Decramped shelf coefficients, chosen by tournament: three candidate designs
- * are built — plain RBJ (bilinear), impulse-invariance poles + three-point
- * matched numerator (Vicanek's custom-matched framework applied to the shelf
- * prototype), and a hybrid with bilinear poles + matched numerator — then each
- * is scored against the analog shelf prototype on a log probe grid and the
- * lowest worst-case error wins. No single construction dominates (impulse
- * invariance aliases when the pole corner √A·f0 nears Nyquist; bilinear
- * cramps the transition), but the best-of-three is ≤ ~0.8 dB everywhere RBJ
- * alone reaches ~3 dB. Shelves change rarely, so the score-and-pick cost at
- * configure time is irrelevant.
- *
- * Returns normalized [b0, b1, b2, a1, a2] (a0 = 1); never worse than RBJ.
- * Returns null only for degenerate input (caller falls back to RBJ).
- */
 internal fun matchedShelfCoefficients(
     sr: Double,
     freq: Double,
@@ -142,9 +104,6 @@ internal fun matchedShelfCoefficients(
         return doubleArrayOf(b[0] / d[0], b[1] / d[0], b[2] / d[0], d[1] / d[0], d[2] / d[0])
     }
 
-    // Matched three-point numerator (DC, Nyquist, ω0 — shelf gain at ω0 is
-    // exactly √(G²) = a·... the analog magnitude A at the corner) on top of
-    // the given poles.
     fun numeratorFor(a1: Double, a2: Double): DoubleArray? {
         val bigA0 = (1.0 + a1 + a2).let { it * it }
         val bigA1 = (1.0 - a1 + a2).let { it * it }
@@ -209,20 +168,6 @@ internal fun matchedShelfCoefficients(
     return best
 }
 
-/**
- * Designs normalized [b0, b1, b2, a1, a2] for one biquad section.
- *
- * Split out of [EqBiquad.configure] so the design can run off the audio
- * thread. It is not audio-thread safe and never should be: the matched
- * shelf design allocates and runs a scored tournament over candidate
- * constructions (see [matchedShelfCoefficients]), which is fine at control
- * rate and completely unacceptable per block.
- *
- * [matched] selects decramped coefficients: Vicanek matched-Z for PEAKING
- * bands, tournament-picked (never worse than RBJ) for shelves. Degenerate
- * input falls back to plain RBJ, and a degenerate RBJ falls back to
- * passthrough rather than emitting NaN/Inf audio.
- */
 internal fun designBiquadCoefficients(
     type: EqBiquadType,
     sr: Double,
@@ -243,7 +188,7 @@ internal fun designBiquadCoefficients(
                 c[3].toFloat(), c[4].toFloat(),
             )
         }
-        // fall through to RBJ on degenerate input
+
     }
     val w0 = 2.0 * Math.PI * freq / sr
     val cosw0 = cos(w0)
@@ -280,7 +225,6 @@ internal fun designBiquadCoefficients(
         }
     }
     if (abs(na0) < 1e-20 || !na0.isFinite()) {
-        // Degenerate coefficient — fall back to passthrough instead of emitting NaN/Inf audio.
         return floatArrayOf(1f, 0f, 0f, 0f, 0f)
     }
     val nb0f = (nb0 / na0).toFloat()
@@ -296,19 +240,11 @@ internal fun designBiquadCoefficients(
     }
 }
 
-/** RBJ biquad (Transposed Direct Form II) with NaN/degenerate-coefficient guards. */
 internal class EqBiquad {
     private var b0 = 1f; private var b1 = 0f; private var b2 = 0f
     private var a1 = 0f; private var a2 = 0f
     private var z1 = 0f; private var z2 = 0f
 
-    /**
-     * Designs and installs coefficients, clearing the filter memory.
-     *
-     * [matched] selects decramped coefficients: Vicanek matched-Z for PEAKING
-     * bands, tournament-picked (never worse than RBJ) for shelves. Degenerate
-     * input falls back to plain RBJ.
-     */
     fun configure(
         type: EqBiquadType,
         sr: Double,
@@ -321,20 +257,6 @@ internal class EqBiquad {
         z1 = 0f; z2 = 0f
     }
 
-    /**
-     * Installs pre-designed coefficients and leaves the filter memory running.
-     *
-     * [configure] zeroes z1/z2, which is right for a one-off retune but wrong
-     * for a glide — clearing the memory on every update mutes and restarts the
-     * filter, so a swept band would buzz rather than sweep. Transposed Direct
-     * Form II is the well-behaved structure for coefficient modulation (its
-     * state holds output history, not raw input), so stepping the coefficients
-     * between blocks moves the response continuously.
-     *
-     * Cheap enough for the audio thread by construction: five float stores,
-     * with all the transcendental design work already done by
-     * [designBiquadCoefficients] at control rate.
-     */
     fun retune(c: FloatArray) {
         b0 = c[0]; b1 = c[1]; b2 = c[2]; a1 = c[3]; a2 = c[4]
     }

@@ -38,20 +38,6 @@ import androidx.compose.ui.unit.dp
 import tf.monochrome.android.data.import_.ApoProfileParser
 import tf.monochrome.android.data.import_.ParsedEqProfile
 
-/**
- * Import an EqualizerAPO-style parametric profile (`ParametricEQ.txt` or a
- * band CSV) by paste or file.
- *
- * With [perEar] the sheet is two panes — LEFT and RIGHT — each with its own
- * paste window and Open-file button, and one Upload button at the end:
- *  - only L filled  → mono import (drives both ears)
- *  - L and R filled → a stereo preset; each ear gets its own filter stack
- *  - only R filled  → imported as mono (it's the only curve there is)
- *
- * The preview shows both stacks at once (right ear as the amber overlay) plus
- * every warning the parser produced — an EQ profile is invisible until it
- * plays, so nothing is fixed up or applied silently.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ImportEqProfileSheet(
@@ -126,7 +112,6 @@ fun ImportEqProfileSheet(
             }
 
             if (validL != null || validR != null) {
-                // ── Live preview: L primary, R as the amber overlay ──
                 val primaryProfile = validL ?: validR!!
                 FrequencyResponseGraph(
                     originalCurve = emptyList(),
@@ -182,7 +167,6 @@ fun ImportEqProfileSheet(
     }
 }
 
-/** One channel's paste window + Open-file button + live parse feedback. */
 @Composable
 private fun ProfilePane(
     title: String?,
@@ -210,7 +194,6 @@ private fun ProfilePane(
                     ?.let(onFileName)
             }
         } catch (_: Exception) {
-            // Unreadable file: leave the pane as-is.
         }
     }
 

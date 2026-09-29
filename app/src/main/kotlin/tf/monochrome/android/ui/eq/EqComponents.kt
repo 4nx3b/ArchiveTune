@@ -46,9 +46,6 @@ import tf.monochrome.android.domain.model.Headphone
 import tf.monochrome.android.ui.components.bounceClick
 import tf.monochrome.android.ui.components.liquidGlass
 
-/**
- * Pill-shaped category tab chip (ALL / OVER-EAR / IN-EAR)
- */
 @Composable
 fun TabChip(
     label: String,
@@ -83,9 +80,6 @@ fun TabChip(
     }
 }
 
-/**
- * Labeled parameter dropdown (FILTER BANDS, MAX HZ, SAMPLE RATE)
- */
 @Composable
 fun ParameterDropdown(
     label: String,
@@ -146,9 +140,6 @@ fun ParameterDropdown(
     }
 }
 
-/**
- * Big gradient AutoEQ action button
- */
 @Composable
 fun GradientAutoEqButton(
     isCalculating: Boolean,
@@ -185,9 +176,6 @@ fun GradientAutoEqButton(
     }
 }
 
-/**
- * A-Z alphabetical index sidebar for quick scrolling
- */
 @Composable
 fun AlphabeticalIndexSidebar(
     availableLetters: Set<Char>,
@@ -215,8 +203,7 @@ fun AlphabeticalIndexSidebar(
                     .padding(vertical = 1.dp)
             )
         }
-        // '#' bucket (numeric-named models) — render like the letters so it's
-        // actually clickable when present, not a permanently-disabled label.
+
         val hashAvailable = '#' in availableLetters
         Text(
             "#",
@@ -231,9 +218,6 @@ fun AlphabeticalIndexSidebar(
     }
 }
 
-/**
- * Headphone item row with icon, name, profile count, and chevron
- */
 @Composable
 fun HeadphoneItemRow(
     headphone: Headphone,
@@ -278,9 +262,6 @@ fun HeadphoneItemRow(
     }
 }
 
-/**
- * Section header label (e.g. "HEADPHONE MODEL", "TARGET")
- */
 @Composable
 fun SectionLabel(
     text: String,
@@ -296,9 +277,6 @@ fun SectionLabel(
     )
 }
 
-/**
- * Dropdown selector row with value display and optional trailing icon
- */
 @Composable
 fun SelectorRow(
     value: String,

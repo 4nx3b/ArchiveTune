@@ -1,11 +1,4 @@
-/*
- * Tryptify preference surface — a focused facade over ArchiveTune's shared
- * "settings" DataStore implementing exactly the members the ported Tryptify
- * code uses (EqViewModel, ParametricEqViewModel, DspEngineManager,
- * UsbExclusiveController, SystemAudioEqController). Key names are identical
- * to Tryptify's own PreferencesManager so user state round-trips 1:1 with
- * the upstream app; none collide with ArchiveTune's keys.
- */
+
 
 package tf.monochrome.android.data.preferences
 
@@ -29,7 +22,6 @@ class PreferencesManager(
     private val dataStore = context.applicationContext.dataStore
     private val json = Json { ignoreUnknownKeys = true }
 
-    // ===== EQ / AutoEQ =====
     val eqTutorialSeen: Flow<Boolean> = dataStore.data.map { it[EQ_TUTORIAL_SEEN] ?: false }
     suspend fun setEqTutorialSeen(seen: Boolean) {
         dataStore.edit { it[EQ_TUTORIAL_SEEN] = seen }
@@ -122,7 +114,6 @@ class PreferencesManager(
         dataStore.edit { it[EQ_UPLOADED_HEADPHONES_JSON] = json }
     }
 
-    // ===== System-wide AutoEQ + tone =====
     val systemWideAutoEqEnabled: Flow<Boolean> =
         dataStore.data.map { it[SYSTEM_WIDE_AUTOEQ_ENABLED] ?: false }
     suspend fun setSystemWideAutoEqEnabled(enabled: Boolean) {
@@ -144,7 +135,6 @@ class PreferencesManager(
         }
     }
 
-    // ===== Parametric EQ =====
     val paramEqEnabled: Flow<Boolean> = dataStore.data.map { it[PARAM_EQ_ENABLED] ?: false }
     suspend fun setParamEqEnabled(enabled: Boolean) {
         dataStore.edit { it[PARAM_EQ_ENABLED] = enabled }
@@ -170,7 +160,6 @@ class PreferencesManager(
         }
     }
 
-    // ===== DSP engine =====
     val dspEnabled: Flow<Boolean> = dataStore.data.map { it[DSP_ENABLED] ?: false }
     suspend fun setDspEnabled(enabled: Boolean) {
         dataStore.edit { it[DSP_ENABLED] = enabled }
@@ -192,14 +181,24 @@ class PreferencesManager(
         dataStore.edit { it[DSP_BLOCK_SIZE] = value }
     }
 
-    // ===== USB exclusive (Tryptify libusb path) =====
     val usbExclusiveBitPerfectEnabled: Flow<Boolean> =
         dataStore.data.map { it[USB_EXCLUSIVE_BIT_PERFECT_ENABLED] ?: false }
     suspend fun setUsbExclusiveBitPerfectEnabled(enabled: Boolean) {
         dataStore.edit { it[USB_EXCLUSIVE_BIT_PERFECT_ENABLED] = enabled }
     }
 
-    // ===== Spectrum analyzer =====
+    val usbBitPerfectEnabled: Flow<Boolean> =
+        dataStore.data.map { it[USB_BIT_PERFECT_ENABLED] ?: false }
+    suspend fun setUsbBitPerfectEnabled(enabled: Boolean) {
+        dataStore.edit { it[USB_BIT_PERFECT_ENABLED] = enabled }
+    }
+
+    val multichannelDownmixEnabled: Flow<Boolean> =
+        dataStore.data.map { it[MULTICHANNEL_DOWNMIX_ENABLED] ?: true }
+    suspend fun setMultichannelDownmixEnabled(enabled: Boolean) {
+        dataStore.edit { it[MULTICHANNEL_DOWNMIX_ENABLED] = enabled }
+    }
+
     val spectrumAnalyzerEnabled: Flow<Boolean> =
         dataStore.data.map { it[SPECTRUM_ANALYZER_ENABLED] ?: true }
     suspend fun setSpectrumAnalyzerEnabled(enabled: Boolean) {
@@ -253,6 +252,9 @@ class PreferencesManager(
         private val DSP_BLOCK_SIZE = intPreferencesKey("dsp_block_size")
         private val USB_EXCLUSIVE_BIT_PERFECT_ENABLED =
             booleanPreferencesKey("usb_exclusive_bit_perfect_enabled")
+        private val USB_BIT_PERFECT_ENABLED = booleanPreferencesKey("usb_bit_perfect_enabled")
+        private val MULTICHANNEL_DOWNMIX_ENABLED =
+            booleanPreferencesKey("multichannel_downmix_enabled")
         private val SPECTRUM_ANALYZER_ENABLED = booleanPreferencesKey("spectrum_analyzer_enabled")
         private val SPECTRUM_SHOW_ON_NOW_PLAYING = booleanPreferencesKey("spectrum_show_on_now_playing")
         private val SPECTRUM_FFT_SIZE = intPreferencesKey("spectrum_fft_size")

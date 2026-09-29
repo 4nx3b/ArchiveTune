@@ -1,27 +1,5 @@
 @file:OptIn(androidx.media3.common.util.UnstableApi::class)
 
-/*
- * ArchiveTune (2026)
- * © Rukamori — github.com/rukamori
- * GPL-3.0 License | Contributors: see git history
- *
- * The AAudio-exclusive [androidx.media3.exoplayer.audio.AudioOutput]: a
- * USB-direct 32-bit float output with EXCLUSIVE sharing mode, handed to
- * DefaultAudioSink by [UsbExclusiveAudioOutputProvider].
- *
- * DefaultAudioSink keeps doing ALL the heavy lifting — the processor chain
- * (Sonic speed, haptics, stereo pan, transition DSP, the 32-bit float DSP
- * tail), position anchoring, playback parameters, volume ramps. This class
- * only implements the low-level stream contract:
- *  - open an exclusive AAudio float stream pinned to the USB device;
- *  - write the sink's final PCM window (float, or 16-bit up-converted);
- *  - report playout position / buffer sizes / session id / underruns.
- *
- * The sink applies speed through the chain's SonicAudioProcessor, so this
- * output reports the DEFAULT playback parameters and never applies speed
- * itself (OutputConfig.usePlaybackParameters is false for this output).
- */
-
 package moe.rukamori.archivetune.playback.dsp
 
 import android.content.Context
@@ -43,7 +21,6 @@ class AaudioExclusiveAudioOutput(
     private val config: OutputConfig,
     private val deviceId: Int,
 ) : AudioOutput {
-
     private val listeners = CopyOnWriteArraySet<AudioOutput.Listener>()
 
     private var stream: AaudioNativeStream? = null
@@ -52,10 +29,6 @@ class AaudioExclusiveAudioOutput(
     private var released = false
     private var lastXRunCount = 0
     private val channelCount: Int = channelCountForMask(config.channelMask)
-
-    // ------------------------------------------------------------------
-    // Lifecycle
-    // ------------------------------------------------------------------
 
     @Synchronized
     private fun ensureStream(): AaudioNativeStream? {
@@ -70,11 +43,7 @@ class AaudioExclusiveAudioOutput(
             exclusive = true,
         )
         if (result != 0 || !opened.isExclusive()) {
-            // The one log that answers "is the USB-exclusive path actually on":
-            // the HAL either refused exclusive sharing outright (result != 0,
-            // common on devices whose USB HAL only supports shared streams) or
-            // silently demoted us to shared — both mean we fall back to the
-            // stock AudioTrack path for this track.
+
             Log.w(
                 TAG,
                 "USB-exclusive AAudio stream NOT engaged (result=$result exclusive=${opened.isExclusive()} deviceId=$deviceId) — falling back to the standard output",
@@ -101,10 +70,6 @@ class AaudioExclusiveAudioOutput(
         }
     }
 
-    // ------------------------------------------------------------------
-    // AudioOutput contract
-    // ------------------------------------------------------------------
-
     @Synchronized
     override fun play() {
         val current = stream ?: ensureStream() ?: return
@@ -121,23 +86,11 @@ class AaudioExclusiveAudioOutput(
         started = false
     }
 
-    /**
-     * Fully synchronized against the lifecycle methods: write() blocks in
-     * native code for up to [WRITE_TIMEOUT_MS] and reads through the stream
-     * handle afterwards (xRunCount/position), while release() DELETES the
-     * native object. An unsynchronized write racing a release is a
-     * use-after-free that takes the whole process down as a bare SIGSEGV —
-     * no Java exception, no crash dialog, nothing in the app's own logs.
-     * Holding this monitor for the duration of the write is the price of
-     * making the pair safe; release/pause simply wait out the in-flight
-     * write (bounded by the same timeout).
-     */
     @Synchronized
     override fun write(buffer: ByteBuffer, encodedAccessUnitCount: Int, presentationTimeUs: Long): Boolean {
         val current = stream ?: ensureStream()
-            ?: // The exclusive stream could not be opened (device gone, HAL
-                // refused): report a recoverable write failure so the sink's
-                // error path takes over instead of spinning on a null output.
+            ?:
+
                 throw AudioOutput.WriteException(AAUDIO_ERROR_INVALID_STATE, true)
         val isFloat = config.encoding == C.ENCODING_PCM_FLOAT
         val bytesPerSample = if (isFloat) 4 else 2
@@ -147,16 +100,14 @@ class AaudioExclusiveAudioOutput(
         val written = current.write(buffer, frames, channelCount, isFloat, volume, WRITE_TIMEOUT_MS)
         if (written < 0) {
             Log.w(TAG, "USB-exclusive AAudio write failed (code=$written) — dropping the stream; the provider re-resolves the route")
-            // A disconnected USB DAC: drop the stream so a later write (or the
-            // provider's next configure) re-resolves the route.
+
             stream?.close()
             stream?.release()
             stream = null
             started = false
             throw AudioOutput.WriteException(written, false)
         }
-        // Advance the buffer over what the stream consumed (the sink retries
-        // from position on partial writes, AudioTrack.write-style).
+
         buffer.position(buffer.position() + written * bytesPerFrame)
         reportUnderruns(current)
         return written >= frames
@@ -223,8 +174,7 @@ class AaudioExclusiveAudioOutput(
     }
 
     override fun setPlaybackParameters(playbackParams: PlaybackParameters) {
-        // Speed/pitch live in the processor chain (Sonic); this output never
-        // applies them (see OutputConfig.usePlaybackParameters == false).
+
     }
 
     override fun setOffloadDelayPadding(delayInFrames: Int, paddingInFrames: Int) = Unit
@@ -249,14 +199,8 @@ class AaudioExclusiveAudioOutput(
         private const val TAG = "UsbExclusiveAudio"
         private const val WRITE_TIMEOUT_MS = 1000
 
-        /** Mirrors AAUDIO_ERROR_INVALID_STATE from the NDK headers. */
         private const val AAUDIO_ERROR_INVALID_STATE = -896
 
-        /**
-         * True when an exclusive float stream can be opened to [deviceId]
-         * right now — used as the provider's cheap go/no-go probe before it
-         * hands this output class to the sink.
-         */
         fun probeAvailable(deviceId: Int): Boolean {
             if (!FloatDsp.available) return false
             val probe = AaudioNativeStream()

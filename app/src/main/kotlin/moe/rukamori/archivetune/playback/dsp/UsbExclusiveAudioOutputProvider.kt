@@ -1,30 +1,5 @@
 @file:OptIn(androidx.media3.common.util.UnstableApi::class)
 
-/*
- * ArchiveTune (2026)
- * © Rukamori — github.com/rukamori
- * GPL-3.0 License | Contributors: see git history
- *
- * The AudioOutputProvider handed to DefaultAudioSink: serves the AAudio
- * EXCLUSIVE float output whenever the user enabled USB-exclusive audio AND
- * a USB output device is currently attached, and otherwise delegates to the
- * stock AudioTrackAudioOutputProvider so everything behaves exactly as
- * before.
- *
- * With an audio engine engaged the exclusive route switches to that engine's
- * own bit-perfect USB driver: Tryptify's libusb UAC1/UAC2 driver
- * (TryptifyLibusbAudioOutput) or LastWave-native's usbdevfs driver
- * (LastwaveUsbdevfsAudioOutput). The engine choice is re-evaluated at every
- * sink configure (every track transition) from live service fields, so
- * flipping an engine toggle lands on the next track without a player
- * rebuild — same contract as the rest of this provider.
- *
- * The decision is re-evaluated at every sink configure (every track
- * transition), which makes USB plug/unplug effective on the next song
- * without rebuilding the player. Device add/remove also fires
- * onFormatSupportChanged() so a mid-session route change is noticed.
- */
-
 package moe.rukamori.archivetune.playback.dsp
 
 import android.content.Context
@@ -51,25 +26,23 @@ import kotlinx.coroutines.CoroutineScope
 import tf.monochrome.android.audio.usb.BypassVolumeController
 import tf.monochrome.android.audio.usb.LibusbUacDriver
 
-/** Which audio engine owns playback right now (live read by the provider). */
 enum class AudioEngineKind { NONE, TRYPTIFY, LASTWAVE }
 
 class UsbExclusiveAudioOutputProvider(
     context: Context,
-    /** Fresh read at every decision point: the USB-exclusive pref. */
+
     private val exclusiveEnabled: () -> Boolean,
-    /** Fresh read at every decision point: which engine is enabled. */
+
     private val engineSelection: () -> AudioEngineKind = { AudioEngineKind.NONE },
-    /** Tryptify's libusb UAC driver (bit-perfect USB output). */
+
     private val tryptifyDriver: LibusbUacDriver? = null,
-    /** Tryptify's bypass software volume (no AudioFlinger on that route). */
+
     private val tryptifyVolume: BypassVolumeController? = null,
-    /** LastWave's usbdevfs exclusive output. */
+
     private val lastwaveExclusiveUsb: ExclusiveUsbOutput? = null,
-    /** Scope for the asynchronous USB permission request. */
+
     private val permissionScope: CoroutineScope? = null,
 ) : AudioOutputProvider {
-
     private val appContext = context.applicationContext
     private val audioManager =
         appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -81,8 +54,7 @@ class UsbExclusiveAudioOutputProvider(
     private val listeners = CopyOnWriteArraySet<Listener>()
 
     init {
-        // A USB DAC appearing or disappearing changes what this provider
-        // supports: surface it so the sink re-configures at the next track.
+
         runCatching {
             audioManager.registerAudioDeviceCallback(
                 object : AudioDeviceCallback() {
@@ -106,12 +78,10 @@ class UsbExclusiveAudioOutputProvider(
     private fun AudioDeviceInfo.isUsbSink(): Boolean =
         isSink && type in USB_SINK_TYPES
 
-    /** The first USB output device right now, or null. */
     private fun currentUsbDevice(): AudioDeviceInfo? =
         audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
             .firstOrNull { it.isUsbSink() }
 
-    /** The hardware [android.hardware.usb.UsbDevice] behind a USB sink, or null. */
     private fun currentHardwareUsbDevice(): android.hardware.usb.UsbDevice? {
         val info = currentUsbDevice() ?: return null
         return usbManager.deviceList.values.firstOrNull { it.deviceId == info.id }
@@ -122,7 +92,6 @@ class UsbExclusiveAudioOutputProvider(
             }
     }
 
-    /** True when the exclusive path should serve [formatConfig]. */
     private fun exclusiveApplies(formatConfig: FormatConfig): Boolean {
         if (!exclusiveEnabled()) return false
         val format = formatConfig.format
@@ -155,17 +124,12 @@ class UsbExclusiveAudioOutputProvider(
             return inner.getOutputConfig(formatConfig)
         }
         val format = formatConfig.format
-        // Faithful to the chain's output encoding: the engine tail decides
-        // float vs 16-bit at configure time and the exclusive outputs accept
-        // both (16-bit is up-converted inside the write path). Keeping the
-        // config encoding identical to the data the sink writes keeps every
-        // frame-size calculation honest.
+
         val encoding = format.pcmEncoding
         val channels = format.channelCount.coerceAtMost(MAX_EXCLUSIVE_CHANNELS)
         val sampleRate = if (format.sampleRate > 0) format.sampleRate else 48000
         val frameSize = Util.getPcmFrameSize(encoding, channels)
-        // ~250 ms of buffer: enough crossfade-free headroom for exclusive
-        // streams, small enough to keep the latency claim honest.
+
         val bufferSize = (sampleRate / 4) * frameSize
         return OutputConfig.Builder()
             .setSampleRate(sampleRate)
@@ -236,12 +200,6 @@ class UsbExclusiveAudioOutputProvider(
         return if (mask > 0) mask else AudioFormat.CHANNEL_OUT_STEREO
     }
 
-    /**
-     * Builder-style engine wiring: returns a NEW provider carrying the engine
-     * route (selection lambda + the engine's own bit-perfect USB output
-     * stack). The receiver keeps serving the plain AAudio path — the
-     * secondary crossfade player builds its provider without engines.
-     */
     fun withEngines(
         engineSelection: () -> AudioEngineKind,
         tryptifyDriver: LibusbUacDriver?,

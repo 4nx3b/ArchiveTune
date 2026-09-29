@@ -4,15 +4,8 @@ import android.content.Context
 import tf.monochrome.android.domain.model.EqTarget
 import tf.monochrome.android.domain.model.FrequencyPoint
 
-/**
- * Predefined target frequency response curves for equalization.
- *
- * High-resolution target data (384 points per curve, 20Hz-20kHz) loaded dynamically
- * from the autoeq/targets assets directory.
- */
-@Suppress("StaticFieldLeak") // Stores applicationContext only — no leak
+@Suppress("StaticFieldLeak")
 object FrequencyTargets {
-
     private var context: Context? = null
 
     fun init(ctx: Context) {
@@ -29,8 +22,6 @@ object FrequencyTargets {
             emptyList()
         }
     }
-
-    // ========== Lazy-parsed targets ==========
 
     private val harmanOE2018 by lazy { loadTargetFromAssets("Harman_OE_2018.txt") }
     private val harmanIE2019 by lazy { loadTargetFromAssets("Harman_IE_2019.txt") }

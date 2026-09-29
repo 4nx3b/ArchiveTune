@@ -1,14 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-// Headphone crossfeed — simulates a stereo speaker pair in front of the
-// listener by feeding each channel into the opposite ear, delayed (interaural
-// time difference) and low-pass filtered (head shadow).
-//
-// Integration points:
-//   - MixBusProcessor calls prepare() on format change and
-//     processArrays(L, R, frames) after the Oxford post-chain.
-//   - UI observes `state`; updates go through the public setters. Parameters
-//     are recomputed on set and read as @Volatile primitives on the audio
-//     thread, with per-sample smoothing so live slider moves never click.
+
 
 package tf.monochrome.android.audio.dsp.crossfeed
 
@@ -23,11 +13,6 @@ import kotlin.math.exp
 import kotlin.math.pow
 import kotlin.math.sin
 
-/**
- * Selectable crossfeed tunings. SPEAKER derives its feed level and delay from
- * the user's speaker angle; the rest are fixed classic networks whose feed
- * level / cutoff / delay triplets follow the published bs2b tunings.
- */
 enum class CrossfeedAlgorithm(
     val label: String,
     val blurb: String,
@@ -38,7 +23,7 @@ enum class CrossfeedAlgorithm(
     SPEAKER(
         "Speaker angle",
         "Physical model. Set the virtual speaker angle with the slider below.",
-        feedDb = 0f, cutoffHz = 700.0, delayUs = 0.0, // derived from the angle
+        feedDb = 0f, cutoffHz = 700.0, delayUs = 0.0,
     ),
     BS2B(
         "BS2B",
@@ -60,12 +45,7 @@ enum class CrossfeedAlgorithm(
 data class CrossfeedState(
     val enabled: Boolean = false,
     val algorithm: CrossfeedAlgorithm = CrossfeedAlgorithm.SPEAKER,
-    /**
-     * Total angle between the two virtual speakers as seen from the listener,
-     * in degrees. 30° = narrow frontal pair (strongest crossfeed), 180° =
-     * speakers at the ears, i.e. plain headphones (no crossfeed at all).
-     * Only meaningful for [CrossfeedAlgorithm.SPEAKER].
-     */
+
     val speakerAngleDeg: Float = DEFAULT_ANGLE_DEG,
 ) {
     companion object {
@@ -77,31 +57,23 @@ data class CrossfeedState(
 
 @Singleton
 class CrossfeedEffect @Inject constructor() {
-
     private val _state = MutableStateFlow(CrossfeedState())
     val state: StateFlow<CrossfeedState> = _state.asStateFlow()
 
-    // ---- Audio-thread parameters (recomputed on every state/format change) --
-
-    @Volatile private var targetCrossGain = 0f       // contralateral feed level
-    @Volatile private var targetDelaySamples = 0f    // ITD as fractional samples
-    @Volatile private var lowpassCoeff = 0f          // one-pole head-shadow LPF
-    @Volatile private var smoothCoeff = 0f           // per-sample param smoothing
+    @Volatile private var targetCrossGain = 0f
+    @Volatile private var targetDelaySamples = 0f
+    @Volatile private var lowpassCoeff = 0f
+    @Volatile private var smoothCoeff = 0f
 
     private var sampleRate = 48000.0
 
-    // Smoothed working copies — audio thread only.
     private var crossGain = 0f
     private var delaySamples = 0f
 
-    // Ring buffers holding recent input for the delayed contralateral tap.
-    // Max ITD is (r/c)·(π/2 + 1) ≈ 0.66 ms → 127 samples at 192 kHz; 256 is
-    // comfortably above that for any sample rate we'll see.
     private val ringL = FloatArray(RING_SIZE)
     private val ringR = FloatArray(RING_SIZE)
     private var ringPos = 0
 
-    // One-pole low-pass state for each cross path.
     private var lpL = 0f
     private var lpR = 0f
 
@@ -110,7 +82,7 @@ class CrossfeedEffect @Inject constructor() {
     fun prepare(sampleRate: Double) {
         this.sampleRate = sampleRate
         recompute()
-        // Fresh format — stale ring/filter contents belong to the old stream.
+
         java.util.Arrays.fill(ringL, 0f)
         java.util.Arrays.fill(ringR, 0f)
         lpL = 0f; lpR = 0f
@@ -133,9 +105,7 @@ class CrossfeedEffect @Inject constructor() {
 
     fun processArrays(l: FloatArray, r: FloatArray, frames: Int) {
         val gT = targetCrossGain
-        // Fast path: bypassed and fully faded out — skip the whole loop (same
-        // rationale as the Oxford effects' JNI skip). Reset the delay/filter
-        // state so re-enabling doesn't replay a stale tail.
+
         if (gT <= 0f && crossGain < 1e-4f) {
             if (crossGain != 0f) {
                 crossGain = 0f
@@ -156,7 +126,6 @@ class CrossfeedEffect @Inject constructor() {
         var fR = lpR
 
         for (i in 0 until frames) {
-            // Glide gain and delay toward their targets (~5 ms time constant).
             g += (gT - g) * smC
             d += (dT - d) * smC
 
@@ -165,7 +134,6 @@ class CrossfeedEffect @Inject constructor() {
             ringL[pos] = inL
             ringR[pos] = inR
 
-            // Fractional delay tap with linear interpolation.
             val di = d.toInt()
             val frac = d - di
             val i0 = (pos - di) and RING_MASK
@@ -173,12 +141,9 @@ class CrossfeedEffect @Inject constructor() {
             val tapL = ringL[i0] + (ringL[i1] - ringL[i0]) * frac
             val tapR = ringR[i0] + (ringR[i1] - ringR[i0]) * frac
 
-            // Head-shadow low-pass on the cross path only.
             fL += (tapL - fL) * lpC
             fR += (tapR - fR) * lpC
 
-            // Feed each ear the opposite channel; renormalise so the summed
-            // level stays roughly constant as the angle (and thus g) moves.
             val norm = 1f / (1f + g)
             l[i] = (inL + fR * g) * norm
             r[i] = (inR + fL * g) * norm
@@ -193,20 +158,14 @@ class CrossfeedEffect @Inject constructor() {
         lpR = fR
     }
 
-    /** Map the selected algorithm (and, for SPEAKER, the angle) onto coefficients. */
     private fun recompute() {
         val s = _state.value
         if (s.algorithm == CrossfeedAlgorithm.SPEAKER) {
             val halfAngleRad = Math.toRadians(s.speakerAngleDeg / 2.0)
 
-            // Woodworth ITD for a source at the speaker's azimuth: r/c · (θ + sin θ).
             val itdSec = HEAD_RADIUS_M / SPEED_OF_SOUND_MS * (halfAngleRad + sin(halfAngleRad))
             targetDelaySamples = (itdSec * sampleRate).toFloat().coerceIn(0f, RING_SIZE - 2f)
 
-            // Contralateral level: cos(halfAngle) → full crossfeed as the pair
-            // narrows toward the front, zero when the speakers sit at the ears
-            // (180°), which is exactly "plain headphones". MAX_CROSS ≈ -4 dB at
-            // 30°, in bs2b/Meier territory.
             targetCrossGain = if (!s.enabled) 0f
                 else MAX_CROSS_GAIN * cos(halfAngleRad).toFloat().coerceAtLeast(0f)
 

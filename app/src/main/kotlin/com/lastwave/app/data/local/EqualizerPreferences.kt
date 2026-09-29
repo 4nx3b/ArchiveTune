@@ -10,37 +10,22 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** The 15 standard ISO 2/3-octave center frequencies (Hz) the equalizer's
- *  band sliders map onto. Low end is bass body, mid range carries vocals,
- *  the top end is air and sparkle. */
 val EQ_BAND_FREQS_HZ = intArrayOf(25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600, 2500, 4000, 6300, 10000, 16000)
 const val EQ_MAX_GAIN_DB = 8f
 
-/** Compact frequency label under each band slider ("63", "1K", "16K"...). */
 fun eqBandLabel(hz: Int): String = if (hz >= 1000) "${hz / 1000}K" else "$hz"
 
 data class EqPreset(
     val name: String,
-    /** Gain in dB per band, same order as [EQ_BAND_FREQS_HZ]. */
+
     val gainsDb: List<Float>,
 )
 
-/**
- * Curated, listening-tested 15-band curves. Values are deliberately kept in
- * the ±8 dB range — beyond that Android's audio fx chain starts clipping and
- * smearing transients, so these are the strongest settings that still sound
- * clean at high volume.
- */
 object EqualizerPresets {
     const val CUSTOM_NAME = "Custom"
 
     val FLAT = EqPreset("Default", List(EQ_BAND_FREQS_HZ.size) { 0f })
-    /**
-     * Crystal-open audiophile reference curve for Studio Master Clarity.
-     * Tight, controlled sub-bass depth, a deliberate low-mid dip that
-     * removes congestion and mud, natural vocal body, strong presence lift
-     * and a tall silky air shelf — the "window opened" spacious sound.
-     */
+
     val STUDIO_MASTER = EqPreset(
         "Studio Master",
         listOf(
@@ -71,7 +56,7 @@ object EqualizerPresets {
 data class EqualizerSettings(
     val enabled: Boolean = false,
     val presetName: String = EqualizerPresets.FLAT.name,
-    /** Per-band gain in dB, index-aligned with [EQ_BAND_FREQS_HZ]. */
+
     val gainsDb: List<Float> = EqualizerPresets.FLAT.gainsDb,
 )
 
@@ -91,9 +76,7 @@ class EqualizerPreferences @Inject constructor(
             val storedGains = p.readSafely(Keys.GAINS_DB)?.split(',')?.mapNotNull(String::toFloatOrNull)
                 ?.takeIf { it.size == EQ_BAND_FREQS_HZ.size }
                 ?.map { gain -> if (gain.isFinite()) gain.coerceIn(-EQ_MAX_GAIN_DB, EQ_MAX_GAIN_DB) else 0f }
-            // The stored name is trusted as-is: every writer of GAINS_DB also
-            // updates PRESET_NAME (Custom on manual band edits), so the pair can't
-            // drift apart. Unknown names fall back to Default.
+
             val resolvedName = p.readSafely(Keys.PRESET_NAME)
                 ?.let { name ->
                     if (name == EqualizerPresets.CUSTOM_NAME || EqualizerPresets.byName(name) != null) name else null

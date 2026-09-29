@@ -1,12 +1,4 @@
-/*
- * File-backed persistence for the ported Tryptify EQ / mix presets.
- *
- * Tryptify stores these in Room; ArchiveTune keeps its own Room schema
- * untouched (no version bump / migration for ported data), so these DAOs
- * implement Tryptify's exact interfaces over a JSON file in filesDir with
- * atomic writes and StateFlow-backed reactive queries. Preset semantics
- * (ids, ordering, REPLACE vs IGNORE conflicts) are preserved 1:1.
- */
+
 
 package tf.monochrome.android.data.db.dao
 
@@ -23,8 +15,7 @@ import tf.monochrome.android.data.db.entity.MixPresetEntity
 
 private class JsonStore<T>(
     private val file: File,
-    // The whole list is serialised in one atomic write (see mutate()), so the
-    // serializer takes the complete snapshot, not a single element.
+
     private val serializer: (List<T>) -> String,
     private val deserializer: (String) -> List<T>,
 ) {
@@ -57,14 +48,9 @@ private class JsonStore<T>(
     }
 }
 
-/**
- * Implements Tryptify's EqPresetDao (eqType 0 = AutoEQ, 1 = Parametric)
- * over a JSON file. Room annotations on the interface are inert here.
- */
 class FileBackedEqPresetDao(
     context: Context,
 ) : EqPresetDao {
-
     private val json = Json { ignoreUnknownKeys = true }
     private val store = JsonStore(
         File(context.applicationContext.filesDir, "tryptify_eq_presets.json"),
@@ -155,11 +141,9 @@ class FileBackedEqPresetDao(
         }
 }
 
-/** Implements Tryptify's MixPresetDao over a JSON file. */
 class FileBackedMixPresetDao(
     context: Context,
 ) : MixPresetDao {
-
     private val json = Json { ignoreUnknownKeys = true }
     private val store = JsonStore(
         File(context.applicationContext.filesDir, "tryptify_mix_presets.json"),
@@ -187,7 +171,6 @@ class FileBackedMixPresetDao(
             if (existingIndex >= 0) {
                 list[existingIndex] = preset
             } else {
-                // AutoGenerate emulation: 0 id = new row.
                 val withId = if (preset.id == 0L) preset.copy(id = nextId(list)) else preset
                 list.add(withId)
             }

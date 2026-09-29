@@ -660,6 +660,7 @@ fun AodCustomizedScreen(
                     item {
                         AodIntSliderPreference(
                             title = stringResource(R.string.aod_customize_auto_timer),
+                            description = stringResource(R.string.aod_customize_auto_timer_desc),
                             icon = { Icon(painterResource(R.drawable.timer), null) },
                             value = aodAutoTimerSeconds,
                             valueRange = 0..180,
@@ -1350,6 +1351,7 @@ private fun AodSliderPreference(
 @Composable
 private fun AodIntSliderPreference(
     title: String,
+    description: String? = null,
     icon: @Composable () -> Unit,
     value: Int,
     valueRange: IntRange,
@@ -1366,7 +1368,11 @@ private fun AodIntSliderPreference(
 
     PreferenceEntry(
         title = { Text(title) },
-        description = valueLabel(roundedValue),
+        description = if (description != null) {
+            "$description\n${valueLabel(roundedValue)}"
+        } else {
+            valueLabel(roundedValue)
+        },
         icon = icon,
         isEnabled = isEnabled,
         content = {

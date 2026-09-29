@@ -10,7 +10,7 @@ data class PluginInstance(
     val bypassed: Boolean = false,
     val dryWet: Float = 1f,
     val parameters: Map<Int, Float> = emptyMap(),
-    /** Per-plugin oversampling factor: 1 (off), 2, or 4. */
+
     val oversampling: Int = 1
 ) {
     val type: SnapinType?

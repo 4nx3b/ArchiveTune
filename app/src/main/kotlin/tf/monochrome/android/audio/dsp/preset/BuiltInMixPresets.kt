@@ -3,39 +3,7 @@ package tf.monochrome.android.audio.dsp.preset
 import tf.monochrome.android.audio.dsp.SnapinType
 import tf.monochrome.android.audio.dsp.model.MixPreset
 
-/**
- * Hard-coded showcase presets for the DSP Mixer.
- *
- * These ship with the app so a fresh install demonstrates the engine's reverb,
- * delay, modulation and dynamics processors. They use negative ids so they
- * never collide with Room's positive autoincrement, and `isCustom = false` so
- * the UI treats them as read-only (load, export — but not delete).
- */
 object BuiltInMixPresets {
-
-    /**
-     * A preset captured out of the mixer rather than written in the DSL below,
-     * kept as the engine's own state JSON so it is exactly what was tuned.
-     *
-     * It has to be raw: [PresetScope] cannot describe it. The builder decides
-     * `inputEnabled` from the bus index (only bus 0 takes input) and writes
-     * `bypassed` as false for every processor, and this preset needs input on
-     * TWO buses and two bypassed processors on the first. That is the shape of
-     * it -- a dry path and a wet path running in parallel off the same input:
-     *
-     *   bus 0  the dry side, trimmed a hair, with a Haas and a Stereo parked on
-     *          it bypassed (set up, switched off -- kept because they are part
-     *          of the patch as saved)
-     *   bus 1  the wet side: a long, wide Reverb, then Stereo, then Gain, run
-     *          up +8.2 dB to sit against the dry
-     *   bus 4  master, +4.6 dB
-     *
-     * Re-expressing it in the DSL would mean transcribing sixteen float
-     * parameters by index and teaching the builder two new concepts, with a
-     * changed sound as the cost of getting either wrong. If the builder grows
-     * `inputEnabled` and `bypassed` later, this can move across -- and the
-     * string here is the reference to check the result against.
-     */
     private const val WIDE_STAGE =
         """{"buses":[""" +
             """{"gain":-0.0919491,"pan":0,"muted":false,"soloed":false,"inputEnabled":true,"plugins":[{"type":23,"bypassed":true,"dryWet":1,"os":1,"params":[1,10.3143]},{"type":1,"bypassed":true,"dryWet":1,"os":1,"params":[-2.1135,4.39726,0]}]},""" +
@@ -179,7 +147,6 @@ object BuiltInMixPresets {
         },
     )
 
-    /** As [builtIn], for a preset carried as engine state JSON rather than built. */
     private fun builtInRaw(id: Long, name: String, stateJson: String): MixPreset =
         MixPreset(id = id, name = name, stateJson = stateJson, isCustom = false)
 

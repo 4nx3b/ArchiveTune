@@ -58,19 +58,6 @@ import tf.monochrome.android.domain.model.MeasurementRig
 import tf.monochrome.android.ui.theme.MonoDimens
 import tf.monochrome.android.ui.components.SearchOverlay
 
-/**
- * Full-screen headphone browser.
- *
- * Layout: a horizontally-scrolling rig filter chip row pinned at the top
- * ("All rigs" + every rig present in the loaded data, ordered B&K → GRAS →
- * 711 clone → MiniDSP → Unknown), then a search bar, then a denormalized
- * one-row-per-measurement list with the source label visible on each row
- * and an A–Z sidebar for jumping by headphone name.
- *
- * Each row binds to a single (headphone, measurement) pair so picking
- * commits the user to that specific measurement on that specific rig —
- * the EQ engine then runs against that measurement's FR data.
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HeadphoneSelectScreen(
@@ -95,10 +82,6 @@ fun HeadphoneSelectScreen(
         viewModel.loadAvailableHeadphones()
     }
 
-    // Denormalize: one row per (headphone, measurement) pair, then apply
-    // search + rig filter. A headphone measured by N sources contributes
-    // N rows when "All rigs" is selected, so the user can pick the source
-    // they trust without first picking the headphone.
     data class Row(val headphone: Headphone, val measurement: AutoEqMeasurement)
 
     val rows = remember(availableHeadphones, localSearchQuery, selectedRig) {
@@ -141,7 +124,6 @@ fun HeadphoneSelectScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface.copy(alpha = MonoDimens.cardAlpha))
     ) {
-        // ─── Header ───
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -175,7 +157,6 @@ fun HeadphoneSelectScreen(
             }
         }
 
-        // ─── Rig filter (horizontally scrollable chips) ───
         if (availableRigs.isNotEmpty()) {
             LazyRow(
                 modifier = Modifier
@@ -184,11 +165,7 @@ fun HeadphoneSelectScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                // Pin the Uploaded chip leftmost the moment the user has any
-                // saved uploads — gated on uploadedHeadphones (restored from
-                // prefs at init) rather than availableRigs (which is empty
-                // until the network round-trip in loadAvailableHeadphones
-                // returns), so the chip appears instantly on screen open.
+
                 val uploadedRig = MeasurementRig.UPLOADED
                 if (uploadedHeadphones.isNotEmpty()) {
                     item(key = "rig_uploaded") {
@@ -228,12 +205,6 @@ fun HeadphoneSelectScreen(
             }
         }
 
-        // ─── Search bar, floating over the measurements ───
-        //
-        // A permanent part of this screen rather than something toggled, so the
-        // list is given the bar's height as padding: it starts below the glass
-        // instead of with its first row parked under it forever, and still
-        // scrolls underneath, which is what the glass is for.
         SearchOverlay(
             open = true,
             query = localSearchQuery,
@@ -241,18 +212,13 @@ fun HeadphoneSelectScreen(
             placeholder = "Search model (e.g. HD 600)…",
             onClose = null,
             modifier = Modifier.weight(1f),
-            // Arriving on this screen is not a request to type — the rig chips
-            // and the A–Z list are how most people find their headphones.
+
             autoFocus = false,
         ) { searchTopInset ->
         Column(modifier = Modifier.fillMaxSize()) {
-        // The room goes to whichever of these is actually first, and to the list
-        // as *content* padding rather than a Spacer above it — a Spacer would
-        // put the rows below the glass and clip them at the list's own top edge,
-        // leaving the bar frosting an empty background.
+
         val listTopInset = if (error.isNullOrEmpty()) searchTopInset else 0.dp
 
-        // ─── Error ───
         if (!error.isNullOrEmpty()) {
             Box(
                 modifier = Modifier
@@ -273,7 +239,6 @@ fun HeadphoneSelectScreen(
             }
         }
 
-        // ─── Content: list + A-Z sidebar ───
         if (headphonesLoading && availableHeadphones.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(top = listTopInset),
@@ -372,8 +337,6 @@ fun HeadphoneSelectScreen(
         }
     }
 
-    // Long-press confirmation for uploaded measurements. Tap-and-hold the
-    // row → this dialog → Delete wipes the upload from prefs.
     val toDelete = pendingDelete
     if (toDelete != null) {
         AlertDialog(

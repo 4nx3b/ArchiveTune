@@ -5,15 +5,6 @@ import android.util.Log
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-/**
- * UAC Feature Unit volume (SET_CUR on the AudioControl interface).
- *
- * Analog/digital gain after the PCM payload stays bit-identical at any
- * listening level. [attach] only returns true when SET_CUR actually changes
- * GET_CUR — a successful control transfer alone is not proof the DAC
- * attenuates. Dongles without a real volume control fail closed so the
- * exclusive path can software-scale instead of claiming hardware volume.
- */
 class UacFeatureVolume(
     private val connection: UsbDeviceConnection,
     private val controlInterfaceId: Int,
@@ -90,10 +81,6 @@ class UacFeatureVolume(
         return Triple(DEFAULT_MIN_RAW, DEFAULT_MAX_RAW, DEFAULT_RES_RAW)
     }
 
-    /**
-     * UAC 2.0 GET_RANGE (bRequest = 0x02) on Feature Unit Volume control.
-     * Layout: wNumSubRanges (2B) + N * [wMin (2B), wMax (2B), wRes (2B)].
-     */
     private fun readUac2Range(unitId: Int, channel: Int): Triple<Int, Int, Int>? {
         val wIndex = (unitId shl 8) or controlInterfaceId
         val wValue = VOLUME_WVALUE or (channel and 0xFF)
@@ -131,9 +118,6 @@ class UacFeatureVolume(
         )
     }
 
-    /**
-     * UAC 1.0 GET_MIN (0x82), GET_MAX (0x83), GET_RES (0x84).
-     */
     private fun readUac1Range(unitId: Int, channel: Int): Triple<Int, Int, Int>? {
         val minVal = readControlShort(unitId, channel, 0x82) ?: return null
         val maxVal = readControlShort(unitId, channel, 0x83) ?: return null
@@ -285,19 +269,13 @@ class UacFeatureVolume(
         const val TIMEOUT_MS = 80
         const val VERIFY_SLEEP_MS = 8L
         const val MUTE = 0x8000
-        const val DEFAULT_MIN_RAW = -15872 // -62.0 dB in 1/256 dB units
-        const val DEFAULT_MAX_RAW = 0      //   0.0 dB
-        const val DEFAULT_RES_RAW = 256    //   1.0 dB step alignment
+        const val DEFAULT_MIN_RAW = -15872
+        const val DEFAULT_MAX_RAW = 0
+        const val DEFAULT_RES_RAW = 256
         private const val PERCEPTUAL_FLOOR_DB = -62.0
         val CHANNELS_TO_TRY = intArrayOf(0, 1, 2)
         val FALLBACK_UNIT_IDS = intArrayOf(0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A)
 
-        /**
-         * Maps normalized slider position [volume] in (0, 1] to a perceptual
-         * dB attenuation (-62 dB at 0+ .. 0 dB at 1.0), so step 1/15 (~6.7%)
-         * is ~ -53.8 dB instead of -23.5 dB, then aligns to [resRaw] within
-         * the DAC's hardware [minRaw]..[maxRaw] range.
-         */
         fun perceptualDb(volume: Float, minDb: Double = PERCEPTUAL_FLOOR_DB, maxDb: Double = 0.0): Double {
             val v = volume.coerceIn(0f, 1f).toDouble()
             if (v <= 0.0) return -127.0

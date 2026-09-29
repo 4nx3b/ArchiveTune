@@ -25,15 +25,6 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * USB DAC presence, capability and permission monitor.
- *
- * Two independent sources are merged: the platform mixer
- * ([AudioManager.getDevices], the routable [AudioDeviceInfo]) and the USB
- * bus itself ([UsbManager], needed for the permission grant). A DAC counts
- * as connected when the mixer exposes a USB output; the permission flag
- * tracks whether direct USB access was granted by the user.
- */
 @Singleton
 class UsbDacMonitor @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -41,7 +32,7 @@ class UsbDacMonitor @Inject constructor(
 ) {
     data class State(
         val dac: UsbDacInfo? = null,
-        /** LastWave asked AudioTrack to prefer this DAC. */
+
         val routeRequested: Boolean = false,
     )
 
@@ -99,7 +90,6 @@ class UsbDacMonitor @Inject constructor(
         _state.update { if (it.routeRequested == requested) it else it.copy(routeRequested = requested) }
     }
 
-    /** Re-reads mixer devices + USB bus; safe to call from anywhere. */
     fun refresh() {
         val mixer = runCatching {
             audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
@@ -155,10 +145,6 @@ class UsbDacMonitor @Inject constructor(
         }
     }
 
-    /**
-     * Asks the user for direct USB access to the audio peripheral. Needs no
-     * Activity — the grant returns to our private broadcast.
-     */
     fun requestPermission() {
         val manager = usbManager ?: return
         val device = runCatching {

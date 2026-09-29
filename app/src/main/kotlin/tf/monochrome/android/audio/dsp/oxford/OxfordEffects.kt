@@ -1,12 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-// Kotlin JNI wrappers + state for Oxford Inflator / Compressor.
-//
-// Integration points:
-//   - MixBusProcessor calls prepare() on format change and
-//     processArrays(L, R, frames) after the native engine runs.
-//   - UI observes `state` StateFlow; updates go through public setters which
-//     mutate the flow and push params to native (native holds the
-//     authoritative atomic copy used on the audio thread).
+
 
 package tf.monochrome.android.audio.dsp.oxford
 
@@ -19,8 +11,6 @@ import java.nio.ByteOrder
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
-
-// ---- Native entry points -------------------------------------------------
 
 internal object InflatorNative {
     init { DspNativeLoader.ensureLoaded() }
@@ -55,33 +45,18 @@ internal object CompressorNative {
     external fun nativeReadMeters(handle: Long): Long
 }
 
-// ---- State data classes --------------------------------------------------
-
 data class InflatorState(
-    val inputDb:    Float   =  0.0f,   // [-6, +12]
-    val outputDb:   Float   =  0.0f,   // [-12,  0]
-    val effectPct:  Float   = 100.0f,  // [0, 100]  — UI-native unit
-    val curve:      Float   =  0.0f,   // [-50, +50]
+    val inputDb:    Float   =  0.0f,
+    val outputDb:   Float   =  0.0f,
+    val effectPct:  Float   = 100.0f,
+    val curve:      Float   =  0.0f,
     val clipZeroDb: Boolean = true,
     val bandSplit:  Boolean = false,
-    val effectIn:   Boolean = false,   // UI "Effect In" — false == bypass, off by default
-    /**
-     * Anti-alias oversampling for the waveshaper: 1 (off), 2 or 4.
-     *
-     * The transfer function is a 4th-order polynomial, so it generates
-     * harmonics several times the input frequency. At 44.1 kHz anything above
-     * roughly 5 kHz throws products past Nyquist that fold back down as
-     * inharmonic grit. Off by default to keep the shipping CPU cost where it
-     * was; 2x clears the audible band for most material and 4x covers the top
-     * octave at 44.1 kHz.
-     */
+    val effectIn:   Boolean = false,
+
     val oversampling: Int = 1,
 )
 
-/**
- * Factory presets for the Inflator. Each entry carries the full state the
- * user lands in when the chip is tapped. Tuned for common mixing tasks.
- */
 enum class InflatorPreset(
     val label: String,
     val tagline: String,
@@ -141,23 +116,11 @@ data class CompressorState(
     val releaseMs:   Float = 100.0f,
     val kneeDb:      Float =   6.0f,
     val makeupDb:    Float =   0.0f,
-    val bypass:      Boolean = true,   // off by default
-    /**
-     * Anti-alias oversampling for the detector and gain stage: 1 (off), 2 or 4.
-     *
-     * Full-wave detection makes the envelope ripple at twice the input
-     * frequency; that ripple modulates the gain and throws sidebands past
-     * Nyquist which fold back. Measured on a 9 kHz tone at 44.1 kHz and 20:1,
-     * the artefact floor went -38 dBc off, -49 dBc at 2x, -63 dBc at 4x.
-     * Attack and release keep their real-world timing at every setting.
-     */
+    val bypass:      Boolean = true,
+
     val oversampling: Int = 1,
 )
 
-/**
- * Factory presets for the Compressor. Tuned for typical engineering
- * targets rather than maximum gain reduction — audition, then taste.
- */
 enum class CompressorPreset(
     val label: String,
     val tagline: String,
@@ -222,8 +185,6 @@ data class StereoPeak(val left: Float, val right: Float) {
     companion object { val Zero = StereoPeak(0f, 0f) }
 }
 
-// ---- Effect classes ------------------------------------------------------
-
 @Singleton
 class InflatorEffect @Inject constructor() {
     private val handle = AtomicLong(InflatorNative.nativeCreate())
@@ -249,12 +210,7 @@ class InflatorEffect @Inject constructor() {
     }
 
     fun processArrays(l: FloatArray, r: FloatArray, frames: Int) {
-        // Fast path: when the user has the effect bypassed (the default
-        // shipping state), skip the JNI round-trip entirely. The C++ side
-        // also early-returns on bypass, but the per-buffer JNI border
-        // overhead alone is enough to chip into headroom on top of the
-        // already-running mix-bus engine, contributing to PipelineWatcher
-        // back-pressure on the audio renderer.
+
         if (!_state.value.effectIn) return
         val h = handle.get()
         if (h != 0L) InflatorNative.nativeProcessArrays(h, l, r, frames)
@@ -283,15 +239,10 @@ class InflatorEffect @Inject constructor() {
     fun setBandSplit(on: Boolean)   = update { it.copy(bandSplit  = on) }
     fun setEffectIn(on: Boolean)    = update { it.copy(effectIn   = on) }
 
-    /**
-     * Anti-alias oversampling for the waveshaper: 1 (off), 2 or 4. Anything
-     * else snaps down to the nearest supported factor.
-     */
     fun setOversampling(factor: Int) = update {
         it.copy(oversampling = if (factor >= 4) 4 else if (factor >= 2) 2 else 1)
     }
 
-    /** Apply a factory preset atomically (single native push). */
     fun applyPreset(preset: InflatorPreset) = update { preset.state }
 
     fun release() {
@@ -337,7 +288,6 @@ class CompressorEffect @Inject constructor() {
     }
 
     fun processArrays(l: FloatArray, r: FloatArray, frames: Int) {
-        // Fast path: skip JNI when the user has the compressor bypassed.
         if (_state.value.bypass) return
         val h = handle.get()
         if (h != 0L) CompressorNative.nativeProcessArrays(h, l, r, frames)
@@ -367,12 +317,10 @@ class CompressorEffect @Inject constructor() {
     fun setMakeupDb(v: Float)    = update { it.copy(makeupDb    = v.coerceIn(-12f, 24f)) }
     fun setBypass(b: Boolean)    = update { it.copy(bypass      = b) }
 
-    /** Anti-alias oversampling: 1 (off), 2 or 4. Other values snap down. */
     fun setOversampling(factor: Int) = update {
         it.copy(oversampling = if (factor >= 4) 4 else if (factor >= 2) 2 else 1)
     }
 
-    /** Apply a factory preset atomically (single native push). */
     fun applyPreset(preset: CompressorPreset) = update { preset.state }
 
     fun release() {

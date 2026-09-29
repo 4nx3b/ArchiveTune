@@ -1,28 +1,5 @@
 @file:OptIn(androidx.media3.common.util.UnstableApi::class)
 
-/*
- * ArchiveTune (2026)
- * © Rukamori — github.com/rukamori
- * GPL-3.0 License | Contributors: see git history
- *
- * Tryptify's libusb bit-perfect USB-DAC output as a Media3 [AudioOutput],
- * handed to DefaultAudioSink by [UsbExclusiveAudioOutputProvider] whenever
- * "Enable Tryptify Audio Processing" is on and USB-exclusive output is
- * requested. This is the port of Tryptify's LibusbAudioSink bypass path
- * (https://github.com/tryptz/Tryptify, audio/usb/LibusbAudioSink.kt),
- * adapted to ArchiveTune's AudioOutputProvider architecture: the sink
- * still owns the processor chain (Sonic, haptics, stereo pan, transition
- * DSP, and the engine-router tail that runs Tryptify's own DSP + AutoEQ),
- * while this class drives the libusb UAC1/UAC2 isochronous pump directly
- * to the DAC — bypassing the Android audio HAL entirely.
- *
- * Faithful pieces from LibusbAudioSink: the 24-bit-then-16-bit engagement
- * ladder for float chains, packFloatForUsb gain+subslot packing, the
- * played-frames-based position reporting, and the 400 ms warmup / 400 ms
- * stall watchdog that gives up so the standard route can take over on the
- * next configure.
- */
-
 package moe.rukamori.archivetune.playback.dsp
 
 import android.hardware.usb.UsbDevice
@@ -49,7 +26,6 @@ class TryptifyLibusbAudioOutput(
     private val volumeController: BypassVolumeController,
     private val permissionScope: CoroutineScope,
 ) : AudioOutput {
-
     private val listeners = CopyOnWriteArraySet<AudioOutput.Listener>()
 
     private var engaged = false
@@ -60,8 +36,6 @@ class TryptifyLibusbAudioOutput(
     private val channels: Int = channelCountForMask(config.channelMask)
     private val sourceIsFloat: Boolean = config.encoding == C.ENCODING_PCM_FLOAT
 
-    // Watchdog state: playedFrames sampled per write; if the iso pump never
-    // advances within the stall window after warmup the stream is wedged.
     private var firstWriteElapsedMs = -1L
     private var lastPlayedFrames = -1L
     private var lastAdvanceElapsedMs = 0L
@@ -75,9 +49,6 @@ class TryptifyLibusbAudioOutput(
         if (engaged) return true
         val rate = if (config.sampleRate > 0) config.sampleRate else 48000
 
-        // Permission is granted asynchronously; the first attempt kicks off
-        // the request and reports failure so this track falls back while the
-        // dialog is up — the next configure re-routes once granted.
         if (!driver.isOpen.value) {
             if (!driver.open(usbDevice)) {
                 permissionScope.launch { runCatching { driver.requestPermission(usbDevice) } }
@@ -86,10 +57,6 @@ class TryptifyLibusbAudioOutput(
             }
         }
 
-        // The Tryptify bit-depth ladder: float chains ask for 24-bit first
-        // (float carries a 24-bit mantissa; 16 throws away precision the DSP
-        // produced) and fall back to 16 if the DAC has no 24-bit alt at this
-        // rate. Integer chains offer exactly their own width.
         val ladder = if (sourceIsFloat) intArrayOf(24, 16) else intArrayOf(16)
         for (bits in ladder) {
             if (driver.isStreamingFormat(rate, bits, channels) || driver.start(rate, bits, channels)) {
@@ -131,8 +98,7 @@ class TryptifyLibusbAudioOutput(
 
     @Synchronized
     override fun pause() {
-        // The iso pump keeps running (the ring drains); reporting a pause is
-        // enough for the sink's position anchoring.
+
         started = false
     }
 
@@ -167,7 +133,6 @@ class TryptifyLibusbAudioOutput(
         return written >= frames
     }
 
-    /** Tryptify's packFloatForUsb: one-pass gain + float→subslot conversion. */
     private fun packFloatForUsb(src: ByteBuffer, frames: Int, gain: Float): ByteBuffer {
         val samples = frames * channels
         val out = ensurePackScratch(samples * usbBytesPerSample)
@@ -202,7 +167,6 @@ class TryptifyLibusbAudioOutput(
         return packScratch
     }
 
-    /** 400 ms warmup / 400 ms stall watchdog, straight from LibusbAudioSink. */
     private fun checkWatchdog(now: Long) {
         val played = driver.playedFrames()
         if (played != lastPlayedFrames) {
@@ -297,14 +261,9 @@ class TryptifyLibusbAudioOutput(
         private const val USB_ENGAGE_FAILED = -9001
         private const val USB_WRITE_FAILED = -9002
 
-        /** Cached dlopen probe for libmonochrome_usb.so. */
         @Volatile
         private var nativeAvailable: Boolean? = null
 
-        /**
-         * True when the native libusb driver library is loadable — the
-         * provider's go/no-go probe before routing here.
-         */
         fun available(): Boolean {
             nativeAvailable?.let { return it }
             val ok = runCatching {

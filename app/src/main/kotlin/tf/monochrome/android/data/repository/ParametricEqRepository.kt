@@ -12,10 +12,6 @@ import tf.monochrome.android.domain.model.EqPreset
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Repository for user-created Parametric EQ presets (eqType = 1).
- * Shares the `eq_presets` table with AutoEQ but is isolated by the eqType filter.
- */
 @Singleton
 class ParametricEqRepository @Inject constructor(
     private val eqPresetDao: EqPresetDao,
@@ -25,14 +21,6 @@ class ParametricEqRepository @Inject constructor(
     fun getAllPresets(): Flow<List<EqPreset>> =
         eqPresetDao.getAllParametricPresets().map { list -> list.map { it.toDomain() } }
 
-    /**
-     * A parametric preset by id, re-emitting if it arrives later.
-     *
-     * The one-shot [getPresetById] races the cloud pull on a fresh device: the
-     * active-preset id travels in the settings blob and the preset itself
-     * travels as a row, and whichever lands second decides whether the screen
-     * comes up with an active preset or with nothing.
-     */
     fun getPresetByIdFlow(presetId: String): Flow<EqPreset?> =
         eqPresetDao.getPresetByIdFlow(presetId).map { entity ->
             entity?.takeIf { it.eqType == 1 }?.toDomain()
