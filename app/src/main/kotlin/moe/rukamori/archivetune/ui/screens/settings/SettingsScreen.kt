@@ -214,6 +214,9 @@ fun SettingsScreen(
     val isAndroid12OrLater = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val listState = rememberLazyListState()
 
+    // Declared ahead of the scroll-visibility block below, which reads it.
+    var searchQuery by remember { mutableStateOf("") }
+
     // True only while the list is actually scrolled (not parked at the top):
     // drives the search pill's appearance. Reading it through derivedStateOf
     // keeps the item add/remove to scroll-boundary changes instead of every
@@ -272,7 +275,6 @@ fun SettingsScreen(
             }
         }
 
-    var searchQuery by remember { mutableStateOf("") }
     val shouldShowPermissionHint = !isStorageGranted || !isNotificationGranted
     val hasUpdate =
         BuildConfig.UPDATER_AVAILABLE &&

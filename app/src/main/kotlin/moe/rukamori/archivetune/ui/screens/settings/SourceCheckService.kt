@@ -81,6 +81,88 @@ object SourceCheckService {
         return result
     }
 
+    // Restored from 81f8b69f9^ — the engine commit's QQ Music removal
+    // accidentally carried this Tidal checker away with checkQqMusic.
+    private suspend fun checkTidal(context: Context): SourceCheckResult {
+        PoolAccountManager.refresh(context, force = false)
+        val accounts = PoolAccountManager.tidalAccounts()
+        if (accounts.isEmpty()) {
+            val healthyInstances = runCatching {
+                moe.rukamori.archivetune.tidal.TidalInstanceHealthManager.healthyUrls(context).size
+            }.getOrDefault(0)
+            return if (healthyInstances > 0) {
+                SourceCheckResult(
+                    status = SourceCheckStatus.DEGRADED,
+                    summary = "No Tidal accounts in the source pool, but $healthyInstances public " +
+                        "instance(s) are reachable — playback works at reduced quality (may serve previews). " +
+                        "For lossless, sign in with your own Tidal token via Integration → Manual source sign-in.",
+                )
+            } else {
+                SourceCheckResult(
+                    status = SourceCheckStatus.NOT_CONFIGURED,
+                    summary = "No Tidal accounts in the source pool and no public instance is reachable. " +
+                        "Sign in with your own Tidal token via Integration → Manual source sign-in, " +
+                        "or re-toggle the Tidal source here to pull fresh pool accounts.",
+                )
+            }
+        }
+        val premium = accounts.count { it.premium }
+
+        val probeAccount = accounts.firstOrNull { it.premium } ?: accounts.first()
+        val session = runCatching { TidalAccountManager.buildSessionFromBearer(probeAccount.token) }.getOrNull()
+        val subscription =
+            session?.userId?.let { userId ->
+                runCatching { TidalAccountManager.fetchSubscription(probeAccount.token, userId) }.getOrNull()
+            }
+        val accountLabel =
+            when {
+                session == null -> "token rejected by the Tidal API (expired — re-toggle the source to refresh the pool)"
+                subscription == TidalAccountManager.Subscription.PREMIUM -> "valid (premium — lossless available)"
+                subscription == TidalAccountManager.Subscription.FREE -> "valid but FREE (previews only, no lossless)"
+                else -> "valid, subscription tier unknown"
+            }
+        val accountPathReady = session != null && subscription != TidalAccountManager.Subscription.FREE
+
+        val healthyInstances = runCatching {
+            moe.rukamori.archivetune.tidal.TidalInstanceHealthManager.healthyUrls(context).size
+        }.getOrDefault(0)
+
+        val summary = buildString {
+            append("Pool accounts: ${accounts.size} ($premium premium)\n")
+            append("Account stream path: $accountLabel\n")
+            append("Public instances (optional fallback): $healthyInstances healthy")
+            if (accountPathReady) {
+                append("\n\nTidal source is READY via the account path.")
+                if (healthyInstances == 0) {
+                    append(
+                        " No public instance is reachable, but none is needed — " +
+                            "the pool's subscriber token streams directly from Tidal.",
+                    )
+                }
+            } else {
+                append("\n\nTidal source is ")
+                append(
+                    if (healthyInstances > 0) {
+                        "PARTIALLY ready: the account path failed, so playback will fall back to a public " +
+                            "instance (lower quality, may serve previews)."
+                    } else {
+                        "NOT ready: the account path failed and no public instance is reachable. " +
+                            "Re-toggle the Tidal source to pull fresh pool tokens, or add a private " +
+                            "Tidal instance via Integration."
+                    },
+                )
+            }
+        }
+        return SourceCheckResult(
+            status = when {
+                accountPathReady -> SourceCheckStatus.READY
+                healthyInstances > 0 -> SourceCheckStatus.DEGRADED
+                else -> SourceCheckStatus.UNREACHABLE
+            },
+            summary = summary,
+        )
+    }
+
     private suspend fun checkQobuz(context: Context): SourceCheckResult {
         PoolAccountManager.refresh(context, force = false)
         val accounts = PoolAccountManager.qobuzAccounts()

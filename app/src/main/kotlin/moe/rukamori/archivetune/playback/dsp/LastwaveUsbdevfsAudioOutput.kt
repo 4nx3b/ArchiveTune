@@ -55,7 +55,7 @@ class LastwaveUsbdevfsAudioOutput(
 
     @Synchronized
     private fun ensureConfigured(): Boolean {
-        if (configured && exclusive.isActive) return true
+        if (configured && exclusive.isActive()) return true
         exclusive.setWanted(true)
         val ok = exclusive.configure(sourceFormat)
         if (!ok) {

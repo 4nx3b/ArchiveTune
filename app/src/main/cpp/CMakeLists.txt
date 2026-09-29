@@ -9,8 +9,14 @@
 # through ONNX Runtime on the Kotlin side, not here. The shared analyzer
 # sources live under the repo's root `native/` tree.
 
+# LANGUAGES must include C: the Tryptify/Lastwave engine port added C targets
+# (the vendored libusb static library, soxr's project (soxr C)) under a
+# CXX-only top-level project, and CMake only initializes the C archive rules
+# (CMAKE_C_ARCHIVE_CREATE/FINISH) for languages declared up front — enabling
+# C late from a subdirectory leaves those unset and the generate step dies
+# with "Error required internal CMake variable not set … CMAKE_C_ARCHIVE_FINISH".
 cmake_minimum_required(VERSION 3.22.1)
-project(archivetune_analysis LANGUAGES CXX)
+project(archivetune_analysis LANGUAGES C CXX)
 
 get_filename_component(ARCHIVETUNE_NATIVE_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../../native"

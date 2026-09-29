@@ -78,7 +78,7 @@ class TryptifyLibusbAudioOutput(
         // Permission is granted asynchronously; the first attempt kicks off
         // the request and reports failure so this track falls back while the
         // dialog is up — the next configure re-routes once granted.
-        if (!driver.isOpen) {
+        if (!driver.isOpen.value) {
             if (!driver.open(usbDevice)) {
                 permissionScope.launch { runCatching { driver.requestPermission(usbDevice) } }
                 Log.i(TAG, "libusb open needs permission — request queued, falling back for this track")
@@ -255,12 +255,12 @@ class TryptifyLibusbAudioOutput(
     override fun getAudioSessionId(): Int = 0
 
     override fun getSampleRate(): Int =
-        driver.diagnostics.value?.sampleRate ?: config.sampleRate
+        driver.diagnostics.value?.sampleRateHz ?: config.sampleRate
 
     override fun getBufferSizeInFrames(): Long = driver.pendingFrames()
 
     override fun getPositionUs(): Long {
-        val rate = driver.diagnostics.value?.sampleRate ?: return 0L
+        val rate = driver.diagnostics.value?.sampleRateHz ?: return 0L
         if (rate <= 0) return 0L
         val frames = driver.playedFrames()
         return (frames * 1_000_000L) / rate

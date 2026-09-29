@@ -29,8 +29,9 @@ import kotlin.math.floor
  * instead of folding the top octave back into the audible range.
  *
  * Time-stretching (preserve-pitch on) is a different problem and is left to
- * Sonic — see [tf.monochrome.android.audio.resample.TryptifyAudioProcessorChain],
- * which routes each mode to whichever of the two can do it.
+ * Sonic: upstream Tryptify's processor-chain split routed each mode to
+ * whichever of the two can do it; here the app's own DspTailAudioProcessorChain
+ * keeps Sonic as the single transport stage.
  *
  * Sample rate and channel count are unchanged; only the frame *count* moves,
  * which is exactly the contract Sonic already has with the sink.

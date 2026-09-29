@@ -147,6 +147,7 @@ import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.FloatDspEnabledKey
 import moe.rukamori.archivetune.constants.LastwaveAudioProcessingKey
+import moe.rukamori.archivetune.constants.SongSourceTidalTrackIdKey
 import moe.rukamori.archivetune.constants.TryptifyAudioProcessingKey
 import moe.rukamori.archivetune.constants.UsbExclusiveAudioKey
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedKey
@@ -334,8 +335,11 @@ import moe.rukamori.archivetune.playback.artwork.ResolvedArtwork
 import moe.rukamori.archivetune.playback.artwork.isLocalArtworkUri
 import moe.rukamori.archivetune.playback.smart.CrossfadeMode
 import moe.rukamori.archivetune.playback.smart.SmartFadeAnalyzer
+import moe.rukamori.archivetune.playback.dsp.AudioEngineKind
+import moe.rukamori.archivetune.playback.dsp.AudioEngineRouterProcessor
 import moe.rukamori.archivetune.playback.dsp.DspTailAudioProcessorChain
 import moe.rukamori.archivetune.playback.dsp.FloatDspProcessor
+import moe.rukamori.archivetune.playback.dsp.TryptifyEngineController
 import moe.rukamori.archivetune.playback.dsp.UsbExclusiveAudioOutputProvider
 import moe.rukamori.archivetune.playback.smart.SmartFadeRuntimeState
 import moe.rukamori.archivetune.playback.smart.SmartFadeSettings
@@ -10100,7 +10104,13 @@ class MusicService :
                 .setEnableFloatOutput(false)
                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                 .setAudioOutputProvider(
-                    UsbExclusiveAudioOutputProvider(context) { usbExclusiveAudioEnabled }
+                    // Trailing-lambda syntax would bind to the LAST ctor param
+                    // (permissionScope) — the exclusive-enabled gate must be
+                    // passed as a named argument.
+                    UsbExclusiveAudioOutputProvider(
+                        context = context,
+                        exclusiveEnabled = { usbExclusiveAudioEnabled },
+                    )
                         .withEngines(
                             engineSelection = {
                                 when {
