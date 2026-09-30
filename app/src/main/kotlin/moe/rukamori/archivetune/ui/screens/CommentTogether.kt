@@ -21,6 +21,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -564,10 +565,18 @@ fun CommentTogetherScreen(navController: NavController) {
             // with the glass pill floating ON the band, not stacked under it.
             Box(modifier = Modifier.fillMaxWidth()) {
                 if (globalGlassEnabled) {
+                    // Haze only once the chat has actually scrolled under the
+                    // header — same universal rule as every other screen.
+                    val chatHazeIntensity by animateFloatAsState(
+                        targetValue = if (lazyListState.canScrollBackward) 1f else 0f,
+                        animationSpec = tween(durationMillis = 220),
+                        label = "chatHazeIntensity",
+                    )
                     HomeTopFadeBlur(
                         hazeState = chatHazeState,
                         pageColor = MaterialTheme.colorScheme.surface,
                         barHeight = statusBarTop + 48.dp,
+                        intensityFraction = chatHazeIntensity,
                     )
                 }
 

@@ -119,7 +119,6 @@ import moe.rukamori.archivetune.constants.QobuzBackupEndpointsKey
 import moe.rukamori.archivetune.qobuz.QobuzBackupProvider
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
-import moe.rukamori.archivetune.ui.utils.TrackInfoAndSpecs
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.ListDialog
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
@@ -1416,21 +1415,9 @@ fun PlayerMenu(
                         )
                     }
 
-                    ListItem(
-                        headlineContent = { Text(text = stringResource(R.string.track_info_specs)) },
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(R.drawable.graphic_eq),
-                                contentDescription = null,
-                            )
-                        },
-                        modifier =
-                            Modifier.clickable {
-                                bottomSheetPageState.show { TrackInfoAndSpecs() }
-                                onDismiss()
-                            },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    )
+                    // "Track info & specs" was merged INTO the Details popup
+                    // (ShowMediaInfo) — its overview + audio-specs data now
+                    // appears there, redesigned in the same expressive style.
 
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.details)) },

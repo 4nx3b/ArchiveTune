@@ -116,11 +116,19 @@ fun OnlineSearchResult(
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     if (viewModel.searchProvider == SearchProvider.SPOTIFY) {
-        SpotifyOnlineSearchResult(navController = navController)
+        SpotifyOnlineSearchResult(
+            navController = navController,
+            searchSort = searchSort,
+            onSearchSortChange = onSearchSortChange,
+        )
         return
     }
     if (viewModel.searchProvider == SearchProvider.APPLE_MUSIC) {
-        AppleMusicOnlineSearchResult(navController = navController)
+        AppleMusicOnlineSearchResult(
+            navController = navController,
+            searchSort = searchSort,
+            onSearchSortChange = onSearchSortChange,
+        )
         return
     }
 
@@ -453,10 +461,12 @@ fun OnlineSearchResult(
             }
         }
 
-        // Transparent blurred top, exactly like the home screen.
+        // Transparent blurred top, exactly like the home screen — but only
+        // once the results have actually scrolled under it.
         ScreenHeaderHaze(
             hazeState = barState.haze,
             systemBarsTopPadding = systemBarsTopPadding + 8.dp,
+            scrolled = lazyListState.canScrollBackward,
         )
 
         // Bottom chrome: category pills above the back + search glass pills.
@@ -469,6 +479,7 @@ fun OnlineSearchResult(
             onBackLongClick = { navController.backToMain() },
             placeholder = stringResource(R.string.search_yt_music),
             bottomPadding = playerAwareBottomPadding,
+            lazyListState = lazyListState,
             trailing = {
                 SearchSourcePicker(
                     currentScope = SearchSource.ONLINE,

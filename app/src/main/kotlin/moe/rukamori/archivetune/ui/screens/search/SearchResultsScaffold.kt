@@ -17,6 +17,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -26,12 +28,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.getBottom
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -58,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -67,15 +74,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
+import com.kyant.backdrop.Backdrop
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.HideSearchChromeWhileScrollingKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
-import moe.rukamori.archivetune.ui.component.PlatformBackdrop
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlass
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -91,7 +99,7 @@ import android.os.Build
 @Stable
 class SearchResultsBarState(
     val liquidGlassActive: Boolean,
-    val backdrop: PlatformBackdrop?,
+    val backdrop: Backdrop?,
     val haze: HazeState,
 )
 
@@ -101,7 +109,11 @@ fun rememberSearchResultsBarState(): SearchResultsBarState {
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
     val surfaceColor = MaterialTheme.colorScheme.surface
 
-    val backdrop = rememberBackdrop(surfaceColor)
+    // Throttled recorder: the results list redraws on every scroll frame, and
+    // re-recording it into the glass layer per frame (plus re-running every
+    // pill's blur shader) is what made this page lag while the glass mini
+    // player was on screen. 10 Hz is visually identical behind an 18dp blur.
+    val backdrop = rememberThrottledBackdrop(surfaceColor)
     val haze = rememberScreenHeaderHaze()
     val active =
         liquidGlassEnabled &&
@@ -117,7 +129,12 @@ fun rememberSearchResultsBarState(): SearchResultsBarState {
 /** Tags the scrolling content as the source for both the top haze and the glass pills. */
 fun Modifier.searchResultsBarSource(state: SearchResultsBarState): Modifier =
     this
-        .then(if (state.backdrop != null) Modifier.layerBackdrop(state.backdrop) else Modifier)
+        .then(
+            when (val backdrop = state.backdrop) {
+                null -> Modifier
+                else -> Modifier.glassSource(backdrop)
+            }
+        )
         .hazeSource(state.haze)
 
 /**
@@ -156,11 +173,29 @@ fun BoxScope.SearchResultsBottomOverlay(
     onBackLongClick: () -> Unit = {},
     placeholder: String = "",
     bottomPadding: Dp = 0.dp,
+    lazyListState: LazyListState? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
     chipsRow: (@Composable () -> Unit)? = null,
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     var fieldFocused by rememberSaveable { mutableStateOf(false) }
+
+    // "Hide search bar and category pills while scrolling" (Appearance): the
+    // whole chrome slides away while the list is actively scrolling below the
+    // top and slides back the moment the fling settles.
+    val hideWhileScrolling by rememberPreference(HideSearchChromeWhileScrollingKey, defaultValue = false)
+    val chromeHidden =
+        hideWhileScrolling &&
+            lazyListState != null &&
+            lazyListState.isScrollInProgress &&
+            lazyListState.canScrollBackward
+
+    // While the keyboard is open it fully covers the mini player, so the
+    // player-aware bottom reserve would only add dead space between the search
+    // pill and the IME. Drop it for as long as the IME is visible.
+    val density = LocalDensity.current
+    val imeVisible = WindowInsets.ime.getBottom(density) > 0
+    val effectiveBottomPadding = (if (imeVisible) 0.dp else bottomPadding) + 10.dp
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -169,45 +204,53 @@ fun BoxScope.SearchResultsBottomOverlay(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .imePadding()
-                .padding(start = 12.dp, end = 12.dp, bottom = bottomPadding + 10.dp),
+                .padding(start = 12.dp, end = 12.dp, bottom = effectiveBottomPadding),
     ) {
-        if (chipsRow != null) {
-            AnimatedVisibility(
-                visible = !fieldFocused,
-                enter = fadeIn(tween(160)) + expandVerticallySoft(),
-                exit = fadeOut(tween(120)) + shrinkVerticallySoft(),
-            ) {
-                Column {
-                    chipsRow()
-                    Spacer(Modifier.height(10.dp))
+        AnimatedVisibility(
+            visible = !chromeHidden,
+            enter = fadeIn(tween(200)) + slideInVertically(tween(240)) { it / 2 },
+            exit = fadeOut(tween(140)) + slideOutVertically(tween(200)) { it / 2 },
+        ) {
+            Column {
+                if (chipsRow != null) {
+                    AnimatedVisibility(
+                        visible = !fieldFocused,
+                        enter = fadeIn(tween(160)) + expandVerticallySoft(),
+                        exit = fadeOut(tween(120)) + shrinkVerticallySoft(),
+                    ) {
+                        Column {
+                            chipsRow()
+                            Spacer(Modifier.height(10.dp))
+                        }
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    SearchBackPill(
+                        state = state,
+                        onBack = onBack,
+                        onBackLongClick = onBackLongClick,
+                    )
+
+                    SearchInputPill(
+                        state = state,
+                        query = query,
+                        onQueryChange = onQueryChange,
+                        onSearch = { text ->
+                            onSearch(text)
+                            keyboardController?.hide()
+                        },
+                        placeholder = placeholder,
+                        onFocusChanged = { fieldFocused = it },
+                        trailing = trailing,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
-        }
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            SearchBackPill(
-                state = state,
-                onBack = onBack,
-                onBackLongClick = onBackLongClick,
-            )
-
-            SearchInputPill(
-                state = state,
-                query = query,
-                onQueryChange = onQueryChange,
-                onSearch = { text ->
-                    onSearch(text)
-                    keyboardController?.hide()
-                },
-                placeholder = placeholder,
-                onFocusChanged = { fieldFocused = it },
-                trailing = trailing,
-                modifier = Modifier.weight(1f),
-            )
         }
     }
 }

@@ -32,19 +32,18 @@ import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
 import moe.rukamori.archivetune.ui.component.GlassPillTitleText
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
-import moe.rukamori.archivetune.ui.component.PlatformBackdrop
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
+import com.kyant.backdrop.Backdrop
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
-import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.runtime.getValue
 
 @Stable
 class GlassScreenHeader(
     val liquidGlassActive: Boolean,
-    val backdrop: PlatformBackdrop?,
+    val backdrop: Backdrop?,
     val haze: HazeState,
 )
 
@@ -52,22 +51,24 @@ class GlassScreenHeader(
 fun rememberGlassScreenHeader(): GlassScreenHeader {
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    // Glass follows the sheet's actual top edge now: pills stay glass for as
-    // long as they are on screen (LiquidGlassActionPill fades them out only
-    // as the sheet's edge climbs past the pill zone) and the record detaches
-    // once the header is fully covered — instead of hard-swapping glass for
-    // plain headers the moment the sheet leaves the mini-player bound, which
-    // was plainly visible mid-transition and popped back on collapse.
-    val playerSheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
+    // The recording source stays attached for the whole lifetime of the screen:
+    // detaching `Modifier.layerBackdrop` while the player sheet covers the
+    // header nulls the backdrop's layerCoordinates, and the kyant
+    // implementation silently stops drawing ANY glass for it afterwards — the
+    // "pills turn light and never recover after maximise→minimise" bug. The
+    // pills themselves fade with the sheet's edge (LiquidGlassActionPill reads
+    // LocalPlayerSheetOverlayFraction in its draw phase), and the recorder is
+    // throttled to 10 Hz, so an always-attached source is both correct and
+    // cheap. The content behind the sheet doesn't redraw while covered, which
+    // means recording is naturally idle during the transition anyway.
     val surfaceColor = MaterialTheme.colorScheme.surface
 
-    val backdrop = rememberBackdrop(surfaceColor)
+    val backdrop = rememberThrottledBackdrop(surfaceColor)
     val haze = rememberScreenHeaderHaze()
     val active =
         liquidGlassEnabled &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            !lyricsFullScreen &&
-            playerSheetOverlayFraction < 1f
+            !lyricsFullScreen
     return GlassScreenHeader(
         liquidGlassActive = active,
         backdrop = if (active) backdrop else null,
@@ -77,7 +78,12 @@ fun rememberGlassScreenHeader(): GlassScreenHeader {
 
 fun Modifier.glassHeaderSource(header: GlassScreenHeader): Modifier =
     this
-        .then(if (header.backdrop != null) Modifier.layerBackdrop(header.backdrop) else Modifier)
+        .then(
+            when (val backdrop = header.backdrop) {
+                null -> Modifier
+                else -> Modifier.glassSource(backdrop)
+            }
+        )
         .hazeSource(header.haze)
 
 @Composable
@@ -88,6 +94,7 @@ fun BoxScope.GlassScreenHeaderOverlay(
     onBackLongClick: () -> Unit,
     modifier: Modifier = Modifier,
     onSearch: (() -> Unit)? = null,
+    scrolled: Boolean = true,
     trailing: (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? = null,
 ) {
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
@@ -95,6 +102,7 @@ fun BoxScope.GlassScreenHeaderOverlay(
     ScreenHeaderHaze(
         hazeState = header.haze,
         systemBarsTopPadding = systemBarsTopPadding,
+        scrolled = scrolled,
     )
 
     val backdrop = header.backdrop

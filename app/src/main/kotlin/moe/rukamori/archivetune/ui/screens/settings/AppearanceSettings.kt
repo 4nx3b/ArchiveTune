@@ -88,6 +88,7 @@ import moe.rukamori.archivetune.constants.GridItemSize
 import moe.rukamori.archivetune.constants.GridItemsSizeKey
 import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
 import moe.rukamori.archivetune.constants.HideScrollbarKey
+import moe.rukamori.archivetune.constants.HideSearchChromeWhileScrollingKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.MinimalHomeModeKey
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
@@ -283,6 +284,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         )
     val (hideScrollbar, onHideScrollbarChange) =
         rememberPreference(HideScrollbarKey, defaultValue = false)
+    val (hideSearchChromeWhileScrolling, onHideSearchChromeWhileScrollingChange) =
+        rememberPreference(HideSearchChromeWhileScrollingKey, defaultValue = false)
     val (minimalHomeMode, onMinimalHomeModeChange) =
         rememberPreference(MinimalHomeModeKey, defaultValue = false)
 
@@ -1137,6 +1140,17 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         icon = { Icon(painterResource(R.drawable.filter_alt), null) },
                         checked = hideScrollbar,
                         onCheckedChange = onHideScrollbarChange,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("hide_search_chrome_while_scrolling"),
+                        title = { Text(stringResource(R.string.hide_search_chrome_while_scrolling)) },
+                        description = stringResource(R.string.hide_search_chrome_while_scrolling_desc),
+                        icon = { Icon(painterResource(R.drawable.search_off), null) },
+                        checked = hideSearchChromeWhileScrolling,
+                        onCheckedChange = onHideSearchChromeWhileScrollingChange,
                     )
                 }
 

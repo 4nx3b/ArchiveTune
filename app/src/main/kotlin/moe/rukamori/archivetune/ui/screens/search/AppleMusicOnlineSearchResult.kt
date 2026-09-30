@@ -62,6 +62,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.applemusic.AppleMusicPlaybackResolver
 import moe.rukamori.archivetune.applemusic.AppleMusicSearchItem
 import moe.rukamori.archivetune.constants.SearchProvider
+import moe.rukamori.archivetune.constants.SearchSource
 import moe.rukamori.archivetune.constants.ListThumbnailSize
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadius
 import moe.rukamori.archivetune.models.toMediaMetadata
@@ -69,11 +70,12 @@ import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
 import moe.rukamori.archivetune.ui.component.ListItem
+import moe.rukamori.archivetune.ui.component.SearchSourcePicker
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.joinByBullet
-import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.viewmodels.AppleMusicSearchViewModel
+import moe.rukamori.archivetune.viewmodels.OnlineSearchSort
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -87,6 +89,8 @@ private enum class AppleMusicSearchFilter {
 @Composable
 internal fun AppleMusicOnlineSearchResult(
     navController: NavController,
+    searchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,
+    onSearchSortChange: (OnlineSearchSort) -> Unit = {},
     viewModel: AppleMusicSearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -217,6 +221,7 @@ internal fun AppleMusicOnlineSearchResult(
         ScreenHeaderHaze(
             hazeState = barState.haze,
             systemBarsTopPadding = systemBarsTopPadding + 8.dp,
+            scrolled = lazyListState.canScrollBackward,
         )
 
         SearchResultsBottomOverlay(
@@ -241,6 +246,35 @@ internal fun AppleMusicOnlineSearchResult(
             onBackLongClick = { navController.backToMain() },
             placeholder = stringResource(R.string.search_source_apple_music),
             bottomPadding = playerAwareBottomPadding,
+            lazyListState = lazyListState,
+            trailing = {
+                // Catalogue switch + sort menu stay reachable from the Apple
+                // Music results — same chrome as the YouTube results page.
+                SearchSourcePicker(
+                    currentScope = SearchSource.ONLINE,
+                    currentProvider = SearchProvider.APPLE_MUSIC,
+                    onSelection = { _, provider ->
+                        val text = fieldQuery.ifBlank { viewModel.query }
+                        if (text.isNotBlank()) {
+                            val replacementRoute = onlineSearchResultRoute(text, provider)
+                            val currentDestinationId = navController.currentDestination?.id
+                            if (currentDestinationId != null) {
+                                navController.navigate(replacementRoute) {
+                                    popUpTo(currentDestinationId) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            } else {
+                                navController.navigate(replacementRoute)
+                            }
+                        }
+                    },
+                    includeLocal = false,
+                )
+                SearchResultsSortMenu(
+                    selectedSort = searchSort,
+                    onSortSelected = onSearchSortChange,
+                )
+            },
             chipsRow = {
                 GlassFilterChipsRow(
                     state = barState,
@@ -335,11 +369,9 @@ internal fun AppleMusicItemRow(
 ) {
     val subtitle =
         when (item) {
-            is AppleMusicSearchItem.Track ->
-                joinByBullet(
-                    item.artist,
-                    item.durationMs.takeIf { it > 0 }?.let(::makeTimeString),
-                )
+            // Song rows carry the artist name only — duration lives in the
+            // details popup, not on every row (matches YouTube/Spotify/local).
+            is AppleMusicSearchItem.Track -> item.artist
 
             is AppleMusicSearchItem.Album ->
                 joinByBullet(

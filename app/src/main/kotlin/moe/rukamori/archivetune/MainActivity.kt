@@ -25,6 +25,7 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.os.IBinder
 import android.provider.OpenableColumns
 import android.util.Rational
@@ -311,9 +312,6 @@ import moe.rukamori.archivetune.ui.component.NewMenuItem
 import moe.rukamori.archivetune.ui.player.LocalRootOverlayActive
 import moe.rukamori.archivetune.ui.component.LocalNavigationBarBackdrop
 import moe.rukamori.archivetune.ui.component.NavigationBarBackdrop
-import com.kyant.backdrop.backdrops.LayerBackdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
@@ -1468,13 +1466,23 @@ class MainActivity : ComponentActivity() {
                         } else {
                             null
                         }
+                    // Plain (non-snapshot) clock for the frosted recorder throttle —
+                    // a snapshot write during draw would invalidate the draw pass.
+                    val frostedRecordClock = remember { longArrayOf(0L) }
 
                     val liquidGlassActive =
                         liquidGlassEnabled &&
                             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                    val liquidGlassBackdrop: LayerBackdrop? =
+                    // Root recorder for the glass mini player / floating glass
+                    // chrome. THROTTLED (10 Hz re-record): the NavHost redraws on
+                    // every scroll frame, and re-recording the whole window per
+                    // frame + re-running the mini player's blur shader was the
+                    // "search results lag while the mini player is visible"
+                    // report — through an 18dp blur a 10 Hz layer is visually
+                    // identical to a per-frame one.
+                    val liquidGlassBackdrop: ThrottledLayerBackdrop? =
                         if (liquidGlassActive) {
-                            rememberLayerBackdrop()
+                            rememberThrottledLayerBackdrop()
                         } else {
                             null
                         }
@@ -2411,6 +2419,21 @@ class MainActivity : ComponentActivity() {
                                                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                                                     !playerBottomSheetState.isExpandedOrExpanding
                                                 ) {
+                                                    // The top haze band only belongs over content that
+                                                    // has scrolled under it — at rest at the top of the
+                                                    // list there is nothing to blur, and a frost there
+                                                    // just dulls the first rows.
+                                                    val topFadeScrolled =
+                                                        when {
+                                                            isHomeRoute -> homeListState.canScrollBackward
+                                                            isSearchRoute -> searchListState.canScrollBackward
+                                                            else -> true
+                                                        }
+                                                    val topFadeIntensity by animateFloatAsState(
+                                                        targetValue = if (topFadeScrolled) 1f else 0f,
+                                                        animationSpec = tween(durationMillis = 220),
+                                                        label = "topFadeIntensity",
+                                                    )
                                                     HomeTopFadeBlur(
                                                         hazeState =
                                                             when {
@@ -2420,6 +2443,7 @@ class MainActivity : ComponentActivity() {
                                                             },
                                                         pageColor = surfaceColor,
                                                         barHeight = AppBarHeight + effectiveStatusBarTop,
+                                                        intensityFraction = topFadeIntensity,
                                                     )
                                                 } else {
                                                 val appBarHeightPx = with(LocalDensity.current) { AppBarHeight.toPx() }
@@ -3169,13 +3193,20 @@ class MainActivity : ComponentActivity() {
                                                     // over the content it is pure wasted GPU work (the
                                                     // frosted consumers are fading out anyway), and it
                                                     // was half of the playlist-transition jank.
+                                                    // Throttled to 10 Hz for the same reason: a frost
+                                                    // behind a heavy blur does not need per-frame
+                                                    // refresh while content scrolls.
                                                     Modifier
                                                         .onGloballyPositioned { coordinates ->
                                                             navBarFrostedBackdrop.contentOffsetInRoot =
                                                                 coordinates.positionInRoot()
                                                         }.drawWithContent {
-                                                            navBarFrostedBackdrop.layer.record {
-                                                                this@drawWithContent.drawContent()
+                                                            val now = SystemClock.uptimeMillis()
+                                                            if (now - frostedRecordClock[0] >= 100L) {
+                                                                frostedRecordClock[0] = now
+                                                                navBarFrostedBackdrop.layer.record {
+                                                                    this@drawWithContent.drawContent()
+                                                                }
                                                             }
                                                             drawLayer(navBarFrostedBackdrop.layer)
                                                         }
@@ -3194,7 +3225,7 @@ class MainActivity : ComponentActivity() {
                                                 },
                                             ).then(
                                                 if (liquidGlassBackdrop != null && !isPlayerLyricsFullScreen && !isPlayerSheetOverlayActive) {
-                                                    Modifier.layerBackdrop(liquidGlassBackdrop)
+                                                    Modifier.throttledLayerBackdrop(liquidGlassBackdrop)
                                                 } else {
                                                     Modifier
                                                 },

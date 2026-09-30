@@ -98,7 +98,7 @@ import moe.rukamori.archivetune.ui.component.GlassPillTitleText
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.SpotifyTrackListItem
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import android.os.Build
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
@@ -106,9 +106,8 @@ import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
-import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadProgressIndicator
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
@@ -385,13 +384,18 @@ fun SpotifyPlaylistScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
+    // The glass recording source stays attached for the whole lifetime of the
+    // screen: detaching kyant's LayerBackdrop while the player sheet covers the
+    // header nulls its layerCoordinates, and glass never comes back afterwards
+    // (the maximise->minimise "pills turn light" bug). The pills themselves fade
+    // with the sheet edge in their own draw phase, and the recorder is throttled,
+    // so an always-attached source is both correct and cheap.
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    // Mini-player-bound overlay signal for non-glass gating (canvas decode,
+    // hero animations) — keeps the OLD mini-bound semantics.
     val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
-    val playerSheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
-    val layerBackdropActive =
-        liquidGlassHeaderActive && !lyricsFullScreen && screenSettled &&
-            playerSheetOverlayFraction < 1f
 
-    val artworkBackdrop = rememberBackdrop(surfaceColor)
+    val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
 
     val headerHaze = rememberScreenHeaderHaze()
     ExpressivePullToRefreshBox(
@@ -418,8 +422,8 @@ fun SpotifyPlaylistScreen(
                 Modifier
                     .fillMaxSize()
                     .then(
-                        if (layerBackdropActive) {
-                            Modifier.layerBackdrop(artworkBackdrop)
+                        if (glassHeaderActive) {
+                            Modifier.glassSource(artworkBackdrop)
                         } else {
                             Modifier
                         },
@@ -629,9 +633,10 @@ fun SpotifyPlaylistScreen(
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
+            scrolled = lazyListState.canScrollBackward,
         )
 
-        if (layerBackdropActive && !isSearching && playlist != null) {
+        if (glassHeaderActive && !isSearching && playlist != null) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 interactive = true,

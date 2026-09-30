@@ -103,6 +103,7 @@ import android.os.Build
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.delay
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -129,18 +130,16 @@ import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
 import moe.rukamori.archivetune.ui.component.LocalMenuState
-import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.TopSearch
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.SelectionMediaMetadataMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
-import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -294,16 +293,18 @@ fun HistoryScreen(
 
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    // Cover-driven glass gating: the header pills stay glass for as long as
-    // they are on screen and leave composition only once the player sheet's
-    // edge has climbed past them (LiquidGlassActionPill fades the dissolve).
-    val playerSheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
+    // The glass recording source stays attached for the whole lifetime of the
+    // screen: detaching kyant's LayerBackdrop while the player sheet covers the
+    // header nulls its layerCoordinates, and glass never comes back afterwards
+    // (the maximise->minimise "pills turn light" bug). The pills themselves fade
+    // with the sheet edge in their own draw phase, and the recorder is throttled,
+    // so an always-attached source is both correct and cheap.
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            !lyricsFullScreen && playerSheetOverlayFraction < 1f
+            !lyricsFullScreen
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
     val surfaceColor = MaterialTheme.colorScheme.surface
-    val backdrop = rememberBackdrop(surfaceColor)
+    val backdrop = rememberThrottledBackdrop(surfaceColor)
 
     val showPersistentLiquidGlassHeader =
         liquidGlassHeaderActive && !showSearchBar
@@ -692,6 +693,7 @@ fun HistoryScreen(
             ScreenHeaderHaze(
                 hazeState = headerHaze,
                 systemBarsTopPadding = systemBarsTopPadding,
+                scrolled = activeListState.canScrollBackward,
             )
 
             if (showPersistentLiquidGlassHeader) {
@@ -864,7 +866,7 @@ fun HistoryScreen(
 private fun LocalHistoryFeed(
     listState: LazyListState,
     topPadding: Dp,
-    backdrop: PlatformBackdrop?,
+    backdrop: Backdrop?,
     headerContent: @Composable () -> Unit,
     filteredEvents: Map<DateAgo, List<EventWithSong>>,
     visibleEvents: List<EventWithSong>,
@@ -903,7 +905,7 @@ private fun LocalHistoryFeed(
                 .widthIn(max = 840.dp)
                 .padding(top = topPadding)
 
-                .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)
+                .then(if (backdrop != null) Modifier.glassSource(backdrop) else Modifier)
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(
                         WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
@@ -1023,7 +1025,7 @@ private fun LocalHistoryFeed(
 private fun RemoteHistoryFeed(
     listState: LazyListState,
     topPadding: Dp,
-    backdrop: PlatformBackdrop?,
+    backdrop: Backdrop?,
     headerContent: @Composable () -> Unit,
     remoteHistoryState: RemoteHistoryUiState,
     filteredSections: List<HistoryPage.HistorySection>,
@@ -1043,7 +1045,7 @@ private fun RemoteHistoryFeed(
                 .widthIn(max = 840.dp)
                 .padding(top = topPadding)
 
-                .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)
+                .then(if (backdrop != null) Modifier.glassSource(backdrop) else Modifier)
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(
                         WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,

@@ -55,6 +55,7 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.SearchProvider
+import moe.rukamori.archivetune.constants.SearchSource
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.AlbumItem
@@ -65,8 +66,10 @@ import moe.rukamori.archivetune.spotify.SpotifyPlaybackResolver
 import moe.rukamori.archivetune.spotify.SpotifySearchItem
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.SearchSourcePicker
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.viewmodels.OnlineSearchSort
 import moe.rukamori.archivetune.viewmodels.SpotifySearchViewModel
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -82,6 +85,8 @@ private enum class SpotifySearchFilter {
 @Composable
 internal fun SpotifyOnlineSearchResult(
     navController: NavController,
+    searchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,
+    onSearchSortChange: (OnlineSearchSort) -> Unit = {},
     viewModel: SpotifySearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -96,15 +101,25 @@ internal fun SpotifyOnlineSearchResult(
     var fieldQuery by rememberSaveable(viewModel.query) { mutableStateOf(viewModel.query) }
 
     val visibleItems =
-        remember(state.items, filter) {
-            state.items.filter { item ->
-                when (filter) {
-                    SpotifySearchFilter.ALL -> true
-                    SpotifySearchFilter.TRACKS -> item is SpotifySearchItem.Track
-                    SpotifySearchFilter.ALBUMS -> item is SpotifySearchItem.Album
-                    SpotifySearchFilter.ARTISTS -> item is SpotifySearchItem.Artist
-                    SpotifySearchFilter.PLAYLISTS -> item is SpotifySearchItem.Playlist
+        remember(state.items, filter, searchSort) {
+            val filtered =
+                state.items.filter { item ->
+                    when (filter) {
+                        SpotifySearchFilter.ALL -> true
+                        SpotifySearchFilter.TRACKS -> item is SpotifySearchItem.Track
+                        SpotifySearchFilter.ALBUMS -> item is SpotifySearchItem.Album
+                        SpotifySearchFilter.ARTISTS -> item is SpotifySearchItem.Artist
+                        SpotifySearchFilter.PLAYLISTS -> item is SpotifySearchItem.Playlist
+                    }
                 }
+            if (searchSort == OnlineSearchSort.VIEWS) {
+                // Popularity is the closest analogue Spotify exposes to a view
+                // count; other result kinds keep their natural order.
+                filtered.sortedByDescending { item ->
+                    (item as? SpotifySearchItem.Track)?.value?.popularity ?: -1
+                }
+            } else {
+                filtered
             }
         }
 
@@ -220,6 +235,7 @@ internal fun SpotifyOnlineSearchResult(
         ScreenHeaderHaze(
             hazeState = barState.haze,
             systemBarsTopPadding = systemBarsTopPadding + 8.dp,
+            scrolled = lazyListState.canScrollBackward,
         )
 
         SearchResultsBottomOverlay(
@@ -244,6 +260,36 @@ internal fun SpotifyOnlineSearchResult(
             onBackLongClick = { navController.backToMain() },
             placeholder = stringResource(R.string.search_source_spotify),
             bottomPadding = playerAwareBottomPadding,
+            lazyListState = lazyListState,
+            trailing = {
+                // The catalogue switch + sort menu must stay reachable from the
+                // Spotify results too — without them there was no way back to
+                // the YouTube catalogue from inside a Spotify search.
+                SearchSourcePicker(
+                    currentScope = SearchSource.ONLINE,
+                    currentProvider = SearchProvider.SPOTIFY,
+                    onSelection = { _, provider ->
+                        val text = fieldQuery.ifBlank { viewModel.query }
+                        if (text.isNotBlank()) {
+                            val replacementRoute = onlineSearchResultRoute(text, provider)
+                            val currentDestinationId = navController.currentDestination?.id
+                            if (currentDestinationId != null) {
+                                navController.navigate(replacementRoute) {
+                                    popUpTo(currentDestinationId) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            } else {
+                                navController.navigate(replacementRoute)
+                            }
+                        }
+                    },
+                    includeLocal = false,
+                )
+                SearchResultsSortMenu(
+                    selectedSort = searchSort,
+                    onSortSelected = onSearchSortChange,
+                )
+            },
             chipsRow = {
                 GlassFilterChipsRow(
                     state = barState,

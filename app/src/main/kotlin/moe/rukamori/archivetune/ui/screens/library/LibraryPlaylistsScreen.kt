@@ -117,14 +117,13 @@ import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.PlaylistThumbnail
 import moe.rukamori.archivetune.ui.component.TagsManagementDialog
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.PlaylistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubePlaylistMenu
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
-import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -161,12 +160,15 @@ fun LibraryPlaylistsScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    val playerSheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
-    val layerBackdropActive =
-        liquidGlassHeaderActive && !lyricsFullScreen && screenSettled &&
-            playerSheetOverlayFraction < 1f
+    // The glass recording source stays attached for the whole lifetime of the
+    // screen: detaching kyant's LayerBackdrop while the player sheet covers the
+    // header nulls its layerCoordinates, and glass never comes back afterwards
+    // (the maximise->minimise "pills turn light" bug). The pills themselves fade
+    // with the sheet edge in their own draw phase, and the recorder is throttled,
+    // so an always-attached source is both correct and cheap.
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
     val surfaceColor = MaterialTheme.colorScheme.surface
-    val artworkBackdrop = rememberBackdrop(surfaceColor)
+    val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -276,8 +278,8 @@ fun LibraryPlaylistsScreen(
                         .fillMaxSize()
 
                         .then(
-                            if (layerBackdropActive) {
-                                Modifier.layerBackdrop(artworkBackdrop)
+                            if (glassHeaderActive) {
+                                Modifier.glassSource(artworkBackdrop)
                             } else {
                                 Modifier
                             },
@@ -455,7 +457,7 @@ fun LibraryPlaylistsScreen(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (sortType == PlaylistSortType.CUSTOM && !layerBackdropActive) {
+                    if (sortType == PlaylistSortType.CUSTOM && !glassHeaderActive) {
                         IconButton(
                             onClick = { locked = !locked },
                             modifier = Modifier.size(40.dp),
@@ -469,7 +471,7 @@ fun LibraryPlaylistsScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                     }
 
-                    if (!layerBackdropActive) {
+                    if (!glassHeaderActive) {
                         Spacer(modifier = Modifier.width(12.dp))
 
                         IconButton(
@@ -598,7 +600,7 @@ fun LibraryPlaylistsScreen(
         }
         }
 
-        if (layerBackdropActive) {
+        if (glassHeaderActive) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 interactive = true,
@@ -668,7 +670,7 @@ fun LibraryPlaylistsScreen(
             }
         }
 
-        if (layerBackdropActive) {
+        if (glassHeaderActive) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 modifier =

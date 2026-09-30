@@ -14,6 +14,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -54,6 +55,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
@@ -729,13 +731,20 @@ fun HomeTopFadeBlur(
     pageColor: Color,
     barHeight: Dp,
     modifier: Modifier = Modifier,
+    intensityFraction: Float = 1f,
 ) {
+    if (intensityFraction <= 0.01f) {
+        // Fully "at top": no blur and no scrim at all — the haze only fades in
+        // once the list actually starts scrolling under the header.
+        return
+    }
     val height = barHeight + HomeTopFadeRun
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
                 .height(height)
+                .graphicsLayer { alpha = intensityFraction }
                 .hazeEffect(
                     state = hazeState,
 
@@ -767,6 +776,7 @@ fun HomeTopFadeBlur(
             modifier
                 .fillMaxWidth()
                 .height(height)
+                .graphicsLayer { alpha = intensityFraction }
                 .background(scrim),
     )
 }
@@ -780,16 +790,27 @@ fun ScreenHeaderHaze(
     systemBarsTopPadding: Dp,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    scrolled: Boolean = true,
 ) {
     if (!enabled) return
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     if (!liquidGlassEnabled) return
+    // The haze must not sit over content that is still resting at the top of
+    // the list — it only belongs over content that has scrolled underneath
+    // it. `scrolled` comes from the screen's list state (canScrollBackward),
+    // and the crossfade keeps the transition soft instead of snapping.
+    val intensity by animateFloatAsState(
+        targetValue = if (scrolled) 1f else 0f,
+        animationSpec = tween(durationMillis = 220),
+        label = "screenHeaderHazeIntensity",
+    )
     HomeTopFadeBlur(
         hazeState = hazeState,
         pageColor = MaterialTheme.colorScheme.surface,
         barHeight = systemBarsTopPadding + ScreenHeaderHazeBarZone,
         modifier = modifier,
+        intensityFraction = intensity,
     )
 }
 

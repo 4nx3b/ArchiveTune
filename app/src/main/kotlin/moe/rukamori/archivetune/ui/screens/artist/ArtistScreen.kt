@@ -114,7 +114,6 @@ import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
-import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
@@ -146,14 +145,14 @@ import moe.rukamori.archivetune.ui.component.NavigationTitle
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.component.shimmer.TextPlaceholder
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.AlbumMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
@@ -208,11 +207,16 @@ fun ArtistScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
+    // The glass recording source stays attached for the whole lifetime of the
+    // screen: detaching kyant's LayerBackdrop while the player sheet covers the
+    // header nulls its layerCoordinates, and glass never comes back afterwards
+    // (the maximise->minimise "pills turn light" bug). The pills themselves fade
+    // with the sheet edge in their own draw phase, and the recorder is throttled,
+    // so an always-attached source is both correct and cheap.
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    // Mini-player-bound overlay signal for non-glass gating (canvas decode,
+    // hero animations) — keeps the OLD mini-bound semantics.
     val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
-    val playerSheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
-    val layerBackdropActive =
-        liquidGlassHeaderActive && !lyricsFullScreen && screenSettled &&
-            playerSheetOverlayFraction < 1f
     val isArtistBlocked = (blockState as? ArtistBlockState.Success)?.isBlocked == true
 
     BackHandler {
@@ -379,7 +383,7 @@ fun ArtistScreen(
         }
     }
 
-    val artworkBackdrop = rememberBackdrop(surfaceColor)
+    val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
 
     val isManuallyRefreshing = viewModel.isManuallyRefreshing
 
@@ -396,8 +400,8 @@ fun ArtistScreen(
         ) {
         LazyColumn(
             modifier =
-                if (layerBackdropActive) {
-                    Modifier.layerBackdrop(artworkBackdrop)
+                if (glassHeaderActive) {
+                    Modifier.glassSource(artworkBackdrop)
                 } else {
                     Modifier
                 },
@@ -1190,7 +1194,7 @@ fun ArtistScreen(
                     .align(Alignment.BottomCenter),
         )
 
-        if (layerBackdropActive && (artistPage != null || showLocal)) {
+        if (glassHeaderActive && (artistPage != null || showLocal)) {
             LiquidGlassIconButton(
                 backdrop = artworkBackdrop,
                 painter = painterResource(R.drawable.arrow_back),
@@ -1622,6 +1626,19 @@ private fun ArtistUpcomingReleasesColumn(
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        // The catalogue-reported artist name: with the strict
+                        // identity checks most entries now match the page's
+                        // artist, and when one does not it is obvious instead
+                        // of silently wrong.
+                        if (release.artistName.isNotBlank()) {
+                            Text(
+                                text = release.artistName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                         Text(
                             text = upcomingReleaseCountdownText(release, nowMillis),
                             style = MaterialTheme.typography.bodySmall,

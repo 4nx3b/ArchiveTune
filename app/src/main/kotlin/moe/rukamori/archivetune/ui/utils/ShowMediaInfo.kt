@@ -84,6 +84,33 @@ import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.utils.AudioOutputStats
 import moe.rukamori.archivetune.utils.AudioOutputStatsProvider
 import android.text.format.Formatter
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.Locale
+import javax.inject.Inject
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.stateIn
+import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.audiosource.CurrentStreamInfo
+import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.db.entities.FormatEntity
+import moe.rukamori.archivetune.db.entities.codecLabel
+import moe.rukamori.archivetune.db.entities.isLossless
+import moe.rukamori.archivetune.playback.dsp.AudioEngineRouterProcessor
+import moe.rukamori.archivetune.playback.dsp.EngineRuntime
+import moe.rukamori.archivetune.utils.isLocalMediaId
+import moe.rukamori.archivetune.telegram.isTelegramMediaId
+import tf.monochrome.android.audio.dsp.ChannelDetectorProcessor
+import tf.monochrome.android.audio.pipeline.AudioPipelineMonitor
+import tf.monochrome.android.audio.pipeline.OutputDeviceProbe
+import com.lastwave.app.playback.UsbDacMonitor
 
 private enum class MediaInfoTab(
     val labelRes: Int,
@@ -132,6 +159,32 @@ fun ShowMediaInfo(videoId: String) {
     var selectedTab by rememberSaveable(videoId) { mutableStateOf(MediaInfoTab.Information) }
     var outputStats by remember(videoId) { mutableStateOf<AudioOutputStats?>(null) }
 
+    // ── Live playback pipeline (the retired Track Info & Specs sheet, merged) ──
+    // Collected unconditionally (the sheet only exists while open) but only
+    // PRESENTED when this exact track is the one playing — engine/DAC/provider
+    // facts are meaningless for a track that is not the live stream.
+    val trackInfoViewModel: TrackInfoViewModel = hiltViewModel()
+    val facts by trackInfoViewModel.facts.collectAsStateWithLifecycle()
+    val service = playerConnection?.service
+    val liveMediaMetadata by (service?.currentMediaMetadata ?: remember { MutableStateFlow<MediaMetadata?>(null) })
+        .collectAsStateWithLifecycle()
+    val isLiveTrack = liveMediaMetadata?.id == videoId
+    val streamInfo by (service?.currentStreamInfo ?: remember { MutableStateFlow<CurrentStreamInfo?>(null) })
+        .collectAsStateWithLifecycle()
+    val normalizeFactor by (service?.liveNormalizeFactor ?: remember { MutableStateFlow(1f) })
+        .collectAsStateWithLifecycle()
+    val sourcesRevision by (service?.resolvedSourcesRevision ?: remember { MutableStateFlow(0L) })
+        .collectAsStateWithLifecycle()
+    val availableSources =
+        remember(videoId, sourcesRevision, isLiveTrack) {
+            if (isLiveTrack) {
+                runCatching { service?.availableSourcesForSong(videoId) }
+                    .getOrDefault(emptyList())
+            } else {
+                emptyList()
+            }
+        }
+
     val unknownText = stringResource(R.string.unknown)
     val pleaseWaitText = stringResource(R.string.please_wait)
     val copyText = stringResource(R.string.copy)
@@ -148,6 +201,26 @@ fun ShowMediaInfo(videoId: String) {
     val volumeLabel = stringResource(R.string.volume)
     val fileSizeLabel = stringResource(R.string.file_size)
     val descriptionLabel = stringResource(R.string.description)
+    val durationLabel = stringResource(R.string.ti_duration)
+    val bitDepthLabel = stringResource(R.string.ti_bit_depth)
+    val channelsLabelRes = stringResource(R.string.ti_channels)
+    val qualityLabel = stringResource(R.string.ti_quality)
+    val workedProviderLabel = stringResource(R.string.ti_worked_provider)
+    val engineLabel = stringResource(R.string.ti_engine)
+    val normalizationLabel = stringResource(R.string.ti_normalization)
+    val streamDeliveryLabel = stringResource(R.string.ti_stream_delivery)
+    val protocolLabel = stringResource(R.string.ti_protocol)
+    val playbackSectionTitle = stringResource(R.string.ti_section_playback)
+    val providersSectionTitle = stringResource(R.string.ti_section_providers)
+    val dacSectionTitle = stringResource(R.string.ti_section_dac)
+    val dacDeviceLabel = stringResource(R.string.ti_dac_device)
+    val signalPathLabel = stringResource(R.string.ti_signal_path)
+    val hardwareClockLabel = stringResource(R.string.ti_hardware_clock)
+    val usbIdLabel = stringResource(R.string.ti_usb_id)
+    val pipelineStateLabel = stringResource(R.string.ti_pipeline_state)
+    val decoderLabel = stringResource(R.string.ti_decoder)
+    val workedLabel = stringResource(R.string.ti_worked)
+    val standbyLabel = stringResource(R.string.ti_standby)
 
     val mediaUrl = remember(videoId) { "https://music.youtube.com/watch?v=$videoId" }
 
@@ -156,6 +229,19 @@ fun ShowMediaInfo(videoId: String) {
     LaunchedEffect(videoId) {
         outputStats = AudioOutputStatsProvider.resolve(context)
     }
+
+    // ── Live pipeline derived values (same semantics as the old sheet) ──
+    val isLocal = videoId.isLocalMediaId() || videoId.isTelegramMediaId()
+    val liveStreamInfo = streamInfo?.takeIf { it.mediaId == videoId }
+    val codec = currentFormat.codecName()
+    val bitrateKbps = currentFormat?.bitrate?.takeIf { it > 0 }?.let { it / 1000 }
+    val liveSampleRateHz =
+        liveStreamInfo?.sampleRate?.takeIf { it > 0 }
+            ?: currentFormat?.sampleRate?.takeIf { it > 0 }
+    val liveBitDepth =
+        liveStreamInfo?.bitDepth?.takeIf { it > 0 }
+            ?: facts?.decodedBits?.takeIf { it > 0 }
+    val liveChannels = facts?.chainChannels ?: facts?.decodedChannels
 
     val heroTitle = song?.title ?: info?.title ?: videoId
     val heroSubtitle =
@@ -190,6 +276,16 @@ fun ShowMediaInfo(videoId: String) {
                             ?: unknownText,
                 ),
             )
+            // Duration left the list rows — this popup is where it lives now.
+            song?.song?.duration?.takeIf { it > 0 }?.let { seconds ->
+                add(
+                    MediaInfoDetail(
+                        iconRes = R.drawable.timer,
+                        label = durationLabel,
+                        value = formatDuration(seconds * 1000L, 0L),
+                    ),
+                )
+            }
             add(
                 MediaInfoDetail(
                     iconRes = R.drawable.solar_hash,
@@ -246,6 +342,35 @@ fun ShowMediaInfo(videoId: String) {
                         ),
                     )
                 }
+            // Live signal facts that only the old specs sheet carried: bit
+            // depth, channel layout and the quality tier verdict.
+            liveBitDepth?.let {
+                add(
+                    MediaInfoDetail(
+                        iconRes = R.drawable.solar_ruler,
+                        label = bitDepthLabel,
+                        value = "$it-bit",
+                    ),
+                )
+            }
+            liveChannels?.let {
+                add(
+                    MediaInfoDetail(
+                        iconRes = R.drawable.solar_headphones,
+                        label = channelsLabelRes,
+                        value = channelsLabel(it, unknownText),
+                    ),
+                )
+            }
+            qualityTierLabel(codec, liveBitDepth, liveSampleRateHz, bitrateKbps, null)?.let {
+                add(
+                    MediaInfoDetail(
+                        iconRes = R.drawable.solar_wave,
+                        label = qualityLabel,
+                        value = it,
+                    ),
+                )
+            }
         }
 
     val quickFacts =
@@ -428,6 +553,163 @@ fun ShowMediaInfo(videoId: String) {
                                         }
                                     }
                                 }
+
+                                // ── Live playback pipeline (the merged specs sheet) ──
+                                if (isLiveTrack) {
+                                    MediaInfoSectionCard(
+                                        title = playbackSectionTitle,
+                                        rows =
+                                            buildList {
+                                                add(
+                                                    MediaInfoDetail(
+                                                        iconRes = R.drawable.graphic_eq,
+                                                        label = engineLabel,
+                                                        value = facts?.engineName ?: "None",
+                                                    ),
+                                                )
+                                                add(
+                                                    MediaInfoDetail(
+                                                        iconRes = R.drawable.bolt,
+                                                        label = workedProviderLabel,
+                                                        value =
+                                                            liveStreamInfo?.label
+                                                                ?: if (isLocal) "Local Library" else unknownText,
+                                                    ),
+                                                )
+                                                add(
+                                                    MediaInfoDetail(
+                                                        iconRes = R.drawable.solar_server_linear,
+                                                        label = streamDeliveryLabel,
+                                                        value =
+                                                            liveStreamInfo?.label
+                                                                ?: if (isLocal) "On-device file" else unknownText,
+                                                    ),
+                                                )
+                                                add(
+                                                    MediaInfoDetail(
+                                                        iconRes = R.drawable.solar_code,
+                                                        label = protocolLabel,
+                                                        value =
+                                                            liveStreamInfo?.protocol
+                                                                ?: if (isLocal) "Local File" else unknownText,
+                                                    ),
+                                                )
+                                                add(
+                                                    MediaInfoDetail(
+                                                        iconRes = R.drawable.solar_volume,
+                                                        label = normalizationLabel,
+                                                        value =
+                                                            if (normalizeFactor != 1f) {
+                                                                "×${"%.3f".format(Locale.ROOT, normalizeFactor)}"
+                                                            } else {
+                                                                "Off (unity)"
+                                                            },
+                                                    ),
+                                                )
+                                            },
+                                    )
+
+                                    if (!isLocal) {
+                                        MediaInfoProvidersCard(
+                                            title = providersSectionTitle,
+                                            providers =
+                                                availableSources.map { source ->
+                                                    val worked = liveStreamInfo?.source == source
+                                                    Triple(
+                                                        providerDisplayName(source),
+                                                        providerNote(source),
+                                                        worked,
+                                                    )
+                                                },
+                                            workedLabel = workedLabel,
+                                            standbyLabel = standbyLabel,
+                                        )
+                                    }
+
+                                    val factsHere = facts
+                                    MediaInfoSectionCard(
+                                        title = dacSectionTitle,
+                                        rows =
+                                            buildList {
+                                                add(
+                                                    MediaInfoDetail(
+                                                        iconRes = R.drawable.solar_headphones,
+                                                        label = dacDeviceLabel,
+                                                        value =
+                                                            factsHere?.routedName
+                                                                ?: "Android Audio (Built-in Output)",
+                                                    ),
+                                                )
+                                                add(
+                                                    MediaInfoDetail(
+                                                        iconRes = R.drawable.solar_aspect_ratio_linear,
+                                                        label = signalPathLabel,
+                                                        value =
+                                                            when {
+                                                                factsHere?.usbExclusive == true -> "USB Exclusive (Direct DAC)"
+                                                                EngineRuntime.tryptifyUsbPinActive -> "USB Framework (Pinned Route)"
+                                                                else -> "Default Android System Mixer"
+                                                            },
+                                                    ),
+                                                )
+                                                val hwClock =
+                                                    factsHere?.tryptifyUsbRateHz?.takeIf { it > 0 }
+                                                        ?: factsHere?.halSampleRateHz
+                                                        ?: liveSampleRateHz
+                                                add(
+                                                    MediaInfoDetail(
+                                                        iconRes = R.drawable.timer,
+                                                        label = hardwareClockLabel,
+                                                        value = hwClock?.let { formatHz(it) } ?: unknownText,
+                                                    ),
+                                                )
+                                                if (factsHere != null &&
+                                                    factsHere.usbVendorId >= 0 &&
+                                                    factsHere.usbProductId >= 0
+                                                ) {
+                                                    add(
+                                                        MediaInfoDetail(
+                                                            iconRes = R.drawable.solar_hash,
+                                                            label = usbIdLabel,
+                                                            value = "0x%04X:0x%04X".format(
+                                                                Locale.ROOT,
+                                                                factsHere.usbVendorId,
+                                                                factsHere.usbProductId,
+                                                            ),
+                                                        ),
+                                                    )
+                                                }
+                                                add(
+                                                    MediaInfoDetail(
+                                                        iconRes = R.drawable.solar_wave,
+                                                        label = pipelineStateLabel,
+                                                        value =
+                                                            if (factsHere != null) {
+                                                                val inForm =
+                                                                    if (factsHere.decodedFloat) {
+                                                                        "Float PCM"
+                                                                    } else {
+                                                                        "${factsHere.decodedBits ?: 16}-bit Integer PCM"
+                                                                    }
+                                                                val outForm =
+                                                                    if (factsHere.outputFloat) "float out" else "16-bit out"
+                                                                "$inForm → $outForm"
+                                                            } else {
+                                                                unknownText
+                                                            },
+                                                    ),
+                                                )
+                                                add(
+                                                    MediaInfoDetail(
+                                                        iconRes = R.drawable.solar_code,
+                                                        label = decoderLabel,
+                                                        value = factsHere?.decoderName ?: "—",
+                                                    ),
+                                                )
+                                            },
+                                    )
+                                }
+
                                 MediaInfoOutputCard(
                                     outputStats = outputStats,
                                     sourceSampleRate = currentFormat?.sampleRate,
@@ -1068,4 +1350,348 @@ private fun shareMediaLink(
             putExtra(Intent.EXTRA_TEXT, mediaUrl)
         }
     context.startActivity(Intent.createChooser(shareIntent, null))
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Live playback pipeline (moved from the retired Track Info & Specs sheet —
+// the details popup is now the single home for track information)
+// ─────────────────────────────────────────────────────────────────────────
+
+@HiltViewModel
+class TrackInfoViewModel @Inject constructor(
+    monitor: AudioPipelineMonitor,
+    channelDetector: ChannelDetectorProcessor,
+    outputProbe: OutputDeviceProbe,
+    usbDacMonitor: UsbDacMonitor,
+) : ViewModel() {
+
+    data class Polled(
+        val halSampleRateHz: Int?,
+        val engineName: String,
+        val outputFloat: Boolean,
+        val usbExclusive: Boolean,
+        val usbVendorId: Int,
+        val usbProductId: Int,
+        val tryptifyUsbRateHz: Int,
+        val tryptifyUsbBits: Int,
+    )
+
+    private val polled = flow {
+        while (true) {
+            val runtime = EngineRuntime
+            emit(
+                Polled(
+                    halSampleRateHz = outputProbe.halSampleRateHz(),
+                    engineName = when (runtime.activeEngine) {
+                        AudioEngineRouterProcessor.Engine.TRYPTIFY -> "Tryptify"
+                        AudioEngineRouterProcessor.Engine.LASTWAVE -> "LastWave"
+                        else -> "None"
+                    },
+                    outputFloat = runtime.outputFloat,
+                    usbExclusive = runtime.usbExclusiveActive,
+                    usbVendorId = usbDacMonitor.state.value.dac?.vendorId ?: -1,
+                    usbProductId = usbDacMonitor.state.value.dac?.productId ?: -1,
+                    tryptifyUsbRateHz = runtime.tryptifyUsbStream?.sampleRateHz ?: 0,
+                    tryptifyUsbBits = runtime.tryptifyUsbStream?.bitsPerSample ?: 0,
+                ),
+            )
+            delay(POLL_INTERVAL_MS)
+        }
+    }
+
+    data class PipelineFacts(
+        val decodedBits: Int?,
+        val decodedFloat: Boolean,
+        val decodedRateHz: Int?,
+        val decodedChannels: Int?,
+        val decoderName: String?,
+        val chainChannels: Int?,
+        val chainLayoutName: String?,
+        val routedName: String?,
+        val halSampleRateHz: Int?,
+        val engineName: String,
+        val outputFloat: Boolean,
+        val usbExclusive: Boolean,
+        val usbVendorId: Int,
+        val usbProductId: Int,
+        val tryptifyUsbRateHz: Int,
+        val tryptifyUsbBits: Int,
+    )
+
+    val facts: StateFlow<PipelineFacts?> = combine(
+        monitor.stream,
+        monitor.decoderName,
+        channelDetector.state,
+        outputProbe.routed,
+        polled,
+    ) { stream, decoder, chain, routed, poll ->
+        PipelineFacts(
+            decodedBits = stream?.pcmBits,
+            decodedFloat = stream?.pcmIsFloat == true,
+            decodedRateHz = stream?.sampleRate,
+            decodedChannels = stream?.channelCount,
+            decoderName = decoder,
+            chainChannels = chain?.channelCount,
+            chainLayoutName = chain?.layoutName,
+            routedName = routed?.name,
+            halSampleRateHz = poll.halSampleRateHz,
+            engineName = poll.engineName,
+            outputFloat = poll.outputFloat,
+            usbExclusive = poll.usbExclusive,
+            usbVendorId = poll.usbVendorId,
+            usbProductId = poll.usbProductId,
+            tryptifyUsbRateHz = poll.tryptifyUsbRateHz,
+            tryptifyUsbBits = poll.tryptifyUsbBits,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(POLL_INTERVAL_MS), null)
+
+    private companion object {
+        const val POLL_INTERVAL_MS = 1000L
+    }
+}
+
+internal fun formatHz(hz: Int): String =
+    when {
+        hz >= 1_000_000 -> "${"%.1f".format(Locale.ROOT, hz / 1_000_000.0)} MHz"
+        hz >= 1000 -> {
+            val value = hz / 1000.0
+            if (value == value.toInt().toDouble()) {
+                "${value.toInt()} kHz"
+            } else {
+                "${"%.1f".format(Locale.ROOT, value)} kHz"
+            }
+        }
+        else -> "$hz Hz"
+    }
+
+internal fun channelsLabel(channels: Int?, unknown: String): String =
+    when (channels) {
+        null -> unknown
+        1 -> "Mono (1.0 channel)"
+        2 -> "Stereo (2.0 channels • Left / Right)"
+        else -> "$channels channels"
+    }
+
+internal fun qualityTierLabel(
+    codec: String?,
+    bitDepth: Int?,
+    sampleRateHz: Int?,
+    bitrateKbps: Int?,
+    unknown: String?,
+): String? =
+    when {
+        codec.equals("flac", true) || codec.equals("alac", true) ->
+            when {
+                (bitDepth ?: 16) > 16 || (sampleRateHz ?: 44100) > 48000 -> "Hi-Res Lossless Audio"
+                else -> "CD Quality Audio ($bitDepth-bit / ${sampleRateHz?.let { formatHz(it) } ?: "44.1 kHz"} Lossless)"
+            }
+        (bitrateKbps ?: 0) >= 320 -> "High Quality Audio (320 kbps+)"
+        (bitrateKbps ?: 0) > 0 -> "Standard Quality Audio"
+        else -> unknown
+    }
+
+internal fun providerDisplayName(source: AudioSourceType): String =
+    when (source) {
+        AudioSourceType.TIDAL -> "Tidal (HiFi FLAC)"
+        AudioSourceType.QOBUZ -> "Qobuz (Studio FLAC)"
+        AudioSourceType.QOBUZ_BACKUP -> "Qobuz Backup (Mirror)"
+        AudioSourceType.DEEZER -> "Deezer (Lossless FLAC)"
+        AudioSourceType.APPLE -> "Apple Music (Catalogue)"
+        AudioSourceType.JIOSAAVN -> "JioSaavn (AAC)"
+        AudioSourceType.YOUTUBE -> "YouTube Music (Standard)"
+    }
+
+internal fun providerNote(source: AudioSourceType): String =
+    when (source) {
+        AudioSourceType.TIDAL -> "Direct API • SourcePool"
+        AudioSourceType.QOBUZ -> "SourcePool • Akamai CDN"
+        AudioSourceType.QOBUZ_BACKUP -> "Secondary mirror • endpoint chain"
+        AudioSourceType.DEEZER -> "Lossless resolver"
+        AudioSourceType.APPLE -> "Metadata & lyrics tier"
+        AudioSourceType.JIOSAAVN -> "AAC resolver"
+        AudioSourceType.YOUTUBE -> "Ultimate zero-skip fallback"
+    }
+
+internal fun formatDuration(durationMs: Long, playbackMs: Long): String {
+    val total = if (durationMs > 0) durationMs else playbackMs
+    if (total <= 0) return "0 min 00s"
+    val minutes = total / 60000L
+    val seconds = (total % 60000L) / 1000L
+    return "$minutes min ${"%02d".format(Locale.ROOT, seconds)}s"
+}
+
+private fun FormatEntity?.codecName(): String? =
+    this?.codecLabel()?.takeIf { it.isNotBlank() && it != "—" }
+        ?: this?.codecs?.takeIf { it.isNotBlank() }?.substringBefore('.')
+        ?: this?.mimeType?.substringAfter("audio/", "")?.substringBefore(';')?.takeIf { it.isNotBlank() && it != "mpeg" }
+
+/** A titled expressive card — section header + key/value rows with Solar icons. */
+@Composable
+private fun MediaInfoSectionCard(
+    title: String,
+    rows: List<MediaInfoDetail>,
+) {
+    if (rows.isEmpty()) return
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp),
+            ) {
+                Text(
+                    text = title.uppercase(Locale.ROOT),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            rows.forEachIndexed { index, item ->
+                MediaInfoExpressiveRow(
+                    iconRes = item.iconRes,
+                    label = item.label,
+                    value = item.value,
+                    showDivider = index != rows.lastIndex,
+                    onClick = {},
+                )
+            }
+        }
+    }
+}
+
+/** One provider row of the pipeline: name + note on the left, status on the right. */
+@Composable
+private fun MediaInfoProviderRow(
+    name: String,
+    note: String,
+    status: String,
+    worked: Boolean,
+    showDivider: Boolean,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Surface(
+                shape = CircleShape,
+                color =
+                    if (worked) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    },
+                modifier = Modifier.size(34.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(if (worked) R.drawable.solar_check_circle_linear else R.drawable.solar_more_circle_linear),
+                        contentDescription = null,
+                        tint =
+                            if (worked) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            Column(
+                verticalArrangement = Arrangement.spacedBy(1.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (worked) FontWeight.Bold else FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color =
+                    if (worked) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    },
+            ) {
+                Text(
+                    text = status,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color =
+                        if (worked) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                )
+            }
+        }
+        if (showDivider) {
+            Box(
+                modifier =
+                    Modifier
+                        .padding(start = 64.dp)
+                        .fillMaxWidth()
+                        .height(0.5.dp)
+                        .alpha(0.5f)
+                        .background(MaterialTheme.colorScheme.outlineVariant),
+            )
+        }
+    }
+}
+
+/** The full providers-pipeline card: which source actually served the stream. */
+@Composable
+private fun MediaInfoProvidersCard(
+    title: String,
+    providers: List<Triple<String, String, Boolean>>,
+    workedLabel: String,
+    standbyLabel: String,
+) {
+    if (providers.isEmpty()) return
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = title.uppercase(Locale.ROOT),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp),
+            )
+            providers.forEachIndexed { index, (name, note, worked) ->
+                MediaInfoProviderRow(
+                    name = name,
+                    note = note,
+                    status = if (worked) workedLabel else standbyLabel,
+                    worked = worked,
+                    showDivider = index != providers.lastIndex,
+                )
+            }
+        }
+    }
 }

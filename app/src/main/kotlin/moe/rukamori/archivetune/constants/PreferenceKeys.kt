@@ -1021,6 +1021,9 @@ const val NAVIGATION_BAR_CORNER_RADIUS_DEFAULT = 28f
 
 val HideScrollbarKey = booleanPreferencesKey("hideScrollbar")
 
+/** Hide the search bar + category pills while the results list is scrolling. */
+val HideSearchChromeWhileScrollingKey = booleanPreferencesKey("hideSearchChromeWhileScrolling")
+
 val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")
 val PlayerCustomBlurKey = floatPreferencesKey("playerCustomBlur")
 val PlayerCustomContrastKey = floatPreferencesKey("playerCustomContrast")
