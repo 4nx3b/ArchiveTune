@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.player
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.unit.lerp

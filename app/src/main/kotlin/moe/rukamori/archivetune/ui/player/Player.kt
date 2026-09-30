@@ -3437,7 +3437,6 @@ private fun V7PlayerBackdrop(
     }
 }
 
-@Immutable
 // Delegates to the shared tone ladder (BackdropTonePalette) — the artist page
 // ambient background speaks the same gradient language as the V7 controls.
 private typealias V7BackdropPalette = moe.rukamori.archivetune.ui.theme.BackdropTonePalette
