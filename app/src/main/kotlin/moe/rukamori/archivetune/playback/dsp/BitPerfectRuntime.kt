@@ -184,6 +184,14 @@ object BitPerfectRuntime {
         }
     }
 
+    /** Records a verified Android 14+ BIT_PERFECT mixer-attribute result. */
+    fun notifyMixerBitPerfect(active: Boolean, outputRateHz: Int) {
+        status = status.copy(
+            mixerBitPerfectActive = active,
+            outputSampleRate = if (active) outputRateHz else status.outputSampleRate,
+        )
+    }
+
     /** Notifies the runtime of the actual USB-exclusive route state. */
     fun notifyUsbExclusive(active: Boolean, rate: Int, bits: Int) {
         status = status.copy(usbExclusiveActive = active)
