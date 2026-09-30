@@ -7,6 +7,7 @@
 
 package moe.rukamori.archivetune.playback.dsp
 
+import java.nio.ByteBuffer
 import android.content.Context
 import android.util.Log
 import androidx.media3.common.audio.AudioProcessor
@@ -81,8 +82,11 @@ class BitPerfectGateProcessor(
         return AudioProcessor.AudioFormat.NOT_SET
     }
 
-    // Inactive processors receive no input; BaseAudioProcessor's default
-    // onQueueInput would throw on unexpected input, so guard it explicitly.
+    // BaseAudioProcessor requires the hook; this processor is never active
+    // (onConfigure always reports NOT_SET), so no input ever arrives.
+    override fun onQueueInput(inputBuffer: ByteBuffer) {
+        // Intentionally empty: the gate is permanently inactive.
+    }
 
     private companion object {
         const val TAG = "BitPerfectRuntime"
