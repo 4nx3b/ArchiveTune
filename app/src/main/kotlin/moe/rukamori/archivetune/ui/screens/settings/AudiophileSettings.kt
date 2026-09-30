@@ -56,7 +56,7 @@ import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 import moe.rukamori.archivetune.ui.component.SwitchPreference
-import moe.rukamori.archivetune.ui.screens.backToMain
+import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.constants.AutomixEnabledKey
