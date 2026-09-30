@@ -12,6 +12,14 @@ on:
       - '.github/FUNDING.yml'
       - '.github/ISSUE_TEMPLATE/**'
 
+# Superseded dev pushes cancel their APK builds: the Nightly workflow still
+# builds (serialized, tag-safe) every queued commit, so intermediate Build
+# APKs runs are pure duplication — cancelling them frees the runners and
+# keeps the newest push's artifacts arriving as fast as possible.
+concurrency:
+  group: build-apks-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
   discussions: write
@@ -57,20 +65,11 @@ jobs:
         with:
           submodules: true
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
+      - name: Set up build environment
+        uses: ./.github/actions/setup-build
         with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - name: Set Up Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-cleanup: on-success
-          cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+          variant-key: ${{ matrix.distribution }}-${{ matrix.device }}-${{ matrix.abi }}
+          cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' && 'true' || 'false' }}
 
       - name: Resolve variant names
         id: variant
