@@ -10201,10 +10201,7 @@ class MusicService :
                 val verified = lastwaveUsbBitPerfect.isConfigured()
                 EngineRuntime.lastwaveMixerBitPerfectActive = verified
                 if (verified) {
-                    BitPerfectRuntime.status = BitPerfectRuntime.status.copy(
-                        mixerBitPerfectActive = true,
-                        outputSampleRate = rate,
-                    )
+                    BitPerfectRuntime.notifyMixerBitPerfect(active = true, outputRateHz = rate)
                     Timber.tag(TAG).i(
                         "USB BIT_PERFECT mixer attributes verified: %dHz",
                         rate,
@@ -10449,7 +10446,17 @@ class MusicService :
                 context: Context,
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean,
-            ) = DefaultAudioSink
+            ): androidx.media3.exoplayer.audio.AudioSink {
+                val bitPerfectSonic = SonicAudioProcessor()
+                val bitPerfectSilence = SilenceSkippingAudioProcessor()
+                // The gate pins these to transparent while the bypass
+                // holds — they are media3 types with no app-level
+                // onConfigure to guard.
+                bitPerfectGateProcessor.attachTransparentTargets(
+                    sonicAudioProcessor = bitPerfectSonic,
+                    silenceSkippingAudioProcessor = bitPerfectSilence,
+                )
+                return DefaultAudioSink
                 .Builder(context)
                 // Float output stays off at the SINK level while the DSP tail
                 // owns the encoding decision. Bit-Perfect flips it on: the
@@ -10493,15 +10500,6 @@ class MusicService :
                     // DspTail chain keeps silence + speed/pitch in the 16-bit
                     // domain and makes the DSP the true tail — the only safe
                     // place for the encoding flip.
-                    val bitPerfectSonic = SonicAudioProcessor()
-                    val bitPerfectSilence = SilenceSkippingAudioProcessor()
-                    // The gate pins these to transparent while the bypass
-                    // holds — they are media3 types with no app-level
-                    // onConfigure to guard.
-                    bitPerfectGateProcessor.attachTransparentTargets(
-                        sonicAudioProcessor = bitPerfectSonic,
-                        silenceSkippingAudioProcessor = bitPerfectSilence,
-                    )
                     DspTailAudioProcessorChain(
                         silenceSkippingAudioProcessor = bitPerfectSilence,
                         sonicAudioProcessor = bitPerfectSonic,
@@ -10552,7 +10550,7 @@ class MusicService :
                         },
                     ),
                 ).build()
-        }
+            }
 
     override fun onPlaybackStatsReady(
         eventTime: AnalyticsListener.EventTime,
