@@ -125,7 +125,7 @@ import moe.rukamori.archivetune.constants.NavigationBarTransparencyKey
 import moe.rukamori.archivetune.constants.NavigationBarWidthKey
 import moe.rukamori.archivetune.ui.screens.Screens
 import moe.rukamori.archivetune.utils.rememberPreference
-import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
@@ -183,7 +183,7 @@ fun FloatingNavigationToolbar(
     tintFrostedBlur: Boolean = false,
     frostedBackdrop: NavigationBarBackdrop? = null,
     liquidGlass: Boolean = false,
-    liquidGlassBackdrop: LayerBackdrop? = null,
+    liquidGlassBackdrop: Backdrop? = null,
     isSelected: (Screens) -> Boolean,
     onItemClick: (Screens, Boolean) -> Unit,
     onSearchItemDoubleClick: (() -> Unit)? = null,

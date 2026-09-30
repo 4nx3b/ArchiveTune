@@ -232,7 +232,7 @@ private class ThrottledLayerBackdropNode(
                 val previousDensity = drawContext.density
                 drawContext.density = density
                 try {
-                    backdrop.contentPrefix()
+                    backdrop.contentPrefix(this@draw)
                     this@draw.drawContent()
                 } finally {
                     drawContext.density = previousDensity

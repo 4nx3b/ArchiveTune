@@ -175,10 +175,10 @@ fun ShowMediaInfo(videoId: String) {
         .collectAsStateWithLifecycle()
     val sourcesRevision by (service?.resolvedSourcesRevision ?: remember { MutableStateFlow(0L) })
         .collectAsStateWithLifecycle()
-    val availableSources =
+    val availableSources: List<AudioSourceType> =
         remember(videoId, sourcesRevision, isLiveTrack) {
             if (isLiveTrack) {
-                runCatching { service?.availableSourcesForSong(videoId) }
+                runCatching { service?.availableSourcesForSong(videoId) ?: emptyList() }
                     .getOrDefault(emptyList())
             } else {
                 emptyList()
