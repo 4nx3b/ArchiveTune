@@ -5,6 +5,12 @@ on:
     branches:
       - "**"
 
+# A new commit pushed to a PR cancels the superseded build instead of
+# stacking another full compile behind it.
+concurrency:
+  group: pr-build-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -14,20 +20,13 @@ jobs:
         with:
           submodules: true
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
+      # PR builds restore the caches written by dev/main pushes but never
+      # write their own (the gradle-recommended setup for PRs).
+      - name: Set up build environment
+        uses: ./.github/actions/setup-build
         with:
-          java-version: 21
-          distribution: "temurin"
-
-      - name: Set Up Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-read-only: true
-          cache-cleanup: on-success
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+          variant-key: gms-mobile-universal-debug
+          cache-read-only: "true"
 
       - name: Generate debug.keystore if not exists
         run: |
