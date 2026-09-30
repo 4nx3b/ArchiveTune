@@ -82,9 +82,9 @@ class BitPerfectGateProcessor(
         return AudioProcessor.AudioFormat.NOT_SET
     }
 
-    // BaseAudioProcessor requires the hook; this processor is never active
-    // (onConfigure always reports NOT_SET), so no input ever arrives.
-    override fun onQueueInput(inputBuffer: ByteBuffer) {
+    // BaseAudioProcessor leaves queueInput abstract; this processor is never
+    // active (onConfigure always reports NOT_SET), so no input ever arrives.
+    override fun queueInput(inputBuffer: ByteBuffer) {
         // Intentionally empty: the gate is permanently inactive.
     }
 
