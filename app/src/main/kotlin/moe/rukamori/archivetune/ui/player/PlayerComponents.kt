@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.player
 
+import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -171,6 +172,7 @@ import androidx.graphics.shapes.RoundedPolygon
 import androidx.graphics.shapes.toPath
 import kotlin.math.abs
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -1286,6 +1288,29 @@ fun V8PlayerControlsContent(
         remember(playerConnection) {
             { playerConnection.seekToNext() }
         }
+    // V7 (Immersive) used to expose only the heart action — the full player
+    // overflow menu was unreachable except through the queue sheet. A matching
+    // overflow button now sits right next to the like button.
+    val menuState = LocalMenuState.current
+    val bottomSheetPageState = LocalBottomSheetPageState.current
+    val onMoreClick =
+        remember(mediaMetadata, navController, state, menuState, bottomSheetPageState) {
+            {
+                menuState.show {
+                    PlayerMenu(
+                        mediaMetadata = mediaMetadata,
+                        navController = navController,
+                        playerBottomSheetState = state,
+                        onShowDetailsDialog = {
+                            bottomSheetPageState.show {
+                                ShowMediaInfo(mediaMetadata.id)
+                            }
+                        },
+                        onDismiss = menuState::dismiss,
+                    )
+                }
+            }
+        }
 
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val horizontalPadding =
@@ -1332,6 +1357,7 @@ fun V8PlayerControlsContent(
                 liked = currentSongLiked,
                 foreground = foreground,
                 onToggleLike = onToggleLike,
+                onMoreClick = onMoreClick,
                 onTitleClick = onTitleClick,
                 onArtistClick = onArtistClick,
             )
@@ -1384,6 +1410,7 @@ private fun V8MetadataActions(
     liked: Boolean,
     foreground: Color,
     onToggleLike: () -> Unit,
+    onMoreClick: () -> Unit,
     onTitleClick: () -> Unit,
     onArtistClick: (artistId: String) -> Unit,
 ) {
@@ -1439,6 +1466,14 @@ private fun V8MetadataActions(
                 containerColor = foreground.copy(alpha = 0.16f),
                 iconSize = 26.dp,
                 onClick = onToggleLike,
+            )
+            V8ActionButton(
+                iconRes = R.drawable.more_vert,
+                contentDescription = stringResource(R.string.more),
+                foreground = foreground,
+                containerColor = foreground.copy(alpha = 0.16f),
+                iconSize = 26.dp,
+                onClick = onMoreClick,
             )
         }
     }

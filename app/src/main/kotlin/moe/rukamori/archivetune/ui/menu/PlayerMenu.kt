@@ -208,7 +208,7 @@ fun PlayerMenu(
     val (spotifyCanvasEnabled) = rememberPreference(SpotifyCanvasKey, defaultValue = false)
     val (spotifySpDc) = rememberPreference(SpotifySpDcKey, defaultValue = "")
     val spotifyCanvasAvailable = spotifyCanvasEnabled || spotifySpDc.isNotBlank()
-    val playerDesignStyle by rememberEnumPreference(PlayerDesignStyleKey, defaultValue = PlayerDesignStyle.V4)
+    val playerDesignStyle by rememberEnumPreference(PlayerDesignStyleKey, defaultValue = PlayerDesignStyle.APPLE_MUSIC)
     val lowDataModeActive = rememberLowDataModeActive()
     val isCanvasArtworkRefetching by playerConnection.isCanvasArtworkRefetching.collectAsStateWithLifecycle()
 
@@ -807,7 +807,11 @@ fun PlayerMenu(
                 NewActionGrid(
                     actions =
                         buildList {
-                            castPlayerMenuAction?.let(::add)
+                            // The Apple Music style already has a cast button in its
+                            // bottom action row — the menu copy would be a duplicate.
+                            if (playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC) {
+                                castPlayerMenuAction?.let(::add)
+                            }
                             if (!isLocalMedia && !mediaMetadata.isPodcast) {
                                 add(
                                     NewAction(
@@ -928,6 +932,9 @@ fun PlayerMenu(
                                 )
                             }
 
+                            // Styles with a dedicated on-screen share action keep the
+                            // menu free of a duplicate entry.
+                            if (playerDesignStyle !in OnScreenShareStyles) {
                             add(
                                 if (isLocalMedia) {
                                     NewAction(
@@ -978,6 +985,7 @@ fun PlayerMenu(
                                     )
                                 },
                             )
+                            }
                             if (!isLocalMedia) {
                                 add(
                                     NewAction(
@@ -1059,6 +1067,8 @@ fun PlayerMenu(
         item {
             MenuSurfaceSection {
                 Column {
+                    // Styles with an on-screen add-to-playlist control skip the menu row.
+                    if (playerDesignStyle !in OnScreenAddToPlaylistStyles) {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
                         leadingContent = {
@@ -1078,6 +1088,7 @@ fun PlayerMenu(
                         color = MaterialTheme.colorScheme.outlineVariant,
                         thickness = 0.5.dp,
                     )
+                    }
                     ListItem(
                         headlineContent = {
                             Text(
@@ -1421,6 +1432,9 @@ fun PlayerMenu(
                     // (ShowMediaInfo) — its overview + audio-specs data now
                     // appears there, redesigned in the same expressive style.
 
+                    // SIMPMUSIC shows a details action in its own action row and the
+                    // Apple Music quality chip opens the same popup.
+                    if (playerDesignStyle !in OnScreenDetailsStyles) {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.details)) },
                         leadingContent = {
@@ -1436,6 +1450,7 @@ fun PlayerMenu(
                             },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
+                    }
 
                     if (isQueueTrigger != true) {
                         HorizontalDivider(
@@ -1444,7 +1459,8 @@ fun PlayerMenu(
                             thickness = 0.5.dp,
                         )
 
-                        if (playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC) {
+                        // Sleep timer also lives on-screen for these styles.
+                        if (playerDesignStyle !in OnScreenSleepTimerStyles) {
                             ListItem(
                                 headlineContent = { Text(text = stringResource(R.string.sleep_timer)) },
                                 leadingContent = {
@@ -2088,3 +2104,21 @@ private fun SongSourceRow(
         Text(text = label, style = MaterialTheme.typography.bodyLarge)
     }
 }
+
+
+// Player styles that already surface these actions directly on the player
+// screen — the full-screen overflow menu hides the duplicated entries for
+// them so no action appears twice for the same style.
+private val OnScreenShareStyles =
+    setOf(PlayerDesignStyle.V4, PlayerDesignStyle.TIKTOK, PlayerDesignStyle.SPATIALFLOW)
+private val OnScreenAddToPlaylistStyles =
+    setOf(PlayerDesignStyle.V10, PlayerDesignStyle.TIKTOK, PlayerDesignStyle.SIMPMUSIC)
+private val OnScreenDetailsStyles =
+    setOf(PlayerDesignStyle.SIMPMUSIC, PlayerDesignStyle.APPLE_MUSIC)
+private val OnScreenSleepTimerStyles =
+    setOf(
+        PlayerDesignStyle.V5,
+        PlayerDesignStyle.V9,
+        PlayerDesignStyle.V10,
+        PlayerDesignStyle.APPLE_MUSIC,
+    )

@@ -87,15 +87,19 @@ fun BottomSheetPage(
     val coroutineScope = rememberCoroutineScope()
     var dragOffset by remember { mutableFloatStateOf(0f) }
 
+    // Registered outside AnimatedVisibility so it is active the instant the page
+    // becomes visible and stops consuming gestures the moment it is dismissed —
+    // previously the handler stayed enabled for the whole exit fade, eating a
+    // second back swipe with no visible effect.
+    BackHandler(enabled = state.isVisible) {
+        state.dismiss()
+    }
+
     AnimatedVisibility(
         visible = state.isVisible,
         enter = fadeIn(animationSpec = tween(300)),
         exit = fadeOut(animationSpec = tween(300)),
     ) {
-        BackHandler {
-            state.dismiss()
-        }
-
         Spacer(
             modifier =
                 Modifier

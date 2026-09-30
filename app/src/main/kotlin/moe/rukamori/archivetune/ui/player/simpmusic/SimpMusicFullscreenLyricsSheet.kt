@@ -95,8 +95,6 @@ import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
-import moe.rukamori.archivetune.ui.component.BottomSheetMenu
-import moe.rukamori.archivetune.ui.component.BottomSheetPage
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.rememberLiquidGlassEnabled
@@ -650,11 +648,10 @@ internal fun SimpMusicFullscreenLyricsSheet(
                 }
             }
 
-            BottomSheetMenu(
-                state = menuState,
-                background = Color(0xF01C1C1E),
-            )
-            BottomSheetPage(state = bottomSheetPageState)
+            // The shared BottomSheetMenu / BottomSheetPage hosts in MainActivity
+            // already render these singletons; re-hosting them here composed every
+            // popup twice (double scrim, two BackHandlers) which is why a back
+            // swipe misbehaved while the lyrics fullscreen was open.
             }
 
             if (showAnchoredLyricsMenu) {

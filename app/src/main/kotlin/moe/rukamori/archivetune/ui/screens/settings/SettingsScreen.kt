@@ -94,6 +94,13 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
         )
         own("discord_experimental", "integration", "discord_experimental")
         own(
+            "liquid_glass", "appearance",
+            "liquid_glass_customisation", "glass_intensity",
+            "glass_refraction_height", "glass_refraction_amount", "glass_blur_radius",
+            "glass_tint_opacity", "glass_shadow_depth", "glass_depth_3d",
+            "glass_chromatic_aberration", "glass_backdrop_vibrancy", "glass_adaptive_luminance",
+        )
+        own(
             "lastfm", "integration",
             "lastfm_options", "lastfm_scrobbling_config", "enable_scrobbling", "lastfm_now_playing",
             "lastfm_prefer_yt_thumbnails", "scrobble_min_track_duration", "scrobble_delay_percent",
@@ -156,8 +163,10 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
             "appearance_extras" -> "settings/appearance/extras"
             "aod" -> "settings/appearance/aod_customized"
             "navigation_bar" -> "settings/appearance/navigation_bar"
+            "liquid_glass" -> "settings/appearance/liquid_glass"
 
             "playback" -> "settings/player"
+            "audiophile" -> "settings/player/audiophile"
             "sources" -> "settings/sources"
             "android_auto" -> "settings/android_auto"
             "jiosaavn" -> "settings/jiosaavn"
@@ -345,7 +354,8 @@ fun SettingsScreen(
                         modifier =
                             Modifier
                                 .padding(horizontal = SettingsDimensions.ScreenHorizontalPadding)
-                                .padding(bottom = SettingsDimensions.SectionSpacing),
+                                .padding(bottom = SettingsDimensions.SectionSpacing)
+                                .animateItem(),
                     )
                 }
             }
@@ -412,7 +422,12 @@ fun SettingsScreen(
                             key = "settings_group_spacing_$groupIndex",
                             contentType = "settings_group_spacing",
                         ) {
-                            Spacer(modifier = Modifier.height(SettingsCardDimensions.GroupSpacing))
+                            Spacer(
+                                modifier =
+                                    Modifier
+                                        .height(SettingsCardDimensions.GroupSpacing)
+                                        .animateItem(),
+                            )
                         }
                     }
 
@@ -420,7 +435,12 @@ fun SettingsScreen(
                         key = "settings_group_$groupIndex",
                         contentType = "settings_group_card",
                     ) {
-                        SettingsGroupCard(group = group)
+                        // animateItem: the cards glide when the update banner
+                        // dismisses or the search filter reshuffles the groups.
+                        SettingsGroupCard(
+                            group = group,
+                            modifier = Modifier.animateItem(),
+                        )
                     }
                 }
             }

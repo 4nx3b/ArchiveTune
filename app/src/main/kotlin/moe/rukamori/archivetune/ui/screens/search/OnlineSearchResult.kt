@@ -360,6 +360,41 @@ fun OnlineSearchResult(
                     .fillMaxSize()
                     .searchResultsBarSource(barState),
         ) {
+            // ── Top header: glass "< Search" pill, LARGE query title, solid
+            // category pills — part of the normal content flow. ─────────────
+            item(key = "results_top_header", contentType = "results_top_header") {
+                SearchResultsTopHeader(
+                    state = barState,
+                    query = viewModel.query,
+                    onBack = { navController.navigateUp() },
+                    onBackLongClick = { navController.backToMain() },
+                    chipsRow = {
+                        SolidFilterChipsRow(
+                            chips =
+                                listOf(
+                                    null to stringResource(R.string.filter_all),
+                                    FILTER_SONG to stringResource(R.string.filter_songs),
+                                    FILTER_VIDEO to stringResource(R.string.filter_videos),
+                                    FILTER_ALBUM to stringResource(R.string.filter_albums),
+                                    FILTER_ARTIST to stringResource(R.string.filter_artists),
+                                    FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
+                                    FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
+                                    PODCAST_SEARCH_FILTER to stringResource(R.string.filter_podcasts),
+                                ),
+                            currentValue = searchFilter,
+                            onValueUpdate = {
+                                if (viewModel.filter.value != it) {
+                                    viewModel.filter.value = it
+                                }
+                                coroutineScope.launch {
+                                    lazyListState.animateScrollToItem(1)
+                                }
+                            },
+                        )
+                    },
+                )
+            }
+
             if (searchFilter == null) {
                 allModeSections.forEachIndexed { index, summary ->
                     if (index > 0) {
@@ -492,42 +527,6 @@ fun OnlineSearchResult(
                 SearchResultsSortMenu(
                     selectedSort = searchSort,
                     onSortSelected = onSearchSortChange,
-                )
-            },
-            chipsRow = {
-                GlassFilterChipsRow(
-                    state = barState,
-                    chips =
-                        listOf(
-                            null to stringResource(R.string.filter_all),
-                            FILTER_SONG to stringResource(R.string.filter_songs),
-                            FILTER_VIDEO to stringResource(R.string.filter_videos),
-                            FILTER_ALBUM to stringResource(R.string.filter_albums),
-                            FILTER_ARTIST to stringResource(R.string.filter_artists),
-                            FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
-                            FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
-                            PODCAST_SEARCH_FILTER to stringResource(R.string.filter_podcasts),
-                        ),
-                    currentValue = searchFilter,
-                    onValueUpdate = {
-                        if (viewModel.filter.value != it) {
-                            viewModel.filter.value = it
-                        }
-                        coroutineScope.launch {
-                            lazyListState.animateScrollToItem(0)
-                        }
-                    },
-                    icons =
-                        mapOf(
-                            null to R.drawable.search,
-                            FILTER_SONG to R.drawable.music_note,
-                            FILTER_VIDEO to R.drawable.slow_motion_video,
-                            FILTER_ALBUM to R.drawable.album,
-                            FILTER_ARTIST to R.drawable.person,
-                            FILTER_COMMUNITY_PLAYLIST to R.drawable.queue_music,
-                            FILTER_FEATURED_PLAYLIST to R.drawable.playlist_play,
-                            PODCAST_SEARCH_FILTER to R.drawable.podcasts,
-                        ),
                 )
             },
         )

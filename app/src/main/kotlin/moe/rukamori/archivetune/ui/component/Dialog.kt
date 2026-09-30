@@ -202,8 +202,13 @@ fun DefaultDialog(
         onDispose { dialogShowingState.value = false }
     }
 
+    val menuDialogDismissal = LocalMenuDialogDismissal.current
+
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            menuDialogDismissal?.invoke()
+            onDismiss()
+        },
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         UnglassedDialogTheme {
@@ -302,8 +307,13 @@ fun ActionPromptDialog(
         onDispose { dialogShowingState.value = false }
     }
 
+    val menuDialogDismissal = LocalMenuDialogDismissal.current
+
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            menuDialogDismissal?.invoke()
+            onDismiss()
+        },
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         UnglassedDialogTheme {
@@ -413,8 +423,13 @@ fun ListDialog(
         onDispose { dialogShowingState.value = false }
     }
 
+    val menuDialogDismissal = LocalMenuDialogDismissal.current
+
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            menuDialogDismissal?.invoke()
+            onDismiss()
+        },
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         UnglassedDialogTheme {

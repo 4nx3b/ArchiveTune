@@ -188,6 +188,29 @@ internal fun SpotifyOnlineSearchResult(
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
+                        item(key = "results_top_header", contentType = "results_top_header") {
+                            SearchResultsTopHeader(
+                                state = barState,
+                                query = viewModel.query,
+                                onBack = { navController.navigateUp() },
+                                onBackLongClick = { navController.backToMain() },
+                                chipsRow = {
+                                    SolidFilterChipsRow(
+                                        chips =
+                                            listOf(
+                                                SpotifySearchFilter.ALL to stringResource(R.string.filter_all),
+                                                SpotifySearchFilter.TRACKS to stringResource(R.string.filter_songs),
+                                                SpotifySearchFilter.ALBUMS to stringResource(R.string.filter_albums),
+                                                SpotifySearchFilter.ARTISTS to stringResource(R.string.filter_artists),
+                                                SpotifySearchFilter.PLAYLISTS to stringResource(R.string.filter_playlists),
+                                            ),
+                                        currentValue = filter,
+                                        onValueUpdate = { filter = it },
+                                    )
+                                },
+                            )
+                        }
+
                         item(key = "spotify_result_label") {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -288,21 +311,6 @@ internal fun SpotifyOnlineSearchResult(
                 SearchResultsSortMenu(
                     selectedSort = searchSort,
                     onSortSelected = onSearchSortChange,
-                )
-            },
-            chipsRow = {
-                GlassFilterChipsRow(
-                    state = barState,
-                    chips =
-                        listOf(
-                            SpotifySearchFilter.ALL to stringResource(R.string.filter_all),
-                            SpotifySearchFilter.TRACKS to stringResource(R.string.filter_songs),
-                            SpotifySearchFilter.ALBUMS to stringResource(R.string.filter_albums),
-                            SpotifySearchFilter.ARTISTS to stringResource(R.string.filter_artists),
-                            SpotifySearchFilter.PLAYLISTS to stringResource(R.string.filter_playlists),
-                        ),
-                    currentValue = filter,
-                    onValueUpdate = { filter = it },
                 )
             },
         )

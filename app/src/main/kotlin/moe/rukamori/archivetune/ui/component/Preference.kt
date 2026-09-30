@@ -9,14 +9,9 @@
 
 package moe.rukamori.archivetune.ui.component
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.selection.toggleable
@@ -59,8 +54,6 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -862,37 +855,12 @@ fun SwitchPreference(
         description = description,
         icon = icon,
         trailingContent = {
-            Switch(
+            // Springy custom switch: bouncy thumb travel + velocity stretch +
+            // crossfading track, replacing the plain Material switch.
+            SpringySwitch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
                 enabled = isEnabled,
-                thumbContent = {
-                    AnimatedContent(
-                        targetState = checked,
-                        transitionSpec = {
-                            fadeIn(tween(100)) togetherWith fadeOut(tween(100))
-                        },
-                        label = "switchThumbIcon",
-                    ) { isChecked ->
-                        Icon(
-                            painter =
-                                painterResource(
-                                    id = if (isChecked) R.drawable.check else R.drawable.close,
-                                ),
-                            contentDescription = null,
-                            modifier = Modifier.size(SwitchDefaults.IconSize),
-                        )
-                    }
-                },
-                colors =
-                    SwitchDefaults.colors(
-                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                        checkedIconColor = MaterialTheme.colorScheme.primary,
-                        uncheckedThumbColor = MaterialTheme.colorScheme.onSurface,
-                        uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                        uncheckedIconColor = MaterialTheme.colorScheme.surfaceVariant,
-                    ),
             )
         },
         onClick = { onCheckedChange(!checked) },

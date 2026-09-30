@@ -271,7 +271,7 @@ private fun NewMiniPlayer(
         }
     val liquidGlassMaster by rememberPreference(
         moe.rukamori.archivetune.constants.LiquidGlassEnabledKey,
-        defaultValue = false,
+        defaultValue = true,
     )
     val effectiveBackgroundStyle =
         when {

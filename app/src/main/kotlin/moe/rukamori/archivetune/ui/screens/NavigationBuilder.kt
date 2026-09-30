@@ -105,6 +105,8 @@ import moe.rukamori.archivetune.ui.screens.settings.LyricsRomanisationSettings
 import moe.rukamori.archivetune.ui.screens.settings.PO_TOKEN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.PalettePickerScreen
 import moe.rukamori.archivetune.ui.screens.settings.PlayerSettings
+import moe.rukamori.archivetune.ui.screens.settings.AudiophileSettings
+import moe.rukamori.archivetune.ui.screens.settings.LiquidGlassSettings
 import moe.rukamori.archivetune.ui.screens.settings.PoTokenScreen
 import moe.rukamori.archivetune.ui.screens.settings.PrivacySettings
 import moe.rukamori.archivetune.ui.screens.settings.SettingsScreen
@@ -545,6 +547,18 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         PlayerSettings(navController, it.savedStateHandle["scrollTo"])
+    }
+    composable(
+        route = "settings/appearance/liquid_glass?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        LiquidGlassSettings(navController, it.savedStateHandle["scrollTo"])
+    }
+    composable(
+        route = "settings/player/audiophile?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        AudiophileSettings(navController, it.savedStateHandle["scrollTo"])
     }
     composable(
         route = "settings/sources?scrollTo={scrollTo}",

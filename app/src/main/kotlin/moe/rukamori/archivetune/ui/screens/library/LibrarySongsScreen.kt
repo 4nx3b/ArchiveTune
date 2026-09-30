@@ -328,6 +328,7 @@ fun LibrarySongsScreen(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
+                                .animateItem()
                                 .clip(RoundedCornerShape(28.dp))
                                 .background(
                                     Brush.verticalGradient(

@@ -39,6 +39,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -61,6 +62,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
 val LocalMenuState = compositionLocalOf { MenuState() }
+
+/**
+ * When a platform dialog is spawned from inside a floating menu, the back
+ * gesture should clear BOTH layers in one swipe. Menus provide a dismissal
+ * lambda here; the shared dialog components invoke it from their
+ * [androidx.compose.ui.window.Dialog.onDismissRequest] (system back gesture
+ * and outside-tap) while explicit button taps keep their call-site behavior.
+ */
+val LocalMenuDialogDismissal = staticCompositionLocalOf<(() -> Unit)?> { null }
 
 @Stable
 class MenuState(
@@ -130,6 +140,12 @@ fun BottomSheetMenu(
         }
     }
 
+    // A dialog layer hosted by the menu must also answer the back gesture with a
+    // single swipe, even when the content is not a self-dismissing window.
+    BackHandler(enabled = state.dialogContent != null) {
+        state.dismissDialog()
+    }
+
     BackHandler(enabled = renderState) {
         state.isVisible = false
     }
@@ -140,20 +156,23 @@ fun BottomSheetMenu(
 
     val menuGlassBackdrop = LocalMenuGlassBackdrop.current
     val liquidGlassBackdrop = menuGlassBackdrop ?: LocalLiquidGlassBackdrop.current
+    val glassTuning = LocalLiquidGlassTuning.current
     val glassModifier =
-        remember(liquidGlassBackdrop) {
+        remember(liquidGlassBackdrop, glassTuning) {
             if (liquidGlassBackdrop != null && background.isUnspecified) {
                 Modifier.drawBackdrop(
                     backdrop = liquidGlassBackdrop,
                     effects = {
 
-                        colorControls(saturation = 1.7f)
+                        colorControls(saturation = glassTuning.saturation)
 
-                        blur(20f.dp.toPx())
+                        blur((20f * glassTuning.blurFactor).dp.toPx())
 
                         lens(
-                            refractionHeight = 16f.dp.toPx(),
-                            refractionAmount = 40f.dp.toPx(),
+                            refractionHeight = (16f * glassTuning.refractionHeightFactor).dp.toPx(),
+                            refractionAmount = (40f * glassTuning.refractionAmountFactor).dp.toPx(),
+                            depthEffect = glassTuning.depth3D,
+                            chromaticAberration = glassTuning.chromaticAberration,
                         )
                     },
                     onDrawBackdrop = { drawBackdrop ->
@@ -170,9 +189,9 @@ fun BottomSheetMenu(
 
     val glassTint =
         if (dark) {
-            Color(0x8C1C1C1E)
+            Color(0x8C1C1C1E).copy(alpha = (0.55f * glassTuning.tintFactor).coerceIn(0f, 1f))
         } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.42f)
+            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = (0.42f * glassTuning.tintFactor).coerceIn(0f, 1f))
         }
 
     val fallbackColor =
@@ -248,7 +267,7 @@ fun BottomSheetMenu(
                         translationY = with(density) { (1f - alpha) * 48.dp.toPx() }
                     }
                     .shadow(
-                        elevation = 24.dp,
+                        elevation = (24f * glassTuning.shadowFactor).dp,
                         shape = FloatingMenuShape,
                         clip = false,
                     )
@@ -302,6 +321,8 @@ fun BottomSheetMenu(
                     LocalGlassMenuContent provides (glassModifier != null),
 
                     LocalUnglassColorScheme provides unglassedColorScheme,
+
+                    LocalMenuDialogDismissal provides ({ state.isVisible = false }),
                 ) {
                     if (useGlassInk) {
                         MaterialTheme(colorScheme = glassColorScheme) {

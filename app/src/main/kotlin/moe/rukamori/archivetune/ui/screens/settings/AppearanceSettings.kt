@@ -165,7 +165,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     val (playerDesignStyle, onPlayerDesignStyleChange) =
         rememberEnumPreference(
             PlayerDesignStyleKey,
-            defaultValue = PlayerDesignStyle.V4,
+            defaultValue = PlayerDesignStyle.APPLE_MUSIC,
         )
     val (tikTokMainLyrics, onTikTokMainLyricsChange) =
         rememberPreference(
@@ -223,7 +223,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     val (liquidGlassEnabled, onLiquidGlassEnabledChange) =
         rememberPreference(
             LiquidGlassEnabledKey,
-            defaultValue = false,
+            defaultValue = true,
         )
     val (pureBlack, onPureBlackChange) = rememberPreference(PureBlackKey, defaultValue = false)
     val (disableBlur, onDisableBlurChange) = rememberPreference(DisableBlurKey, defaultValue = false)
@@ -522,6 +522,17 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                 modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
                             )
                         }
+                    }
+                }
+
+                item {
+                    Column(modifier = positions.modifierFor("liquid_glass_customisation")) {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.liquid_glass_settings_title)) },
+                            description = stringResource(R.string.liquid_glass_customisation_subtitle),
+                            icon = { Icon(painterResource(R.drawable.sliders), null) },
+                            onClick = { navController.navigate("settings/appearance/liquid_glass") },
+                        )
                     }
                 }
 
@@ -1124,7 +1135,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     PreferenceEntry(
-                        modifier = positions.modifierFor("navigation_bar_settings", "navigation_bar_style"),
+                        modifier = positions.modifierFor("navigation_bar_settings"),
                         title = { Text(stringResource(R.string.navigation_bar_settings_title)) },
                         description = stringResource(R.string.navigation_bar_settings_subtitle),
                         icon = { Icon(painterResource(R.drawable.nav_bar), null) },

@@ -49,7 +49,7 @@ class GlassScreenHeader(
 
 @Composable
 fun rememberGlassScreenHeader(): GlassScreenHeader {
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
     // The recording source stays attached for the whole lifetime of the screen:
     // detaching `Modifier.layerBackdrop` while the player sheet covers the
