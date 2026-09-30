@@ -9,6 +9,8 @@
 
 package moe.rukamori.archivetune.ui.screens.artist
 
+import androidx.compose.ui.draw.clipToBounds
+import moe.rukamori.archivetune.ui.theme.BackdropTonePalette
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -452,8 +454,11 @@ fun ArtistScreen(
     val heroVisible by remember {
         derivedStateOf { lazyListState.firstVisibleItemIndex == 0 }
     }
+    // Sampling pauses while the list is actively scrolling: the full-hero
+    // GPU readback (~9MB per sample) was the main source of scroll jank.
+    val listScrolling by remember { derivedStateOf { lazyListState.isScrollInProgress } }
     val canvasSamplingActive =
-        heroCanvasPresent && heroVisible && !lyricsFullScreen && !playerSheetOverlayActive
+        heroCanvasPresent && heroVisible && !lyricsFullScreen && !playerSheetOverlayActive && !listScrolling
 
     LaunchedEffect(canvasSamplingActive) {
         if (!canvasSamplingActive) {
@@ -524,18 +529,29 @@ fun ArtistScreen(
     }
 
     val ambientSource = canvasAmbientColors ?: trackArtworkColors ?: artistArtworkColors
-    val ambientStops = ambientSource?.takeIf { it.isNotEmpty() } ?: listOf(surfaceColor)
-    val ambientTopAdjusted =
-        ambientStops.first().ambientAdjusted(darkTheme = isDarkTheme)
-    val ambientBottomAdjusted =
-        ambientStops.last().ambientAdjusted(darkTheme = isDarkTheme)
+    // The immersive-player (V7) bottom-controls gradient ladder: the dominant
+    // colour projected into three value bands (bright top, mid, deep bottom).
+    // NO backdrop blur, NO theme-surface mixing — exactly the colour gradience
+    // the V7 player paints behind its transport controls.
+    val ambientPalette =
+        remember(ambientSource, surfaceColor) {
+            BackdropTonePalette.fromColors(
+                colors = ambientSource.orEmpty(),
+                fallbackColor = surfaceColor.toArgb(),
+            )
+        }
     val animatedAmbientTop by animateColorAsState(
-        targetValue = ambientTopAdjusted,
+        targetValue = ambientPalette.top,
         animationSpec = tween(durationMillis = 900),
         label = "artistAmbientTop",
     )
+    val animatedAmbientMid by animateColorAsState(
+        targetValue = ambientPalette.mid,
+        animationSpec = tween(durationMillis = 900),
+        label = "artistAmbientMid",
+    )
     val animatedAmbientBottom by animateColorAsState(
-        targetValue = ambientBottomAdjusted,
+        targetValue = ambientPalette.bottom,
         animationSpec = tween(durationMillis = 900),
         label = "artistAmbientBottom",
     )
@@ -588,9 +604,9 @@ fun ArtistScreen(
                 .fillMaxSize()
                 .background(surfaceColor),
     ) {
-        // Atmospheric background: animated artwork-derived gradient, plus a
-        // heavily blurred copy of the artist artwork for texture (RenderEffect
-        // blur is S+; below that the gradient alone carries the atmosphere).
+        // Atmospheric background: the animated palette-gradient alone (the
+        // immersive-player colour gradience). The old 80dp blurred-artwork
+        // layer was removed per request — no backdrop blur on this page.
         Box(
             modifier =
                 Modifier
@@ -598,28 +614,11 @@ fun ArtistScreen(
                     .background(
                         Brush.verticalGradient(
                             0f to animatedAmbientTop,
-                            0.42f to animatedAmbientBottom,
-                            1f to surfaceColor,
+                            0.5f to animatedAmbientMid,
+                            1f to animatedAmbientBottom,
                         ),
                     ),
         )
-        if (ambientSource != null && thumbnail != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            AsyncImage(
-                model =
-                    thumbnail.resize(
-                        width = ArtistAmbientArtworkSizePx,
-                        height = ArtistAmbientArtworkSizePx,
-                        ytimgResizePolicy = YtimgResizePolicy.PreserveOriginal,
-                    ),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .blur(80.dp)
-                        .alpha(if (isDarkTheme) 0.16f else 0.10f),
-            )
-        }
 
         ExpressivePullToRefreshBox(
             isRefreshing = isManuallyRefreshing,
@@ -720,7 +719,13 @@ fun ArtistScreen(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = ArtistHeroMinHeight),
+                                .heightIn(min = ArtistHeroMinHeight)
+                                // clipToBounds: the parallax translates the
+                                // artwork DOWNWARDS at half scroll speed —
+                                // without clipping it bled through the sections
+                                // below (the profile picture / canvas showed
+                                // through the rows while scrolling).
+                                .clipToBounds(),
                     ) {
                         // Immersive hero image with a gentle parallax: the
                         // artwork scrolls at half speed while the list moves
@@ -1134,6 +1139,10 @@ fun ArtistScreen(
                                 showInLibraryIcon = true,
                                 isActive = song.id == mediaMetadata?.id,
                                 isPlaying = isPlaying,
+                                // Rows float transparently over the palette
+                                // gradient — the old opaque surface islands
+                                // clashed with the animated background.
+                                swipeContentBackgroundColor = Color.Transparent,
                                 trailingContent = {
                                     IconButton(
                                         onClick = {
@@ -1302,6 +1311,8 @@ fun ArtistScreen(
                                     item = song as SongItem,
                                     isActive = mediaMetadata?.id == song.id,
                                     isPlaying = isPlaying,
+                                    // Transparent over the palette gradient.
+                                    swipeContentBackgroundColor = Color.Transparent,
                                     trailingContent = {
                                         IconButton(
                                             onClick = {
@@ -1716,18 +1727,8 @@ private fun ArtistOverflowMenu(
                 .fillMaxWidth()
                 .padding(bottom = 12.dp),
     ) {
-        ArtistOverflowMenuItem(
-            text = stringResource(R.string.share),
-            iconRes = R.drawable.share,
-            onClick = { onAction(ArtistAction.Share) },
-        )
-        MenuSectionDivider()
-        ArtistOverflowMenuItem(
-            text = stringResource(R.string.copy_link),
-            iconRes = R.drawable.copy,
-            onClick = { onAction(ArtistAction.CopyLink) },
-        )
-        MenuSectionDivider()
+        // Share / Copy link were removed from the artist overflow menu on
+        // request — sharing stays available through the hero Share button.
         ArtistOverflowMenuItem(
             text = stringResource(if (isBlocked) R.string.unblock_artist else R.string.block_artist),
             iconRes = R.drawable.block,
@@ -2328,20 +2329,12 @@ private suspend fun extractAmbientArtworkColors(
     return stops
 }
 
-/** Softens a palette colour so text remains comfortable over the atmosphere. */
-private fun Color.ambientAdjusted(darkTheme: Boolean): Color {
-    val target = if (darkTheme) Color.Black else Color.White
-    val ratio = if (darkTheme) 0.22f else 0.42f
-    return lerp(this, target, ratio)
-}
-
 private const val ARTIST_AMBIENT_BACKGROUND_MODE = "ARTIST_AMBIENT"
 private const val AMBIENT_EXTRACT_SIZE_PX = 64
 private const val CANVAS_SAMPLE_INTERVAL_MILLIS = 1100L
 private const val CANVAS_RECORD_INTERVAL_MILLIS = 220L
 
 private const val ArtistHeroArtworkSizePx = 1200
-private const val ArtistAmbientArtworkSizePx = 600
 private const val ArtistReleaseArtworkSizePx = 320
 private const val ArtistCircleArtworkSizePx = 288
 private val ArtistHeroArtworkSizeBuckets = listOf(ArtistHeroArtworkSizePx)

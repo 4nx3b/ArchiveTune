@@ -38,7 +38,11 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
     }
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat =
-        if ((inputAudioFormat.encoding == C.ENCODING_PCM_16BIT ||
+        if (moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime.chainBypassActive) {
+            // Bit-Perfect: stay inactive so the chain routes around this
+            // processor (balance/rotation would modify samples).
+            AudioProcessor.AudioFormat.NOT_SET
+        } else if ((inputAudioFormat.encoding == C.ENCODING_PCM_16BIT ||
             inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT) &&
             inputAudioFormat.channelCount == STEREO_CHANNEL_COUNT
         ) {

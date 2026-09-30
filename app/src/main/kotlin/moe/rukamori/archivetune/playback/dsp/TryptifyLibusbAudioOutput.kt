@@ -57,7 +57,15 @@ class TryptifyLibusbAudioOutput(
             }
         }
 
-        val ladder = if (sourceIsFloat) intArrayOf(24, 16) else intArrayOf(16)
+        // Bit-depth follows the SOURCE encoding: PCM16 -> 16, PCM24 -> 24,
+        // PCM32 -> 32 (then 24), float packs to its source depth (24 by
+        // default, 16 as the compatibility rung). Never a blanket 16-bit.
+        val ladder = when (config.encoding) {
+            C.ENCODING_PCM_16BIT -> intArrayOf(16)
+            C.ENCODING_PCM_24BIT -> intArrayOf(24, 16)
+            C.ENCODING_PCM_32BIT -> intArrayOf(32, 24, 16)
+            else -> intArrayOf(24, 16)
+        }
         for (bits in ladder) {
             if (driver.isStreamingFormat(rate, bits, channels) || driver.start(rate, bits, channels)) {
                 engaged = true
@@ -107,7 +115,14 @@ class TryptifyLibusbAudioOutput(
         if (!ensureEngaged()) {
             throw AudioOutput.WriteException(USB_ENGAGE_FAILED, true)
         }
-        val bytesPerSample = if (sourceIsFloat) 4 else 2
+        // Frame math follows the SOURCE encoding — PCM24 is 3 bytes and
+        // PCM32 is 4, and int sources pass through byte-for-byte.
+        val bytesPerSample = when (config.encoding) {
+            C.ENCODING_PCM_16BIT -> 2
+            C.ENCODING_PCM_24BIT -> 3
+            C.ENCODING_PCM_32BIT -> 4
+            else -> 4
+        }
         val bytesPerFrame = bytesPerSample * channels
         val frames = buffer.remaining() / bytesPerFrame
         if (frames <= 0) return true

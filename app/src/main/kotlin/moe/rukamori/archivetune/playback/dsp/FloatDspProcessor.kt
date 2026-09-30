@@ -34,6 +34,11 @@ class FloatDspProcessor : BaseAudioProcessor() {
     }
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
+        // Bit-Perfect: stay inactive so the chain routes around this
+        // processor while the bypass is engaged.
+        if (moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime.chainBypassActive) {
+            return AudioProcessor.AudioFormat.NOT_SET
+        }
         if (!FloatDsp.available) return AudioProcessor.AudioFormat.NOT_SET
         val encoding = inputAudioFormat.encoding
         if (engaged && (encoding == C.ENCODING_PCM_16BIT || encoding == C.ENCODING_PCM_FLOAT)) {

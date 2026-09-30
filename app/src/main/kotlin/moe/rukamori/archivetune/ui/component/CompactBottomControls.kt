@@ -136,6 +136,11 @@ fun CompactControlCircle(
 ) {
     val useGlass = backdrop != null
     if (useGlass) {
+        // The SAME treatment as the mini player pill: an opaque surface tint
+        // behind the blurred backdrop. Without it the circles read as weak/empty
+        // glass on pages whose background behind them is flat or transparent
+        // (home atmosphere, settings' transparent scaffold) while they look
+        // strong on content-heavy pages — this pins the intensity everywhere.
         Box(
             modifier =
                 modifier
@@ -144,6 +149,8 @@ fun CompactControlCircle(
                         backdrop = backdrop,
                         shape = CircleShape,
                         interactive = false,
+                        blurRadius = LiquidGlassPillBlurRadius,
+                        baseColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     )
                     .glassGlowOverlay(glowStrength, CircleShape)
                     .clip(CircleShape)

@@ -9,6 +9,9 @@
 
 package moe.rukamori.archivetune.ui.player
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.unit.lerp
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
@@ -41,12 +44,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -127,6 +126,7 @@ fun SwipeableMiniPlayerBox(
     coroutineScope: CoroutineScope,
     pureBlack: Boolean = false,
     useLegacyBackground: Boolean = false,
+    compactFraction: Float = 0f,
     content: @Composable (Float) -> Unit,
 ) {
     val offsetXAnimatable = remember { Animatable(0f) }
@@ -184,7 +184,14 @@ fun SwipeableMiniPlayerBox(
                                 },
                             )
                         } else {
-                            baseModifier.padding(horizontal = NavigationBarHorizontalPadding)
+                            // Expanded: the pill insets itself to align with the
+                            // navigation bar edges. Compact: the padding eases to
+                            // zero so the pill's edge lands exactly one
+                            // CompactControlGap from the Home/Search circles (the
+                            // circles already sit at the nav-bar horizontal padding).
+                            baseModifier.padding(
+                                horizontal = lerp(NavigationBarHorizontalPadding, 0.dp, compactFraction),
+                            )
                         }
                     }.let { baseModifier ->
                         if (swipeThumbnail) {
@@ -374,8 +381,6 @@ fun RowScope.MiniPlayerInfo(
 @Composable
 private fun MiniPlayerArtwork(
     mediaMetadata: MediaMetadata?,
-    progress: () -> Float,
-    isLoading: Boolean,
     colors: MiniPlayerContentColors,
     onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -401,32 +406,19 @@ private fun MiniPlayerArtwork(
                     }
                 },
     ) {
-        if (isLoading) {
-            CircularWavyProgressIndicator(
-                modifier = Modifier.fillMaxSize(),
-                color = colors.progress,
-                trackColor = colors.progressTrack,
-            )
-        } else {
-            CircularWavyProgressIndicator(
-                progress = progress,
-                modifier = Modifier.fillMaxSize(),
-                color = colors.progress,
-                trackColor = colors.progressTrack,
-            )
-        }
-
+        // Reference design: a rounded-square cover with a hairline border —
+        // no progress ring around the thumbnail.
         Box(
             contentAlignment = Alignment.Center,
             modifier =
                 Modifier
-                    .size(42.dp)
-                    .clip(CircleShape)
+                    .size(48.dp)
+                    .clip(MiniPlayerArtworkShape)
                     .background(colors.artworkContainer)
                     .border(
                         width = 1.dp,
                         color = colors.artworkBorder,
-                        shape = CircleShape,
+                        shape = MiniPlayerArtworkShape,
                     ),
         ) {
 
@@ -484,20 +476,12 @@ private fun MiniPlayerTransportButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     isPrimary: Boolean = false,
+    compact: Boolean = false,
     colors: MiniPlayerContentColors,
 ) {
     val view = LocalView.current
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
 
-    val containerColor =
-        if (isPrimary) colors.primaryButtonContainer else colors.secondaryButtonContainer
-    val buttonColors =
-        IconButtonDefaults.iconButtonColors(
-            containerColor = containerColor,
-            contentColor = if (isPrimary) colors.primaryButtonIcon else colors.buttonIcon,
-            disabledContainerColor = Color.Transparent,
-            disabledContentColor = colors.disabledButtonIcon,
-        )
     val handleClick =
         remember(enableHapticFeedback, onClick, view) {
             {
@@ -510,37 +494,42 @@ private fun MiniPlayerTransportButton(
                 onClick()
             }
         }
-    val content: @Composable () -> Unit =
-        remember(iconResId, contentDescription, isPrimary) {
-            @Composable {
-                Icon(
-                    painter = painterResource(iconResId),
-                    contentDescription = contentDescription,
-                    modifier = Modifier.size(if (isPrimary) 24.dp else 20.dp),
-                )
-            }
-        }
 
-    if (isPrimary) {
-        FilledIconButton(
-            onClick = handleClick,
-            shapes = IconButtonDefaults.shapes(),
-            modifier = modifier.size(48.dp),
-            enabled = enabled,
-            colors = buttonColors,
-            content = content,
-        )
-    } else {
-        IconButton(
-            onClick = handleClick,
-            shapes = IconButtonDefaults.shapes(),
-            modifier = modifier.size(48.dp),
-            enabled = enabled,
-            colors = buttonColors,
-            content = content,
+    // Reference design: large, clean, system-style icons with NO circle or
+    // pill background behind them — the glass of the mini player itself is
+    // the surface. The touch target stays generous.
+    val iconSize =
+        when {
+            compact -> if (isPrimary) 26.dp else 22.dp
+            isPrimary -> 34.dp
+            else -> 28.dp
+        }
+    val tint = if (isPrimary) colors.primaryButtonIcon else colors.buttonIcon
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier =
+            modifier
+                .size(if (compact) 40.dp else 44.dp)
+                .clip(CircleShape)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    enabled = enabled,
+                    onClick = handleClick,
+                ),
+    ) {
+        Icon(
+            painter = painterResource(iconResId),
+            contentDescription = contentDescription,
+            tint = if (enabled) tint else colors.disabledButtonIcon,
+            modifier = Modifier.size(iconSize),
         )
     }
 }
+
+/** The rounded-square cover shape of the mini player artwork (reference). */
+private val MiniPlayerArtworkShape = RoundedCornerShape(10.dp)
 
 @Composable
 private fun MiniPlayerTransportControls(
@@ -570,7 +559,7 @@ private fun MiniPlayerTransportControls(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MiniPlayerTransportButton(
-            iconResId = R.drawable.player_skip_previous,
+            iconResId = R.drawable.solar_skip_previous_linear,
             contentDescription = stringResource(R.string.widget_previous),
             onClick = onPrevious,
             enabled = canSkipPrevious,
@@ -580,9 +569,9 @@ private fun MiniPlayerTransportControls(
         MiniPlayerTransportButton(
             iconResId =
                 when {
-                    playbackState == Player.STATE_ENDED -> R.drawable.player_replay
-                    isPlaying -> R.drawable.player_pause
-                    else -> R.drawable.player_play
+                    playbackState == Player.STATE_ENDED -> R.drawable.solar_replay_linear
+                    isPlaying -> R.drawable.solar_pause_linear
+                    else -> R.drawable.solar_play_linear
                 },
             contentDescription =
                 stringResource(
@@ -594,7 +583,7 @@ private fun MiniPlayerTransportControls(
         )
 
         MiniPlayerTransportButton(
-            iconResId = R.drawable.player_skip_next,
+            iconResId = R.drawable.solar_skip_next_linear,
             contentDescription = stringResource(R.string.next),
             onClick = onNext,
             enabled = canSkipNext,
@@ -610,6 +599,7 @@ fun NewMiniPlayerContent(
     playerConnection: PlayerConnection,
     colors: MiniPlayerContentColors,
     compactFraction: Float = 0f,
+    compactShowTransportControls: Boolean = false,
     onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
@@ -617,20 +607,6 @@ fun NewMiniPlayerContent(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val canSkipPrevious by playerConnection.canSkipPrevious.collectAsStateWithLifecycle()
     val canSkipNext by playerConnection.canSkipNext.collectAsStateWithLifecycle()
-
-    val isLoading = playbackState == Player.STATE_BUFFERING
-
-    val progressProvider =
-        remember(positionProvider, durationProvider) {
-            {
-                val duration = durationProvider()
-                if (duration > 0) {
-                    (positionProvider().toFloat() / duration).coerceIn(0f, 1f)
-                } else {
-                    0f
-                }
-            }
-        }
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Expanded content: fades and gently shrinks as the pill morphs.
@@ -640,7 +616,7 @@ fun NewMiniPlayerContent(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 8.dp)
+                        .padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 8.dp)
                         .graphicsLayer {
                             alpha = 1f - compactFraction
                             val scale = 1f - 0.10f * compactFraction
@@ -650,8 +626,6 @@ fun NewMiniPlayerContent(
             ) {
                 MiniPlayerArtwork(
                     mediaMetadata = mediaMetadata,
-                    progress = progressProvider,
-                    isLoading = isLoading,
                     colors = colors,
                     onArtworkSlotPositioned = onArtworkSlotPositioned,
                 )
@@ -682,6 +656,7 @@ fun NewMiniPlayerContent(
                 durationProvider = durationProvider,
                 playerConnection = playerConnection,
                 colors = colors,
+                showTransportControls = compactShowTransportControls,
                 modifier =
                     Modifier
                         .fillMaxSize()
@@ -698,10 +673,11 @@ fun NewMiniPlayerContent(
 
 /**
  * The compact-state mini player pill content: [artwork] [title/artist] [pause].
- * Only the pause control remains — per the reference compact design, no
- * next/previous/shuffle/repeat are shown while compact. The expanded row
- * crossfades into this as the pill morphs, with matched scale so the swap
- * reads as one motion rather than a replace.
+ * When a Search circle does NOT sit beside the pill ([showTransportControls],
+ * e.g. the artist page), the freed end space carries the full compact transport
+ * — [artwork] [title/artist] [previous] [pause] [next]. No shuffle/repeat in
+ * either shape. The expanded row crossfades into this as the pill morphs, with
+ * matched scale so the swap reads as one motion rather than a replace.
  */
 @Composable
 fun CompactMiniPlayerContent(
@@ -710,25 +686,14 @@ fun CompactMiniPlayerContent(
     playerConnection: PlayerConnection,
     colors: MiniPlayerContentColors,
     modifier: Modifier = Modifier,
+    showTransportControls: Boolean = false,
     onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val playbackState by playerConnection.playbackState.collectAsStateWithLifecycle()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
-
-    val isLoading = playbackState == Player.STATE_BUFFERING
-
-    val progressProvider =
-        remember(positionProvider, durationProvider) {
-            {
-                val duration = durationProvider()
-                if (duration > 0) {
-                    (positionProvider().toFloat() / duration).coerceIn(0f, 1f)
-                } else {
-                    0f
-                }
-            }
-        }
+    val canSkipPrevious by playerConnection.canSkipPrevious.collectAsStateWithLifecycle()
+    val canSkipNext by playerConnection.canSkipNext.collectAsStateWithLifecycle()
 
     val onPlayPause =
         remember(playbackState, playerConnection) {
@@ -741,17 +706,17 @@ fun CompactMiniPlayerContent(
                 }
             }
         }
+    val onPrevious = remember(playerConnection) { { playerConnection.seekToPrevious() } }
+    val onNext = remember(playerConnection) { { playerConnection.seekToNext() } }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
             modifier
-                .padding(start = 8.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+                .padding(start = 10.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
     ) {
         MiniPlayerArtwork(
             mediaMetadata = mediaMetadata,
-            progress = progressProvider,
-            isLoading = isLoading,
             colors = colors,
             onArtworkSlotPositioned = onArtworkSlotPositioned,
         )
@@ -763,19 +728,43 @@ fun CompactMiniPlayerContent(
             )
         } ?: Spacer(Modifier.weight(1f))
 
+        if (showTransportControls) {
+            MiniPlayerTransportButton(
+                iconResId = R.drawable.solar_skip_previous_linear,
+                contentDescription = stringResource(R.string.widget_previous),
+                onClick = onPrevious,
+                enabled = canSkipPrevious,
+                compact = true,
+                colors = colors,
+            )
+        }
+
         MiniPlayerTransportButton(
             iconResId =
                 when {
-                    playbackState == Player.STATE_ENDED -> R.drawable.player_replay
-                    isPlaying -> R.drawable.player_pause
-                    else -> R.drawable.player_play
+                    playbackState == Player.STATE_ENDED -> R.drawable.solar_replay_linear
+                    isPlaying -> R.drawable.solar_pause_linear
+                    else -> R.drawable.solar_play_linear
                 },
             contentDescription =
                 stringResource(
                     if (playbackState == Player.STATE_ENDED || !isPlaying) R.string.play else R.string.widget_pause,
                 ),
             onClick = onPlayPause,
+            isPrimary = true,
+            compact = true,
             colors = colors,
         )
+
+        if (showTransportControls) {
+            MiniPlayerTransportButton(
+                iconResId = R.drawable.solar_skip_next_linear,
+                contentDescription = stringResource(R.string.next),
+                onClick = onNext,
+                enabled = canSkipNext,
+                compact = true,
+                colors = colors,
+            )
+        }
     }
 }

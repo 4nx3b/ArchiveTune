@@ -9,6 +9,9 @@
 
 package moe.rukamori.archivetune.ui.screens.search
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
@@ -181,15 +184,36 @@ fun BoxScope.SearchResultsBottomOverlay(
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     var fieldFocused by rememberSaveable { mutableStateOf(false) }
+    var lastObservedItemIndex by remember { mutableIntStateOf(0) }
+    var lastObservedScrollOffset by remember { mutableIntStateOf(0) }
 
     // "Hide search bar and category pills while scrolling" (Appearance): the
-    // whole chrome slides away while the list is actively scrolling below the
-    // top and slides back the moment the fling settles.
+    // chrome slides away once the list scrolls DOWN below the top and only
+    // returns when the user scrolls back UP — stopping the scroll no longer
+    // re-shows it (direction-latched, matching the compact bottom controls).
     val hideWhileScrolling by rememberPreference(HideSearchChromeWhileScrollingKey, defaultValue = false)
+    var hiddenByScrollDirection by remember { mutableStateOf(false) }
+    if (lazyListState != null) {
+        LaunchedEffect(lazyListState) {
+            snapshotFlow { lazyListState.firstVisibleItemIndex to lazyListState.firstVisibleItemScrollOffset }
+                .collect { (_, offset) ->
+                    // Rising offset = scrolling deeper into the list; the first
+                    // frame after a scroll stop keeps the latch (no re-show).
+                    val goingDown = offset > lastObservedScrollOffset || lazyListState.firstVisibleItemIndex > lastObservedItemIndex
+                    if (goingDown && lazyListState.canScrollBackward) {
+                        hiddenByScrollDirection = true
+                    } else if (!goingDown) {
+                        hiddenByScrollDirection = false
+                    }
+                    lastObservedItemIndex = lazyListState.firstVisibleItemIndex
+                    lastObservedScrollOffset = offset
+                }
+        }
+    }
     val chromeHidden =
         hideWhileScrolling &&
             lazyListState != null &&
-            lazyListState.isScrollInProgress &&
+            hiddenByScrollDirection &&
             lazyListState.canScrollBackward
 
     // While the keyboard is open it fully covers the mini player, so the

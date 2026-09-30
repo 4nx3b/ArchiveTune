@@ -72,6 +72,7 @@ import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.ui.component.LocalNavigationBarBackdrop
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
 import moe.rukamori.archivetune.ui.component.liquidGlass
+import moe.rukamori.archivetune.ui.component.LiquidGlassPillBlurRadius
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberPreSFrostedBitmap
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
@@ -139,6 +140,9 @@ fun MiniPlayer(
         pureBlack = pureBlack,
         isPairedWithNavigation = isPairedWithNavigation,
         compactFraction = compactFraction,
+        // No Search circle beside the pill => the freed end space carries the
+        // compact transport (previous / pause / next) instead.
+        compactShowTransportControls = !compactReserveEndControl,
         onArtworkSlotPositioned = onArtworkSlotPositioned,
     )
 }
@@ -151,6 +155,7 @@ private fun NewMiniPlayer(
     pureBlack: Boolean,
     isPairedWithNavigation: Boolean,
     compactFraction: Float = 0f,
+    compactShowTransportControls: Boolean = false,
     onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -321,6 +326,7 @@ private fun NewMiniPlayer(
         coroutineScope = coroutineScope,
         pureBlack = pureBlack,
         useLegacyBackground = false,
+        compactFraction = compactFraction,
     ) { offsetX ->
         Box(
             modifier =
@@ -344,6 +350,7 @@ private fun NewMiniPlayer(
                 playerConnection = playerConnection,
                 colors = contentColors,
                 compactFraction = compactFraction,
+                compactShowTransportControls = compactShowTransportControls,
                 onArtworkSlotPositioned = onArtworkSlotPositioned,
             )
         }
@@ -454,6 +461,10 @@ private fun MiniPlayerBackground(
                             backdrop = liquidGlassBackdrop,
                             shape = MaterialTheme.shapes.extraLarge,
                             interactive = false,
+                            // The same 18dp pill blur + tinted base the compact
+                            // control circles use — one glass intensity for the
+                            // whole bottom row, on every screen.
+                            blurRadius = LiquidGlassPillBlurRadius,
                             baseColor = baseColor,
                         ),
                 )

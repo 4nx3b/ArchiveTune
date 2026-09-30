@@ -7,6 +7,11 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime
+import moe.rukamori.archivetune.constants.BIT_PERFECT_NATIVE_RATE_DEFAULT
+import moe.rukamori.archivetune.constants.BIT_PERFECT_OUTPUT_DEFAULT
+import moe.rukamori.archivetune.constants.BitPerfectNativeRateKey
+import moe.rukamori.archivetune.constants.BitPerfectOutputKey
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -78,6 +83,16 @@ fun AudiophileSettings(
         rememberPreference(
             FloatDspEnabledKey,
             defaultValue = false,
+        )
+    val (bitPerfect, onBitPerfectChange) =
+        rememberPreference(
+            BitPerfectOutputKey,
+            defaultValue = BIT_PERFECT_OUTPUT_DEFAULT,
+        )
+    val (bitPerfectNativeRate, onBitPerfectNativeRateChange) =
+        rememberPreference(
+            BitPerfectNativeRateKey,
+            defaultValue = BIT_PERFECT_NATIVE_RATE_DEFAULT,
         )
     val (usbExclusiveAudio, onUsbExclusiveAudioChange) =
         rememberPreference(
@@ -214,6 +229,38 @@ fun AudiophileSettings(
                     .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
             ) {
                 PreferenceGroup(title = stringResource(R.string.audiophile_engines_group)) {
+                    item {
+                        Column(modifier = positions.modifierFor("bit_perfect_output")) {
+                            SwitchPreference(
+                                title = { Text(stringResource(R.string.bit_perfect_output)) },
+                                description = stringResource(R.string.bit_perfect_output_desc),
+                                icon = { Icon(painterResource(R.drawable.solar_headphones), null) },
+                                checked = bitPerfect,
+                                onCheckedChange = onBitPerfectChange,
+                            )
+                            // Read-only LIVE status: what the active output is
+                            // actually doing right now (never the request).
+                            val statusText = rememberBitPerfectStatusLine()
+                            if (bitPerfect && statusText != null) {
+                                Text(
+                                    text = statusText,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(start = 56.dp, top = 2.dp, end = 16.dp),
+                                )
+                            }
+                            if (bitPerfect) {
+                                SwitchPreference(
+                                    title = { Text(stringResource(R.string.bit_perfect_native_rate)) },
+                                    description = stringResource(R.string.bit_perfect_native_rate_desc),
+                                    icon = { Icon(painterResource(R.drawable.solar_aspect_ratio_linear), null) },
+                                    checked = bitPerfectNativeRate,
+                                    onCheckedChange = onBitPerfectNativeRateChange,
+                                )
+                            }
+                        }
+                    }
+
                     item(visible = !tryptifyAudioProcessing && !lastwaveAudioProcessing) {
                         Column(modifier = positions.modifierFor("float_dsp")) {
                             SwitchPreference(
@@ -504,3 +551,39 @@ private fun TryptifyFftSizeDialog(
         }
     }
 }
+
+/**
+ * The read-only Bit-Perfect status line. It renders the ACTUAL active output
+ * (from [BitPerfectRuntime], updated per track by the playback service), never
+ * merely the requested format:
+ *
+ *  - verified + rate matched  -> "Bit-Perfect • 24-bit • 96 kHz"
+ *  - verified, rate carried    -> "Native Rate • 24-bit • 44.1 kHz"
+ *  - rate converted            -> "Resampling • 24-bit/96 kHz → 48 kHz"
+ *  - anything else             -> "Bit-Perfect unavailable" (+ reason)
+ */
+@Composable
+private fun rememberBitPerfectStatusLine(): String? {
+    val status = BitPerfectRuntime.status
+    return remember(status) {
+        with(status) {
+            when {
+                usbExclusiveActive && verifiedBitPerfect && nativeRateMatched ->
+                    "Bit-Perfect • ${sourceBitDepth}-bit • ${rateKhz(sourceSampleRate)}"
+                verifiedBitPerfect && nativeRateMatched ->
+                    "Bit-Perfect • ${sourceBitDepth}-bit • ${rateKhz(sourceSampleRate)}"
+                verifiedBitPerfect ->
+                    "Native Rate • ${sourceBitDepth}-bit • ${rateKhz(sourceSampleRate)}"
+                resamplerActive && sourceSampleRate > 0 && outputSampleRate > 0 ->
+                    "Resampling • ${sourceBitDepth}-bit/${rateKhz(sourceSampleRate)} → ${rateKhz(outputSampleRate)}"
+                else -> "Bit-Perfect unavailable" + (failureReason?.let { " ($it)" } ?: "")
+            }
+        }
+    }
+}
+
+private fun rateKhz(hz: Int): String =
+    if (hz % 1000 == 0) "${hz / 1000} kHz" else {
+        val k = hz / 1000.0
+        if (k == k.toInt().toDouble()) "${k.toInt()} kHz" else String.format(java.util.Locale.US, "%.1f kHz", k)
+    }

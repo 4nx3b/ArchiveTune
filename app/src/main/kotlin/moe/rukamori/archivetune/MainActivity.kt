@@ -1463,9 +1463,12 @@ class MainActivity : ComponentActivity() {
                         label = "bottomUiCompactFraction",
                     )
                     // The search bar minimises into the compact Search circle on
-                    // every route — including the search-results pages, whose own
-                    // bottom overlay fades out while the compact row takes over.
-                    val compactSearchCircleVisible = true
+                    // every route except the artist page: there the freed space
+                    // beside the pill carries the compact transport controls
+                    // (previous / pause / next) instead — the artist page has no
+                    // search context of its own.
+                    val compactSearchCircleVisible =
+                        navBackStackEntry?.destination?.route?.startsWith("artist/") != true
 
                     val navigationBarGlassGlow by rememberPreference(
                         NavigationBarGlassGlowKey,
@@ -3049,11 +3052,15 @@ class MainActivity : ComponentActivity() {
                                             )
                                         }
 
-                                        if (useRail) return@Box
-
+                                        // Rail mode (tablet / landscape / TV) keeps the
+                                        // side navigation rail instead of the bottom bar, but
+                                        // the compact bottom controls row below must still
+                                        // compose — the old early-return here made the Home and
+                                        // Search circles invisible beside the morphed pill.
                                         val navSlideDistance =
                                             bottomInset + floatingBarsBottomPadding + navVisibleHeight
 
+                                        if (!useRail) {
                                         Box(
                                             modifier =
                                                 Modifier
@@ -3116,6 +3123,7 @@ class MainActivity : ComponentActivity() {
                                                 },
                                             )
                                         }
+                                        }
 
                                         // ---- Compact bottom controls row ------------------------------
                                         // [ Home ] [ compact mini player pill ] [ Search ] — the Home
@@ -3133,7 +3141,15 @@ class MainActivity : ComponentActivity() {
                                                             .align(Alignment.BottomCenter)
                                                             .fillMaxWidth()
                                                             .padding(horizontal = navBarHorizontalPadding)
-                                                            .padding(bottom = bottomInset + MiniPlayerBottomSpacing)
+                                                            // The morphed pill centres itself inside its
+                                                            // MiniPlayerHeight slot, so the circles row must
+                                                            // sit (slot-height - circle-height)/2 lower to
+                                                            // share the pill's exact centre line.
+                                                            .padding(
+                                                                bottom = bottomInset +
+                                                                    MiniPlayerBottomSpacing +
+                                                                    (MiniPlayerHeight - CompactControlSize) / 2,
+                                                            )
                                                             .height(CompactControlSize)
                                                             .graphicsLayer {
                                                                 alpha = compactRowAlpha

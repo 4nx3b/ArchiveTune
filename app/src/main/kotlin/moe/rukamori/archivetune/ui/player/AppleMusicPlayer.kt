@@ -1894,14 +1894,15 @@ private fun AppleMusicLandscapeTitleBlock(
                 )
             }
         }
-        Spacer(Modifier.width(12.dp))
+        // The action chips sit as one tight group (4dp apart) at the end of
+        // the title row — the favourite chip hugs the overflow chip.
         AppleMusicChip(
             iconRes = if (currentSongLiked) R.drawable.player_star_filled else R.drawable.player_star,
             tint = Color.White,
             contentDescription = null,
             onClick = onToggleLike,
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(4.dp))
         AppleMusicChip(
             iconRes = R.drawable.player_more_horiz,
             tint = Color.White,

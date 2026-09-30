@@ -3438,45 +3438,9 @@ private fun V7PlayerBackdrop(
 }
 
 @Immutable
-private data class V7BackdropPalette(
-    val top: Color,
-    val mid: Color,
-    val bottom: Color,
-) {
-    companion object {
-        fun fromColors(
-            colors: List<Color>,
-            fallbackColor: Int,
-        ): V7BackdropPalette {
-            val dominantColor = colors.firstOrNull()
-            val fallback = Color(fallbackColor).v7BackdropTone(valueMin = 0.12f, valueMax = 0.38f)
-            val top = dominantColor?.v7BackdropTone(valueMin = 0.20f, valueMax = 0.72f) ?: fallback
-            val mid = dominantColor?.v7BackdropTone(valueMin = 0.13f, valueMax = 0.48f) ?: top
-            val bottom = dominantColor?.v7BackdropTone(valueMin = 0.08f, valueMax = 0.32f) ?: mid
-            return V7BackdropPalette(
-                top = top,
-                mid = mid,
-                bottom = bottom,
-            )
-        }
-    }
-}
-
-private fun Color.v7BackdropTone(
-    valueMin: Float,
-    valueMax: Float,
-): Color {
-    val hsv = FloatArray(3)
-    android.graphics.Color.colorToHSV(toArgb(), hsv)
-    hsv[1] =
-        if (hsv[1] < 0.12f) {
-            hsv[1].coerceAtMost(0.08f)
-        } else {
-            (hsv[1] * 1.27f).coerceIn(0f, 1f)
-        }
-    hsv[2] = hsv[2].coerceIn(valueMin, valueMax)
-    return Color(android.graphics.Color.HSVToColor(hsv))
-}
+// Delegates to the shared tone ladder (BackdropTonePalette) — the artist page
+// ambient background speaks the same gradient language as the V7 controls.
+private typealias V7BackdropPalette = moe.rukamori.archivetune.ui.theme.BackdropTonePalette
 
 @Immutable
 private data class V7PlayerBackdropState(
