@@ -8,10 +8,11 @@
 package moe.rukamori.archivetune.playback.dsp
 
 import android.content.Context
+import android.util.Log
 import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
-import java.nio.ByteBuffer
 
 /**
  * The FIRST processor of the audio chain. It never touches a single byte —
@@ -30,7 +31,7 @@ class BitPerfectGateProcessor(
     private val engineOrDspEngaged: () -> Boolean,
     private val usbExclusiveActive: () -> Boolean,
     private val effectiveVolume: () -> Float,
-) : AudioProcessor {
+) : BaseAudioProcessor() {
 
     @Volatile private var sonicAudioProcessor: SonicAudioProcessor? = null
     @Volatile private var silenceSkippingAudioProcessor: SilenceSkippingAudioProcessor? = null
@@ -44,13 +45,13 @@ class BitPerfectGateProcessor(
         this.silenceSkippingAudioProcessor = silenceSkippingAudioProcessor
     }
 
-    private var buffer: ByteBuffer = EMPTY_BUFFER
-
     override fun getName(): String = "BitPerfectGate"
 
-    /** Never active: an inactive processor is routed around entirely. */
-    override fun isActive(): Boolean = false
-
+    /**
+     * Never active — an inactive processor is routed around entirely, so no
+     * byte of decoder PCM is copied through this gate. The evaluation is the
+     * side effect that matters.
+     */
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         val context = contextProvider()
         if (context == null) {
@@ -71,45 +72,21 @@ class BitPerfectGateProcessor(
                 silenceSkippingAudioProcessor?.setEnabled(false)
                 sonicAudioProcessor?.setSpeed(1f)
                 sonicAudioProcessor?.setPitch(1f)
-                Timber.i(
-                    "Bit-Perfect ENGAGED: %dbit/%dHz/%dch passes the chain untouched",
-                    BitPerfectRuntime.bitDepthOf(inputAudioFormat.encoding),
-                    inputAudioFormat.sampleRate,
-                    inputAudioFormat.channelCount,
+                Log.i(
+                    TAG,
+                    "Bit-Perfect ENGAGED: ${BitPerfectRuntime.bitDepthOf(inputAudioFormat.encoding)}bit/" +
+                        "${inputAudioFormat.sampleRate}Hz/${inputAudioFormat.channelCount}ch " +
+                        "passes the chain untouched",
                 )
             }
         }
         return AudioProcessor.AudioFormat.NOT_SET
     }
 
-    override fun queueInput(inputBuffer: ByteBuffer) {
-        // Inactive: never called.
-    }
-
-    override fun queueEndOfStream() {
-        // Inactive: never called.
-    }
-
-    override fun getOutput(): ByteBuffer = buffer
-
-    override fun flush() {
-        buffer = EMPTY_BUFFER
-    }
-
-    override fun reset() {
-        buffer = EMPTY_BUFFER
-    }
+    // Inactive processors receive no input; BaseAudioProcessor's default
+    // onQueueInput would throw on unexpected input, so guard it explicitly.
 
     private companion object {
-        val EMPTY_BUFFER: ByteBuffer = ByteBuffer.allocateDirect(0)
-    }
-}
-
-private object Timber {
-    fun i(message: String, vararg args: Any?) {
-        android.util.Log.i(
-            "BitPerfectRuntime",
-            if (args.isEmpty()) message else java.util.Formatter().format(message, *args).toString(),
-        )
+        const val TAG = "BitPerfectRuntime"
     }
 }
