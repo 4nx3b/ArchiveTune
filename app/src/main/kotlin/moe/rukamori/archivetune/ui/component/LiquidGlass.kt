@@ -30,6 +30,7 @@ import androidx.compose.material3.IconButton as Material3IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.mutableStateOf
@@ -90,9 +91,51 @@ fun rememberBackdrop(color: Color): PlatformBackdrop =
         drawContent()
     }
 
+/**
+ * A THROTTLED colored backdrop: the source content re-records into the shared
+ * layer at most once per [minIntervalMillis] instead of on every draw frame.
+ *
+ * Scrolling lists that feed glass pills re-draw every frame; recording the
+ * whole list into an offscreen GraphicsLayer per frame (kyant's plain
+ * [layerBackdrop] does exactly that) plus re-running the pill's blur shader
+ * is what made the search-results page visibly lag while a glass mini player
+ * was on screen. The layer behind an 18dp blur pill updating at 10 Hz is
+ * visually indistinguishable from per-frame updates, at a tenth of the cost.
+ */
+@Composable
+fun rememberThrottledBackdrop(
+    color: Color,
+    minIntervalMillis: Long = ThrottledLayerBackdropDefaultIntervalMillis,
+): ThrottledLayerBackdrop {
+    val graphicsLayer = rememberGraphicsLayer()
+    val backdrop = remember(graphicsLayer, minIntervalMillis, color) {
+        ThrottledLayerBackdrop(
+            graphicsLayer = graphicsLayer,
+            minIntervalMillis = minIntervalMillis,
+            contentPrefix = { drawRect(color) },
+        )
+    }
+    DisposableEffect(backdrop) {
+        onDispose { backdrop.layerCoordinates = null }
+    }
+    return backdrop
+}
+
 fun Modifier.layerBackdrop(backdrop: PlatformBackdrop): Modifier = this.layerBackdrop(backdrop)
 
-val LocalLiquidGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
+/**
+ * Tags content as the recording source for ANY [Backdrop] flavour: the
+ * throttled app-owned recorder (preferred for scrolling content — see
+ * [rememberThrottledBackdrop]) or kyant's per-frame [LayerBackdrop].
+ */
+fun Modifier.glassSource(backdrop: Backdrop): Modifier =
+    when (backdrop) {
+        is ThrottledLayerBackdrop -> throttledLayerBackdrop(backdrop)
+        is LayerBackdrop -> layerBackdrop(backdrop)
+        else -> this
+    }
+
+val LocalLiquidGlassBackdrop = compositionLocalOf<Backdrop?> { null }
 
 val LocalMenuGlassBackdrop = compositionLocalOf<Backdrop?> { null }
 
@@ -102,6 +145,7 @@ internal const val ThrottledLayerBackdropDefaultIntervalMillis = 100L
 class ThrottledLayerBackdrop internal constructor(
     val graphicsLayer: GraphicsLayer,
     internal val minIntervalMillis: Long,
+    internal val contentPrefix: DrawScope.() -> Unit = {},
 ) : Backdrop {
     override val isCoordinatesDependent: Boolean get() = true
 
@@ -188,6 +232,7 @@ private class ThrottledLayerBackdropNode(
                 val previousDensity = drawContext.density
                 drawContext.density = density
                 try {
+                    backdrop.contentPrefix()
                     this@draw.drawContent()
                 } finally {
                     drawContext.density = previousDensity
@@ -217,7 +262,7 @@ fun liquidGlassContentColor(): Color =
 
 @Composable
 fun Modifier.liquidGlass(
-    backdrop: PlatformBackdrop,
+    backdrop: Backdrop,
     shape: Shape = CircleShape,
     interactive: Boolean = true,
     baseColor: Color = Color.Unspecified,
@@ -281,7 +326,7 @@ fun Modifier.liquidGlass(
 
 @Composable
 fun LiquidGlassContainer(
-    backdrop: PlatformBackdrop,
+    backdrop: Backdrop,
     modifier: Modifier = Modifier,
     shape: Shape = CircleShape,
     interactive: Boolean = false,
@@ -299,7 +344,7 @@ fun LiquidGlassContainer(
 
 @Composable
 fun LiquidGlassActionPill(
-    backdrop: PlatformBackdrop,
+    backdrop: Backdrop,
     modifier: Modifier = Modifier,
     interactive: Boolean = false,
     blurRadius: Dp = LiquidGlassPillBlurRadius,
@@ -353,7 +398,7 @@ fun GlassPillTitleText(
 
 @Composable
 fun LiquidGlassIconButton(
-    backdrop: PlatformBackdrop,
+    backdrop: Backdrop,
     painter: Painter,
     modifier: Modifier = Modifier.size(48.dp),
     shape: Shape = CircleShape,
@@ -385,7 +430,7 @@ fun LiquidGlassIconButton(
 
 @Composable
 fun LiquidGlassIconButton(
-    backdrop: PlatformBackdrop,
+    backdrop: Backdrop,
     imageVector: ImageVector,
     modifier: Modifier = Modifier.size(48.dp),
     shape: Shape = CircleShape,

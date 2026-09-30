@@ -9,6 +9,8 @@
 
 package moe.rukamori.archivetune.ui.component
 
+import com.kyant.backdrop.Backdrop
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -30,7 +32,7 @@ val LocalPlainHeaderPill = compositionLocalOf { false }
 @Composable
 fun FrostedHeaderPill(
     modifier: Modifier = Modifier,
-    backdrop: PlatformBackdrop? = null,
+    backdrop: Backdrop? = null,
     plain: Boolean = false,
     content: @Composable () -> Unit,
 ) {

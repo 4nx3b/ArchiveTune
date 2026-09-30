@@ -129,7 +129,6 @@ import moe.rukamori.archivetune.ui.utils.preferredThumbnailRatio
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.ui.utils.thumbnailSourceRatio
 import moe.rukamori.archivetune.utils.joinByBullet
-import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.reportException
 import androidx.compose.runtime.getValue
@@ -378,12 +377,9 @@ fun SongListItem(
     val content: @Composable () -> Unit = {
         ListItem(
             title = song.song.title,
-            subtitle =
-                joinByBullet(
-                    song.artists.joinToString { it.name },
-                    makeTimeString(song.song.duration * 1000L),
-                    viewCountText,
-                ),
+            // Row subtitles carry the artist name only — duration and view/
+            // like counts live in the details popup, not on every row.
+            subtitle = song.artists.joinToString { it.name }.takeIf { it.isNotBlank() },
             badges = badges,
             thumbnailContent = {
                 ItemThumbnail(
@@ -728,11 +724,7 @@ fun MediaMetadataListItem(
         title = mediaMetadata.title,
         subtitle = {
             Text(
-                text =
-                    joinByBullet(
-                        mediaMetadata.artists.joinToString { it.name },
-                        makeTimeString(mediaMetadata.duration * 1000L),
-                    ),
+                text = mediaMetadata.artists.joinToString { it.name },
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -800,13 +792,7 @@ fun YouTubeListItem(
             title = item.title,
             subtitle =
                 when (item) {
-                    is SongItem -> {
-                        joinByBullet(
-                            item.artists.joinToString { it.name },
-                            makeTimeString(item.duration?.times(1000L)),
-                            viewCountText,
-                        )
-                    }
+                    is SongItem -> item.artists.joinToString { it.name }.takeIf { it.isNotBlank() }
 
                     is AlbumItem -> {
                         joinByBullet(item.artists?.joinToString { it.name }, item.year?.toString())
@@ -928,7 +914,7 @@ fun YouTubeGridItem(
         subtitle = {
             val subtitle =
                 when (item) {
-                    is SongItem -> joinByBullet(item.artists.joinToString { it.name }, makeTimeString(item.duration?.times(1000L)))
+                    is SongItem -> item.artists.joinToString { it.name }.takeIf { it.isNotBlank() }
                     is AlbumItem -> joinByBullet(item.artists?.joinToString { it.name }, item.year?.toString())
                     is ArtistItem -> null
                     is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText)

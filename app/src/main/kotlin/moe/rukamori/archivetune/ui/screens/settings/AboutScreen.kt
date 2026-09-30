@@ -258,6 +258,7 @@ private fun AboutScreenContent(
             ScreenHeaderHaze(
                 hazeState = headerHaze,
                 systemBarsTopPadding = systemBarsTopPadding,
+                scrolled = listState.canScrollBackward,
             )
         }
     }

@@ -53,6 +53,10 @@ fun SearchSourcePicker(
                         },
                     ),
                 contentDescription = stringResource(R.string.search_source_picker),
+                // Brand drawables have large intrinsic viewports — without a
+                // fixed size the Spotify/Apple logos rendered several times
+                // bigger than the neighbouring icons.
+                modifier = Modifier.size(22.dp),
             )
         }
         DropdownMenu(

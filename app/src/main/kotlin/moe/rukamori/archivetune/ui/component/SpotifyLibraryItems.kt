@@ -44,8 +44,6 @@ import moe.rukamori.archivetune.spotify.SPOTIFY_LIKED_SONGS_ID
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 import moe.rukamori.archivetune.ui.utils.resize
-import moe.rukamori.archivetune.utils.joinByBullet
-import moe.rukamori.archivetune.utils.makeTimeString
 import androidx.compose.runtime.getValue
 
 @Composable
@@ -200,16 +198,9 @@ fun SpotifyTrackListItem(
     showSongIconPlaceholder: Boolean = true,
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
-    val duration =
-        track.durationMs
-            .takeIf { it > 0 }
-            ?.toLong()
-            ?.let(::makeTimeString)
-    val subtitle =
-        joinByBullet(
-            track.artists.joinToString { it.name },
-            duration,
-        )
+    // Row subtitles carry the artist name only — duration lives in the
+    // details popup, not on every row (consistent with YouTube/local rows).
+    val subtitle = track.artists.joinToString { it.name }.takeIf { it.isNotBlank() }
 
     ListItem(
         title = track.name,

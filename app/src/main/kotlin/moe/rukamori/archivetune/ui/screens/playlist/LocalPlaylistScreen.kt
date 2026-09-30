@@ -120,12 +120,12 @@ import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
 import moe.rukamori.archivetune.ui.component.GlassPillTitleText
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.PlaylistMenu
 import moe.rukamori.archivetune.ui.menu.SelectionSongMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
@@ -152,7 +152,6 @@ import moe.rukamori.archivetune.viewmodels.PlaylistCoverEvent
 import moe.rukamori.archivetune.viewmodels.PlaylistCoverState
 import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
-import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import java.time.LocalDateTime
@@ -201,10 +200,13 @@ fun LocalPlaylistScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    val playerSheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
-    val layerBackdropActive =
-        liquidGlassHeaderActive && !lyricsFullScreen && screenSettled &&
-            playerSheetOverlayFraction < 1f
+    // The glass recording source stays attached for the whole lifetime of the
+    // screen: detaching kyant's LayerBackdrop while the player sheet covers the
+    // header nulls its layerCoordinates, and glass never comes back afterwards
+    // (the maximise->minimise "pills turn light" bug). The pills themselves fade
+    // with the sheet edge in their own draw phase, and the recorder is throttled,
+    // so an always-attached source is both correct and cheap.
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
     var showAssignTagsDialog by remember { mutableStateOf(false) }
 
     if (showAssignTagsDialog && playlist != null) {
@@ -579,7 +581,7 @@ fun LocalPlaylistScreen(
         }
     }
 
-    val artworkBackdrop = rememberBackdrop(surfaceColor)
+    val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
 
     CompositionLocalProvider(
         LocalMiniPlayerDocked provides isListScrolling,
@@ -599,8 +601,8 @@ fun LocalPlaylistScreen(
                 Modifier
                     .fillMaxSize()
                     .then(
-                        if (layerBackdropActive) {
-                            Modifier.layerBackdrop(artworkBackdrop)
+                        if (glassHeaderActive) {
+                            Modifier.glassSource(artworkBackdrop)
                         } else {
                             Modifier
                         },
@@ -1066,10 +1068,11 @@ fun LocalPlaylistScreen(
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
+            scrolled = lazyListState.canScrollBackward,
         )
 
         val currentPlaylist = playlist
-        if (layerBackdropActive && !isSearching && currentPlaylist != null) {
+        if (glassHeaderActive && !isSearching && currentPlaylist != null) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 interactive = true,

@@ -115,14 +115,14 @@ import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.component.shimmer.TextPlaceholder
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.SelectionMediaMetadataMenu
 import moe.rukamori.archivetune.ui.menu.YouTubePlaylistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
@@ -142,7 +142,6 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.OnlinePlaylistViewModel
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
-import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
@@ -216,11 +215,16 @@ fun OnlinePlaylistScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
+    // The glass recording source stays attached for the whole lifetime of the
+    // screen: detaching kyant's LayerBackdrop while the player sheet covers the
+    // header nulls its layerCoordinates, and glass never comes back afterwards
+    // (the maximise->minimise "pills turn light" bug). The pills themselves fade
+    // with the sheet edge in their own draw phase, and the recorder is throttled,
+    // so an always-attached source is both correct and cheap.
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    // Mini-player-bound overlay signal for non-glass gating (canvas decode,
+    // hero animations) — keeps the OLD mini-bound semantics.
     val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
-    val playerSheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
-    val layerBackdropActive =
-        liquidGlassHeaderActive && !lyricsFullScreen && screenSettled &&
-            playerSheetOverlayFraction < 1f
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -337,7 +341,7 @@ fun OnlinePlaylistScreen(
         }
     }
 
-    val artworkBackdrop = rememberBackdrop(surfaceColor)
+    val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
 
     val headerHaze = rememberScreenHeaderHaze()
     ExpressivePullToRefreshBox(
@@ -354,8 +358,8 @@ fun OnlinePlaylistScreen(
                 Modifier
                     .fillMaxSize()
                     .then(
-                        if (layerBackdropActive) {
-                            Modifier.layerBackdrop(artworkBackdrop)
+                        if (glassHeaderActive) {
+                            Modifier.glassSource(artworkBackdrop)
                         } else {
                             Modifier
                         },
@@ -786,10 +790,11 @@ fun OnlinePlaylistScreen(
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
+            scrolled = lazyListState.canScrollBackward,
         )
 
         val currentPlaylistForGlass = playlist
-        if (layerBackdropActive && !isSearching && currentPlaylistForGlass != null) {
+        if (glassHeaderActive && !isSearching && currentPlaylistForGlass != null) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 interactive = true,

@@ -141,6 +141,12 @@ object ReleaseRadarRepository {
                 val releaseAt = parseReleaseDate(releaseDate) ?: continue
                 if (releaseAt <= now || releaseAt - now > MAX_HORIZON_MILLIS) continue
 
+                // The artist endpoint is id-scoped, but Deezer still serves
+                // collaborative/compilation entries under an artist — only
+                // entries that name this artist survive.
+                val albumArtist = album.optJSONObject("artist")?.optString("name").orEmpty()
+                if (albumArtist.isNotBlank() && !isSameArtist(artistName, albumArtist)) continue
+
                 upcoming +=
                     UpcomingRelease(
                         releaseId = album.optLong("id").toString(),
@@ -183,12 +189,21 @@ object ReleaseRadarRepository {
                 val releaseAt = parseReleaseDate(album.optString("releaseDate", "")) ?: continue
                 if (releaseAt <= now || releaseAt - now > MAX_HORIZON_MILLIS) continue
 
+                // iTunes `artistTerm` search is fuzzy — a query for a short or
+                // common artist name returns tribute acts, karaoke labels and
+                // completely unrelated artists, and a future-dated entry among
+                // those was presented as THIS artist's upcoming release (the
+                // "wrong release info" bug). Every result must verify against
+                // the queried artist name before it is adopted.
+                val resultArtist = album.optString("artistName", "")
+                if (!isSameArtist(artistName, resultArtist)) continue
+
                 val title = album.optString("collectionName", "").ifBlank { continue }
                 upcoming +=
                     UpcomingRelease(
                         releaseId = "itunes:${album.optLong("collectionId", 0L)}",
                         title = title,
-                        artistName = album.optString("artistName", artistName).ifBlank { artistName },
+                        artistName = resultArtist.ifBlank { artistName },
                         releaseType =
                             when (album.optString("collectionType", "")) {
                                 "Single" -> "single"
@@ -212,21 +227,80 @@ object ReleaseRadarRepository {
      * date) onto the entry with the better artwork, then sorts by date.
      */
     private fun mergeReleases(all: List<UpcomingRelease>): List<UpcomingRelease> {
-        val byKey = LinkedHashMap<String, UpcomingRelease>()
+        // Group by normalised title, then collapse entries whose dates sit
+        // within a few days of each other — Deezer (EU) and iTunes (US)
+        // frequently disagree by a day across the timezone line, and strict
+        // date equality used to show the same album twice with two different
+        // countdowns.
+        val byTitle = LinkedHashMap<String, MutableList<UpcomingRelease>>()
         for (release in all) {
-            val key = "${normalizeTitleKey(release.title)}@${release.releaseAtMillis}"
-            val existing = byKey[key]
-            if (existing == null) {
-                byKey[key] = release
-            } else {
-                // Keep the entry with artwork; otherwise keep the first.
-                if (existing.thumbnailUrl.isNullOrBlank() && !release.thumbnailUrl.isNullOrBlank()) {
-                    byKey[key] = release
+            byTitle.getOrPut(normalizeTitleKey(release.title)) { mutableListOf() }.add(release)
+        }
+        val merged = ArrayList<UpcomingRelease>(all.size)
+        for (group in byTitle.values) {
+            val remaining = group.toMutableList()
+            while (remaining.isNotEmpty()) {
+                val head = remaining.removeAt(0)
+                var best = head
+                val iterator = remaining.iterator()
+                while (iterator.hasNext()) {
+                    val other = iterator.next()
+                    if (kotlin.math.abs(other.releaseAtMillis - head.releaseAtMillis) <= MERGE_DATE_TOLERANCE_MILLIS) {
+                        iterator.remove()
+                        // Keep artwork; prefer the earliest announced date.
+                        if (best.thumbnailUrl.isNullOrBlank() && !other.thumbnailUrl.isNullOrBlank()) {
+                            best = other.copy(releaseAtMillis = minOf(best.releaseAtMillis, other.releaseAtMillis))
+                        } else {
+                            best = best.copy(releaseAtMillis = minOf(best.releaseAtMillis, other.releaseAtMillis))
+                        }
+                    }
                 }
+                merged.add(best)
             }
         }
-        return byKey.values.sortedBy { it.releaseAtMillis }
+        return merged.sortedBy { it.releaseAtMillis }
     }
+
+    /** Deezer (EU) vs iTunes (US) dates drift across the timezone line. */
+    private const val MERGE_DATE_TOLERANCE_MILLIS = 3L * 24 * 60 * 60 * 1000
+
+    /**
+     * Strict artist identity: normalised equality, strong containment, or
+     * heavy token overlap. Replaces the old two-way substring containment
+     * which let a query for "John" adopt "Elton John" and friends.
+     */
+    private fun isSameArtist(queried: String, candidate: String): Boolean {
+        val a = normalizeArtistKey(queried)
+        val b = normalizeArtistKey(candidate)
+        if (a.isEmpty() || b.isEmpty()) return false
+        if (a == b) return true
+
+        // Containment only when the shorter side carries most of the longer
+        // one — "peak" in "peak band" is fine, "john" in "elton john" is not.
+        val shorter = minOf(a.length, b.length)
+        val longer = maxOf(a.length, b.length)
+        if (shorter >= 4 && (a.contains(b) || b.contains(a)) && shorter * 10 >= longer * 6) {
+            return true
+        }
+
+        val at = a.split(' ').filter { it.length >= 2 }.toSet()
+        val bt = b.split(' ').filter { it.length >= 2 }.toSet()
+        if (at.isNotEmpty() && bt.isNotEmpty()) {
+            val union = at.union(bt).size
+            if (at.intersect(bt).size * 10 >= union * 6) return true
+        }
+        return false
+    }
+
+    private fun normalizeArtistKey(name: String): String =
+        name
+            .lowercase()
+            .let { java.text.Normalizer.normalize(it, java.text.Normalizer.Form.NFD) }
+            .replace(Regex("\\p{Mn}+"), "")
+            .replace(Regex("[^\\p{L}\\p{N}\\s]+"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .removePrefix("the ")
 
     private fun normalizeTitleKey(title: String): String =
         title
@@ -240,23 +314,25 @@ object ReleaseRadarRepository {
         val request =
             Request
                 .Builder()
-                .url("$API_BASE/search/artist?q=${urlEncode(artistName)}&limit=1")
+                .url("$API_BASE/search/artist?q=${urlEncode(artistName)}&limit=5")
                 .get()
                 .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return null
             val body = response.body?.string() ?: return null
             val data = JSONObject(body).optJSONArray("data") ?: return null
-            val artist = data.optJSONObject(0) ?: return null
-            val id = artist.optLong("id", -1L)
-            if (id <= 0L) return null
             // Guard against a wildcard match resolving to a different artist:
-            // the top result's name must contain the queried one (either way
-            // around) for the radar to adopt it.
-            val matchedName = artist.optString("name", "").lowercase()
-            val queried = artistName.lowercase()
-            val related = matchedName.contains(queried) || queried.contains(matchedName)
-            return if (related) id.toString() else null
+            // strict identity (was two-way substring containment, which let
+            // "John" adopt "Elton John" as its Deezer identity).
+            for (index in 0 until data.length()) {
+                val artist = data.optJSONObject(index) ?: continue
+                val id = artist.optLong("id", -1L)
+                if (id <= 0L) continue
+                if (isSameArtist(artistName, artist.optString("name", ""))) {
+                    return id.toString()
+                }
+            }
+            return null
         }
     }
 

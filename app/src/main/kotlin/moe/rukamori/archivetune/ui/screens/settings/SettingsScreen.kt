@@ -428,6 +428,7 @@ fun SettingsScreen(
 
                 SettingsHomeStyleHeader(
                     glassHeader = glassHeader,
+                    scrolled = listState.canScrollBackward,
                 )
 
                 // Bottom chrome: back pill + settings-search pill on the same line,
@@ -442,6 +443,7 @@ fun SettingsScreen(
                     onBackLongClick = navController::backToMain,
                     placeholder = stringResource(R.string.search_settings),
                     bottomPadding = playerAwareBottomPadding,
+                    lazyListState = listState,
                     trailing = {
                         if (searchQuery.isNotEmpty()) {
                             IconButton(onClick = { searchQuery = "" }, onLongClick = {}) {
@@ -462,12 +464,14 @@ fun SettingsScreen(
 @Composable
 private fun BoxScope.SettingsHomeStyleHeader(
     glassHeader: GlassScreenHeader,
+    scrolled: Boolean = true,
 ) {
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     ScreenHeaderHaze(
         hazeState = glassHeader.haze,
         systemBarsTopPadding = systemBarsTopPadding,
+        scrolled = scrolled,
     )
 
     Box(

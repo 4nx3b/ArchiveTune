@@ -88,6 +88,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.exoplayer.offline.Download
 import androidx.navigation.NavController
+import com.kyant.backdrop.Backdrop
 import com.valentinilk.shimmer.shimmer
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalDownloadUtil
@@ -101,7 +102,6 @@ import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
-import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import moe.rukamori.archivetune.db.entities.Album
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.playback.queues.LocalAlbumRadio
@@ -112,17 +112,16 @@ import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.NavigationTitle
-import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.component.shimmer.TextPlaceholder
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.AlbumMenu
 import moe.rukamori.archivetune.ui.menu.SelectionSongMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
@@ -184,11 +183,16 @@ fun AlbumScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
+    // The glass recording source stays attached for the whole lifetime of the
+    // screen: detaching kyant's LayerBackdrop while the player sheet covers the
+    // header nulls its layerCoordinates, and glass never comes back afterwards
+    // (the maximise->minimise "pills turn light" bug). The pills themselves fade
+    // with the sheet edge in their own draw phase, and the recorder is throttled,
+    // so an always-attached source is both correct and cheap.
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    // Mini-player-bound overlay signal for non-glass gating (canvas decode,
+    // hero animations) — keeps the OLD mini-bound semantics.
     val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
-    val playerSheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
-    val layerBackdropActive =
-        liquidGlassHeaderActive && !lyricsFullScreen && screenSettled &&
-            playerSheetOverlayFraction < 1f
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -272,7 +276,7 @@ fun AlbumScreen(
         }
     }
 
-    val artworkBackdrop = rememberBackdrop(surfaceColor)
+    val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
 
     val headerHaze = rememberScreenHeaderHaze()
     Box(
@@ -283,8 +287,8 @@ fun AlbumScreen(
     ) {
         LazyColumn(
             modifier =
-                (if (layerBackdropActive) {
-                    Modifier.layerBackdrop(artworkBackdrop)
+                (if (glassHeaderActive) {
+                    Modifier.glassSource(artworkBackdrop)
                 } else {
                     Modifier
                 }).hazeSource(headerHaze),
@@ -722,10 +726,11 @@ fun AlbumScreen(
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
+            scrolled = lazyListState.canScrollBackward,
         )
 
         val currentAlbumWithSongs = albumWithSongs
-        if (layerBackdropActive && currentAlbumWithSongs != null &&
+        if (glassHeaderActive && currentAlbumWithSongs != null &&
             currentAlbumWithSongs.songs.isNotEmpty()
         ) {
             LiquidGlassActionPill(
@@ -900,7 +905,7 @@ fun AlbumScreen(
         if (pinnedActionsAlbum?.songs?.isNotEmpty() == true) {
             PinnedAlbumActionsRow(
                 visible = showTopBarTitle && !selection,
-                backdrop = artworkBackdrop.takeIf { layerBackdropActive },
+                backdrop = artworkBackdrop.takeIf { glassHeaderActive },
                 onPlay = { playerConnection.playQueue(LocalAlbumRadio(pinnedActionsAlbum)) },
                 onShuffle = {
                     playerConnection.playQueue(
@@ -1066,7 +1071,7 @@ private const val MediaDetailMetadataSeparator = "  •  "
 @Composable
 private fun PinnedAlbumActionsRow(
     visible: Boolean,
-    backdrop: PlatformBackdrop?,
+    backdrop: Backdrop?,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     modifier: Modifier = Modifier,

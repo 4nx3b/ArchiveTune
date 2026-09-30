@@ -8625,6 +8625,10 @@ class MusicService :
         // any search-based tier runs.
         val directTrackId = query.directTidalTrackId?.takeIf { it.isNotBlank() }
         if (directTrackId != null) {
+            // A direct pick is an explicit user intent — a stale failure cached
+            // from an earlier attempt (15-60 min TTL) must not veto it. The
+            // failure cache previously had no eviction path at all.
+            TidalAudioProvider.invalidate(query.mediaId)
             val apiQuality =
                 when (quality) {
                     TidalAudioQuality.HI_RES_LOSSLESS -> "HI_RES_LOSSLESS"
@@ -8639,6 +8643,11 @@ class MusicService :
                         durationMs = query.durationMs,
                         audioQuality = apiQuality,
                         cacheDir = cacheDir,
+                        // Stream the live DASH manifest instead of synchronously
+                        // downloading + remuxing the whole FLAC before playback
+                        // — the download path regularly blew the resolver's
+                        // timeouts and read as "Tidal fell back to YouTube".
+                        preferLiveDash = true,
                     )
                 }
 
@@ -8687,6 +8696,9 @@ class MusicService :
                         audioQuality = apiQuality,
                         cacheDir = cacheDir,
                         countryCode = countryCode,
+                        // Live DASH streaming, not the full-file FLAC download
+                        // (same timeout reasoning as the direct-pick tier).
+                        preferLiveDash = true,
                     )
                 }
 
@@ -8724,10 +8736,20 @@ class MusicService :
                 val poolStream =
                     runCatching { attempt(poolAccount.token, poolCountry) }
                         .onFailure {
-                            if (TidalAccountManager.isUnauthorized(it)) {
-                                PoolAccountManager.report("tidal", "account", poolAccount.id, "dead")
-                            } else {
-                                Timber.tag("MusicService").w(it, "Tidal pool account resolve failed for %s", query.mediaId)
+                            when {
+                                TidalAccountManager.isUnauthorized(it) ->
+                                    PoolAccountManager.report("tidal", "account", poolAccount.id, "dead")
+                                it is TidalAccountManager.TidalPreviewException -> {
+                                    // The account streams previews only: cool it
+                                    // down for the rotation window.
+                                    Timber.tag("MusicService").w(
+                                        "Tidal pool account %s cannot stream FULL assets; cooling down",
+                                        poolAccount.id,
+                                    )
+                                    PoolAccountManager.noteAccountFailure("tidal", poolAccount.id)
+                                }
+                                else ->
+                                    Timber.tag("MusicService").w(it, "Tidal pool account resolve failed for %s", query.mediaId)
                             }
                         }
                         .getOrNull()
@@ -8737,7 +8759,10 @@ class MusicService :
                     return poolStream
                 }
 
-                PoolAccountManager.noteAccountFailure("tidal", poolAccount.id)
+                // A plain null (search miss / no manifest) is NOT an account
+                // failure — the old blanket cooldown here rotated EVERY pool
+                // account out for 10 minutes on a string of title mismatches,
+                // after which Tidal could never win and YouTube took over.
             }
         }
 
@@ -8754,6 +8779,21 @@ class MusicService :
             discoveredInstances.size,
             mergedInstances.size,
         )
+        if (mergedInstances.isEmpty()) {
+            // No configured AND no healthy discovered instances: the pool feed
+            // may have loaded after the last discovery pass. Refresh discovery
+            // in the background — this play still falls through, the next one
+            // gets the instances.
+            runCatching {
+                ioScope.launch {
+                    TidalInstanceHealthManager.refresh(
+                        this@MusicService,
+                        includeDiscovery = true,
+                        staggered = true,
+                    )
+                }
+            }
+        }
         TidalAudioProvider.setInstances(mergedInstances)
         val resolved =
             runCatching {

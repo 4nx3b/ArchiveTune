@@ -9,6 +9,8 @@
 
 package moe.rukamori.archivetune.ui.component
 
+import com.kyant.backdrop.Backdrop
+
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -35,7 +37,7 @@ fun FrostedTopAppBar(
     onBack: () -> Unit,
     onBackLongClick: () -> Unit = {},
     actions: (@Composable () -> Unit)? = null,
-    backdrop: PlatformBackdrop? = null,
+    backdrop: Backdrop? = null,
 ) {
     FrostedTopAppBar(
         title = { Text(stringResource(titleRes)) },
@@ -52,7 +54,7 @@ fun FrostedTopAppBar(
     onBack: () -> Unit,
     onBackLongClick: () -> Unit = {},
     actions: (@Composable () -> Unit)? = null,
-    backdrop: PlatformBackdrop? = null,
+    backdrop: Backdrop? = null,
 ) {
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
@@ -102,7 +104,7 @@ fun LargeFrostedTopAppBar(
     onBackLongClick: () -> Unit = {},
     actions: (@Composable () -> Unit)? = null,
     scrollBehavior: TopAppBarScrollBehavior? = null,
-    backdrop: PlatformBackdrop? = null,
+    backdrop: Backdrop? = null,
 ) {
     LargeFlexibleTopAppBar(
         colors = TopAppBarDefaults.largeTopAppBarColors(
@@ -154,7 +156,7 @@ fun LargeFrostedTopAppBar(
     onBackLongClick: () -> Unit = {},
     actions: (@Composable () -> Unit)? = null,
     scrollBehavior: TopAppBarScrollBehavior? = null,
-    backdrop: PlatformBackdrop? = null,
+    backdrop: Backdrop? = null,
 ) {
     LargeFlexibleTopAppBar(
         colors = TopAppBarDefaults.largeTopAppBarColors(

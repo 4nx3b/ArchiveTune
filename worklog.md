@@ -3783,3 +3783,26 @@ Work Log:
 Stage Summary:
 - 34 files changed (+~1100/-150): the new Track Info page replaces the dev-page panel; automix blend unmuted; engine switching is mid-track instant with the system EQ gated both ways; YouLyPlus words merge + animate true durations; AM landscape controls hidden from frame 1; ListenBrainz 401 storm + dead-thread codec warnings fixed; playlist transitions gate all live glass work while the player sheet overlays.
 - Known limitation (by architecture): an automix PROMOTION leaves the engine router wired into the released outgoing player — engines drop out of the audible chain until service restart; rebuilding the promoted player's chain would break the seamless handoff (documented for a future task).
+
+---
+Task ID: 9-a
+Agent: general-purpose (glass gating refactor)
+Task: Revert-in-spirit the b8308e748 regression — screens no longer detach the liquid-glass recording source / hard-swap glass pills for frosted ones while the player sheet covers the header (the maximise→minimise "pills turn light forever" bug).
+
+Work Log:
+- ui/screens/library/LibraryPlaylistsScreen.kt — layerBackdropActive→glassHeaderActive (sheet-fraction term deleted), rememberBackdrop→rememberThrottledBackdrop, Modifier.layerBackdrop→Modifier.glassSource, pill gates on glassHeaderActive, inline lock/add fallbacks on !glassHeaderActive.
+- ui/screens/library/LibraryArtistsScreen.kt — same core swap (content source + back-pill gate).
+- ui/screens/library/LibrarySpotifyPlaylistsScreen.kt — same core swap (content source + back/TopEnd pill gates).
+- ui/screens/library/LocalSongScreen.kt — same + pillBackdrop retyped Backdrop? (was PlatformBackdrop?) feeding LargeFrostedTopAppBar.
+- ui/screens/artist/ArtistScreen.kt — gate split: glassHeaderActive for source+pill; playerSheetOverlayActive kept for hero-canvas gating.
+- ui/screens/AlbumScreen.kt — gate split as above; PinnedAlbumActionsRow backdrop param Backdrop?; ScreenHeaderHaze scrolled = lazyListState.canScrollBackward.
+- ui/screens/HistoryScreen.kt — liquidGlassHeaderActive keeps its name but loses the fraction term; Remote/LocalHistoryFeed params Backdrop? + glassSource; ScreenHeaderHaze scrolled = activeListState.canScrollBackward.
+- ui/screens/playlist/AutoPlaylistScreen.kt, CachePlaylistScreen.kt, LocalPlaylistScreen.kt, OnlinePlaylistScreen.kt, SpotifyPlaylistScreen.kt — gate swap + throttled recorder + glassSource + ScreenHeaderHaze scrolled = lazyListState.canScrollBackward; Online/Spotify keep playerSheetOverlayActive for canvas gating.
+- ui/screens/playlist/TopPlaylistScreen.kt — ScreenHeaderHaze scrolled = lazyListState.canScrollBackward (screen was already fraction-free).
+- ui/screens/settings/LogcatScreen.kt, AboutScreen.kt — ScreenHeaderHaze scrolled = listState.canScrollBackward.
+- ui/screens/StatsScreen.kt — intentionally left unchanged: no list/scroll-state variable in scope (its LazyColumn uses the default internal state), per the "leave the call unchanged if none exists" rule.
+- Imports: −LocalPlayerSheetOverlayFraction ×12, −layerBackdrop ×13, −rememberBackdrop ×12, −PlatformBackdrop ×3; +glassSource ×13, +rememberThrottledBackdrop ×12, +com.kyant.backdrop.Backdrop ×3. No layerBackdropActive or playerSheetOverlayFraction read remains anywhere in ui/screens.
+
+Stage Summary:
+- The glass recording source now stays attached for the whole lifetime of each screen while liquid glass is enabled: detaching kyant's LayerBackdrop while the sheet covered the header nulled its layerCoordinates and drawBackdrop silently drew nothing ever after. Pills stay glass and fade with the sheet edge in their own draw phase (LiquidGlassActionPill alpha), so the mid-transition hard swap to FrostedHeaderPill is gone; the frosted/plain fallback only renders when glass is globally off (or lyrics fullscreen). Canvas/hero decode gating keeps the OLD mini-bound semantics via LocalPlayerSheetOverlayActive. ScreenHeaderHaze is now hidden until the list can scroll backward on 10 screens (scrolled=).
+- Deviations from the parent spec, documented: (1) inline fallback action buttons that mirror pill contents (LibraryPlaylists lock/add) gate on !glassHeaderActive rather than !sheetOverlayActive — the latter would show duplicate actions while glass is active with the sheet docked (opposite of the old visible behaviour); (2) the sheetOverlayActive val was only added/kept where a non-glass consumer exists (Artist/Album/Online/Spotify keep their pre-existing playerSheetOverlayActive name); other screens omit the unused val to avoid dead code + compiler warnings; (3) StatsScreen haze call unchanged (no scroll-state variable). 26 layerBackdropActive call sites converted across 12 screens; LiquidGlass.kt / MainActivity / search screens / canvas-twin player files untouched per instructions.
