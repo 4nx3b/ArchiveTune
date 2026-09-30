@@ -10551,6 +10551,7 @@ class MusicService :
                     ),
                 ).build()
             }
+        }
 
     override fun onPlaybackStatsReady(
         eventTime: AnalyticsListener.EventTime,
