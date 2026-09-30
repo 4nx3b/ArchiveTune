@@ -39,14 +39,14 @@ import coil3.size.Size
 
 val MuzoMenuAccent = Color(0xFF32D2CA)
 
-private val MuzoMenuHeaderArtwork = 56.dp
+private val MuzoMenuHeaderArtwork = 52.dp
 
-private val MuzoMenuHeaderArtworkCorner = 16.dp
+private val MuzoMenuHeaderArtworkCorner = 12.dp
 
 private val MuzoMenuHeaderCardCorner = 28.dp
 
-private val MuzoMenuHeaderRowPaddingHorizontal = 14.dp
-private val MuzoMenuHeaderRowPaddingVertical = 12.dp
+private val MuzoMenuHeaderRowPaddingHorizontal = 12.dp
+private val MuzoMenuHeaderRowPaddingVertical = 10.dp
 
 private val MuzoMenuGridPadding = 12.dp
 
@@ -78,7 +78,7 @@ fun MuzoSongMenuHeader(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -171,6 +171,7 @@ fun MuzoQuickActionRow(
                             },
                     )
                 },
+            columns = 4,
         )
     }
 }

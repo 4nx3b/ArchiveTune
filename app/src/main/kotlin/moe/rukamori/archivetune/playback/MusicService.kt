@@ -5577,6 +5577,19 @@ class MusicService :
         player.prepare()
     }
 
+    fun addAfterQueueIndex(index: Int, items: List<MediaItem>) {
+        val allowedItems =
+            items
+                .filterBlockedArtists(blockedArtistIds)
+                .filterVideo(hideMusicVideos)
+        if (allowedItems.isEmpty()) return
+        suppressAutoPlayback = false
+
+        val insertionIndex = (index + 1).coerceIn(0, player.mediaItemCount)
+        player.addMediaItems(insertionIndex, allowedItems)
+        player.prepare()
+    }
+
     fun playFromVoiceSearch(query: String) {
         val trimmed = query.trim()
         if (trimmed.isBlank()) return

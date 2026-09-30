@@ -78,6 +78,7 @@ import tf.monochrome.android.ui.components.bounceClick
 import tf.monochrome.android.ui.components.liquidGlass
 import kotlin.math.roundToInt
 import tf.monochrome.android.ui.navigation.LocalMiniPlayerInset
+import moe.rukamori.archivetune.ui.component.UnglassedDialogTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -650,6 +651,11 @@ fun EqualizerScreen(
                                 }
                             }
                         )
+                        // Unglassed: the floating menu panel renders inside
+                        // the glass menu's color scheme, whose container colors
+                        // are near-transparent — re-applying the unglassed
+                        // scheme keeps the panel opaque and readable.
+                        UnglassedDialogTheme {
                         DropdownMenu(
                             expanded = showTargetMenu,
                             onDismissRequest = { showTargetMenu = false }
@@ -688,6 +694,7 @@ fun EqualizerScreen(
                                     }
                                 )
                             }
+                        }
                         }
                     }
                 }
@@ -1079,41 +1086,46 @@ fun EqualizerScreen(
     }
 
     if (showSaveDialog) {
-        AlertDialog(
-            onDismissRequest = { showSaveDialog = false },
-            title = { Text("Save EQ Preset") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = saveName,
-                        onValueChange = { saveName = it },
-                        label = { Text("Preset Name") },
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = saveDescription,
-                        onValueChange = { saveDescription = it },
-                        label = { Text("Description") },
-                        minLines = 2
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (saveName.isNotEmpty()) {
-                            viewModel.saveAsPreset(saveName, saveDescription)
-                            showSaveDialog = false
-                            saveName = ""
-                            saveDescription = ""
-                        }
+        // Unglassed: this dialog renders inside the glass menu's color scheme,
+        // whose container colors are near-transparent — re-applying the
+        // unglassed scheme gives the dialog a standard opaque container.
+        UnglassedDialogTheme {
+            AlertDialog(
+                onDismissRequest = { showSaveDialog = false },
+                title = { Text("Save EQ Preset") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedTextField(
+                            value = saveName,
+                            onValueChange = { saveName = it },
+                            label = { Text("Preset Name") },
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = saveDescription,
+                            onValueChange = { saveDescription = it },
+                            label = { Text("Description") },
+                            minLines = 2
+                        )
                     }
-                ) { Text("Save") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSaveDialog = false }) { Text("Cancel") }
-            }
-        )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (saveName.isNotEmpty()) {
+                                viewModel.saveAsPreset(saveName, saveDescription)
+                                showSaveDialog = false
+                                saveName = ""
+                                saveDescription = ""
+                            }
+                        }
+                    ) { Text("Save") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSaveDialog = false }) { Text("Cancel") }
+                }
+            )
+        }
     }
 
     if (showHelp) {
@@ -1135,74 +1147,83 @@ fun EqualizerScreen(
     }
 
     if (showHeadphoneSelect) {
-        AlertDialog(
-            onDismissRequest = { showHeadphoneSelect = false },
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Transparent),
-            properties = androidx.compose.ui.window.DialogProperties(
-                usePlatformDefaultWidth = false,
-                dismissOnBackPress = true,
-                dismissOnClickOutside = true
-            ),
-            content = {
-                HeadphoneSelectScreen(
-                    viewModel = viewModel,
-                    channel = if (headphoneSelectForRight) EqChannel.RIGHT else EqChannel.LEFT,
-                    onHeadphoneSelected = { showHeadphoneSelect = false },
-                    onDismiss = { showHeadphoneSelect = false }
-                )
-            }
-        )
+        // Unglassed: full-screen dialog inside the glass menu — re-apply the
+        // unglassed scheme so the dialog container and the hosted screen draw
+        // with standard opaque surfaces.
+        UnglassedDialogTheme {
+            AlertDialog(
+                onDismissRequest = { showHeadphoneSelect = false },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Transparent),
+                properties = androidx.compose.ui.window.DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    dismissOnBackPress = true,
+                    dismissOnClickOutside = true
+                ),
+                content = {
+                    HeadphoneSelectScreen(
+                        viewModel = viewModel,
+                        channel = if (headphoneSelectForRight) EqChannel.RIGHT else EqChannel.LEFT,
+                        onHeadphoneSelected = { showHeadphoneSelect = false },
+                        onDismiss = { showHeadphoneSelect = false }
+                    )
+                }
+            )
+        }
     }
 
     if (showTargetNameDialog) {
-        AlertDialog(
-            onDismissRequest = { showTargetNameDialog = false },
-            title = { Text("Name Custom Target") },
-            text = {
-                OutlinedTextField(
-                    value = targetName,
-                    onValueChange = { targetName = it },
-                    label = { Text("Target Name") },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (targetName.isNotBlank()) {
-                            viewModel.importCustomTarget(pendingTargetData, targetName.trim())
-                            showTargetNameDialog = false
-                            pendingTargetData = ""
+        UnglassedDialogTheme {
+            AlertDialog(
+                onDismissRequest = { showTargetNameDialog = false },
+                title = { Text("Name Custom Target") },
+                text = {
+                    OutlinedTextField(
+                        value = targetName,
+                        onValueChange = { targetName = it },
+                        label = { Text("Target Name") },
+                        singleLine = true
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (targetName.isNotBlank()) {
+                                viewModel.importCustomTarget(pendingTargetData, targetName.trim())
+                                showTargetNameDialog = false
+                                pendingTargetData = ""
+                            }
                         }
-                    }
-                ) { Text("Import") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showTargetNameDialog = false
-                    pendingTargetData = ""
-                }) { Text("Cancel") }
-            }
-        )
+                    ) { Text("Import") }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        showTargetNameDialog = false
+                        pendingTargetData = ""
+                    }) { Text("Cancel") }
+                }
+            )
+        }
     }
 
     presetToDelete?.let { preset ->
-        AlertDialog(
-            onDismissRequest = { presetToDelete = null },
-            title = { Text("Delete Profile") },
-            text = { Text("Delete \"${preset.name}\"?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.deletePreset(preset.id)
-                    presetToDelete = null
-                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { presetToDelete = null }) { Text("Cancel") }
-            }
-        )
+        UnglassedDialogTheme {
+            AlertDialog(
+                onDismissRequest = { presetToDelete = null },
+                title = { Text("Delete Profile") },
+                text = { Text("Delete \"${preset.name}\"?") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.deletePreset(preset.id)
+                        presetToDelete = null
+                    }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { presetToDelete = null }) { Text("Cancel") }
+                }
+            )
+        }
     }
 }
 

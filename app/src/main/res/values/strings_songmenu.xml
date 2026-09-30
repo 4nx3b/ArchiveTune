@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="songmenu_add_after" translatable="false">Add after…</string>
+    <string name="songmenu_equalizer_fx" translatable="false">Equalizer &amp; FX</string>
+    <string name="songmenu_player_theme" translatable="false">Player Theme</string>
+    <string name="songmenu_queue_empty" translatable="false">Queue is empty</string>
+</resources>

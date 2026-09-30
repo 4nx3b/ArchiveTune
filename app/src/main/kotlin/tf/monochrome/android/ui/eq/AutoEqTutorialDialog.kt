@@ -54,7 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import tf.monochrome.android.ui.theme.MonoDimens
+import moe.rukamori.archivetune.ui.component.UnglassedDialogTheme
 
 private data class TutorialStep(
     val title: String,
@@ -95,12 +95,16 @@ fun AutoEqTutorialDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        // Unglassed: the dialog renders inside the glass menu's color scheme,
+        // whose container colors are near-transparent — re-applying the
+        // unglassed scheme lets the surface below draw an opaque container.
+        UnglassedDialogTheme {
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.9f)
                 .wrapContentHeight(),
             shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = MonoDimens.cardAlpha),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
             tonalElevation = 6.dp
         ) {
             Column(
@@ -261,6 +265,7 @@ fun AutoEqTutorialDialog(
                     }
                 }
             }
+        }
         }
     }
 }

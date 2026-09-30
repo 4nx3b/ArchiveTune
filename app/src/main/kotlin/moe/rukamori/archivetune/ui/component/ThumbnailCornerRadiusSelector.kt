@@ -12,6 +12,7 @@ package moe.rukamori.archivetune.ui.component
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Alignment
@@ -125,10 +126,9 @@ fun ThumbnailCornerRadiusModal(
                     Modifier
                         .fillMaxWidth(dialogWidth)
                         .wrapContentHeight()
-                        .clip(RoundedCornerShape(30.dp))
                         .padding(16.dp),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 tonalElevation = 6.dp,
             ) {
                 Column(
@@ -138,6 +138,35 @@ fun ThumbnailCornerRadiusModal(
                             .padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                            modifier = Modifier.size(34.dp),
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.solar_aspect_ratio_linear),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                        Text(
+                            text = stringResource(id = R.string.custom_radius),
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Box(
@@ -329,10 +358,10 @@ fun ThumbnailCornerRadiusModal(
                         horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.End),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TextButton(
+                        OutlinedButton(
                             onClick = onDismiss,
                             modifier = Modifier.heightIn(min = 48.dp),
-                            shapes = ButtonDefaults.shapes(),
+                            shape = RoundedCornerShape(18.dp),
                         ) {
                             Text(
                                 text = stringResource(id = R.string.cancel_button),
@@ -352,11 +381,11 @@ fun ThumbnailCornerRadiusModal(
                                     containerColor = MaterialTheme.colorScheme.primary,
                                     contentColor = MaterialTheme.colorScheme.onPrimary,
                                 ),
-                            shapes = ButtonDefaults.shapes(),
+                            shape = RoundedCornerShape(18.dp),
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    painter = painterResource(R.drawable.check),
+                                    painter = painterResource(R.drawable.solar_check_circle_linear),
                                     contentDescription = null,
                                     modifier = Modifier.size(18.dp),
                                 )

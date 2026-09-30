@@ -69,6 +69,7 @@ import moe.rukamori.archivetune.constants.NavigationBarCornerRadiusKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.LiquidGlassNavBarEnabledKey
+import moe.rukamori.archivetune.ui.component.NavigationBarGlassGlowKey
 import moe.rukamori.archivetune.constants.NavigationBarTintFrostedBlurKey
 import moe.rukamori.archivetune.constants.NavigationBarHeight
 import moe.rukamori.archivetune.constants.NavigationBarHeightKey
@@ -116,6 +117,8 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
         rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val (liquidGlassNavBarEnabled, onLiquidGlassNavBarEnabledChange) =
         rememberPreference(LiquidGlassNavBarEnabledKey, defaultValue = false)
+    val (navigationBarGlassGlow, onNavigationBarGlassGlowChange) =
+        rememberPreference(NavigationBarGlassGlowKey, defaultValue = true)
 
     val onFrostedBlurChange: (Boolean) -> Unit = { checked ->
         onNavigationBarFrostedBlurChange(checked)
@@ -261,6 +264,17 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
 
                         isEnabled = liquidGlassEnabled && supported,
                         onCheckedChange = onLiquidGlassNavBarEnabledChange,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("navigation_bar_glass_glow"),
+                        title = { Text(stringResource(R.string.navigation_bar_glass_glow)) },
+                        description = stringResource(R.string.navigation_bar_glass_glow_desc),
+                        icon = { Icon(painterResource(R.drawable.solar_brightness_high_linear), null) },
+                        checked = navigationBarGlassGlow,
+                        onCheckedChange = onNavigationBarGlassGlowChange,
                     )
                 }
 

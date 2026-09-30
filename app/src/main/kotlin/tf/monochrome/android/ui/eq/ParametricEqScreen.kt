@@ -54,6 +54,7 @@ import tf.monochrome.android.domain.model.EqPreset
 import tf.monochrome.android.ui.components.bounceClick
 import tf.monochrome.android.ui.components.liquidGlass
 import tf.monochrome.android.ui.navigation.LocalMiniPlayerInset
+import moe.rukamori.archivetune.ui.component.UnglassedDialogTheme
 
 @Composable
 fun ParametricEqScreen(
@@ -381,57 +382,64 @@ fun ParametricEqScreen(
     }
 
     if (showSaveDialog) {
-        AlertDialog(
-            onDismissRequest = { showSaveDialog = false },
-            title = { Text("Save Profile") },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = saveName,
-                        onValueChange = { saveName = it },
-                        label = { Text("Profile name") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = saveDescription,
-                        onValueChange = { saveDescription = it },
-                        label = { Text("Description (optional)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (saveName.isNotBlank()) {
-                        viewModel.saveAsPreset(saveName.trim(), saveDescription.trim())
-                        showSaveDialog = false
+        // Unglassed: this dialog renders inside the glass menu's color scheme,
+        // whose container colors are near-transparent — re-applying the
+        // unglassed scheme gives the dialog a standard opaque container.
+        UnglassedDialogTheme {
+            AlertDialog(
+                onDismissRequest = { showSaveDialog = false },
+                title = { Text("Save Profile") },
+                text = {
+                    Column {
+                        OutlinedTextField(
+                            value = saveName,
+                            onValueChange = { saveName = it },
+                            label = { Text("Profile name") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = saveDescription,
+                            onValueChange = { saveDescription = it },
+                            label = { Text("Description (optional)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
-                }) { Text("Save") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSaveDialog = false }) { Text("Cancel") }
-            }
-        )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (saveName.isNotBlank()) {
+                            viewModel.saveAsPreset(saveName.trim(), saveDescription.trim())
+                            showSaveDialog = false
+                        }
+                    }) { Text("Save") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSaveDialog = false }) { Text("Cancel") }
+                }
+            )
+        }
     }
 
     presetToDelete?.let { preset ->
-        AlertDialog(
-            onDismissRequest = { presetToDelete = null },
-            title = { Text("Delete Profile") },
-            text = { Text("Delete \"${preset.name}\"?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.deletePreset(preset.id)
-                    presetToDelete = null
-                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { presetToDelete = null }) { Text("Cancel") }
-            }
-        )
+        UnglassedDialogTheme {
+            AlertDialog(
+                onDismissRequest = { presetToDelete = null },
+                title = { Text("Delete Profile") },
+                text = { Text("Delete \"${preset.name}\"?") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.deletePreset(preset.id)
+                        presetToDelete = null
+                    }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { presetToDelete = null }) { Text("Cancel") }
+                }
+            )
+        }
     }
 }
 

@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import moe.rukamori.archivetune.ui.component.LocalUnglassColorScheme
 import tf.monochrome.android.data.import_.ApoProfileParser
 import tf.monochrome.android.data.import_.ParsedEqProfile
 
@@ -60,7 +61,14 @@ fun ImportEqProfileSheet(
     val validL = parsedL?.takeIf { !it.isEmpty && !it.looksLikeMeasurement }
     val validR = parsedR?.takeIf { !it.isEmpty && !it.looksLikeMeasurement }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    // Unglassed: the sheet's default container resolves from the glass menu's
+    // color scheme (transparent surfaceContainerLow) — pin it to the real
+    // scheme so the sheet draws a standard opaque container.
+    val unglassedScheme = LocalUnglassColorScheme.current ?: MaterialTheme.colorScheme
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = unglassedScheme.surfaceContainerLow
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

@@ -142,27 +142,45 @@ inline fun <reified T : Enum<T>> SortHeader(
         DropdownMenu(
             expanded = menuExpanded,
             onDismissRequest = { menuExpanded = false },
+            shape = RoundedCornerShape(20.dp),
+            containerColor =
+                LocalUnglassColorScheme.current?.surfaceContainerHigh
+                    ?: MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.widthIn(min = 172.dp),
         ) {
             enumValues<T>().forEach { type ->
+                val isSelected = sortType == type
                 DropdownMenuItem(
                     text = {
                         Text(
                             text = stringResource(sortTypeText(type)),
                             style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color =
+                                if (isSelected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
                         )
                     },
                     trailingIcon = {
                         Icon(
                             painter =
                                 painterResource(
-                                    if (sortType == type) {
+                                    if (isSelected) {
                                         R.drawable.radio_button_checked
                                     } else {
                                         R.drawable.radio_button_unchecked
                                     },
                                 ),
                             contentDescription = null,
+                            tint =
+                                if (isSelected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                         )
                     },
                     onClick = {

@@ -184,6 +184,7 @@ fun FloatingNavigationToolbar(
     frostedBackdrop: NavigationBarBackdrop? = null,
     liquidGlass: Boolean = false,
     liquidGlassBackdrop: Backdrop? = null,
+    glowStrength: Float = 0f,
     isSelected: (Screens) -> Boolean,
     onItemClick: (Screens, Boolean) -> Unit,
     onSearchItemDoubleClick: (() -> Unit)? = null,
@@ -536,6 +537,17 @@ fun FloatingNavigationToolbar(
                                 shape = navigationShape,
                                 interactive = false,
                                 baseColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            )
+                        } else {
+                            Modifier
+                        },
+                    ).then(
+                        // Nuvio-style glass glow: rim light + top sheen, drawn
+                        // over whatever background style the bar uses.
+                        if (glowStrength > 0.01f) {
+                            Modifier.glassGlowOverlay(
+                                strength = glowStrength,
+                                shape = navigationShape,
                             )
                         } else {
                             Modifier

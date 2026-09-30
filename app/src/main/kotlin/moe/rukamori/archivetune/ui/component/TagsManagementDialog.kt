@@ -10,7 +10,10 @@
 package moe.rukamori.archivetune.ui.component
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +36,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -47,20 +52,24 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,6 +85,7 @@ import moe.rukamori.archivetune.viewmodels.PlaylistTagUiModel
 import moe.rukamori.archivetune.viewmodels.PlaylistTagsScreenState
 import moe.rukamori.archivetune.viewmodels.PlaylistTagsViewModel
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @Composable
 fun TagsManagementDialog(
@@ -126,7 +136,7 @@ private fun TagsManagementContent(
     onDismiss: () -> Unit,
 ) {
     PlaylistTagsDialogLayout(
-        icon = R.drawable.style,
+        icon = R.drawable.solar_tag_linear,
         title = stringResource(R.string.manage_tags),
         subtitle = stringResource(R.string.manage_playlist_tags_desc),
         body = { bodyModifier ->
@@ -158,19 +168,20 @@ private fun TagsManagementContent(
             }
         },
         actions = {
-            TextButton(
+            OutlinedButton(
                 onClick = onDismiss,
-                shapes = ButtonDefaults.shapes(),
+                shape = RoundedCornerShape(18.dp),
             ) {
                 Text(text = stringResource(R.string.close))
             }
 
             Button(
                 onClick = onAddTag,
-                shapes = ButtonDefaults.shapes(),
+                shape = RoundedCornerShape(18.dp),
+                contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.add),
+                    painter = painterResource(R.drawable.solar_add_circle_linear),
                     contentDescription = null,
                     modifier = Modifier.size(ButtonDefaults.IconSize),
                 )
@@ -340,7 +351,7 @@ private fun AddEditTagDialog(
 
     PlaylistTagsDialogScaffold(onDismiss = onDismiss) {
         PlaylistTagsDialogLayout(
-            icon = if (editor.tagId == null) R.drawable.add else R.drawable.edit,
+            icon = if (editor.tagId == null) R.drawable.solar_add_circle_linear else R.drawable.solar_pen_linear,
             title = title,
             body = { bodyModifier ->
                 Column(
@@ -406,9 +417,9 @@ private fun AddEditTagDialog(
                 }
             },
             actions = {
-                TextButton(
+                OutlinedButton(
                     onClick = onDismiss,
-                    shapes = ButtonDefaults.shapes(),
+                    shape = RoundedCornerShape(18.dp),
                 ) {
                     Text(text = stringResource(android.R.string.cancel))
                 }
@@ -419,7 +430,7 @@ private fun AddEditTagDialog(
                         keyboardController?.hide()
                         onSave()
                     },
-                    shapes = ButtonDefaults.shapes(),
+                    shape = RoundedCornerShape(18.dp),
                 ) {
                     Text(text = stringResource(R.string.save))
                 }
@@ -438,7 +449,7 @@ private fun PlaylistTagColorPickerDialog(
 
     PlaylistTagsDialogScaffold(onDismiss = onDismiss) {
         PlaylistTagsDialogLayout(
-            icon = R.drawable.palette,
+            icon = R.drawable.solar_palette_linear,
             title = stringResource(R.string.choose_color),
             body = { bodyModifier ->
                 FlowRow(
@@ -460,9 +471,9 @@ private fun PlaylistTagColorPickerDialog(
                 }
             },
             actions = {
-                TextButton(
+                OutlinedButton(
                     onClick = onDismiss,
-                    shapes = ButtonDefaults.shapes(),
+                    shape = RoundedCornerShape(18.dp),
                 ) {
                     Text(text = stringResource(android.R.string.cancel))
                 }
@@ -481,19 +492,19 @@ private fun PlaylistTagsHeader(
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Surface(
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            modifier = Modifier.size(48.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+            modifier = Modifier.size(34.dp),
         ) {
-            Box(contentAlignment = Alignment.Center) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                 Icon(
                     painter = painterResource(icon),
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(20.dp),
                 )
             }
         }
@@ -502,6 +513,7 @@ private fun PlaylistTagsHeader(
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -672,6 +684,20 @@ private fun PlaylistTagsDialogScaffold(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        var entered by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) {
+            entered = true
+        }
+        val entranceProgress by animateFloatAsState(
+            targetValue = if (entered) 1f else 0f,
+            animationSpec =
+                spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                    visibilityThreshold = 0.01f,
+                ),
+            label = "tagsDialogEntrance",
+        )
         BoxWithConstraints(
             modifier =
                 Modifier
@@ -686,8 +712,15 @@ private fun PlaylistTagsDialogScaffold(
                     Modifier
                         .widthIn(max = 560.dp)
                         .fillMaxWidth()
-                        .heightIn(max = maxHeight),
-                shape = AlertDialogDefaults.shape,
+                        .heightIn(max = maxHeight)
+                        .graphicsLayer {
+                            val p = entranceProgress.coerceIn(0f, 1f)
+                            alpha = p
+                            scaleX = 0.94f + 0.06f * p
+                            scaleY = 0.94f + 0.06f * p
+                            translationY = (1f - p) * 12f
+                        },
+                shape = MaterialTheme.shapes.extraLarge,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 tonalElevation = AlertDialogDefaults.TonalElevation,
                 content = content,

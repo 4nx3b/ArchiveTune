@@ -12,19 +12,24 @@ package moe.rukamori.archivetune.ui.menu
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
@@ -300,17 +306,30 @@ fun AddToPlaylistDialogOnline(
     if (isVisible) {
         ListDialog(
             onDismiss = onDismiss,
+            icon = { Icon(painter = painterResource(R.drawable.solar_playlist_linear), contentDescription = null) },
+            title = { Text(text = stringResource(R.string.add_to_playlist)) },
         ) {
             item {
                 ListItem(
                     title = stringResource(R.string.create_playlist),
                     thumbnailContent = {
-                        Image(
-                            painter = painterResource(id = R.drawable.playlist_add),
-                            contentDescription = null,
-                            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground),
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
                             modifier = Modifier.size(ListThumbnailSize),
-                        )
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.solar_add_circle_linear),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                        }
                     },
                     modifier =
                         Modifier.clickable {
@@ -370,33 +389,61 @@ fun AddToPlaylistDialogOnline(
     if (showResultDialog && processingSummary != null) {
         val summary = processingSummary!!
         DefaultDialog(
+            icon = { Icon(painter = painterResource(R.drawable.solar_check_circle_linear), contentDescription = null) },
             title = { Text("Import Complete") },
             onDismiss = { showResultDialog = false },
             buttons = {
-                TextButton(onClick = { showResultDialog = false }, shapes = ButtonDefaults.shapes()) {
+                FilledTonalButton(
+                    onClick = { showResultDialog = false },
+                    shape = RoundedCornerShape(18.dp),
+                ) {
                     Text("OK")
                 }
             },
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Total Processed: ${summary.total}")
-                Text("Successfully Imported: ${summary.success}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "Total Processed: ${summary.total}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "Successfully Imported: ${summary.success}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
                 if (summary.failed > 0) {
-                    Text("Failed: ${summary.failed}", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = "Failed: ${summary.failed}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                    Text("Failed Items:", style = MaterialTheme.typography.labelLarge)
-                    LazyColumn(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .height(150.dp),
+                    Text(
+                        text = "Failed Items:",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
-                        items(summary.failedItems, key = { it }) { title ->
-                            Text(
-                                text = "• $title",
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(vertical = 2.dp),
-                            )
+                        LazyColumn(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(150.dp),
+                        ) {
+                            items(summary.failedItems, key = { it }) { title ->
+                                Text(
+                                    text = "• $title",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                                )
+                            }
                         }
                     }
                 }

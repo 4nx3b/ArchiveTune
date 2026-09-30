@@ -1060,7 +1060,8 @@ fun buildSettingsGroups(
 
     return listOf(
         SettingsGroup(
-            title = stringResource(R.string.settings),
+            // No caption above the account pill — it reads on its own.
+            title = "",
             items = listOf(account, stats),
         ),
         SettingsGroup(

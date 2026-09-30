@@ -372,6 +372,10 @@ class PlayerConnection(
         service.addToQueue(items)
     }
 
+    fun addAfterQueueIndex(index: Int, items: List<MediaItem>) {
+        service.addAfterQueueIndex(index, items)
+    }
+
     fun playFromVoiceSearch(query: String) {
         service.playFromVoiceSearch(query)
     }

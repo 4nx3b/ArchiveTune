@@ -60,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -608,6 +609,7 @@ fun NewMiniPlayerContent(
     durationProvider: () -> Long,
     playerConnection: PlayerConnection,
     colors: MiniPlayerContentColors,
+    compactFraction: Float = 0f,
     onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
@@ -630,12 +632,121 @@ fun NewMiniPlayerContent(
             }
         }
 
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Expanded content: fades and gently shrinks as the pill morphs.
+        if (compactFraction < 0.95f) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 8.dp)
+                        .graphicsLayer {
+                            alpha = 1f - compactFraction
+                            val scale = 1f - 0.10f * compactFraction
+                            scaleX = scale
+                            scaleY = scale
+                        },
+            ) {
+                MiniPlayerArtwork(
+                    mediaMetadata = mediaMetadata,
+                    progress = progressProvider,
+                    isLoading = isLoading,
+                    colors = colors,
+                    onArtworkSlotPositioned = onArtworkSlotPositioned,
+                )
+
+                mediaMetadata?.let {
+                    MiniPlayerInfo(
+                        mediaMetadata = it,
+                        colors = colors,
+                    )
+                } ?: Spacer(Modifier.weight(1f))
+
+                MiniPlayerTransportControls(
+                    isPlaying = isPlaying,
+                    playbackState = playbackState,
+                    canSkipPrevious = canSkipPrevious,
+                    canSkipNext = canSkipNext,
+                    playerConnection = playerConnection,
+                    colors = colors,
+                )
+            }
+        }
+
+        // Compact content: [artwork] [title/artist] [pause] — grows in with
+        // the same curve so the pill's contents read as one morphing surface.
+        if (compactFraction > 0.05f) {
+            CompactMiniPlayerContent(
+                positionProvider = positionProvider,
+                durationProvider = durationProvider,
+                playerConnection = playerConnection,
+                colors = colors,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            alpha = compactFraction
+                            val scale = 0.92f + 0.08f * compactFraction
+                            scaleX = scale
+                            scaleY = scale
+                        },
+            )
+        }
+    }
+}
+
+/**
+ * The compact-state mini player pill content: [artwork] [title/artist] [pause].
+ * Only the pause control remains — per the reference compact design, no
+ * next/previous/shuffle/repeat are shown while compact. The expanded row
+ * crossfades into this as the pill morphs, with matched scale so the swap
+ * reads as one motion rather than a replace.
+ */
+@Composable
+fun CompactMiniPlayerContent(
+    positionProvider: () -> Long,
+    durationProvider: () -> Long,
+    playerConnection: PlayerConnection,
+    colors: MiniPlayerContentColors,
+    modifier: Modifier = Modifier,
+    onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
+) {
+    val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
+    val playbackState by playerConnection.playbackState.collectAsStateWithLifecycle()
+    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
+
+    val isLoading = playbackState == Player.STATE_BUFFERING
+
+    val progressProvider =
+        remember(positionProvider, durationProvider) {
+            {
+                val duration = durationProvider()
+                if (duration > 0) {
+                    (positionProvider().toFloat() / duration).coerceIn(0f, 1f)
+                } else {
+                    0f
+                }
+            }
+        }
+
+    val onPlayPause =
+        remember(playbackState, playerConnection) {
+            {
+                if (playbackState == Player.STATE_ENDED) {
+                    playerConnection.player.seekTo(0, 0)
+                    playerConnection.player.playWhenReady = true
+                } else {
+                    playerConnection.player.togglePlayPause()
+                }
+            }
+        }
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
-            Modifier
-                .fillMaxSize()
-                .padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            modifier
+                .padding(start = 8.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
     ) {
         MiniPlayerArtwork(
             mediaMetadata = mediaMetadata,
@@ -652,12 +763,18 @@ fun NewMiniPlayerContent(
             )
         } ?: Spacer(Modifier.weight(1f))
 
-        MiniPlayerTransportControls(
-            isPlaying = isPlaying,
-            playbackState = playbackState,
-            canSkipPrevious = canSkipPrevious,
-            canSkipNext = canSkipNext,
-            playerConnection = playerConnection,
+        MiniPlayerTransportButton(
+            iconResId =
+                when {
+                    playbackState == Player.STATE_ENDED -> R.drawable.player_replay
+                    isPlaying -> R.drawable.player_pause
+                    else -> R.drawable.player_play
+                },
+            contentDescription =
+                stringResource(
+                    if (playbackState == Player.STATE_ENDED || !isPlaying) R.string.play else R.string.widget_pause,
+                ),
+            onClick = onPlayPause,
             colors = colors,
         )
     }

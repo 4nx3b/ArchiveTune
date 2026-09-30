@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -44,8 +45,10 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.palette.graphics.Palette
 import coil3.imageLoader
@@ -62,6 +65,8 @@ import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
 import moe.rukamori.archivetune.constants.MiniPlayerHeight
 import moe.rukamori.archivetune.constants.NavigationBarMaxWidth
 import moe.rukamori.archivetune.constants.SwipeSensitivityKey
+import moe.rukamori.archivetune.ui.component.CompactControlGap
+import moe.rukamori.archivetune.ui.component.CompactControlSize
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
 import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.ui.component.LocalNavigationBarBackdrop
@@ -84,6 +89,9 @@ fun MiniPlayer(
     modifier: Modifier = Modifier,
     pureBlack: Boolean,
     isPairedWithNavigation: Boolean = false,
+    compactFraction: Float = 0f,
+    compactHorizontalPadding: Dp = 16.dp,
+    compactReserveEndControl: Boolean = true,
     onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
     val docked = LocalMiniPlayerDocked.current
@@ -99,8 +107,17 @@ fun MiniPlayer(
     val density = LocalDensity.current
     val translationXPx = with(density) { (-160).dp.toPx() }
     val translationYPx = with(density) { 10.dp.toPx() }
+    // Compact insets: the pill squeezes in between the [Home] circle on the
+    // left and the [Search] circle on the right of the compact bottom row.
+    val compactStartInset = compactHorizontalPadding + CompactControlSize + CompactControlGap
+    val compactEndInset =
+        if (compactReserveEndControl) {
+            compactHorizontalPadding + CompactControlSize + CompactControlGap
+        } else {
+            0.dp
+        }
     val dockedModifier =
-        if (dockedAnim > 0.001f) {
+        (if (dockedAnim > 0.001f) {
             val scale = 1f - 0.5f * dockedAnim
             modifier
                 .graphicsLayer {
@@ -111,13 +128,17 @@ fun MiniPlayer(
                 }
         } else {
             modifier
-        }
+        }).padding(
+            start = lerp(0.dp, compactStartInset, compactFraction),
+            end = lerp(0.dp, compactEndInset, compactFraction),
+        )
     NewMiniPlayer(
         positionProvider = positionProvider,
         durationProvider = durationProvider,
         modifier = dockedModifier,
         pureBlack = pureBlack,
         isPairedWithNavigation = isPairedWithNavigation,
+        compactFraction = compactFraction,
         onArtworkSlotPositioned = onArtworkSlotPositioned,
     )
 }
@@ -129,6 +150,7 @@ private fun NewMiniPlayer(
     modifier: Modifier = Modifier,
     pureBlack: Boolean,
     isPairedWithNavigation: Boolean,
+    compactFraction: Float = 0f,
     onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -273,8 +295,11 @@ private fun NewMiniPlayer(
             useLiquidGlass = effectiveBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS,
         )
     val miniPlayerShape =
-        remember(isPairedWithNavigation) {
-            if (isPairedWithNavigation) {
+        remember(isPairedWithNavigation, compactFraction) {
+            if (compactFraction > 0.5f) {
+                // Compact pill: fully rounded ends, matching the circles row.
+                RoundedCornerShape(percent = 50)
+            } else if (isPairedWithNavigation) {
                 RoundedCornerShape(
                     topStart = 28.dp,
                     topEnd = 28.dp,
@@ -301,7 +326,7 @@ private fun NewMiniPlayer(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(MiniPlayerHeight)
+                    .height(lerp(MiniPlayerHeight, CompactControlSize, compactFraction))
 
                     .graphicsLayer {
                         translationX = offsetX
@@ -318,6 +343,7 @@ private fun NewMiniPlayer(
                 durationProvider = durationProvider,
                 playerConnection = playerConnection,
                 colors = contentColors,
+                compactFraction = compactFraction,
                 onArtworkSlotPositioned = onArtworkSlotPositioned,
             )
         }

@@ -66,10 +66,10 @@ object SettingsCardDimensions {
     val ScreenPadding = 16.dp
 
     /** Between adjacent groups (and caption -> previous group). */
-    val GroupSpacing = 18.dp
+    val GroupSpacing = 12.dp
 
     /** Caption's bottom gap to its card. */
-    val CaptionGap = 7.dp
+    val CaptionGap = 4.dp
 
     /** Card corner radius — large, like the reference. */
     val CardCorner = 20.dp
@@ -311,6 +311,8 @@ fun SettingsListRow(
  * icons), or — when the row carries a connected-account profile picture — a
  * circular [AsyncImage] avatar layered OVER the same tile, so the glyph shows
  * through while the image loads and remains as the fallback if it fails.
+ * The tile itself goes circular behind an avatar so its rounded-square
+ * corners never peek out around the profile picture.
  */
 @Composable
 private fun SettingsRowLeadingIcon(
@@ -320,7 +322,6 @@ private fun SettingsRowLeadingIcon(
     showUpdateIndicator: Boolean,
 ) {
     val tileColor = accentColor.takeIf { it.isSpecified } ?: MaterialTheme.colorScheme.primary
-    val tileShape = RoundedCornerShape(8.dp)
     val avatarShape = androidx.compose.foundation.shape.CircleShape
     val context = LocalContext.current
     val requestPx =
@@ -337,6 +338,10 @@ private fun SettingsRowLeadingIcon(
                         .build()
                 }
         }
+
+    // A circular avatar needs a circular accent tile behind it — a rounded
+    // square's corners would peek out around the profile picture.
+    val tileShape = if (avatarRequest != null) avatarShape else RoundedCornerShape(8.dp)
 
     val tile: @Composable () -> Unit = {
         Box(
