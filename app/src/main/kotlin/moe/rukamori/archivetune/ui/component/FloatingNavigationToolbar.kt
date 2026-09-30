@@ -266,8 +266,6 @@ fun FloatingNavigationToolbar(
             canLiquidGlass -> Color.Transparent
 
             else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
-            pureBlack -> Color.White.copy(alpha = 0.16f)
-            else -> MaterialTheme.colorScheme.secondaryContainer
         }
     val indicatorWidth = FloatingNavigationIndicatorWidth
     val indicatorHeight = FloatingNavigationIndicatorHeight
@@ -292,6 +290,8 @@ fun FloatingNavigationToolbar(
                     unselectedTextColor = glassUnselectedColor,
                 )
             }
+            // The bar is always the floating variant now — this branch keeps
+            // the floating colours (previously gated on the style enum).
             else ->
                 ShortNavigationBarItemDefaults.colors(
                     selectedIndicatorColor = Color.Transparent,
@@ -302,25 +302,6 @@ fun FloatingNavigationToolbar(
                     unselectedTextColor =
                         if (pureBlack) Color.White.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-
-            tintFrostedBlur ->
-
-                ShortNavigationBarItemDefaults.colors(
-                    selectedIndicatorColor = Color.Transparent,
-                    selectedIconColor = tintedNavBarContentColor,
-                    selectedTextColor = tintedNavBarContentColor,
-                    unselectedIconColor = tintedNavBarUnselectedContentColor,
-                    unselectedTextColor = tintedNavBarUnselectedContentColor,
-                )
-            pureBlack ->
-                ShortNavigationBarItemDefaults.colors(
-                    selectedIndicatorColor = Color.Transparent,
-                    selectedIconColor = Color.White,
-                    selectedTextColor = Color.White,
-                    unselectedIconColor = Color.White.copy(alpha = 0.6f),
-                    unselectedTextColor = Color.White.copy(alpha = 0.6f),
-                )
-            else -> ShortNavigationBarItemDefaults.colors(selectedIndicatorColor = Color.Transparent)
         }
 
     val selectedIndex = items.indexOfFirst { isSelected(it) }

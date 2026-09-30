@@ -7,7 +7,12 @@
 
 package moe.rukamori.archivetune.ui.screens.search
 
-import moe.rukamori.archivetune.ui.screens.backToMain
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.liquidGlass
 import moe.rukamori.archivetune.ui.component.glassSource
