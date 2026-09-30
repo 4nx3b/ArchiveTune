@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="listen_later" translatable="false">Listen Later</string>
+    <string name="presave_out_now" translatable="false">Out now</string>
+    <string name="presave_remove" translatable="false">Remove</string>
+    <string name="presave_empty" translatable="false">Nothing saved yet — save upcoming releases and they\'ll be ready when they drop.</string>
+    <string name="presave_saved" translatable="false">Saved</string>
+    <string name="presave_save" translatable="false">Save</string>
+</resources>

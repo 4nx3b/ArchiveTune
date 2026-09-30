@@ -57,6 +57,7 @@ import tf.monochrome.android.domain.model.Headphone
 import tf.monochrome.android.domain.model.MeasurementRig
 import tf.monochrome.android.ui.theme.MonoDimens
 import tf.monochrome.android.ui.components.SearchOverlay
+import moe.rukamori.archivetune.ui.component.UnglassedDialogTheme
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -339,24 +340,29 @@ fun HeadphoneSelectScreen(
 
     val toDelete = pendingDelete
     if (toDelete != null) {
-        AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text("Delete uploaded measurement?") },
-            text = { Text(toDelete.name) },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.removeUploadedMeasurement(toDelete.id)
-                    pendingDelete = null
-                }) {
-                    Text("Delete")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) {
-                    Text("Cancel")
-                }
-            },
-        )
+        // Unglassed: this dialog renders inside the glass menu's color scheme,
+        // whose container colors are near-transparent — re-applying the
+        // unglassed scheme gives the dialog a standard opaque container.
+        UnglassedDialogTheme {
+            AlertDialog(
+                onDismissRequest = { pendingDelete = null },
+                title = { Text("Delete uploaded measurement?") },
+                text = { Text(toDelete.name) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.removeUploadedMeasurement(toDelete.id)
+                        pendingDelete = null
+                    }) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDelete = null }) {
+                        Text("Cancel")
+                    }
+                },
+            )
+        }
     }
 }
 

@@ -45,6 +45,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -297,6 +298,9 @@ import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.DISMISSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.EXPANDED_ANCHOR
 import moe.rukamori.archivetune.ui.component.FloatingNavigationToolbar
+import moe.rukamori.archivetune.ui.component.CompactControlCircle
+import moe.rukamori.archivetune.ui.component.CompactControlSize
+import moe.rukamori.archivetune.ui.component.NavigationBarGlassGlowKey
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
@@ -1410,9 +1414,17 @@ class MainActivity : ComponentActivity() {
                                 !active
                         }
 
-                    var isNavBarHiddenByScroll by remember { mutableStateOf(false) }
+                    // ---- Global compact bottom controls -----------------------------
+                    // Scrolling a page collapses the bottom UI into the compact row
+                    // ([Home] [compact mini player pill] [Search]) while scrolling
+                    // back up (or reaching a static page) re-expands it. The old
+                    // hide-the-whole-nav-bar-on-scroll behaviour is replaced by
+                    // this: the bar "sinks" out of the way while the mini player
+                    // morphs into the pill that takes its place, so the bottom
+                    // stack never fully disappears.
+                    var isBottomUiCompact by remember { mutableStateOf(false) }
                     LaunchedEffect(navBackStackEntry?.destination?.route) {
-                        isNavBarHiddenByScroll = false
+                        isBottomUiCompact = false
                     }
                     val navBarScrollDensity = LocalDensity.current
                     val navBarHideScrollThresholdPx = with(navBarScrollDensity) { 14.dp.toPx() }
@@ -1427,15 +1439,42 @@ class MainActivity : ComponentActivity() {
 
                                     if (source == NestedScrollSource.UserInput) {
                                         if (consumed.y < -navBarHideScrollThresholdPx) {
-                                            isNavBarHiddenByScroll = true
+                                            isBottomUiCompact = true
                                         } else if (consumed.y > navBarHideScrollThresholdPx) {
-                                            isNavBarHiddenByScroll = false
+                                            isBottomUiCompact = false
                                         }
                                     }
                                     return Offset.Zero
                                 }
                             }
                         }
+                    val bottomUiCompactFraction by animateFloatAsState(
+                        targetValue = if (isBottomUiCompact) 1f else 0f,
+                        animationSpec =
+                            if (disableAnimations) {
+                                snap()
+                            } else {
+                                spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = 400f,
+                                )
+                            },
+                        label = "bottomUiCompactFraction",
+                    )
+                    // Search results pages keep their own bottom search chrome —
+                    // the compact row shows no Search circle there.
+                    val compactSearchCircleVisible =
+                        navBackStackEntry?.destination?.route?.startsWith(OnlineSearchResultRoutePrefix) != true
+
+                    val navigationBarGlassGlow by rememberPreference(
+                        NavigationBarGlassGlowKey,
+                        defaultValue = true,
+                    )
+                    val navGlassStrength by animateFloatAsState(
+                        targetValue = if (navigationBarGlassGlow) 1f else 0f,
+                        animationSpec = tween(420),
+                        label = "navGlassStrength",
+                    )
 
                     fun getBottomNavPadding(): Dp =
                         if (shouldShowNavigationBar && !useRail) {
@@ -1528,7 +1567,7 @@ class MainActivity : ComponentActivity() {
 
                     val bottomNavigationBarHeight by animateDpAsState(
                         targetValue =
-                            if (shouldShowNavigationBar && !useRail && !isNavBarHiddenByScroll) navVisibleHeight else 0.dp,
+                            if (shouldShowNavigationBar && !useRail && !isBottomUiCompact) navVisibleHeight else 0.dp,
                         animationSpec = if (disableAnimations) snap() else NavigationBarAnimationSpec,
                         label = "",
                     )
@@ -2985,6 +3024,9 @@ class MainActivity : ComponentActivity() {
                                                 pureBlack = pureBlack,
                                                 isMiniPlayerPairedWithNavigation = areBottomBarsPaired,
                                                 onLyricsVisibilityChange = { isPlayerLyricsFullScreen = it },
+                                                compactFraction = bottomUiCompactFraction,
+                                                compactHorizontalPadding = navBarHorizontalPadding,
+                                                compactReserveEndControl = compactSearchCircleVisible,
                                                 navbarHiddenOffset = {
 
                                                     if (shouldShowNavigationBar && !useRail) {
@@ -3033,6 +3075,10 @@ class MainActivity : ComponentActivity() {
                                                                         )
                                                                 slideOffset + hideOffset
                                                             }
+                                                        // Compact mode: the bar sinks out of the way while
+                                                        // dissolving — the Home circle + mini player pill
+                                                        // take over its place in one coordinated motion.
+                                                        alpha = 1f - bottomUiCompactFraction * 0.9f
                                                     },
                                         ) {
                                             FloatingNavigationToolbar(
@@ -3045,6 +3091,7 @@ class MainActivity : ComponentActivity() {
                                                 frostedBackdrop = navBarFrostedBackdrop,
                                                 liquidGlass = liquidGlassEnabled && liquidGlassNavBarEnabled,
                                                 liquidGlassBackdrop = liquidGlassBackdrop,
+                                                glowStrength = navGlassStrength,
                                                 modifier =
                                                     Modifier
                                                         .align(Alignment.BottomCenter)
@@ -3065,6 +3112,67 @@ class MainActivity : ComponentActivity() {
                                                     openSearch()
                                                 },
                                             )
+                                        }
+
+                                        // ---- Compact bottom controls row ------------------------------
+                                        // [ Home ] [ compact mini player pill ] [ Search ] — the Home
+                                        // and Search circles; the pill between them IS the mini
+                                        // player (morphed in place by the sheet's collapsed
+                                        // content, inset by these circles' width + gap).
+                                        if (shouldShowNavigationBar || !playerBottomSheetState.isDismissed) {
+                                            val compactRowAlpha =
+                                                bottomUiCompactFraction *
+                                                    (1f - playerBottomSheetState.progress.coerceIn(0f, 1f))
+                                            if (compactRowAlpha > 0.01f) {
+                                                Box(
+                                                    modifier =
+                                                        Modifier
+                                                            .align(Alignment.BottomCenter)
+                                                            .fillMaxWidth()
+                                                            .padding(horizontal = navBarHorizontalPadding)
+                                                            .padding(bottom = bottomInset + MiniPlayerBottomSpacing)
+                                                            .height(CompactControlSize)
+                                                            .graphicsLayer {
+                                                                alpha = compactRowAlpha
+                                                                val scale = 0.82f + 0.18f * bottomUiCompactFraction
+                                                                scaleX = scale
+                                                                scaleY = scale
+                                                            },
+                                                ) {
+                                                    CompactControlCircle(
+                                                        iconRes = Screens.Home.iconIdActive,
+                                                        contentDescription = stringResource(Screens.Home.titleId),
+                                                        onClick = {
+                                                            handlePrimaryNavigationClick(
+                                                                Screens.Home,
+                                                                navBackStackEntry?.destination?.hierarchy
+                                                                    ?.any { it.route == Screens.Home.route } == true,
+                                                            )
+                                                        },
+                                                        backdrop = liquidGlassBackdrop,
+                                                        glowStrength = navGlassStrength,
+                                                        modifier = Modifier.align(Alignment.CenterStart),
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                    )
+
+                                                    if (compactSearchCircleVisible) {
+                                                        CompactControlCircle(
+                                                            iconRes = Screens.Search.iconIdInactive,
+                                                            contentDescription = stringResource(Screens.Search.titleId),
+                                                            onClick = {
+                                                                handlePrimaryNavigationClick(
+                                                                    Screens.Search,
+                                                                    navBackStackEntry?.destination?.hierarchy
+                                                                        ?.any { it.route == Screens.Search.route } == true,
+                                                                )
+                                                            },
+                                                            backdrop = liquidGlassBackdrop,
+                                                            glowStrength = navGlassStrength,
+                                                            modifier = Modifier.align(Alignment.CenterEnd),
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 },

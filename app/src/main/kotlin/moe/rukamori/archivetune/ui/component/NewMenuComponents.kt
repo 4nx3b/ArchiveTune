@@ -66,14 +66,14 @@ fun NewActionButton(
             else -> Color.Transparent
         }
     val actionContentColor = if (contentColor.isSpecified) contentColor else MaterialTheme.colorScheme.onSurfaceVariant
-    val tileShape = if (onGlassPopup) ButtonDefaults.squareShape else RoundedCornerShape(16.dp)
+    val tileShape = if (onGlassPopup) RoundedCornerShape(18.dp) else RoundedCornerShape(16.dp)
 
     FilledTonalButton(
         onClick = onClick,
         modifier =
             modifier
                 .fillMaxWidth()
-                .heightIn(min = 96.dp)
+                .heightIn(min = 84.dp)
                 .then(
                     if (onGlassPopup) {
                         Modifier

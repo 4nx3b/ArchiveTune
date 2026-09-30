@@ -29,14 +29,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -96,16 +96,19 @@ fun ArtistSeparatorsDialog(
                         showAddSymbolDialog = false
                     },
                     enabled = newSymbolInput.isNotEmpty(),
-                    shapes = ButtonDefaults.shapes(),
+                    shape = RoundedCornerShape(18.dp),
                 ) {
                     Text(stringResource(R.string.add_symbol))
                 }
             },
             dismissButton = {
-                TextButton(onClick = {
-                    newSymbolInput = ""
-                    showAddSymbolDialog = false
-                }, shapes = ButtonDefaults.shapes()) {
+                OutlinedButton(
+                    onClick = {
+                        newSymbolInput = ""
+                        showAddSymbolDialog = false
+                    },
+                    shape = RoundedCornerShape(18.dp),
+                ) {
                     Text(stringResource(android.R.string.cancel))
                 }
             },
@@ -122,18 +125,41 @@ fun ArtistSeparatorsDialog(
                 Modifier
                     .fillMaxWidth()
                     .padding(24.dp),
-            shape = AlertDialogDefaults.shape,
+            shape = MaterialTheme.shapes.extraLarge,
             color = AlertDialogDefaults.containerColor,
             tonalElevation = AlertDialogDefaults.TonalElevation,
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),
             ) {
-                Text(
-                    text = stringResource(R.string.artist_separators),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                        modifier = Modifier.size(34.dp),
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.size(34.dp),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.solar_text),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                    Text(
+                        text = stringResource(R.string.artist_separators),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -156,17 +182,17 @@ fun ArtistSeparatorsDialog(
                                 .clip(CircleShape)
                                 .clickable { showAddSymbolDialog = true },
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
                     ) {
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier.size(40.dp),
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.add),
+                                painter = painterResource(R.drawable.solar_add_circle_linear),
                                 contentDescription = stringResource(R.string.add_symbol),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 modifier = Modifier.size(20.dp),
                             )
                         }
@@ -177,17 +203,18 @@ fun ArtistSeparatorsDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
                 ) {
-                    TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(18.dp),
+                    ) {
                         Text(stringResource(android.R.string.cancel))
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
-
                     Button(
                         onClick = { onSave(separatorsList.joinToString("")) },
-                        shapes = ButtonDefaults.shapes(),
+                        shape = RoundedCornerShape(18.dp),
                     ) {
                         Text(stringResource(R.string.save))
                     }
@@ -203,9 +230,9 @@ private fun SeparatorChip(
     onRemove: () -> Unit,
 ) {
     Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
     ) {
         Row(
             modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
@@ -214,7 +241,8 @@ private fun SeparatorChip(
             Text(
                 text = "\"$symbol\"",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
             )
 
             Spacer(modifier = Modifier.width(4.dp))
@@ -229,7 +257,7 @@ private fun SeparatorChip(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.close),
+                    painter = painterResource(R.drawable.solar_close_circle_linear),
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(14.dp),

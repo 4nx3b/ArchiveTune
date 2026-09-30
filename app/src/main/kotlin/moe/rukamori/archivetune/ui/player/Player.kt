@@ -138,6 +138,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.drawable.toBitmap
@@ -363,6 +364,9 @@ fun BottomSheetPlayer(
     pureBlack: Boolean,
     isMiniPlayerPairedWithNavigation: Boolean = false,
     onLyricsVisibilityChange: (Boolean) -> Unit = {},
+    compactFraction: Float = 0f,
+    compactHorizontalPadding: Dp = 16.dp,
+    compactReserveEndControl: Boolean = true,
     navbarHiddenOffset: (() -> Float)? = null,
 ) {
     val context = LocalContext.current
@@ -1398,6 +1402,9 @@ fun BottomSheetPlayer(
                 durationProvider = durationProvider,
                 pureBlack = pureBlack,
                 isPairedWithNavigation = isMiniPlayerPairedWithNavigation,
+                compactFraction = compactFraction,
+                compactHorizontalPadding = compactHorizontalPadding,
+                compactReserveEndControl = compactReserveEndControl,
                 onArtworkSlotPositioned = { rect ->
                     if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
                         spatialFlowMiniArtworkRect.value = rect
@@ -1989,6 +1996,12 @@ fun BottomSheetPlayer(
                             onAddToPlaylistClick = {
                                 showChoosePlaylistDialog = true
                             },
+                            currentFormat = currentFormat,
+                            onShowDetails = {
+                                bottomSheetPageState.show {
+                                    ShowMediaInfo(metadata.id)
+                                }
+                            },
                             landscape = true,
                             modifier =
                                 Modifier
@@ -2528,6 +2541,12 @@ fun BottomSheetPlayer(
                             },
                             onAddToPlaylistClick = {
                                 showChoosePlaylistDialog = true
+                            },
+                            currentFormat = currentFormat,
+                            onShowDetails = {
+                                bottomSheetPageState.show {
+                                    ShowMediaInfo(metadata.id)
+                                }
                             },
                             modifier =
                                 Modifier

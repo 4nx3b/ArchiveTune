@@ -135,8 +135,10 @@ import moe.rukamori.archivetune.utils.SpeedDialPinType
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.parseSpeedDialPins
+import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.audiosource.SongSourceOverride
 import moe.rukamori.archivetune.audiosource.SongCanvasDisabled
+import moe.rukamori.archivetune.constants.AudioSourceOrderKey
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.SongSourceOverrideKey
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -1750,15 +1752,33 @@ private fun SongSourceDialog(
 
     // Apple Music is intentionally NOT offered in the Play From popup (neither the
     // per-song radio list nor the cross-service search pills).
+    // Both listings follow the user's configured playback source priority (highest
+    // first). Sources parseOrder drops (retired from the chain, e.g. Deezer) stay
+    // offered, appended after the configured order in their previous relative order.
+    val (sourceOrderRaw, _) = rememberPreference(AudioSourceOrderKey, "")
+    val sourceOrder =
+        remember(sourceOrderRaw) {
+            AudioSourceConfig.parseOrder(sourceOrderRaw.ifBlank { null })
+        }
     val searchableSources =
-        listOf(
-            AudioSourceType.YOUTUBE,
-            AudioSourceType.TIDAL,
-            AudioSourceType.QOBUZ,
-            AudioSourceType.QOBUZ_BACKUP,
-            AudioSourceType.DEEZER,
-            AudioSourceType.JIOSAAVN,
-        )
+        remember(sourceOrder) {
+            val eligible =
+                listOf(
+                    AudioSourceType.YOUTUBE,
+                    AudioSourceType.TIDAL,
+                    AudioSourceType.QOBUZ,
+                    AudioSourceType.QOBUZ_BACKUP,
+                    AudioSourceType.DEEZER,
+                    AudioSourceType.JIOSAAVN,
+                )
+            val ordered = sourceOrder.filter { it in eligible }
+            ordered + eligible.filterNot { it in ordered }
+        }
+    val orderedSources =
+        remember(sources, sourceOrder) {
+            val ordered = sourceOrder.filter { it in sources }
+            ordered + sources.filterNot { it in ordered }
+        }
 
     LaunchedEffect(searchMode, searchQuery) {
         if (!searchMode || searchQuery.length < 2) {
@@ -1942,7 +1962,7 @@ private fun SongSourceDialog(
                     checked = selected == null,
                     onClick = { onSelect(null) },
                 )
-                sources.forEach { source ->
+                orderedSources.forEach { source ->
                     SongSourceRow(
                         iconRes = source.sourceIconRes(),
                         label = stringResource(source.sourceLabelRes()),

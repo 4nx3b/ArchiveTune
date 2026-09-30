@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import tf.monochrome.android.domain.model.Headphone
 import tf.monochrome.android.ui.components.bounceClick
 import tf.monochrome.android.ui.components.liquidGlass
+import moe.rukamori.archivetune.ui.component.UnglassedDialogTheme
 
 @Composable
 fun TabChip(
@@ -122,18 +123,24 @@ fun ParameterDropdown(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
-            ) {
-                options.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option) },
-                        onClick = {
-                            onValueChanged(option)
-                            expanded = false
-                        }
-                    )
+            // Unglassed: the floating menu panel renders inside the glass
+            // menu's color scheme, whose container colors are near-transparent
+            // — re-applying the unglassed scheme keeps the panel opaque and
+            // readable.
+            UnglassedDialogTheme {
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    options.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(option) },
+                            onClick = {
+                                onValueChanged(option)
+                                expanded = false
+                            }
+                        )
+                    }
                 }
             }
         }

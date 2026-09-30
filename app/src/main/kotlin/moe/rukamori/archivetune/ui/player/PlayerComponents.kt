@@ -118,6 +118,7 @@ import moe.rukamori.archivetune.constants.PlayerHorizontalPadding
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.codecLabel
+import moe.rukamori.archivetune.db.entities.isLossless
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.extensions.toggleRepeatMode
 import moe.rukamori.archivetune.models.MediaMetadata
@@ -3196,6 +3197,8 @@ fun V10PlayerContent(
     sleepTimerTimeLeft: Long,
     onMenuClick: () -> Unit,
     onAddToPlaylistClick: () -> Unit,
+    currentFormat: FormatEntity? = null,
+    onShowDetails: () -> Unit = {},
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
 ) {
@@ -3296,6 +3299,14 @@ fun V10PlayerContent(
                     size = 44.dp
                 ) {
                     Icon(painter = painterResource(R.drawable.lyrics), contentDescription = "Lyrics", modifier = Modifier.size(22.dp))
+                }
+                EditorialCircleButton(
+                    onClick = onQueueClick,
+                    accent = accent,
+                    field = field,
+                    size = 44.dp
+                ) {
+                    Icon(painter = painterResource(R.drawable.queue_music), contentDescription = "Queue", modifier = Modifier.size(22.dp))
                 }
                 EditorialCircleButton(
                     onClick = onMenuClick,
@@ -3400,6 +3411,19 @@ fun V10PlayerContent(
                     ),
                 )
             }
+
+            EditorialMetadataRow(
+                album = mediaMetadata.album,
+                currentFormat = currentFormat,
+                accent = accent,
+                onAlbumClick = {
+                    mediaMetadata.album?.let { album ->
+                        state.collapseSoft()
+                        navController.navigate("album/${album.id}")
+                    }
+                },
+                onShowDetails = onShowDetails,
+            )
         }
 
         Spacer(modifier = Modifier.height(4.dp))
@@ -3768,6 +3792,108 @@ private fun V10ToggleButton(
                 modifier = Modifier.size(20.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun EditorialMetadataRow(
+    album: MediaMetadata.Album?,
+    currentFormat: FormatEntity?,
+    accent: Color,
+    onAlbumClick: () -> Unit,
+    onShowDetails: () -> Unit,
+) {
+    val albumTitle = album?.title?.takeIf { it.isNotBlank() }
+    if (albumTitle == null && currentFormat == null) return
+
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (albumTitle != null) {
+            Text(
+                text = albumTitle,
+                style =
+                    MaterialTheme.typography.labelMedium.copy(
+                        fontFamily = FontFamily.Serif,
+                        fontStyle = FontStyle.Italic,
+                    ),
+                color = accent.copy(alpha = 0.6f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                            onClick = onAlbumClick,
+                        ),
+            )
+        }
+
+        if (currentFormat != null) {
+            EditorialCodecBadge(
+                currentFormat = currentFormat,
+                accent = accent,
+                onClick = onShowDetails,
+            )
+        }
+    }
+}
+
+@Composable
+private fun EditorialCodecBadge(
+    currentFormat: FormatEntity,
+    accent: Color,
+    onClick: () -> Unit,
+) {
+    val losslessLabel = stringResource(R.string.quality_badge_lossless)
+    val hiresLabel = stringResource(R.string.quality_badge_hires)
+    val label =
+        remember(currentFormat, losslessLabel, hiresLabel) {
+            val rawCodec =
+                currentFormat.codecs
+                    .ifBlank { currentFormat.mimeType.substringAfter("/") }
+                    .uppercase()
+            val base =
+                when {
+                    rawCodec.contains("FLAC") -> "FLAC"
+                    rawCodec.contains("ALAC") -> "ALAC"
+                    else -> currentFormat.codecLabel()
+                }
+            if (currentFormat.isLossless()) {
+                val hiRes = (currentFormat.sampleRate ?: 0) >= 88_200
+                "$base · ${if (hiRes) hiresLabel else losslessLabel}"
+            } else {
+                base
+            }
+        }
+
+    Box(
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(accent.copy(alpha = 0.12f))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style =
+                MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.sp,
+                ),
+            color = accent.copy(alpha = 0.8f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
