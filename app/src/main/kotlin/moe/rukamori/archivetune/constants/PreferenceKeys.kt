@@ -567,6 +567,18 @@ val FloatDspEnabledKey = booleanPreferencesKey("floatDspEnabled")
  *  usbdevfs) instead of the AAudio stream. */
 val UsbExclusiveAudioKey = booleanPreferencesKey("usbExclusiveAudio")
 
+// ── Bit-Perfect / Native Output (Audiophile page) ──────────────────────────
+// Master toggle: bypass every sample-modifying processor and hand the
+// decoder's PCM to the output untouched whenever the active route supports
+// that exact encoding/rate. Bit depth itself is automatic (never a toggle).
+val BitPerfectOutputKey = booleanPreferencesKey("bitPerfectOutput")
+const val BIT_PERFECT_OUTPUT_DEFAULT = false
+
+// Nested toggle (enabled by default): keep the output at the SOURCE sample
+// rate instead of letting a rate mismatch introduce framework resampling.
+val BitPerfectNativeRateKey = booleanPreferencesKey("bitPerfectNativeRate")
+const val BIT_PERFECT_NATIVE_RATE_DEFAULT = true
+
 /** Enable Tryptify Audio Processing: routes the DSP tail through the ported
  *  Tryptify engine (C++17 mixing console + Oxford effects + measurement-driven
  *  AutoEQ + parametric EQ) and, with USB-exclusive on, the libusb UAC1/UAC2

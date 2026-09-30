@@ -289,7 +289,12 @@ class ThrottledLayerBackdrop internal constructor(
                 }
             translate(-offset.x, -offset.y)
         }) {
-            drawLayer(graphicsLayer)
+            // Compose 1.12's child-dependency tracker (AndroidGraphicsLayer)
+            // can throw "Only add dependencies during a tracking" when the
+            // draw dispatch races a re-record of the same layer — the guard
+            // fires BEFORE any canvas mutation, so skipping just this frame's
+            // glass is safe (the surface scrim still draws).
+            runCatching { drawLayer(graphicsLayer) }
         }
     }
 }
@@ -350,14 +355,19 @@ private class ThrottledLayerBackdropNode(
         if (now - lastRecordUptimeMillis >= backdrop.minIntervalMillis) {
             lastRecordUptimeMillis = now
             val density = requireDensity()
-            backdrop.graphicsLayer.record(size.toIntSize()) {
-                val previousDensity = drawContext.density
-                drawContext.density = density
-                try {
-                    backdrop.contentPrefix(this@draw)
-                    this@draw.drawContent()
-                } finally {
-                    drawContext.density = previousDensity
+            // Same Compose 1.12 dependency-tracker race as the draw side: a
+            // record that races the layer being drawn elsewhere must not
+            // take the app down — skip the re-record for this frame.
+            runCatching {
+                backdrop.graphicsLayer.record(size.toIntSize()) {
+                    val previousDensity = drawContext.density
+                    drawContext.density = density
+                    try {
+                        backdrop.contentPrefix(this@draw)
+                        this@draw.drawContent()
+                    } finally {
+                        drawContext.density = previousDensity
+                    }
                 }
             }
         }

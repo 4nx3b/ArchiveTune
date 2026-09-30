@@ -63,6 +63,10 @@ class AudioEngineRouterProcessor(
     @Volatile
     private var engineDataEncoding: Int = C.ENCODING_PCM_16BIT
 
+    /** The encoding this processor declared downstream for the active track. */
+    @Volatile
+    private var declaredOutputEncoding: Int = C.ENCODING_PCM_16BIT
+
     @Volatile
     var activeEngine: Engine = Engine.NONE
         private set
@@ -100,6 +104,11 @@ class AudioEngineRouterProcessor(
     private var engineAvailableLastwave: Boolean = lastwaveProcessor.isAvailable
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
+        // Bit-Perfect: stay inactive so the chain routes around this
+        // processor while the bypass is engaged.
+        if (moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime.chainBypassActive) {
+            return AudioProcessor.AudioFormat.NOT_SET
+        }
         val encoding = inputAudioFormat.encoding
         if (encoding != C.ENCODING_PCM_16BIT && encoding != C.ENCODING_PCM_FLOAT &&
             encoding != C.ENCODING_PCM_24BIT && encoding != C.ENCODING_PCM_32BIT
@@ -129,6 +138,7 @@ class AudioEngineRouterProcessor(
                     chainOut.encoding.takeIf { it > 0 } ?: inputAudioFormat.encoding
                 val outEncoding =
                     if (activeOutputFloat) C.ENCODING_PCM_FLOAT else C.ENCODING_PCM_16BIT
+                declaredOutputEncoding = outEncoding
                 if (changed) {
                     Log.i(
                         TAG,
@@ -161,6 +171,7 @@ class AudioEngineRouterProcessor(
                 engineDataEncoding = C.ENCODING_PCM_FLOAT
                 val outEncoding =
                     if (activeOutputFloat) C.ENCODING_PCM_FLOAT else C.ENCODING_PCM_16BIT
+                declaredOutputEncoding = outEncoding
                 if (changed) {
                     Log.i(
                         TAG,
@@ -324,10 +335,12 @@ class AudioEngineRouterProcessor(
 
     private fun emitEngineOutput(engineOutput: ByteBuffer) {
         if (!engineOutput.hasRemaining()) return
+        // Encoding-based: native formats (PCM24/32) stay native whenever the
+        // declared output matches what the engine actually emitted.
         val encoded = EnginePcmCodec.encode(
             data = engineOutput,
-            dataIsFloat = engineDataEncoding == C.ENCODING_PCM_FLOAT,
-            outputFloat = activeOutputFloat,
+            dataEncoding = engineDataEncoding,
+            outputEncoding = if (activeOutputFloat) C.ENCODING_PCM_FLOAT else declaredOutputEncoding,
             channels = outputAudioFormat.channelCount,
         )
         replaceOutputBuffer(encoded.remaining()).put(encoded).flip()

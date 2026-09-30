@@ -151,6 +151,10 @@ import moe.rukamori.archivetune.constants.LastwaveAudioProcessingKey
 import moe.rukamori.archivetune.constants.SongSourceTidalTrackIdKey
 import moe.rukamori.archivetune.constants.TryptifyAudioProcessingKey
 import moe.rukamori.archivetune.constants.UsbExclusiveAudioKey
+import moe.rukamori.archivetune.constants.BitPerfectOutputKey
+import moe.rukamori.archivetune.constants.BitPerfectNativeRateKey
+import moe.rukamori.archivetune.constants.BIT_PERFECT_OUTPUT_DEFAULT
+import moe.rukamori.archivetune.constants.BIT_PERFECT_NATIVE_RATE_DEFAULT
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedKey
 import moe.rukamori.archivetune.constants.AudioPlaybackPitchKey
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedPitchMatchKey
@@ -335,6 +339,8 @@ import moe.rukamori.archivetune.playback.artwork.isLocalArtworkUri
 import moe.rukamori.archivetune.playback.smart.CrossfadeMode
 import moe.rukamori.archivetune.playback.smart.SmartFadeAnalyzer
 import moe.rukamori.archivetune.playback.dsp.AudioEngineKind
+import moe.rukamori.archivetune.playback.dsp.BitPerfectGateProcessor
+import moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime
 import moe.rukamori.archivetune.playback.dsp.AudioEngineRouterProcessor
 import moe.rukamori.archivetune.playback.dsp.DspTailAudioProcessorChain
 import moe.rukamori.archivetune.playback.dsp.EngineRuntime
@@ -726,6 +732,34 @@ class MusicService :
     // applying rather than a DB snapshot.
     private val _currentStreamInfo = MutableStateFlow<CurrentStreamInfo?>(null)
     val currentStreamInfo: StateFlow<CurrentStreamInfo?> get() = _currentStreamInfo
+
+    // Stream info resolved for UPCOMING songs during preload used to clobber
+    // the entry of the song actually playing — the Track Info popup then read
+    // "Unknown" (its mediaId guard rejected the next song's entry) until the
+    // user force-reselected a source. Preload resolutions now land in this
+    // pending map and publish on the media-item transition instead.
+    private val pendingStreamInfoById = object : LinkedHashMap<String, CurrentStreamInfo>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: Map.Entry<String, CurrentStreamInfo>?): Boolean = size > 12
+    }
+
+    /** Publishes stream info: immediately for the CURRENT song, pending otherwise. */
+    private fun publishCurrentStreamInfo(mediaId: String, info: CurrentStreamInfo) {
+        synchronized(pendingStreamInfoById) {
+            pendingStreamInfoById[mediaId] = info
+            if (mediaId == currentMediaMetadata.value?.id) {
+                pendingStreamInfoById.remove(mediaId)
+                _currentStreamInfo.value = info
+            }
+        }
+    }
+
+    /** Promotes pending preload info when its song becomes current. */
+    private fun promotePendingStreamInfo(mediaId: String?) {
+        if (mediaId == null) return
+        synchronized(pendingStreamInfoById) {
+            pendingStreamInfoById.remove(mediaId)?.let { _currentStreamInfo.value = it }
+        }
+    }
     val liveNormalizeFactor: StateFlow<Float> get() = normalizeFactor
 
     private val tidalActiveMediaIds = ConcurrentHashMap.newKeySet<String>()
@@ -916,6 +950,22 @@ class MusicService :
 
     /** The engine-routing DSP tail that replaces the bare FloatDspProcessor
      *  in the primary player's processor chain. */
+    // The Bit-Perfect evaluation gate: leads the primary player's processor
+    // chain, evaluates every track against the active output route, and pins
+    // software volume to unity while the bypass is verified.
+    private val bitPerfectGateProcessor by lazy {
+        BitPerfectGateProcessor(
+            contextProvider = { this },
+            engineOrDspEngaged = {
+                tryptifyAudioProcessing ||
+                    lastwaveAudioProcessing ||
+                    primaryFloatDspProcessor.engaged
+            },
+            usbExclusiveActive = { usbSinkActiveNow },
+            effectiveVolume = { currentEffectivePlayerVolume() },
+        )
+    }
+
     private val primaryEngineRouter by lazy {
         AudioEngineRouterProcessor(
             tryptifyEnabled = { tryptifyAudioProcessing },
@@ -1751,6 +1801,33 @@ class MusicService :
                     dsp,
                     usbExclusiveRequested,
                 )
+            }
+
+        // ---- Bit-Perfect / Native Output ----------------------------------------
+        // The master + native-rate toggles are collected live: the runtime
+        // verdict (chain bypass, volume pinning, status line) re-evaluates on
+        // the next track. The sink-level float flag is read once per player
+        // build (like the engine toggles) — flipping it fully applies after
+        // the playback service restarts.
+        combine(
+            dataStore.data.map { it[BitPerfectOutputKey] ?: BIT_PERFECT_OUTPUT_DEFAULT },
+            dataStore.data.map { it[BitPerfectNativeRateKey] ?: BIT_PERFECT_NATIVE_RATE_DEFAULT },
+        ) { bitPerfect, nativeRate ->
+            bitPerfect to nativeRate
+        }.distinctUntilChanged()
+            .collectLatest(scope) { (bitPerfect, nativeRate) ->
+                if (BitPerfectRuntime.requested != bitPerfect || BitPerfectRuntime.nativeSampleRatePreferred != nativeRate) {
+                    Timber.tag(TAG).i(
+                        "Bit-Perfect request: %s (nativeRate=%s) — re-evaluates on next track",
+                        bitPerfect,
+                        nativeRate,
+                    )
+                }
+                BitPerfectRuntime.requested = bitPerfect
+                BitPerfectRuntime.nativeSampleRatePreferred = nativeRate
+                if (!bitPerfect) {
+                    BitPerfectRuntime.clearTrack()
+                }
             }
 
         // ---- Ported audio engines: Tryptify / Lastwave --------------------------
@@ -2873,12 +2950,21 @@ class MusicService :
         normalizeFactor: Float,
         audioFocusVolumeFactor: Float,
     ): Float {
+        // Bit-Perfect: software volume (player volume, ReplayGain/loudness
+        // normalisation, focus ducking) would scale samples — the volume the
+        // user hears must come from the hardware/STREAM_MUSIC side instead.
+        if (BitPerfectRuntime.status.verifiedBitPerfect) {
+            BitPerfectRuntime.notifyVolume(1f)
+            return 1f
+        }
         val safePlayerVolume = playerVolume.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 1f
         val safeNormalizeFactor =
             normalizeFactor.takeIf { it.isFinite() }?.coerceIn(MIN_AUDIO_NORMALIZATION_FACTOR, MAX_AUDIO_NORMALIZATION_FACTOR) ?: 1f
         val safeAudioFocusVolumeFactor =
             audioFocusVolumeFactor.takeIf { it.isFinite() }?.coerceIn(MIN_AUDIO_FOCUS_VOLUME_FACTOR, 1f) ?: 1f
-        return (safePlayerVolume * safeNormalizeFactor * safeAudioFocusVolumeFactor).coerceIn(0f, maxSafeGainFactor)
+        val effective = (safePlayerVolume * safeNormalizeFactor * safeAudioFocusVolumeFactor).coerceIn(0f, maxSafeGainFactor)
+        BitPerfectRuntime.notifyVolume(effective)
+        return effective
     }
 
     private fun currentEffectivePlayerVolume(): Float =
@@ -6614,6 +6700,10 @@ class MusicService :
         val timelineEmpty = player.currentTimeline.isEmpty || player.mediaItemCount == 0 || player.currentMediaItem == null
         currentMediaMetadata.value = if (timelineEmpty) null else (mediaItem?.metadata ?: player.currentMetadata)
 
+        // The just-started song may have been resolved during preload — its
+        // stream info has been waiting in the pending map.
+        promotePendingStreamInfo(mediaItem?.mediaId)
+
         beginArtworkResolutionForCurrentTrack()
 
         widgetUpdater.update()
@@ -8257,6 +8347,19 @@ class MusicService :
                     audioNormalizationFactorCache[mediaId] = 1f
                     recordResolvedSource(mediaId, source)
                     cached.stream.contentLength?.takeIf { it > 0L }?.let { contentLengthCache[cacheKey] = it }
+                    // The cached path used to skip the info write entirely —
+                    // the details popup showed Unknown for cache-hit playback.
+                    publishCurrentStreamInfo(
+                        mediaId,
+                        CurrentStreamInfo(
+                            mediaId = mediaId,
+                            source = source,
+                            label = cached.stream.label,
+                            protocol = deriveStreamProtocol(cached.stream.uri),
+                            sampleRate = cached.stream.sampleRate,
+                            bitDepth = cached.stream.bitDepth,
+                        ),
+                    )
                     return dataSpec
                         .buildUpon()
                         .setUri(cached.stream.uri.toUri())
@@ -9092,7 +9195,8 @@ class MusicService :
         stream: DirectStream,
     ): DataSpec {
         Timber.tag("MusicService").i("Using %s stream for %s: %s", stream.source, mediaId, stream.label)
-        _currentStreamInfo.value =
+        publishCurrentStreamInfo(
+            mediaId,
             CurrentStreamInfo(
                 mediaId = mediaId,
                 source = stream.source,
@@ -9100,7 +9204,8 @@ class MusicService :
                 protocol = deriveStreamProtocol(stream.uri),
                 sampleRate = stream.sampleRate,
                 bitDepth = stream.bitDepth,
-            )
+            ),
+        )
         val cacheKey = sourceCacheKey(stream.source, mediaId)
         stream.contentLength?.takeIf { it > 0L }?.let { contentLengthCache[cacheKey] = it }
         tidalActiveMediaIds.add(mediaId)
@@ -9337,6 +9442,15 @@ class MusicService :
                     )
             if (isFullyCached) {
                 scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+                publishCurrentStreamInfo(
+                    mediaId,
+                    CurrentStreamInfo(
+                        mediaId = mediaId,
+                        source = AudioSourceType.YOUTUBE,
+                        label = storedFormat?.itag?.let { itag -> "YouTube Music itag $itag (cached)" } ?: "Offline cache",
+                        protocol = "Cached Playback",
+                    ),
+                )
                 return dataSpec
             }
         }
@@ -9363,6 +9477,17 @@ class MusicService :
                 )
             }?.let {
                 scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+                // Resolved-URL cache hit: report the persisted itag instead of
+                // leaving the details popup at Unknown until a manual re-pick.
+                publishCurrentStreamInfo(
+                    mediaId,
+                    CurrentStreamInfo(
+                        mediaId = mediaId,
+                        source = AudioSourceType.YOUTUBE,
+                        label = storedFormat?.itag?.let { itag -> "YouTube Music itag $itag" } ?: "YouTube Music (URL cache)",
+                        protocol = "HTTPS Progressive Stream",
+                    ),
+                )
                 val resolvedDataSpec = dataSpec.withUri(it.url.toUri())
                 val length =
                     resolveStreamChunkLength(
@@ -9472,13 +9597,15 @@ class MusicService :
         val format = nonNullPlayback.format
         val loudnessDb = nonNullPlayback.audioConfig?.loudnessDb
         val perceptualLoudnessDb = nonNullPlayback.audioConfig?.perceptualLoudnessDb
-        _currentStreamInfo.value =
+        publishCurrentStreamInfo(
+            mediaId,
             CurrentStreamInfo(
                 mediaId = mediaId,
                 source = AudioSourceType.YOUTUBE,
                 label = "YouTube Music itag ${format.itag}",
                 protocol = "HTTPS Progressive Stream",
-            )
+            ),
+        )
         val resolvedContentLength = format.contentLength ?: 0L
         val resolvedCodecs =
             format.mimeType
@@ -10036,12 +10163,58 @@ class MusicService :
         }
         usbSinkActiveNow = usbExclusiveAudioEnabled
         EngineRuntime.usbExclusiveActive = usbSinkActiveNow
+
+        // USB-exclusive wire state feeds the Bit-Perfect status line: the
+        // usbdevfs/libusb routes bypass the Android mixer entirely, so the
+        // negotiated rate/depth IS the output truth.
+        runCatching {
+            val rate = EngineRuntime.lastwaveUsbRateHz.takeIf { it > 0 }
+            val bits = EngineRuntime.lastwaveUsbBitsPerSample.takeIf { it > 0 }
+            if (usbSinkActiveNow && rate != null && bits != null) {
+                BitPerfectRuntime.notifyUsbExclusive(true, rate, bits)
+            }
+        }
+
         // The LastWave bit-perfect mixer-attribute path only runs while the
         // usbdevfs exclusive route is NOT the active one (they are upstream's
-        // alternative tiers, never stacked).
-        lastwaveUsbBitPerfect.setEnabled(lastwaveAudioProcessing && !usbSinkActiveNow)
-        EngineRuntime.lastwaveMixerBitPerfectActive =
-            lastwaveAudioProcessing && !usbSinkActiveNow
+        // alternative tiers, never stacked). The device + format must be
+        // pushed BEFORE enabling, and the result verified afterwards — the
+        // old code only ever called setEnabled, so the mixer tier was a no-op.
+        if (lastwaveAudioProcessing && !usbSinkActiveNow) {
+            runCatching {
+                val device = tryptifyUsbRouter.usbOutputDevice.value
+                val format = currentFormatEntity
+                val encoding = when {
+                    format?.isLossless() == true -> androidx.media3.common.C.ENCODING_PCM_24BIT
+                    else -> androidx.media3.common.C.ENCODING_PCM_16BIT
+                }
+                val rate = format?.sampleRate ?: 48000
+                lastwaveUsbBitPerfect.setDevice(device)
+                lastwaveUsbBitPerfect.setFormat(
+                    android.media.AudioFormat.Builder()
+                        .setEncoding(encoding)
+                        .setSampleRate(rate)
+                        .setChannelMask(android.media.AudioFormat.CHANNEL_OUT_STEREO)
+                        .build(),
+                )
+                lastwaveUsbBitPerfect.setEnabled(true)
+                val verified = lastwaveUsbBitPerfect.isConfigured()
+                EngineRuntime.lastwaveMixerBitPerfectActive = verified
+                if (verified) {
+                    BitPerfectRuntime.status = BitPerfectRuntime.status.copy(
+                        mixerBitPerfectActive = true,
+                        outputSampleRate = rate,
+                    )
+                    Timber.tag(TAG).i(
+                        "USB BIT_PERFECT mixer attributes verified: %dHz",
+                        rate,
+                    )
+                }
+            }
+        } else {
+            lastwaveUsbBitPerfect.setEnabled(false)
+            EngineRuntime.lastwaveMixerBitPerfectActive = false
+        }
         applyFloatDspEngagement()
     }
 
@@ -10260,7 +10433,11 @@ class MusicService :
                 // 24-bit mantissas end to end (upstream's architecture).
                 // Read once per player build: flipping an engine toggle takes
                 // full effect after the playback service restarts.
-                if (tryptifyAudioProcessing || lastwaveAudioProcessing) {
+                if (tryptifyAudioProcessing || lastwaveAudioProcessing || BitPerfectRuntime.requested) {
+                    // Bit-Perfect also wants the float decode: 24/32-bit PCM is
+                    // widened LOSSLESSLY into the f32 mantissa, and the sink's
+                    // int pipeline would otherwise collapse it to 16-bit before
+                    // the (bypassed) chain ever sees it.
                     setEnableAudioFloatOutput(true)
                     EngineRuntime.rendererFloatDecode = true
                 } else {
@@ -10274,13 +10451,15 @@ class MusicService :
                 enableAudioTrackPlaybackParams: Boolean,
             ) = DefaultAudioSink
                 .Builder(context)
-                // Float output stays off at the SINK level: the DSP tail
-                // (floatDspProcessor, or the engine router wrapping it) owns
-                // the encoding decision so the chain's existing 16-bit
-                // processors are untouched. When USB-exclusive output is
-                // active the tail emits float and the exclusive stream
-                // consumes it directly.
-                .setEnableFloatOutput(false)
+                // Float output stays off at the SINK level while the DSP tail
+                // owns the encoding decision. Bit-Perfect flips it on: the
+                // chain is fully bypassed in that mode, so the sink's float
+                // pipeline carries the decoder's 24/32-bit mantissas straight
+                // to a PCM_FLOAT direct track (16-bit content rides losslessly
+                // in the same pipe). Read once per player build — flipping the
+                // toggle takes full effect after the playback service
+                // restarts, exactly like the engine toggles.
+                .setEnableFloatOutput(BitPerfectRuntime.requested)
                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                 .setAudioOutputProvider(
                     // Trailing-lambda syntax would bind to the LAST ctor param
@@ -10314,10 +10493,25 @@ class MusicService :
                     // DspTail chain keeps silence + speed/pitch in the 16-bit
                     // domain and makes the DSP the true tail — the only safe
                     // place for the encoding flip.
+                    val bitPerfectSonic = SonicAudioProcessor()
+                    val bitPerfectSilence = SilenceSkippingAudioProcessor()
+                    // The gate pins these to transparent while the bypass
+                    // holds — they are media3 types with no app-level
+                    // onConfigure to guard.
+                    bitPerfectGateProcessor.attachTransparentTargets(
+                        sonicAudioProcessor = bitPerfectSonic,
+                        silenceSkippingAudioProcessor = bitPerfectSilence,
+                    )
                     DspTailAudioProcessorChain(
-                        silenceSkippingAudioProcessor = SilenceSkippingAudioProcessor(),
-                        sonicAudioProcessor = SonicAudioProcessor(),
+                        silenceSkippingAudioProcessor = bitPerfectSilence,
+                        sonicAudioProcessor = bitPerfectSonic,
                         preProcessors = arrayOf(
+                            // The Bit-Perfect gate evaluates the track against
+                            // the active route BEFORE anything else configures:
+                            // every later processor reads the latched verdict
+                            // in the same pass, and Sonic/silence-skip get
+                            // pinned to transparent while the bypass holds.
+                            bitPerfectGateProcessor,
                             HapticsPcmProcessor(engineProvider = { musicHapticsEngine }),
                             stereoPanProcessor,
                             // Transition DSP after widening, exactly as BitChord

@@ -53,8 +53,8 @@ class EnginePcmCodecTest {
 
         val output = EnginePcmCodec.encode(
             data = input,
-            dataIsFloat = false,
-            outputFloat = false,
+            dataEncoding = androidx.media3.common.C.ENCODING_PCM_16BIT,
+            outputEncoding = androidx.media3.common.C.ENCODING_PCM_16BIT,
             channels = 2,
         )
 
@@ -71,8 +71,8 @@ class EnginePcmCodecTest {
     fun pcm16ChainData_widensToFloat_whenFloatDeclared() {
         val output = EnginePcmCodec.encode(
             data = stereoPcm16(16384, -16384, 32767, -32768),
-            dataIsFloat = false,
-            outputFloat = true,
+            dataEncoding = androidx.media3.common.C.ENCODING_PCM_16BIT,
+            outputEncoding = androidx.media3.common.C.ENCODING_PCM_FLOAT,
             channels = 2,
         )
 
@@ -89,8 +89,8 @@ class EnginePcmCodecTest {
     fun floatChainData_downconvertsToPcm16_whenPcm16Declared() {
         val output = EnginePcmCodec.encode(
             data = stereoFloat(0.5f, -0.5f, 2f, -2f),
-            dataIsFloat = true,
-            outputFloat = false,
+            dataEncoding = androidx.media3.common.C.ENCODING_PCM_FLOAT,
+            outputEncoding = androidx.media3.common.C.ENCODING_PCM_16BIT,
             channels = 2,
         )
 
@@ -109,8 +109,8 @@ class EnginePcmCodecTest {
 
         val output = EnginePcmCodec.encode(
             data = input,
-            dataIsFloat = true,
-            outputFloat = true,
+            dataEncoding = androidx.media3.common.C.ENCODING_PCM_FLOAT,
+            outputEncoding = androidx.media3.common.C.ENCODING_PCM_FLOAT,
             channels = 2,
         )
 
@@ -127,15 +127,15 @@ class EnginePcmCodecTest {
     fun smallerBufferAfterLarger_leavesNoStaleTail() {
         EnginePcmCodec.encode(
             data = stereoFloat(0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f),
-            dataIsFloat = true,
-            outputFloat = false,
+            dataEncoding = androidx.media3.common.C.ENCODING_PCM_FLOAT,
+            outputEncoding = androidx.media3.common.C.ENCODING_PCM_16BIT,
             channels = 2,
         )
 
         val smaller = EnginePcmCodec.encode(
             data = stereoFloat(0.25f, -0.25f),
-            dataIsFloat = true,
-            outputFloat = false,
+            dataEncoding = androidx.media3.common.C.ENCODING_PCM_FLOAT,
+            outputEncoding = androidx.media3.common.C.ENCODING_PCM_16BIT,
             channels = 2,
         )
 
@@ -150,8 +150,8 @@ class EnginePcmCodecTest {
     fun monoData_convertsWithSingleChannelFrames() {
         val output = EnginePcmCodec.encode(
             data = stereoPcm16(16384, -16384),
-            dataIsFloat = false,
-            outputFloat = true,
+            dataEncoding = androidx.media3.common.C.ENCODING_PCM_16BIT,
+            outputEncoding = androidx.media3.common.C.ENCODING_PCM_FLOAT,
             channels = 1,
         )
 
@@ -160,3 +160,43 @@ class EnginePcmCodecTest {
         assertEquals(-16384 / 32768f, output.float, 1e-6f)
     }
 }
+
+    /**
+     * Native-format preservation (Bit-Perfect): PCM24-packed and PCM32 bytes
+     * pass through byte-for-byte whenever the declared output encoding
+     * matches the emitted one — a 24-bit stream can never silently collapse
+     * to 16-bit (or float) inside the codec.
+     */
+    @Test
+    fun pcm24AndPcm32_stayNative_whenDeclaredOutputMatches() {
+        val pcm24 = ByteBuffer.allocateDirect(9).order(ByteOrder.nativeOrder())
+        pcm24.put(byteArrayOf(0x11, 0x22, 0x33, 0x44, 0x55, 0x66, -0x77, -0x88, -0x99)).flip()
+        val pcm24Expected = ByteBuffer.allocateDirect(9).order(ByteOrder.nativeOrder())
+        pcm24Expected.put(byteArrayOf(0x11, 0x22, 0x33, 0x44, 0x55, 0x66, -0x77, -0x88, -0x99)).flip()
+
+        val out24 = EnginePcmCodec.encode(
+            data = pcm24,
+            dataEncoding = androidx.media3.common.C.ENCODING_PCM_24BIT,
+            outputEncoding = androidx.media3.common.C.ENCODING_PCM_24BIT,
+            channels = 2,
+        )
+        assertEquals(pcm24Expected.remaining(), out24.remaining())
+        pcm24Expected.position(0)
+        out24.position(0)
+        while (pcm24Expected.hasRemaining()) {
+            assertEquals(pcm24Expected.get(), out24.get())
+        }
+
+        val pcm32 = ByteBuffer.allocateDirect(8).order(ByteOrder.nativeOrder())
+        pcm32.putInt(0x12345678).putInt(-0x12345678).flip()
+        val pcm32Expected = ByteBuffer.allocateDirect(8).order(ByteOrder.nativeOrder())
+        pcm32Expected.putInt(0x12345678).putInt(-0x12345678).flip()
+
+        val out32 = EnginePcmCodec.encode(
+            data = pcm32,
+            dataEncoding = androidx.media3.common.C.ENCODING_PCM_32BIT,
+            outputEncoding = androidx.media3.common.C.ENCODING_PCM_32BIT,
+            channels = 1,
+        )
+        assertSame(pcm32, out32)
+    }

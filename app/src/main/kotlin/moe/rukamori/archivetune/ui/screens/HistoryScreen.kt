@@ -13,6 +13,8 @@
 
 package moe.rukamori.archivetune.ui.screens
 
+import androidx.compose.foundation.layout.asPaddingValues
+import moe.rukamori.archivetune.ui.component.glassAwareSurface
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -601,7 +603,10 @@ fun HistoryScreen(
             Modifier
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
-        containerColor = MaterialTheme.colorScheme.surface,
+        // Transparent container while liquid glass is on (the mini player
+        // blurs whatever scrolls behind it); the opaque theme surface is the
+        // non-glass fallback.
+        containerColor = glassAwareSurface(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             if (!showSearchBar && !showPersistentLiquidGlassHeader) {
@@ -907,11 +912,20 @@ private fun LocalHistoryFeed(
 
                 .then(if (backdrop != null) Modifier.glassSource(backdrop) else Modifier)
                 .windowInsetsPadding(
-                    LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
-                    ),
+                    LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
                 ),
-        contentPadding = PaddingValues(bottom = 112.dp),
+                // Bottom as CONTENT padding (not layout insets): entries scroll
+                // under the glass mini player — that is what gives the player
+                // something to blur — while the trailing padding keeps the last
+                // entry fully clear of the player when scrolled to the end.
+                contentPadding =
+                    PaddingValues(
+                        bottom =
+                            LocalPlayerAwareWindowInsets.current
+                                .only(WindowInsetsSides.Bottom)
+                                .asPaddingValues()
+                                .calculateBottomPadding() + 112.dp,
+                    ),
     ) {
         item("history_overview") {
             headerContent()
@@ -1047,11 +1061,20 @@ private fun RemoteHistoryFeed(
 
                 .then(if (backdrop != null) Modifier.glassSource(backdrop) else Modifier)
                 .windowInsetsPadding(
-                    LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
-                    ),
+                    LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
                 ),
-        contentPadding = PaddingValues(bottom = 112.dp),
+                // Bottom as CONTENT padding (not layout insets): entries scroll
+                // under the glass mini player — that is what gives the player
+                // something to blur — while the trailing padding keeps the last
+                // entry fully clear of the player when scrolled to the end.
+                contentPadding =
+                    PaddingValues(
+                        bottom =
+                            LocalPlayerAwareWindowInsets.current
+                                .only(WindowInsetsSides.Bottom)
+                                .asPaddingValues()
+                                .calculateBottomPadding() + 112.dp,
+                    ),
     ) {
         item("history_overview") {
             headerContent()

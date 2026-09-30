@@ -121,6 +121,11 @@ class TransitionFilterProcessor : BaseAudioProcessor() {
      * Phase 3 one, with nothing anywhere saying why.
      */
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
+        // Bit-Perfect: stay inactive so the chain routes around this
+        // processor while the bypass is engaged.
+        if (moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime.chainBypassActive) {
+            return AudioProcessor.AudioFormat.NOT_SET
+        }
         if (inputAudioFormat.channelCount < 1 ||
             (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT &&
                 inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT)

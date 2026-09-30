@@ -1,5 +1,6 @@
 package moe.rukamori.archivetune.playback.dsp
 
+import androidx.media3.common.C
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -7,31 +8,42 @@ import java.nio.ByteOrder
  * The engine router's output codec: converts whatever encoding the engine
  * chain actually emitted into the encoding the router declared to the sink.
  *
+ * Encoding-based contract: whenever the emitted encoding MATCHES the declared
+ * output encoding the bytes pass through untouched — so native PCM24-packed
+ * and PCM32 stay native whenever both sides agree, and PCM24 can never
+ * silently collapse to PCM16 (or to float) unless the actually selected
+ * output requires that conversion. The only real conversions remain the two
+ * historical ones: 16-bit widening to float for the USB-exclusive stream and
+ * float narrowing to 16-bit for the shared-mixer path.
+ *
  * The Tryptify chain passes its input encoding through (16-bit in, 16-bit
- * out — every stage accepts both), and the sink's ToInt16PcmAudioProcessor
- * guarantees 16-bit reaches the router whenever sink-side float output is
- * off (which is always, with a custom processor chain installed). LastWave's
- * NativePcmAudioProcessor is the opposite: it always emits float regardless
- * of input. Treating 16-bit chain bytes as float packs two shorts into one
- * garbage float and halves the frame count — audio at 2x speed, fully
- * distorted, and a playback position that outruns the feed until the track
- * stalls and never recovers.
+ * out — every stage accepts both), and LastWave's NativePcmAudioProcessor
+ * always emits float regardless of input. Treating 16-bit chain bytes as
+ * float packs two shorts into one garbage float and halves the frame count —
+ * audio at 2x speed, fully distorted, and a playback position that outruns
+ * the feed until the track stalls and never recovers.
  *
  * Single playback-thread owner (the primary player's engine router is the
  * only consumer), so the scratch buffers are plain object state.
  */
 internal object EnginePcmCodec {
 
-    /** Passthrough cases return the input itself; the caller copies it out. */
+    /**
+     * Passthrough cases return the input itself; the caller copies it out.
+     * Any encoding pair that is NOT one of the two supported conversions is a
+     * byte-for-byte passthrough — native formats stay native.
+     */
     fun encode(
         data: ByteBuffer,
-        dataIsFloat: Boolean,
-        outputFloat: Boolean,
+        dataEncoding: Int,
+        outputEncoding: Int,
         channels: Int,
     ): ByteBuffer = when {
-        outputFloat && dataIsFloat -> data
-        outputFloat && !dataIsFloat -> pcm16ToFloat(data, channels)
-        !outputFloat && dataIsFloat -> floatToPcm16(data, channels)
+        dataEncoding == outputEncoding -> data
+        outputEncoding == C.ENCODING_PCM_FLOAT && dataEncoding == C.ENCODING_PCM_16BIT ->
+            pcm16ToFloat(data, channels)
+        outputEncoding == C.ENCODING_PCM_16BIT && dataEncoding == C.ENCODING_PCM_FLOAT ->
+            floatToPcm16(data, channels)
         else -> data
     }
 

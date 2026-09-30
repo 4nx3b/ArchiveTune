@@ -7,6 +7,8 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import moe.rukamori.archivetune.constants.BitPerfectOutputKey
+import moe.rukamori.archivetune.constants.BitPerfectNativeRateKey
 import moe.rukamori.archivetune.ui.component.SpringySwitch
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -439,6 +441,8 @@ fun buildSettingsGroups(
             keywords = listOf("audiophile", "dsp", "engine", "tryptify", "lastwave", "float", "usb exclusive", "bit perfect", "dac", "autoeq"),
             onClick = { navController.navigate("settings/player/audiophile") },
             children = listOf(
+                SettingsChild("Bit-Perfect Output", "bit_perfect_output", listOf("bit perfect", "bitperfect", "native output", "direct playback", "pcm24", "pcm32", "sample rate", "native rate")) { SearchResultSwitch(BitPerfectOutputKey, false) },
+                SettingsChild("Native Sample Rate", "bit_perfect_native_rate", listOf("native sample rate", "source rate", "resampling", "rate matching")) { SearchResultSwitch(BitPerfectNativeRateKey, true) },
                 SettingsChild("32-bit float DSP", "float_dsp", listOf("dsp", "float", "32-bit", "limiter", "dither", "lossless dsp", "bit perfect")) { SearchResultSwitch(FloatDspEnabledKey, false) },
                 SettingsChild("USB exclusive output", "usb_exclusive_audio", listOf("usb", "exclusive", "dac", "bit perfect", "direct", "aaudio")) { SearchResultSwitch(UsbExclusiveAudioKey, false) },
                 SettingsChild("Enable Tryptify Audio Processing", "tryptify_audio_processing", listOf("tryptify", "dsp engine", "autoeq", "equalizer", "bit perfect", "usb dac", "libusb", "oxford", "mixing console")) { SearchResultSwitch(TryptifyAudioProcessingKey, false) },
