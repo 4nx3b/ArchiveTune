@@ -1939,7 +1939,7 @@
     <string name="ti_decoder">Decoder</string>
     <string name="ti_copied_toast">Track info copied to clipboard</string>
     <string name="bit_perfect_output">Bit-Perfect Output</string>
-    <string name="bit_perfect_output_desc">Bypass every DSP processor and hand the decoder's PCM to the output untouched whenever the route supports it. Bit depth is automatic. Takes full effect after restarting playback.</string>
+    <string name="bit_perfect_output_desc">Bypass every DSP processor and hand the decoded PCM to the output untouched whenever the route supports it. Bit depth is automatic. Takes full effect after restarting playback.</string>
     <string name="bit_perfect_native_rate">Native Sample Rate</string>
     <string name="bit_perfect_native_rate_desc">Keep the output at the source sample rate instead of allowing rate conversion</string>
     <string name="audiophile_settings_title">Audiophile</string>
