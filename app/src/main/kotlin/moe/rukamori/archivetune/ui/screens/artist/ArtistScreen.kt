@@ -236,7 +236,7 @@ fun ArtistScreen(
     val artistCanvasEnabled by rememberPreference(key = AlbumCanvasEnabledKey, defaultValue = true)
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
 
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 

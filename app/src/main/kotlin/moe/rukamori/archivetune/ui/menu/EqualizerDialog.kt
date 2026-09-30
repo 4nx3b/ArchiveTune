@@ -13,6 +13,7 @@
 
 package moe.rukamori.archivetune.ui.menu
 
+import moe.rukamori.archivetune.ui.component.LocalMenuDialogDismissal
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -190,8 +191,12 @@ fun EqualizerDialog(
         }
     }
 
+    val menuDialogDismissal = LocalMenuDialogDismissal.current
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            menuDialogDismissal?.invoke()
+            onDismiss()
+        },
 
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
@@ -617,6 +622,9 @@ private fun AudioEffectsContent(
                         items =
                             listOf(
                                 {
+                                    // SpatialFlow's 8D customisation: the rotation
+                                    // speed slider lives inside the 8D card and only
+                                    // engages while the effect is enabled.
                                     SwitchSection(
                                         title = stringResource(R.string.eq_8d),
                                         desc = stringResource(R.string.eq_8d_description),
@@ -624,6 +632,35 @@ private fun AudioEffectsContent(
                                         onToggle = viewModel::set8DEnabled,
                                         infoTooltip = stringResource(R.string.eq_8d_info),
                                         interactionEnabled = audioEffectsEnabled,
+                                        sliderContent = {
+                                            Column {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(
+                                                        text = stringResource(R.string.eq_8d_rotation_speed),
+                                                        style = MaterialTheme.typography.bodyLarge,
+                                                        modifier = Modifier.weight(1f),
+                                                    )
+                                                    Text(
+                                                        text = stringResource(R.string.eq_8d_speed_hz, model.eightDSpeedHz),
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        color =
+                                                            if (model.eightDEnabled) {
+                                                                MaterialTheme.colorScheme.primary
+                                                            } else {
+                                                                MaterialTheme.colorScheme.outline
+                                                            },
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.height(12.dp))
+                                                ResponsiveSlider(
+                                                    value = model.eightDSpeedHz,
+                                                    onValueChange = viewModel::update8DSpeedDraft,
+                                                    valueRange = 0.03f..0.25f,
+                                                    enabled = model.eightDEnabled && audioEffectsEnabled,
+                                                    onValueChangeFinished = viewModel::commit8DSpeed,
+                                                )
+                                            }
+                                        },
                                     )
                                 },
                                 {
@@ -1002,6 +1039,7 @@ private fun SwitchSection(
     onToggle: (Boolean) -> Unit,
     infoTooltip: String? = null,
     interactionEnabled: Boolean = true,
+    sliderContent: (@Composable () -> Unit)? = null,
 ) {
     var showDialog by remember { mutableStateOf(false) }
 
@@ -1034,6 +1072,10 @@ private fun SwitchSection(
         }
         Spacer(modifier = Modifier.height(12.dp))
         Text(text = desc, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (sliderContent != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            sliderContent()
+        }
     }
 
     if (showDialog && infoTooltip != null) {

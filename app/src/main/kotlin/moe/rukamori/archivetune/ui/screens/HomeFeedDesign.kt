@@ -794,7 +794,7 @@ fun ScreenHeaderHaze(
 ) {
     if (!enabled) return
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     if (!liquidGlassEnabled) return
     // The haze must not sit over content that is still resting at the top of
     // the list — it only belongs over content that has scrolled underneath

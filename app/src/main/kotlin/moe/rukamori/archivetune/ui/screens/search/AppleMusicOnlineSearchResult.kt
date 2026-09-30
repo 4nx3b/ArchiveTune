@@ -177,6 +177,28 @@ internal fun AppleMusicOnlineSearchResult(
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
+                        item(key = "results_top_header", contentType = "results_top_header") {
+                            SearchResultsTopHeader(
+                                state = barState,
+                                query = viewModel.query,
+                                onBack = { navController.navigateUp() },
+                                onBackLongClick = { navController.backToMain() },
+                                chipsRow = {
+                                    SolidFilterChipsRow(
+                                        chips =
+                                            listOf(
+                                                AppleMusicSearchFilter.ALL to stringResource(R.string.filter_all),
+                                                AppleMusicSearchFilter.TRACKS to stringResource(R.string.filter_songs),
+                                                AppleMusicSearchFilter.ALBUMS to stringResource(R.string.filter_albums),
+                                                AppleMusicSearchFilter.ARTISTS to stringResource(R.string.filter_artists),
+                                            ),
+                                        currentValue = filter,
+                                        onValueUpdate = { filter = it },
+                                    )
+                                },
+                            )
+                        }
+
                         item(key = "apple_music_result_label") {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -270,24 +292,10 @@ internal fun AppleMusicOnlineSearchResult(
                     },
                     includeLocal = false,
                 )
-                SearchResultsSortMenu(
-                    selectedSort = searchSort,
-                    onSortSelected = onSearchSortChange,
-                )
-            },
-            chipsRow = {
-                GlassFilterChipsRow(
-                    state = barState,
-                    chips =
-                        listOf(
-                            AppleMusicSearchFilter.ALL to stringResource(R.string.filter_all),
-                            AppleMusicSearchFilter.TRACKS to stringResource(R.string.filter_songs),
-                            AppleMusicSearchFilter.ALBUMS to stringResource(R.string.filter_albums),
-                            AppleMusicSearchFilter.ARTISTS to stringResource(R.string.filter_artists),
-                        ),
-                    currentValue = filter,
-                    onValueUpdate = { filter = it },
-                )
+                // No sort menu here: the iTunes Search API carries no
+                // popularity or playcount, so the VIEWS ordering would be a
+                // visual no-op (the sort control lives on the YouTube/Spotify
+                // results pages where the data exists).
             },
         )
     }

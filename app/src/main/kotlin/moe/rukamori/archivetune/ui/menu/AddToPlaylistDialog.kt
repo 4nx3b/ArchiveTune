@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.menu
 
+import moe.rukamori.archivetune.ui.component.LocalMenuDialogDismissal
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -299,8 +300,12 @@ fun AddToPlaylistDialog(
     }
 
     if (isVisible) {
+        val menuDialogDismissal = LocalMenuDialogDismissal.current
         Dialog(
-            onDismissRequest = onDismiss,
+            onDismissRequest = {
+                menuDialogDismissal?.invoke()
+                onDismiss()
+            },
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
             UnglassedDialogTheme {

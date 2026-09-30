@@ -75,12 +75,9 @@ import moe.rukamori.archivetune.constants.NavigationBarHeight
 import moe.rukamori.archivetune.constants.NavigationBarHeightKey
 import moe.rukamori.archivetune.constants.NavigationBarLabelSpacingKey
 import moe.rukamori.archivetune.constants.NavigationBarOpacityKey
-import moe.rukamori.archivetune.constants.NavigationBarStyle
-import moe.rukamori.archivetune.constants.NavigationBarStyleKey
 import moe.rukamori.archivetune.constants.NavigationBarTransparencyKey
 import moe.rukamori.archivetune.constants.NavigationBarWidthKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
-import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -88,7 +85,6 @@ import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.screens.Screens
 import moe.rukamori.archivetune.ui.utils.backToMain
-import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.asPaddingValues
@@ -103,18 +99,13 @@ import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 
 @Composable
 fun NavigationBarSettings(navController: NavController, scrollTo: String? = null) {
-    val (navigationBarStyle, onNavigationBarStyleChange) =
-        rememberEnumPreference(
-            NavigationBarStyleKey,
-            defaultValue = NavigationBarStyle.DEFAULT,
-        )
     val (navigationBarFrostedBlur, onNavigationBarFrostedBlurChange) =
         rememberPreference(NavigationBarFrostedBlurKey, defaultValue = false)
     val (navigationBarTintFrostedBlur, onNavigationBarTintFrostedBlurChange) =
         rememberPreference(NavigationBarTintFrostedBlurKey, defaultValue = false)
 
     val (liquidGlassEnabled) =
-        rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+        rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val (liquidGlassNavBarEnabled, onLiquidGlassNavBarEnabledChange) =
         rememberPreference(LiquidGlassNavBarEnabledKey, defaultValue = false)
     val (navigationBarGlassGlow, onNavigationBarGlassGlowChange) =
@@ -197,25 +188,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = stringResource(R.string.general)) {
-                item {
-                    Column(modifier = positions.modifierFor("navigation_bar_style")) {
-                        EnumListPreference(
-                            title = { Text(stringResource(R.string.navigation_bar_style)) },
-                            icon = { Icon(painterResource(R.drawable.nav_bar), null) },
-                            selectedValue = navigationBarStyle,
-                            onValueSelected = onNavigationBarStyleChange,
-                            valueText = {
-                                when (it) {
-                                    NavigationBarStyle.DEFAULT ->
-                                        stringResource(R.string.navigation_bar_style_default)
-                                    NavigationBarStyle.FLOATING ->
-                                        stringResource(R.string.navigation_bar_style_floating)
-                                }
-                            },
-                        )
-                    }
-                }
-
                 item {
                     Column {
                         SwitchPreference(
@@ -312,7 +284,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 transparency = navigationBarTransparency,
                                 labelSpacing = navigationBarLabelSpacing,
                                 cornerRadius = navigationBarCornerRadius,
-                                style = navigationBarStyle,
                             )
                         },
                         enabled = !liquidGlassNavBarEnabled,
@@ -337,7 +308,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 transparency = navigationBarTransparency,
                                 labelSpacing = navigationBarLabelSpacing,
                                 cornerRadius = navigationBarCornerRadius,
-                                style = navigationBarStyle,
                             )
                         },
                         enabled = !liquidGlassNavBarEnabled,
@@ -362,7 +332,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 transparency = navigationBarTransparency,
                                 labelSpacing = navigationBarLabelSpacing,
                                 cornerRadius = navigationBarCornerRadius,
-                                style = navigationBarStyle,
                             )
                         },
                         enabled = !liquidGlassNavBarEnabled,
@@ -387,7 +356,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 transparency = tempTransparency,
                                 labelSpacing = navigationBarLabelSpacing,
                                 cornerRadius = navigationBarCornerRadius,
-                                style = navigationBarStyle,
                             )
                         },
                         enabled = !liquidGlassNavBarEnabled,
@@ -412,7 +380,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 transparency = navigationBarTransparency,
                                 labelSpacing = tempSpacing,
                                 cornerRadius = navigationBarCornerRadius,
-                                style = navigationBarStyle,
                             )
                         },
                         enabled = !liquidGlassNavBarEnabled,
@@ -437,7 +404,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 transparency = navigationBarTransparency,
                                 labelSpacing = navigationBarLabelSpacing,
                                 cornerRadius = tempRadius,
-                                style = navigationBarStyle,
                             )
                         },
                         enabled = !liquidGlassNavBarEnabled,
@@ -604,31 +570,15 @@ private fun NavBarPreview(
     transparency: Float,
     labelSpacing: Float,
     cornerRadius: Float,
-    style: NavigationBarStyle,
 ) {
-    val isFloating = style == NavigationBarStyle.FLOATING
+    // The bar is always the floating variant.
     val resolvedBarHeight = NavigationBarHeight * heightMultiplier
-    val shape =
-        if (isFloating) {
-            RoundedCornerShape(cornerRadius.dp)
-        } else {
-            RoundedCornerShape(
-                topStart = 12.dp,
-                topEnd = 12.dp,
-                bottomStart = cornerRadius.dp,
-                bottomEnd = cornerRadius.dp,
-            )
-        }
+    val shape = RoundedCornerShape(cornerRadius.dp)
 
     val baseColor = MaterialTheme.colorScheme.surfaceContainer
     val effectiveAlpha = opacity * (1f - transparency)
     val barColor = baseColor.copy(alpha = effectiveAlpha.coerceIn(0.05f, 1f))
-    val indicatorColor =
-        if (isFloating) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
-        } else {
-            MaterialTheme.colorScheme.secondaryContainer
-        }
+    val indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
 
     val fauxScreenBrush =
         Brush.verticalGradient(
@@ -651,15 +601,15 @@ private fun NavBarPreview(
             modifier =
                 Modifier
                     .padding(
-                        bottom = if (isFloating) 16.dp else 0.dp,
-                        start = if (isFloating) 16.dp else 0.dp,
-                        end = if (isFloating) 16.dp else 0.dp,
-                    ).fillMaxWidth(if (isFloating) widthFraction.coerceIn(0.5f, 1f) else 1f)
+                        bottom = 16.dp,
+                        start = 16.dp,
+                        end = 16.dp,
+                    ).fillMaxWidth(widthFraction.coerceIn(0.5f, 1f))
                     .height(resolvedBarHeight),
             shape = shape,
             color = barColor,
             tonalElevation = NavigationBarDefaults.Elevation,
-            shadowElevation = if (isFloating) 8.dp else NavigationBarDefaults.Elevation,
+            shadowElevation = 8.dp,
         ) {
             Row(
                 modifier =

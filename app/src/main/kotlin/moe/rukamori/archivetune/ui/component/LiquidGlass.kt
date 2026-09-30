@@ -73,6 +73,28 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_ADAPTIVE_LUMINANCE_DEFAULT
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_BACKDROP_VIBRANCY_DEFAULT
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_BLUR_RADIUS_DEFAULT
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_CHROMATIC_ABERRATION_DEFAULT
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_DEPTH_3D_DEFAULT
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_REFRACTION_AMOUNT_DEFAULT
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_REFRACTION_HEIGHT_DEFAULT
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_SHADOW_DEPTH_DEFAULT
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_TINT_OPACITY_DEFAULT
+import moe.rukamori.archivetune.constants.LiquidGlassChromaticAberrationKey
+import moe.rukamori.archivetune.constants.LiquidGlassAdaptiveLuminanceKey
+import moe.rukamori.archivetune.constants.LiquidGlassBackdropVibrancyKey
+import moe.rukamori.archivetune.constants.LiquidGlassBlurRadiusKey
+import moe.rukamori.archivetune.constants.LiquidGlassDepth3DKey
+import moe.rukamori.archivetune.constants.LiquidGlassIntensity
+import moe.rukamori.archivetune.constants.LiquidGlassIntensityKey
+import moe.rukamori.archivetune.constants.LiquidGlassRefractionAmountKey
+import moe.rukamori.archivetune.constants.LiquidGlassRefractionHeightKey
+import moe.rukamori.archivetune.constants.LiquidGlassShadowDepthKey
+import moe.rukamori.archivetune.constants.LiquidGlassTintOpacityKey
+import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.graphics.graphicsLayer
@@ -138,6 +160,106 @@ fun Modifier.glassSource(backdrop: Backdrop): Modifier =
 val LocalLiquidGlassBackdrop = compositionLocalOf<Backdrop?> { null }
 
 val LocalMenuGlassBackdrop = compositionLocalOf<Backdrop?> { null }
+
+/**
+ * The user-tunable liquid glass parameters (the "Liquid Glass" appearance
+ * sub-page). Every factor is 1f at the factory defaults, so the stock tuning
+ * reproduces the pre-settings rendering exactly.
+ */
+@Stable
+data class LiquidGlassTuning(
+    val intensity: LiquidGlassIntensity = LiquidGlassIntensity.STANDARD,
+    val refractionHeightFraction: Float = LIQUID_GLASS_REFRACTION_HEIGHT_DEFAULT,
+    val refractionAmountFraction: Float = LIQUID_GLASS_REFRACTION_AMOUNT_DEFAULT,
+    val blurFraction: Float = LIQUID_GLASS_BLUR_RADIUS_DEFAULT,
+    val tintFraction: Float = LIQUID_GLASS_TINT_OPACITY_DEFAULT,
+    val shadowFraction: Float = LIQUID_GLASS_SHADOW_DEPTH_DEFAULT,
+    val depth3D: Boolean = LIQUID_GLASS_DEPTH_3D_DEFAULT,
+    val chromaticAberration: Boolean = LIQUID_GLASS_CHROMATIC_ABERRATION_DEFAULT,
+    val backdropVibrancy: Boolean = LIQUID_GLASS_BACKDROP_VIBRANCY_DEFAULT,
+    val adaptiveLuminance: Boolean = LIQUID_GLASS_ADAPTIVE_LUMINANCE_DEFAULT,
+) {
+    /** Preset tiers scale the refraction & blur strength together. */
+    private val presetRefraction: Float =
+        when (intensity) {
+            LiquidGlassIntensity.SUBTLE -> 0.55f
+            LiquidGlassIntensity.STANDARD -> 1f
+            LiquidGlassIntensity.VIVID -> 1.45f
+        }
+
+    private val presetBlur: Float =
+        when (intensity) {
+            LiquidGlassIntensity.SUBTLE -> 0.70f
+            LiquidGlassIntensity.STANDARD -> 1f
+            LiquidGlassIntensity.VIVID -> 1.30f
+        }
+
+    val refractionHeightFactor: Float =
+        (refractionHeightFraction / LIQUID_GLASS_REFRACTION_HEIGHT_DEFAULT) * presetRefraction
+
+    val refractionAmountFactor: Float =
+        (refractionAmountFraction / LIQUID_GLASS_REFRACTION_AMOUNT_DEFAULT) * presetRefraction
+
+    val blurFactor: Float = (blurFraction / LIQUID_GLASS_BLUR_RADIUS_DEFAULT) * presetBlur
+
+    val tintFactor: Float = tintFraction / LIQUID_GLASS_TINT_OPACITY_DEFAULT
+
+    val shadowFactor: Float = shadowFraction / LIQUID_GLASS_SHADOW_DEPTH_DEFAULT
+
+    val saturation: Float = if (backdropVibrancy) 1.7f else 1.0f
+
+    companion object {
+        val STOCK = LiquidGlassTuning()
+    }
+}
+
+val LocalLiquidGlassTuning = compositionLocalOf { LiquidGlassTuning.STOCK }
+
+/** Reads every liquid-glass tuning preference into one [LiquidGlassTuning]. */
+@Composable
+fun rememberLiquidGlassTuning(): LiquidGlassTuning {
+    val intensity by rememberEnumPreference(LiquidGlassIntensityKey, LiquidGlassIntensity.STANDARD)
+    val refractionHeight by rememberPreference(LiquidGlassRefractionHeightKey, LIQUID_GLASS_REFRACTION_HEIGHT_DEFAULT)
+    val refractionAmount by rememberPreference(LiquidGlassRefractionAmountKey, LIQUID_GLASS_REFRACTION_AMOUNT_DEFAULT)
+    val blurRadius by rememberPreference(LiquidGlassBlurRadiusKey, LIQUID_GLASS_BLUR_RADIUS_DEFAULT)
+    val tintOpacity by rememberPreference(LiquidGlassTintOpacityKey, LIQUID_GLASS_TINT_OPACITY_DEFAULT)
+    val shadowDepth by rememberPreference(LiquidGlassShadowDepthKey, LIQUID_GLASS_SHADOW_DEPTH_DEFAULT)
+    val depth3D by rememberPreference(LiquidGlassDepth3DKey, LIQUID_GLASS_DEPTH_3D_DEFAULT)
+    val chromaticAberration by rememberPreference(
+        LiquidGlassChromaticAberrationKey,
+        LIQUID_GLASS_CHROMATIC_ABERRATION_DEFAULT,
+    )
+    val backdropVibrancy by rememberPreference(LiquidGlassBackdropVibrancyKey, LIQUID_GLASS_BACKDROP_VIBRANCY_DEFAULT)
+    val adaptiveLuminance by rememberPreference(
+        LiquidGlassAdaptiveLuminanceKey,
+        LIQUID_GLASS_ADAPTIVE_LUMINANCE_DEFAULT,
+    )
+    return remember(
+        intensity,
+        refractionHeight,
+        refractionAmount,
+        blurRadius,
+        tintOpacity,
+        shadowDepth,
+        depth3D,
+        chromaticAberration,
+        backdropVibrancy,
+        adaptiveLuminance,
+    ) {
+        LiquidGlassTuning(
+            intensity = intensity,
+            refractionHeightFraction = refractionHeight,
+            refractionAmountFraction = refractionAmount,
+            blurFraction = blurRadius,
+            tintFraction = tintOpacity,
+            shadowFraction = shadowDepth,
+            depth3D = depth3D,
+            chromaticAberration = chromaticAberration,
+            backdropVibrancy = backdropVibrancy,
+            adaptiveLuminance = adaptiveLuminance,
+        )
+    }
+}
 
 internal const val ThrottledLayerBackdropDefaultIntervalMillis = 100L
 
@@ -270,27 +392,28 @@ fun Modifier.liquidGlass(
     scrim: Color? = null,
 ): Modifier {
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val tuning = LocalLiquidGlassTuning.current
 
-    return remember(backdrop, shape, interactive, baseColor, blurRadius, isDark, scrim) {
+    return remember(backdrop, shape, interactive, baseColor, blurRadius, isDark, scrim, tuning) {
         this.drawBackdrop(
             backdrop = backdrop,
             effects = {
                 val l = 0f
 
-                colorControls(saturation = 1.7f)
+                colorControls(saturation = tuning.saturation)
                 blur(
                     if (l > 0f) {
                         lerp(blurRadius.toPx() * 2f, blurRadius.toPx() * 4f, l)
                     } else {
-                        blurRadius.toPx()
+                        blurRadius.toPx() * tuning.blurFactor
                     },
                 )
 
                 lens(
-                    refractionHeight = 28f.dp.toPx(),
-                    refractionAmount = size.minDimension / 3.2f,
-                    depthEffect = true,
-                    chromaticAberration = false,
+                    refractionHeight = (28f * tuning.refractionHeightFactor).dp.toPx(),
+                    refractionAmount = size.minDimension * (tuning.refractionAmountFactor / 3.2f),
+                    depthEffect = tuning.depth3D,
+                    chromaticAberration = tuning.chromaticAberration,
                 )
             },
             onDrawBackdrop = { drawBackdrop ->
@@ -309,15 +432,23 @@ fun Modifier.liquidGlass(
                     // user wallpaper): the theme default darkens by ~27%, which
                     // leaves white-on-white text when the sampled backdrop is a
                     // bright image. The caller decides how much is enough.
-                    drawRect(scrim)
+                    drawRect(scrim.copy(alpha = (scrim.alpha * tuning.tintFactor).coerceIn(0f, 1f)))
                 } else {
-                    val luminanceAnimation = 0.5f
-                    val darken = lerp(
-                        0.12f,
-                        0.5f,
-                        ((luminanceAnimation - 0.3f) / 0.5f).coerceIn(0f, 1f),
+                    val darken =
+                        if (tuning.adaptiveLuminance) {
+                            val luminanceAnimation = 0.5f
+                            lerp(
+                                0.12f,
+                                0.5f,
+                                ((luminanceAnimation - 0.3f) / 0.5f).coerceIn(0f, 1f),
+                            )
+                        } else {
+                            0.12f
+                        }
+                    drawRect(
+                        (if (isDark) Color.Black else Color.White)
+                            .copy(alpha = (darken * tuning.tintFactor).coerceIn(0f, 1f)),
                     )
-                    drawRect((if (isDark) Color.Black else Color.White).copy(alpha = darken))
                 }
             },
         )

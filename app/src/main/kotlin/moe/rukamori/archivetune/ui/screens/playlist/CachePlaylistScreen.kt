@@ -305,7 +305,7 @@ fun CachePlaylistScreen(
         }
     }
 
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current

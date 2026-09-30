@@ -53,6 +53,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
@@ -256,8 +258,6 @@ import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
 import moe.rukamori.archivetune.constants.NavigationBarTintFrostedBlurKey
-import moe.rukamori.archivetune.constants.NavigationBarStyle
-import moe.rukamori.archivetune.constants.NavigationBarStyleKey
 import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.HideStatusBarKey
 import moe.rukamori.archivetune.constants.RemindAfterKey
@@ -305,6 +305,7 @@ import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
 import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
+import moe.rukamori.archivetune.ui.component.rememberLiquidGlassTuning
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.ThrottledLayerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberThrottledLayerBackdrop
@@ -978,10 +979,6 @@ class MainActivity : ComponentActivity() {
             val pureBlackEnabled by rememberPreference(PureBlackKey, defaultValue = false)
             val pureBlack = pureBlackEnabled && useDarkTheme
             val hideStatusBar by rememberPreference(HideStatusBarKey, defaultValue = false)
-            val navigationBarStyle by rememberEnumPreference(
-                NavigationBarStyleKey,
-                defaultValue = NavigationBarStyle.DEFAULT,
-            )
             val navigationBarFrostedBlur by rememberPreference(
                 NavigationBarFrostedBlurKey,
                 defaultValue = false,
@@ -992,12 +989,16 @@ class MainActivity : ComponentActivity() {
             )
             val liquidGlassEnabled by rememberPreference(
                 LiquidGlassEnabledKey,
-                defaultValue = false,
+                defaultValue = true,
             )
             val liquidGlassNavBarEnabled by rememberPreference(
                 LiquidGlassNavBarEnabledKey,
                 defaultValue = false,
             )
+
+            // Central liquid-glass tuning: every glass surface reads this one
+            // object, so the "Liquid Glass" settings page retunes the whole app.
+            val liquidGlassTuning = rememberLiquidGlassTuning()
 
             val customThemeSeedPalette =
                 remember(customThemeColorValue) {
@@ -1461,10 +1462,10 @@ class MainActivity : ComponentActivity() {
                             },
                         label = "bottomUiCompactFraction",
                     )
-                    // Search results pages keep their own bottom search chrome —
-                    // the compact row shows no Search circle there.
-                    val compactSearchCircleVisible =
-                        navBackStackEntry?.destination?.route?.startsWith(OnlineSearchResultRoutePrefix) != true
+                    // The search bar minimises into the compact Search circle on
+                    // every route — including the search-results pages, whose own
+                    // bottom overlay fades out while the compact row takes over.
+                    val compactSearchCircleVisible = true
 
                     val navigationBarGlassGlow by rememberPreference(
                         NavigationBarGlassGlowKey,
@@ -1483,16 +1484,14 @@ class MainActivity : ComponentActivity() {
                             0.dp
                         }
 
-                    val isFloatingNavBar = navigationBarStyle == NavigationBarStyle.FLOATING
-                    val floatingBarsBottomPadding =
-                        if (isFloatingNavBar) FloatingNavigationBarBottomPadding else NavigationBarBottomPadding
+                    // The navigation bar is always the floating variant now.
+                    val floatingBarsBottomPadding = FloatingNavigationBarBottomPadding
                     val (navBarHeightMultiplier) = rememberPreference(
                         moe.rukamori.archivetune.constants.NavigationBarHeightKey,
                         defaultValue = moe.rukamori.archivetune.constants.NAVIGATION_BAR_HEIGHT_DEFAULT,
                     )
                     val navVisibleHeight = NavigationBarHeight * navBarHeightMultiplier
-                    val navBarHorizontalPadding =
-                        if (isFloatingNavBar) FloatingNavigationBarHorizontalPadding else NavigationBarHorizontalPadding
+                    val navBarHorizontalPadding = FloatingNavigationBarHorizontalPadding
 
                     val miniPlayerBgStyle by rememberEnumPreference(
                         MiniPlayerBackgroundStyleKey,
@@ -1561,7 +1560,14 @@ class MainActivity : ComponentActivity() {
 
                     val rootOverlayActive by remember {
                         derivedStateOf {
-                            menuGlassRecordingActive || bottomSheetPageState.isVisible
+                            // Every floating layer that should swallow the back
+                            // gesture must be listed here, otherwise the player
+                            // sheet / screen handlers below steal the swipe and
+                            // the popup appears to never dismiss.
+                            menuGlassRecordingActive ||
+                                menuState.isVisible ||
+                                menuState.dialogContent != null ||
+                                bottomSheetPageState.isVisible
                         }
                     }
 
@@ -1590,7 +1596,7 @@ class MainActivity : ComponentActivity() {
                     )
                     val playerDesignStyle by rememberEnumPreference(
                         key = PlayerDesignStyleKey,
-                        defaultValue = PlayerDesignStyle.V4,
+                        defaultValue = PlayerDesignStyle.APPLE_MUSIC,
                     )
 
                     val aodModeEnabled by remember(playerConnection) {
@@ -1815,7 +1821,6 @@ class MainActivity : ComponentActivity() {
                             bottomInset,
                             shouldShowNavigationBar,
                             playerBottomSheetState.isDismissed,
-                            navigationBarStyle,
                             effectiveStatusBarTop,
                         ) {
                             var bottom = bottomInset
@@ -2194,6 +2199,8 @@ class MainActivity : ComponentActivity() {
                         LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
                         LocalLiquidGlassBackdrop provides liquidGlassBackdrop,
                         moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop provides menuGlassBackdrop,
+                        moe.rukamori.archivetune.ui.component.LocalLiquidGlassTuning provides liquidGlassTuning,
+                        moe.rukamori.archivetune.ui.component.LocalBottomUiCompactFraction provides bottomUiCompactFraction,
                         moe.rukamori.archivetune.ui.player.LocalRootOverlayActive provides rootOverlayActive,
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
@@ -3011,11 +3018,8 @@ class MainActivity : ComponentActivity() {
                                 },
                                 bottomBar = {
                                     Box {
-                                        val areBottomBarsPaired =
-                                            shouldShowNavigationBar &&
-                                                !useRail &&
-                                                !isFloatingNavBar &&
-                                                playerBottomSheetState.isCollapsed
+                                        // The floating bar never welds itself to the mini player.
+                                        val areBottomBarsPaired = false
 
                                         ProvideVideoFullscreenState {
                                             BottomSheetPlayer(
@@ -3085,7 +3089,6 @@ class MainActivity : ComponentActivity() {
                                                 items = navigationItems,
                                                 pureBlack = pureBlack,
                                                 isPairedWithMiniPlayer = areBottomBarsPaired,
-                                                style = navigationBarStyle,
                                                 frostedBlur = navigationBarFrostedBlur,
                                                 tintFrostedBlur = navigationBarTintFrostedBlur,
                                                 frostedBackdrop = navBarFrostedBackdrop,
@@ -3223,17 +3226,20 @@ class MainActivity : ComponentActivity() {
                                         } else if (initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
+                                            // Tab-to-tab: the existing fade + scale.
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
                                                     animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
                                                     initialScale = 0.94f,
                                                 )
                                         } else {
-                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
-                                                scaleIn(
-                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
-                                                    initialScale = 0.94f,
-                                                )
+                                            // Pushing into a detail screen: a shared-axis
+                                            // slide from the right + fade (fluid forward
+                                            // motion instead of a plain crossfade).
+                                            slideInHorizontally(
+                                                animationSpec = tween(300, easing = FastOutSlowInEasing),
+                                            ) { it / 4 } +
+                                                fadeIn(tween(180, easing = FastOutSlowInEasing))
                                         }
                                     },
                                     exitTransition = {
@@ -3244,7 +3250,13 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         } else {
-                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
+                                            // The covered screen drifts a quarter-width left
+                                            // while it fades — the parallax half of the
+                                            // shared-axis push.
+                                            slideOutHorizontally(
+                                                animationSpec = tween(300, easing = FastOutSlowInEasing),
+                                            ) { -it / 8 } +
+                                                fadeOut(tween(200, easing = LinearOutSlowInEasing))
                                         }
                                     },
                                     popEnterTransition = {
@@ -3262,11 +3274,12 @@ class MainActivity : ComponentActivity() {
                                                     initialScale = 0.94f,
                                                 )
                                         } else {
-                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
-                                                scaleIn(
-                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
-                                                    initialScale = 0.94f,
-                                                )
+                                            // Popping back: the previous screen slides in from
+                                            // the left, mirroring the push axis.
+                                            slideInHorizontally(
+                                                animationSpec = tween(300, easing = FastOutSlowInEasing),
+                                            ) { -it / 8 } +
+                                                fadeIn(tween(180, easing = FastOutSlowInEasing))
                                         }
                                     },
                                     popExitTransition = {
@@ -3280,7 +3293,12 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         } else {
-                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
+                                            // The popped detail screen exits along the shared
+                                            // axis, back to where it came from.
+                                            slideOutHorizontally(
+                                                animationSpec = tween(300, easing = FastOutSlowInEasing),
+                                            ) { it / 4 } +
+                                                fadeOut(tween(200, easing = LinearOutSlowInEasing))
                                         }
                                     },
                                     modifier =

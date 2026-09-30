@@ -7,6 +7,7 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import moe.rukamori.archivetune.ui.component.SpringySwitch
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -14,7 +15,6 @@ import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.ui.graphics.Color
-import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -64,6 +64,10 @@ import moe.rukamori.archivetune.constants.LyricsScrollKey
 import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import moe.rukamori.archivetune.constants.LiquidGlassChromaticAberrationKey
+import moe.rukamori.archivetune.constants.LiquidGlassDepth3DKey
+import moe.rukamori.archivetune.constants.LiquidGlassBackdropVibrancyKey
+import moe.rukamori.archivetune.constants.LiquidGlassAdaptiveLuminanceKey
 import moe.rukamori.archivetune.constants.LiquidGlassNavBarEnabledKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
 import moe.rukamori.archivetune.constants.PauseListenHistoryKey
@@ -185,7 +189,7 @@ private fun SearchResultSwitch(
     defaultValue: Boolean,
 ) {
     val (checked, onCheckedChange) = rememberPreference(key, defaultValue)
-    Switch(
+    SpringySwitch(
         checked = checked,
         onCheckedChange = onCheckedChange,
     )
@@ -266,10 +270,14 @@ fun buildSettingsGroups(
                 SettingsChild("Disable animations", "disable_animations", listOf("animation", "disable animations", "no animations", "performance")) { SearchResultSwitch(DisableAnimationsKey, false) },
                 SettingsChild("Hide status bar", "hide_status_bar", listOf("status bar", "hide status", "immersive", "fullscreen", "hide bar")) { SearchResultSwitch(HideStatusBarKey, false) },
                 SettingsChild("Force high refresh rate", "force_high_refresh_rate", listOf("refresh rate", "high refresh", "120hz", "90hz", "smooth")) { SearchResultSwitch(ForceHighRefreshRateKey, false) },
-                SettingsChild("Navigation bar style", "navigation_bar_style", listOf("navigation bar", "nav bar", "bottom bar")),
                 SettingsChild("Frosted navigation bar", "frosted_nav_bar", listOf("frosted nav", "frosted navigation", "frosted blur")) { SearchResultSwitch(NavigationBarFrostedBlurKey, false) },
                 SettingsChild("Liquid Glass navigation bar", "liquid_glass_nav_bar", listOf("liquid glass", "glass nav", "glass navigation", "liquid nav")) { SearchResultSwitch(LiquidGlassNavBarEnabledKey, false) },
-                SettingsChild("Liquid Glass effects", "liquid_glass_effects", listOf("liquid glass", "glass effects", "liquid glass effects", "header glass", "mini player glass")) { SearchResultSwitch(LiquidGlassEnabledKey, false) },
+                SettingsChild("Liquid Glass effects", "liquid_glass_effects", listOf("liquid glass", "glass effects", "liquid glass effects", "header glass", "mini player glass")) { SearchResultSwitch(LiquidGlassEnabledKey, true) },
+                SettingsChild("Liquid Glass customisation", "liquid_glass_customisation", listOf("liquid glass tuning", "refraction", "chromatic aberration", "glass intensity", "blur radius", "vibrancy")),
+                SettingsChild("Chromatic aberration", "glass_chromatic_aberration", listOf("chromatic aberration", "prismatic", "color fringing", "lens")) { SearchResultSwitch(LiquidGlassChromaticAberrationKey, true) },
+                SettingsChild("3D depth effect", "glass_depth_3d", listOf("3d depth", "depth effect", "spatial refraction", "thick glass")) { SearchResultSwitch(LiquidGlassDepth3DKey, true) },
+                SettingsChild("Backdrop vibrancy", "glass_backdrop_vibrancy", listOf("vibrancy", "saturation", "color boost")) { SearchResultSwitch(LiquidGlassBackdropVibrancyKey, true) },
+                SettingsChild("Adaptive luminance", "glass_adaptive_luminance", listOf("adaptive luminance", "brightness balance", "contrast balance")) { SearchResultSwitch(LiquidGlassAdaptiveLuminanceKey, true) },
                 SettingsChild("Hide labels in navigation bar", "hide_navigation_bar_labels", listOf("hide labels", "navigation labels", "nav labels", "icons only")) { SearchResultSwitch(HideNavigationBarLabelsKey, false) },
                 SettingsChild("Navigation bar customization", "navigation_bar_settings", listOf("navigation bar", "nav bar dimensions", "nav bar opacity", "nav bar width", "nav bar height", "nav bar corner radius", "nav bar label spacing")),
                 SettingsChild("Hide scrollbar", "hide_scrollbar", listOf("scrollbar", "scroll bar", "hide scroll", "no scrollbar")) { SearchResultSwitch(HideScrollbarKey, false) },
@@ -351,7 +359,6 @@ fun buildSettingsGroups(
             onClick = { navController.navigate("settings/appearance/navigation_bar") },
             hidden = true,
             children = listOf(
-                SettingsChild("Navigation bar style", "navigation_bar_style", listOf("navigation bar style", "nav bar style", "bottom bar style")),
                 SettingsChild("Frosted navigation bar", "navigation_bar_frosted_blur", listOf("frosted nav", "frosted navigation", "frosted blur")) { SearchResultSwitch(NavigationBarFrostedBlurKey, false) },
                 SettingsChild("Tint frosted navigation bar", "navigation_bar_tint_frosted_blur", listOf("tint frosted", "tint nav bar", "frosted tint", "coloured nav bar")) { SearchResultSwitch(NavigationBarTintFrostedBlurKey, false) },
                 SettingsChild("Liquid Glass navigation bar", "liquid_glass_nav_bar", listOf("liquid glass nav", "glass navigation", "liquid nav")) { SearchResultSwitch(LiquidGlassNavBarEnabledKey, false) },
@@ -380,10 +387,6 @@ fun buildSettingsGroups(
                 SettingsChild("Audio normalization", "audio_normalization", listOf("normalization", "loudness", "normalize", "volume level")) { SearchResultSwitch(AudioNormalizationKey, true) },
                 SettingsChild("ReplayGain", "replay_gain", listOf("replaygain", "replay gain", "r128", "gain", "loudness correction", "track gain", "album gain")),
                 SettingsChild("Audio offload", "audio_offload", listOf("offload", "audio offload", "hardware decoder")) { SearchResultSwitch(AudioOffload, false) },
-                SettingsChild("32-bit float DSP", "float_dsp", listOf("dsp", "float", "32-bit", "limiter", "dither", "lossless dsp", "bit perfect")) { SearchResultSwitch(FloatDspEnabledKey, false) },
-                SettingsChild("USB exclusive output", "usb_exclusive_audio", listOf("usb", "exclusive", "dac", "bit perfect", "direct", "aaudio")) { SearchResultSwitch(UsbExclusiveAudioKey, false) },
-                SettingsChild("Enable Tryptify Audio Processing", "tryptify_audio_processing", listOf("tryptify", "dsp engine", "autoeq", "equalizer", "bit perfect", "usb dac", "libusb", "oxford", "mixing console")) { SearchResultSwitch(TryptifyAudioProcessingKey, false) },
-                SettingsChild("Enable Lastwave Audio Processing", "lastwave_audio_processing", listOf("lastwave", "lastwave-native", "dsp engine", "clarity", "studio master", "oboe", "soxr", "bit perfect", "usb dac", "graphic eq")) { SearchResultSwitch(LastwaveAudioProcessingKey, false) },
                 SettingsChild("Seek seconds add-up", "seek_seconds", listOf("seek", "skip", "forward", "rewind", "seconds")) { SearchResultSwitch(SeekExtraSeconds, false) },
                 SettingsChild("Pause on device mute", "pause_mute", listOf("mute", "pause mute", "headphone", "silence detect")) { SearchResultSwitch(PauseOnDeviceMuteKey, false) },
                 SettingsChild("Device mute recovery volume", "device_mute_recovery_volume", listOf("recovery volume", "mute recovery", "volume restore")),
@@ -423,6 +426,23 @@ fun buildSettingsGroups(
                 SettingsChild("Deezer audio quality", "deezer_audio_quality", listOf("deezer quality", "deezer audio quality", "deezer flac")),
                 SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("jiosaavn", "jio saavn", "saavn", "enable jiosaavn", "indian music")) { SearchResultSwitch(JioSaavnEnabledKey, false) },
                 SettingsChild("JioSaavn audio quality", "jiosaavn_audio_quality", listOf("jiosaavn quality", "saavn quality", "jiosaavn audio quality")),
+            ),
+        )
+
+    val audiophile =
+        SettingsItem(
+            key = "audiophile",
+            icon = painterResource(R.drawable.graphic_eq),
+            title = stringResource(R.string.audiophile_settings_title),
+            subtitle = stringResource(R.string.audiophile_settings_subtitle),
+            accentColor = SettingsIconPalette.Playback,
+            keywords = listOf("audiophile", "dsp", "engine", "tryptify", "lastwave", "float", "usb exclusive", "bit perfect", "dac", "autoeq"),
+            onClick = { navController.navigate("settings/player/audiophile") },
+            children = listOf(
+                SettingsChild("32-bit float DSP", "float_dsp", listOf("dsp", "float", "32-bit", "limiter", "dither", "lossless dsp", "bit perfect")) { SearchResultSwitch(FloatDspEnabledKey, false) },
+                SettingsChild("USB exclusive output", "usb_exclusive_audio", listOf("usb", "exclusive", "dac", "bit perfect", "direct", "aaudio")) { SearchResultSwitch(UsbExclusiveAudioKey, false) },
+                SettingsChild("Enable Tryptify Audio Processing", "tryptify_audio_processing", listOf("tryptify", "dsp engine", "autoeq", "equalizer", "bit perfect", "usb dac", "libusb", "oxford", "mixing console")) { SearchResultSwitch(TryptifyAudioProcessingKey, false) },
+                SettingsChild("Enable Lastwave Audio Processing", "lastwave_audio_processing", listOf("lastwave", "lastwave-native", "dsp engine", "clarity", "studio master", "oboe", "soxr", "bit perfect", "usb dac", "graphic eq")) { SearchResultSwitch(LastwaveAudioProcessingKey, false) },
             ),
         )
 
@@ -1074,6 +1094,7 @@ fun buildSettingsGroups(
                     navigationBar,
 
                     playback,
+                    audiophile,
                     sources,
                     jioSaavn,
                     deezer,

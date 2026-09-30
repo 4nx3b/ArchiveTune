@@ -419,7 +419,7 @@ fun BottomSheetPlayer(
 
     val playerDesignStyle by rememberEnumPreference(
         key = PlayerDesignStyleKey,
-        defaultValue = PlayerDesignStyle.V4,
+        defaultValue = PlayerDesignStyle.APPLE_MUSIC,
     )
     val showPlayerVolumeBar by rememberPreference(
         key = ShowPlayerVolumeBarKey,

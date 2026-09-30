@@ -291,7 +291,7 @@ fun HistoryScreen(
 
     var showClearHistoryDialog by remember { mutableStateOf(false) }
 
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
     // The glass recording source stays attached for the whole lifetime of the
     // screen: detaching kyant's LayerBackdrop while the player sheet covers the

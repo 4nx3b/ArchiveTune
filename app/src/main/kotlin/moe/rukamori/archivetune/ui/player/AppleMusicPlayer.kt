@@ -13,7 +13,7 @@
 
 package moe.rukamori.archivetune.ui.player
 
-import android.content.Intent
+import moe.rukamori.archivetune.utils.oem.SystemMediaControlResolver
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.SystemClock
@@ -569,9 +569,10 @@ fun AppleMusicPlayerContent(
 
     val castAction = rememberCastPlayerMenuAction()
     val onOutputClick: () -> Unit = castAction?.onClick ?: {
-        runCatching {
-            context.startActivity(Intent("android.settings.panel.action.MEDIA_OUTPUT"))
-        }
+        // The raw AOSP panel action silently resolves to nothing on many OEM
+        // builds; the resolver walks the OEM variants first and falls back to
+        // the AOSP panel, so the button always opens something.
+        SystemMediaControlResolver.openMediaOutputSwitcher(context)
     }
 
     BoxWithConstraints(modifier = modifier) {
@@ -598,6 +599,27 @@ fun AppleMusicPlayerContent(
                     .background(Color.Black),
         )
 
+        // ── Landscape horizontal swipe: drag left = next, drag right =
+        // previous. The commit happens on gesture end, so one continuous
+        // swipe always changes exactly one track. ──────────────────────────
+        val landscapeSwipeModifier =
+            Modifier.pointerInput(playerConnection) {
+                val swipeThresholdPx = 72.dp.toPx()
+                var accumulatedDrag = 0f
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        when {
+                            accumulatedDrag <= -swipeThresholdPx -> playerConnection.seekToNext()
+                            accumulatedDrag >= swipeThresholdPx -> playerConnection.seekToPrevious()
+                        }
+                        accumulatedDrag = 0f
+                    },
+                ) { change, dragAmount ->
+                    change.consume()
+                    accumulatedDrag += dragAmount
+                }
+            }
+
         val videoShowing =
             LocalVideoArtworkState.current != null &&
                 mediaMetadata.isMusicVideo &&
@@ -607,6 +629,22 @@ fun AppleMusicPlayerContent(
             !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
 
         val useCanvasBackdrop = canvasActive && !videoShowing && !isPreS
+        // The canvas backdrop used to appear the instant its URLs resolved —
+        // a hard swap with the 64dp-blurred artwork backdrop. A 650ms reveal
+        // (and matching scrim crossfade) makes the transition smooth.
+        val canvasBackdropReveal =
+            remember { androidx.compose.animation.core.Animatable(0f) }
+        LaunchedEffect(useCanvasBackdrop) {
+            canvasBackdropReveal.animateTo(
+                targetValue = if (useCanvasBackdrop) 1f else 0f,
+                animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+            )
+        }
+        val canvasScrimReveal by animateFloatAsState(
+            targetValue = if (useCanvasBackdrop) 1f else 0f,
+            animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+            label = "am-canvas-scrim-reveal",
+        )
         val context = LocalContext.current
         val imageLoader = context.imageLoader
         val preBlurredBitmap by produceState<Bitmap?>(null, artworkUrl) {
@@ -641,16 +679,23 @@ fun AppleMusicPlayerContent(
             // (Apple Music lyrics-page behaviour): the blurred colour mass
             // traverses the whole display instead of orbiting near the centre.
             val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
-            val blurWander = rememberBlurWanderDrift(active = lyricsBackdropActive, maxDriftDp = wanderMaxDrift)
+            // In landscape the blurred backdrop drifts for EVERY song — not
+            // only while the lyrics morph is active (the portrait gate left
+            // non-canvas landscape songs with a completely static background).
+            val wanderActive = lyricsBackdropActive || landscape
+            val blurWander = rememberBlurWanderDrift(active = wanderActive, maxDriftDp = wanderMaxDrift)
             val driftGraphicsLayer: GraphicsLayerScope.() -> Unit = {
                 val progress = lyricsBackdropProgress.value
 
                 val scale = AmCoverBlurScale + (AmLyricsBlurDriftScale - AmCoverBlurScale) * progress
                 scaleX = scale
                 scaleY = scale
-                if (progress > 0f) {
-                    translationX = blurWander.xDp.floatValue * driftDpToPx * progress
-                    translationY = blurWander.yDp.floatValue * driftDpToPx * progress
+                // Landscape keeps a constant gentle drift (0.55x amplitude);
+                // portrait ramps it with the lyrics morph as before.
+                val driftFactor = if (landscape) 0.55f else progress
+                if (driftFactor > 0f) {
+                    translationX = blurWander.xDp.floatValue * driftDpToPx * driftFactor
+                    translationY = blurWander.yDp.floatValue * driftDpToPx * driftFactor
 
                 }
 
@@ -705,7 +750,7 @@ fun AppleMusicPlayerContent(
                 }
             }
 
-            if (useCanvasBackdrop) {
+            if (useCanvasBackdrop || canvasBackdropReveal.value > 0.01f) {
                 Box(
                     modifier =
                         Modifier
@@ -714,7 +759,7 @@ fun AppleMusicPlayerContent(
                                 val scale = AmCoverBlurScale * AmCanvasBackdropUpscale
                                 scaleX = scale
                                 scaleY = scale
-                                alpha = 1f - lyricsBackdropProgress.value
+                                alpha = canvasBackdropReveal.value * (1f - lyricsBackdropProgress.value)
                             },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -736,12 +781,21 @@ fun AppleMusicPlayerContent(
             }
             val preBlurLoading = isPreS && preBlurredBitmap == null && !canvasActive
 
-            val backdropScrimBrush =
-                remember(useCanvasBackdrop, preBlurLoading, Build.VERSION.SDK_INT) {
+            // Two stacked scrims crossfaded by [canvasScrimReveal]: the canvas
+            // scrim (lighter — the loop itself adds colour) and the static
+            // artwork scrim (with the pre-S loading variant).
+            val canvasScrimBrush =
+                remember {
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.15f),
+                        0.5f to Color.Black.copy(alpha = 0.28f),
+                        1f to Color.Black.copy(alpha = 0.50f),
+                    )
+                }
+            val staticScrimBrush =
+                remember(preBlurLoading, Build.VERSION.SDK_INT) {
                     val (a1, a2, a3) =
-                        if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            Triple(0.15f, 0.28f, 0.50f)
-                        } else if (preBlurLoading) {
+                        if (preBlurLoading) {
                             Triple(0.55f, 0.65f, 0.85f)
                         } else {
                             Triple(0.28f, 0.42f, 0.60f)
@@ -752,12 +806,29 @@ fun AppleMusicPlayerContent(
                         1f to Color.Black.copy(alpha = a3),
                     )
                 }
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .background(backdropScrimBrush),
-            )
+            if (isPreS) {
+                Box(
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .background(staticScrimBrush),
+                )
+            } else {
+                Box(
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .graphicsLayer { alpha = 1f - canvasScrimReveal }
+                            .background(staticScrimBrush),
+                )
+                Box(
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .graphicsLayer { alpha = canvasScrimReveal }
+                            .background(canvasScrimBrush),
+                )
+            }
         }
 
         if (landscape) {
@@ -794,11 +865,18 @@ fun AppleMusicPlayerContent(
                     // Non-canvas songs keep the hero-artwork + title column.
                     val landscapeCanvasFullBleed = canvasActive && !videoShowing
                     if (landscapeCanvasFullBleed) {
+                        // The canvas runs FULL-BLEED: no bottom padding — the
+                        // loop reaches the very bottom of the half instead of
+                        // stopping short and leaving an empty band where only
+                        // the blurred backdrop showed. The title scrim keeps
+                        // clearing the queue strip on its own.
                         Box(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
-                                    .padding(bottom = contentBottomPadding),
+                                    // Horizontal swipe (landscape): left = next,
+                                    // right = previous — matching Apple Music.
+                                    .then(landscapeSwipeModifier),
                         ) {
                             AppleMusicSharpArtwork(
                                 artworkRequest = artworkRequest,
@@ -811,7 +889,9 @@ fun AppleMusicPlayerContent(
                                 isMusicVideo = mediaMetadata.isMusicVideo,
                                 landscape = true,
                                 landscapeCanvasFullBleed = true,
-                                fadeRightEdge = false,
+                                // The right edge dissolves into the lyrics
+                                // half — the hard rectangle line is gone.
+                                fadeRightEdge = true,
                                 artworkCornerRadiusDp = artworkCornerRadiusDp,
                                 canvasLoopSync = canvasLoopSync,
                                 modifier = Modifier.fillMaxSize(),
@@ -825,6 +905,7 @@ fun AppleMusicPlayerContent(
                                     Modifier
                                         .align(Alignment.BottomCenter)
                                         .fillMaxWidth()
+                                        .padding(bottom = contentBottomPadding)
                                         .background(
                                             Brush.verticalGradient(
                                                 0f to Color.Transparent,
@@ -873,7 +954,8 @@ fun AppleMusicPlayerContent(
                                     .weight(1f)
                                     .fillMaxWidth()
                                     .padding(top = 32.dp)
-                                    .padding(horizontal = 16.dp),
+                                    .padding(horizontal = 16.dp)
+                                    .then(landscapeSwipeModifier),
                             contentAlignment = Alignment.Center,
                         ) {
                             AppleMusicSharpArtwork(
@@ -1393,12 +1475,26 @@ private fun AppleMusicSharpArtwork(
                 }
             }
         } else {
-            AsyncImage(
-                model = artworkRequest ?: artworkUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.matchParentSize(),
-            )
+            Box(modifier = Modifier.matchParentSize()) {
+                AsyncImage(
+                    model = artworkRequest ?: artworkUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize(),
+                )
+                // Full-bleed canvas mode: the static cover sits BEHIND the FIT
+                // canvas as a dimmed base layer, so the loop's letterbox and
+                // dissolved edges read as part of the scene instead of a
+                // mismatched thumbnail shining through.
+                if (hasCanvas && landscapeCanvasFullBleed) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .matchParentSize()
+                                .background(Color.Black.copy(alpha = 0.55f)),
+                    )
+                }
+            }
         }
 
         if (showCanvas && !showVideo &&

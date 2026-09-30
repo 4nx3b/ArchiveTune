@@ -15,6 +15,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +42,14 @@ import com.kyant.backdrop.Backdrop
  * touching the background pipeline itself.
  */
 val NavigationBarGlassGlowKey = booleanPreferencesKey("navigationBarGlassGlow")
+
+/**
+ * The global expanded -> compact bottom-control animation progress (0f = fully
+ * expanded bars, 1f = compact [Home][pill][Search] row). Screens read this to
+ * fade their own bottom chrome — e.g. the search-results overlay minimises into
+ * the compact Search circle while scrolling.
+ */
+val LocalBottomUiCompactFraction = compositionLocalOf { 0f }
 
 /** Size of the standalone compact control circles ([Home] / [Search]). */
 val CompactControlSize = 64.dp

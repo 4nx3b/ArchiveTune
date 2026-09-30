@@ -174,7 +174,7 @@ fun AlbumScreen(
 
     val liquidGlassEnabled by rememberPreference(
         key = LiquidGlassEnabledKey,
-        defaultValue = false,
+        defaultValue = true,
     )
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S

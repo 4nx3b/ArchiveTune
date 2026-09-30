@@ -582,6 +582,7 @@ fun LibraryAlbumsScreen(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
+                                    .animateItem()
                                     .clip(RoundedCornerShape(28.dp))
                                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
                                     .combinedClickable(

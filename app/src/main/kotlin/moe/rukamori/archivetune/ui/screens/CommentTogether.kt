@@ -12,6 +12,7 @@
 
 package moe.rukamori.archivetune.ui.screens
 
+import androidx.activity.compose.BackHandler
 import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -1119,6 +1120,13 @@ private fun ChatOverflowMenuPopup(
     val scope = rememberCoroutineScope()
 
     var dismissed by remember { mutableStateOf(false) }
+
+    // The popup must answer the back gesture itself; without this the swipe
+    // fell through to the player sheet / navigation below and the popup looked
+    // impossible to dismiss with the gesture.
+    BackHandler(enabled = !dismissed) {
+        dismissed = true
+    }
     val scaleAnim = remember { Animatable(0.4f) }
     val alphaAnim = remember { Animatable(0f) }
 

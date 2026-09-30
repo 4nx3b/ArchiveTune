@@ -118,9 +118,7 @@ import moe.rukamori.archivetune.constants.NavigationBarCornerRadiusKey
 import moe.rukamori.archivetune.constants.NavigationBarHeight
 import moe.rukamori.archivetune.constants.NavigationBarHeightKey
 import moe.rukamori.archivetune.constants.NavigationBarLabelSpacingKey
-import moe.rukamori.archivetune.constants.NavigationBarMaxWidth
 import moe.rukamori.archivetune.constants.NavigationBarOpacityKey
-import moe.rukamori.archivetune.constants.NavigationBarStyle
 import moe.rukamori.archivetune.constants.NavigationBarTransparencyKey
 import moe.rukamori.archivetune.constants.NavigationBarWidthKey
 import moe.rukamori.archivetune.ui.screens.Screens
@@ -162,9 +160,6 @@ private const val TintFrostedContentBlend = 0.55f
 
 private const val TintedDarkContentBlend = 0.45f
 
-private val NavigationIndicatorWidth = 56.dp
-private val NavigationIndicatorHeight = 32.dp
-
 private val FloatingNavigationIndicatorWidth = 64.dp
 private val FloatingNavigationIndicatorHeight = 42.dp
 
@@ -178,7 +173,6 @@ fun FloatingNavigationToolbar(
     pureBlack: Boolean,
     modifier: Modifier = Modifier,
     isPairedWithMiniPlayer: Boolean = false,
-    style: NavigationBarStyle = NavigationBarStyle.DEFAULT,
     frostedBlur: Boolean = false,
     tintFrostedBlur: Boolean = false,
     frostedBackdrop: NavigationBarBackdrop? = null,
@@ -189,8 +183,6 @@ fun FloatingNavigationToolbar(
     onItemClick: (Screens, Boolean) -> Unit,
     onSearchItemDoubleClick: (() -> Unit)? = null,
 ) {
-    val isFloating = style == NavigationBarStyle.FLOATING
-
     val isDarkScheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
     val tintedNavBarBaseColor =
@@ -225,6 +217,7 @@ fun FloatingNavigationToolbar(
     val canBlurBackdrop = frostedBlur && !tintFrostedBlur && frostedBackdrop != null && !isPreS
 
     val canLiquidGlass = liquidGlass && liquidGlassBackdrop != null && !isPreS
+    val glassTuning = LocalLiquidGlassTuning.current
     val resolvedBarHeight =
         if (canLiquidGlass) SukiSUBarHeight else NavigationBarHeight * navBarHeightMultiplier
 
@@ -235,19 +228,10 @@ fun FloatingNavigationToolbar(
         if (canLiquidGlass) {
             RoundedCornerShape(percent = 50)
         } else {
-            remember(isPairedWithMiniPlayer, isFloating, navBarCornerRadius) {
-                when {
-                    isFloating -> RoundedCornerShape(navBarCornerRadius.dp)
-                    isPairedWithMiniPlayer ->
-                        RoundedCornerShape(
-                            topStart = 12.dp,
-                            topEnd = 12.dp,
-                            bottomStart = navBarCornerRadius.dp,
-                            bottomEnd = navBarCornerRadius.dp,
-                        )
-                    else -> null
-                }
-            } ?: MaterialTheme.shapes.extraLarge
+            remember(isPairedWithMiniPlayer, navBarCornerRadius) {
+                // The floating bar is always round-cornered now.
+                RoundedCornerShape(navBarCornerRadius.dp)
+            }
         }
     val navigationContainerColor =
         if (canLiquidGlass) {
@@ -281,15 +265,12 @@ fun FloatingNavigationToolbar(
         when {
             canLiquidGlass -> Color.Transparent
 
-            tintFrostedBlur && !isFloating ->
-
-                if (isDarkScheme) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.12f)
-            isFloating -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
+            else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
             pureBlack -> Color.White.copy(alpha = 0.16f)
             else -> MaterialTheme.colorScheme.secondaryContainer
         }
-    val indicatorWidth = if (isFloating) FloatingNavigationIndicatorWidth else NavigationIndicatorWidth
-    val indicatorHeight = if (isFloating) FloatingNavigationIndicatorHeight else NavigationIndicatorHeight
+    val indicatorWidth = FloatingNavigationIndicatorWidth
+    val indicatorHeight = FloatingNavigationIndicatorHeight
 
     val itemColors =
         when {
@@ -311,7 +292,7 @@ fun FloatingNavigationToolbar(
                     unselectedTextColor = glassUnselectedColor,
                 )
             }
-            isFloating ->
+            else ->
                 ShortNavigationBarItemDefaults.colors(
                     selectedIndicatorColor = Color.Transparent,
                     selectedIconColor = MaterialTheme.colorScheme.primary,
@@ -507,8 +488,8 @@ fun FloatingNavigationToolbar(
         Box(
             modifier =
                 Modifier
-                    .widthIn(max = if (isFloating) FloatingNavigationBarMaxWidth else NavigationBarMaxWidth)
-                    .fillMaxWidth(if (isFloating) navBarWidthFraction.coerceIn(0.5f, 1f) else 1f)
+                    .widthIn(max = FloatingNavigationBarMaxWidth)
+                    .fillMaxWidth(navBarWidthFraction.coerceIn(0.5f, 1f))
                     .height(resolvedBarHeight),
             contentAlignment = Alignment.CenterStart,
         ) {
@@ -556,7 +537,7 @@ fun FloatingNavigationToolbar(
             shape = navigationShape,
             color = navigationContainerColor,
             tonalElevation = if (canLiquidGlass) 0.dp else NavigationBarDefaults.Elevation,
-            shadowElevation = if (canLiquidGlass) 0.dp else if (isFloating) 8.dp else NavigationBarDefaults.Elevation,
+            shadowElevation = if (canLiquidGlass) 0.dp else (8f * glassTuning.shadowFactor).dp,
         ) {
             if (canBlurBackdrop && frostedBackdrop != null) {
                 if (isPreS) {
@@ -885,13 +866,13 @@ fun FloatingNavigationToolbar(
                             .drawBackdrop(
                                 backdrop = liquidGlassBackdrop,
                                 effects = {
-                                    colorControls(saturation = 1.7f)
-                                    blur(4f.dp.toPx())
+                                    colorControls(saturation = glassTuning.saturation)
+                                    blur((4f * glassTuning.blurFactor).dp.toPx())
                                     lens(
-                                        refractionHeight = 28f.dp.toPx(),
-                                        refractionAmount = size.minDimension / 3.2f,
-                                        depthEffect = true,
-                                        chromaticAberration = false,
+                                        refractionHeight = (28f * glassTuning.refractionHeightFactor).dp.toPx(),
+                                        refractionAmount = size.minDimension * (glassTuning.refractionAmountFactor / 3.2f),
+                                        depthEffect = glassTuning.depth3D,
+                                        chromaticAberration = glassTuning.chromaticAberration,
                                     )
                                 },
                                 onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
@@ -904,10 +885,10 @@ fun FloatingNavigationToolbar(
                                     val progress = dragAnim.pressProgress
 
                                     val tintColor = if (isDark) Color.Black else Color.White
-                                    val restAlpha = if (isDark) 0.28f else 0.1f
+                                    val restAlpha = (if (isDark) 0.28f else 0.1f) * glassTuning.tintFactor
                                     drawRect(
                                         color = tintColor,
-                                        alpha = restAlpha * (1f - progress),
+                                        alpha = (restAlpha * (1f - progress)).coerceIn(0f, 1f),
                                     )
                                     drawRect(
                                         color = Color.Black,

@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.screens.search
 
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -63,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
@@ -83,6 +85,7 @@ import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlass
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
+import moe.rukamori.archivetune.ui.component.LocalBottomUiCompactFraction
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -104,7 +107,7 @@ class SearchResultsBarState(
 
 @Composable
 fun rememberSearchResultsBarState(): SearchResultsBarState {
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
     val surfaceColor = MaterialTheme.colorScheme.surface
 
@@ -196,6 +199,11 @@ fun BoxScope.SearchResultsBottomOverlay(
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val effectiveBottomPadding = (if (imeVisible) 0.dp else bottomPadding) + 10.dp
 
+    // While the global bottom controls are compact ([Home][pill][Search]) the
+    // whole overlay minimises with them — the compact Search circle takes over
+    // the search affordance, so this bar sinks out of the way in sync.
+    val compactFraction = LocalBottomUiCompactFraction.current
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier =
@@ -203,6 +211,10 @@ fun BoxScope.SearchResultsBottomOverlay(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .imePadding()
+                .graphicsLayer {
+                    alpha = 1f - compactFraction
+                    translationY = compactFraction * 96.dp.toPx()
+                }
                 .padding(start = 12.dp, end = 12.dp, bottom = effectiveBottomPadding),
     ) {
         AnimatedVisibility(
@@ -557,6 +569,134 @@ fun SearchResultsSortMenu(
                     },
                 )
             }
+        }
+    }
+}
+
+
+/**
+ * The header of the search-results page: a translucent liquid-glass
+ * "< Search" pill, the query as a LARGE bold title and the category pills
+ * row beneath it — all part of the normal content flow (no opaque app bar).
+ */
+@Composable
+fun SearchResultsTopHeader(
+    state: SearchResultsBarState,
+    query: String,
+    onBack: () -> Unit,
+    onBackLongClick: () -> Unit = {},
+    chipsRow: (@Composable () -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+    ) {
+        // Translucent liquid-glass "< Search" back pill.
+        val backdrop = state.backdrop
+        val glassColor = if (backdrop != null) liquidGlassContentColor() else MaterialTheme.colorScheme.onSurface
+        val pillShape = RoundedCornerShape(22.dp)
+        val pillModifier =
+            if (backdrop != null) {
+                Modifier.liquidGlass(
+                    backdrop = backdrop,
+                    shape = pillShape,
+                    interactive = true,
+                )
+            } else {
+                Modifier.background(MaterialTheme.colorScheme.surfaceContainerLow, pillShape)
+            }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
+            modifier =
+                pillModifier
+                    .clickable(onClick = onBack)
+                    .padding(start = 8.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.arrow_back),
+                contentDescription = stringResource(R.string.back_button_desc),
+                tint = glassColor,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = stringResource(R.string.search),
+                style = MaterialTheme.typography.titleMedium,
+                color = glassColor,
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        // The searched query as a large bold title.
+        Text(
+            text = query,
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+
+        if (chipsRow != null) {
+            Spacer(Modifier.height(14.dp))
+            chipsRow()
+        }
+
+        Spacer(Modifier.height(10.dp))
+    }
+}
+
+/**
+ * Horizontally scrollable SOLID category pills for the results header. These
+ * are deliberately flat/tonal — NO liquid glass — contrasting with the glass
+ * back pill above them.
+ */
+@Composable
+fun <E> SolidFilterChipsRow(
+    chips: List<Pair<E, String>>,
+    currentValue: E,
+    onValueUpdate: (E) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val selectedContainer = MaterialTheme.colorScheme.primary
+    val selectedContent = MaterialTheme.colorScheme.onPrimary
+    val unselectedContainer = MaterialTheme.colorScheme.surfaceContainerLow
+    val unselectedContent = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+    ) {
+        Spacer(Modifier.width(2.dp))
+        chips.forEach { (value, label) ->
+            val selected = currentValue == value
+            val shape = RoundedCornerShape(18.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier =
+                    Modifier
+                        .padding(vertical = 2.dp)
+                        .background(
+                            color = if (selected) selectedContainer else unselectedContainer,
+                            shape = shape,
+                        )
+                        .clickable { onValueUpdate(value) }
+                        .padding(horizontal = 16.dp, vertical = 9.dp),
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (selected) selectedContent else unselectedContent,
+                    maxLines = 1,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
         }
     }
 }

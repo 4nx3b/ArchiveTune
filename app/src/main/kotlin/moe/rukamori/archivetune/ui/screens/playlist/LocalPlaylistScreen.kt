@@ -192,7 +192,7 @@ fun LocalPlaylistScreen(
     var locked by rememberPreference(PlaylistEditLockKey, defaultValue = true)
     val swipeToSongEnabled by rememberPreference(SwipeToSongKey, defaultValue = true)
 
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 

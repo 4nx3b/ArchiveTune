@@ -7,6 +7,8 @@
 
 package moe.rukamori.archivetune.ui.menu
 
+import moe.rukamori.archivetune.ui.component.LocalLiquidGlassTuning
+import androidx.activity.compose.BackHandler
 import android.app.SearchManager
 import android.content.Intent
 import android.content.res.Configuration
@@ -1854,6 +1856,13 @@ fun AnchoredLyricsOverflowMenu(
 ) {
     var dismissed by remember { mutableStateOf(false) }
 
+    // The popup must answer the back gesture itself; without this the swipe
+    // fell through to the player sheet / navigation below and the popup looked
+    // impossible to dismiss with the gesture.
+    BackHandler(enabled = !dismissed) {
+        dismissed = true
+    }
+
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
 
@@ -1921,19 +1930,22 @@ fun AnchoredLyricsOverflowMenu(
             iconBoundsInRoot.bottom + verticalOffsetPx + neededHeightPx > anchorSpaceHeightPx
     }
 
-    val frostedBlurModifier = remember(backdrop) {
+    val glassTuning = LocalLiquidGlassTuning.current
+    val frostedBlurModifier = remember(backdrop, glassTuning) {
         if (backdrop != null) {
             Modifier.drawBackdrop(
                 backdrop = backdrop,
                 effects = {
 
-                    colorControls(saturation = 1.7f)
+                    colorControls(saturation = glassTuning.saturation)
 
-                    blur(20f.dp.toPx())
+                    blur((20f * glassTuning.blurFactor).dp.toPx())
 
                     lens(
-                        refractionHeight = 16f.dp.toPx(),
-                        refractionAmount = 40f.dp.toPx(),
+                        refractionHeight = (16f * glassTuning.refractionHeightFactor).dp.toPx(),
+                        refractionAmount = (40f * glassTuning.refractionAmountFactor).dp.toPx(),
+                        depthEffect = glassTuning.depth3D,
+                        chromaticAberration = glassTuning.chromaticAberration,
                     )
                 },
                 onDrawBackdrop = { drawBackdrop ->

@@ -123,6 +123,41 @@ val MiniPlayerBackgroundStyleKey = stringPreferencesKey("miniPlayerBackgroundSty
 val LiquidGlassEnabledKey = booleanPreferencesKey("liquidGlassEnabled")
 val LiquidGlassNavBarEnabledKey = booleanPreferencesKey("liquidGlassNavBarEnabled")
 
+// ── Liquid glass fine tuning (the "Liquid Glass" appearance sub-page) ──────
+// Every value is a percentage knob over the renderer's tuned baseline, so the
+// factory defaults below reproduce the stock look exactly.
+enum class LiquidGlassIntensity { SUBTLE, STANDARD, VIVID }
+
+val LiquidGlassIntensityKey = stringPreferencesKey("liquidGlassIntensity")
+const val LIQUID_GLASS_INTENSITY_DEFAULT = "STANDARD"
+
+val LiquidGlassRefractionHeightKey = floatPreferencesKey("liquidGlassRefractionHeight")
+const val LIQUID_GLASS_REFRACTION_HEIGHT_DEFAULT = 0.30f
+
+val LiquidGlassRefractionAmountKey = floatPreferencesKey("liquidGlassRefractionAmount")
+const val LIQUID_GLASS_REFRACTION_AMOUNT_DEFAULT = 0.75f
+
+val LiquidGlassBlurRadiusKey = floatPreferencesKey("liquidGlassBlurRadius")
+const val LIQUID_GLASS_BLUR_RADIUS_DEFAULT = 0.65f
+
+val LiquidGlassTintOpacityKey = floatPreferencesKey("liquidGlassTintOpacity")
+const val LIQUID_GLASS_TINT_OPACITY_DEFAULT = 1.40f
+
+val LiquidGlassShadowDepthKey = floatPreferencesKey("liquidGlassShadowDepth")
+const val LIQUID_GLASS_SHADOW_DEPTH_DEFAULT = 0.45f
+
+val LiquidGlassDepth3DKey = booleanPreferencesKey("liquidGlassDepth3D")
+const val LIQUID_GLASS_DEPTH_3D_DEFAULT = true
+
+val LiquidGlassChromaticAberrationKey = booleanPreferencesKey("liquidGlassChromaticAberration")
+const val LIQUID_GLASS_CHROMATIC_ABERRATION_DEFAULT = true
+
+val LiquidGlassBackdropVibrancyKey = booleanPreferencesKey("liquidGlassBackdropVibrancy")
+const val LIQUID_GLASS_BACKDROP_VIBRANCY_DEFAULT = true
+
+val LiquidGlassAdaptiveLuminanceKey = booleanPreferencesKey("liquidGlassAdaptiveLuminance")
+const val LIQUID_GLASS_ADAPTIVE_LUMINANCE_DEFAULT = true
+
 enum class AodThumbnailShape {
     ROUNDED,
     SQUARE,
@@ -989,12 +1024,8 @@ enum class MiniPlayerBackgroundStyle {
     LIQUID_GLASS,
 }
 
-enum class NavigationBarStyle {
-    DEFAULT,
-    FLOATING,
-}
-
-val NavigationBarStyleKey = stringPreferencesKey("navigationBarStyle")
+// NavigationBarStyle was removed: the bar is always the floating variant now.
+// The legacy "navigationBarStyle" DataStore entry is simply ignored.
 
 val NavigationBarFrostedBlurKey = booleanPreferencesKey("navigationBarFrostedBlur")
 
