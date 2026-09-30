@@ -275,7 +275,7 @@ fun YouTubeSongMenu(
                             val queueArtist = window.mediaItem?.mediaMetadata?.artist
                             if (!queueArtist.isNullOrBlank()) {
                                 Text(
-                                    text = queueArtist,
+                                    text = queueArtist.toString(),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )

@@ -87,7 +87,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.IntSize
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -105,7 +104,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.toIntSize
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.util.fastForEachIndexed
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -209,7 +210,7 @@ import java.util.Locale
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.layer.GraphicsLayer
-import androidx.compose.ui.graphics.layer.rememberGraphicsLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -1813,6 +1814,7 @@ private fun ArtistCircleItem(
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val artworkUrl = item.thumbnail
     Column(
         modifier =
             modifier
@@ -1821,10 +1823,10 @@ private fun ArtistCircleItem(
                 .padding(horizontal = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (item.thumbnail != null) {
+        if (artworkUrl != null) {
             AsyncImage(
                 model =
-                    item.thumbnail.resize(
+                    artworkUrl.resize(
                         width = ArtistCircleArtworkSizePx,
                         height = ArtistCircleArtworkSizePx,
                         ytimgResizePolicy = YtimgResizePolicy.PreserveOriginal,
