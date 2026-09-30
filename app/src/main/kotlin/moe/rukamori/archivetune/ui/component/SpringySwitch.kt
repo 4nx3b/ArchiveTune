@@ -15,8 +15,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -26,8 +24,6 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -197,47 +193,4 @@ fun SpringySwitch(
             }
         }
     }
-}
-
-/**
- * A drop-in animated replacement for the plain Material [Switch] used across
- * the settings surfaces — keeps the familiar Material look (icon-ed thumb)
- * but adds the spring travel + stretch of [SpringySwitch] through a custom
- * track behind it.
- */
-@Composable
-fun AnimatedMaterialSwitch(
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    enabled: Boolean = true,
-) {
-    Switch(
-        checked = checked,
-        onCheckedChange = onCheckedChange,
-        enabled = enabled,
-        thumbContent = {
-            AnimatedContent(
-                targetState = checked,
-                transitionSpec = {
-                    (fadeIn(tween(140)) togetherWith fadeOut(tween(90)))
-                },
-                label = "switchThumbIcon",
-            ) { isChecked ->
-                Icon(
-                    painter = painterResource(if (isChecked) R.drawable.check else R.drawable.close),
-                    contentDescription = null,
-                    modifier = Modifier.size(SwitchDefaults.IconSize),
-                )
-            }
-        },
-        colors =
-            androidx.compose.material3.SwitchDefaults.colors(
-                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                checkedTrackColor = MaterialTheme.colorScheme.primary,
-                checkedIconColor = MaterialTheme.colorScheme.primary,
-                uncheckedThumbColor = MaterialTheme.colorScheme.onSurface,
-                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                uncheckedIconColor = MaterialTheme.colorScheme.surfaceVariant,
-            ),
-    )
 }
