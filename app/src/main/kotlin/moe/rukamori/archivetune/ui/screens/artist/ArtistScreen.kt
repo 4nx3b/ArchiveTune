@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.screens.artist
 
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.draw.clipToBounds
 import moe.rukamori.archivetune.ui.theme.BackdropTonePalette
 import android.content.ClipData
@@ -981,16 +982,15 @@ fun ArtistScreen(
                                 // from the ambient palette (theme primary when
                                 // no palette exists).
                                 val playButtonColor =
-                                    ambientStops
-                                        .firstOrNull()
-                                        ?.takeIf { ambientSource != null }
-                                        ?.let { color ->
-                                            if (isDarkTheme) {
-                                                lerp(color, Color.White, 0.12f)
-                                            } else {
-                                                lerp(color, Color.Black, 0.08f)
-                                            }
-                                        } ?: MaterialTheme.colorScheme.primary
+                                    ambientSource?.let {
+                                        animatedAmbientTop
+                                    }?.let { color ->
+                                        if (isDarkTheme) {
+                                            lerp(color, Color.White, 0.12f)
+                                        } else {
+                                            lerp(color, Color.Black, 0.08f)
+                                        }
+                                    } ?: MaterialTheme.colorScheme.primary
                                 val playIconColor =
                                     if (playButtonColor.luminance() > 0.5f) Color.Black else Color.White
                                 val canPlay =

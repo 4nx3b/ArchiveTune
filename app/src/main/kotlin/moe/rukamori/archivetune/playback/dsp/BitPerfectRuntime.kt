@@ -122,14 +122,24 @@ object BitPerfectRuntime {
         } else if (audioManager == null) {
             failure = "AudioManager unavailable"
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Verified against AOSP AudioPolicyManager::getDirectPlaybackSupport:
+            // a PCM profile that matches the format/rate/channels under the
+            // DIRECT output flag reports AUDIO_DIRECT_BITSTREAM_SUPPORTED —
+            // despite the name, that flag is what a direct PCM path sets.
             val channelConfig =
                 if (channels == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
-            direct =
+            val queryFormat =
+                AudioFormat.Builder()
+                    .setEncoding(inputEncoding)
+                    .setSampleRate(inputSampleRate)
+                    .setChannelMask(channelConfig)
+                    .build()
+            val flags =
                 runCatching {
                     @Suppress("NewApi") // guarded by SDK_INT
-                    audioManager.getDirectPlaybackSupport(inputEncoding, inputSampleRate, channelConfig, AUDIO_ATTRIBUTES_MUSIC) ==
-                        AudioManager.DIRECT_PLAYBACK_SUPPORTED
-                }.getOrDefault(false)
+                    AudioManager.getDirectPlaybackSupport(queryFormat, AUDIO_ATTRIBUTES_MUSIC)
+                }.getOrDefault(AudioManager.DIRECT_PLAYBACK_NOT_SUPPORTED)
+            direct = (flags and AudioManager.DIRECT_PLAYBACK_BITSTREAM_SUPPORTED) != 0
             if (!direct) {
                 // The route cannot carry this exact format — normal fallback
                 // plays instead; never silently label it bit-perfect.
@@ -257,8 +267,8 @@ object BitPerfectRuntime {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
         return runCatching {
             @Suppress("NewApi") // guarded by SDK_INT
-            audioManager.getPreferredMixerAttributes(device).mixerBehavior ==
-                AudioMixerAttributes.MIXER_BEHAVIOR_BIT_PERFECT
+            val preferred = audioManager.getPreferredMixerAttributes(AUDIO_ATTRIBUTES_MUSIC, device)
+            preferred != null && preferred.mixerBehavior == AudioMixerAttributes.MIXER_BEHAVIOR_BIT_PERFECT
         }.getOrDefault(false)
     }
 

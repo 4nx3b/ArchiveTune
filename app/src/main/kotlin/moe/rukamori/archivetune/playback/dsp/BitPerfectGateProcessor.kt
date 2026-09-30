@@ -45,8 +45,6 @@ class BitPerfectGateProcessor(
         this.silenceSkippingAudioProcessor = silenceSkippingAudioProcessor
     }
 
-    override fun getName(): String = "BitPerfectGate"
-
     /**
      * Never active — an inactive processor is routed around entirely, so no
      * byte of decoder PCM is copied through this gate. The evaluation is the
