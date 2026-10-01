@@ -492,27 +492,37 @@ private fun RecentSearchRow(
         }
     }
 
+    // The swipe background only renders once the drag crosses the dismiss
+    // anchor: at rest the row is fully transparent (no card, no delete icon),
+    // and the icon appears exactly while the row is being swiped toward the
+    // direction that deletes it.
+    val swipeRevealed =
+        dismissState.targetValue == SwipeToDismissBoxValue.EndToStart ||
+            dismissState.currentValue == SwipeToDismissBoxValue.EndToStart
+
     SwipeToDismissBox(
         state = dismissState,
         backgroundContent = {
-            val onError = MaterialTheme.colorScheme.error
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(onError.copy(alpha = 0.18f)),
-                contentAlignment = Alignment.CenterEnd,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.delete),
-                    contentDescription = null,
-                    tint = onError,
+            if (swipeRevealed) {
+                val onError = MaterialTheme.colorScheme.error
+                Box(
                     modifier =
                         Modifier
-                            .padding(end = 20.dp)
-                            .size(22.dp),
-                )
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(onError.copy(alpha = 0.18f)),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.delete),
+                        contentDescription = null,
+                        tint = onError,
+                        modifier =
+                            Modifier
+                                .padding(end = 20.dp)
+                                .size(22.dp),
+                    )
+                }
             }
         },
         enableDismissFromStartToEnd = false,

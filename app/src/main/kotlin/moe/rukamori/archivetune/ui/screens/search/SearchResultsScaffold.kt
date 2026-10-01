@@ -5,7 +5,7 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package moe.rukamori.archivetune.ui.screens.search
 
@@ -25,6 +25,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -90,14 +91,12 @@ import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.component.LocalBottomUiCompactFraction
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
-import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.OnlineSearchSort
 import android.os.Build
 
 @Stable
 class SearchResultsBarState(
-    val liquidGlassActive: Boolean,
     val backdrop: Backdrop?,
     val haze: HazeState,
 )
@@ -105,7 +104,6 @@ class SearchResultsBarState(
 @Composable
 fun rememberSearchResultsBarState(): SearchResultsBarState {
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
-    val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
     val surfaceColor = MaterialTheme.colorScheme.surface
 
     val backdrop = rememberThrottledBackdrop(surfaceColor)
@@ -113,15 +111,11 @@ fun rememberSearchResultsBarState(): SearchResultsBarState {
     val available =
         liquidGlassEnabled &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    // Same invariant as rememberGlassScreenHeader(): the RECORDER stays attached
-    // for as long as liquid glass is available - only the pill visibility flag
-    // is gated on lyrics fullscreen. Detaching the recorder during lyrics and
-    // re-attaching it afterwards relied entirely on the re-attach tick to make
-    // every pill redraw; when that miss fired the pills kept their last (fully
-    // faded) frame and appeared invisible while remaining clickable.
-    val active = available && !lyricsFullScreen
+    // The recorder stays attached for as long as liquid glass is available so
+    // the bottom chrome keeps a live layer across lyrics fullscreen and player
+    // sheet transitions; re-attaching it relied on the re-attach tick, which
+    // could leave the pills keeping their last (faded) frame.
     return SearchResultsBarState(
-        liquidGlassActive = active,
         backdrop = if (available) backdrop else null,
         haze = haze,
     )
@@ -139,7 +133,6 @@ fun Modifier.searchResultsBarSource(state: SearchResultsBarState): Modifier =
 
 fun moe.rukamori.archivetune.ui.screens.GlassScreenHeader.toSearchResultsBarState(): SearchResultsBarState =
     SearchResultsBarState(
-        liquidGlassActive = liquidGlassActive,
         backdrop = backdrop,
         haze = haze,
     )
@@ -561,7 +554,6 @@ fun SearchResultsSortMenu(
 
 @Composable
 fun SearchResultsTopHeader(
-    state: SearchResultsBarState,
     query: String,
     onBack: () -> Unit,
     onBackLongClick: () -> Unit = {},
@@ -569,43 +561,38 @@ fun SearchResultsTopHeader(
     chipsRow: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    // This header lives INSIDE the results LazyColumn (list item 0): it scrolls
+    // away with the content, is laid out by the list itself and can never end
+    // up as reserved-but-invisible space. The back pill deliberately uses the
+    // plain surface style: a liquid-glass pill consuming the recorder that
+    // records the list it sits in would self-record.
     Column(
         modifier =
             modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp),
     ) {
-        val backdrop = state.backdrop
-        val glassColor = if (backdrop != null) liquidGlassContentColor() else MaterialTheme.colorScheme.onSurface
         val pillShape = RoundedCornerShape(22.dp)
         val pillModifier =
-            if (backdrop != null) {
-                Modifier.liquidGlass(
-                    backdrop = backdrop,
-                    shape = pillShape,
-                    interactive = true,
-                )
-            } else {
-                Modifier.background(MaterialTheme.colorScheme.surfaceContainerLow, pillShape)
-            }
+            Modifier.background(MaterialTheme.colorScheme.surfaceContainerLow, pillShape)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
             modifier =
                 pillModifier
-                    .clickable(onClick = onBack)
+                    .combinedClickable(onClick = onBack, onLongClick = onBackLongClick)
                     .padding(start = 8.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
         ) {
             Icon(
                 painter = painterResource(R.drawable.arrow_back),
                 contentDescription = stringResource(R.string.back_button_desc),
-                tint = glassColor,
+                tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.size(20.dp),
             )
             Text(
                 text = stringResource(R.string.search),
                 style = MaterialTheme.typography.titleMedium,
-                color = glassColor,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
 
