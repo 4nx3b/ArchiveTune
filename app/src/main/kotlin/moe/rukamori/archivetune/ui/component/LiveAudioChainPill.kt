@@ -31,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -47,7 +48,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.C
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.playback.dsp.AudioEngineRouterProcessor
 import moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime
@@ -71,16 +74,24 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
     val status = BitPerfectRuntime.status
     val context = LocalContext.current
 
+    // HAL/route probes talk to the audio service over binder; reading them on the
+    // main thread every second caused recurring micro-jank while the pill is up.
     var pollTick by remember { mutableIntStateOf(0) }
+    var halRateHzValue by remember { mutableIntStateOf(0) }
+    var routedLabelValue by remember { mutableStateOf("Android Mixer") }
     LaunchedEffect(Unit) {
         while (true) {
-            delay(1_000L)
+            withContext(Dispatchers.IO) {
+                halRateHzValue = readHalSampleRateHz(context) ?: 0
+                routedLabelValue = readRoutedOutputLabel(context)
+            }
             pollTick++
+            delay(1_000L)
         }
     }
     val runtime = EngineRuntime
-    val halRateHz = remember(pollTick) { readHalSampleRateHz(context) }
-    val routedLabel = remember(pollTick) { readRoutedOutputLabel(context) }
+    val halRateHz = halRateHzValue.takeIf { it > 0 }
+    val routedLabel = routedLabelValue
     val usbExclusive = remember(pollTick) { runtime.usbExclusiveActive }
     val tryptifyPinActive = remember(pollTick) { runtime.tryptifyUsbPinActive }
     val engine = remember(pollTick) { runtime.activeEngine }

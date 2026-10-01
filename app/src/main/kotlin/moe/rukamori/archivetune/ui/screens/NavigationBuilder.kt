@@ -127,7 +127,6 @@ fun NavGraphBuilder.navigationBuilder(
     onSearchQuery: (String) -> Unit = {},
     onVoiceSearch: () -> Unit = {},
     homeListState: LazyListState? = null,
-    searchListState: LazyListState? = null,
     homeScrollConnection: NestedScrollConnection? = null,
     searchScrollConnection: NestedScrollConnection? = null,
     onlineSearchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,

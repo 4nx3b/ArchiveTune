@@ -1100,7 +1100,6 @@ class MainActivity : ComponentActivity() {
             ) {
                 val navController = rememberNavController()
                 val homeListState = rememberLazyListState()
-                val searchListState = rememberLazyListState()
                 val onboardingViewModel: OnboardingViewModel = hiltViewModel()
                 val onboardingState by onboardingViewModel.screenState.collectAsStateWithLifecycle()
                 var showOnboardingLogin by rememberSaveable { mutableStateOf(false) }
@@ -1460,7 +1459,7 @@ class MainActivity : ComponentActivity() {
                                 route == "library_playlists" ||
                                 route == "library_spotify_playlists" ||
                                 route == "library_artists" ||
-                                route.startsWith("playlist/") ||
+                                route.startsWith("local_playlist/") ||
                                 route.startsWith("auto_playlist/") ||
                                 route.startsWith("cache_playlist/") ||
                                 route.startsWith("spotify_playlist/") ||
@@ -3350,7 +3349,6 @@ class MainActivity : ComponentActivity() {
                                         onSearchQuery = onSearch,
                                         onVoiceSearch = launchVoiceSearch,
                                         homeListState = homeListState,
-                                        searchListState = searchListState,
                                         homeScrollConnection = homeScrollBehavior.nestedScrollConnection,
                                         searchScrollConnection = searchScrollBehavior.nestedScrollConnection,
                                         onlineSearchSort = onlineSearchSort,

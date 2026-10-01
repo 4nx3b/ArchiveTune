@@ -455,26 +455,15 @@ fun ArtistScreen(
 
                                     // The ambience mirrors the BOTTOM band of the
                                     // canvas so the wash connects to where the artwork
-                                    // hands over into the page gradient.
+                                    // hands over into the page gradient. Palette's
+                                    // region API avoids cropping bitmap copies per sample.
                                     val bandTop =
                                         (snapshot.height * CANVAS_AMBIENT_BAND_START).toInt()
-                                        .coerceIn(0, (snapshot.height - 2).coerceAtLeast(1))
-                                    val band =
-                                        if (bandTop in 0 until (snapshot.height - 1)) {
-                                            Bitmap.createBitmap(
-                                                snapshot,
-                                                0,
-                                                bandTop,
-                                                snapshot.width,
-                                                snapshot.height - bandTop,
-                                            )
-                                        } else {
-                                            snapshot
-                                        }
-                                    val small = Bitmap.createScaledBitmap(band, 24, 12, true)
+                                            .coerceIn(0, (snapshot.height - 2).coerceAtLeast(1))
                                     val palette =
                                         Palette
-                                            .from(small)
+                                            .from(snapshot)
+                                            .setRegion(0, bandTop, snapshot.width, snapshot.height)
                                             .maximumColorCount(8)
                                             .generate()
                                     val dominant = palette.dominantSwatch
@@ -2283,31 +2272,27 @@ private suspend fun extractAmbientArtworkColors(
 
     // Sample the BOTTOM band of the artist picture: the ambient wash should carry
     // the colour the artwork ends on, so the gradient connects to the artwork
-    // instead of its (often much brighter) dominant colour.
+    // instead of its (often much brighter) dominant colour. Palette's region API
+    // avoids cropping bitmap copies.
     val bandPalette =
         withContext(Dispatchers.Default) {
             val bandTop =
                 (bitmap.height * ARTWORK_AMBIENT_BAND_START).toInt()
                     .coerceIn(0, (bitmap.height - 2).coerceAtLeast(1))
-            val band =
-                if (bandTop in 0 until (bitmap.height - 1)) {
-                    runCatching {
-                        Bitmap.createBitmap(
-                            bitmap,
-                            0,
-                            bandTop,
-                            bitmap.width,
-                            bitmap.height - bandTop,
-                        )
-                    }.getOrDefault(bitmap)
-                } else {
-                    bitmap
-                }
-            Palette
-                .from(band)
-                .maximumColorCount(24)
-                .resizeBitmapArea(2000)
-                .generate()
+            runCatching {
+                Palette
+                    .from(bitmap)
+                    .setRegion(0, bandTop, bitmap.width, bitmap.height)
+                    .maximumColorCount(24)
+                    .resizeBitmapArea(2000)
+                    .generate()
+            }.getOrElse {
+                Palette
+                    .from(bitmap)
+                    .maximumColorCount(24)
+                    .resizeBitmapArea(2000)
+                    .generate()
+            }
         }
     val dominantSwatch = bandPalette.dominantSwatch
     val mutedSwatch = bandPalette.mutedSwatch

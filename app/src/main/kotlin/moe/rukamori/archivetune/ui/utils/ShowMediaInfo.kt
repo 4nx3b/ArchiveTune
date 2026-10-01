@@ -91,12 +91,14 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.Locale
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.audiosource.CurrentStreamInfo
@@ -1440,7 +1442,8 @@ class TrackInfoViewModel @Inject constructor(
             tryptifyUsbRateHz = poll.tryptifyUsbRateHz,
             tryptifyUsbBits = poll.tryptifyUsbBits,
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(POLL_INTERVAL_MS), null)
+    }.flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(POLL_INTERVAL_MS), null)
 
     private companion object {
         const val POLL_INTERVAL_MS = 1000L
