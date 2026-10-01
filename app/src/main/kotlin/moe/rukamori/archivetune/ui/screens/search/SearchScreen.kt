@@ -22,8 +22,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.onSizeChanged
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -175,7 +174,6 @@ fun SearchScreen(
                             .fillMaxSize()
                             .padding(top = chromeReserve)
                             .verticalScroll(rememberScrollState()),
-                    contentPadding = PaddingValues(bottom = listBottomPadding),
                 ) {
                 if (recentSearches.isEmpty()) {
                     Box(
@@ -258,7 +256,7 @@ fun SearchScreen(
                     }
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(listBottomPadding))
             }
             }
         }
