@@ -320,6 +320,18 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             isDebuggable = true
+            // R8 minified for every build (user request): debug artifacts ship
+            // the same shrinking/optimization pass as release so PR CI
+            // (assembleGmsMobileUniversalDebug) exercises the full proguard
+            // rule set and catches missing-class/missing-rule breakage before
+            // it reaches a release workflow. Line-number tables are kept via
+            // -keepattributes SourceFile,LineNumberTables for readable stacks.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             if (debugKeystoreFile.isFile) {
                 signingConfig = signingConfigs.getByName("debug")
             }

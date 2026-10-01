@@ -79,6 +79,10 @@
 -keepattributes *Annotation*
 -keepattributes EnclosingMethod
 -keepattributes InnerClasses
+# Keep line-number tables so stack traces from minified (now also debug)
+# builds remain readable; R8 writes the mapping file next to the APK.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
 ## Logging (does not affect Timber)
 -assumenosideeffects class android.util.Log {
