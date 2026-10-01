@@ -7,6 +7,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.AuxEffectInfo
 import androidx.media3.common.C
 import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.exoplayer.audio.AudioOffloadSupport
 import androidx.media3.exoplayer.audio.AudioOutputProvider
@@ -93,6 +94,16 @@ class BitPerfectSwitchingAudioSink(
         // Latch only after a successful configure so a ConfigurationException
         // never leaves the route pointing at a half-configured sink.
         configuredSink = target
+        // Mirror the latched route + the DECODED encoding the renderer handed
+        // us into EngineRuntime — the live chain pill reads these to report
+        // the actual output instead of a hardcoded guess.
+        EngineRuntime.bitPerfectSinkRouteActive = target === bitPerfectSink
+        if (inputFormat.sampleMimeType == MimeTypes.AUDIO_RAW &&
+            inputFormat.pcmEncoding != C.ENCODING_INVALID &&
+            inputFormat.pcmEncoding != Format.NO_VALUE
+        ) {
+            EngineRuntime.sinkDecodedEncoding = inputFormat.pcmEncoding
+        }
     }
 
     override fun play() = currentSink().play()

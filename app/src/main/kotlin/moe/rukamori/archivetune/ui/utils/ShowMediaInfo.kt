@@ -80,6 +80,7 @@ import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.ui.component.LiveAudioChainPill
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.utils.AudioOutputStats
 import moe.rukamori.archivetune.utils.AudioOutputStatsProvider
@@ -534,6 +535,14 @@ fun ShowMediaInfo(videoId: String) {
                             }
 
                             MediaInfoTab.Details -> {
+                                // ── The live audio chain pill: the real-time
+                                // signal-path trace (input container truth →
+                                // stage → actual wire output), pulsing and
+                                // shimmering while it reads the pipeline.
+                                if (isLiveTrack) {
+                                    LiveAudioChainPill(compact = true)
+                                }
+
                                 if (technicalDetails.isEmpty()) {
                                     MediaInfoExpressivePending(
                                         iconRes = R.drawable.solar_ruler,

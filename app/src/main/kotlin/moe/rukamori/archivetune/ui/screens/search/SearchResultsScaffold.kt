@@ -600,8 +600,9 @@ fun SearchResultsSortMenu(
 
 /**
  * The header of the search-results page: a translucent liquid-glass
- * "< Search" pill, the query as a LARGE bold title and the category pills
- * row beneath it — all part of the normal content flow (no opaque app bar).
+ * "< Search" pill, the query as a LARGE bold title, a compact info line and
+ * the category pills row beneath it — all part of the normal content flow
+ * (no opaque app bar).
  */
 @Composable
 fun SearchResultsTopHeader(
@@ -609,6 +610,7 @@ fun SearchResultsTopHeader(
     query: String,
     onBack: () -> Unit,
     onBackLongClick: () -> Unit = {},
+    infoLine: String? = null,
     chipsRow: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -664,6 +666,17 @@ fun SearchResultsTopHeader(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
+
+        if (infoLine != null) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = infoLine,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
 
         if (chipsRow != null) {
             Spacer(Modifier.height(14.dp))

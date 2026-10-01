@@ -61,7 +61,6 @@ import androidx.media3.common.Player.REPEAT_MODE_OFF
 import androidx.media3.common.Player.REPEAT_MODE_ONE
 import androidx.media3.common.Player.STATE_IDLE
 import androidx.media3.common.Timeline
-import androidx.media3.common.MimeTypes
 import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
@@ -10497,31 +10496,24 @@ class MusicService :
     }
 
     /**
-     * Mirrors the renderer's decoded format into the Bit-Perfect runtime so
-     * the status line (and the live audio chain pill) reflects the real depth
-     * reaching the sink — native PCM_24BIT from the codec, or the f32 pipe
-     * the float route engages. The evaluation is idempotent with the chain
-     * gate's own pass (same verdict inputs), it just sees the pre-ToInt16
-     * truth when the DSP route is active.
+     * Mirrors the renderer's input format into the Bit-Perfect runtime.
+     * This is the COMPRESSED track format — and crucially media3's FLAC
+     * extractor already parsed STREAMINFO into Format.pcmEncoding (the
+     * container's true bit depth: 16/24/32), and the WAV/AIFF extractors do
+     * the same. That is the INPUT truth the live chain pill must show; the
+     * chain-side evaluation separately records what the DECODER actually
+     * emits (the platform FLAC decoder truncates to 16-bit unless the float
+     * route negotiated an f32 decode).
      */
     private fun reportDecodedFormatToBitPerfect(format: Format) {
-        if (format.sampleMimeType != MimeTypes.AUDIO_RAW) return
         val sampleRate = format.sampleRate.takeIf { it > 0 } ?: return
         val channels = format.channelCount.takeIf { it in 1..2 } ?: 2
         val encoding = format.pcmEncoding
-        if (encoding == C.ENCODING_INVALID || encoding == Format.NO_VALUE) return
         runCatching {
-            BitPerfectRuntime.evaluateTrack(
-                context = this,
+            BitPerfectRuntime.reportContainerFormat(
                 inputEncoding = encoding,
                 inputSampleRate = sampleRate,
                 inputChannels = channels,
-                engineOrDspEngaged = tryptifyAudioProcessing ||
-                    lastwaveAudioProcessing ||
-                    primaryFloatDspProcessor.engaged,
-                usbExclusive = usbSinkActiveNow,
-                outputSampleRateHz = EngineRuntime.lastwaveUsbRateHz.takeIf { it > 0 } ?: 0,
-                effectiveVolume = currentEffectivePlayerVolume(),
             )
         }
     }

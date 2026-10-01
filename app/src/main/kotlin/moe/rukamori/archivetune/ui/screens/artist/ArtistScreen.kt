@@ -108,7 +108,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.toIntSize
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.util.fastForEachIndexed
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -171,7 +170,6 @@ import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
 import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
-import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.ui.component.NavigationTitle
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
@@ -431,10 +429,13 @@ fun ArtistScreen(
 
     // ---- Dynamic artist background --------------------------------------
     // Fallback chain (per spec): 1) the actively rendering Canvas  2) the
-    // current track's artwork  3) the artist artwork  4) the plain theme
-    // surface. Every hop is palette-extracted off the main thread, cached via
-    // PlayerPaletteCache, and the final stops are colour-animated so switching
-    // sources (or the canvas content itself changing) never flashes or jumps.
+    // ARTIST's own artwork  3) the plain theme surface. The currently playing
+    // track's album art is deliberately NOT a source — this page is about the
+    // artist, and a unrelated now-playing palette made the ambience change
+    // with whatever is playing elsewhere. Every hop is palette-extracted off
+    // the main thread, cached via PlayerPaletteCache, and the final stops are
+    // colour-animated so switching sources (or the canvas content itself
+    // changing) never flashes or jumps.
 
     // (1) Canvas sampling — the hero's own CanvasArtworkPlayer is captured into
     // a small GraphicsLayer while it renders; a throttled coroutine samples that
@@ -465,70 +466,67 @@ fun ArtistScreen(
         if (!canvasSamplingActive) {
             canvasAmbientColors = null
         } else {
+            // Warm-up: give the canvas a moment to render its first frames
+            // before the first sample, then sample at a fast cadence so a new
+            // colour in the canvas registers within ~350 ms (the colour
+            // crossfade itself takes another 450 ms — smooth, never abrupt).
+            delay(280)
             while (true) {
-                delay(CANVAS_SAMPLE_INTERVAL_MILLIS)
                 val layerSize = canvasSampleLayerSize
-                if (layerSize.width < 8 || layerSize.height < 8) continue
-                val sampled =
-                    try {
-                        // toImageBitmap() walks LayerSnapshotV28 →
-                        // RenderNode.beginRecording — it MUST run on the UI
-                        // thread. The old Dispatchers.Default read raced the
-                        // draw-side record() on the SAME GraphicsLayer and
-                        // whichever thread lost got "Recording currently in
-                        // progress - missing #endRecording() call?" straight
-                        // out of dispatchDraw (the artist-page crash). Take an
-                        // immutable software copy on main, then do the heavy
-                        // palette work on the background dispatcher.
-                        val snapshot =
-                            canvasSampleLayer.toImageBitmap().asAndroidBitmap()
-                                .copy(Bitmap.Config.ARGB_8888, false)
-                        if (snapshot.width < 8 || snapshot.height < 8) {
-                            null
-                        } else {
-                            withContext(Dispatchers.Default) {
-                                val small = Bitmap.createScaledBitmap(snapshot, 24, 24, true)
-                                val palette =
-                                    Palette
-                                        .from(small)
-                                        .maximumColorCount(8)
-                                        .generate()
-                                val dominant = palette.dominantSwatch
-                                val vivid =
-                                    palette.vibrantSwatch
-                                        ?: palette.lightVibrantSwatch
-                                        ?: palette.darkVibrantSwatch
-                                        ?: palette.mutedSwatch
-                                when {
-                                    dominant != null && vivid != null && vivid.rgb != dominant.rgb ->
-                                        listOf(Color(vivid.rgb), Color(dominant.rgb))
+                if (layerSize.width >= 8 && layerSize.height >= 8) {
+                    val sampled =
+                        try {
+                            // toImageBitmap() walks LayerSnapshotV28 →
+                            // RenderNode.beginRecording — it MUST run on the UI
+                            // thread. The old Dispatchers.Default read raced the
+                            // draw-side record() on the SAME GraphicsLayer and
+                            // whichever thread lost got "Recording currently in
+                            // progress - missing #endRecording() call?" straight
+                            // out of dispatchDraw (the artist-page crash). Take an
+                            // immutable software copy on main, then do the heavy
+                            // palette work on the background dispatcher. The
+                            // layer is already recorded at a small size, so the
+                            // readback is a few KB instead of ~9 MB.
+                            val snapshot =
+                                canvasSampleLayer.toImageBitmap().asAndroidBitmap()
+                                    .copy(Bitmap.Config.ARGB_8888, false)
+                            if (snapshot.width < 8 || snapshot.height < 8) {
+                                null
+                            } else {
+                                withContext(Dispatchers.Default) {
+                                    val small = Bitmap.createScaledBitmap(snapshot, 24, 24, true)
+                                    val palette =
+                                        Palette
+                                            .from(small)
+                                            .maximumColorCount(8)
+                                            .generate()
+                                    val dominant = palette.dominantSwatch
+                                    val vivid =
+                                        palette.vibrantSwatch
+                                            ?: palette.lightVibrantSwatch
+                                            ?: palette.darkVibrantSwatch
+                                            ?: palette.mutedSwatch
+                                    when {
+                                        dominant != null && vivid != null && vivid.rgb != dominant.rgb ->
+                                            listOf(Color(vivid.rgb), Color(dominant.rgb))
 
-                                    dominant != null -> listOf(Color(dominant.rgb))
-                                    vivid != null -> listOf(Color(vivid.rgb))
-                                    else -> null
+                                        dominant != null -> listOf(Color(dominant.rgb))
+                                        vivid != null -> listOf(Color(vivid.rgb))
+                                        else -> null
+                                    }
                                 }
                             }
-                        }
-                    } catch (_: Throwable) {
-                        null
+                        } catch (_: Throwable) {
+                            null
+                    }
+                    if (!sampled.isNullOrEmpty()) canvasAmbientColors = sampled
                 }
-                if (!sampled.isNullOrEmpty()) canvasAmbientColors = sampled
+                delay(CANVAS_SAMPLE_INTERVAL_MILLIS)
             }
         }
     }
 
-    // (2) + (3) artwork palettes, cached.
-    val trackArtworkUrl = mediaMetadata?.thumbnailUrl
-    var trackArtworkColors by remember { mutableStateOf<List<Color>?>(null) }
-    LaunchedEffect(mediaMetadata?.id, trackArtworkUrl, isDarkTheme) {
-        trackArtworkColors =
-            extractAmbientArtworkColors(
-                context = context,
-                mediaId = mediaMetadata?.id.orEmpty().ifBlank { "track" },
-                artworkUrl = trackArtworkUrl,
-                darkTheme = isDarkTheme,
-            )
-    }
+    // (2) the artist's own artwork palette, cached.
     var artistArtworkColors by remember { mutableStateOf<List<Color>?>(null) }
     LaunchedEffect(thumbnail, isDarkTheme) {
         artistArtworkColors =
@@ -540,7 +538,7 @@ fun ArtistScreen(
             )
     }
 
-    val ambientSource = canvasAmbientColors ?: trackArtworkColors ?: artistArtworkColors
+    val ambientSource = canvasAmbientColors ?: artistArtworkColors
     // The immersive-player (V7) bottom-controls gradient ladder: the dominant
     // colour projected into three value bands (bright top, mid, deep bottom).
     // NO backdrop blur, NO theme-surface mixing — exactly the colour gradience
@@ -554,17 +552,17 @@ fun ArtistScreen(
         }
     val animatedAmbientTop by animateColorAsState(
         targetValue = ambientPalette.top,
-        animationSpec = tween(durationMillis = 900),
+        animationSpec = tween(durationMillis = 450),
         label = "artistAmbientTop",
     )
     val animatedAmbientMid by animateColorAsState(
         targetValue = ambientPalette.mid,
-        animationSpec = tween(durationMillis = 900),
+        animationSpec = tween(durationMillis = 450),
         label = "artistAmbientMid",
     )
     val animatedAmbientBottom by animateColorAsState(
         targetValue = ambientPalette.bottom,
-        animationSpec = tween(durationMillis = 900),
+        animationSpec = tween(durationMillis = 450),
         label = "artistAmbientBottom",
     )
 
@@ -664,34 +662,41 @@ fun ArtistScreen(
                 .background(surfaceColor)
                 .onSizeChanged { pageContainerHeightPx = it.height },
     ) {
-        // Atmospheric background: the animated palette-gradient alone (the
-        // immersive-player colour gradience). The old 80dp blurred-artwork
-        // layer was removed per request — no backdrop blur on this page.
+        // Glass recorder wraps the atmospheric gradient AND the list: the
+        // liquid-glass pills then sample real content everywhere — over the
+        // gradient's empty regions too, instead of reading black wherever no
+        // list row happened to be behind them. The glass consumers (header
+        // pills below) stay SIBLINGS of this recorded subtree: a recorder that
+        // contains its own consumers is circular and crashes the RenderThread.
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0f to animatedAmbientTop,
-                            0.5f to animatedAmbientMid,
-                            1f to animatedAmbientBottom,
-                        ),
-                    ),
-        )
-
-        ExpressivePullToRefreshBox(
-            isRefreshing = isManuallyRefreshing,
-            onRefresh = viewModel::manualRefresh,
-            modifier = Modifier.fillMaxSize(),
+                    .let { m -> if (glassHeaderActive) m.glassSource(artworkBackdrop) else m },
         ) {
-        LazyColumn(
-            modifier =
-                if (glassHeaderActive) {
-                    Modifier.glassSource(artworkBackdrop)
-                } else {
+            // Atmospheric background: the animated palette-gradient alone (the
+            // immersive-player colour gradience). The old 80dp blurred-artwork
+            // layer was removed per request — no backdrop blur on this page.
+            Box(
+                modifier =
                     Modifier
-                },
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                0f to animatedAmbientTop,
+                                0.5f to animatedAmbientMid,
+                                1f to animatedAmbientBottom,
+                            ),
+                        ),
+            )
+
+            ExpressivePullToRefreshBox(
+                isRefreshing = isManuallyRefreshing,
+                onRefresh = viewModel::manualRefresh,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+        LazyColumn(
+            modifier = Modifier,
             state = lazyListState,
             contentPadding =
                 PaddingValues(
@@ -831,10 +836,14 @@ fun ArtistScreen(
 
                             // Canvas overlay + ambient sampling recorder. The
                             // draw hook re-records the canvas region into a
-                            // small GraphicsLayer on a throttle; the sampler
-                            // coroutine (above) reads that layer ~once a
-                            // second. Recording pauses whenever sampling is
-                            // inactive, so a static hero costs nothing.
+                            // small GraphicsLayer on a throttle — the layer is
+                            // recorded at a REDUCED size (≤128 px wide) so the
+                            // sampler's readback costs a few KB instead of the
+                            // ~9 MB full-hero readback that used to jank
+                            // scrolling. The sampler coroutine (above) reads
+                            // that layer every ~350 ms. Recording pauses
+                            // whenever sampling is inactive, so a static hero
+                            // costs nothing.
                             if (heroCanvasPresent) {
                                 Box(
                                     modifier =
@@ -851,8 +860,18 @@ fun ArtistScreen(
                                                         // races any other use of this layer must
                                                         // never escape the draw pass.
                                                         runCatching {
-                                                            canvasSampleLayer.record(size.toIntSize()) {
-                                                                this@drawWithContent.drawContent()
+                                                            val recordScale =
+                                                                (CANVAS_SAMPLE_LAYER_MAX_WIDTH_PX.toFloat() / size.width)
+                                                                    .coerceAtMost(1f)
+                                                            canvasSampleLayer.record(
+                                                                androidx.compose.ui.unit.IntSize(
+                                                                    (size.width * recordScale).toInt().coerceAtLeast(8),
+                                                                    (size.height * recordScale).toInt().coerceAtLeast(8),
+                                                                ),
+                                                            ) {
+                                                                scale(recordScale, recordScale) {
+                                                                    this@drawWithContent.drawContent()
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -1622,6 +1641,7 @@ fun ArtistScreen(
                     Spacer(modifier = Modifier.height(24.dp))
                 }
             }
+        }
         }
         }
         HideOnScrollFAB(
@@ -2419,8 +2439,9 @@ private suspend fun extractAmbientArtworkColors(
 
 private const val ARTIST_AMBIENT_BACKGROUND_MODE = "ARTIST_AMBIENT"
 private const val AMBIENT_EXTRACT_SIZE_PX = 64
-private const val CANVAS_SAMPLE_INTERVAL_MILLIS = 1100L
-private const val CANVAS_RECORD_INTERVAL_MILLIS = 220L
+private const val CANVAS_SAMPLE_INTERVAL_MILLIS = 350L
+private const val CANVAS_RECORD_INTERVAL_MILLIS = 120L
+private const val CANVAS_SAMPLE_LAYER_MAX_WIDTH_PX = 128
 
 private const val ArtistHeroArtworkSizePx = 1200
 private const val ArtistReleaseArtworkSizePx = 320

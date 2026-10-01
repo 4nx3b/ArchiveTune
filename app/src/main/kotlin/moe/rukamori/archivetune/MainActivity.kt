@@ -1480,13 +1480,6 @@ class MainActivity : ComponentActivity() {
                         label = "navGlassStrength",
                     )
 
-                    fun getBottomNavPadding(): Dp =
-                        if (shouldShowNavigationBar && !useRail) {
-                            NavigationBarHeight
-                        } else {
-                            0.dp
-                        }
-
                     // The navigation bar is always the floating variant now.
                     val floatingBarsBottomPadding = FloatingNavigationBarBottomPadding
                     val (navBarHeightMultiplier) = rememberPreference(
@@ -1495,6 +1488,13 @@ class MainActivity : ComponentActivity() {
                     )
                     val navVisibleHeight = NavigationBarHeight * navBarHeightMultiplier
                     val navBarHorizontalPadding = FloatingNavigationBarHorizontalPadding
+
+                    fun getBottomNavPadding(): Dp =
+                        if (shouldShowNavigationBar && !useRail) {
+                            navVisibleHeight
+                        } else {
+                            0.dp
+                        }
 
                     val miniPlayerBgStyle by rememberEnumPreference(
                         MiniPlayerBackgroundStyleKey,
@@ -3053,13 +3053,16 @@ class MainActivity : ComponentActivity() {
                                                                 bottomNavigationBarHeight.coerceAtMost(navVisibleHeight) /
                                                                     navVisibleHeight
                                                             )
-                                                        // navVisibleHeight only — NOT + floatingBarsBottomPadding:
-                                                        // the pill must land in the nav bar's exact band
-                                                        // ([floatingBarsBottomPadding .. +navVisibleHeight]),
-                                                        // centred on the same line as the glass bar's icons
-                                                        // and the Home/Search circles row.
+                                                        // Full sink = collapsedBound − (centre line + half the
+                                                        // compact pill): lands the morphed mini player's CENTRE
+                                                        // exactly on the nav bar's icon line — the same line the
+                                                        // Home/Search circles row centres on. Using navVisibleHeight
+                                                        // alone left the pill ~3dp above the circles.
+                                                        val compactPillCentreLine =
+                                                            floatingBarsBottomPadding +
+                                                                (navVisibleHeight + CompactControlSize) / 2
                                                         with(navBarScrollDensity) {
-                                                            navVisibleHeight.toPx() * hideFraction
+                                                            (playerBottomSheetState.collapsedBound - compactPillCentreLine).toPx() * hideFraction
                                                         }
                                                     } else {
                                                         0f
