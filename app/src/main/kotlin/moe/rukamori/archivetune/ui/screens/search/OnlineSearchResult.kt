@@ -139,7 +139,6 @@ fun OnlineSearchResult(
     val coroutineScope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
 
-    // ── Bottom search field state (seeded from the route, re-search navigates) ──
     var fieldQuery by rememberSaveable(viewModel.query) { mutableStateOf(viewModel.query) }
     val navigateWithQuery: (String, SearchProvider) -> Unit = { text, provider ->
         if (text.isNotBlank()) {
@@ -336,7 +335,6 @@ fun OnlineSearchResult(
         )
     }
 
-    // ── Layout: transparent haze top (like Home) + bottom glass pills ──
     val barState = rememberSearchResultsBarState()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
     val playerAwareBottomPadding =
@@ -345,13 +343,6 @@ fun OnlineSearchResult(
             .asPaddingValues()
             .calculateBottomPadding()
 
-    // The top header (glass "< Search" pill + title + chips) is a SIBLING of
-    // the glass-tagged LazyColumn, never an item inside it: a recorder that
-    // contains its own liquidGlass consumers is circular (the consumer would
-    // draw the very layer being recorded) and crashes the RenderThread. It
-    // still scrolls away exactly like an in-flow first item — translated by
-    // the list's scroll offset and fading out — and its measured height feeds
-    // the list's top content padding.
     var resultsHeaderHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
     val resultsHeaderReserve =
@@ -364,10 +355,7 @@ fun OnlineSearchResult(
                 resultsHeaderHeightPx <= 0 -> 0f
                 lazyListState.firstVisibleItemIndex > 0 -> 1f
                 else -> {
-                    // The first item's viewport offset decreases continuously
-                    // from its padded rest position as the list scrolls — a
-                    // smooth proxy for "how far the header has scrolled away"
-                    // that never pops across item boundaries.
+
                     val firstTop =
                         lazyListState.layoutInfo.visibleItemsInfo
                             .firstOrNull()?.offset?.toFloat() ?: 0f
@@ -396,7 +384,6 @@ fun OnlineSearchResult(
                     .fillMaxSize()
                     .searchResultsBarSource(barState),
         ) {
-
             if (searchFilter == null) {
                 allModeSections.forEachIndexed { index, summary ->
                     if (index > 0) {
@@ -498,10 +485,6 @@ fun OnlineSearchResult(
             }
         }
 
-        // ── Top header overlay: glass "< Search" pill, LARGE query title,
-        // a compact info line and the solid category pills — a SIBLING above
-        // the glass-tagged list that scrolls and fades away with the list's
-        // first item. ─────────────────────────────────────────────────────
         val providerName =
             when (viewModel.searchProvider) {
                 SearchProvider.SPOTIFY -> "Spotify"
@@ -540,8 +523,7 @@ fun OnlineSearchResult(
                             viewModel.filter.value = it
                         }
                         coroutineScope.launch {
-                            // The header is no longer list item 0 — jumping to
-                            // the first CONTENT item now means index 0.
+
                             lazyListState.animateScrollToItem(0)
                         }
                     },
@@ -550,8 +532,7 @@ fun OnlineSearchResult(
             modifier =
                 Modifier
                     .align(Alignment.TopCenter)
-                    // The header previously rode the list's top content
-                    // padding; as an overlay it carries its own.
+
                     .padding(top = systemBarsTopPadding + 8.dp)
                     .onSizeChanged { resultsHeaderHeightPx = it.height }
                     .graphicsLayer {
@@ -560,15 +541,12 @@ fun OnlineSearchResult(
                     },
         )
 
-        // Transparent blurred top, exactly like the home screen — but only
-        // once the results have actually scrolled under it.
         ScreenHeaderHaze(
             hazeState = barState.haze,
             systemBarsTopPadding = systemBarsTopPadding + 8.dp,
             scrolled = lazyListState.canScrollBackward,
         )
 
-        // Bottom chrome: category pills above the back + search glass pills.
         SearchResultsBottomOverlay(
             state = barState,
             query = fieldQuery,

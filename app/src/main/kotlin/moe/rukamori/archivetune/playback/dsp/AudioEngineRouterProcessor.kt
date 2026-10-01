@@ -46,24 +46,9 @@ class AudioEngineRouterProcessor(
     @Volatile
     var outputFloat: Boolean = false
 
-    /**
-     * The encoding of the bytes the active engine path actually emits — NOT
-     * the encoding this processor declares downstream. The Tryptify chain
-     * passes its input encoding through (16-bit in, 16-bit out — every stage
-     * accepts both), and the sink's ToInt16PcmAudioProcessor guarantees 16-bit
-     * reaches this processor whenever sink-side float output is off (always,
-     * with the custom chain installed). LastWave's NativePcmAudioProcessor is
-     * the opposite: it always emits float regardless of input. Treating the
-     * chain bytes as float when they are 16-bit packs two shorts into one
-     * garbage float and halves the frame count — audio at 2x speed, pure
-     * distortion, and a playback position that outruns the feed until the
-     * track stalls. The emit path below branches on this field instead
-     * (through [EnginePcmCodec]).
-     */
     @Volatile
     private var engineDataEncoding: Int = C.ENCODING_PCM_16BIT
 
-    /** The encoding this processor declared downstream for the active track. */
     @Volatile
     private var declaredOutputEncoding: Int = C.ENCODING_PCM_16BIT
 
@@ -74,11 +59,6 @@ class AudioEngineRouterProcessor(
     @Volatile
     private var activeOutputFloat: Boolean = false
 
-    /** Set by the service when the engine preference pair flips mid-track:
-     *  the playback thread re-evaluates the engine at the next queueInput and
-     *  re-routes WITHOUT waiting for the next onConfigure (track change) or a
-     *  service restart — the old engine's processing stops and the new one
-     *  starts within one buffer (~tens of milliseconds). */
     @Volatile
     private var reevaluateRequested: Boolean = false
 
@@ -104,8 +84,7 @@ class AudioEngineRouterProcessor(
     private var engineAvailableLastwave: Boolean = lastwaveProcessor.isAvailable
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
-        // Bit-Perfect: stay inactive so the chain routes around this
-        // processor while the bypass is engaged.
+
         if (moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime.chainBypassActive) {
             return AudioProcessor.AudioFormat.NOT_SET
         }
@@ -132,7 +111,6 @@ class AudioEngineRouterProcessor(
 
         return when (selected) {
             Engine.TRYPTIFY -> {
-
                 val chainOut = tryptifyChain.configure(inputAudioFormat)
                 engineDataEncoding =
                     chainOut.encoding.takeIf { it > 0 } ?: inputAudioFormat.encoding
@@ -166,8 +144,7 @@ class AudioEngineRouterProcessor(
                     activeEngine = Engine.NONE
                     return configureStock(inputAudioFormat)
                 }
-                // NativePcmAudioProcessor always emits float (its onConfigure
-                // declares ENCODING_PCM_FLOAT whatever came in).
+
                 engineDataEncoding = C.ENCODING_PCM_FLOAT
                 val outEncoding =
                     if (activeOutputFloat) C.ENCODING_PCM_FLOAT else C.ENCODING_PCM_16BIT
@@ -207,17 +184,6 @@ class AudioEngineRouterProcessor(
         }
     }
 
-    /**
-     * Mid-stream engine switch: re-run the configure-time engine decision on
-     * the PLAYBACK thread and, when the winner changed, flush the old path and
-     * configure the new one against the SAME input format. The sink contract
-     * (this processor's declared output format) is untouched — [activeOutputFloat]
-     * keeps the encoding the sink negotiated, and [EnginePcmCodec] converts the
-     * new path's data encoding to it. When the new engine path would declare a
-     * different sample rate or channel count than the sink is running at (a
-     * resampling engine mid-chain), the switch is deferred to the next natural
-     * onConfigure instead of corrupting the stream.
-     */
     private fun rerouteEngineIfChanged() {
         val input = inputAudioFormat
         if (input == AudioProcessor.AudioFormat.NOT_SET) return
@@ -232,7 +198,7 @@ class AudioEngineRouterProcessor(
         if (desired == activeEngine) return
 
         val declaredOut = outputAudioFormat
-        // Locals only — nothing commits until every deferral check passes.
+
         var newDataEncoding = input.encoding
         val newOut: AudioProcessor.AudioFormat =
             when (desired) {
@@ -292,7 +258,7 @@ class AudioEngineRouterProcessor(
         }
 
         val old = activeEngine
-        // Flush the abandoned path's tail so nothing stale drains later.
+
         runCatching { tryptifyChain.flush() }
         runCatching { lastwaveProcessor.flush() }
         runCatching { stockDsp.flush() }
@@ -312,10 +278,7 @@ class AudioEngineRouterProcessor(
     }
 
     private fun queueTryptify(inputBuffer: ByteBuffer) {
-        // Membership follows the live isActive() of every stage: a speed
-        // change flips VariRate's ratio-driven isActive mid-track, and
-        // without this refresh the resampler would stay out of the pipeline
-        // until the next configure (the speed change silently lost).
+
         tryptifyChain.refreshActive()
         val chainOut = tryptifyChain.process(inputBuffer)
         emitEngineOutput(chainOut)
@@ -335,8 +298,7 @@ class AudioEngineRouterProcessor(
 
     private fun emitEngineOutput(engineOutput: ByteBuffer) {
         if (!engineOutput.hasRemaining()) return
-        // Encoding-based: native formats (PCM24/32) stay native whenever the
-        // declared output matches what the engine actually emitted.
+
         val encoded = EnginePcmCodec.encode(
             data = engineOutput,
             dataEncoding = engineDataEncoding,
@@ -362,11 +324,7 @@ class AudioEngineRouterProcessor(
     }
 
     override fun onQueueEndOfStream() {
-        // Forward EOS through the whole Tryptify chain (VariRate flushes its
-        // sinc tail at EOS) and drain whatever the chain still holds, then
-        // emit it — previously the tail frames were dropped at every track
-        // end, and LastWave's resampler flush output was created but never
-        // read.
+
         val tryptifyTail = tryptifyChain.queueEndOfStreamAndDrain()
         if (tryptifyTail.hasRemaining()) {
             emitEngineOutput(tryptifyTail)

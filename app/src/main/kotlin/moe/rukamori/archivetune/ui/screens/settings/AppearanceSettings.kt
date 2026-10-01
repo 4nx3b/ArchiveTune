@@ -451,8 +451,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     if (showSfProFontPicker) {
         SfProFontPickerDialog(
             onDismiss = { showSfProFontPicker = false },
-            // The picker marks the live font (check glyph + primary ink) by
-            // name, so reopening it shows which font is applied.
+
             appliedFontName = customFontName.takeIf { fontPreference == AppFontPreference.CUSTOM }.orEmpty(),
             onApply = { uri, name ->
                 onCustomFontUriChange(uri)
@@ -505,11 +504,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 modifier = positions.modifierFor("dynamic_theme", "color_source"),
                 title = stringResource(R.string.theme),
             ) {
-                // The enable toggle itself lives INSIDE the Liquid Glass
-                // subpage (LiquidGlassSettings) — keeping a second copy here
-                // showed two "Enable liquid glass" switches toggling the same
-                // key. This entry is the page's single doorway, and it also
-                // carries the pre-Android-12 unsupported note.
+
                 item {
                     Column(modifier = positions.modifierFor("liquid_glass_customisation")) {
                         PreferenceEntry(

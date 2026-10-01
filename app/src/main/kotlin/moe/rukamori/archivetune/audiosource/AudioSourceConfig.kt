@@ -33,13 +33,6 @@ fun DirectStream.pcmBitrateOrNull(channels: Int = 2): Int? {
     return rate * depth * channels
 }
 
-/**
- * The stream that actually serves a track right now — published by
- * MusicService at the moment playback resolves the DataSpec (the direct
- * lossless sources in [DirectStream] form, YouTube on the itag format
- * persist). MediaId-scoped so a value left over from a previous track can
- * never be presented as current: readers filter by the live media id.
- */
 data class CurrentStreamInfo(
     val mediaId: String,
     val source: AudioSourceType,
@@ -258,11 +251,7 @@ object TitleMatch {
 }
 
 object AudioSourceConfig {
-    // Apple Music, Amazon Music, QQ Music and Deezer were removed from the
-    // preferred playback sources: the automatic resolution chain now runs
-    // Tidal -> Qobuz -> Qobuz backup -> JioSaavn -> YouTube. Deezer remains
-    // reachable through the per-song source picker and the pool; Apple Music,
-    // Amazon Music and QQ Music are gone from the app entirely.
+
     val DEFAULT_ORDER: List<AudioSourceType> =
         listOf(
             AudioSourceType.TIDAL,
@@ -272,12 +261,6 @@ object AudioSourceConfig {
             AudioSourceType.YOUTUBE,
         )
 
-    /**
-     * Sources that were part of the preferred order once but must never
-     * re-enter the automatic chain — orders saved before their removal keep
-     * them serialized, and parseOrder resurrects stored entries verbatim
-     * otherwise.
-     */
     private val RETIRED_FROM_CHAIN =
         setOf(AudioSourceType.APPLE, AudioSourceType.DEEZER)
 
@@ -332,23 +315,10 @@ object AudioSourceConfig {
             isEnabled(source, enabledSet, defaults[source] ?: false)
         }
 
-    /**
-     * The stored order with [source] present, sitting just above YouTube.
-     *
-     * Sources outside [DEFAULT_ORDER] — Deezer, which joins the chain only after the user asks
-     * for it — can never enter the order any other way: the picked order is authoritative, and the
-     * picker can only reorder what it was given. Without this, switching such a source on would
-     * change a preference the resolver never consults, and the source would stay unreachable while
-     * its toggle claimed otherwise.
-     *
-     * Placed above YouTube because that is the only position where a source acts as a lossless
-     * override; below it, the chain has already fallen through to YouTube.
-     */
     fun withSourceAdded(
         rawOrder: String?,
         source: AudioSourceType,
     ): String {
-        // Retired sources can never (re-)enter the automatic chain.
         if (source in RETIRED_FROM_CHAIN) return parseOrder(rawOrder).joinToString(",") { it.name }
         val parsed = parseOrder(rawOrder)
         if (source in parsed) return parsed.joinToString(",") { it.name }
@@ -392,13 +362,6 @@ object SongSourceOverride {
     }
 }
 
-/**
- * Per-song "Disable canvas" map (the player's overflow menu): a song id
- * present in the map suppresses canvas playback for that song so the static
- * artwork shows instead. Same DataStore string-map shape as
- * [SongSourceOverride], but boolean-valued — the value is the presence of the
- * id itself.
- */
 object SongCanvasDisabled {
     fun parse(raw: String?): Set<String> =
         raw
@@ -458,8 +421,6 @@ object SongSourceQobuzTrackId {
     }
 }
 
-/** Per-song Tidal track id picked in the "play from search" popup: playback
- *  resolves that EXACT track instead of fuzzy re-matching metadata. */
 object SongSourceTidalTrackId {
     fun parse(raw: String?): Map<String, String> = SongSourceQobuzTrackId.parse(raw)
 
@@ -494,8 +455,6 @@ object SongSourceQobuzBackupVideoId {
     ): String = SongSourceQobuzTrackId.withOverride(raw, songId, videoId)
 }
 
-/** Per-song Deezer track id picked in the "play from search" popup: playback
- *  resolves that EXACT track instead of fuzzy re-matching metadata. */
 object SongSourceDeezerTrackId {
     fun parse(raw: String?): Map<String, String> = SongSourceQobuzTrackId.parse(raw)
 

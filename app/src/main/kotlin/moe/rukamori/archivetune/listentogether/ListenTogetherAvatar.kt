@@ -16,17 +16,7 @@ import android.graphics.Typeface
 import android.net.Uri
 import java.io.File
 
-/**
- * Custom Listen Together profile pictures.
- *
- * The room protocol only carries a small `avatar_index` integer, so a custom picture
- * is stored locally (downscaled JPEG in filesDir) and shared with the other members
- * by piggybacking on the chat channel — the only client→everyone relay — with a
- * magic-prefixed base64 payload that clients intercept and never render as a chat
- * bubble.
- */
 object ListenTogetherAvatar {
-    /** Sentinel avatar index meaning "the user picked a custom picture". */
     const val CUSTOM_AVATAR_INDEX = 14
 
     private const val FILE_NAME = "listen_together_avatar.jpg"
@@ -34,7 +24,6 @@ object ListenTogetherAvatar {
     private const val JPEG_QUALITY = 70
     private const val MAX_BROADCAST_BYTES = 96 * 1024
 
-    /** Wire format: "\u200B[LTA:<base64 jpeg>]\u200B" (mirrors the reply-embed pattern). */
     const val CUSTOM_AVATAR_PREFIX = "\u200B[LTA:"
     const val CUSTOM_AVATAR_SUFFIX = "]\u200B"
 
@@ -100,12 +89,6 @@ object ListenTogetherAvatar {
             null
         }
 
-    /**
-     * The default profile picture for members without a custom one: a filled
-     * circle in a color derived from the username with the initial on top —
-     * the same identity the in-app [ChatAvatar] draws, rasterized for the
-     * conversation notification's Person icons.
-     */
     fun defaultAvatarBitmap(
         username: String,
         size: Int = 96,
@@ -114,7 +97,6 @@ object ListenTogetherAvatar {
         val bitmap = Bitmap.createBitmap(safeSize, safeSize, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
 
-        // Deterministic pastel-ish color from the username hash.
         val hash = username.fold(0) { acc, ch -> acc * 31 + ch.code }
         val hue = (hash % 360).let { if (it < 0) it + 360 else it }
         val fill = android.graphics.Color.HSVToColor(floatArrayOf(hue.toFloat(), 0.42f, 0.58f))

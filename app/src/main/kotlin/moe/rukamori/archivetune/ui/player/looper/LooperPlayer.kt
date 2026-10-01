@@ -589,7 +589,6 @@ private fun LooperArtwork(
                     )
                 },
     ) {
-
         var canvasShowing by remember(canvasPrimaryUrl, canvasFallbackUrl) { mutableStateOf(false) }
         if (canvasPrimaryUrl != null || canvasFallbackUrl != null) {
             CanvasArtworkPlayer(

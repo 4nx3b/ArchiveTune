@@ -141,15 +141,12 @@ sealed class ListenTogetherEvent {
 
     data class ChatMessageReceived(val payload: ChatMessagePayload) : ListenTogetherEvent()
 
-    /** The host renamed the room (or broadcast the name to a late joiner):
-     * [name] is the new display name, from [username]. */
     data class RoomNameChanged(
         val userId: String,
         val username: String,
         val name: String,
     ) : ListenTogetherEvent()
 
-    /** A reactions/edit/delete/pin/typing control event decoded from the chat relay. */
     data class ChatControlReceived(
         val userId: String,
         val username: String,
@@ -161,8 +158,6 @@ sealed class ListenTogetherEvent {
         val playImmediately: Boolean = false,
     ) : ListenTogetherEvent()
 
-    /** The host rejected the local user's suggestion — lets the manager clear
-     *  its one-shot dedup so the same song can be suggested again. */
     data class SuggestionRejected(
         val suggestionId: String,
         val reason: String? = null,
@@ -183,9 +178,6 @@ class ListenTogetherClient @Inject constructor(
         private const val MAX_LOG_ENTRIES = 500
         private const val SESSION_GRACE_PERIOD_MS = 10 * 60 * 1000L
 
-        // How long after sending a create/join an invalid_message reply is still
-        // considered a rejection of that action (and worth a protobuf retry), and
-        // how long to wait before re-sending it.
         private const val ROOM_ACTION_RETRY_WINDOW_MS = 10_000L
         private const val ROOM_ACTION_RETRY_DELAY_MS = 250L
 
@@ -201,28 +193,16 @@ class ListenTogetherClient @Inject constructor(
         const val EXTRA_SUGGESTION_ID = "extra_suggestion_id"
         const val EXTRA_NOTIFICATION_ID = "extra_notification_id"
 
-        // Stable id for the chat conversation notification so each new message
-        // updates the same shade entry (and its RemoteInput history) instead of
-        // stacking separate notifications.
         private const val CHAT_NOTIFICATION_ID = 40001
 
-        // Conversation depth kept for the MessagingStyle in the shade.
         private const val MAX_CHAT_NOTIFICATION_HISTORY = 25
 
-        // Wire envelope for chat control events (reactions/edits/deletes/pins/typing),
-        // mirroring the custom-avatar and reply-embed patterns.
         const val ChatControlEnvelopePrefix = "\u200B[LTC:"
         const val ChatControlEnvelopeSuffix = "]\u200B"
 
-        // Wire envelope for a song shared into the chat (an [LTS:base64 TrackInfo]
-        // prefix on the message text, mirroring LTC/LTA).
         const val SharedTrackEnvelopePrefix = "\u200B[LTS:"
         const val SharedTrackEnvelopeSuffix = "]\u200B"
 
-        // Wire envelope for a GIF link (and the @-mention list) shared into the
-        // chat: an [LTG:base64 json {gif_url, mentions}] prefix, mirroring LTS.
-        // Only the URL travels — each client loads the GIF itself, so the
-        // server never processes the media.
         const val GifEnvelopePrefix = "\u200B[LTG:"
         const val GifEnvelopeSuffix = "]\u200B"
 
@@ -240,15 +220,11 @@ class ListenTogetherClient @Inject constructor(
         private data class GifEnvelope(
             @SerialName("gif_url") val gifUrl: String? = null,
             val mentions: List<String> = emptyList(),
-            // Intrinsic pixel dimensions of the GIF so receivers can keep the
-            // original aspect ratio; absent on envelopes from older clients.
+
             @SerialName("gif_width") val gifWidth: Int = 0,
             @SerialName("gif_height") val gifHeight: Int = 0,
         )
 
-        /** Decoded [LTG:] envelope: the GIF link (nullable), the @-mention list,
-         * the message text that follows the envelope and the GIF's intrinsic
-         * pixel size (0 when the sender didn't know it). */
         data class DecodedGif(
             val gifUrl: String?,
             val mentions: List<String>,
@@ -262,8 +238,6 @@ class ListenTogetherClient @Inject constructor(
             encodeDefaults = false
         }
 
-        /** @mention tokens: "@" followed by the username run (letters, digits,
-         * underscore and dash — stop at whitespace/punctuation like Discord). */
         private val MENTION_TOKEN_REGEX = Regex("@([\\p{L}\\p{N}_-]{2,32})")
 
         fun decodeChatControl(message: String): ChatControlEvent? =
@@ -282,8 +256,6 @@ class ListenTogetherClient @Inject constructor(
                 null
             }
 
-        /** Splits a leading [LTS:base64] song-share envelope off a chat message.
-         * Returns null when the message carries no envelope. */
         fun decodeSharedTrack(message: String): Pair<TrackInfo, String>? =
             try {
                 if (!message.startsWith(SharedTrackEnvelopePrefix)) return null
@@ -301,8 +273,6 @@ class ListenTogetherClient @Inject constructor(
                 null
             }
 
-        /** Splits a leading [LTG:base64] gif envelope off a chat message.
-         * Returns null when the message carries no envelope. */
         fun decodeGifEnvelope(message: String): DecodedGif? =
             try {
                 if (!message.startsWith(GifEnvelopePrefix)) return null
@@ -368,7 +338,6 @@ class ListenTogetherClient @Inject constructor(
     private val _events = MutableSharedFlow<ListenTogetherEvent>()
     val events: SharedFlow<ListenTogetherEvent> = _events.asSharedFlow()
 
-    /** Monotonic PONG receipt counter backing [probeConnection]. */
     private val _pongCounter = MutableStateFlow(0)
 
     private fun observeNetworkChanges() {
@@ -397,20 +366,6 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    /**
-     * Connectivity-driven resync, rebuilt from scratch (it replaces the old
-     * "Smart Resync" preference + fixed one-second post-reconnect sync).
-     *
-     * Whenever the network comes back while a room session exists:
-     *  - a dead/idle socket reconnects immediately (backoff reset), and the
-     *    RECONNECTED handler re-applies the whole room state;
-     *  - a socket that survived the transition is PROBED with a ping round
-     *    trip instead of trusting it — the OS happily hands back a black
-     *    hole after a wifi <-> cellular move, and the 25s keepalive would
-     *    only find out half a minute later. A failed probe forces the
-     *    reconnect; a live one has an in-room guest pull fresh state right
-     *    away (the room kept moving while this device was offline).
-     */
     private suspend fun resyncAfterConnectivityChange(reason: String) {
         if (!isInRoom && sessionToken == null && _roomState.value == null && pendingAction == null) {
             return
@@ -426,13 +381,7 @@ class ListenTogetherClient @Inject constructor(
             }
 
             ConnectionState.CONNECTED -> {
-                // A probe fired the instant the process unfreezes can race the
-                // network stack itself — the socket write goes out before the
-                // radios are fully back. Give a foreground return a longer
-                // timeout AND one retry before declaring the socket dead: a
-                // forced reconnect spends the server's one-shot session token,
-                // which is exactly what turned a benign background stint into
-                // the visible rejoin flow.
+
                 val foregroundReturn = reason == "app foreground"
                 var alive = probeConnection(timeoutMs = if (foregroundReturn) 4000L else 2500L)
                 if (!alive && foregroundReturn) {
@@ -454,8 +403,6 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    /** Ping/PONG round trip used by the connectivity resync: true when the
-     * server answers within [timeoutMs]. */
     private suspend fun probeConnection(timeoutMs: Long): Boolean {
         if (webSocket == null || _connectionState.value != ConnectionState.CONNECTED) return false
         val observedBefore = _pongCounter.value
@@ -585,7 +532,6 @@ class ListenTogetherClient @Inject constructor(
 
     private val suggestionNotifications = mutableMapOf<String, Int>()
 
-    /** Recent chat messages backing the conversation notification (MessagingStyle). */
     private val chatNotificationHistory = ArrayDeque<ChatMessagePayload>()
 
     private val chatHistoryLock = Any()
@@ -595,18 +541,12 @@ class ListenTogetherClient @Inject constructor(
 
     private val _chatScreenVisible = MutableStateFlow(false)
 
-    /** Whether the chat screen is currently on top — the in-app notification
-     * popup and the shade conversation both key off this. */
     val chatScreenVisible: StateFlow<Boolean> = _chatScreenVisible.asStateFlow()
 
-    /** Whether the app is in the foreground right now (ProcessLifecycleOwner):
-     * with in-app notifications enabled, the foreground case belongs to the
-     * in-app popup, not the shade notification. */
     @Volatile
     var appInForeground: Boolean = false
         private set
 
-    /** Set by the chat screen so incoming messages don't notify while it is open. */
     fun setChatScreenVisible(visible: Boolean) {
         _chatScreenVisible.value = visible
     }
@@ -645,22 +585,6 @@ class ListenTogetherClient @Inject constructor(
         startWakeLockRenewal()
     }
 
-    /**
-     * App-foreground session repair: a backgrounded (often CPU-frozen) app
-     * keeps its process in memory, but the server quietly times the ROOM
-     * session out — or closes the socket outright — while nothing can run
-     * locally. Coming back to the foreground then shows the user their own
-     * "reconnecting" flash (or worse, their own reconnected event) once the
-     * next action finally trips over the dead session.
-     *
-     * Instead of waiting for that to happen organically, every foreground
-     * transition while a room session exists validates the connection right
-     * away: a dead socket reconnects immediately (backoff reset — the network
-     * is clearly fine, the app just slept), a live socket gets probed, and a
-     * guest in a room pulls a fresh sync so a server-side session expiry
-     * surfaces (and self-heals via the session_not_found rejoin) before the
-     * user ever looks at the screen.
-     */
     private fun observeAppForeground() {
         runCatching {
             val observer = LifecycleEventObserver { _, event ->
@@ -686,11 +610,6 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    /** Re-arms the partial wake lock every 5 minutes while a room session is
-     * live, so a long listening session outlives the initial 10-minute lease
-     * (the lock keeps the CPU — and with it the ping loop — awake while the
-     * screen is off, without the user playing music). acquireWakeLock() skips
-     * work while the lock is still held, so a renewal releases first. */
     private fun startWakeLockRenewal() {
         scope.launch {
             while (true) {
@@ -760,8 +679,6 @@ class ListenTogetherClient @Inject constructor(
         val serverUrl = getServerUrl()
         log(LogLevel.INFO, "Connecting to server", serverUrl)
 
-        // metroserver (The Meowery) is protobuf-only and answers JSON frames with
-        // an invalid_message error, so start the codec in the server's own protocol.
         val serverProtocol = ListenTogetherServers.findByUrl(serverUrl)?.protocol ?: ListenTogetherProtocol.JSON
         codec.format =
             if (serverProtocol == ListenTogetherProtocol.PROTOBUF) MessageFormat.PROTOBUF else MessageFormat.JSON
@@ -773,13 +690,7 @@ class ListenTogetherClient @Inject constructor(
             .build()
 
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
-            // Late callbacks from a socket that is no longer the current one
-            // (a cancelled/half-closed predecessor whose onFailure lands after
-            // a replacement already connected) used to run the full
-            // disconnect machinery: cancel the ping job, clobber the state and
-            // schedule a SECOND connect — whose RECONNECT burned the server's
-            // one-shot session token and forced the visible rejoin flow.
-            // Every callback below first checks it belongs to the live socket.
+
             override fun onOpen(socket: WebSocket, response: Response) {
                 if (socket !== webSocket) return
                 log(LogLevel.INFO, "Connected to server")
@@ -851,12 +762,6 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    /**
-     * Safety net for servers whose protocol was misconfigured or unknown: if the
-     * create/join was sent as JSON but the server answered in protobuf (the
-     * reactive upgrade in [handleMessage] already flipped the codec), re-send the
-     * same action once in protobuf so the room code still arrives.
-     */
     private fun maybeRetryRoomActionAfterProtocolUpgrade() {
         val action = lastRoomAction ?: return
         lastRoomAction = null
@@ -919,7 +824,6 @@ class ListenTogetherClient @Inject constructor(
             )
         }
         if (wakeLock?.isHeld == false) {
-
             wakeLock?.acquire(10 * 60 * 1000L)
             log(LogLevel.DEBUG, "Wake lock acquired")
         }
@@ -995,12 +899,6 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    /**
-     * The vivi-style server echoes a sender's own message back to them, so a
-     * locally-appended copy (for instant shade feedback) and the echo would both
-     * land in the history. The echo is skipped when the last entry is the same
-     * self-sent text from within a few seconds.
-     */
     private fun isSelfEchoAlreadyInHistory(payload: ChatMessagePayload): Boolean {
         val selfId = _userId.value ?: return false
         synchronized(chatHistoryLock) {
@@ -1011,8 +909,6 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    // Internally guarded by a POST_NOTIFICATIONS check — no annotation so that
-    // unguarded internal callers (message handler, reply receiver) stay lint-clean.
     private fun postChatNotification(alert: Boolean) {
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             return
@@ -1049,7 +945,7 @@ class ListenTogetherClient @Inject constructor(
             action = ACTION_REPLY_CHAT
             putExtra(EXTRA_NOTIFICATION_ID, CHAT_NOTIFICATION_ID)
         }
-        // FLAG_MUTABLE is required: the system attaches the RemoteInput results.
+
         val replyPendingIntent = PendingIntent.getBroadcast(
             context,
             CHAT_NOTIFICATION_ID,
@@ -1085,7 +981,7 @@ class ListenTogetherClient @Inject constructor(
                     replyPendingIntent
                 ).addRemoteInput(replyRemoteInput).build()
             )
-        // Collapsed heads-up shows the most recent sender's profile picture.
+
         history.lastOrNull()?.let { last ->
             avatarBitmapFor(last.userId, last.username)?.let { builder.setLargeIcon(it) }
         }
@@ -1095,8 +991,6 @@ class ListenTogetherClient @Inject constructor(
         chatNotificationActive = true
     }
 
-    /** Shade text for a message: GIFs and shared songs describe themselves
-     * when the caption is blank, plain text otherwise. */
     private fun notificationBodyOf(msg: ChatMessagePayload): String {
         if (msg.deleted) return context.getString(R.string.listen_together_chat_message_deleted)
         val text = msg.message.take(300)
@@ -1107,12 +1001,6 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    /**
-     * Resolves a member's avatar bitmap for the conversation notification:
-     * their broadcast custom picture when there is one, the default
-     * colored-initial avatar otherwise. Works for the local user too (their
-     * own saved custom picture).
-     */
     private fun avatarBitmapFor(userId: String?, username: String?): Bitmap? {
         val selfId = _userId.value
         val customBytes: ByteArray? =
@@ -1143,20 +1031,16 @@ class ListenTogetherClient @Inject constructor(
         try {
             val selfId = _userId.value
             if (payload.userId == selfId) {
-                // Own echo — keep the shade conversation current without alerting.
                 if (chatNotificationActive) postChatNotification(alert = false)
                 return
             }
             if (!isInRoom) return
             if (payload.username in _blockedUsernames.value) return
             if (_chatScreenVisible.value) return
-            // The chat's own one-tap mute (overflow menu) silences everything.
+
             if (context.dataStore.get(ListenTogetherChatMutedKey, false)) return
             if (!context.dataStore.get(ListenTogetherChatNotificationsKey, true)) return
-            // In-app notifications own the foreground case: the stacked popup
-            // surfaces the message (with reply / mark-as-read) while the user
-            // is actively in the app, and the shade only takes over once the
-            // app is backgrounded or the feature is off.
+
             if (appInForeground &&
                 context.dataStore.get(ListenTogetherInAppNotificationsKey, true)
             ) {
@@ -1168,7 +1052,6 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
-    /** Cancels the conversation notification (chat opened / room left). */
     fun cancelChatNotification() {
         chatNotificationActive = false
         try {
@@ -1182,15 +1065,10 @@ class ListenTogetherClient @Inject constructor(
         cancelChatNotification()
     }
 
-    /**
-     * Routes a reply typed directly into the notification shade into the room's
-     * chat. Called from ListenTogetherActionReceiver on the main thread.
-     */
     fun handleChatReplyFromNotification(rawText: CharSequence?) {
         val text = rawText?.toString()?.trim().orEmpty()
         if (text.isEmpty()) {
-            // Consume the empty RemoteInput so the shade doesn't keep the
-            // "reply" spinner; re-post the current conversation state.
+
             if (chatNotificationActive) postChatNotification(alert = false)
             return
         }
@@ -1571,9 +1449,6 @@ class ListenTogetherClient @Inject constructor(
                             return
                         }
 
-                        // Auto-approved suggestions take effect right away (the suggesting
-                        // guest has usually already changed their local track), while
-                        // manually approved ones are enqueued for the host to time.
                         val suggestionAutoApprove =
                             context.dataStore.get(ListenTogetherSuggestionAutoApproveKey, true)
                         if (suggestionAutoApprove) {
@@ -1632,18 +1507,10 @@ class ListenTogetherClient @Inject constructor(
 
                     when (payload.code) {
                         "invalid_message" -> {
-                            // The server could not parse our frame — typically a JSON
-                            // create/join sent to a protobuf-only server.
+
                             maybeRetryRoomActionAfterProtocolUpgrade()
                         }
-                        // Session-level loss: the token is spent or expired, but the
-                        // ROOM may still exist (the server's reconnect grace is far
-                        // longer than its socket deadline). A fresh JOIN recovers it
-                        // transparently — guests AND hosts: a host whose session died
-                        // while the room lives on (host transfer, server restart)
-                        // used to hit a dead end that required manual re-joining.
-                        // The dead token is cleared FIRST so nothing can RECONNECT
-                        // with it again (each retry consumes it server-side).
+
                         "session_not_found", "session_expired", "invalid_session" -> {
                             if (storedRoomCode != null && storedUsername != null) {
                                 log(
@@ -1661,9 +1528,7 @@ class ListenTogetherClient @Inject constructor(
                                 sessionToken = null
                             }
                         }
-                        // The room itself is gone: no rejoin target exists, so retrying
-                        // a JOIN would only loop. Clear the session and let the
-                        // ServerError event surface it.
+
                         "room_not_found", "room_closed" -> {
                             log(LogLevel.WARNING, "Room is gone on the server", payload.code)
                             clearPersistedSession()
@@ -1725,20 +1590,14 @@ class ListenTogetherClient @Inject constructor(
                 MessageTypes.CHAT -> {
                     var payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? ChatMessagePayload ?: return
 
-                    // Custom profile pictures piggyback on the chat relay: a
-                    // magic-prefixed base64 payload that never renders as a chat bubble.
                     ListenTogetherAvatar.decodeAvatarBroadcast(payload.message)?.let { avatarBytes ->
                         _customAvatars.value = _customAvatars.value + (payload.userId to avatarBytes)
                         log(LogLevel.INFO, "Custom avatar received", "From: ${payload.username} (${avatarBytes.size} bytes)")
                         return
                     }
 
-                    // Reactions / edits / deletes / pins / typing indicators ride the
-                    // same relay with their own magic envelope; never chat bubbles.
                     decodeChatControl(payload.message)?.let { control ->
-                        // The room's display name rides the same envelope as a
-                        // control event; receivers adopt it directly instead of
-                        // routing it through the chat-control machinery.
+
                         if (control.action == ChatControlEvent.ACTION_ROOM_NAME) {
                             val name = control.text?.trim().orEmpty()
                             if (name.isNotEmpty()) {
@@ -1778,16 +1637,10 @@ class ListenTogetherClient @Inject constructor(
                         }
                     }
 
-                    // A shared song rides in an [LTS:base64 TrackInfo] envelope in
-                    // front of the (possibly empty) message text.
                     decodeSharedTrack(payload.message)?.let { (track, remainingText) ->
                         payload = payload.copy(message = remainingText, sharedTrack = track)
                     }
 
-                    // A GIF link (plus the sender's @-mention list and the GIF's
-                    // intrinsic size) rides in an [LTG:base64] envelope, same
-                    // convention — the server relays the link only and every
-                    // client animates the GIF locally at its own aspect ratio.
                     decodeGifEnvelope(payload.message)?.let { decoded ->
                         payload = payload.copy(
                             message = decoded.remainingText,
@@ -1977,9 +1830,6 @@ class ListenTogetherClient @Inject constructor(
             return
         }
 
-        // metroserver (The Meowery) has no chat relay; its codec is protobuf-only
-        // and ChatPayload has no protobuf mapping. Surfaces as a toast (never a
-        // silent drop) — though the chat entry point is hidden on such servers.
         if (codec.format == MessageFormat.PROTOBUF) {
             log(LogLevel.WARNING, "Chat is not supported by this server", null)
             scope.launch(Dispatchers.Main) {
@@ -1995,9 +1845,7 @@ class ListenTogetherClient @Inject constructor(
         var finalMessage = message
         var mentions: List<String> = emptyList()
         if (gifUrl != null) {
-            // The mention list rides the same envelope so receivers can raise
-            // their badge/notifications even when the text is empty; so do the
-            // GIF's intrinsic dimensions so bubbles keep the original aspect.
+
             mentions = extractMentions(message)
             val envelope =
                 GifEnvelope(
@@ -2040,9 +1888,6 @@ class ListenTogetherClient @Inject constructor(
 
         sendMessage(MessageTypes.CHAT, ChatPayload(finalMessage, replyTo))
 
-        // Local echo for the notification shade's conversation (the server's own
-        // echo is deduped in the CHAT branch); re-post silently so a reply sent
-        // straight from the shade appears there immediately.
         appendChatNotificationHistory(
             ChatMessagePayload(
                 userId = _userId.value ?: "",
@@ -2060,8 +1905,6 @@ class ListenTogetherClient @Inject constructor(
         if (chatNotificationActive) postChatNotification(alert = false)
     }
 
-    /** Usernames the message @-mentions (case-insensitive on the leading @).
-     * An @token extends up to the next whitespace or punctuation boundary. */
     private fun extractMentions(message: String): List<String> {
         if (!message.contains('@')) return emptyList()
         return MENTION_TOKEN_REGEX
@@ -2072,20 +1915,12 @@ class ListenTogetherClient @Inject constructor(
             .toList()
     }
 
-    /** Broadcasts the room's display name to every member over the chat relay.
-     * The host calls this at room creation and again whenever someone joins,
-     * so latecomers adopt the name without any server-side support. */
     fun sendRoomName(name: String) {
         val trimmed = name.trim()
         if (trimmed.isEmpty() || !isInRoom) return
         sendChatControl(ChatControlEvent(action = ChatControlEvent.ACTION_ROOM_NAME, text = trimmed.take(64)))
     }
 
-    /**
-     * Sends a reactions/edit/delete/pin/typing control event over the chat relay.
-     * Control frames never enter any local history — the sender applies the local
-     * effect itself (idempotently) and ignores its own server echo.
-     */
     fun sendChatControl(event: ChatControlEvent) {
         if (!isInRoom) return
         if (codec.format == MessageFormat.PROTOBUF) {
@@ -2099,12 +1934,10 @@ class ListenTogetherClient @Inject constructor(
         sendMessage(MessageTypes.CHAT, ChatPayload(wrapped, null))
     }
 
-    /** The username this client joined/created the room with, for chat-history bookkeeping. */
     val currentUsername: String? get() = storedUsername
 
     private val _customAvatars = kotlinx.coroutines.flow.MutableStateFlow<Map<String, ByteArray>>(emptyMap())
 
-    /** Custom profile pictures received from other room members, keyed by user id. */
     val customAvatars: kotlinx.coroutines.flow.StateFlow<Map<String, ByteArray>> = _customAvatars.asStateFlow()
 
     fun sendCustomAvatar(bytes: ByteArray) {

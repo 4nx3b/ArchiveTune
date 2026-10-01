@@ -274,11 +274,6 @@ fun DebugSettings(navController: NavController) {
                 }
             }
 
-            // The Audio Pipeline diagnostics moved to the player overflow
-            // menu's "Track info & specs" page (Task: user request) — the
-            // whole signal path now lives where the track plays, in the same
-            // UI, updating live.
-
             }
 
             ScreenHeaderHaze(

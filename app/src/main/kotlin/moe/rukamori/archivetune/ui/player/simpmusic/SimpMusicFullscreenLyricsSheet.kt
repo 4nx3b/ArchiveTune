@@ -648,10 +648,6 @@ internal fun SimpMusicFullscreenLyricsSheet(
                 }
             }
 
-            // The shared BottomSheetMenu / BottomSheetPage hosts in MainActivity
-            // already render these singletons; re-hosting them here composed every
-            // popup twice (double scrim, two BackHandlers) which is why a back
-            // swipe misbehaved while the lyrics fullscreen was open.
             }
 
             if (showAnchoredLyricsMenu) {

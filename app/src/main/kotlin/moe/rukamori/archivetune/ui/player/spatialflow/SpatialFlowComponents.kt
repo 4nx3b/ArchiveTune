@@ -207,7 +207,6 @@ internal fun SpatialFlowBlurredBackdrop(
         }
 
         if (withScrim) {
-
             val scrimBrush =
                 if (isDark) {
                     Brush.verticalGradient(

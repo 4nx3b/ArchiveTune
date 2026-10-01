@@ -125,7 +125,6 @@ class AaudioNativeStream {
 
     companion object {
         init {
-
             runCatching { FloatDsp.available }
         }
     }

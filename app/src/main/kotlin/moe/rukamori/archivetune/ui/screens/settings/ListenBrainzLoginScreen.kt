@@ -98,7 +98,6 @@ private fun authorizeUrl(): String =
         "&scope=profile" +
         "&duration=permanent"
 
-/** Returns the validated user name for the token, or null when invalid. */
 private fun validateToken(token: String): String? {
     val request =
         Request
@@ -116,7 +115,6 @@ private fun validateToken(token: String): String? {
     }.getOrNull()
 }
 
-/** OAuth2 authorization-code → access token (which is the LB user token). */
 private fun exchangeCodeForToken(code: String): String? {
     val body =
         FormBody
@@ -141,16 +139,6 @@ private fun exchangeCodeForToken(code: String): String? {
     }.getOrNull()
 }
 
-/**
- * Runs inside the logged-in listenbrainz.org page and returns the user token
- * as a plain string (or null). evaluateJavascript JSON-encodes the result, so
- * the Kotlin side decodes it with a JSONTokener.
- *
- * Strategy 1: the global-react-props JSON blob every LB page embeds — its
- * current_user.auth_token is the token (server-rendered by
- * webserver/utils.py). Strategy 2: the settings page's own
- * <input id="auth-token"> value.
- */
 private const val TOKEN_EXTRACTION_JS = """
 (function() {
     function ok(t) { return t && typeof t === 'string' && t.trim().length >= 16 ? t.trim() : null; }
@@ -181,9 +169,7 @@ fun ListenBrainzLoginScreen(navController: NavController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val handled = remember { AtomicBoolean(false) }
-    // Actionable auth feedback: when the server hard-rejects listens (the
-    // classic case is an unverified MetaBrainz email) the banner tells the
-    // user exactly what to fix instead of every listen failing silently.
+
     val authIssue by ListenBrainzManager.authIssueFlow.collectAsStateWithLifecycle()
 
     fun toast(message: String) {
@@ -205,7 +191,7 @@ fun ListenBrainzLoginScreen(navController: NavController) {
                 prefs[ListenBrainzTokenKey] = token
                 prefs[ListenBrainzEnabledKey] = true
             }
-            // New credentials: any old 401 backoff is obsolete.
+
             ListenBrainzManager.resetAuthState()
             withContext(Dispatchers.Main) {
                 toast(context.getString(R.string.listenbrainz_login_success, userName))
@@ -245,7 +231,6 @@ fun ListenBrainzLoginScreen(navController: NavController) {
         return true
     }
 
-    /** Scrapes the signed-in page for the user token; no-op when logged out. */
     fun tryExtractToken(view: WebView, url: String?) {
         if (handled.get()) return
         val host = runCatching { Uri.parse(url ?: return).host }.getOrNull() ?: return
@@ -259,7 +244,6 @@ fun ListenBrainzLoginScreen(navController: NavController) {
         }
     }
 
-    // Manual escape hatch: the token the user copied out of the site.
     fun finishFromClipboard() {
         scope.launch {
             val token =
@@ -336,10 +320,7 @@ fun ListenBrainzLoginScreen(navController: NavController) {
                         view: WebView,
                         url: String?,
                     ) {
-                        // Auto flow: any signed-in listenbrainz.org page embeds
-                        // the token; the login redirect chain ends back on
-                        // /settings/, so this fires exactly once the user is
-                        // signed in.
+
                         tryExtractToken(view, url)
                     }
                 }

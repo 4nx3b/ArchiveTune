@@ -73,13 +73,6 @@ import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 
-/**
- * The "Liquid Glass" appearance sub-page: the master enable toggle plus the
- * full optical tuning surface — intensity presets, refraction / blur / tint /
- * shadow percentage knobs and the four optical-quality toggles. Every knob
- * resolves to a 1.0x factor at its default, so the factory tuning reproduces
- * the stock rendering exactly.
- */
 @Composable
 fun LiquidGlassSettings(
     navController: NavController,
@@ -357,9 +350,6 @@ fun LiquidGlassSettings(
                 }
             }
 
-            // The same frosted header band every other settings subpage draws
-            // (Appearance & Colors et al.): the source is attached above, so
-            // only the consumer was missing — the page had no haze at all.
             ScreenHeaderHaze(
                 hazeState = headerHaze,
                 systemBarsTopPadding = systemBarsTopPadding,

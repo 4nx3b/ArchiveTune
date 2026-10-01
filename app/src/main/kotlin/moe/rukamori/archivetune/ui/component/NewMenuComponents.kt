@@ -255,7 +255,6 @@ fun MenuSurfaceSection(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = Color.Transparent,

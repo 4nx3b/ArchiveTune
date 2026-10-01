@@ -101,12 +101,6 @@ object AppleMusicAudioProvider {
 
     fun devToken(): String? = AppleMusicProvider.devTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }
 
-    /**
-     * A dev token that is actually usable: the user's stored token while unexpired,
-     * otherwise the last scraped web token. An expired user token used to flow into the
-     * search, the stream build AND the Widevine licence callback — every call 401'd and
-     * the source fell back to YouTube opus even with a logged-in account and pool accounts.
-     */
     fun usableDevToken(): String? {
         val userToken = devToken()
         if (userToken != null) {
@@ -502,7 +496,6 @@ object AppleMusicAudioProvider {
                 val line = rawLine.trim()
                 when {
                     line.startsWith("#EXT-X-KEY") && keyIdHex == null -> {
-
                         if (line.contains(WIDEVINE_KEYFORMAT, ignoreCase = true)) {
                             Regex("URI=\"([^\"]+)\"").find(line)?.let { match -> drmUri = match.groupValues[1] }
                             Regex("URI=\"data:[^\"]*base64,([^\"]+)\"").find(line)?.let { match ->

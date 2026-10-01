@@ -734,8 +734,7 @@ fun HomeTopFadeBlur(
     intensityFraction: Float = 1f,
 ) {
     if (intensityFraction <= 0.01f) {
-        // Fully "at top": no blur and no scrim at all — the haze only fades in
-        // once the list actually starts scrolling under the header.
+
         return
     }
     val height = barHeight + HomeTopFadeRun
@@ -796,10 +795,7 @@ fun ScreenHeaderHaze(
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     if (!liquidGlassEnabled) return
-    // The haze must not sit over content that is still resting at the top of
-    // the list — it only belongs over content that has scrolled underneath
-    // it. `scrolled` comes from the screen's list state (canScrollBackward),
-    // and the crossfade keeps the transition soft instead of snapping.
+
     val intensity by animateFloatAsState(
         targetValue = if (scrolled) 1f else 0f,
         animationSpec = tween(durationMillis = 220),

@@ -33,18 +33,7 @@ object PoolAccountManager {
     private const val TAG = "PoolAccounts"
 
     private const val MIN_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000L
-    // …but only once every service actually has something cached. The 24h throttle was gated on
-    // `hasAccounts()`, which is true as soon as *any one* service is populated — so a pool that
-    // served Tidal accounts locked Deezer and Qobuz out for a full day, and "Check source" (which
-    // refreshes without `force`) could never discover them however many times it was tapped. When
-    // any service is still empty, retry on this much shorter interval instead.
-    //
-    // Five hours, not fifteen minutes. A pool that is legitimately missing a service (Apple Music
-    // accounts are contributor-submitted, so most deployments never have one) would otherwise poll
-    // forever, and every poll wakes the pool's database: the compute stays up for five minutes
-    // after the last query, which on Neon's Free plan is what decides whether a project fits its
-    // 100 CU-hour month or gets suspended in it. `force = true` still bypasses this, so the manual
-    // refresh and "Check source" answer immediately.
+
     private const val MIN_PARTIAL_REFRESH_INTERVAL_MS = 5 * 60 * 60 * 1000L
 
     private val CACHE_TIDAL_KEY = stringPreferencesKey("poolTidalAccounts")
@@ -107,12 +96,6 @@ object PoolAccountManager {
     @Volatile
     private var appleMusicCache: List<AppleMusicPoolAccount> = emptyList()
 
-    /**
-     * When the pool was last fetched over the network, in epoch millis (0 = never fetched).
-     *
-     * Exposed so the settings refresh row can tell "this tap actually fetched" from "this tap was
-     * throttled" — without it the row reported a refresh that never happened.
-     */
     @Volatile
     var lastRefreshAtMillis = 0L
         private set
@@ -145,7 +128,6 @@ object PoolAccountManager {
 
     private val poolBaseUrl: String?
         get() {
-
             val raw = BuildConfig.SOURCE_PROVIDER_URL.trim()
             if (raw.isEmpty()) return null
             return raw
@@ -272,7 +254,6 @@ object PoolAccountManager {
             }
 
             refreshMutex.withLock {
-                // Re-check the throttle inside the lock in case another caller just refreshed.
                 if (!force && hasAccounts() && System.currentTimeMillis() - lastRefreshAtMillis < refreshIntervalMs()) {
                     return@withLock true
                 }
@@ -284,10 +265,7 @@ object PoolAccountManager {
                     lastFeedError = null
                     Timber.tag(TAG).d("No Source Pool URL configured; nothing to refresh")
                 } else {
-                    // User-supplied key (Integration settings) wins over the
-                    // build-time one: the v2 pool encrypts account fields to
-                    // the caller's OWN key, so the key the user pasted is the
-                    // one that can decrypt what the pool serves them.
+
                     val userKey =
                         runCatching { context.dataStore.getAsync(PoolApiKeyKey) }
                             .getOrNull()
@@ -669,7 +647,6 @@ object PoolAccountManager {
 
     private fun entryId(obj: JSONObject): Long? =
         obj.optLong("id", 0L).takeIf { it > 0L }
-
 
     private fun parseAppleMusic(
         arr: JSONArray?,

@@ -143,7 +143,6 @@ internal fun LooperExpressiveSlider(
                         cornerRadius = corner,
                     )
                 } else {
-
                     val easeLength = wavelength * 3f
                     val path = Path()
                     var x = 0f

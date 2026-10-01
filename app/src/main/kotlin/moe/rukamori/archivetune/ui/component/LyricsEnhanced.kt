@@ -169,8 +169,7 @@ import androidx.compose.runtime.setValue
 
 private const val LYRIC_SYNC_LEAD_MS = 120L
 private const val LRC_LEAD_MS = LYRIC_SYNC_LEAD_MS
-// Word-synced TTML timings (Musixmatch richsync, YouTube word sync) are exact —
-// advancing the clock for them only makes every word's karaoke fill finish early.
+
 private const val TTML_LEAD_MS = 0L
 private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 0L
 private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L
@@ -225,15 +224,6 @@ private fun extractTtmlWriters(lyrics: String?): String {
     return writers.joinToString(", ").trim()
 }
 
-/**
- * Enhanced karaoke lyrics renderer.
- *
- * @param singleActiveLine when true, renders ONLY the active line cluster — the
- *   main karaoke line (word-timed sweep), its per-word phonetic (romanisation)
- *   and its translation — cross-fading between lines as playback advances.
- *   Designed for compact surfaces like the TikTok player strip, where previous
- *   and upcoming lines must not be visible and no line-list scrolling applies.
- */
 @Composable
 fun LyricsEnhanced(
     sliderPositionProvider: () -> Long?,
@@ -543,10 +533,6 @@ fun LyricsEnhanced(
         }
     val currentLineIndexState = remember { mutableIntStateOf(-1) }
 
-    // Single-active-line mode (TikTok strip): pick the currently-sung line out of
-    // the fully-built karaoke model. Metadata lines (provider header at start<0,
-    // composer footer at start>=1h) are skipped so the strip only ever shows real
-    // lyrics; before the first line and after the last one it renders nothing.
     val activeKaraokeLine =
         remember(syncedLyrics, currentLineIndexState.intValue, singleActiveLine) {
             if (!singleActiveLine) {
@@ -756,8 +742,7 @@ fun LyricsEnhanced(
 
     LaunchedEffect(lyricsSessionKey, isSynced, positionResetCounter, karaokeGeneration) {
         if (!isSynced || singleActiveLine) {
-            // Single-line mode never scrolls a lyric list, so there is no first
-            // focus to wait for — fade the strip in right away.
+
             awaitingFirstFocus = false
             return@LaunchedEffect
         }
@@ -1046,8 +1031,6 @@ fun LyricsEnhanced(
                 )
             }
 
-            // TikTok-style strip: only the active line cluster is ever composed —
-            // no line list, no scrolling, no previous/upcoming lines.
             singleActiveLine && isSynced -> {
                 key(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
                     androidx.compose.runtime.CompositionLocalProvider(
@@ -1792,8 +1775,6 @@ private fun buildLineSyncedLrcLine(
         )
     }
 
-    // Compact mode (TikTok single-line captions) stacks the romanisation directly
-    // on top of the translation; the full player keeps the looser blank-line break.
     val combinedTranslation =
         when {
             translation.isNullOrBlank() -> normalizedRomanizedText
@@ -1809,22 +1790,6 @@ private fun buildLineSyncedLrcLine(
     )
 }
 
-/**
- * Renders exactly one karaoke line cluster — the joined phonetic (romanisation)
- * row above, the main line with its per-word colour sweep and the translation
- * row(s) below — as a compact custom renderer.
- *
- * Deliberately NOT the library's [KaraokeLyricsView]: that view draws a
- * permanent vertical fading-edge mask over its whole viewport (a 20dp fade-in
- * at the top and a 100dp fade-out at the bottom, applied with DstIn over
- * everything). In the 140–170dp TikTok strip that mask dominates — a long line
- * that wraps onto a second row pushes that row (and the translation) into the
- * ramp and visibly fades "the more line there is". This renderer clips nothing
- * and fades nothing, so wrapped lines stay fully opaque.
- *
- * [AnimatedContent] handles the line-change cross-fade; its content is
- * bottom-aligned so the cluster sits directly above the song-info block.
- */
 @Composable
 private fun SingleActiveKaraokeLine(
     activeLine: ISyncedLine?,
@@ -1868,7 +1833,6 @@ private fun SingleActiveKaraokeLine(
     }
 }
 
-/** The one-line cluster itself; the karaoke sweep recomposes only this Text. */
 @Composable
 private fun SingleActiveLineCluster(
     line: ISyncedLine,
@@ -1931,8 +1895,7 @@ private fun SingleActiveLineCluster(
             }
 
             else -> {
-                // Plain line-synced lyrics: no word timing — the whole active
-                // line renders bright, with romanisation/translation stacked.
+
                 Text(
                     text = line.lineText(),
                     style = normalTextStyle,
@@ -1950,8 +1913,6 @@ private fun SingleActiveLineCluster(
     }
 }
 
-/** Word-timed karaoke sweep: each syllable's colour interpolates from the
- * dimmed rest colour to the full text colour across its own [start, end]. */
 @Composable
 private fun KaraokeSweepText(
     syllables: List<KaraokeSyllable>,
@@ -1978,8 +1939,6 @@ private fun KaraokeSweepText(
     Text(text = annotated, style = textStyle)
 }
 
-/** Romanisation and/or translation rows stacked under the main line. The
- * compact LRC path packs them as "romanised\ntranslation". */
 @Composable
 private fun TranslationStack(
     translation: String?,
@@ -2000,8 +1959,6 @@ private fun TranslationStack(
         }
 }
 
-/** A separating space only between Latin-script words — CJK syllables join
- * seamlessly, exactly like the source lines. */
 private fun needsLatinWordGap(previous: String, next: String): Boolean {
     val prevTail = previous.lastOrNull()
     val nextHead = next.firstOrNull()

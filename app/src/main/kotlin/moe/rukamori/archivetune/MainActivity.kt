@@ -696,9 +696,6 @@ class MainActivity : ComponentActivity() {
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        // Surface any crash logs the previous session left behind (copies
-        // them to Download/ArchiveTune and toasts). Registered before anything
-        // else can fail.
         moe.rukamori.archivetune.utils.CrashReporter.onStartup(this)
 
         runCatching {
@@ -806,11 +803,7 @@ class MainActivity : ComponentActivity() {
                 }
                 moe.rukamori.archivetune.utils.UpdateNotificationManager
                     .checkForUpdates(this@MainActivity)
-                // Pre-save & Release Countdown: while the radar is enabled the
-                // release check runs at WorkManager's 15-minute floor AND an
-                // immediate expedited pass fires on every app open — a release
-                // that lands while the app is away surfaces within moments of
-                // the next use instead of "rarely in a day".
+
                 val presaveRadar =
                     withContext(Dispatchers.IO) {
                         dataStore.data.first()[moe.rukamori.archivetune.constants.PresaveReleaseRadarKey]
@@ -996,8 +989,6 @@ class MainActivity : ComponentActivity() {
                 defaultValue = false,
             )
 
-            // Central liquid-glass tuning: every glass surface reads this one
-            // object, so the "Liquid Glass" settings page retunes the whole app.
             val liquidGlassTuning = rememberLiquidGlassTuning()
 
             val customThemeSeedPalette =
@@ -1415,14 +1406,6 @@ class MainActivity : ComponentActivity() {
                                 !active
                         }
 
-                    // ---- Global compact bottom controls -----------------------------
-                    // Scrolling a page collapses the bottom UI into the compact row
-                    // ([Home] [compact mini player pill] [Search]) while scrolling
-                    // back up (or reaching a static page) re-expands it. The old
-                    // hide-the-whole-nav-bar-on-scroll behaviour is replaced by
-                    // this: the bar "sinks" out of the way while the mini player
-                    // morphs into the pill that takes its place, so the bottom
-                    // stack never fully disappears.
                     var isBottomUiCompact by remember { mutableStateOf(false) }
                     LaunchedEffect(navBackStackEntry?.destination?.route) {
                         isBottomUiCompact = false
@@ -1437,7 +1420,6 @@ class MainActivity : ComponentActivity() {
                                     available: Offset,
                                     source: NestedScrollSource,
                                 ): Offset {
-
                                     if (source == NestedScrollSource.UserInput) {
                                         if (consumed.y < -navBarHideScrollThresholdPx) {
                                             isBottomUiCompact = true
@@ -1462,11 +1444,7 @@ class MainActivity : ComponentActivity() {
                             },
                         label = "bottomUiCompactFraction",
                     )
-                    // The search bar minimises into the compact Search circle on
-                    // every route except the artist page: there the freed space
-                    // beside the pill carries the compact transport controls
-                    // (previous / pause / next) instead — the artist page has no
-                    // search context of its own.
+
                     val compactSearchCircleVisible =
                         navBackStackEntry?.destination?.route?.startsWith("artist/") != true
 
@@ -1480,7 +1458,6 @@ class MainActivity : ComponentActivity() {
                         label = "navGlassStrength",
                     )
 
-                    // The navigation bar is always the floating variant now.
                     val floatingBarsBottomPadding = FloatingNavigationBarBottomPadding
                     val (navBarHeightMultiplier) = rememberPreference(
                         moe.rukamori.archivetune.constants.NavigationBarHeightKey,
@@ -1507,20 +1484,13 @@ class MainActivity : ComponentActivity() {
                         } else {
                             null
                         }
-                    // Plain (non-snapshot) clock for the frosted recorder throttle —
-                    // a snapshot write during draw would invalidate the draw pass.
+
                     val frostedRecordClock = remember { longArrayOf(0L) }
 
                     val liquidGlassActive =
                         liquidGlassEnabled &&
                             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                    // Root recorder for the glass mini player / floating glass
-                    // chrome. THROTTLED (10 Hz re-record): the NavHost redraws on
-                    // every scroll frame, and re-recording the whole window per
-                    // frame + re-running the mini player's blur shader was the
-                    // "search results lag while the mini player is visible"
-                    // report — through an 18dp blur a 10 Hz layer is visually
-                    // identical to a per-frame one.
+
                     val liquidGlassBackdrop: ThrottledLayerBackdrop? =
                         if (liquidGlassActive) {
                             rememberThrottledLayerBackdrop()
@@ -1545,16 +1515,10 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // The in-app Listen Together chat notification samples the
-                    // same throttled recorder for its liquid-glass card; while
-                    // it is visible the recorder has to keep running or the
-                    // card draws on a stale, empty layer (reads as fully
-                    // transparent).
                     var inAppChatNotificationActive by remember { mutableStateOf(false) }
 
                     var glassPrewarmActive by remember { mutableStateOf(false) }
                     LaunchedEffect(Unit) {
-
                         delay(4500)
                         glassPrewarmActive = true
                         delay(450)
@@ -1563,10 +1527,7 @@ class MainActivity : ComponentActivity() {
 
                     val rootOverlayActive by remember {
                         derivedStateOf {
-                            // Every floating layer that should swallow the back
-                            // gesture must be listed here, otherwise the player
-                            // sheet / screen handlers below steal the swipe and
-                            // the popup appears to never dismiss.
+
                             menuGlassRecordingActive ||
                                 menuState.isVisible ||
                                 menuState.dialogContent != null ||
@@ -1586,11 +1547,7 @@ class MainActivity : ComponentActivity() {
                             dismissedBound = 0.dp,
                             collapsedBound =
                                 bottomInset +
-                                    // The floating-bars bottom padding applies on EVERY
-                                    // non-rail screen — detail screens included — so the
-                                    // mini player sits at the exact same height everywhere:
-                                    // the bottom control band ([nav bar] / [Home][pill][Search]
-                                    // compact row) is one fixed geometry across all screens.
+
                                     (if (!useRail) floatingBarsBottomPadding else 0.dp) +
                                     getBottomNavPadding() +
                                     MiniPlayerBottomSpacing +
@@ -1660,7 +1617,6 @@ class MainActivity : ComponentActivity() {
                         requestAodMode()
                     }
 
-
                     LaunchedEffect(useDarkTheme, playerBottomSheetState.isExpanded, playerBackground, aodModeEnabled) {
                         if (aodModeEnabled) return@LaunchedEffect
                         val isDarkStatusBar =
@@ -1698,13 +1654,6 @@ class MainActivity : ComponentActivity() {
 
                     var isPlayerLyricsFullScreen by remember { mutableStateOf(false) }
 
-                    // True for the WHOLE window in which the player sheet is
-                    // visually above its mini-player bound — expanding, expanded
-                    // OR collapsing (isExpandedOrExpanding misses the collapse
-                    // direction). Gates the NavHost-level liquid glass + frosted
-                    // layer recording while the fullscreen player slides over
-                    // the content; provided to screens so playlist glass and
-                    // hero canvases pause under the sheet too.
                     val isPlayerSheetOverlayActive by remember(playerBottomSheetState) {
                         derivedStateOf {
                             playerBottomSheetState.value >
@@ -1760,16 +1709,6 @@ class MainActivity : ComponentActivity() {
                         )
                     val effectiveTopInset = effectiveStatusBarTop
 
-                    // Liquid-glass header fade driven by the sheet's actual top edge
-                    // (maxHeight - value): 0 while the header pills are visibly on
-                    // screen, ramping to 1 only as the sheet's edge climbs past the
-                    // pill zone (status bar + 12dp padding + 48dp pill, plus a fade
-                    // ramp above it). Unlike isPlayerSheetOverlayActive — which flips
-                    // the moment the sheet leaves the mini-player bound and visibly
-                    // swaps glass pills for plain headers mid-transition — pills stay
-                    // glass for exactly as long as they are on screen, then dissolve
-                    // behind the sheet. On collapse they fade back in as the edge
-                    // retreats, instead of popping in when the sheet lands.
                     val playerSheetOverlayFraction by remember(
                         playerBottomSheetState,
                         effectiveStatusBarTop,
@@ -1833,9 +1772,7 @@ class MainActivity : ComponentActivity() {
                         ) {
                             var bottom = bottomInset
                             if (!useRail) {
-                                // Same rule as the sheet's collapsedBound: the floating-bars
-                                // bottom padding is reserved on every non-rail screen so
-                                // content clears the identically-placed mini player.
+
                                 bottom += floatingBarsBottomPadding
                             }
                             if (shouldShowNavigationBar && !useRail) {
@@ -2396,7 +2333,6 @@ class MainActivity : ComponentActivity() {
                                                         .drawBackdrop(
                                                             backdrop = liquidGlassBackdrop,
                                                             effects = {
-
                                                                 colorControls(saturation = 1.7f)
                                                                 blur(4f.dp.toPx())
                                                             },
@@ -2479,10 +2415,7 @@ class MainActivity : ComponentActivity() {
                                                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                                                     !playerBottomSheetState.isExpandedOrExpanding
                                                 ) {
-                                                    // The top haze band only belongs over content that
-                                                    // has scrolled under it — at rest at the top of the
-                                                    // list there is nothing to blur, and a frost there
-                                                    // just dulls the first rows.
+
                                                     val topFadeScrolled =
                                                         when {
                                                             isHomeRoute -> homeListState.canScrollBackward
@@ -2792,11 +2725,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                     AnimatedVisibility(
-                                        // The collapsed search bar no longer pins itself to the
-                                        // top of the search-RESULTS route: that page now owns a
-                                        // bottom liquid-glass search pill (back pill + search pill
-                                        // + category chips, see SearchResultsScaffold.kt). TopSearch
-                                        // only remains for the full-screen active overlay.
+
                                         visible = active,
                                         enter = fadeIn(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 300)),
                                         exit = fadeOut(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 200)),
@@ -3032,7 +2961,6 @@ class MainActivity : ComponentActivity() {
                                 },
                                 bottomBar = {
                                     Box {
-                                        // The floating bar never welds itself to the mini player.
                                         val areBottomBarsPaired = false
 
                                         ProvideVideoFullscreenState {
@@ -3046,18 +2974,13 @@ class MainActivity : ComponentActivity() {
                                                 compactHorizontalPadding = navBarHorizontalPadding,
                                                 compactReserveEndControl = compactSearchCircleVisible,
                                                 navbarHiddenOffset = {
-
                                                     if (shouldShowNavigationBar && !useRail) {
                                                         val hideFraction =
                                                             1f - (
                                                                 bottomNavigationBarHeight.coerceAtMost(navVisibleHeight) /
                                                                     navVisibleHeight
                                                             )
-                                                        // Full sink = collapsedBound − (centre line + half the
-                                                        // compact pill): lands the morphed mini player's CENTRE
-                                                        // exactly on the nav bar's icon line — the same line the
-                                                        // Home/Search circles row centres on. Using navVisibleHeight
-                                                        // alone left the pill ~3dp above the circles.
+
                                                         val compactPillCentreLine =
                                                             floatingBarsBottomPadding +
                                                                 (navVisibleHeight + CompactControlSize) / 2
@@ -3071,11 +2994,6 @@ class MainActivity : ComponentActivity() {
                                             )
                                         }
 
-                                        // Rail mode (tablet / landscape / TV) keeps the
-                                        // side navigation rail instead of the bottom bar, but
-                                        // the compact bottom controls row below must still
-                                        // compose — the old early-return here made the Home and
-                                        // Search circles invisible beside the morphed pill.
                                         val navSlideDistance =
                                             bottomInset + floatingBarsBottomPadding + navVisibleHeight
 
@@ -3105,9 +3023,7 @@ class MainActivity : ComponentActivity() {
                                                                         )
                                                                 slideOffset + hideOffset
                                                             }
-                                                        // Compact mode: the bar sinks out of the way while
-                                                        // dissolving — the Home circle + mini player pill
-                                                        // take over its place in one coordinated motion.
+
                                                         alpha = 1f - bottomUiCompactFraction * 0.9f
                                                     },
                                         ) {
@@ -3144,11 +3060,6 @@ class MainActivity : ComponentActivity() {
                                         }
                                         }
 
-                                        // ---- Compact bottom controls row ------------------------------
-                                        // [ Home ] [ compact mini player pill ] [ Search ] — the Home
-                                        // and Search circles; the pill between them IS the mini
-                                        // player (morphed in place by the sheet's collapsed
-                                        // content, inset by these circles' width + gap).
                                         if (shouldShowNavigationBar || !playerBottomSheetState.isDismissed) {
                                             val compactRowAlpha =
                                                 bottomUiCompactFraction *
@@ -3160,12 +3071,7 @@ class MainActivity : ComponentActivity() {
                                                             .align(Alignment.BottomCenter)
                                                             .fillMaxWidth()
                                                             .padding(horizontal = navBarHorizontalPadding)
-                                                            // The circles row shares the nav bar's EXACT
-                                                            // centre line: the bar's icons sit at
-                                                            // floatingBarsBottomPadding + navVisibleHeight/2
-                                                            // above the inset, so the 64 dp circles row
-                                                            // centres on the same line instead of sitting
-                                                            // 16 dp lower than the bar it replaces.
+
                                                             .padding(
                                                                 bottom = bottomInset +
                                                                     floatingBarsBottomPadding +
@@ -3173,17 +3079,7 @@ class MainActivity : ComponentActivity() {
                                                             )
                                                             .height(CompactControlSize)
                                                             .graphicsLayer {
-                                                                // The circles no longer fade — they SLIDE
-                                                                // out below the screen edge while the
-                                                                // mini player maximises into the full
-                                                                // screen player, and rise back up from
-                                                                // the bottom while it minimises (the
-                                                                // same motion language the nav bar's
-                                                                // own sink uses). Visibility follows the
-                                                                // same product as before: fully shown in
-                                                                // compact+idle, sliding away either when
-                                                                // the bar re-expands (scroll) or when the
-                                                                // player sheet takes over the bottom band.
+
                                                                 val slideDistancePx =
                                                                     (bottomInset + floatingBarsBottomPadding + navVisibleHeight + 8.dp).toPx()
                                                                 translationY =
@@ -3274,16 +3170,13 @@ class MainActivity : ComponentActivity() {
                                         } else if (initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            // Tab-to-tab: the existing fade + scale.
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
                                                     animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
                                                     initialScale = 0.94f,
                                                 )
                                         } else {
-                                            // Pushing into a detail screen: a shared-axis
-                                            // slide from the right + fade (fluid forward
-                                            // motion instead of a plain crossfade).
+
                                             slideInHorizontally(
                                                 animationSpec = tween(300, easing = FastOutSlowInEasing),
                                             ) { it / 4 } +
@@ -3298,9 +3191,7 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         } else {
-                                            // The covered screen drifts a quarter-width left
-                                            // while it fades — the parallax half of the
-                                            // shared-axis push.
+
                                             slideOutHorizontally(
                                                 animationSpec = tween(300, easing = FastOutSlowInEasing),
                                             ) { -it / 8 } +
@@ -3322,8 +3213,7 @@ class MainActivity : ComponentActivity() {
                                                     initialScale = 0.94f,
                                                 )
                                         } else {
-                                            // Popping back: the previous screen slides in from
-                                            // the left, mirroring the push axis.
+
                                             slideInHorizontally(
                                                 animationSpec = tween(300, easing = FastOutSlowInEasing),
                                             ) { -it / 8 } +
@@ -3341,8 +3231,7 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         } else {
-                                            // The popped detail screen exits along the shared
-                                            // axis, back to where it came from.
+
                                             slideOutHorizontally(
                                                 animationSpec = tween(300, easing = FastOutSlowInEasing),
                                             ) { it / 4 } +
@@ -3362,14 +3251,7 @@ class MainActivity : ComponentActivity() {
                                                 },
                                             ).then(
                                                 if (navBarFrostedBackdrop != null && !isPlayerSheetOverlayActive) {
-                                                    // The record below re-records the ENTIRE NavHost
-                                                    // every draw frame; while the player sheet slides
-                                                    // over the content it is pure wasted GPU work (the
-                                                    // frosted consumers are fading out anyway), and it
-                                                    // was half of the playlist-transition jank.
-                                                    // Throttled to 10 Hz for the same reason: a frost
-                                                    // behind a heavy blur does not need per-frame
-                                                    // refresh while content scrolls.
+
                                                     Modifier
                                                         .onGloballyPositioned { coordinates ->
                                                             navBarFrostedBackdrop.contentOffsetInRoot =
@@ -3378,12 +3260,7 @@ class MainActivity : ComponentActivity() {
                                                             val now = SystemClock.uptimeMillis()
                                                             if (now - frostedRecordClock[0] >= 100L) {
                                                                 frostedRecordClock[0] = now
-                                                                // A record that races another use
-                                                                // of the same GraphicsLayer (draw,
-                                                                // snapshot, re-record) must never
-                                                                // escape the draw pass — the
-                                                                // "Recording currently in progress"
-                                                                // family of RenderThread crashes.
+
                                                                 val recorded =
                                                                     runCatching {
                                                                         navBarFrostedBackdrop.layer.record {
@@ -3391,29 +3268,18 @@ class MainActivity : ComponentActivity() {
                                                                         }
                                                                     }.isSuccess
                                                                 if (recorded) {
-                                                                    // Blit the FRESH record for this
-                                                                    // frame's display — pixel-identical
-                                                                    // to drawContent(), at a fraction of
-                                                                    // a second full-content draw.
+
                                                                     runCatching {
                                                                         drawLayer(navBarFrostedBackdrop.layer)
                                                                     }
                                                                     return@drawWithContent
                                                                 }
                                                             }
-                                                            // THE display path: always the LIVE
-                                                            // content. The previous shape blitted
-                                                            // the last recorded layer here, which
-                                                            // froze the ENTIRE NavHost display at
-                                                            // the 10 Hz record cadence — scrolling
-                                                            // and the miniplayer morph visibly
-                                                            // stepped ~10x per second (the "lags a
-                                                            // lot while scrolling" report).
+
                                                             drawContent()
                                                         }
                                                 } else if (navBarFrostedBackdrop != null) {
-                                                    // Overlay active: keep drawing the last recorded
-                                                    // layer (content stays visible) but stop recording.
+
                                                     Modifier
                                                         .onGloballyPositioned { coordinates ->
                                                             navBarFrostedBackdrop.contentOffsetInRoot =
@@ -3470,22 +3336,6 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
 
-                        // Root-level host for the lyrics export: the SAF
-                        // launchers and the request collector live HERE, in a
-                        // part of the composition that exists for as long as
-                        // the activity does — never inside the transient
-                        // lyrics menu. A picker round-trip that destroys the
-                        // menu, the composition or even the process still
-                        // finds a registered launcher on return (the
-                        // ActivityResultRegistry re-delivers pending results
-                        // to a re-registered key after process death), and
-                        // the payload itself is staged to cacheDir by
-                        // LyricsExportCoordinator, so the write can never
-                        // depend on composable state that died mid-flight.
-                        // This is the fix for the long-standing "export gives
-                        // empty files" bug: the picker creates the file up
-                        // front, and every earlier layout lost the payload
-                        // between tap and callback.
                         val lyricsExportTtmlLauncher =
                             rememberLauncherForActivityResult(
                                 androidx.activity.result.contract.ActivityResultContracts.CreateDocument(
@@ -3577,12 +3427,6 @@ class MainActivity : ComponentActivity() {
                                     ).zIndex(10f),
                         )
 
-                        // In-app Listen Together chat notification: a single
-                        // stacked, blurred heads-up card while the app is in
-                        // the foreground and the chat screen is closed. Drawn
-                        // from the menu glass backdrop (throttled recorder) —
-                        // sampling the full-rate content backdrop from inside
-                        // the subtree it records crashes the RenderThread.
                         if (listenTogetherManager != null) {
                             InAppChatNotificationsHost(
                                 manager = listenTogetherManager,

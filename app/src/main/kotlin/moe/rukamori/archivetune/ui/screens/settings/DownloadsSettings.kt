@@ -306,7 +306,6 @@ private fun DownloadSourceOrderDialog(
             sources.add(to.index, item)
         }
 
-
     DefaultDialog(
         onDismiss = onDismiss,
         buttons = {

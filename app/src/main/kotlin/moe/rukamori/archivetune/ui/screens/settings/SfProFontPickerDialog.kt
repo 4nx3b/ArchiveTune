@@ -297,8 +297,7 @@ private fun SfProFontRow(
                 strokeWidth = 2.dp,
             )
         } else if (applied) {
-            // The applied font carries a check instead of the download glyph,
-            // so reopening the picker shows exactly which font is live.
+
             Icon(
                 painter = painterResource(R.drawable.check),
                 contentDescription = stringResource(R.string.sf_pro_applied, entry.name),

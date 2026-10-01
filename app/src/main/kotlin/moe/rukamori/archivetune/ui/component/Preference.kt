@@ -107,10 +107,8 @@ private val PreferenceEntryMinHeight = 56.dp
 private val PreferenceEntryHorizontalPadding = 16.dp
 private val PreferenceEntryVerticalPadding = 10.dp
 
-/** iOS-style: the unified group card's corner radius. */
 private val PreferenceGroupCardCorner = 20.dp
 
-/** iOS-style: the row icon's size (system-like, 20-22dp). */
 private val PreferenceEntryIconSize = 22.dp
 
 @Composable
@@ -229,8 +227,7 @@ fun PreferenceEntry(
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier.weight(1f),
             ) {
-                // iOS-style typography: 16sp medium, not the heavy Bold the
-                // old segmented cards used — restrained hierarchy.
+
                 ProvideTextStyle(MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)) {
                     title()
                 }
@@ -251,7 +248,6 @@ fun PreferenceEntry(
                     trailingContent()
                 }
             } else if (onClick != null && !inGroup) {
-                // Standalone (card) entries keep the disclosure chevron too.
                 Spacer(Modifier.width(6.dp))
                 Icon(
                     painter = painterResource(R.drawable.chevron_right),
@@ -264,8 +260,7 @@ fun PreferenceEntry(
     }
 
     if (inGroup) {
-        // Inside a PreferenceGroup the GROUP draws the unified translucent
-        // card (see PreferenceGroup); the row renders bare on top of it.
+
         Box(modifier = modifier.fillMaxWidth()) {
             rowContent()
         }
@@ -855,8 +850,7 @@ fun SwitchPreference(
         description = description,
         icon = icon,
         trailingContent = {
-            // Springy custom switch: bouncy thumb travel + velocity stretch +
-            // crossfading track, replacing the plain Material switch.
+
             SpringySwitch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
@@ -1305,9 +1299,6 @@ fun PreferenceGroup(
             )
         }
 
-        // ONE unified translucent card per section (the reference's grouped
-        // rounded surface): every child renders as a row inside it, separated
-        // by hairline dividers, instead of each being its own card.
         val cardShape = RoundedCornerShape(PreferenceGroupCardCorner)
         val cardColor = glassAwareCardColor()
         androidx.compose.material3.Surface(
@@ -1362,8 +1353,7 @@ fun PreferenceGroupTitle(
     title: String,
     modifier: Modifier = Modifier,
 ) {
-    // The reference's section captions: small, quiet, secondary ink — not
-    // shouting in the accent color.
+
     Text(
         text = title,
         style = MaterialTheme.typography.labelMedium,

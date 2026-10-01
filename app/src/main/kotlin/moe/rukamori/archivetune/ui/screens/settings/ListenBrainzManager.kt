@@ -25,9 +25,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 object ListenBrainzManager {
     private val logTag = "ListenBrainzManager"
     private val started = AtomicBoolean(false)
-    private var scope: CoroutineScope? = null
-    private var job: Job? = null
-    private var lifecycleObserver: Any? = null
     private val httpClient =
         OkHttpClient
             .Builder()
@@ -39,24 +36,12 @@ object ListenBrainzManager {
     private val _lastSubmitTime = MutableStateFlow<Long?>(null)
     val lastSubmitTimeFlow = _lastSubmitTime.asStateFlow()
 
-    /** Non-null while the account itself is rejecting submissions (401 with
-     *  an actionable reason, e.g. an unverified MetaBrainz email). The login
-     *  screen surfaces this so the user knows WHAT to fix instead of watching
-     *  every listen silently fail. Null again after a successful submit or a
-     *  token change. */
     private val _authIssue = MutableStateFlow<String?>(null)
     val authIssueFlow = _authIssue.asStateFlow()
 
-    /** Hard backoff after an auth rejection: submissions are skipped entirely
-     *  (the account will keep rejecting them — the log used to fill with one
-     *  401 per listen attempt, three playing_now per track change). Cleared
-     *  when the token changes via [resetAuthState] (new login). */
     @Volatile
     private var authBackoffUntilMs: Long = 0L
 
-    /** playing_now dedupe window: the service fires the submit from BOTH the
-     *  timeline-change and the is-playing/transition event batches, which
-     *  tripled identical payloads within milliseconds. */
     @Volatile
     private var lastPlayingNowKey: String? = null
 
@@ -66,8 +51,6 @@ object ListenBrainzManager {
     private val backoffActive: Boolean
         get() = System.currentTimeMillis() < authBackoffUntilMs
 
-    /** Call on token change (new login / logout) — clears the auth issue and
-     *  the backoff so the new credentials get a clean first attempt. */
     fun resetAuthState() {
         authBackoffUntilMs = 0L
         _authIssue.value = null
@@ -75,22 +58,12 @@ object ListenBrainzManager {
         lastPlayingNowAtMs = 0L
     }
 
-    /**
-     * Direct field access instead of the old reflection lookup: R8 obfuscation
-     * renamed the getName() methods and silently degraded scrobbles to regex
-     * extraction over toString().
-     */
     private fun extractArtistName(song: Song): String =
         song.artists
             .mapNotNull { it.name.takeIf(String::isNotBlank) }
             .joinToString(" & ")
             .ifBlank { "Unknown Artist" }
 
-    /**
-     * duration_ms is optional per the ListenBrainz schema; a negative value
-     * (SongEntity.duration defaults to -1 before full persistence) makes the whole
-     * submission fail schema validation with HTTP 400.
-     */
     private fun buildAdditionalInfo(
         durationMs: Long,
         extraFields: Map<String, Long>,
@@ -141,11 +114,9 @@ object ListenBrainzManager {
     ): Boolean {
         if (token.isBlank()) return false
         if (song == null) return false
-        // Skip while the account is hard-rejecting submissions (401 backoff).
+
         if (backoffActive) return false
-        // Dedupe: the service's event fan-out fires this 2-3x per track change
-        // with identical payloads. One playing_now per track (and at most one
-        // re-assert per 30s) is all ListenBrainz models ask for.
+
         val nowMs = System.currentTimeMillis()
         val key = song.song.id
         if (key == lastPlayingNowKey && nowMs - lastPlayingNowAtMs < PLAYING_NOW_DEDUPE_MS) {
@@ -261,11 +232,6 @@ object ListenBrainzManager {
         }
     }
 
-    /** 401 means the ACCOUNT rejected us, not the network: the observed case
-     *  is an unverified MetaBrainz email address. Every retry would fail the
-     *  same way, so submissions back off hard for 6 hours and the actionable
-     *  reason is published for the UI instead of filling the log with one 401
-     *  per attempt. */
     private fun handleAuthRejection(code: Int, respBody: String, kind: String) {
         if (code == 401) {
             val message =

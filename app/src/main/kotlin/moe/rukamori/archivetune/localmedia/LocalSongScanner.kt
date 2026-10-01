@@ -407,9 +407,7 @@ class LocalSongScanner
                                     mimeType = mimeType,
                                 )?.let(LyricsUtils::lyricsOrNotFound)
                                 ?.takeIf { lyrics -> lyrics != LyricsEntity.LYRICS_NOT_FOUND }
-                        // ReplayGain/R128 tags power per-track loudness correction for the
-                        // lossless library; skipped when the file already carried tags and
-                        // its bytes are unchanged (existing tags are preserved below).
+
                         val replayGain =
                             runCatching {
                                 ReplayGainTagParser.parse(

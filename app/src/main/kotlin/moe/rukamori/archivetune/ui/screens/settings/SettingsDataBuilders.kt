@@ -134,14 +134,6 @@ import moe.rukamori.archivetune.constants.TidalAnimatedCoversEnabledKey
 import moe.rukamori.archivetune.constants.ListenTogetherSyncVolumeKey
 import moe.rukamori.archivetune.utils.rememberPreference
 
-
-/**
- * The settings home's vivid icon-tile palette — one saturated color per row
- * (iOS Settings-style colorful icons), chosen to read equally well on the
- * light and dark grouped cards and to keep neighboring rows distinguishable.
- * The values are FIXED (not theme roles): the old primary/secondary/tertiary
- * rotation collapsed to at most three near-identical tones.
- */
 internal object SettingsIconPalette {
     val Account = Color(0xFF4285F4)
     val Stats = Color(0xFFEC407A)
@@ -177,8 +169,6 @@ internal object SettingsIconPalette {
     val About = Color(0xFF29B6F6)
     val DefaultLinks = Color(0xFF42A5F5)
 
-    // Integration-page-only services (no row on the settings home): brand
-    // tints shared with the integration rows' glyphs.
     val AppleMusic = Color(0xFFFA2D48)
     val LastFm = Color(0xFFD51007)
     val ListenBrainz = Color(0xFF35B5AC)
@@ -413,9 +403,7 @@ fun buildSettingsGroups(
                 SettingsChild("Enable swipe to change song", "enable_swipe_thumbnail", listOf("swipe thumbnail", "swipe to change song", "swipe artwork", "swipe track")) { SearchResultSwitch(SwipeThumbnailKey, true) },
                 SettingsChild("Mini player swipe sensitivity", "swipe_sensitivity", listOf("swipe sensitivity", "mini player swipe", "gesture sensitivity")),
                 SettingsChild("Check source", "check_source", listOf("check source", "source health", "test source", "source diagnostics", "verify source", "source status")),
-                // Audiophile search-index children (moved from the removed
-                // standalone main-settings entry; the page itself lives at
-                // settings/player/audiophile via the Playback entry).
+
                 SettingsChild("Audiophile", "audiophile", listOf("audiophile", "dsp", "engine", "tryptify", "lastwave", "float", "usb exclusive", "bit perfect", "dac", "autoeq")),
                 SettingsChild("Bit-Perfect Output", "bit_perfect_output", listOf("bit perfect", "bitperfect", "native output", "direct playback", "pcm24", "pcm32", "sample rate", "native rate")) { SearchResultSwitch(BitPerfectOutputKey, false) },
                 SettingsChild("Native Sample Rate", "bit_perfect_native_rate", listOf("native sample rate", "source rate", "resampling", "rate matching")) { SearchResultSwitch(BitPerfectNativeRateKey, true) },
@@ -441,11 +429,6 @@ fun buildSettingsGroups(
             ),
         )
 
-    // The standalone "Audiophile" entry was removed from the main settings
-    // page — the page is the documented sub-page of Playback settings
-    // (PlayerSettings owns its entry). Its search-index children moved under
-    // the `playback` item below so settings search still finds every toggle.
-
     val jioSaavn =
         SettingsItem(
             key = "jiosaavn",
@@ -463,7 +446,6 @@ fun buildSettingsGroups(
             ),
         )
 
-    // Sources → Deezer sub-page.
     val deezer =
         SettingsItem(
             key = "deezer",
@@ -1080,7 +1062,7 @@ fun buildSettingsGroups(
 
     return listOf(
         SettingsGroup(
-            // No caption above the account pill — it reads on its own.
+
             title = "",
             items = listOf(account, stats),
         ),

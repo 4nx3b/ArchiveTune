@@ -202,11 +202,6 @@ class ApplyEqualizerPresetUseCase
             }
     }
 
-/**
- * Projects the stored curve onto the current device's bands: frequency-aware when
- * the save carries its band centers (Tryptify technique), index-based fallback for
- * legacy saves without frequencies.
- */
 internal fun normalizedDeviceLevels(
     settings: EqSettings,
     capabilities: EqCapabilities?,

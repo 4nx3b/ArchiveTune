@@ -357,7 +357,6 @@ fun BitChordPlayerContent(
     val database = LocalDatabase.current
     val player = playerConnection.player
 
-    // Automix: the engine's published state, straight from the service.
     val automixOn by SmartFadeRuntimeState.enabled.collectAsStateWithLifecycle()
     val automixAnalysis by SmartFadeRuntimeState.analysis.collectAsStateWithLifecycle()
 
@@ -621,12 +620,7 @@ fun BitChordPlayerContent(
     val onPlayPause = {
         if (player.isPlaying) player.pause() else player.play()
     }
-    // Read the session player AT CALL TIME: the captured `player` val goes
-    // stale the moment the service swaps the session player (automix/crossfade
-    // promotion), which left the BitChord seekbar dragging a released player —
-    // the bar moved but nothing seeked (lyrics taps still worked because their
-    // handlers re-adopt fresh lambdas). The connection's getter always resolves
-    // to the live player, matching the default player's working seek path.
+
     val onSeekFraction: (Float) -> Unit = { f ->
         val livePlayer = playerConnection.player
         val d = livePlayer.duration
@@ -951,9 +945,6 @@ fun BitChordPlayerContent(
                         }
                     }
 
-                    // Automix analysis status, drawn on the sleeve the way
-                    // BitChord draws it: bottom-centre, dim, shadowed, and gone
-                    // once the layout starts collapsing.
                     if (automixOn && p < 0.5f) {
                         val currentStateLabel = localizedAnalysisState(automixAnalysis.current)
                         val nextStateLabel = localizedAnalysisState(automixAnalysis.next)
@@ -1076,7 +1067,6 @@ fun BitChordPlayerContent(
                     val latestScrubbing = rememberUpdatedState(scrubbing)
                     val latestDuration = rememberUpdatedState(duration)
                     val lyricsPositionProvider = remember {
-
                         {
                             if (latestScrubbing.value) {
                                 val shown = shownFraction()
@@ -1303,14 +1293,10 @@ fun BitChordPlayerContent(
                 )
             }
 
-            // The volume slider already has ~13dp below its drawn track; a
-            // 6dp rest brings the pill row up tight under the sliders the way
-            // the reference stacks seekbar -> transport -> volume -> pills.
             Spacer(Modifier.height(6.dp))
 
             BoxWithConstraints(Modifier.fillMaxWidth()) {
-                // Sized for the capsule, not the loose glyphs: fixed inset keeps
-                // the three ends aligned no matter the repeat glyph's state.
+
                 val widestRow = BOTTOM_ACTION_SIZE * 2 + pillWidth(2)
                 val edgeInset = ((maxWidth - widestRow) / 4).coerceAtLeast(0.dp)
                 Row(
@@ -1324,8 +1310,7 @@ fun BitChordPlayerContent(
                     BottomGlyph(
                         icon = BitChordIcons.LyricsQuote,
                         contentDescription = if (lyricsOpen) "Close lyrics" else "Open lyrics",
-                        // One sleeve: opening the queue closes lyrics and vice
-                        // versa, so the two glyphs can never be lit at once.
+
                         onClick = {
                             queueOpen = false
                             lyricsOpen = !lyricsOpen
@@ -1557,21 +1542,12 @@ private fun Modifier.opensPage(browseId: String?, onOpen: (String) -> Unit): Mod
         clip(RoundedCornerShape(6.dp)).clickable { onOpen(browseId) }
     }
 
-// ---------------------------------------------------------------------------
-// The segmented capsule at the centre of the bottom row (reference style):
-// squared-off segments joined by hairline dividers, one highlight fill.
-// ---------------------------------------------------------------------------
-
-/** Height of the capsule (and the glyphs flanking it). */
 private val BOTTOM_ACTION_SIZE = 44.dp
 
-/** Width of one [PillSegment]; the capsule is a whole number of these. */
 private val PILL_SEGMENT_WIDTH = 54.dp
 
-/** Icon size inside a [PillSegment]. */
 private val PILL_ICON_SIZE = 24.dp
 
-/** Outer width of an n-segment capsule, dividers included. */
 private fun pillWidth(segments: Int): Dp =
     PILL_SEGMENT_WIDTH * segments + 1.dp * (segments - 1)
 
@@ -1597,11 +1573,6 @@ private fun PillDivider() {
     )
 }
 
-/**
- * One control inside a [Pill] — [BottomGlyph]'s twin, squared off. A glyph's
- * highlight is a circle sized to itself; a segment's fills its share of the
- * capsule edge to edge or the join stops reading as one.
- */
 @Composable
 private fun PillSegment(
     contentDescription: String,

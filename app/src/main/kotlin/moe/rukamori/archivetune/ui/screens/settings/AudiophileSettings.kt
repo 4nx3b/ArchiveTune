@@ -87,14 +87,6 @@ import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.constants.AutomixEnabledKey
 
-/**
- * The "Audiophile" sub-page of Playback settings — the single home for the
- * engine stack: the 32-bit float DSP pipeline, the Tryptify and LastWave
- * engine toggles (mutually exclusive), every Tryptify engine feature, and the
- * engine-owned USB-exclusive output route. Everything here writes the exact
- * same preference keys the playback service collects live, so behaviour is
- * unchanged from when these rows lived on the main Playback page.
- */
 @Composable
 fun AudiophileSettings(
     navController: NavController,
@@ -131,8 +123,6 @@ fun AudiophileSettings(
             defaultValue = false,
         )
 
-    // The exclusive route and the blending / offload paths each hold their own
-    // output pipeline — flipping one on must release the others.
     val (_, onAudioOffloadChange) =
         rememberPreference(
             AudioOffload,
@@ -149,9 +139,6 @@ fun AudiophileSettings(
             defaultValue = false,
         )
 
-    // ── Tryptify engine feature prefs (upstream's own settings surface,
-    // read/written through the ported PreferencesManager so the live
-    // collectors in the playback service see the changes) ─────────────────
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val tryptifyPrefs =
@@ -249,9 +236,7 @@ fun AudiophileSettings(
                     .padding(top = topPadding)
                     .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
             ) {
-                // The live audio chain pill: real-time INPUT -> stage -> OUTPUT
-                // exactly as the decoder/sink/output are wired right now,
-                // refreshed every second and on every track/route change.
+
                 LiveAudioChainCard(
                     modifier = Modifier
                         .padding(horizontal = 16.dp)
@@ -268,8 +253,7 @@ fun AudiophileSettings(
                                 checked = bitPerfect,
                                 onCheckedChange = onBitPerfectChange,
                             )
-                            // Read-only LIVE status: what the active output is
-                            // actually doing right now (never the request).
+
                             val statusText = rememberBitPerfectStatusLine()
                             if (bitPerfect && statusText != null) {
                                 Text(
@@ -304,10 +288,7 @@ fun AudiophileSettings(
                     }
 
                     item {
-                        // The ported Tryptify engine: C++17 mixing console + Oxford
-                        // effects + measurement-driven AutoEQ + its libusb UAC
-                        // bit-perfect USB-DAC driver (when USB-exclusive is on).
-                        // Enabling it adds the "Tryptify EQ" tab to the Equalizer.
+
                         Column(modifier = positions.modifierFor("tryptify_audio_processing")) {
                             SwitchPreference(
                                 title = { Text(stringResource(R.string.tryptify_audio_processing)) },
@@ -317,7 +298,6 @@ fun AudiophileSettings(
                                 onCheckedChange = { enabled ->
                                     onTryptifyAudioProcessingChange(enabled)
                                     if (enabled) {
-                                        // Exactly one engine may own the DSP tail.
                                         onLastwaveAudioProcessingChange(false)
                                     }
                                 },
@@ -326,10 +306,7 @@ fun AudiophileSettings(
                     }
 
                     item {
-                        // The ported LastWave-native engine: its native Oboe/soxr
-                        // DSP (15-band graphic EQ + Studio Master Clarity) and
-                        // usbdevfs exclusive USB-DAC driver / bit-perfect mixer
-                        // attributes (when USB-exclusive is on).
+
                         Column(modifier = positions.modifierFor("lastwave_audio_processing")) {
                             SwitchPreference(
                                 title = { Text(stringResource(R.string.lastwave_audio_processing)) },
@@ -348,8 +325,7 @@ fun AudiophileSettings(
                 }
 
                 PreferenceGroup(title = stringResource(R.string.tryptify_engine_features_group)) {
-                    // ── Tryptify engine features (visible only while the engine
-                    // is on; every one is wired to the live audio chain) ────────
+
                     item(visible = tryptifyAudioProcessing) {
                         Column(modifier = positions.modifierFor("tryptify_usb_pin")) {
                             SwitchPreference(
@@ -447,10 +423,7 @@ fun AudiophileSettings(
                 }
 
                 PreferenceGroup(title = stringResource(R.string.audiophile_output_group)) {
-                    // The engine-owned exclusive route sits BELOW both engines'
-                    // feature blocks: every engine-dependent setting must appear
-                    // under the toggle that enables it, and this one belongs to
-                    // whichever engine is on (its driver serves the stream).
+
                     item(visible = tryptifyAudioProcessing || lastwaveAudioProcessing) {
                         Column(modifier = positions.modifierFor("usb_exclusive_audio")) {
                             SwitchPreference(
@@ -468,9 +441,7 @@ fun AudiophileSettings(
                                 onCheckedChange = { enabled ->
                                     onUsbExclusiveAudioChange(enabled)
                                     if (enabled) {
-                                        // One exclusive stream only: the blending
-                                        // engines and offload each hold their own
-                                        // output path.
+
                                         onAudioOffloadChange(false)
                                         onCrossfadeEnabledChange(false)
                                         onAutomixEnabledChange(false)
@@ -512,7 +483,7 @@ private fun TryptifyBlockSizeDialog(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 12.dp),
             )
-            // The upstream chip row, laid out as wrap rows of selectable chips.
+
             androidx.compose.foundation.layout.FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -582,16 +553,6 @@ private fun TryptifyFftSizeDialog(
     }
 }
 
-/**
- * The read-only Bit-Perfect status line. It renders the ACTUAL active output
- * (from [BitPerfectRuntime], updated per track by the playback service), never
- * merely the requested format:
- *
- *  - verified + rate matched  -> "Bit-Perfect • 24-bit • 96 kHz"
- *  - verified, rate carried    -> "Native Rate • 24-bit • 44.1 kHz"
- *  - rate converted            -> "Resampling • 24-bit/96 kHz → 48 kHz"
- *  - anything else             -> "Bit-Perfect unavailable" (+ reason)
- */
 @Composable
 private fun rememberBitPerfectStatusLine(): String? {
     val status = BitPerfectRuntime.status
@@ -618,23 +579,6 @@ private fun rateKhz(hz: Int): String =
         if (k == k.toInt().toDouble()) "${k.toInt()} kHz" else String.format(java.util.Locale.US, "%.1f kHz", k)
     }
 
-/**
- * The Live Audio Chain pill — the real-time signal-path trace at the top of
- * the Audiophile page. Shows exactly what is being sent to the output device
- * RIGHT NOW:
- *
- *   [INPUT 24-bit | 44.1 kHz] → ( DSP / DIRECT HAL / ANDROID MIXER ) → [OUTPUT 24-bit | 44.1 kHz]
- *                                · USB Exclusive · Bit-Perfect ·
- *
- * All labels come from the shared derivation in [rememberLiveAudioChainLabels]
- * — the same one the track-info Details pill uses. INPUT is the container
- * truth (FLAC STREAMINFO depth via the extractor); OUTPUT is the ACTUAL
- * negotiated route (usbdevfs/libusb exclusive wire, verified bit-perfect
- * mixer attributes, the Bit-Perfect float track, or the Android mixer's HAL
- * rate). Refreshes every second and on every track/route change —
- * [BitPerfectRuntime.status] is Compose state and the engine/HAL half is
- * polled.
- */
 @Composable
 private fun LiveAudioChainCard(modifier: Modifier = Modifier) {
     val labels = rememberLiveAudioChainLabels()
@@ -849,5 +793,4 @@ private fun ChainStageChip(
         }
     }
 }
-
 

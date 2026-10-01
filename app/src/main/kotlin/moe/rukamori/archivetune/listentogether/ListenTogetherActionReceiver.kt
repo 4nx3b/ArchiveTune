@@ -25,9 +25,7 @@ class ListenTogetherActionReceiver : BroadcastReceiver() {
         val notifId = intent.getIntExtra(ListenTogetherClient.EXTRA_NOTIFICATION_ID, 0)
 
         when (intent.action) {
-            // Chat replies must keep the conversation notification alive (it is
-            // re-posted from the client with the new message), so they bypass
-            // the blanket cancel below.
+
             ListenTogetherClient.ACTION_REPLY_CHAT -> {
                 val remoteInput = RemoteInput.getResultsFromIntent(intent)
                 client.handleChatReplyFromNotification(

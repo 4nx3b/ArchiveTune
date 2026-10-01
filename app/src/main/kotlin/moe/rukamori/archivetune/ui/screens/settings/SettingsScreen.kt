@@ -264,13 +264,8 @@ fun SettingsScreen(
             Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
     var isUpdateDismissed by remember { mutableStateOf(false) }
 
-    // The signed-in Google account's avatar (persisted by the account
-    // identity refresh) — the account row on this page shows the profile
-    // picture instead of a generic account glyph.
     val (accountImageUrl) = rememberPreference(AccountImageUrlKey, "")
 
-    // The bottom-chrome search field's live query (SearchResultsBottomOverlay
-    // owns the visuals; this state feeds SettingsSearch filtering).
     var searchQuery by remember { mutableStateOf("") }
 
     val allSettingsGroups =
@@ -435,8 +430,7 @@ fun SettingsScreen(
                         key = "settings_group_$groupIndex",
                         contentType = "settings_group_card",
                     ) {
-                        // animateItem: the cards glide when the update banner
-                        // dismisses or the search filter reshuffles the groups.
+
                         SettingsGroupCard(
                             group = group,
                             modifier = Modifier.animateItem(),
@@ -451,9 +445,6 @@ fun SettingsScreen(
                     scrolled = listState.canScrollBackward,
                 )
 
-                // Bottom chrome: back pill + settings-search pill on the same line,
-                // mirroring the search-results layout. The in-list search field and
-                // the top-bar search/back icons are gone — search lives down here now.
                 SearchResultsBottomOverlay(
                     state = glassHeader.toSearchResultsBarState(),
                     query = searchQuery,

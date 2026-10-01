@@ -29,17 +29,16 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-/** One upcoming (not-yet-released) catalogue entry. */
 data class UpcomingRelease(
-    /** Deezer album id — used only as a stable identity for this radar. */
+
     val releaseId: String,
     val title: String,
     val artistName: String,
-    /** Type label from the catalogue ("album"/"single"/"ep"). */
+
     val releaseType: String,
-    /** Epoch milliseconds at midnight UTC of the announced release date. */
+
     val releaseAtMillis: Long,
-    /** Preferred (largest) artwork URL. */
+
     val thumbnailUrl: String?,
 )
 
@@ -48,13 +47,10 @@ object ReleaseRadarRepository {
     private const val API_BASE = "https://api.deezer.com"
     private const val ITUNES_API = "https://itunes.apple.com"
 
-    /** Cache TTL: an announced release date rarely changes. */
     private const val CACHE_TTL_MILLIS = 6L * 60 * 60 * 1000
 
-    /** Releases further out than this are not "about to release". */
     private const val MAX_HORIZON_MILLIS = 400L * 24 * 60 * 60 * 1000
 
-    /** MusicBrainz requires a meaningful User-Agent; both APIs get one. */
     private const val USER_AGENT = "ArchiveTune/16.0 (https://github.com/4nx3b/ArchiveTune)"
 
     private val client =
@@ -73,11 +69,6 @@ object ReleaseRadarRepository {
     private val cache = HashMap<String, CacheEntry>()
     private val cacheLock = Mutex()
 
-    /**
-     * Upcoming releases for the artist named [artistName], newest-release
-     * first, or an empty list when nothing upcoming is known. Results are
-     * cached per (normalised) artist name for [CACHE_TTL_MILLIS].
-     */
     suspend fun upcomingReleasesForArtist(artistName: String): List<UpcomingRelease> {
         val query = artistName.trim()
         if (query.isEmpty()) return emptyList()
@@ -106,7 +97,6 @@ object ReleaseRadarRepository {
         cacheLock.withLock {
             cache[query.lowercase()] = CacheEntry(found, System.currentTimeMillis())
             if (cache.size > 64) {
-                // Trim the oldest half when the cache grows past its budget.
                 val keep =
                     cache.entries
                         .sortedByDescending { it.value.storedAt }
@@ -141,9 +131,6 @@ object ReleaseRadarRepository {
                 val releaseAt = parseReleaseDate(releaseDate) ?: continue
                 if (releaseAt <= now || releaseAt - now > MAX_HORIZON_MILLIS) continue
 
-                // The artist endpoint is id-scoped, but Deezer still serves
-                // collaborative/compilation entries under an artist — only
-                // entries that name this artist survive.
                 val albumArtist = album.optJSONObject("artist")?.optString("name").orEmpty()
                 if (albumArtist.isNotBlank() && !isSameArtist(artistName, albumArtist)) continue
 
@@ -161,12 +148,6 @@ object ReleaseRadarRepository {
         }
     }
 
-    /**
-     * The iTunes Search catalogue: one call returns the artist's releases with
-     * `releaseDate` fields — entries whose date lies in the future are the
-     * pre-release announcements. Artwork comes as 100x100; upscaled to 600x600
-     * by the standard URL substitution.
-     */
     private fun fetchUpcomingItunes(artistName: String): List<UpcomingRelease> {
         val request =
             Request
@@ -189,12 +170,6 @@ object ReleaseRadarRepository {
                 val releaseAt = parseReleaseDate(album.optString("releaseDate", "")) ?: continue
                 if (releaseAt <= now || releaseAt - now > MAX_HORIZON_MILLIS) continue
 
-                // iTunes `artistTerm` search is fuzzy — a query for a short or
-                // common artist name returns tribute acts, karaoke labels and
-                // completely unrelated artists, and a future-dated entry among
-                // those was presented as THIS artist's upcoming release (the
-                // "wrong release info" bug). Every result must verify against
-                // the queried artist name before it is adopted.
                 val resultArtist = album.optString("artistName", "")
                 if (!isSameArtist(artistName, resultArtist)) continue
 
@@ -222,16 +197,8 @@ object ReleaseRadarRepository {
         }
     }
 
-    /**
-     * Collapses cross-catalogue duplicates (same normalised title and release
-     * date) onto the entry with the better artwork, then sorts by date.
-     */
     private fun mergeReleases(all: List<UpcomingRelease>): List<UpcomingRelease> {
-        // Group by normalised title, then collapse entries whose dates sit
-        // within a few days of each other — Deezer (EU) and iTunes (US)
-        // frequently disagree by a day across the timezone line, and strict
-        // date equality used to show the same album twice with two different
-        // countdowns.
+
         val byTitle = LinkedHashMap<String, MutableList<UpcomingRelease>>()
         for (release in all) {
             byTitle.getOrPut(normalizeTitleKey(release.title)) { mutableListOf() }.add(release)
@@ -247,7 +214,7 @@ object ReleaseRadarRepository {
                     val other = iterator.next()
                     if (kotlin.math.abs(other.releaseAtMillis - head.releaseAtMillis) <= MERGE_DATE_TOLERANCE_MILLIS) {
                         iterator.remove()
-                        // Keep artwork; prefer the earliest announced date.
+
                         if (best.thumbnailUrl.isNullOrBlank() && !other.thumbnailUrl.isNullOrBlank()) {
                             best = other.copy(releaseAtMillis = minOf(best.releaseAtMillis, other.releaseAtMillis))
                         } else {
@@ -261,22 +228,14 @@ object ReleaseRadarRepository {
         return merged.sortedBy { it.releaseAtMillis }
     }
 
-    /** Deezer (EU) vs iTunes (US) dates drift across the timezone line. */
     private const val MERGE_DATE_TOLERANCE_MILLIS = 3L * 24 * 60 * 60 * 1000
 
-    /**
-     * Strict artist identity: normalised equality, strong containment, or
-     * heavy token overlap. Replaces the old two-way substring containment
-     * which let a query for "John" adopt "Elton John" and friends.
-     */
     private fun isSameArtist(queried: String, candidate: String): Boolean {
         val a = normalizeArtistKey(queried)
         val b = normalizeArtistKey(candidate)
         if (a.isEmpty() || b.isEmpty()) return false
         if (a == b) return true
 
-        // Containment only when the shorter side carries most of the longer
-        // one — "peak" in "peak band" is fine, "john" in "elton john" is not.
         val shorter = minOf(a.length, b.length)
         val longer = maxOf(a.length, b.length)
         if (shorter >= 4 && (a.contains(b) || b.contains(a)) && shorter * 10 >= longer * 6) {
@@ -321,9 +280,7 @@ object ReleaseRadarRepository {
             if (!response.isSuccessful) return null
             val body = response.body?.string() ?: return null
             val data = JSONObject(body).optJSONArray("data") ?: return null
-            // Guard against a wildcard match resolving to a different artist:
-            // strict identity (was two-way substring containment, which let
-            // "John" adopt "Elton John" as its Deezer identity).
+
             for (index in 0 until data.length()) {
                 val artist = data.optJSONObject(index) ?: continue
                 val id = artist.optLong("id", -1L)
@@ -336,8 +293,6 @@ object ReleaseRadarRepository {
         }
     }
 
-    /** Deezer dates are YYYY-MM-DD; iTunes dates are ISO-8601. Returns
-     *  midnight UTC of that day. */
     private fun parseReleaseDate(raw: String): Long? {
         if (raw.isBlank()) return null
         val datePart =

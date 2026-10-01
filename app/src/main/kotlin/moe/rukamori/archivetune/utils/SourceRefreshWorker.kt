@@ -33,14 +33,12 @@ class SourceRefreshWorker(
 
         return try {
             if (instancesWanted) {
-
                 val records = TidalInstanceHealthManager.refresh(context, includeDiscovery = false, staggered = true)
                 Timber.tag(TAG).d("Instance refresh done: %d healthy of %d", records.count { it.isHealthy }, records.size)
             }
             PoolAccountManager.refresh(context)
             Result.success()
         } catch (error: Throwable) {
-
             Timber.tag(TAG).w(error, "Source refresh failed; will retry")
             Result.retry()
         }

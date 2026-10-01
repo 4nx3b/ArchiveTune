@@ -160,8 +160,6 @@ fun NewReleaseScreen(
     var isSelectionMode by rememberSaveable { mutableStateOf(false) }
     val selectedReleaseIds = remember { mutableStateSetOf<String>() }
 
-    // Saved ("Listen Later") releases: one DataStore-backed list for the whole
-    // screen, read once here and threaded through the grid content.
     val (presavedRaw, _) = rememberPreference(ReleasePresaveKey, "")
     val presavedReleases = remember(presavedRaw) { parsePresavedReleases(presavedRaw) }
 
@@ -559,7 +557,6 @@ fun NewReleaseScreen(
                 Column(
                     modifier = Modifier.padding(horizontal = 16.dp),
                 ) {
-
                     Text(
                         text = stringResource(R.string.selected_count, selectedReleaseIds.size),
                         style = MaterialTheme.typography.titleMedium,
@@ -746,8 +743,6 @@ private fun NewReleaseGridContent(
         }
     }
 
-    // Saved rows keep their countdowns and "Out now" badges honest with a
-    // minute-resolution tick — the same cadence the artist page uses.
     var savedNowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     if (selectedTab == NewReleaseTab.Saved) {
         LaunchedEffect(Unit) {
@@ -1246,10 +1241,6 @@ private fun NewReleaseCategoryEmptyState(onRefresh: () -> Unit) {
     }
 }
 
-/**
- * The "Save / Listen Later" badge pinned over a release card: bookmark in
- * the accent colour once saved, muted otherwise, with a subtle scale pop.
- */
 @Composable
 private fun BoxScope.PresaveToggleButton(
     isSaved: Boolean,
@@ -1305,7 +1296,6 @@ private fun BoxScope.PresaveToggleButton(
     }
 }
 
-/** One saved release: artwork, bold title, artist, countdown or "Out now". */
 @Composable
 private fun SavedReleaseRow(
     release: PresavedRelease,
@@ -1422,7 +1412,6 @@ private fun SavedReleasesEmptyState() {
     )
 }
 
-/** "3 d 4 h left" / "5 h 12 m left" / "42 m left" — the moment-to-release. */
 @Composable
 private fun presavedReleaseCountdownText(
     release: PresavedRelease,
@@ -1466,7 +1455,6 @@ private fun NewReleaseContent.releasesFor(tab: NewReleaseTab): List<AlbumItem> =
         NewReleaseTab.Saved -> emptyList()
     }
 
-/** The release-type label a release carries when saved from this tab. */
 private fun NewReleaseTab.presaveReleaseType(): String? =
     when (this) {
         NewReleaseTab.Albums -> "album"

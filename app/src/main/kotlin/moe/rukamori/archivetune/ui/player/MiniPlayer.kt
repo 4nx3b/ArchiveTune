@@ -108,8 +108,7 @@ fun MiniPlayer(
     val density = LocalDensity.current
     val translationXPx = with(density) { (-160).dp.toPx() }
     val translationYPx = with(density) { 10.dp.toPx() }
-    // Compact insets: the pill squeezes in between the [Home] circle on the
-    // left and the [Search] circle on the right of the compact bottom row.
+
     val compactStartInset = compactHorizontalPadding + CompactControlSize + CompactControlGap
     val compactEndInset =
         if (compactReserveEndControl) {
@@ -140,8 +139,7 @@ fun MiniPlayer(
         pureBlack = pureBlack,
         isPairedWithNavigation = isPairedWithNavigation,
         compactFraction = compactFraction,
-        // No Search circle beside the pill => the freed end space carries the
-        // compact transport (previous / pause / next) instead.
+
         compactShowTransportControls = !compactReserveEndControl,
         onArtworkSlotPositioned = onArtworkSlotPositioned,
     )
@@ -302,7 +300,6 @@ private fun NewMiniPlayer(
     val miniPlayerShape =
         remember(isPairedWithNavigation, compactFraction) {
             if (compactFraction > 0.5f) {
-                // Compact pill: fully rounded ends, matching the circles row.
                 RoundedCornerShape(percent = 50)
             } else if (isPairedWithNavigation) {
                 RoundedCornerShape(
@@ -389,9 +386,7 @@ private fun rememberMiniPlayerContentColors(
                 artworkContainer = Color.White.copy(alpha = 0.14f),
                 artworkBorder = Color.White.copy(alpha = 0.22f),
                 primaryButtonContainer = Color.White.copy(alpha = 0.92f),
-                // Bare transport icons (no container circle is ever drawn):
-                // the primary glyph follows the artwork palette's white ink
-                // instead of black-on-artwork.
+
                 primaryButtonIcon = Color.White,
                 secondaryButtonContainer = Color.Black.copy(alpha = 0.22f),
                 buttonIcon = Color.White.copy(alpha = 0.78f),
@@ -407,11 +402,6 @@ private fun rememberMiniPlayerContentColors(
                 artworkBorder = glassInk.copy(alpha = 0.22f),
                 primaryButtonContainer = glassInk.copy(alpha = 0.92f),
 
-                // The transport row renders bare icons with NO container circle
-                // (primaryButtonContainer is declared but never drawn), so the
-                // primary icon must be the glass ink itself — the old
-                // White-ink -> Black-icon mapping painted the play/pause glyph
-                // black straight onto dark glass in the dark theme.
                 primaryButtonIcon = glassInk,
                 secondaryButtonContainer = Color.Black.copy(alpha = 0.22f),
                 buttonIcon = glassInk.copy(alpha = 0.78f),
@@ -469,9 +459,7 @@ private fun MiniPlayerBackground(
                             backdrop = liquidGlassBackdrop,
                             shape = MaterialTheme.shapes.extraLarge,
                             interactive = false,
-                            // The same 18dp pill blur + tinted base the compact
-                            // control circles use — one glass intensity for the
-                            // whole bottom row, on every screen.
+
                             blurRadius = LiquidGlassPillBlurRadius,
                             baseColor = baseColor,
                         ),

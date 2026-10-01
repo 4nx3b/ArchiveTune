@@ -154,7 +154,6 @@ private fun AndroidAutoSettingsContent(
     scrollTo: String? = null,
     modifier: Modifier = Modifier,
 ) {
-
     val glassHeader = rememberGlassScreenHeader()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -172,7 +171,6 @@ private fun AndroidAutoSettingsContent(
                     contentAlignment = Alignment.Center,
                 ) { CircularProgressIndicator() }
                 is AndroidAutoSettingsState.Success -> {
-
                     val playerAwareBottomPadding =
                         LocalPlayerAwareWindowInsets.current
                             .only(WindowInsetsSides.Bottom)

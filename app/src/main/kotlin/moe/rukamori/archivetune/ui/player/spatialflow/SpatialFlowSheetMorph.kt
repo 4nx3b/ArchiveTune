@@ -120,7 +120,6 @@ fun BoxScope.SpatialFlowFloatingArtwork(
                     shadowElevation = lerp(0f, 16.dp.toPx(), p)
                 },
     ) {
-
         if (pagerVisible) {
             SpatialFlowArtworkPager(
                 mediaMetadata = mediaMetadata,

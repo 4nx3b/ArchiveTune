@@ -931,7 +931,6 @@ fun BottomSheetPlayer(
         val startTime = SystemClock.elapsedRealtime()
         if (playbackState == STATE_READY) {
             while (isActive) {
-
                 val settledCollapsed = state.isCollapsed
                 val settledExpanded = state.isExpanded
                 if (!settledCollapsed && !settledExpanded) {
@@ -1157,9 +1156,7 @@ fun BottomSheetPlayer(
                 }
             },
             isMainAudioBuffering = playbackState == STATE_BUFFERING,
-            // True audio readiness — the both-streams barrier gates the video's
-            // (and the delayed resume's) start on the audio having actually
-            // loaded, not merely on "not currently buffering".
+
             mainAudioReady = playbackState == STATE_READY,
         )
 
@@ -1173,7 +1170,6 @@ fun BottomSheetPlayer(
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
     val playerSheetCanvasVisible by remember(state) {
-
         derivedStateOf { state.progress > 0.5f }
     }
     CompositionLocalProvider(LocalPlayerSheetVisible provides playerSheetCanvasVisible) {
@@ -1446,8 +1442,7 @@ fun BottomSheetPlayer(
                 if (country.length == 2) country.lowercase(Locale.ROOT) else "us"
             }
         val trackIsMusicVideo = mediaMetadata?.isMusicVideo == true
-        // Per-song "Disable canvas" (player overflow menu): a disabled song
-        // plays its static artwork, in every player style.
+
         val (songCanvasDisabledRaw, _) = rememberPreference(SongCanvasDisabledKey, "")
         val songCanvasDisabledForCurrent =
             remember(songCanvasDisabledRaw, mediaMetadata?.id) {
@@ -2975,7 +2970,6 @@ private fun MikoLyricsTransition(
         if (animationsDisabled) {
             progress.snapTo(if (visible) 1f else 0f)
         } else {
-
             progress.animateTo(
                 targetValue = if (visible) 1f else 0f,
                 animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
@@ -2988,7 +2982,6 @@ private fun MikoLyricsTransition(
     }
 
     if (showContent) {
-
         Box(
             modifier =
                 Modifier
@@ -3130,7 +3123,7 @@ private fun V7PlayerBackdrop(
     val canvasStatic = canvasStaticUrl?.takeIf { it.isNotBlank() }
     val coverArtworkUrl = thumbnailUrl?.takeIf { it.isNotBlank() }
     val hasCanvas = !canvasPrimary.isNullOrBlank() || !canvasFallback.isNullOrBlank()
-    // Lockstep the sharp stage canvas and the blurred backdrop copy of the same loop.
+
     val canvasLoopSync = remember { CanvasLoopSync() }
 
     val sharpArtworkUrl = if (hasCanvas) (canvasStatic ?: coverArtworkUrl) else (coverArtworkUrl ?: canvasStatic)
@@ -3437,8 +3430,6 @@ private fun V7PlayerBackdrop(
     }
 }
 
-// Delegates to the shared tone ladder (BackdropTonePalette) — the artist page
-// ambient background speaks the same gradient language as the V7 controls.
 private typealias V7BackdropPalette = moe.rukamori.archivetune.ui.theme.BackdropTonePalette
 
 @Immutable

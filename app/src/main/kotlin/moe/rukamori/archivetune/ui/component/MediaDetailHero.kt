@@ -453,12 +453,7 @@ public fun MediaDetailPrimaryActions(
                             text = stringResource(R.string.play),
                             style = playTextStyle,
                             fontWeight = FontWeight.Bold,
-                            // Single line, and instead of truncating long
-                            // translations ("Reproducir" shrinking to
-                            // "Reprod…"), the label MARQUEES inside the pill —
-                            // the balanced layout below still shrinks the pill
-                            // to fit the cluster, and any text that no longer
-                            // fits scrolls rather than dying with an ellipsis.
+
                             maxLines = 1,
                             softWrap = false,
                             overflow = TextOverflow.Visible,
@@ -511,9 +506,7 @@ private fun MediaDetailBalancedActionLayout(
         val shuffleActionIndex = measurables.indexOfFirst { it.layoutId == MediaDetailActionLayoutId.Shuffle }
         val playActionIndex = measurables.indexOfFirst { it.layoutId == MediaDetailActionLayoutId.Play }
         val toggleAddActionIndex = measurables.indexOfFirst { it.layoutId == MediaDetailActionLayoutId.ToggleAdd }
-        // Satellite actions (everything except the play pill) are measured once;
-        // the play measurable is deliberately skipped here so it can be measured
-        // exactly once below with the width that remains beside them.
+
         val satellitePlaceables: List<Placeable?> =
             measurables.mapIndexed { index, measurable ->
                 if (index == playActionIndex) {
@@ -554,15 +547,6 @@ private fun MediaDetailBalancedActionLayout(
                 actionSpacing * (rightActions.size - 1).coerceAtLeast(0)
         val sideSpacing = if (leftActions.isEmpty() && rightActions.isEmpty()) 0 else actionSpacing
 
-        // Long translations (Spanish "Reproducir", German "Wiedergabe", …)
-        // can make the cluster wider than the viewport. The pill is measured
-        // EXACTLY ONCE, pre-capped at the width that remains next to the
-        // satellite actions, so the whole cluster fits and the margins stay
-        // equal on both sides in every language. (The old code measured the
-        // pill unconstrained first and then re-measured it on overflow — a
-        // second measure() on the same Measurable, which crashes with
-        // IllegalStateException the moment the artist page opens in those
-        // languages.)
         val maxPlayWidth =
             constraints.maxWidth - (leftActionsWidth + rightActionsWidth + 2 * sideSpacing)
         val playAction: Placeable? =
@@ -572,9 +556,7 @@ private fun MediaDetailBalancedActionLayout(
                         constraints.copy(minWidth = 0, maxWidth = maxPlayWidth, minHeight = 0),
                     )
                 } else {
-                    // Satellites alone overflow the row (or the width is
-                    // unbounded): keep the pill's natural size, matching the old
-                    // overflow fallback.
+
                     measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
                 }
             }
@@ -627,9 +609,7 @@ private fun MediaDetailBalancedActionLayout(
 
             val playActionX =
                 if (clusterWidth <= layoutWidth) {
-                    // Center the whole cluster so the empty space is equal on both sides —
-                    // with an asymmetric action set (artist: shuffle/radio vs +) a
-                    // play-button-centered placement pushes the group off-center.
+
                     val clusterStart = (layoutWidth - clusterWidth) / 2
                     clusterStart + leftActionsWidth + sideSpacing
                 } else {

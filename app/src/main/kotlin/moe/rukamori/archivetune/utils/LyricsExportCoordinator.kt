@@ -39,33 +39,18 @@ import moe.rukamori.archivetune.R
 import timber.log.Timber
 
 object LyricsExportCoordinator {
-
-    /** One pending export: where to stage it and what the picker should call it. */
     data class Pending(val fileName: String, val mime: String)
 
     private const val TAG = "LyricsExport"
 
-    /** Payload staging file inside cacheDir — one export at a time by design. */
     private const val STAGED_PAYLOAD = "pending_lyrics_export.txt"
 
-    /**
-     * Requests are emitted to the MainActivity-root host, which launches the
-     * SAF picker matching [Pending.mime]. No replay on purpose: a replayed
-     * request would spontaneously re-open the picker after an activity
-     * recreation. The buffer alone is enough — requests only originate from
-     * a menu click, which can only happen while the host collector is live.
-     */
     private val _requests = MutableSharedFlow<Pending>(
         extraBufferCapacity = 4,
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
     )
     val requests: SharedFlow<Pending> = _requests
 
-    /**
-     * Stage the payload and ask the host to open the create-document picker.
-     * Called from the lyrics menu at click time — the payload is exactly what
-     * was on screen when the user tapped Export.
-     */
     fun request(context: Context, payload: String, fileName: String, mime: String) {
         if (payload.isBlank()) return
         val staged = stagedFile(context)
@@ -80,24 +65,16 @@ object LyricsExportCoordinator {
         _requests.tryEmit(Pending(fileName, mime))
     }
 
-    /**
-     * Writes the staged payload to the picker-provided [uri]. Called by the
-     * root host's launcher callback; safe to call from any state of the UI
-     * because it depends on nothing but the process and the staged file.
-     */
     fun onDestinationPicked(context: Context, uri: Uri?) {
         val appContext = context.applicationContext
         if (uri == null) {
-            // User backed out of the picker: no file was created, just drop
-            // the staged payload.
+
             clearStaged(appContext)
             return
         }
         val payload = readStaged(appContext)
         if (payload.isNullOrBlank()) {
-            // The staged payload is gone (process died and cache was cleared
-            // between staging and the callback). Say so instead of writing an
-            // empty file — the picker has already created the destination.
+
             Timber.tag(TAG).w("Export callback arrived with no staged payload — export was lost to a process restart")
             toast(appContext, R.string.export_lyrics_failed)
             return
@@ -118,7 +95,6 @@ object LyricsExportCoordinator {
         )
     }
 
-    /** The MIME types the host registers launchers for. */
     const val MIME_XML = "application/xml"
     const val MIME_TEXT = "text/plain"
 

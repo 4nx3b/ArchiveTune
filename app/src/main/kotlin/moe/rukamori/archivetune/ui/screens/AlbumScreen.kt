@@ -183,15 +183,8 @@ fun AlbumScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    // The glass recording source stays attached for the whole lifetime of the
-    // screen: detaching kyant's LayerBackdrop while the player sheet covers the
-    // header nulls its layerCoordinates, and glass never comes back afterwards
-    // (the maximise->minimise "pills turn light" bug). The pills themselves fade
-    // with the sheet edge in their own draw phase, and the recorder is throttled,
-    // so an always-attached source is both correct and cheap.
     val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
-    // Mini-player-bound overlay signal for non-glass gating (canvas decode,
-    // hero animations) — keeps the OLD mini-bound semantics.
+
     val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
@@ -772,10 +765,7 @@ fun AlbumScreen(
                         text = pluralStringResource(R.plurals.n_song, count, count),
                     )
                 } else {
-                    // Every sibling screen with this header pill (local,
-                    // online, cache, auto, Spotify playlists) shows its title
-                    // inside the pill; the album page used to show only the
-                    // back arrow, which read as an empty glass pill.
+
                     GlassPillTitleText(
                         text = currentAlbumWithSongs.album.title.ifBlank {
                             stringResource(R.string.albums)
@@ -895,12 +885,6 @@ fun AlbumScreen(
             }
         }
 
-        // Pinned play/shuffle row: the hero's buttons scroll away with the
-        // header, so once the list passes it (showTopBarTitle — the same
-        // trigger the top bar's own title uses) a compact action pill fades
-        // in under the glass header and keeps Play/Shuffle one tap away at
-        // any scroll depth. Requested directly: "keep the buttons fixed in
-        // place".
         val pinnedActionsAlbum = albumWithSongs
         if (pinnedActionsAlbum?.songs?.isNotEmpty() == true) {
             PinnedAlbumActionsRow(
@@ -1062,12 +1046,6 @@ fun AlbumScreen(
 
 private const val MediaDetailMetadataSeparator = "  •  "
 
-/**
- * The compact, always-reachable play/shuffle row that fades in under the
- * glass header once the hero's own buttons have scrolled out of view — the
- * same controls, pinned, so deep-scrolling the track list never costs a
- * long scroll back up just to hit play.
- */
 @Composable
 private fun PinnedAlbumActionsRow(
     visible: Boolean,

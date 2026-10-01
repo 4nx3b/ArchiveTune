@@ -140,7 +140,6 @@ private data class MediaInfoMetric(
     val value: String,
 )
 
-/** Spring used for the expressive tab morph + content swaps. */
 private val ExpressiveSpring = spring<Float>(
     dampingRatio = Spring.DampingRatioLowBouncy,
     stiffness = Spring.StiffnessMediumLow,
@@ -160,10 +159,6 @@ fun ShowMediaInfo(videoId: String) {
     var selectedTab by rememberSaveable(videoId) { mutableStateOf(MediaInfoTab.Information) }
     var outputStats by remember(videoId) { mutableStateOf<AudioOutputStats?>(null) }
 
-    // ── Live playback pipeline (the retired Track Info & Specs sheet, merged) ──
-    // Collected unconditionally (the sheet only exists while open) but only
-    // PRESENTED when this exact track is the one playing — engine/DAC/provider
-    // facts are meaningless for a track that is not the live stream.
     val trackInfoViewModel: TrackInfoViewModel = hiltViewModel()
     val facts by trackInfoViewModel.facts.collectAsStateWithLifecycle()
     val service = playerConnection?.service
@@ -225,13 +220,10 @@ fun ShowMediaInfo(videoId: String) {
 
     val mediaUrl = remember(videoId) { "https://music.youtube.com/watch?v=$videoId" }
 
-    // rememberMediaInfo already runs the YouTube.getMediaInfo load internally
-    // (see MediaInfoLoader.kt); here we only refresh the audio-route snapshot.
     LaunchedEffect(videoId) {
         outputStats = AudioOutputStatsProvider.resolve(context)
     }
 
-    // ── Live pipeline derived values (same semantics as the old sheet) ──
     val isLocal = videoId.isLocalMediaId() || videoId.isTelegramMediaId()
     val liveStreamInfo = streamInfo?.takeIf { it.mediaId == videoId }
     val codec = currentFormat.codecName()
@@ -277,7 +269,7 @@ fun ShowMediaInfo(videoId: String) {
                             ?: unknownText,
                 ),
             )
-            // Duration left the list rows — this popup is where it lives now.
+
             song?.song?.duration?.takeIf { it > 0 }?.let { seconds ->
                 add(
                     MediaInfoDetail(
@@ -343,8 +335,7 @@ fun ShowMediaInfo(videoId: String) {
                         ),
                     )
                 }
-            // Live signal facts that only the old specs sheet carried: bit
-            // depth, channel layout and the quality tier verdict.
+
             liveBitDepth?.let {
                 add(
                     MediaInfoDetail(
@@ -418,7 +409,6 @@ fun ShowMediaInfo(videoId: String) {
             emptyList()
         }
 
-    // Staggered entrance — the sheet content pops in with expressive springs.
     var entered by remember(videoId) { mutableStateOf(false) }
     LaunchedEffect(videoId) {
         entered = false
@@ -535,10 +525,7 @@ fun ShowMediaInfo(videoId: String) {
                             }
 
                             MediaInfoTab.Details -> {
-                                // ── The live audio chain pill: the real-time
-                                // signal-path trace (input container truth →
-                                // stage → actual wire output), pulsing and
-                                // shimmering while it reads the pipeline.
+
                                 if (isLiveTrack) {
                                     LiveAudioChainPill(compact = true)
                                 }
@@ -563,7 +550,6 @@ fun ShowMediaInfo(videoId: String) {
                                     }
                                 }
 
-                                // ── Live playback pipeline (the merged specs sheet) ──
                                 if (isLiveTrack) {
                                     MediaInfoSectionCard(
                                         title = playbackSectionTitle,
@@ -761,7 +747,6 @@ fun ShowMediaInfo(videoId: String) {
     }
 }
 
-/** Wraps a section with the staggered expressive pop-in. */
 @Composable
 private fun MediaInfoExpressiveEntrance(
     entered: Boolean,
@@ -969,7 +954,6 @@ private fun MediaInfoQuickPill(
     }
 }
 
-/** Material 3 Expressive segmented tabs with a springy morphing selection pill. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MediaInfoExpressiveTabs(
@@ -1186,11 +1170,6 @@ private fun MediaInfoNarrativeCard(
     }
 }
 
-/**
- * Explains the real output route: which device is active, which sample rates it
- * advertises, what Android mixes at, and whether the playing source gets
- * resampled (and by whom — the OS resampler, not the app).
- */
 @Composable
 private fun MediaInfoOutputCard(
     outputStats: AudioOutputStats?,
@@ -1361,11 +1340,6 @@ private fun shareMediaLink(
     context.startActivity(Intent.createChooser(shareIntent, null))
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Live playback pipeline (moved from the retired Track Info & Specs sheet —
-// the details popup is now the single home for track information)
-// ─────────────────────────────────────────────────────────────────────────
-
 @HiltViewModel
 class TrackInfoViewModel @Inject constructor(
     monitor: AudioPipelineMonitor,
@@ -1373,7 +1347,6 @@ class TrackInfoViewModel @Inject constructor(
     outputProbe: OutputDeviceProbe,
     usbDacMonitor: UsbDacMonitor,
 ) : ViewModel() {
-
     data class Polled(
         val halSampleRateHz: Int?,
         val engineName: String,
@@ -1534,7 +1507,6 @@ private fun FormatEntity?.codecName(): String? =
         ?: this?.codecs?.takeIf { it.isNotBlank() }?.substringBefore('.')
         ?: this?.mimeType?.substringAfter("audio/", "")?.substringBefore(';')?.takeIf { it.isNotBlank() && it != "mpeg" }
 
-/** A titled expressive card — section header + key/value rows with Solar icons. */
 @Composable
 private fun MediaInfoSectionCard(
     title: String,
@@ -1572,7 +1544,6 @@ private fun MediaInfoSectionCard(
     }
 }
 
-/** One provider row of the pipeline: name + note on the left, status on the right. */
 @Composable
 private fun MediaInfoProviderRow(
     name: String,
@@ -1670,7 +1641,6 @@ private fun MediaInfoProviderRow(
     }
 }
 
-/** The full providers-pipeline card: which source actually served the stream. */
 @Composable
 private fun MediaInfoProvidersCard(
     title: String,

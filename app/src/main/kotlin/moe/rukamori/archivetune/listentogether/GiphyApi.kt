@@ -17,25 +17,11 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
-/**
- * Minimal Giphy client for the chat's GIF picker.
- *
- * Only metadata ever crosses the wire here: the chat message itself carries
- * just the GIF's URL — the server relays the link and every receiving device
- * loads and animates the GIF locally.
- */
 object GiphyApi {
-    /**
-     * Giphy retired the old public beta key (`dc6zaTOxFJmzC` now answers 403
-     * BANNED), which made every request fail as a generic network error. These
-     * are the keys Giphy's own web/mobile clients ship, tried in order — the
-     * web key first, the mobile one as a fallback if the primary is ever
-     * rate-limited or retired too.
-     */
     private val API_KEYS =
         listOf(
-            "Gc7131jiJuvI7IdN0HZ1D7nh0ow5BU6g", // giphy.com web client key
-            "L8eXbxrbPETZxlvgXN9kIEzQ55Df04v0", // giphy mobile client key (fallback)
+            "Gc7131jiJuvI7IdN0HZ1D7nh0ow5BU6g",
+            "L8eXbxrbPETZxlvgXN9kIEzQ55Df04v0",
         )
 
     private const val BASE_URL = "https://api.giphy.com/v1/gifs"
@@ -62,7 +48,6 @@ object GiphyApi {
         val title: String? = null,
         val images: GifImages,
     ) {
-        /** The animated GIF actually rendered in chat bubbles. */
         val url: String? get() = images.fixedHeight?.url
         val width: Int get() = images.fixedHeight?.width?.toIntOrNull() ?: 200
         val height: Int get() = images.fixedHeight?.height?.toIntOrNull() ?: 200
@@ -102,10 +87,8 @@ object GiphyApi {
         data object Failure : Result
     }
 
-    /** Trending GIFs, paginated. */
     suspend fun trending(offset: Int = 0): Result = fetch("$BASE_URL/trending", null, offset)
 
-    /** Search GIFs by query, paginated. */
     suspend fun search(query: String, offset: Int = 0): Result = fetch("$BASE_URL/search", query, offset)
 
     private suspend fun fetch(
@@ -121,8 +104,7 @@ object GiphyApi {
                     } catch (_: Exception) {
                         null
                     }
-                // A rejected key (401/403) or a transient failure returns null
-                // and is worth retrying on the fallback key.
+
                 if (attempted != null) return@withContext attempted
             }
             Result.Failure

@@ -69,7 +69,6 @@ import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
-/** Expressive spring shared with the ShowMediaInfo details popup. */
 private val SleepTimerExpressiveSpring = spring<Float>(
     dampingRatio = Spring.DampingRatioLowBouncy,
     stiffness = Spring.StiffnessMediumLow,
@@ -348,7 +347,6 @@ private fun formatMinutes(minutes: Int): String =
         }
     }
 
-/** Expressive sleep-timer preset pill: primary fill when selected, hairline outline otherwise. */
 @Composable
 private fun SleepTimerPresetChip(
     text: String,

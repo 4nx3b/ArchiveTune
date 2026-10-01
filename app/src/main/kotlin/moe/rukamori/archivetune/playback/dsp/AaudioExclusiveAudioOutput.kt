@@ -43,7 +43,6 @@ class AaudioExclusiveAudioOutput(
             exclusive = true,
         )
         if (result != 0 || !opened.isExclusive()) {
-
             Log.w(
                 TAG,
                 "USB-exclusive AAudio stream NOT engaged (result=$result exclusive=${opened.isExclusive()} deviceId=$deviceId) — falling back to the standard output",
@@ -174,7 +173,6 @@ class AaudioExclusiveAudioOutput(
     }
 
     override fun setPlaybackParameters(playbackParams: PlaybackParameters) {
-
     }
 
     override fun setOffloadDelayPadding(delayInFrames: Int, paddingInFrames: Int) = Unit

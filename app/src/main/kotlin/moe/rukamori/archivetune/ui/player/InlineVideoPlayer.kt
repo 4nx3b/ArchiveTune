@@ -146,29 +146,8 @@ val LocalRootOverlayActive = compositionLocalOf { false }
 
 val LocalPlayerLyricsFullScreen = compositionLocalOf { false }
 
-/** True while the player bottom sheet is visually ABOVE its collapsed bound —
- *  expanding, expanded, or collapsing (the whole animation window, not just
- *  the settled state: `isExpandedOrExpanding` misses the collapse direction,
- *  which was the laggy one). Screens with liquid glass read this to pause
- *  their live blur/lens work while the fullscreen player slides over them:
- *  recording the NavHost into a GraphicsLayer AND re-running the glass
- *  shaders under a translating sheet was the reported jank on playlist
- *  pages (mini↔fullscreen and the lyrics morph). */
 val LocalPlayerSheetOverlayActive = compositionLocalOf { false }
 
-/** 0..1 fade for on-screen liquid-glass header pills driven by the player
- *  sheet's actual top edge: 0 = sheet at/below the mini-player bound (pills
- *  fully visible), 1 = the sheet's edge has climbed past the header pill
- *  zone (pills fully covered). Provided ONLY around the NavHost screen
- *  content — never inside the player sheet itself.
- *
- *  This exists because flipping glass off the moment the sheet leaves the
- *  mini-player bound (LocalPlayerSheetOverlayActive) swaps the glass pills
- *  for the plain headers while they are still plainly visible mid-transition,
- *  and swaps them back abruptly the instant the sheet lands. Driving the
- *  fade from the sheet edge instead keeps pills glass for exactly as long
- *  as they are on screen and dissolves them only as the sheet covers them,
- *  in both directions. */
 val LocalPlayerSheetOverlayFraction = compositionLocalOf { 0f }
 
 val LocalMiniPlayerDocked = compositionLocalOf { false }
@@ -391,8 +370,6 @@ fun InlineVideoPlayer(
                 )
             }
 
-            // The quality sheet is hoisted out of the auto-hiding controls layer so it
-            // survives the controls fade-out timer instead of being disposed with it.
             if (qualityMenuOpen) {
                 VideoQualitySheet(
                     preferredHeight = preferredHeight,

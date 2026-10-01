@@ -53,22 +53,6 @@ import moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime
 import moe.rukamori.archivetune.playback.dsp.EngineRuntime
 import java.util.Locale
 
-/**
- * The shared derivation behind every live-audio-chain surface (the Audiophile
- * page card and the track-details pill).
- *
- * INPUT reports the CONTAINER truth (media3's FLAC extractor puts the
- * STREAMINFO depth into Format.pcmEncoding — 24-bit files read as 24-bit even
- * though the platform decoder truncates to 16-bit). OUTPUT reports what is
- * actually on the wire for the latched route:
- *
- *  - USB exclusive: the negotiated wire rate/bits;
- *  - verified direct playback: the source encoding itself;
- *  - the float route (Bit-Perfect on, no engine): an ENCODING_PCM_FLOAT track
- *    that carries the container depth losslessly into the Android mixer;
- *  - the engine route: the router's declared 16-bit (or float-on-USB) output;
- *  - anything else: the mixer's honest 16-bit.
- */
 data class LiveAudioChainLabels(
     val hasSignal: Boolean,
     val inputBits: String,
@@ -150,9 +134,7 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
         }
 
         floatRouteActive && sinkDecodedEncoding == C.ENCODING_PCM_FLOAT -> {
-            // Bit-Perfect float route: the sink runs its float pipeline and the
-            // AudioTrack is ENCODING_PCM_FLOAT — the container depth rides
-            // losslessly into the Android mixer.
+
             outputBits =
                 if (status.sourceIsLossy || status.sourceBitDepth <= 16) floatPcmLabel
                 else floatWithDepthLabel
@@ -261,14 +243,6 @@ internal fun readRoutedOutputLabel(context: Context): String {
     }
 }
 
-/**
- * The compact live-audio-chain pill for the track-info popup's Details tab:
- *   [dot] Live Audio Chain            [route]
- *   [INPUT 24-bit | 44.1 kHz] → ( STAGE ) → [OUTPUT Float · 24-bit | 44.1 kHz]
- *
- * While the engine runtime is being read (every second) a soft shimmer
- * sweeps the pill and the leading dot pulses — the "reading" animation.
- */
 @Composable
 fun LiveAudioChainPill(
     modifier: Modifier = Modifier,
@@ -289,8 +263,6 @@ fun LiveAudioChainPill(
             label = "liveChainDotAlpha",
         )
 
-    // The reading shimmer: a translating highlight that runs while the chain
-    // is live — it reads as "sampling in real time" without fighting the text.
     val shimmerProgress = remember { Animatable(0f) }
     LaunchedEffect(labels.hasSignal) {
         if (labels.hasSignal) {

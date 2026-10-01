@@ -109,7 +109,6 @@ val AodShowLyricsKey = booleanPreferencesKey("aodShowLyrics")
 
 val AodAutoTimerSecondsKey = intPreferencesKey("aodAutoTimerSeconds")
 
-
 val EnableMusixmatchExperimentalKey = booleanPreferencesKey("enableMusixmatchExperimental")
 val SeekExtraSeconds = booleanPreferencesKey("seekExtraSeconds")
 val DisableBlurKey = booleanPreferencesKey("disableBlur")
@@ -123,9 +122,6 @@ val MiniPlayerBackgroundStyleKey = stringPreferencesKey("miniPlayerBackgroundSty
 val LiquidGlassEnabledKey = booleanPreferencesKey("liquidGlassEnabled")
 val LiquidGlassNavBarEnabledKey = booleanPreferencesKey("liquidGlassNavBarEnabled")
 
-// ── Liquid glass fine tuning (the "Liquid Glass" appearance sub-page) ──────
-// Every value is a percentage knob over the renderer's tuned baseline, so the
-// factory defaults below reproduce the stock look exactly.
 enum class LiquidGlassIntensity { SUBTLE, STANDARD, VIVID }
 
 val LiquidGlassIntensityKey = stringPreferencesKey("liquidGlassIntensity")
@@ -356,8 +352,7 @@ object DownloadSourceConfig {
         runCatching { DownloadSource.valueOf(name.trim().uppercase()) }.getOrNull()
 
     fun parseOrder(rawOrder: String?): List<DownloadSource> {
-        // Removed sources (Apple Music, Amazon Music) drop out automatically:
-        // parseType's valueOf fails for names no longer in the enum.
+
         val stored =
             rawOrder
                 ?.split(',')
@@ -541,11 +536,6 @@ val CrossfadeEnabledKey = booleanPreferencesKey("crossfadeEnabled")
 val CrossfadeDurationKey = floatPreferencesKey("crossfadeDuration")
 val CrossfadeGaplessKey = booleanPreferencesKey("crossfadeGapless")
 
-/**
- * Automix (the analysis-driven transition engine): how much CPU the background
- * beat/vocal analysis may use. Crossfade and automix are mutually exclusive —
- * at most one of them shapes a given track boundary.
- */
 enum class AutomixPerformanceMode(val inferenceThreads: Int) {
     EFFICIENT(1),
     BALANCED(2),
@@ -555,41 +545,18 @@ enum class AutomixPerformanceMode(val inferenceThreads: Int) {
 val AutomixEnabledKey = booleanPreferencesKey("automixEnabled")
 val AutomixPerformanceModeKey = stringPreferencesKey("automixPerformanceMode")
 
-/** 32-bit float DSP chain (native): DC blocker + soft-knee limiter + TPDF
- *  dither, auto-engaged for lossless / high-quality streams. */
 val FloatDspEnabledKey = booleanPreferencesKey("floatDspEnabled")
 
-/** USB-exclusive audio output: an AAudio EXCLUSIVE float stream pinned to the
- *  USB DAC, bypassing the framework mixer. Mutually exclusive with offload,
- *  crossfade and automix (two players cannot hold one exclusive stream).
- *  With an audio engine engaged, the exclusive route switches to that
- *  engine's own bit-perfect USB driver (Tryptify libusb UAC / LastWave
- *  usbdevfs) instead of the AAudio stream. */
 val UsbExclusiveAudioKey = booleanPreferencesKey("usbExclusiveAudio")
 
-// ── Bit-Perfect / Native Output (Audiophile page) ──────────────────────────
-// Master toggle: bypass every sample-modifying processor and hand the
-// decoder's PCM to the output untouched whenever the active route supports
-// that exact encoding/rate. Bit depth itself is automatic (never a toggle).
 val BitPerfectOutputKey = booleanPreferencesKey("bitPerfectOutput")
 const val BIT_PERFECT_OUTPUT_DEFAULT = false
 
-// Nested toggle (enabled by default): keep the output at the SOURCE sample
-// rate instead of letting a rate mismatch introduce framework resampling.
 val BitPerfectNativeRateKey = booleanPreferencesKey("bitPerfectNativeRate")
 const val BIT_PERFECT_NATIVE_RATE_DEFAULT = true
 
-/** Enable Tryptify Audio Processing: routes the DSP tail through the ported
- *  Tryptify engine (C++17 mixing console + Oxford effects + measurement-driven
- *  AutoEQ + parametric EQ) and, with USB-exclusive on, the libusb UAC1/UAC2
- *  bit-perfect USB-DAC driver. Mutually exclusive with the Lastwave engine. */
 val TryptifyAudioProcessingKey = booleanPreferencesKey("tryptifyAudioProcessing")
 
-/** Enable Lastwave Audio Processing: routes the DSP tail through the ported
- *  LastWave-native engine (native Oboe/soxr DSP with its 15-band graphic EQ +
- *  Studio Master Clarity chain) and, with USB-exclusive on, the usbdevfs
- *  exclusive USB-DAC driver plus the bit-perfect mixer attributes path.
- *  Mutually exclusive with the Tryptify engine. */
 val LastwaveAudioProcessingKey = booleanPreferencesKey("lastwaveAudioProcessing")
 
 val AutoLoadMoreKey = booleanPreferencesKey("autoLoadMore")
@@ -1036,9 +1003,6 @@ enum class MiniPlayerBackgroundStyle {
     LIQUID_GLASS,
 }
 
-// NavigationBarStyle was removed: the bar is always the floating variant now.
-// The legacy "navigationBarStyle" DataStore entry is simply ignored.
-
 val NavigationBarFrostedBlurKey = booleanPreferencesKey("navigationBarFrostedBlur")
 
 val NavigationBarTintFrostedBlurKey = booleanPreferencesKey("navigationBarTintFrostedBlur")
@@ -1064,7 +1028,6 @@ const val NAVIGATION_BAR_CORNER_RADIUS_DEFAULT = 28f
 
 val HideScrollbarKey = booleanPreferencesKey("hideScrollbar")
 
-/** Hide the search bar + category pills while the results list is scrolling. */
 val HideSearchChromeWhileScrollingKey = booleanPreferencesKey("hideSearchChromeWhileScrolling")
 
 val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")
@@ -1240,12 +1203,6 @@ enum class TidalAudioQuality {
     HI_RES_LOSSLESS,
 }
 
-/**
- * ReplayGain loudness-correction mode. When enabled, per-track/per-album gain
- * tags parsed from local files take precedence over the API loudness metadata
- * during playback normalization — lossless libraries play at a consistent
- * loudness instead of sitting quieter than normalized streaming tracks.
- */
 enum class ReplayGainMode {
     OFF,
     TRACK,
@@ -1328,10 +1285,6 @@ enum class AudioSourceType {
     YOUTUBE,
 }
 
-// QQ Music integration removed: the whole partner-program integration
-// (provider, settings, chain entry, enum value) is gone from the app.
-
-// CSV of AudioSourceType names, highest priority first. Empty = built-in default order.
 val AudioSourceOrderKey = stringPreferencesKey("audioSourceOrder")
 
 val SongSourceOverrideKey = stringPreferencesKey("songSourceOverride")
@@ -1339,9 +1292,6 @@ val SongSourceOverrideKey = stringPreferencesKey("songSourceOverride")
 val SongSourceQobuzTrackIdKey = stringPreferencesKey("songSourceQobuzTrackId")
 val SongSourceDeezerTrackIdKey = stringPreferencesKey("songSourceDeezerTrackId")
 
-/** Per-song Tidal track id picked in the "play from search" popup: playback
- *  resolves that EXACT track instead of fuzzy re-matching metadata (the fix
- *  for "picking a Tidal search result falls back to YouTube"). */
 val SongSourceTidalTrackIdKey = stringPreferencesKey("songSourceTidalTrackId")
 
 val SongSourceQobuzBackupVideoIdKey = stringPreferencesKey("songSourceQobuzBackupVideoId")
@@ -1350,11 +1300,6 @@ val AudioSearchSourceKey = stringPreferencesKey("audioSearchSource")
 
 val TidalAccountFirstKey = booleanPreferencesKey("tidalAccountFirst")
 
-/** User-supplied Source Pool API key (Integration settings entry). When set
- *  it overrides the build-time SOURCE_PROVIDER_KEY for every pool request —
- *  the v2 protocol keys the AES-256-GCM account decryption to the caller's
- *  own key, so a user key must reach [PoolAccountManager] rather than being
- *  baked in at build time. */
 val PoolApiKeyKey = stringPreferencesKey("poolApiKey")
 
 val DeezerEnabledKey = booleanPreferencesKey("deezerEnabled")
@@ -1365,7 +1310,6 @@ val DeezerAccountNameKey = stringPreferencesKey("deezerAccountName")
 
 val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
 
-// ---------------------------------------------------------------------------
 val JioSaavnEnabledKey = booleanPreferencesKey("enableSaavnStreaming")
 
 val SaavnAudioQualityKey = stringPreferencesKey("saavnAudioQuality")
@@ -1503,8 +1447,6 @@ val SeenNewReleaseIdsKey = stringPreferencesKey("seenNewReleaseIds")
 
 val ReadNewReleaseIdsKey = stringPreferencesKey("readNewReleaseIds")
 
-/** Pre-save & Release Countdown: upcoming-release radar on artist pages plus
- * near-instant release notifications for subscribed artists. */
 val PresaveReleaseRadarKey = booleanPreferencesKey("presaveReleaseRadar")
 
 val GitHubContributorsEtagKey = stringPreferencesKey("github_contributors_etag")

@@ -57,7 +57,6 @@ fun MuzoSongMenuHeader(
     artist: String?,
     modifier: Modifier = Modifier,
 ) {
-
     val onGlassPopup = LocalGlassMenuContent.current
     Surface(
         shape = RoundedCornerShape(MuzoMenuHeaderCardCorner),

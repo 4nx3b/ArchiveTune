@@ -47,12 +47,6 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import androidx.compose.material3.Text
 
-/**
- * Compose preview of the vinyl-style lyrics share card. The standard
- * lyrics card is no longer previewed through a parallel Compose
- * approximation — the dialog renders the real export bitmap — so this file
- * only carries the vinyl mode's preview twin.
- */
 @Composable
 fun VinylImageCard(
     songTitle: String,

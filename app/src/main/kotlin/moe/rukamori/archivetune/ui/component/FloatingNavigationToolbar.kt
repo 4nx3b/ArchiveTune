@@ -229,7 +229,6 @@ fun FloatingNavigationToolbar(
             RoundedCornerShape(percent = 50)
         } else {
             remember(isPairedWithMiniPlayer, navBarCornerRadius) {
-                // The floating bar is always round-cornered now.
                 RoundedCornerShape(navBarCornerRadius.dp)
             }
         }
@@ -290,8 +289,7 @@ fun FloatingNavigationToolbar(
                     unselectedTextColor = glassUnselectedColor,
                 )
             }
-            // The bar is always the floating variant now — this branch keeps
-            // the floating colours (previously gated on the style enum).
+
             else ->
                 ShortNavigationBarItemDefaults.colors(
                     selectedIndicatorColor = Color.Transparent,
@@ -504,8 +502,7 @@ fun FloatingNavigationToolbar(
                             Modifier
                         },
                     ).then(
-                        // Nuvio-style glass glow: rim light + top sheen, drawn
-                        // over whatever background style the bar uses.
+
                         if (glowStrength > 0.01f) {
                             Modifier.glassGlowOverlay(
                                 strength = glowStrength,
@@ -574,7 +571,6 @@ fun FloatingNavigationToolbar(
                     containerColor = Color.Transparent,
                     contentColor =
                         when {
-
                             tintFrostedBlur -> tintedNavBarContentColor
                             pureBlack -> Color.White
                             else -> MaterialTheme.colorScheme.onSurface

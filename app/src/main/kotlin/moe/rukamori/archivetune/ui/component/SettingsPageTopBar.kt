@@ -57,8 +57,6 @@ fun SettingsPageTopBar(
             modifier = Modifier.align(Alignment.Center),
         )
 
-        // Circular, lightly translucent back button — the reference's
-        // 40-44dp touch target with a quiet surface.
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),

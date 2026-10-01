@@ -51,13 +51,6 @@ enum class OnlineSearchSort {
     VIEWS,
 }
 
-/**
- * Client-side pseudo filter for the "Podcasts" category pill. YouTube Music has no
- * podcast search parameter, so this filter harvests podcast episodes (SongItems whose
- * watch endpoint musicVideoType starts with MUSIC_VIDEO_TYPE_PODCAST) out of the
- * song/video search result sets instead. The sentinel value never collides with a
- * real InnerTube filter param.
- */
 val PODCAST_SEARCH_FILTER = YouTube.SearchFilter("CLIENT_PODCASTS_CATEGORY")
 
 private fun YTItem.isPodcastEpisode(): Boolean {
@@ -197,11 +190,6 @@ class OnlineSearchViewModel
             }
         }
 
-        /**
-         * Podcasts category: no server-side filter exists, so the episodes hidden by
-         * [filterUnsupportedEpisodes] in the Songs/Videos categories are collected here
-         * into their own page (no continuation — a single harvest per query).
-         */
         private suspend fun loadPodcastFilter() {
             try {
                 val episodes =

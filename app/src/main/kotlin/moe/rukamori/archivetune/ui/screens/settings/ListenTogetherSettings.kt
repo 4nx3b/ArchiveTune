@@ -387,8 +387,7 @@ fun ListenTogetherSettings(
             if (uri != null) {
                 if (ListenTogetherAvatar.saveCustomAvatar(context, uri)) {
                     avatarIndex = ListenTogetherAvatar.CUSTOM_AVATAR_INDEX
-                    // Re-broadcast immediately so members of the current room see
-                    // the new profile picture without waiting for a rejoin.
+
                     listenTogetherManager?.broadcastCustomAvatar()
                 } else {
                     Toast.makeText(context, context.getString(R.string.listen_together_custom_avatar_failed), Toast.LENGTH_SHORT).show()
@@ -409,12 +408,6 @@ fun ListenTogetherSettings(
         )
     }
 
-    // ── The modern settings-page + playlist-header vocabulary ────────────
-    // Glass back pill with the page title ("Settings") riding in the same
-    // pill, the home-screen top haze band, and a scrollable body whose
-    // content passes BEHIND the floating mini player (trailing spacer as
-    // content padding instead of layout windowInsetsPadding, which used to
-    // stop the content dead above the mini player and leave a hard gap).
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -713,9 +706,6 @@ fun ListenTogetherSettings(
             )
         }
 
-        // Content padding (not layout padding): the body scrolls BEHIND the
-        // floating mini player — the spacer keeps the last control from
-        // resting underneath it at the end of the scroll.
         Spacer(
             modifier = Modifier.height(
                 playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding
@@ -723,7 +713,6 @@ fun ListenTogetherSettings(
         )
     }
 
-        // The home-screen haze band: appears once content scrolls under it.
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
@@ -731,9 +720,7 @@ fun ListenTogetherSettings(
         )
 
         if (glassHeaderActive) {
-            // The liquid-glass back pill with the page title riding in the
-            // same pill — "Settings" here, matching the Listen Together page's
-            // "Listen Together" pill.
+
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 interactive = true,
@@ -756,7 +743,6 @@ fun ListenTogetherSettings(
                 GlassPillTitleText(text = stringResource(R.string.settings))
             }
         } else {
-            // Non-glass fallback: the previous plain top bar.
             TopAppBar(
                 title = { Text(stringResource(R.string.listen_together)) },
                 navigationIcon = {

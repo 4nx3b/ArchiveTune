@@ -63,14 +63,8 @@ import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.listentogether.TrackInfo
 
-/** Debounce window for the picker's search field. */
 private const val SONG_PICKER_DEBOUNCE_MS = 400L
 
-/**
- * Bottom sheet to pick a song for the chat: a search box over YouTube Music
- * results plus a "now playing" quick-share row. Tapping any row shares the song
- * as a rich card into the room chat.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ShareSongPickerSheet(
@@ -98,9 +92,7 @@ internal fun ShareSongPickerSheet(
                 return@LaunchedEffect
             }
             searching = true
-            // Captured so a stale in-flight search (the effect restarted on a
-            // newer keystroke) can detect it lost and discard its results AND
-            // its loading flag — only the freshest query may land either.
+
             val searchedFor = query
             delay(SONG_PICKER_DEBOUNCE_MS)
             val found =
@@ -315,7 +307,6 @@ private fun SongPickerRow(
     }
 }
 
-/** Maps an innertube search result onto the chat wire model for song cards. */
 private fun SongItem.toTrackInfo(): TrackInfo =
     TrackInfo(
         id = id,

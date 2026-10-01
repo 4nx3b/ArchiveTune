@@ -846,9 +846,7 @@ class BackupRestoreViewModel
                     val restoreEntries =
                         entryNames.filter { name ->
                             (includeSettings && (name == SETTINGS_XML_FILENAME || name == SETTINGS_FILENAME)) ||
-                                // Fonts ride their own category now; the
-                                // includeSettings half keeps legacy archives
-                                // (whose fonts lived under Settings) restorable.
+
                                 ((includeSettings || includeFonts) && name.startsWith("$FONTS_ZIP_PREFIX/")) ||
                                 (includeStatsMerge && name == StatsBackup.ZIP_ENTRY_NAME) ||
                                 (includeLyricsMerge && name == LyricsBackup.ZIP_ENTRY_NAME) ||

@@ -63,13 +63,6 @@ import androidx.compose.runtime.setValue
 
 val LocalMenuState = compositionLocalOf { MenuState() }
 
-/**
- * When a platform dialog is spawned from inside a floating menu, the back
- * gesture should clear BOTH layers in one swipe. Menus provide a dismissal
- * lambda here; the shared dialog components invoke it from their
- * [androidx.compose.ui.window.Dialog.onDismissRequest] (system back gesture
- * and outside-tap) while explicit button taps keep their call-site behavior.
- */
 val LocalMenuDialogDismissal = staticCompositionLocalOf<(() -> Unit)?> { null }
 
 @Stable
@@ -140,22 +133,12 @@ fun BottomSheetMenu(
         }
     }
 
-    // A dialog layer hosted by the menu must also answer the back gesture with a
-    // single swipe, even when the content is not a self-dismissing window.
     BackHandler(enabled = state.dialogContent != null) {
         state.dismissDialog()
     }
 
     if (!renderState) return
 
-    // The MENU-level back handler MUST compose below this early return: it
-    // only comes into existence while the sheet is on screen, so it is added
-    // to the OnBackPressedDispatcher AFTER every navigation-level handler
-    // (this host composes once at the activity root, before the NavHost — a
-    // root-registered handler always loses the LIFO ordering to handlers the
-    // destination registered later). Registered here, a single predictive
-    // back swipe closes the popup instead of popping the playlist/history
-    // screen behind it.
     BackHandler(enabled = renderState) {
         state.isVisible = false
     }
@@ -171,7 +154,6 @@ fun BottomSheetMenu(
                 Modifier.drawBackdrop(
                     backdrop = liquidGlassBackdrop,
                     effects = {
-
                         colorControls(saturation = glassTuning.saturation)
 
                         blur((20f * glassTuning.blurFactor).dp.toPx())
@@ -308,7 +290,6 @@ fun BottomSheetMenu(
             }
 
             Column(modifier = Modifier.fillMaxWidth()) {
-
                 if (glassModifier == null) {
                     Box(
                         modifier =

@@ -216,9 +216,6 @@ internal fun PlaybackSourceSections(
             AudioSourceConfig.parseOrder(sourceOrderRaw.ifBlank { null })
         }
 
-    // The picker only ever offers chain-eligible sources: Apple Music and
-    // Deezer left the preferred-sources list; Amazon Music and QQ Music are
-    // gone from the app entirely.
     val chainEligibleSources =
         remember {
             AudioSourceType.entries.filterNot {
@@ -243,8 +240,7 @@ internal fun PlaybackSourceSections(
             AudioSourceType.TIDAL -> tidalEnabled
             AudioSourceType.QOBUZ -> qobuzEnabled
             AudioSourceType.QOBUZ_BACKUP -> qobuzBackupEnabled
-            // Deezer/Apple left the preferred-sources chain; their entries
-            // here only keep the when exhaustive.
+
             AudioSourceType.DEEZER -> false
             AudioSourceType.APPLE -> false
             AudioSourceType.JIOSAAVN -> jioSaavnEnabled
@@ -253,10 +249,6 @@ internal fun PlaybackSourceSections(
 
     var showOrderDialog by rememberSaveable { mutableStateOf(false) }
 
-    // Dragging a source to the top is the strongest possible signal the user wants it — a
-    // disabled top source would be silently skipped by the resolver, which is exactly how
-    // "I put Qobuz first but still got YouTube" happens. Auto-enable the new top source on
-    // confirm so the order dialog and the enable toggles can never disagree again.
     fun onOrderConfirm(newOrder: List<AudioSourceType>) {
         newOrder.firstOrNull { it != AudioSourceType.YOUTUBE }?.let { top ->
             when (top) {

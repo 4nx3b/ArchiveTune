@@ -571,7 +571,6 @@ private fun NavBarPreview(
     labelSpacing: Float,
     cornerRadius: Float,
 ) {
-    // The bar is always the floating variant.
     val resolvedBarHeight = NavigationBarHeight * heightMultiplier
     val shape = RoundedCornerShape(cornerRadius.dp)
 

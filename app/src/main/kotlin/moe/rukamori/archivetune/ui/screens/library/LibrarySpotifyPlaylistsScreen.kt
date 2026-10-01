@@ -137,12 +137,6 @@ fun LibrarySpotifyPlaylistsScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    // The glass recording source stays attached for the whole lifetime of the
-    // screen: detaching kyant's LayerBackdrop while the player sheet covers the
-    // header nulls its layerCoordinates, and glass never comes back afterwards
-    // (the maximise->minimise "pills turn light" bug). The pills themselves fade
-    // with the sheet edge in their own draw phase, and the recorder is throttled,
-    // so an always-attached source is both correct and cheap.
     val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
     val surfaceColor = MaterialTheme.colorScheme.surface
     val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)

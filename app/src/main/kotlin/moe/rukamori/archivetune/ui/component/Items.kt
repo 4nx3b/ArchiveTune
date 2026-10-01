@@ -377,8 +377,7 @@ fun SongListItem(
     val content: @Composable () -> Unit = {
         ListItem(
             title = song.song.title,
-            // Row subtitles carry the artist name only — duration and view/
-            // like counts live in the details popup, not on every row.
+
             subtitle = song.artists.joinToString { it.name }.takeIf { it.isNotBlank() },
             badges = badges,
             thumbnailContent = {

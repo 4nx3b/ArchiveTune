@@ -24,20 +24,6 @@ import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.utils.rememberPreference
 
-/**
- * Karaoke caption strip for the TikTok player's main screen. Renders ONLY the
- * active line — bigger and bolder than the old scrolling strip — together with
- * its per-word phonetic (romanisation) and its translation, animated by the
- * enhanced lyrics library's word-timed sweep. Left-aligned with the song info
- * block (and its "recently played" queue pill); previous and upcoming lines are
- * never composed.
- *
- * The caller (TikTokSongPage) owns the slot: it reserves [TikTokMainLyricsHeight]
- * whenever the feature is enabled — for every page and whether or not the
- * current song has synced lyrics — so the artwork box above never changes size
- * when lyrics load, appear or change between songs. This composable simply
- * fills that slot (or composes nothing when there is nothing to show).
- */
 @Composable
 internal fun TikTokMainLyrics(
     sliderPositionProvider: () -> Long?,
@@ -81,12 +67,5 @@ internal fun TikTokMainLyrics(
     }
 }
 
-// One line cluster: main line (24sp bold, may wrap to two rows) + the joined
-// phonetic row above it + the translation below — sized for the worst case
-// without stealing too much height from the artwork above, and clipped at the
-// strip edge so a freak three-row line never bleeds into the song info.
-// Internal (not private) so TikTokSongPage can reserve the slot BEFORE knowing
-// whether this song even has lyrics — that reservation is what keeps the
-// artwork from shifting.
 internal val TikTokMainLyricsHeight = 168.dp
 private const val TikTokMainLyricsTextSizeSp = 24f

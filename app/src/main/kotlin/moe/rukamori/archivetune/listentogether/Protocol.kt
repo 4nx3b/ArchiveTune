@@ -201,8 +201,7 @@ data class RejectSuggestionPayload(
 @Serializable
 data class SuggestionApprovedPayload(
     @SerialName("suggestion_id") val suggestionId: String,
-    // The vivi server relays the host's bare `approve_suggestion` payload to the
-    // room, which carries only suggestion_id — track_info is absent on the wire.
+
     @SerialName("track_info") val trackInfo: TrackInfo? = null
 )
 
@@ -278,66 +277,29 @@ data class ChatMessagePayload(
     val message: String,
     val timestamp: Long,
     @SerialName("reply_to") val replyTo: RepliedMessage? = null,
-    // Emoji reactions applied by room members, keyed by emoji with the reacting
-    // usernames. Carried alongside the payload so reactions survive persistence;
-    // cross-device they travel as ChatControlEvent over the chat relay.
+
     val reactions: Map<String, List<String>> = emptyMap(),
     val pinned: Boolean = false,
-    // Wall-clock of the most recent pin, so the pinned bar can order itself
-    // latest-pin-first (a carousel, not a list). Zero = pinned before this
-    // field existed or currently unpinned; the message timestamp is the
-    // fallback sort key then. Never travels on the wire — each client stamps
-    // its own clock when the pin control event arrives, and it persists with
-    // the local history.
+
     @SerialName("pinned_at") val pinnedAt: Long = 0L,
     val edited: Boolean = false,
-    // Tombstone flag: deleted messages stay in the list (for everyone in the
-    // room and in the persisted history) rendered as "message deleted", the
-    // WhatsApp/Instagram convention, instead of vanishing.
+
     val deleted: Boolean = false,
-    // A song shared into the chat: rendered as a rich card (thumbnail, title,
-    // artist, duration); tapping it plays the song in the room. Carried in the
-    // payload JSON so it persists with the history; cross-device it travels in
-    // an [LTS:...] envelope on the chat relay, like replies and avatars.
+
     @SerialName("shared_track") val sharedTrack: TrackInfo? = null,
-    // A GIF shared into the chat as a link (Giphy or an uploaded custom GIF).
-    // The server relays only the URL — every client loads and animates the GIF
-    // locally, so the server never processes the media. Travels in an
-    // [LTG:...] envelope on the chat relay and persists with the local history
-    // exactly like shared tracks.
+
     @SerialName("gif_url") val gifUrl: String? = null,
-    // Intrinsic pixel dimensions of the shared GIF, carried alongside the URL
-    // so receivers can lay the bubble out at the ORIGINAL aspect ratio instead
-    // of a fixed cell that crops tall or wide GIFs. Zero = unknown (sent by
-    // older clients); receivers fall back to measuring the image locally.
+
     @SerialName("gif_width") val gifWidth: Int = 0,
     @SerialName("gif_height") val gifHeight: Int = 0,
-    // Usernames @-mentioned by this message. The sender computes them from the
-    // @tokens in the text; receiving clients match them against the local
-    // username to raise the mention badge or a mention notification. Travels
-    // in the [LTG:...] envelope (or a plain [LTM:] list) alongside the gif.
+
     val mentions: List<String> = emptyList(),
-    // Set locally on the local user's own messages that arrive while they are
-    // ALONE in the room: self-chatter that must never reach the persisted
-    // history. Travels with the payload so the filter survives a
-    // persist -> restore -> re-persist round trip (a volatile in-memory key set
-    // was lost on restore and let old solo messages back into the store).
+
     val solo: Boolean = false,
-    // Set on messages injected from the persisted history at restore time. Never
-    // travels on the wire; the chat list draws the "older messages" divider at
-    // the boundary between flagged and live messages. Persisted with the local
-    // history and re-stamped true on every restore, so the boundary survives
-    // app restarts.
+
     val restored: Boolean = false,
 )
 
-/**
- * Room-chat control event piggybacked on the chat relay (the only client→room
- * broadcast the servers offer) inside a "\u200B[LTC:<base64 json>]\u200B"
- * envelope, exactly like the custom-avatar broadcast. Clients intercept these
- * and never render them as chat bubbles. Handles emoji reactions, edits,
- * deletions, pins and typing indicators.
- */
 @Serializable
 data class ChatControlEvent(
     val action: String,
@@ -354,9 +316,7 @@ data class ChatControlEvent(
         const val ACTION_DELETE = "delete"
         const val ACTION_PIN = "pin"
         const val ACTION_UNPIN = "unpin"
-        // The room's display name, decided by the host at creation time. Rides
-        // the chat relay like every other control event; receivers (and only
-        // receivers — the host already knows the name) adopt it locally.
+
         const val ACTION_ROOM_NAME = "room_name"
     }
 }

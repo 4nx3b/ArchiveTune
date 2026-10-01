@@ -46,10 +46,7 @@ internal suspend fun fetchPlaylistCanvasArtwork(
             trySpotifyCanvas = allowSpotify,
             spotifyTrackId = spotifyTrackId,
         ) ?: return null
-    // Spotify-off callers (the artist page, which must only ever play the
-    // standalone ArchiveTune/BetterLyrics artist canvas) also refuse cached
-    // Spotify entries — the resolver's cache-first path returns those
-    // regardless of the trySpotifyCanvas flag.
+
     if (!allowSpotify && resolved.inferredProvider() == CanvasArtwork.PROVIDER_SPOTIFY) {
         return null
     }

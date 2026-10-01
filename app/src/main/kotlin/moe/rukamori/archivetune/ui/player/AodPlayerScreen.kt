@@ -607,8 +607,8 @@ fun AodPlayerScreen(
                                 },
                             ).clip(thumbnailShape),
                 )
-                } 
-            } 
+                }
+            }
 
             PlayerTextBackdrop(
                 textColor = Color.White,

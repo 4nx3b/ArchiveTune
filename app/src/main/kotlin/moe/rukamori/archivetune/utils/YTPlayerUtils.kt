@@ -1072,13 +1072,6 @@ object YTPlayerUtils {
     ): PlaybackData {
         Timber.tag(logTag).i("Fetching player response for videoId: $videoId, playlistId: $playlistId")
 
-        // Bandwidth-for-latency trade: resolve with EVERY remote strategy at
-        // once and keep whichever answers first, so stream start latency is the
-        // max() of the racing resolvers instead of the sum of the sequential
-        // fallbacks. SimpMusic (NewPipe + InnerTube) and the Echo client chain
-        // are fully independent of each other; the local InnerTube chain stays
-        // the sequential last resort because it mutates shared playback auth
-        // state. Losing racers are cancelled as soon as a winner exists.
         val racedWinner: PlaybackData? =
             coroutineScope {
                 val simpMusicDeferred =
@@ -1127,11 +1120,6 @@ object YTPlayerUtils {
                         }
                     }
 
-                // First COMPLETED strategy wins the select; if it finished
-                // empty-handed, fall through and wait for the other one.
-                // coroutineScope alone waits for ALL children, so the loser
-                // must be cancelled explicitly — otherwise a fast SimpMusic
-                // success would sit out Echo's full timeout chain.
                 val firstResult =
                     select<PlaybackData?> {
                         simpMusicDeferred.onAwait { it }

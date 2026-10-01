@@ -1,10 +1,4 @@
-/*
- * Hilt wiring for the ported LastWave-native audio stack: the shared
- * DataStore for its preference classes and the application scope its
- * collectors run on. Classes with @Singleton @Inject constructors
- * (NativeAudioEngine, EqualizerPreferences, ExclusiveUsbOutput,
- * UsbDacMonitor, LoudnessPrefs, UsbExclusiveState) bind themselves.
- */
+
 
 package moe.rukamori.archivetune.di
 
@@ -25,7 +19,6 @@ import moe.rukamori.archivetune.utils.dataStore
 @Module
 @InstallIn(SingletonComponent::class)
 object LastwaveModule {
-
     @Provides
     @Singleton
     fun provideApplicationScope(): CoroutineScope =

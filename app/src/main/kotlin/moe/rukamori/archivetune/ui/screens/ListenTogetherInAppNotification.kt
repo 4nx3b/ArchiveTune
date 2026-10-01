@@ -101,33 +101,14 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.abs
 import kotlin.math.sign
 
-/** One stacked entry of the in-app notification card. */
 data class InAppNotificationEntry(
     val message: ChatMessagePayload,
-    /** True when the message @-mentions the local user. */
+
     val isMention: Boolean,
 )
 
-/** The card never grows past this; the message list autoscrolls inside. */
 private val InAppNotificationMaxCardHeight = 320.dp
 
-/**
- * The in-app chat notification card. Hosted at the top of the app window
- * (over whatever screen is showing, but BELOW the shade conversation
- * notification that still handles the backgrounded case).
- *
- * Behaviour contract (per the feature request):
- *  - a REGULAR message auto-dismisses after a few seconds;
- *  - a MENTION persists until the user acts on it, and shows both Reply and
- *    Mark-as-read;
- *  - several messages arriving together never spawn separate cards — they
- *    stack inside this one, the card capped at [InAppNotificationMaxCardHeight]
- *    with the list auto-scrolling to the newest;
- *  - tapping the card opens the chat screen;
- *  - swiping the card horizontally dismisses it;
- *  - the reply field sends straight into the room (the message rides the
- *    normal chat relay) and dismisses the card.
- */
 @Composable
 fun InAppChatNotificationPopup(
     entries: List<InAppNotificationEntry>,
@@ -142,10 +123,6 @@ fun InAppChatNotificationPopup(
     val cardShape = RoundedCornerShape(22.dp)
     val glassActive = backdrop != null
 
-    // Theme polarity for the glass scrim: light theme puts a bright scrim
-    // under the frost with dark ink, dark theme the reverse. The old card
-    // always painted Black@45% + white ink, which read fine in dark mode but
-    // left light-mode content washed out and the hairline border glowing.
     val isLightTheme = MaterialTheme.colorScheme.surface.luminance() > 0.5f
     val cardInk = when {
         glassActive && isLightTheme -> Color(0xFF1C1B1F)
@@ -159,11 +136,6 @@ fun InAppChatNotificationPopup(
     }
     val glassScrim = if (isLightTheme) Color.White.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.45f)
 
-    // ONE hairline treatment for both modes: the same 0.75dp stroke, tinted to
-    // the surface it sits on. The glass card keeps its faint white rim (over a
-    // dark scrim) and gains a subtle dark rim in light theme; the opaque card
-    // gains the matching hairline it never had — which is why its edge used to
-    // read as an inconsistent black band against the glass card's white one.
     val hairline = when {
         glassActive && isLightTheme -> Color(0xFF1C1B1F).copy(alpha = 0.10f)
         glassActive -> Color.White.copy(alpha = 0.22f)
@@ -171,9 +143,6 @@ fun InAppChatNotificationPopup(
         else -> MaterialTheme.colorScheme.surfaceBright.copy(alpha = 0.72f)
     }
 
-    // Swipe-to-dismiss: horizontal drag translates and fades the card; past a
-    // fraction of its width the gesture commits to dismissal, otherwise it
-    // springs back. Vertical drags (scrolling the message list) are untouched.
     val swipeOffset = remember { Animatable(0f) }
     val coroutineScope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -182,13 +151,7 @@ fun InAppChatNotificationPopup(
     val cardModifier =
         (
             if (glassActive) {
-                // Liquid glass: frost plus the lens refraction the app's glass
-                // pills carry, over the throttled menu recorder (the only recorder
-                // whose subtree excludes this card). The lens displacement is a
-                // FIXED pixel amount (the same recipe as the chat overflow
-                // popup): it must NOT scale with the card's size, or the inner
-                // edge builds an ever-wider dark refraction band as messages
-                // stack and the card grows.
+
                 Modifier.drawBackdrop(
                     backdrop = backdrop!!,
                     effects = {
@@ -220,8 +183,7 @@ fun InAppChatNotificationPopup(
         Surface(
             shape = cardShape,
             color = Color.Transparent,
-            // A modest ambient shadow: the previous 14dp elevation cast a hard
-            // dark band around the card that read as yet another border.
+
             shadowElevation = 5.dp,
             modifier =
                 Modifier
@@ -246,7 +208,6 @@ fun InAppChatNotificationPopup(
                             onDragEnd = {
                                 val overThreshold = abs(swipeOffset.value) >= dismissThresholdPx
                                 if (overThreshold) {
-                                    // Commit: fling the card off the side, then dismiss.
                                     coroutineScope.launch {
                                         swipeOffset.animateTo(
                                             dismissThresholdPx * 2.2f * sign(swipeOffset.value),
@@ -273,12 +234,9 @@ fun InAppChatNotificationPopup(
                         .heightIn(max = InAppNotificationMaxCardHeight)
                         .clickable(onClick = onOpenChat)
                         .padding(horizontal = 12.dp, vertical = 10.dp),
-                // Breathing room between the header, the stacked messages and
-                // the action row — the actions used to sit flush against the
-                // last message.
+
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                // Header: title + dismiss.
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth(),
@@ -311,12 +269,6 @@ fun InAppChatNotificationPopup(
                     }
                 }
 
-                // The stacked messages: newest last, auto-scrolled so bursts
-                // of messages roll inside the single card. weight(1f, fill =
-                // false): the row grows with its content until the CARD hits
-                // its cap, at which point this is the child that compresses —
-                // so the header and actions keep their size and the list
-                // scrolls instead of the popup growing ever taller.
                 val listState = rememberScrollState()
                 LaunchedEffect(entries.size) {
                     if (entries.isNotEmpty()) {
@@ -372,10 +324,6 @@ fun InAppChatNotificationPopup(
                     }
                 }
 
-                // Actions: Reply is an ICON-ONLY button (just the reply glyph,
-                // no label — it sat too close to the messages with a text
-                // button's visual weight); Mark-as-read stays a quiet text
-                // button on mentions. Same row in both glass and opaque modes.
                 var replying by remember { mutableStateOf(false) }
                 var replyText by remember { mutableStateOf("") }
                 Row(
@@ -464,14 +412,6 @@ fun InAppChatNotificationPopup(
     }
 }
 
-/**
- * State controller for the in-app chat notification: collects live room
- * messages while the feature is enabled, the chat's one-tap mute is off, the
- * app shows a room and the chat screen is CLOSED, stacks them into the
- * popup's entry list, auto-dismisses non-mention cards after a short delay
- * (mentions persist until acted on) and wires the popup's actions (open
- * chat / reply / mark-as-read).
- */
 @Composable
 fun InAppChatNotificationsHost(
     manager: moe.rukamori.archivetune.listentogether.ListenTogetherManager,
@@ -490,28 +430,19 @@ fun InAppChatNotificationsHost(
     )
     val entries = remember { mutableStateListOf<InAppNotificationEntry>() }
 
-    // The glass card needs the menu recorder RUNNING to have anything to
-    // sample: report the card's presence so the activity keeps the throttled
-    // backdrop recording (it otherwise only records while a menu is open —
-    // which is exactly why the card used to render fully transparent).
     LaunchedEffect(inAppEnabled, chatMuted, entries.isNotEmpty()) {
         onActiveChanged(inAppEnabled && !chatMuted && entries.isNotEmpty())
     }
 
-    // Muting mid-conversation retires whatever is on screen.
     LaunchedEffect(chatMuted) {
         if (chatMuted) entries.clear()
     }
 
-    // Opening the chat screen retires the popup — the conversation itself is
-    // now visible.
     val chatScreenVisible by manager.chatScreenVisible.collectAsState()
     LaunchedEffect(chatScreenVisible) {
         if (chatScreenVisible) entries.clear()
     }
 
-    // Regular (non-mention) cards are transient: give them a few seconds of
-    // fame, then clear the stack. Mention-bearing cards wait for the user.
     LaunchedEffect(entries.size) {
         if (entries.isNotEmpty() && entries.none { it.isMention }) {
             delay(6000)

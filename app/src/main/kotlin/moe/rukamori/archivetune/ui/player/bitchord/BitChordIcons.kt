@@ -142,8 +142,6 @@ object BitChordIcons {
 
     val HeartFilled: ImageVector by lazy { heart("bc_heart_filled", filled = true) }
 
-    /** The speech-bubble-with-quotation-marks glyph that anchors the bottom
-     * row's lyrics entry (drawn at a 2f stroke like the rest of the family). */
     val LyricsQuote: ImageVector by lazy {
         ImageVector.Builder(
             name = "bc_lyrics_quote",

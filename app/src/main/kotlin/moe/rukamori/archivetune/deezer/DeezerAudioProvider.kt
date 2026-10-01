@@ -268,13 +268,6 @@ object DeezerAudioProvider {
         return null
     }
 
-    /**
-     * Resolves the EXACT track picked in the "play from search" popup — no
-     * fuzzy re-matching against the currently-playing song's metadata, which
-     * used to silently substitute a different master (or miss the match gate
-     * entirely and fall back to YouTube) even though the user had already
-     * picked the right track.
-     */
     suspend fun resolveByTrackId(
         trackId: String,
         format: String,
@@ -690,11 +683,7 @@ object DeezerAudioProvider {
             if (viaPublicApi.isNotEmpty()) {
                 viaPublicApi
             } else {
-                // The public REST API is geo-unavailable in some regions where
-                // the logged-in web session still works (an ARL login in India,
-                // for instance): fall back to the same gw-light `search.music`
-                // gateway the matcher uses, so the "play from search" popup
-                // still returns results.
+
                 searchCandidatesViaGateway(trimmed, limit)
             }
         }

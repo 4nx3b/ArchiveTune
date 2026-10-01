@@ -58,11 +58,6 @@ object LyricsBackup {
         runCatching { lyricsJson.decodeFromString(LyricsBackupPayload.serializer(), text) }.getOrNull()
 }
 
-/**
- * Merges a lyrics backup into the database without clobbering anything the user
- * already has on this device: rows that exist (user edits, AI translations, another
- * provider's lyrics) are kept as-is, and the "not found" sentinel is never restored.
- */
 suspend fun mergeLyricsIntoDatabase(
     database: MusicDatabase,
     payload: LyricsBackupPayload,

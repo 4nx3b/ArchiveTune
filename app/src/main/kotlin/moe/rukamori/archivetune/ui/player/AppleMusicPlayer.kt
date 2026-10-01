@@ -194,7 +194,6 @@ private const val AmLyricsBlurDriftScale = 2.4f
 
 private const val AmCoverBlurScale = 1.2f
 
-/** Constant drift amplitude the landscape moving-blur runs at. */
 private const val AmLandscapeDriftFactor = 0.55f
 
 private const val AmLyricsBackdropMorphMs = 650
@@ -289,14 +288,10 @@ fun AppleMusicPlayerContent(
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
 ) {
-    // Lockstep the sharp hero canvas and the blurred backdrop copy of the same loop.
     val canvasLoopSync = remember { CanvasLoopSync() }
 
     var queueOpen by remember { mutableStateOf(false) }
 
-    // Landscape is LYRICS-FIRST (the reference arrangement): the right half
-    // shows the lyric sheet from the first frame and the controls stay hidden
-    // until a tap pokes them out. Portrait opens on the artwork as before.
     var lyricsOpen by remember(landscape) { mutableStateOf(landscape) }
 
     LaunchedEffect(mediaMetadata.id) { lyricsOpen = landscape }
@@ -343,11 +338,7 @@ fun AppleMusicPlayerContent(
     val playerExpanded = state.isExpanded
 
     LaunchedEffect(lyricsOpen, queueOpen, controlsRevealToken, autoHideLyricsPlayerControls, showLyricsPlayerControls, playerExpanded) {
-        // The reveal effect doubles as the "lyrics/queue closed → controls
-        // reappear" reset (lyricsOpen/queueOpen are keys). In landscape the
-        // lyrics own the right half from the start: the controls must stay
-        // hidden until an actual gesture pokes them (token != 0), and a song
-        // change (no key here changes) must not flash them over the lyrics.
+
         if (landscape && lyricsOpen && controlsRevealToken == 0) {
             playerControlsExpanded = false
             return@LaunchedEffect
@@ -449,8 +440,7 @@ fun AppleMusicPlayerContent(
 
     val lyricsBackdropProgress =
         animateFloatAsState(
-            // In landscape the artwork column stays on screen beside the
-            // lyric sheet, so the ambient canvas backdrop keeps breathing.
+
             targetValue = if (lyricsOpen && !landscape) 1f else 0f,
             animationSpec =
                 tween(
@@ -543,12 +533,7 @@ fun AppleMusicPlayerContent(
 
     val popupBackdrop: com.kyant.backdrop.Backdrop? =
         if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // THROTTLED recorder: the plain rememberBackdrop attached kyant's
-            // per-frame LayerBackdrop to the whole player subtree, and while
-            // the lyrics overflow menu was open that re-recorded BOTH canvas
-            // layers + the moving blur every single frame — a visible stutter
-            // on top of an already loaded player. 10 Hz is what every other
-            // glass surface in the app already runs at.
+
             rememberThrottledBackdrop(Color.Transparent)
         } else {
             null
@@ -578,9 +563,7 @@ fun AppleMusicPlayerContent(
 
     val castAction = rememberCastPlayerMenuAction()
     val onOutputClick: () -> Unit = castAction?.onClick ?: {
-        // The raw AOSP panel action silently resolves to nothing on many OEM
-        // builds; the resolver walks the OEM variants first and falls back to
-        // the AOSP panel, so the button always opens something.
+
         SystemMediaControlResolver.openMediaOutputSwitcher(context)
     }
 
@@ -608,9 +591,6 @@ fun AppleMusicPlayerContent(
                     .background(Color.Black),
         )
 
-        // ── Landscape horizontal swipe: drag left = next, drag right =
-        // previous. The commit happens on gesture end, so one continuous
-        // swipe always changes exactly one track. ──────────────────────────
         val landscapeSwipeModifier =
             Modifier.pointerInput(playerConnection) {
                 val swipeThresholdPx = 72.dp.toPx()
@@ -638,9 +618,7 @@ fun AppleMusicPlayerContent(
             !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
 
         val useCanvasBackdrop = canvasActive && !videoShowing && !isPreS
-        // The canvas backdrop used to appear the instant its URLs resolved —
-        // a hard swap with the 64dp-blurred artwork backdrop. A 650ms reveal
-        // (and matching scrim crossfade) makes the transition smooth.
+
         val canvasBackdropReveal =
             remember { androidx.compose.animation.core.Animatable(0f) }
         LaunchedEffect(useCanvasBackdrop) {
@@ -684,13 +662,9 @@ fun AppleMusicPlayerContent(
         }
 
         if (!videoShowing) {
-            // Same screen-scaled wander amplitude as every other player style
-            // (Apple Music lyrics-page behaviour): the blurred colour mass
-            // traverses the whole display instead of orbiting near the centre.
+
             val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
-            // In landscape the blurred backdrop drifts for EVERY song — not
-            // only while the lyrics morph is active (the portrait gate left
-            // non-canvas landscape songs with a completely static background).
+
             val wanderActive = lyricsBackdropActive || landscape
             val blurWander = rememberBlurWanderDrift(active = wanderActive, maxDriftDp = wanderMaxDrift)
             val driftGraphicsLayer: GraphicsLayerScope.() -> Unit = {
@@ -699,8 +673,7 @@ fun AppleMusicPlayerContent(
                 val scale = AmCoverBlurScale + (AmLyricsBlurDriftScale - AmCoverBlurScale) * progress
                 scaleX = scale
                 scaleY = scale
-                // Landscape keeps a constant gentle drift (0.55x amplitude);
-                // portrait ramps it with the lyrics morph as before.
+
                 val driftFactor = if (landscape) AmLandscapeDriftFactor else progress
                 if (driftFactor > 0f) {
                     translationX = blurWander.xDp.floatValue * driftDpToPx * driftFactor
@@ -714,12 +687,7 @@ fun AppleMusicPlayerContent(
             val backdropFootprint =
                 remember(maxWidth, maxHeight, landscape) {
                     if (landscape) {
-                        // Landscape models its own transform (constant 1.2x
-                        // scale + 0.55x drift + the 64dp blur falloff margin):
-                        // the portrait formula sized the layer for 2.4x-scale
-                        // drift, which under-covered at 1.2x and let the
-                        // blurred layer's edges sweep black lines in from the
-                        // screen corners.
+
                         blurBackdropFootprintLandscape(
                             width = maxWidth,
                             height = maxHeight,
@@ -756,10 +724,7 @@ fun AppleMusicPlayerContent(
                                 .graphicsLayer(driftGraphicsLayer),
                     )
                 } else {
-                    // Crossfade the blurred colour mass instead of hard-
-                    // swapping it: track changes (and the mid-song thumbnail
-                    // upgrade) used to flip the entire backdrop in a single
-                    // frame — the "changes abruptly" report.
+
                     val backdropModel = artworkRequest ?: artworkUrl
                     Crossfade(
                         targetState = backdropModel,
@@ -818,9 +783,6 @@ fun AppleMusicPlayerContent(
             }
             val preBlurLoading = isPreS && preBlurredBitmap == null && !canvasActive
 
-            // Two stacked scrims crossfaded by [canvasScrimReveal]: the canvas
-            // scrim (lighter — the loop itself adds colour) and the static
-            // artwork scrim (with the pre-S loading variant).
             val canvasScrimBrush =
                 remember {
                     Brush.verticalGradient(
@@ -869,50 +831,28 @@ fun AppleMusicPlayerContent(
         }
 
         if (landscape) {
-            // Landscape (user request): tapping anywhere must NOT reveal the
-            // controls — the old pointerInput poke handler is gone. The layout
-            // itself is the artwork-first arrangement: left half = hero artwork
-            // + title block, right half = lyrics-first with the controls column.
+
             Row(
                 modifier =
                     Modifier
                         .fillMaxSize(),
             ) {
-                // Left half: the artwork with the song title and artist
-                // directly beneath it — Apple Music's own landscape
-                // arrangement, sized up so the artwork reads as the hero of
-                // the half (not a shrunken portrait card) and CENTERED with
-                // equal side margins, the title block aligned to the very
-                // same width so name and artwork share one visual column.
-                // The right half is lyrics-first: opening lyrics swaps the
-                // controls column out for the lyric sheet over there,
-                // keeping the artwork on screen while lyrics show.
+
                 BoxWithConstraints(
                     modifier =
                         Modifier
                             .weight(1f)
                             .fillMaxHeight(),
                 ) {
-                    // Canvas songs go FULL-BLEED in landscape: the loop plays
-                    // at the half's full height (top edge to the bottom
-                    // controls strip), the COMPLETE frame at FIT — never
-                    // ZOOM-cropped — and it never reaches past the middle into
-                    // the lyrics half. The title block rides over the canvas
-                    // foot on a gradient scrim so it needs no space of its own.
-                    // Non-canvas songs keep the hero-artwork + title column.
+
                     val landscapeCanvasFullBleed = canvasActive && !videoShowing
                     if (landscapeCanvasFullBleed) {
-                        // The canvas runs FULL-BLEED: no bottom padding — the
-                        // loop reaches the very bottom of the half instead of
-                        // stopping short and leaving an empty band where only
-                        // the blurred backdrop showed. The title scrim keeps
-                        // clearing the queue strip on its own.
+
                         Box(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
-                                    // Horizontal swipe (landscape): left = next,
-                                    // right = previous — matching Apple Music.
+
                                     .then(landscapeSwipeModifier),
                         ) {
                             AppleMusicSharpArtwork(
@@ -926,17 +866,13 @@ fun AppleMusicPlayerContent(
                                 isMusicVideo = mediaMetadata.isMusicVideo,
                                 landscape = true,
                                 landscapeCanvasFullBleed = true,
-                                // The right edge dissolves into the lyrics
-                                // half — the hard rectangle line is gone.
+
                                 fadeRightEdge = true,
                                 artworkCornerRadiusDp = artworkCornerRadiusDp,
                                 canvasLoopSync = canvasLoopSync,
                                 modifier = Modifier.fillMaxSize(),
                             )
 
-                            // Title over the canvas foot: the canvas keeps the
-                            // whole height; the scrim keeps the text readable
-                            // over live video.
                             Box(
                                 modifier =
                                     Modifier
@@ -963,16 +899,7 @@ fun AppleMusicPlayerContent(
                             }
                         }
                     } else {
-                    // The landscape hero artwork: large enough to read as the
-                    // hero of the half but with real breathing room to the
-                    // screen edges (the previous size filled the half minus
-                    // 32dp and visually touched the screen end), centred with
-                    // equal side margins; the title block below inherits the
-                    // exact same width so name and artwork share one column.
-                    // Sizing note (user feedback): a touch SMALLER than the
-                    // old 0.80-height cap and nudged DOWN toward the half's
-                    // true vertical centre — the title block below used to
-                    // ride the artwork high, leaving a dead zone at the top.
+
                     val landscapeArtworkSize =
                         (maxWidth - 96.dp)
                             .coerceAtMost(maxHeight * 0.68f)
@@ -1033,8 +960,7 @@ fun AppleMusicPlayerContent(
                             .weight(1f)
                             .fillMaxHeight(),
                 ) {
-                    // Lyrics own the right half whenever they are open — the
-                    // controls column yields instead of stacking over them.
+
                     androidx.compose.animation.AnimatedVisibility(
                         visible = lyricsOpen,
                         enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
@@ -1397,9 +1323,6 @@ private fun AppleMusicSharpArtwork(
 ) {
     val playerConnection = LocalPlayerConnection.current
 
-    // Canvas readiness: flips true when the loop's decoder renders its first
-    // frame; the static thumbnail + scrim below then dissolve (450ms) so the
-    // FIT canvas never reads as playing "on top of" the static artwork.
     var canvasFrameReady by remember(canvasPrimaryUrl, canvasFallbackUrl) {
         mutableStateOf(false)
     }
@@ -1415,10 +1338,7 @@ private fun AppleMusicSharpArtwork(
             1f to Color.Transparent,
         )
     }
-    // Landscape canvas blend: the canvas's right edge (the screen's middle
-    // in horizontal mode) dissolves into the blurred backdrop with a
-    // gradient mask instead of ending in a hard rectangle — matching the
-    // edge-less look non-canvas songs get from the full-bleed backdrop.
+
     val canvasRightFadeBrush = remember {
         Brush.horizontalGradient(
             0f to Color.Black,
@@ -1468,9 +1388,6 @@ private fun AppleMusicSharpArtwork(
                 val compactHeight = effectiveFullHeight < 760.dp
                 val veryCompactHeight = effectiveFullHeight < 700.dp
 
-                // Landscape gets an explicit size handed down from the player
-                // (the hero-of-the-half arrangement); portrait keeps the
-                // fraction-based sizing it has always had.
                 val artworkSize =
                     landscapeArtworkSize
                         ?: run {
@@ -1524,13 +1441,7 @@ private fun AppleMusicSharpArtwork(
                 }
             }
         } else {
-            // The static base layer dissolves to nothing the moment the
-            // canvas decoder renders its first frame (tracked by
-            // [canvasFrameReady] below): the FIT loop letterboxes and fades
-            // its right edge, and a static thumbnail shining through those
-            // gaps read as "canvas playing on top of the static thumbnail".
-            // Until that first frame the thumbnail IS the visible artwork, so
-            // the canvas's own 300ms fade-in crossfades over it cleanly.
+
             Box(modifier = Modifier.matchParentSize()) {
                 if (staticBaseAlpha > 0.01f) {
                     AsyncImage(
@@ -1543,10 +1454,7 @@ private fun AppleMusicSharpArtwork(
                                 .graphicsLayer { alpha = staticBaseAlpha },
                     )
                 }
-                // Full-bleed canvas mode: a short dark scrim under the fading-
-                // in loop so the crossfade lands on a dimmed base rather than
-                // the raw thumbnail; it dissolves with the thumbnail once the
-                // loop is live.
+
                 if (hasCanvas && landscapeCanvasFullBleed && staticBaseAlpha > 0.01f) {
                     Box(
                         modifier =
@@ -1581,9 +1489,7 @@ private fun AppleMusicSharpArtwork(
                 primaryUrl = canvasPrimaryUrl,
                 fallbackUrl = canvasFallbackUrl,
                 isPlaying = isPlaying,
-                // Full-bleed landscape canvas: the COMPLETE loop at FIT — the
-                // whole frame, never ZOOM-cropped — filling the half's height
-                // and centred inside it, well clear of the lyrics half.
+
                 resizeMode =
                     if (landscapeCanvasFullBleed) {
                         AspectRatioFrameLayout.RESIZE_MODE_FIT
@@ -1802,7 +1708,6 @@ private fun AppleMusicControlsColumn(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-
         AppleMusicTransportButton(
             iconRes = R.drawable.apple_skip_previous,
             enabled = canSkipPrevious,
@@ -1879,13 +1784,6 @@ private fun AppleMusicControlsColumn(
     }
 }
 
-/**
- * The landscape player's title block: song title and artist directly under
- * the artwork on the left half — Apple Music's own landscape arrangement —
- * carrying the like and overflow chips the portrait title row owns, so
- * nothing is lost when the right column switches to controls-only
- * (showTitleRow = false).
- */
 @Composable
 private fun AppleMusicLandscapeTitleBlock(
     mediaMetadata: MediaMetadata,
@@ -1903,9 +1801,7 @@ private fun AppleMusicLandscapeTitleBlock(
             Modifier
                 .let { base ->
                     if (contentWidth != null) {
-                        // Aligned to the artwork: the block spans exactly the
-                        // artwork's width so title, chips and artwork share one
-                        // centred visual column (the caller centres it).
+
                         base
                             .width(contentWidth)
                     } else {
@@ -1957,8 +1853,7 @@ private fun AppleMusicLandscapeTitleBlock(
                 )
             }
         }
-        // The action chips sit as one tight group (4dp apart) at the end of
-        // the title row — the favourite chip hugs the overflow chip.
+
         AppleMusicChip(
             iconRes = if (currentSongLiked) R.drawable.player_star_filled else R.drawable.player_star,
             tint = Color.White,

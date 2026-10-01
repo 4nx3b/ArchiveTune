@@ -337,7 +337,6 @@ fun Thumbnail(
                     .statusBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),

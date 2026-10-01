@@ -30,8 +30,7 @@ class HapticsPcmProcessor(
         ) {
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
-        // Bit-Perfect: stay inactive so the chain routes around this
-        // processor while the bypass is engaged.
+
         if (moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime.chainBypassActive) {
             return AudioProcessor.AudioFormat.NOT_SET
         }
