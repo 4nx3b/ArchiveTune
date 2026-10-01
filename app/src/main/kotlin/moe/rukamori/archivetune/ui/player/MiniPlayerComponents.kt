@@ -275,6 +275,11 @@ fun SwipeableMiniPlayerBox(
                             baseModifier
                         }
                     },
+            // The morphing pill CENTRES itself inside this fixed-height slot
+            // while it shrinks 70 -> 64 dp, so the compact pill's centre line
+            // stays exactly where the expanded mini player's was (a
+            // top-anchored shrink used to lift it 3 dp).
+            contentAlignment = Alignment.Center,
         ) {
             content(offsetXAnimatable.value)
 

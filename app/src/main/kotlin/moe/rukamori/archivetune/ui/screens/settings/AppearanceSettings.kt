@@ -505,26 +505,11 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 modifier = positions.modifierFor("dynamic_theme", "color_source"),
                 title = stringResource(R.string.theme),
             ) {
-                item {
-                    Column(modifier = positions.modifierFor("liquid_glass_effects")) {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.liquid_glass_effects)) },
-                            description = stringResource(R.string.liquid_glass_effects_desc),
-                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
-                            checked = liquidGlassEnabled,
-                            onCheckedChange = onLiquidGlassEnabledChange,
-                        )
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && liquidGlassEnabled) {
-                            Text(
-                                text = stringResource(R.string.liquid_glass_effects_unsupported),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
-                            )
-                        }
-                    }
-                }
-
+                // The enable toggle itself lives INSIDE the Liquid Glass
+                // subpage (LiquidGlassSettings) — keeping a second copy here
+                // showed two "Enable liquid glass" switches toggling the same
+                // key. This entry is the page's single doorway, and it also
+                // carries the pre-Android-12 unsupported note.
                 item {
                     Column(modifier = positions.modifierFor("liquid_glass_customisation")) {
                         PreferenceEntry(
@@ -533,6 +518,14 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                             icon = { Icon(painterResource(R.drawable.sliders), null) },
                             onClick = { navController.navigate("settings/appearance/liquid_glass") },
                         )
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                            Text(
+                                text = stringResource(R.string.liquid_glass_effects_unsupported),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
+                            )
+                        }
                     }
                 }
 

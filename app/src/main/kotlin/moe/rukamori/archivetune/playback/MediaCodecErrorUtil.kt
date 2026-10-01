@@ -9,8 +9,36 @@ package moe.rukamori.archivetune.playback
 
 import android.media.MediaCodec
 import androidx.media3.common.PlaybackException
+import androidx.media3.exoplayer.audio.AudioOutput
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecDecoderException
 import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
+
+/**
+ * App-defined WriteException error codes raised by the exclusive audio
+ * outputs (usbdevfs / libusb / AAudio drivers). See
+ * [moe.rukamori.archivetune.playback.dsp.BitPerfectSwitchingAudioSink.EXCLUSIVE_WRITE_ERROR_CODES].
+ */
+private val EXCLUSIVE_WRITE_ERROR_CODES = setOf(-9101, -9102, -9001, -9002, -896)
+
+/**
+ * True when the error is an exclusive-output WriteException surfaced as
+ * ERROR_CODE_AUDIO_TRACK_WRITE_FAILED — e.g. the LastWave usbdevfs "stream
+ * died mid-write" (-9102) that shows up as "AudioTrack write failed: -9102".
+ * The playback service recovers by dropping the exclusive route and
+ * re-preparing, so the error UI suppresses these while recovery is in flight.
+ */
+internal fun isRecoverableExclusiveAudioWriteError(error: PlaybackException): Boolean {
+    if (error.errorCode != PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED) return false
+    return generateSequence<Throwable>(error) { it.cause }.any { throwable ->
+        val code = when (throwable) {
+            is AudioSink.WriteException -> throwable.errorCode
+            is AudioOutput.WriteException -> throwable.errorCode
+            else -> null
+        }
+        code != null && code in EXCLUSIVE_WRITE_ERROR_CODES
+    }
+}
 
 internal fun isRecoverableMediaCodecStateError(error: PlaybackException): Boolean {
     val isDecodingErrorCode =

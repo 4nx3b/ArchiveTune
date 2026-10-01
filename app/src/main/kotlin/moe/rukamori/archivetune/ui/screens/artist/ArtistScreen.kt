@@ -471,12 +471,23 @@ fun ArtistScreen(
                 if (layerSize.width < 8 || layerSize.height < 8) continue
                 val sampled =
                     try {
-                        withContext(Dispatchers.Default) {
-                            val bitmap = canvasSampleLayer.toImageBitmap().asAndroidBitmap()
-                            if (bitmap.width < 8 || bitmap.height < 8) {
-                                null
-                            } else {
-                                val small = Bitmap.createScaledBitmap(bitmap, 24, 24, true)
+                        // toImageBitmap() walks LayerSnapshotV28 →
+                        // RenderNode.beginRecording — it MUST run on the UI
+                        // thread. The old Dispatchers.Default read raced the
+                        // draw-side record() on the SAME GraphicsLayer and
+                        // whichever thread lost got "Recording currently in
+                        // progress - missing #endRecording() call?" straight
+                        // out of dispatchDraw (the artist-page crash). Take an
+                        // immutable software copy on main, then do the heavy
+                        // palette work on the background dispatcher.
+                        val snapshot =
+                            canvasSampleLayer.toImageBitmap().asAndroidBitmap()
+                                .copy(Bitmap.Config.ARGB_8888, false)
+                        if (snapshot.width < 8 || snapshot.height < 8) {
+                            null
+                        } else {
+                            withContext(Dispatchers.Default) {
+                                val small = Bitmap.createScaledBitmap(snapshot, 24, 24, true)
                                 val palette =
                                     Palette
                                         .from(small)
@@ -557,6 +568,53 @@ fun ArtistScreen(
         label = "artistAmbientBottom",
     )
 
+    // The big release pills (latest + upcoming) float over the ambient
+    // gradient: their containers are tinted FROM the ambient palette — the
+    // actual backdrop colour at that scroll region — instead of a fixed grey
+    // surface role that read as a greyish island on both themes. The base is
+    // a mid/bottom blend with translucency so the gradient still shows
+    // through, and the content colours follow the tint's luminance so both
+    // dark and light mode stay legible over the always-toned bands.
+    val ambientReleaseBase = lerp(animatedAmbientMid, animatedAmbientBottom, 0.45f)
+    val releaseCardContainer = ambientReleaseBase.copy(alpha = 0.50f)
+    val releaseCardContent =
+        if (ambientReleaseBase.luminance() > 0.5f) {
+            MaterialTheme.colorScheme.onSurface
+        } else {
+            Color.White
+        }
+    val releaseCardMutedContent = releaseCardContent.copy(alpha = 0.72f)
+    val releaseCardAccent =
+        if (ambientReleaseBase.luminance() > 0.5f) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            lerp(ambientReleaseBase, Color.White, 0.35f)
+        }
+
+    // Hero → background seam: the hero scrim's terminal colour must equal
+    // the PAGE gradient's colour at the hero-bottom fraction — not the
+    // screen-bottom band. The two gradients end at different colours
+    // wherever the hero's bottom edge lands mid-gradient, which was the
+    // sharp colour-inconsistency line below the control row. Both heights
+    // are measured so the seam lands exactly on any screen size.
+    var pageContainerHeightPx by remember { mutableStateOf(0) }
+    var heroMeasuredHeightPx by remember { mutableStateOf(0) }
+    val heroBottomFraction =
+        if (pageContainerHeightPx > 0 && heroMeasuredHeightPx > 0) {
+            (heroMeasuredHeightPx.toFloat() / pageContainerHeightPx).coerceIn(0.50f, 0.98f)
+        } else {
+            0.70f
+        }
+
+    fun pageGradientColorAt(fraction: Float): Color = when {
+        fraction <= 0.5f ->
+            lerp(animatedAmbientTop, animatedAmbientMid, (fraction / 0.5f).coerceIn(0f, 1f))
+        else ->
+            lerp(animatedAmbientMid, animatedAmbientBottom, ((fraction - 0.5f) / 0.5f).coerceIn(0f, 1f))
+    }
+
+    val ambientAtHeroBottom = pageGradientColorAt(heroBottomFraction)
+
     // Hero scroll: collapse + fade + parallax while the hero scrolls away.
     val heroCollapseFraction by remember {
         derivedStateOf {
@@ -603,7 +661,8 @@ fun ArtistScreen(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(surfaceColor),
+                .background(surfaceColor)
+                .onSizeChanged { pageContainerHeightPx = it.height },
     ) {
         // Atmospheric background: the animated palette-gradient alone (the
         // immersive-player colour gradience). The old 80dp blurred-artwork
@@ -726,7 +785,8 @@ fun ArtistScreen(
                                 // without clipping it bled through the sections
                                 // below (the profile picture / canvas showed
                                 // through the rows while scrolling).
-                                .clipToBounds(),
+                                .clipToBounds()
+                                .onSizeChanged { heroMeasuredHeightPx = it.height },
                     ) {
                         // Immersive hero image with a gentle parallax: the
                         // artwork scrolls at half speed while the list moves
@@ -786,8 +846,14 @@ fun ArtistScreen(
                                                     val now = SystemClock.uptimeMillis()
                                                     if (now - canvasRecordClock[0] >= CANVAS_RECORD_INTERVAL_MILLIS) {
                                                         canvasRecordClock[0] = now
-                                                        canvasSampleLayer.record(size.toIntSize()) {
-                                                            this@drawWithContent.drawContent()
+                                                        // Same Compose 1.12 re-entrancy family as
+                                                        // LiquidGlass's recorder: a record that
+                                                        // races any other use of this layer must
+                                                        // never escape the draw pass.
+                                                        runCatching {
+                                                            canvasSampleLayer.record(size.toIntSize()) {
+                                                                this@drawWithContent.drawContent()
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -810,6 +876,10 @@ fun ArtistScreen(
                         // status/app-bar area, fading out through the middle
                         // and back into the ambient background colour at the
                         // bottom so hero and background read as one surface.
+                        // The terminal stops sample the PAGE gradient at the
+                        // hero-bottom fraction (measured), so the scrim ends
+                        // on exactly the colour the background continues with
+                        // — no seam, no hard line under the control row.
                         Box(
                             modifier =
                                 Modifier
@@ -819,8 +889,8 @@ fun ArtistScreen(
                                             0f to Color.Black.copy(alpha = 0.34f),
                                             0.16f to Color.Transparent,
                                             0.46f to Color.Transparent,
-                                            0.78f to animatedAmbientBottom.copy(alpha = 0.55f),
-                                            1f to animatedAmbientBottom,
+                                            0.78f to ambientAtHeroBottom.copy(alpha = 0.55f),
+                                            1f to ambientAtHeroBottom,
                                         ),
                                     ),
                         )
@@ -1050,6 +1120,10 @@ fun ArtistScreen(
                     ) {
                         ArtistUpcomingReleasesColumn(
                             releases = upcomingReleases,
+                            containerColor = releaseCardContainer,
+                            contentColor = releaseCardContent,
+                            mutedContentColor = releaseCardMutedContent,
+                            accentColor = releaseCardAccent,
                         )
                     }
                 }
@@ -1061,6 +1135,10 @@ fun ArtistScreen(
                     ) {
                         ArtistNewReleaseSection(
                             release = release,
+                            containerColor = releaseCardContainer,
+                            contentColor = releaseCardContent,
+                            mutedContentColor = releaseCardMutedContent,
+                            accentColor = releaseCardAccent,
                             onClick = { navController.navigate("album/${release.id}") },
                         )
                     }
@@ -1940,6 +2018,10 @@ private fun ArtistAboutSection(
 @Composable
 private fun ArtistNewReleaseSection(
     release: ArtistReleaseUiModel,
+    containerColor: Color,
+    contentColor: Color,
+    mutedContentColor: Color,
+    accentColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1968,7 +2050,8 @@ private fun ArtistNewReleaseSection(
             shape = MaterialTheme.shapes.large,
             colors =
                 CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    containerColor = containerColor,
+                    contentColor = contentColor,
                 ),
             modifier =
                 Modifier
@@ -2004,13 +2087,13 @@ private fun ArtistNewReleaseSection(
                             Modifier
                                 .size(ArtistReleaseArtworkSize)
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                .background(contentColor.copy(alpha = 0.10f)),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.album),
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = mutedContentColor,
                             modifier = Modifier.size(40.dp),
                         )
                     }
@@ -2023,14 +2106,14 @@ private fun ArtistNewReleaseSection(
                     Text(
                         text = stringResource(R.string.latest_release).uppercase(),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = accentColor,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                     )
                     Text(
                         text = release.title,
                         style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = contentColor,
                         fontWeight = FontWeight.Bold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -2038,7 +2121,7 @@ private fun ArtistNewReleaseSection(
                     Text(
                         text = metadata,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = mutedContentColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -2058,6 +2141,10 @@ private fun ArtistNewReleaseSection(
 @Composable
 private fun ArtistUpcomingReleasesColumn(
     releases: List<UpcomingRelease>,
+    containerColor: Color,
+    contentColor: Color,
+    mutedContentColor: Color,
+    accentColor: Color,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -2089,7 +2176,8 @@ private fun ArtistUpcomingReleasesColumn(
                 shape = MaterialTheme.shapes.large,
                 colors =
                     CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        containerColor = containerColor,
+                        contentColor = contentColor,
                     ),
                 modifier =
                     Modifier
@@ -2120,13 +2208,13 @@ private fun ArtistUpcomingReleasesColumn(
                                 Modifier
                                     .size(ArtistReleaseArtworkSize)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                    .background(contentColor.copy(alpha = 0.10f)),
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.album),
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = mutedContentColor,
                                 modifier = Modifier.size(40.dp),
                             )
                         }
@@ -2139,14 +2227,14 @@ private fun ArtistUpcomingReleasesColumn(
                         Text(
                             text = stringResource(R.string.upcoming_release).uppercase(),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = accentColor,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                         )
                         Text(
                             text = release.title,
                             style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = contentColor,
                             fontWeight = FontWeight.Bold,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
@@ -2159,7 +2247,7 @@ private fun ArtistUpcomingReleasesColumn(
                             Text(
                                 text = release.artistName,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = mutedContentColor,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -2167,7 +2255,7 @@ private fun ArtistUpcomingReleasesColumn(
                         Text(
                             text = upcomingReleaseCountdownText(release, nowMillis),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = accentColor,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -2210,9 +2298,9 @@ private fun ArtistUpcomingReleasesColumn(
                                 ),
                             tint =
                                 if (isSaved) {
-                                    MaterialTheme.colorScheme.primary
+                                    accentColor
                                 } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                    mutedContentColor
                                 },
                             modifier = Modifier.size(22.dp),
                         )

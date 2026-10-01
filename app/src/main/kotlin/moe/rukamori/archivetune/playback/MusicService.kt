@@ -61,6 +61,7 @@ import androidx.media3.common.Player.REPEAT_MODE_OFF
 import androidx.media3.common.Player.REPEAT_MODE_ONE
 import androidx.media3.common.Player.STATE_IDLE
 import androidx.media3.common.Timeline
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
@@ -341,6 +342,7 @@ import moe.rukamori.archivetune.playback.smart.SmartFadeAnalyzer
 import moe.rukamori.archivetune.playback.dsp.AudioEngineKind
 import moe.rukamori.archivetune.playback.dsp.BitPerfectGateProcessor
 import moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime
+import moe.rukamori.archivetune.playback.dsp.BitPerfectSwitchingAudioSink
 import moe.rukamori.archivetune.playback.dsp.AudioEngineRouterProcessor
 import moe.rukamori.archivetune.playback.dsp.DspTailAudioProcessorChain
 import moe.rukamori.archivetune.playback.dsp.EngineRuntime
@@ -694,6 +696,18 @@ class MusicService :
     @Volatile
     private var codecRecoveryAttemptCount: Int = 0
     private val codecRecoveryMaxAttempts = 4
+
+    // Exclusive-output (usbdevfs / libusb / AAudio) WriteException recovery:
+    // the drivers raise app-defined error codes (-9101/-9102/-9001/-9002/-896)
+    // that surface as ERROR_CODE_AUDIO_TRACK_WRITE_FAILED. They are route
+    // failures, not media failures — recover by dropping the exclusive route
+    // and re-preparing, for local AND remote media alike.
+    @Volatile
+    private var exclusiveWriteRecoveryMediaId: String? = null
+    @Volatile
+    private var exclusiveWriteRecoveryAttemptCount: Int = 0
+    private val exclusiveWriteRecoveryMaxAttempts = 4
+
     private var nextHistorySessionToken = 0L
     private var currentHistorySessionToken = 0L
     private var currentHistoryMediaId: String? = null
@@ -1806,9 +1820,11 @@ class MusicService :
         // ---- Bit-Perfect / Native Output ----------------------------------------
         // The master + native-rate toggles are collected live: the runtime
         // verdict (chain bypass, volume pinning, status line) re-evaluates on
-        // the next track. The sink-level float flag is read once per player
-        // build (like the engine toggles) — flipping it fully applies after
-        // the playback service restarts.
+        // the next track. The sink-level float flag is no longer baked into
+        // the player build — the BitPerfectSwitchingAudioSink re-negotiates
+        // the route per configure, and a mid-playback toggle re-prepares the
+        // player so the CURRENT track re-inits its decoder under the new
+        // route (24-bit mantissas instead of a collapsed 16-bit decode).
         combine(
             dataStore.data.map { it[BitPerfectOutputKey] ?: BIT_PERFECT_OUTPUT_DEFAULT },
             dataStore.data.map { it[BitPerfectNativeRateKey] ?: BIT_PERFECT_NATIVE_RATE_DEFAULT },
@@ -1816,6 +1832,7 @@ class MusicService :
             bitPerfect to nativeRate
         }.distinctUntilChanged()
             .collectLatest(scope) { (bitPerfect, nativeRate) ->
+                val previouslyRequested = BitPerfectRuntime.requested
                 if (BitPerfectRuntime.requested != bitPerfect || BitPerfectRuntime.nativeSampleRatePreferred != nativeRate) {
                     Timber.tag(TAG).i(
                         "Bit-Perfect request: %s (nativeRate=%s) — re-evaluates on next track",
@@ -1827,6 +1844,16 @@ class MusicService :
                 BitPerfectRuntime.nativeSampleRatePreferred = nativeRate
                 if (!bitPerfect) {
                     BitPerfectRuntime.clearTrack()
+                }
+                // The route flip changes what the renderer must decode into
+                // (float vs the codec's default PCM depth) — the codec only
+                // re-negotiates when it is re-created, so stop/seek/prepare
+                // the live player once per flip. Guarded by the queue being
+                // live; an idle service picks the route up at the next play.
+                if (previouslyRequested != bitPerfect && bitPerfectNeedsRouteReprepare()) {
+                    scope.launch(Dispatchers.Main) {
+                        runCatching { repreparePlayerForAudioRouteChange() }
+                    }
                 }
             }
 
@@ -7510,6 +7537,63 @@ class MusicService :
             }
         }
 
+        if (isExclusiveAudioWriteError(error)) {
+            val resumePosition = player.currentPosition.coerceAtLeast(0L)
+            val mediaItemIndex = player.currentMediaItemIndex
+
+            if (currentMediaId != exclusiveWriteRecoveryMediaId) {
+                exclusiveWriteRecoveryMediaId = currentMediaId
+                exclusiveWriteRecoveryAttemptCount = 0
+            }
+            val attemptNumber = exclusiveWriteRecoveryAttemptCount + 1
+            val withinBudget = attemptNumber <= exclusiveWriteRecoveryMaxAttempts
+
+            Timber.tag("MusicService").w(
+                "Exclusive-output write failure for %s (errorCode=%s, causeChain=%s); recovery attempt %d/%d",
+                currentMediaId,
+                error.errorCodeName,
+                describeCauseChain(error),
+                attemptNumber,
+                exclusiveWriteRecoveryMaxAttempts,
+            )
+
+            if (withinBudget) {
+                exclusiveWriteRecoveryAttemptCount = attemptNumber
+                scope.launch(Dispatchers.Main) {
+                    try {
+                        kotlinx.coroutines.delay(250L)
+                        // Drop any half-dead exclusive route so the provider
+                        // re-resolves (and the driver re-opens the DAC) on the
+                        // next configure instead of resuming onto a dead
+                        // endpoint. Local media included: the exclusive route
+                        // failure is orthogonal to the stream source.
+                        runCatching { lastwaveExclusiveUsb.setWanted(false) }
+                        player.seekTo(mediaItemIndex, resumePosition)
+                        player.prepare()
+
+                        if (!player.playWhenReady) {
+                            player.pause()
+                        }
+                    } catch (recoveryThrowable: Throwable) {
+                        Timber.tag("MusicService").e(
+                            recoveryThrowable,
+                            "Exclusive-route recovery re-prepare failed for %s (attempt %d); falling back to stop-on-error",
+                            currentMediaId,
+                            attemptNumber,
+                        )
+                        stopOnError()
+                    }
+                }
+                return
+            } else {
+                Timber.tag("MusicService").w(
+                    "Exclusive-route recovery budget exhausted for %s after %d attempts; giving up",
+                    currentMediaId,
+                    attemptNumber - 1,
+                )
+            }
+        }
+
         if (isMediaCodecStateError(error)) {
             val resumePosition = player.currentPosition.coerceAtLeast(0L)
             val mediaItemIndex = player.currentMediaItemIndex
@@ -7593,6 +7677,19 @@ class MusicService :
 
     private fun isMediaCodecStateError(error: PlaybackException): Boolean =
         isRecoverableMediaCodecStateError(error)
+
+    /**
+     * True when the playback error is an exclusive-output WriteException —
+     * the usbdevfs/libusb/AAudio drivers raise app-defined error codes
+     * (-9101/-9102/-9001/-9002/-896) that MediaCodecAudioRenderer surfaces
+     * as ERROR_CODE_AUDIO_TRACK_WRITE_FAILED ("AudioTrack write failed: …").
+     * These are ROUTE failures (the DAC endpoint died), not media failures:
+     * local lossless files hit them just as hard as streams, so they need
+     * their own recovery branch instead of falling through to
+     * stop-on-error.
+     */
+    private fun isExclusiveAudioWriteError(error: PlaybackException): Boolean =
+        isRecoverableExclusiveAudioWriteError(error)
 
     private fun describeCauseChain(error: Throwable): String {
         val causeChain = generateSequence<Throwable>(error) { it.cause }
@@ -10270,6 +10367,44 @@ class MusicService :
 
     private var lastDspEngagementDecision: Triple<Boolean, Boolean, String?>? = null
 
+    /**
+     * True when a Bit-Perfect route flip should re-prepare the live player:
+     * the queue must be live (not idle/empty) and no cast session may own
+     * playback (the local re-prepare would fight the remote route).
+     */
+    private fun bitPerfectNeedsRouteReprepare(): Boolean {
+        if (!playerInitialized.value) return false
+        if (player.mediaItemCount == 0) return false
+        if (player.playbackState == Player.STATE_IDLE) return false
+        val casting = runCatching {
+            (castPlaybackRepository.screenState.value as? CastScreenState.Success)
+                ?.uiState?.isConnected == true
+        }.getOrDefault(false)
+        return !casting
+    }
+
+    /**
+     * Re-creates the decoder path so the codec re-negotiates its output
+     * encoding against the (newly selected) sink route. stop() releases the
+     * decoders and the audio output; the seek-while-idle pins the resume
+     * point; prepare() rebuilds everything from the current media item.
+     */
+    private fun repreparePlayerForAudioRouteChange() {
+        val index = player.currentMediaItemIndex
+        val position = player.currentPosition.coerceAtLeast(0L)
+        val resumePlayback = player.playWhenReady
+        Timber.tag(TAG).i(
+            "Re-preparing player for audio-route change (index=%d position=%d resume=%s)",
+            index,
+            position,
+            resumePlayback,
+        )
+        player.stop()
+        player.seekTo(index, position)
+        player.prepare()
+        if (resumePlayback) player.play() else player.pause()
+    }
+
     private fun updateAudioOffload(enabled: Boolean) {
         val effectiveEnabled = enabled && !crossfadeEnabled
         runCatching {
@@ -10329,6 +10464,12 @@ class MusicService :
                     pcmIsFloat = format.pcmEncoding == C.ENCODING_PCM_FLOAT,
                 ),
             )
+            // Feed the Bit-Perfect status from the TRUE decoded format. The
+            // gate inside the processor chain only ever sees the post-ToInt16
+            // encoding on the DSP route — and on the float route the chain is
+            // bypassed entirely — so without this the status line would keep
+            // reporting a stale 16-bit source for 24-bit material.
+            reportDecodedFormatToBitPerfect(format)
         }
 
         override fun onAudioDecoderInitialized(
@@ -10352,6 +10493,36 @@ class MusicService :
             decoderCounters: androidx.media3.exoplayer.DecoderCounters,
         ) {
             audioPipelineMonitor.onIdle()
+        }
+    }
+
+    /**
+     * Mirrors the renderer's decoded format into the Bit-Perfect runtime so
+     * the status line (and the live audio chain pill) reflects the real depth
+     * reaching the sink — native PCM_24BIT from the codec, or the f32 pipe
+     * the float route engages. The evaluation is idempotent with the chain
+     * gate's own pass (same verdict inputs), it just sees the pre-ToInt16
+     * truth when the DSP route is active.
+     */
+    private fun reportDecodedFormatToBitPerfect(format: Format) {
+        if (format.sampleMimeType != MimeTypes.AUDIO_RAW) return
+        val sampleRate = format.sampleRate.takeIf { it > 0 } ?: return
+        val channels = format.channelCount.takeIf { it in 1..2 } ?: 2
+        val encoding = format.pcmEncoding
+        if (encoding == C.ENCODING_INVALID || encoding == Format.NO_VALUE) return
+        runCatching {
+            BitPerfectRuntime.evaluateTrack(
+                context = this,
+                inputEncoding = encoding,
+                inputSampleRate = sampleRate,
+                inputChannels = channels,
+                engineOrDspEngaged = tryptifyAudioProcessing ||
+                    lastwaveAudioProcessing ||
+                    primaryFloatDspProcessor.engaged,
+                usbExclusive = usbSinkActiveNow,
+                outputSampleRateHz = EngineRuntime.lastwaveUsbRateHz.takeIf { it > 0 } ?: 0,
+                effectiveVolume = currentEffectivePlayerVolume(),
+            )
         }
     }
 
@@ -10418,28 +10589,17 @@ class MusicService :
             init {
                 setEnableDecoderFallback(true)
                 setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-                // Decode to 32-bit float whenever an engine owns the DSP tail
-                // (upstream Tryptify's lesson). NOTE: with the custom
-                // processor chain installed, the sink's int pipeline
-                // (ToInt16PcmAudioProcessor) still normalises the renderer's
-                // float back to 16-bit BEFORE the chain — the engine tail
-                // handles either encoding (AudioEngineRouterProcessor branches
-                // on what the chain actually emits). The flag is kept because
-                // it costs nothing when codecs lack float output, and it is
-                // what an exclusive-path wrapper sink would need to carry
-                // 24-bit mantissas end to end (upstream's architecture).
-                // Read once per player build: flipping an engine toggle takes
-                // full effect after the playback service restarts.
-                if (tryptifyAudioProcessing || lastwaveAudioProcessing || BitPerfectRuntime.requested) {
-                    // Bit-Perfect also wants the float decode: 24/32-bit PCM is
-                    // widened LOSSLESSLY into the f32 mantissa, and the sink's
-                    // int pipeline would otherwise collapse it to 16-bit before
-                    // the (bypassed) chain ever sees it.
-                    setEnableAudioFloatOutput(true)
-                    EngineRuntime.rendererFloatDecode = true
-                } else {
-                    EngineRuntime.rendererFloatDecode = false
-                }
+                // The decoder's output encoding is NOT decided here anymore.
+                // MediaCodecAudioRenderer consults the SINK live via
+                // getFormatSupport(PCM_FLOAT) at codec-init time: the
+                // BitPerfectSwitchingAudioSink answers on behalf of whichever
+                // route is currently selected, so float decode (and with it
+                // the 24-bit depth) follows the Bit-Perfect toggle at runtime
+                // instead of being frozen per player build. The factory flag
+                // below only flows into buildAudioSink's enableFloatOutput
+                // parameter, which the switching sink supersedes; it is kept
+                // enabled so the parameter never argues with the live route.
+                setEnableAudioFloatOutput(true)
             }
 
             override fun buildAudioSink(
@@ -10456,19 +10616,10 @@ class MusicService :
                     sonicAudioProcessor = bitPerfectSonic,
                     silenceSkippingAudioProcessor = bitPerfectSilence,
                 )
-                return DefaultAudioSink
-                .Builder(context)
-                // Float output stays off at the SINK level while the DSP tail
-                // owns the encoding decision. Bit-Perfect flips it on: the
-                // chain is fully bypassed in that mode, so the sink's float
-                // pipeline carries the decoder's 24/32-bit mantissas straight
-                // to a PCM_FLOAT direct track (16-bit content rides losslessly
-                // in the same pipe). Read once per player build — flipping the
-                // toggle takes full effect after the playback service
-                // restarts, exactly like the engine toggles.
-                .setEnableFloatOutput(BitPerfectRuntime.requested)
-                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                .setAudioOutputProvider(
+                // One exclusive-output provider shared by both sinks: only the
+                // sink that owns the current configuration ever asks it for an
+                // AudioOutput, so the two routes never double-claim the DAC.
+                val exclusiveProvider =
                     // Trailing-lambda syntax would bind to the LAST ctor param
                     // (permissionScope) — the exclusive-enabled gate must be
                     // passed as a named argument.
@@ -10488,68 +10639,119 @@ class MusicService :
                             tryptifyVolume = tryptifyBypassVolume,
                             lastwaveExclusiveUsb = lastwaveExclusiveUsb,
                             permissionScope = ioScope,
-                        ),
+                        )
+
+                // DSP route: the sink's 16-bit pipeline keeps the engine
+                // router / float DSP tail as the true tail — the only safe
+                // place for the encoding flip it owns.
+                val dspSink =
+                    DefaultAudioSink
+                        .Builder(context)
+                        .setEnableFloatOutput(false)
+                        .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                        .setAudioOutputProvider(exclusiveProvider)
+                        .setAudioProcessorChain(
+                            // DefaultAudioProcessorChain appends its own silence trimmer
+                            // and Sonic AFTER every vararg processor — which put the
+                            // 16-bit-only SilenceSkippingAudioProcessor behind the float
+                            // DSP tail: whenever the DSP engaged with USB-exclusive
+                            // output (float emission) the trimmer's onConfigure threw
+                            // UnhandledAudioFormatException (crash code 5001). The
+                            // DspTail chain keeps silence + speed/pitch in the 16-bit
+                            // domain and makes the DSP the true tail.
+                            DspTailAudioProcessorChain(
+                                silenceSkippingAudioProcessor = bitPerfectSilence,
+                                sonicAudioProcessor = bitPerfectSonic,
+                                preProcessors = arrayOf(
+                                    // The Bit-Perfect gate evaluates the track against
+                                    // the active route BEFORE anything else configures:
+                                    // every later processor reads the latched verdict
+                                    // in the same pass, and Sonic/silence-skip get
+                                    // pinned to transparent while the bypass holds.
+                                    bitPerfectGateProcessor,
+                                    HapticsPcmProcessor(engineProvider = { musicHapticsEngine }),
+                                    stereoPanProcessor,
+                                    // Transition DSP after widening, exactly as BitChord
+                                    // places it; the 32-bit float DSP tail converts the
+                                    // chain's output when engaged.
+                                    transitionFilter,
+                                ),
+                                tailProcessor = if (floatDspProcessor === primaryFloatDspProcessor) {
+                                    // The primary player's tail is the engine router:
+                                    // Tryptify / Lastwave / stock FloatDsp, re-decided
+                                    // per track. The secondary crossfade player keeps
+                                    // the bare stock tail — engine processors are
+                                    // stateful singletons shared by no two players.
+                                    primaryEngineRouter
+                                } else {
+                                    floatDspProcessor
+                                },
+                                // While the Tryptify engine owns the tail, speed/pitch
+                                // ride upstream's transport stages inside the engine
+                                // chain (windowed-sinc resampler + signalsmith-stretch)
+                                // instead of Sonic — Sonic is pinned to unity so the
+                                // two never stack.
+                                engineTransportActive = {
+                                    floatDspProcessor === primaryFloatDspProcessor &&
+                                        tryptifyAudioProcessing &&
+                                        primaryEngineRouter.activeEngine ==
+                                        AudioEngineRouterProcessor.Engine.TRYPTIFY
+                                },
+                                engineVariRate = if (floatDspProcessor === primaryFloatDspProcessor) {
+                                    tryptifyVariRate
+                                } else {
+                                    null
+                                },
+                                engineStretch = if (floatDspProcessor === primaryFloatDspProcessor) {
+                                    tryptifyStretch
+                                } else {
+                                    null
+                                },
+                            ),
+                        ).build()
+
+                // Bit-Perfect route: the sink's float pipeline answers
+                // getFormatSupport(PCM_FLOAT) with SUPPORTED_DIRECTLY, so the
+                // renderer configures MediaCodec to decode straight into float
+                // (24/32-bit mantissas widened losslessly) and the 24-bit depth
+                // survives the trip to a direct PCM_FLOAT track / the exclusive
+                // wire instead of collapsing through ToInt16PcmAudioProcessor.
+                // The float pipeline carries [trimming, channelMapping, toFloat]
+                // only — the custom DSP chain is deliberately bypassed, which is
+                // exactly the byte-exact contract. The shared silence/sonic/gate
+                // instances ride along for the (rare) 16-bit-source configure so
+                // the pinned-transparent targets and the live status evaluation
+                // behave identically on both routes.
+                val bitPerfectSink =
+                    DefaultAudioSink
+                        .Builder(context)
+                        .setEnableFloatOutput(true)
+                        .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                        .setAudioOutputProvider(exclusiveProvider)
+                        .setAudioProcessorChain(
+                            DefaultAudioSink.DefaultAudioProcessorChain(
+                                arrayOf<androidx.media3.common.audio.AudioProcessor>(bitPerfectGateProcessor),
+                                bitPerfectSilence,
+                                bitPerfectSonic,
+                            ),
+                        ).build()
+
+                // The live route decision: Bit-Perfect owns the sink only when
+                // no engine was selected (the gate's own "bit-perfect never
+                // fights the engines" rule — finally enforceable now that the
+                // route is not baked in at build time). The wrapper latches the
+                // route per configure, so flipping the toggle re-negotiates on
+                // the next track or the re-prepare the preference collector
+                // triggers — no service restart required.
+                return BitPerfectSwitchingAudioSink(
+                    dspSink = dspSink,
+                    bitPerfectSink = bitPerfectSink,
+                    routeActive = {
+                        BitPerfectRuntime.requested &&
+                            !tryptifyAudioProcessing &&
+                            !lastwaveAudioProcessing
+                    },
                 )
-                .setAudioProcessorChain(
-                    // DefaultAudioProcessorChain appends its own silence trimmer
-                    // and Sonic AFTER every vararg processor — which put the
-                    // 16-bit-only SilenceSkippingAudioProcessor behind the float
-                    // DSP tail: whenever the DSP engaged with USB-exclusive
-                    // output (float emission) the trimmer's onConfigure threw
-                    // UnhandledAudioFormatException (crash code 5001). The
-                    // DspTail chain keeps silence + speed/pitch in the 16-bit
-                    // domain and makes the DSP the true tail — the only safe
-                    // place for the encoding flip.
-                    DspTailAudioProcessorChain(
-                        silenceSkippingAudioProcessor = bitPerfectSilence,
-                        sonicAudioProcessor = bitPerfectSonic,
-                        preProcessors = arrayOf(
-                            // The Bit-Perfect gate evaluates the track against
-                            // the active route BEFORE anything else configures:
-                            // every later processor reads the latched verdict
-                            // in the same pass, and Sonic/silence-skip get
-                            // pinned to transparent while the bypass holds.
-                            bitPerfectGateProcessor,
-                            HapticsPcmProcessor(engineProvider = { musicHapticsEngine }),
-                            stereoPanProcessor,
-                            // Transition DSP after widening, exactly as BitChord
-                            // places it; the 32-bit float DSP tail converts the
-                            // chain's output when engaged.
-                            transitionFilter,
-                        ),
-                        tailProcessor = if (floatDspProcessor === primaryFloatDspProcessor) {
-                            // The primary player's tail is the engine router:
-                            // Tryptify / Lastwave / stock FloatDsp, re-decided
-                            // per track. The secondary crossfade player keeps
-                            // the bare stock tail — engine processors are
-                            // stateful singletons shared by no two players.
-                            primaryEngineRouter
-                        } else {
-                            floatDspProcessor
-                        },
-                        // While the Tryptify engine owns the tail, speed/pitch
-                        // ride upstream's transport stages inside the engine
-                        // chain (windowed-sinc resampler + signalsmith-stretch)
-                        // instead of Sonic — Sonic is pinned to unity so the
-                        // two never stack.
-                        engineTransportActive = {
-                            floatDspProcessor === primaryFloatDspProcessor &&
-                                tryptifyAudioProcessing &&
-                                primaryEngineRouter.activeEngine ==
-                                AudioEngineRouterProcessor.Engine.TRYPTIFY
-                        },
-                        engineVariRate = if (floatDspProcessor === primaryFloatDspProcessor) {
-                            tryptifyVariRate
-                        } else {
-                            null
-                        },
-                        engineStretch = if (floatDspProcessor === primaryFloatDspProcessor) {
-                            tryptifyStretch
-                        } else {
-                            null
-                        },
-                    ),
-                ).build()
             }
         }
 

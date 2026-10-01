@@ -1586,7 +1586,12 @@ class MainActivity : ComponentActivity() {
                             dismissedBound = 0.dp,
                             collapsedBound =
                                 bottomInset +
-                                    (if (shouldShowNavigationBar && !useRail) floatingBarsBottomPadding else 0.dp) +
+                                    // The floating-bars bottom padding applies on EVERY
+                                    // non-rail screen — detail screens included — so the
+                                    // mini player sits at the exact same height everywhere:
+                                    // the bottom control band ([nav bar] / [Home][pill][Search]
+                                    // compact row) is one fixed geometry across all screens.
+                                    (if (!useRail) floatingBarsBottomPadding else 0.dp) +
                                     getBottomNavPadding() +
                                     MiniPlayerBottomSpacing +
                                     MiniPlayerHeight,
@@ -1827,8 +1832,14 @@ class MainActivity : ComponentActivity() {
                             effectiveStatusBarTop,
                         ) {
                             var bottom = bottomInset
+                            if (!useRail) {
+                                // Same rule as the sheet's collapsedBound: the floating-bars
+                                // bottom padding is reserved on every non-rail screen so
+                                // content clears the identically-placed mini player.
+                                bottom += floatingBarsBottomPadding
+                            }
                             if (shouldShowNavigationBar && !useRail) {
-                                bottom += getBottomNavPadding() + floatingBarsBottomPadding
+                                bottom += getBottomNavPadding()
                             }
                             if (!playerBottomSheetState.isDismissed) {
                                 bottom += MiniPlayerHeight + MiniPlayerBottomSpacing
@@ -2332,7 +2343,7 @@ class MainActivity : ComponentActivity() {
                                                                 navBarFrostedBackdrop.contentOffsetInRoot -
                                                                     railPositionInRoot
                                                             translate(offset.x, offset.y) {
-                                                                drawLayer(navBarFrostedBackdrop.layer)
+                                                                runCatching { drawLayer(navBarFrostedBackdrop.layer) }
                                                             }
                                                         },
                                             )
@@ -3042,8 +3053,13 @@ class MainActivity : ComponentActivity() {
                                                                 bottomNavigationBarHeight.coerceAtMost(navVisibleHeight) /
                                                                     navVisibleHeight
                                                             )
+                                                        // navVisibleHeight only — NOT + floatingBarsBottomPadding:
+                                                        // the pill must land in the nav bar's exact band
+                                                        // ([floatingBarsBottomPadding .. +navVisibleHeight]),
+                                                        // centred on the same line as the glass bar's icons
+                                                        // and the Home/Search circles row.
                                                         with(navBarScrollDensity) {
-                                                            (floatingBarsBottomPadding + navVisibleHeight).toPx() * hideFraction
+                                                            navVisibleHeight.toPx() * hideFraction
                                                         }
                                                     } else {
                                                         0f
@@ -3141,14 +3157,16 @@ class MainActivity : ComponentActivity() {
                                                             .align(Alignment.BottomCenter)
                                                             .fillMaxWidth()
                                                             .padding(horizontal = navBarHorizontalPadding)
-                                                            // The morphed pill centres itself inside its
-                                                            // MiniPlayerHeight slot, so the circles row must
-                                                            // sit (slot-height - circle-height)/2 lower to
-                                                            // share the pill's exact centre line.
+                                                            // The circles row shares the nav bar's EXACT
+                                                            // centre line: the bar's icons sit at
+                                                            // floatingBarsBottomPadding + navVisibleHeight/2
+                                                            // above the inset, so the 64 dp circles row
+                                                            // centres on the same line instead of sitting
+                                                            // 16 dp lower than the bar it replaces.
                                                             .padding(
                                                                 bottom = bottomInset +
-                                                                    MiniPlayerBottomSpacing +
-                                                                    (MiniPlayerHeight - CompactControlSize) / 2,
+                                                                    floatingBarsBottomPadding +
+                                                                    (navVisibleHeight - CompactControlSize) / 2,
                                                             )
                                                             .height(CompactControlSize)
                                                             .graphicsLayer {
@@ -3346,11 +3364,19 @@ class MainActivity : ComponentActivity() {
                                                             val now = SystemClock.uptimeMillis()
                                                             if (now - frostedRecordClock[0] >= 100L) {
                                                                 frostedRecordClock[0] = now
-                                                                navBarFrostedBackdrop.layer.record {
-                                                                    this@drawWithContent.drawContent()
+                                                                // A record that races another use
+                                                                // of the same GraphicsLayer (draw,
+                                                                // snapshot, re-record) must never
+                                                                // escape the draw pass — the
+                                                                // "Recording currently in progress"
+                                                                // family of RenderThread crashes.
+                                                                runCatching {
+                                                                    navBarFrostedBackdrop.layer.record {
+                                                                        this@drawWithContent.drawContent()
+                                                                    }
                                                                 }
                                                             }
-                                                            drawLayer(navBarFrostedBackdrop.layer)
+                                                            runCatching { drawLayer(navBarFrostedBackdrop.layer) }
                                                         }
                                                 } else if (navBarFrostedBackdrop != null) {
                                                     // Overlay active: keep drawing the last recorded
@@ -3360,7 +3386,7 @@ class MainActivity : ComponentActivity() {
                                                             navBarFrostedBackdrop.contentOffsetInRoot =
                                                                 coordinates.positionInRoot()
                                                         }.drawWithContent {
-                                                            drawLayer(navBarFrostedBackdrop.layer)
+                                                            runCatching { drawLayer(navBarFrostedBackdrop.layer) }
                                                         }
                                                 } else {
                                                     Modifier

@@ -527,6 +527,13 @@ class PlayerConnection(
             isRecoverableMediaCodecStateError(playbackError) -> {
             }
 
+            // Exclusive-output (usbdevfs/libusb/AAudio) write failures are
+            // route failures the service recovers from by dropping and
+            // re-resolving the DAC route — never surface them as a playback
+            // error dialog while that recovery is in flight.
+            isRecoverableExclusiveAudioWriteError(playbackError) -> {
+            }
+
             playbackError !== dismissedPlaybackError -> {
                 dismissedPlaybackError = null
                 error.value = playbackError

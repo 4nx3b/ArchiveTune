@@ -389,9 +389,12 @@ private fun rememberMiniPlayerContentColors(
                 artworkContainer = Color.White.copy(alpha = 0.14f),
                 artworkBorder = Color.White.copy(alpha = 0.22f),
                 primaryButtonContainer = Color.White.copy(alpha = 0.92f),
-                primaryButtonIcon = Color.Black,
+                // Bare transport icons (no container circle is ever drawn):
+                // the primary glyph follows the artwork palette's white ink
+                // instead of black-on-artwork.
+                primaryButtonIcon = Color.White,
                 secondaryButtonContainer = Color.Black.copy(alpha = 0.22f),
-                buttonIcon = Color.White,
+                buttonIcon = Color.White.copy(alpha = 0.78f),
                 disabledButtonIcon = Color.White.copy(alpha = 0.38f),
             )
         } else if (useLiquidGlass) {
@@ -404,9 +407,14 @@ private fun rememberMiniPlayerContentColors(
                 artworkBorder = glassInk.copy(alpha = 0.22f),
                 primaryButtonContainer = glassInk.copy(alpha = 0.92f),
 
-                primaryButtonIcon = if (glassInk == Color.White) Color.Black else Color.White,
+                // The transport row renders bare icons with NO container circle
+                // (primaryButtonContainer is declared but never drawn), so the
+                // primary icon must be the glass ink itself — the old
+                // White-ink -> Black-icon mapping painted the play/pause glyph
+                // black straight onto dark glass in the dark theme.
+                primaryButtonIcon = glassInk,
                 secondaryButtonContainer = Color.Black.copy(alpha = 0.22f),
-                buttonIcon = glassInk,
+                buttonIcon = glassInk.copy(alpha = 0.78f),
                 disabledButtonIcon = glassInk.copy(alpha = 0.38f),
             )
         } else {
@@ -549,7 +557,7 @@ private fun MiniPlayerBackground(
                                 }.drawBehind {
                                     val offset = backdrop.contentOffsetInRoot - positionInRoot
                                     translate(offset.x, offset.y) {
-                                        drawLayer(backdrop.layer)
+                                        runCatching { drawLayer(backdrop.layer) }
                                     }
                                 },
                     )

@@ -88,13 +88,18 @@ class LastwaveUsbdevfsAudioOutput(
         if (!ensureConfigured()) {
             throw AudioOutput.WriteException(USB_ENGAGE_FAILED, true)
         }
-        if (exclusive.isStreamAlive() && !exclusive.isStreamingAudio()) {
-
-            if (!exclusive.restartIfStopped()) {
-                Log.w(TAG, "Lastwave usbdevfs stream died mid-write — reporting a recoverable failure")
-                configured = false
-                throw AudioOutput.WriteException(USB_STREAM_DIED, true)
-            }
+        // Only a GENUINELY dead usbdevfs stream is a failure. The old
+        // condition also fired when the stream was alive but momentarily
+        // idle (writer thread between bursts, lossless buffers arriving in
+        // large chunks) — and since restartIfStopped() used to return false
+        // for an alive stream, every such pause was misread as "restart
+        // failed" and escalated to the recoverable -9102 WriteException the
+        // renderer logged as "AudioTrack write failed: -9102". A healthy
+        // stream simply takes the write below.
+        if (!exclusive.isStreamAlive() && !exclusive.restartIfStopped()) {
+            Log.w(TAG, "Lastwave usbdevfs stream died mid-write — reporting a recoverable failure")
+            configured = false
+            throw AudioOutput.WriteException(USB_STREAM_DIED, true)
         }
 
         val before = buffer.position()

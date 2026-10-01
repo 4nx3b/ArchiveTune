@@ -151,9 +151,6 @@ fun SearchScreen(
             Modifier
                 .fillMaxSize()
                 .let { m -> if (searchHazeState != null) m.hazeSource(searchHazeState) else m }
-                .let { m ->
-                    if (barState.backdrop != null) m.glassSource(barState.backdrop!!) else m
-                }
                 .then(
                     if (headerScrollConnection != null) {
                         Modifier.nestedScroll(headerScrollConnection)
@@ -173,11 +170,21 @@ fun SearchScreen(
                     .statusBarsPadding(),
         ) {
             // ── Recent searches, above the search bar ──────────────────────
+            // The glass recorder tags the SCROLLABLE CONTENT only. The glass
+            // chrome below must stay a SIBLING of the recorded subtree: a
+            // recorder that contains its own liquidGlass consumers is
+            // circular (the consumer would draw the very layer being
+            // recorded) and crashes the RenderThread the moment the tab is
+            // opened with glass enabled — exactly the pattern
+            // OnlineSearchResult and ArtistScreen already follow.
             Column(
                 modifier =
                     Modifier
                         .weight(1f)
                         .fillMaxWidth()
+                        .let { m ->
+                            if (barState.backdrop != null) m.glassSource(barState.backdrop!!) else m
+                        }
                         .verticalScroll(rememberScrollState()),
             ) {
                 if (recentSearches.isEmpty()) {
@@ -525,8 +532,10 @@ private fun RecentSearchRow(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    // Rows float transparently over the page background —
+                    // the old surfaceContainerLow card wrapper fought the
+                    // divider-only rhythm (dividers had no background while
+                    // the rows did).
                     .combinedClickable(onClick = onClick)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
         ) {

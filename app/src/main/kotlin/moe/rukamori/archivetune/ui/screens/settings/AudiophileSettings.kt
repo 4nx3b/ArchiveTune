@@ -12,18 +12,35 @@ import moe.rukamori.archivetune.constants.BIT_PERFECT_NATIVE_RATE_DEFAULT
 import moe.rukamori.archivetune.constants.BIT_PERFECT_OUTPUT_DEFAULT
 import moe.rukamori.archivetune.constants.BitPerfectNativeRateKey
 import moe.rukamori.archivetune.constants.BitPerfectOutputKey
+import android.content.Context
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import androidx.compose.animation.core.EaseInOutSine
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -34,20 +51,30 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.C
 import androidx.navigation.NavController
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.launch
+import moe.rukamori.archivetune.playback.dsp.AudioEngineRouterProcessor
+import moe.rukamori.archivetune.playback.dsp.EngineRuntime
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AudioOffload
@@ -228,6 +255,15 @@ fun AudiophileSettings(
                     .padding(top = topPadding)
                     .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
             ) {
+                // The live audio chain pill: real-time INPUT -> stage -> OUTPUT
+                // exactly as the decoder/sink/output are wired right now,
+                // refreshed every second and on every track/route change.
+                LiveAudioChainCard(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 12.dp),
+                )
+
                 PreferenceGroup(title = stringResource(R.string.audiophile_engines_group)) {
                     item {
                         Column(modifier = positions.modifierFor("bit_perfect_output")) {
@@ -587,3 +623,339 @@ private fun rateKhz(hz: Int): String =
         val k = hz / 1000.0
         if (k == k.toInt().toDouble()) "${k.toInt()} kHz" else String.format(java.util.Locale.US, "%.1f kHz", k)
     }
+
+/**
+ * The Live Audio Chain pill — the real-time signal-path trace at the top of
+ * the Audiophile page. Shows exactly what is being sent to the output device
+ * RIGHT NOW:
+ *
+ *   [INPUT 24-bit | 44.1 kHz] → ( DSP / DIRECT HAL / ANDROID MIXER ) → [OUTPUT 24-bit | 44.1 kHz]
+ *                                · USB Exclusive · Bit-Perfect ·
+ *
+ * INPUT comes from the playback service's decoded-format mirror (native PCM
+ * depth, or the f32 pipe when the float route is engaged); OUTPUT reflects
+ * the ACTUAL negotiated route (usbdevfs/libusb exclusive wire, verified
+ * bit-perfect mixer attributes, or the Android mixer's HAL rate). Refreshes
+ * every second and on every track/route change — [BitPerfectRuntime.status]
+ * is Compose state and the engine/HAL half is polled.
+ */
+@Composable
+private fun LiveAudioChainCard(modifier: Modifier = Modifier) {
+    val status = BitPerfectRuntime.status
+    val context = LocalContext.current
+
+    // One-second poll of the volatile engine runtime + the HAL's own view.
+    // Compose state (status) already covers "whenever there's any change".
+    var pollTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(1_000L)
+            pollTick++
+        }
+    }
+    val runtime = EngineRuntime
+    val halRateHz = remember(pollTick) { readHalSampleRateHz(context) }
+    val routedLabel = remember(pollTick) { readRoutedOutputLabel(context) }
+    val usbExclusive = remember(pollTick) { runtime.usbExclusiveActive }
+    val tryptifyPinActive = remember(pollTick) { runtime.tryptifyUsbPinActive }
+    val engine = remember(pollTick) { runtime.activeEngine }
+    val usbRateHz = remember(pollTick) {
+        runtime.lastwaveUsbRateHz.takeIf { it > 0 }
+            ?: runtime.tryptifyUsbStream?.sampleRateHz?.takeIf { it > 0 }
+    }
+    val usbBits = remember(pollTick) {
+        runtime.lastwaveUsbBitsPerSample.takeIf { it > 0 }
+            ?: runtime.tryptifyUsbStream?.bitsPerSample?.takeIf { it > 0 }
+    }
+
+    val hasSignal = status.sourceSampleRate > 0
+    val floatPcmLabel = stringResource(R.string.live_audio_chain_float_pcm)
+    val inputBitsLabel =
+        if (status.sourceEncoding == C.ENCODING_PCM_FLOAT) floatPcmLabel
+        else "${status.sourceBitDepth}-bit"
+    val inputRateLabel = if (hasSignal) rateKhz(status.sourceSampleRate) else "—"
+
+    val stageLabel = when {
+        engine == AudioEngineRouterProcessor.Engine.TRYPTIFY -> "TRYPTIFY DSP"
+        engine == AudioEngineRouterProcessor.Engine.LASTWAVE -> "LASTWAVE DSP"
+        usbExclusive || status.verifiedBitPerfect -> stringResource(R.string.live_audio_chain_direct_hal)
+        else -> stringResource(R.string.live_audio_chain_android_mixer)
+    }
+
+    val outputBitsLabel: String
+    val outputRateLabel: String
+    when {
+        usbExclusive && usbBits != null && usbRateHz != null -> {
+            outputBitsLabel = if (status.sourceEncoding == C.ENCODING_PCM_FLOAT) floatPcmLabel else "${usbBits}-bit"
+            outputRateLabel = rateKhz(usbRateHz)
+        }
+        status.verifiedBitPerfect -> {
+            outputBitsLabel =
+                if (status.outputEncoding == C.ENCODING_PCM_FLOAT) floatPcmLabel
+                else "${status.outputBitDepth}-bit"
+            outputRateLabel =
+                if (status.outputSampleRate > 0) rateKhz(status.outputSampleRate) else inputRateLabel
+        }
+        hasSignal -> {
+            // The Android mixer route: the DSP sink's 16-bit pipeline feeds the
+            // HAL at its native mix rate — report that honestly.
+            outputBitsLabel = "16-bit"
+            outputRateLabel = halRateHz?.let(::rateKhz) ?: inputRateLabel
+        }
+        else -> {
+            outputBitsLabel = "—"
+            outputRateLabel = "—"
+        }
+    }
+
+    val outputRouteLabel = when {
+        usbExclusive -> stringResource(R.string.live_audio_chain_usb_exclusive)
+        tryptifyPinActive -> stringResource(R.string.live_audio_chain_usb_framework)
+        else -> routedLabel
+    }
+
+    val statusLine = rememberBitPerfectStatusLine()
+
+    val liveDotAlpha by rememberInfiniteTransition(label = "liveChainDot")
+        .animateFloat(
+            initialValue = 0.35f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1_200, easing = EaseInOutSine),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "liveChainDotAlpha",
+        )
+
+    val chainShape = RoundedCornerShape(28.dp)
+    val pillShape = RoundedCornerShape(10.dp)
+    val chipShape = RoundedCornerShape(14.dp)
+    val accent = MaterialTheme.colorScheme.primary
+    val outputAccent = MaterialTheme.colorScheme.tertiary
+
+    Column(
+        modifier = modifier
+            .clip(chainShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(outputAccent.copy(alpha = liveDotAlpha)),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.live_audio_chain_title),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                letterSpacing = 1.2.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = outputRouteLabel,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        if (!hasSignal) {
+            Text(
+                text = stringResource(R.string.live_audio_chain_idle),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                ChainSideColumn(
+                    label = stringResource(R.string.live_audio_chain_input),
+                    primaryValue = inputBitsLabel,
+                    secondaryValue = inputRateLabel,
+                    tint = accent,
+                    pillShape = pillShape,
+                    modifier = Modifier.weight(1.15f),
+                )
+
+                ChainStageChip(
+                    label = stageLabel,
+                    shape = chipShape,
+                    modifier = Modifier.weight(1.1f),
+                )
+
+                ChainSideColumn(
+                    label = stringResource(R.string.live_audio_chain_output),
+                    primaryValue = outputBitsLabel,
+                    secondaryValue = outputRateLabel,
+                    tint = outputAccent,
+                    pillShape = pillShape,
+                    modifier = Modifier.weight(1.15f),
+                )
+            }
+
+            if (statusLine != null) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = statusLine,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (status.verifiedBitPerfect) {
+                        outputAccent
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChainSideColumn(
+    label: String,
+    primaryValue: String,
+    secondaryValue: String,
+    tint: Color,
+    pillShape: androidx.compose.ui.graphics.Shape,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = tint,
+            letterSpacing = 1.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(pillShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+            ) {
+                Text(
+                    text = primaryValue,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .clip(pillShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+            ) {
+                Text(
+                    text = secondaryValue,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChainStageChip(
+    label: String,
+    shape: androidx.compose.ui.graphics.Shape,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+            contentAlignment = androidx.compose.ui.Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.graphic_eq),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Box(
+            modifier = Modifier
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.8.sp,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/** The HAL's advertised output mix rate — what the Android mixer runs at. */
+private fun readHalSampleRateHz(context: Context): Int? {
+    val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return null
+    return runCatching {
+        audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()
+    }.getOrNull()?.takeIf { it > 0 }
+}
+
+/** A short label for the currently routed output device (no callbacks). */
+private fun readRoutedOutputLabel(context: Context): String {
+    val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        ?: return "Android Mixer"
+    val outputs = runCatching {
+        audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
+    }.getOrDefault(emptyList())
+    val orderedTypes = intArrayOf(
+        AudioDeviceInfo.TYPE_USB_HEADSET,
+        AudioDeviceInfo.TYPE_USB_DEVICE,
+        AudioDeviceInfo.TYPE_USB_ACCESSORY,
+        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+        AudioDeviceInfo.TYPE_HDMI,
+        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+    )
+    val device = orderedTypes.firstNotNullOfOrNull { type ->
+        outputs.firstOrNull { it.type == type }
+    } ?: outputs.firstOrNull() ?: return "Android Mixer"
+    return when (device.type) {
+        AudioDeviceInfo.TYPE_USB_DEVICE,
+        AudioDeviceInfo.TYPE_USB_HEADSET,
+        AudioDeviceInfo.TYPE_USB_ACCESSORY,
+        -> "USB Audio"
+        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "Bluetooth"
+        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+        -> "Wired"
+        AudioDeviceInfo.TYPE_HDMI -> "HDMI"
+        else -> "Speaker"
+    }
+}
