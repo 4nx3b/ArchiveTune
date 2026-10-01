@@ -105,6 +105,12 @@ object AppleMusicProvider {
     private const val APPLE_MUSIC_WEB_HOME = "https://music.apple.com/"
     private const val AMP_BASE_URL = "https://amp-api.music.apple.com"
     private const val CACHE_TTL_MS = 1000L * 60 * 60 * 24
+
+    // Misses get a much shorter TTL than hits: a canvas that did not exist is
+    // unlikely to appear mid-session, while retrying the same album over the
+    // network on every queue prefetch measurably drains battery and churns
+    // allocations (the same ids were observed re-fetching 5+ times a minute).
+    private const val NEGATIVE_CACHE_TTL_MS = 1000L * 60 * 15
     private const val APPLE_MUSIC_WEB_UA =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
 
@@ -379,11 +385,14 @@ object AppleMusicProvider {
         artist: String,
         storefront: String = "us",
     ): CanvasArtwork? {
-        Log.d("getByAlbumArtist: album='$album', artist='$artist'")
         val key = cacheKey("sa", album, artist, storefront)
         cache[key]?.takeIf { it.expiresAtMs > System.currentTimeMillis() }?.let { return it.value }
         val result = searchAndFetchMotion(album, artist, album, storefront, "albums")
-        if (result != null) cache[key] = CacheEntry(result, System.currentTimeMillis() + CACHE_TTL_MS)
+        cache[key] =
+            CacheEntry(
+                result,
+                System.currentTimeMillis() + if (result != null) CACHE_TTL_MS else NEGATIVE_CACHE_TTL_MS,
+            )
         return result
     }
 
@@ -401,7 +410,11 @@ object AppleMusicProvider {
             cache[key]?.takeIf { it.expiresAtMs > System.currentTimeMillis() }?.let { return it.value }
         }
         val result = searchAndFetchMotion(song, artist, album, storefront, "songs", forceRefresh)
-        if (result != null) cache[key] = CacheEntry(result, System.currentTimeMillis() + CACHE_TTL_MS)
+        cache[key] =
+            CacheEntry(
+                result,
+                System.currentTimeMillis() + if (result != null) CACHE_TTL_MS else NEGATIVE_CACHE_TTL_MS,
+            )
         return result
     }
 
@@ -815,7 +828,7 @@ object AppleMusicProvider {
                 }
             }
 
-            Log.d("no editorialVideo for $albumId (available keys: ${attributes?.keys})")
+            Log.d("no editorialVideo for $albumId")
             null
         }.onFailure {
             if (it is CancellationException) throw it

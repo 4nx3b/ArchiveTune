@@ -9921,6 +9921,12 @@ class MusicService :
                 if (rate != null && bits != null) {
                     BitPerfectRuntime.notifyUsbExclusive(true, rate, bits, engineTransport)
                 }
+            } else if (BitPerfectRuntime.status.usbExclusiveActive) {
+
+                // Disengaging the USB-exclusive route must clear the latched wire
+                // format immediately, otherwise the pill keeps claiming Bit-Perfect
+                // over the speaker route until the next track re-evaluates.
+                BitPerfectRuntime.notifyUsbExclusive(false, 0, 0)
             }
         }
 

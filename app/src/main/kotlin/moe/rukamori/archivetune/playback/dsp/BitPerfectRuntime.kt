@@ -171,7 +171,8 @@ object BitPerfectRuntime {
             softwareVolumeActive = bypass && effectiveVolume != 1f,
             usbExclusiveActive = usbExclusive,
             mixerBitPerfectActive = if (usbExclusive) false else status.mixerBitPerfectActive,
-            verifiedBitPerfect = bypass || (requested && usbExclusive && usbRouteVerified),
+            verifiedBitPerfect = (bypass && failure == null) ||
+                (requested && usbExclusive && usbRouteVerified),
             failureReason = failure,
         )
         return bypass
@@ -237,6 +238,9 @@ object BitPerfectRuntime {
         } else {
             latchedUsbRateHz = 0
             latchedUsbBits = 0
+            if (status.verifiedBitPerfect) {
+                status = status.copy(verifiedBitPerfect = false)
+            }
         }
     }
 
