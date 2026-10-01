@@ -96,6 +96,7 @@ class AudioEngineRouterProcessor(
         }
         engineAvailableTryptify = tryptifyNativeAvailable()
         engineAvailableLastwave = lastwaveProcessor.isAvailable
+        EngineRuntime.publishEngineAvailability(engineAvailableTryptify, engineAvailableLastwave)
 
         val selected = when {
             tryptifyEnabled() && engineAvailableTryptify -> Engine.TRYPTIFY
@@ -106,8 +107,8 @@ class AudioEngineRouterProcessor(
         activeEngine = selected
         activeOutputFloat = outputFloat
 
-        EngineRuntime.activeEngine = selected
-        EngineRuntime.outputFloat = outputFloat
+        EngineRuntime.publishActiveEngine(selected)
+        EngineRuntime.publishOutputFloat(outputFloat)
 
         return when (selected) {
             Engine.TRYPTIFY -> {
@@ -135,6 +136,7 @@ class AudioEngineRouterProcessor(
             Engine.LASTWAVE -> {
                 if (inputAudioFormat.channelCount > 2) {
                     activeEngine = Engine.NONE
+                    EngineRuntime.publishActiveEngine(Engine.NONE)
                     return configureStock(inputAudioFormat)
                 }
 
@@ -142,6 +144,7 @@ class AudioEngineRouterProcessor(
                     .getOrElse { AudioProcessor.AudioFormat.NOT_SET }
                 if (lastwaveOut == AudioProcessor.AudioFormat.NOT_SET) {
                     activeEngine = Engine.NONE
+                    EngineRuntime.publishActiveEngine(Engine.NONE)
                     return configureStock(inputAudioFormat)
                 }
 
@@ -189,6 +192,7 @@ class AudioEngineRouterProcessor(
         if (input == AudioProcessor.AudioFormat.NOT_SET) return
         engineAvailableTryptify = tryptifyNativeAvailable()
         engineAvailableLastwave = lastwaveProcessor.isAvailable
+        EngineRuntime.publishEngineAvailability(engineAvailableTryptify, engineAvailableLastwave)
         val desired =
             when {
                 tryptifyEnabled() && engineAvailableTryptify -> Engine.TRYPTIFY
@@ -264,7 +268,7 @@ class AudioEngineRouterProcessor(
         runCatching { stockDsp.flush() }
         activeEngine = desired
         engineDataEncoding = newDataEncoding
-        EngineRuntime.activeEngine = desired
+        EngineRuntime.publishActiveEngine(desired)
         Log.i(
             TAG,
             "engine SWITCHED mid-track $old -> $desired " +
@@ -321,6 +325,8 @@ class AudioEngineRouterProcessor(
         activeEngine = Engine.NONE
         activeOutputFloat = false
         engineDataEncoding = C.ENCODING_PCM_16BIT
+        EngineRuntime.publishActiveEngine(Engine.NONE)
+        EngineRuntime.publishOutputFloat(false)
     }
 
     override fun onQueueEndOfStream() {

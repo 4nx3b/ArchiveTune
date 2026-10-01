@@ -1691,11 +1691,13 @@ class MainActivity : ComponentActivity() {
                     // consumer tick, but some close paths never re-attach (the
                     // recorder stayed attached behind a sheet that only partially
                     // rose, or a lyrics flag cleared without a sheet settle).
-                    // Bumping the tick when EITHER cover condition lifts forces
-                    // every global-backdrop consumer (top bar pills, compact
-                    // circles, nav bar, mini player) to redraw the frame after the
-                    // cover instead of keeping a stale, faded-out draw forever
-                    // ("invisible pill that is still clickable").
+                    // notifyContentRestore() broadcasts to EVERY attached
+                    // recorder - the global NavHost one AND every screen-local
+                    // one - so both the global chrome pills (top bar, compact
+                    // circles, nav bar, mini player) and the per-screen header
+                    // pills redraw the frame after the cover instead of keeping a
+                    // stale, faded-out draw forever ("invisible pill that is
+                    // still clickable").
                     var lastCoverActive by remember { mutableStateOf(false) }
                     LaunchedEffect(isPlayerLyricsFullScreen, isPlayerSheetOverlayActive) {
                         val coverActive = isPlayerLyricsFullScreen || isPlayerSheetOverlayActive

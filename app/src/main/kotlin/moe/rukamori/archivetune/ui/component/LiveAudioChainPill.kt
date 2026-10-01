@@ -74,11 +74,16 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
     val status = BitPerfectRuntime.status
     val context = LocalContext.current
 
-    // The routed-device label still needs a binder probe; the HAL mixer rate is
-    // deliberately NOT read here anymore - the chain readout reports the
-    // app-level sink output (source rate), and the platform mixer behind it is
-    // annotated by the stage/route labels instead of being reported as a
-    // resample.
+    // Snapshot-state mirrors: the engine/route facts recompose this readout the
+    // MOMENT they change (engine flip, route engagement, USB attach) - only the
+    // routed-device label still needs the 1s binder poll.
+    val runtime = EngineRuntime
+    val engine = runtime.activeEngineState
+    val wantedEngine = runtime.wantedEngineState
+    val tryptifyAvailable = runtime.tryptifyAvailableState
+    val lastwaveAvailable = runtime.lastwaveAvailableState
+    val revision = runtime.revision
+
     var pollTick by remember { mutableIntStateOf(0) }
     var routedLabelValue by remember { mutableStateOf("Android Mixer") }
     LaunchedEffect(Unit) {
@@ -90,21 +95,19 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
             delay(1_000L)
         }
     }
-    val runtime = EngineRuntime
     val routedLabel = routedLabelValue
-    val usbExclusive = remember(pollTick) { runtime.usbExclusiveActive }
-    val tryptifyPinActive = remember(pollTick) { runtime.tryptifyUsbPinActive }
-    val engine = remember(pollTick) { runtime.activeEngine }
-    val usbRateHz = remember(pollTick) {
+    val usbExclusive = remember(revision, pollTick) { runtime.usbExclusiveActive }
+    val tryptifyPinActive = remember(revision, pollTick) { runtime.tryptifyUsbPinActive }
+    val usbRateHz = remember(revision, pollTick) {
         runtime.lastwaveUsbRateHz.takeIf { it > 0 }
             ?: runtime.tryptifyUsbStream?.sampleRateHz?.takeIf { it > 0 }
     }
-    val usbBits = remember(pollTick) {
+    val usbBits = remember(revision, pollTick) {
         runtime.lastwaveUsbBitsPerSample.takeIf { it > 0 }
             ?: runtime.tryptifyUsbStream?.bitsPerSample?.takeIf { it > 0 }
     }
-    val floatRouteActive = remember(pollTick) { runtime.bitPerfectSinkRouteActive }
-    val sinkDecodedEncoding = remember(pollTick) { runtime.sinkDecodedEncoding }
+    val floatRouteActive = remember(revision, pollTick) { runtime.bitPerfectSinkRouteActive }
+    val sinkDecodedEncoding = remember(revision, pollTick) { runtime.sinkDecodedEncoding }
 
     val hasSignal = status.sourceSampleRate > 0
     val floatPcmLabel = stringResource(R.string.live_audio_chain_float_pcm)
@@ -120,9 +123,22 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
         }
     val inputRate = if (hasSignal) rateKhz(status.sourceSampleRate) else "—"
 
+    // The stage prefers the engine the router ENGAGED; between the preference
+    // flip and the latch (next buffer/configure - normally under a second with
+    // the route re-prepare) the WANTED engine shows as long as its native side
+    // is actually available, so the pill never lags behind the user's toggle.
+    val effectiveEngine =
+        when {
+            engine != AudioEngineRouterProcessor.Engine.NONE -> engine
+            wantedEngine == AudioEngineRouterProcessor.Engine.TRYPTIFY && tryptifyAvailable ->
+                AudioEngineRouterProcessor.Engine.TRYPTIFY
+            wantedEngine == AudioEngineRouterProcessor.Engine.LASTWAVE && lastwaveAvailable ->
+                AudioEngineRouterProcessor.Engine.LASTWAVE
+            else -> AudioEngineRouterProcessor.Engine.NONE
+        }
     val stage = when {
-        engine == AudioEngineRouterProcessor.Engine.TRYPTIFY -> "TRYPTIFY DSP"
-        engine == AudioEngineRouterProcessor.Engine.LASTWAVE -> "LASTWAVE DSP"
+        effectiveEngine == AudioEngineRouterProcessor.Engine.TRYPTIFY -> "TRYPTIFY DSP"
+        effectiveEngine == AudioEngineRouterProcessor.Engine.LASTWAVE -> "LASTWAVE DSP"
         usbExclusive || status.verifiedBitPerfect -> stringResource(R.string.live_audio_chain_direct_hal)
         else -> stringResource(R.string.live_audio_chain_android_mixer)
     }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -31,8 +32,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
@@ -40,10 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -144,25 +140,29 @@ internal fun SpotifyOnlineSearchResult(
             .asPaddingValues()
             .calculateBottomPadding()
 
-    var resultsHeaderHeightPx by remember { mutableIntStateOf(0) }
-    val density = LocalDensity.current
-    val resultsHeaderReserve =
-        remember(resultsHeaderHeightPx, density) {
-            with(density) { resultsHeaderHeightPx.toDp() }
-        }
-    val headerScrollAwayFraction by remember {
-        derivedStateOf {
-            when {
-                resultsHeaderHeightPx <= 0 -> 0f
-                lazyListState.firstVisibleItemIndex > 0 -> 1f
-                else -> {
-                    val firstTop =
-                        lazyListState.layoutInfo.visibleItemsInfo
-                            .firstOrNull()?.offset?.toFloat() ?: 0f
-                    1f - (firstTop / resultsHeaderHeightPx).coerceIn(0f, 1f)
-                }
-            }
-        }
+    // Restored as in-list content: the header is laid out by the list itself
+    // (first item) so it can never end up as reserved-but-invisible space,
+    // and it scrolls away with the results exactly like the results content.
+    val header: @Composable () -> Unit = {
+        SearchResultsTopHeader(
+            query = viewModel.query,
+            onBack = { navController.navigateUp() },
+            onBackLongClick = { navController.backToMain() },
+            chipsRow = {
+                SolidFilterChipsRow(
+                    chips =
+                        listOf(
+                            SpotifySearchFilter.ALL to stringResource(R.string.filter_all),
+                            SpotifySearchFilter.TRACKS to stringResource(R.string.filter_songs),
+                            SpotifySearchFilter.ALBUMS to stringResource(R.string.filter_albums),
+                            SpotifySearchFilter.ARTISTS to stringResource(R.string.filter_artists),
+                            SpotifySearchFilter.PLAYLISTS to stringResource(R.string.filter_playlists),
+                        ),
+                    currentValue = filter,
+                    onValueUpdate = { filter = it },
+                )
+            },
+        )
     }
 
     Box(
@@ -171,9 +171,9 @@ internal fun SpotifyOnlineSearchResult(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
     ) {
-        // The recorder tags the scrollable content only; the glass header and
-        // bottom overlay stay SIBLINGS so the recorder can never contain its
-        // own liquidGlass consumers (a circular record crashes the RenderThread).
+        // The recorder tags the scrollable content only; the bottom overlay
+        // stays a SIBLING so the recorder can never contain its own
+        // liquidGlass consumers (a circular record crashes the RenderThread).
         Box(
             modifier =
                 Modifier
@@ -182,25 +182,46 @@ internal fun SpotifyOnlineSearchResult(
         ) {
             when {
                 state.isLoading && state.items.isEmpty() -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(top = systemBarsTopPadding + 4.dp),
+                    ) {
+                        header()
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
                     }
                 }
 
                 state.errorMessage != null && state.items.isEmpty() -> {
-                    EmptyPlaceholder(
-                        icon = R.drawable.spotify_icon,
-                        text = state.errorMessage ?: stringResource(R.string.no_results_found),
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(top = systemBarsTopPadding + 4.dp),
+                    ) {
+                        header()
+                        EmptyPlaceholder(
+                            icon = R.drawable.spotify_icon,
+                            text = state.errorMessage ?: stringResource(R.string.no_results_found),
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
 
                 visibleItems.isEmpty() -> {
-                    EmptyPlaceholder(
-                        icon = R.drawable.search,
-                        text = stringResource(R.string.no_results_found),
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(top = systemBarsTopPadding + 4.dp),
+                    ) {
+                        header()
+                        EmptyPlaceholder(
+                            icon = R.drawable.search,
+                            text = stringResource(R.string.no_results_found),
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
 
                 else -> {
@@ -209,12 +230,15 @@ internal fun SpotifyOnlineSearchResult(
                         contentPadding =
                             LocalPlayerAwareWindowInsets.current
                                 .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
-                                .add(WindowInsets(top = systemBarsTopPadding + 4.dp + resultsHeaderReserve))
+                                .add(WindowInsets(top = systemBarsTopPadding + 4.dp))
                                 .add(WindowInsets(bottom = SearchResultsOverlayReserve))
                                 .asPaddingValues(),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
+                        item(key = "results_header", contentType = "results_header") {
+                            header()
+                        }
                         item(key = "spotify_result_label") {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -258,36 +282,6 @@ internal fun SpotifyOnlineSearchResult(
                 }
             }
         }
-
-        SearchResultsTopHeader(
-            state = barState,
-            query = viewModel.query,
-            onBack = { navController.navigateUp() },
-            onBackLongClick = { navController.backToMain() },
-            chipsRow = {
-                SolidFilterChipsRow(
-                    chips =
-                        listOf(
-                            SpotifySearchFilter.ALL to stringResource(R.string.filter_all),
-                            SpotifySearchFilter.TRACKS to stringResource(R.string.filter_songs),
-                            SpotifySearchFilter.ALBUMS to stringResource(R.string.filter_albums),
-                            SpotifySearchFilter.ARTISTS to stringResource(R.string.filter_artists),
-                            SpotifySearchFilter.PLAYLISTS to stringResource(R.string.filter_playlists),
-                        ),
-                    currentValue = filter,
-                    onValueUpdate = { filter = it },
-                )
-            },
-            modifier =
-                Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = systemBarsTopPadding + 4.dp)
-                    .onSizeChanged { resultsHeaderHeightPx = it.height }
-                    .graphicsLayer {
-                        translationY = -resultsHeaderHeightPx * headerScrollAwayFraction
-                        alpha = 1f - headerScrollAwayFraction
-                    },
-        )
 
         ScreenHeaderHaze(
             hazeState = barState.haze,

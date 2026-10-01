@@ -591,7 +591,14 @@ fun AppleMusicPlayerContent(
                 Modifier
                     .matchParentSize()
                     .let { base ->
-                        if (popupBackdrop != null) {
+                        // The popup recorder is attached ONLY while its sole
+                        // consumer (the anchored lyrics overflow menu) is open.
+                        // Recording the whole player subtree at 10Hz with no
+                        // consumer open re-rendered both canvas TextureViews and
+                        // the blurred backdrop into a GraphicsLayer every 100ms
+                        // and blitted it over the live frame - a rhythmic stutter
+                        // of the moving blurred canvas behind the controls.
+                        if (popupBackdrop != null && showAnchoredLyricsMenu) {
                             base.glassSource(popupBackdrop)
                         } else {
                             base

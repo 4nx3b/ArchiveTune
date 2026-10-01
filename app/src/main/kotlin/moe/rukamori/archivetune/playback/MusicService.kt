@@ -819,6 +819,8 @@ class MusicService :
     @Volatile
     private var tryptifyUsbPinEnabled = false
 
+    private var engineEngagementWatchdog: kotlinx.coroutines.Job? = null
+
     private val tryptifyPreferences by lazy {
         tf.monochrome.android.data.preferences.PreferencesManager(this)
     }
@@ -1326,6 +1328,15 @@ class MusicService :
 
         musicHapticsEngine = SpatialFlowHapticEngine(this)
 
+        // Seed the audio-route flags SYNCHRONOUSLY before the player exists:
+        // the first sink configure (queue restore) would otherwise race the
+        // async DataStore collectors. When the collectors had not emitted yet
+        // the router engaged Engine.NONE, the switching sink answered
+        // format-support queries from the 16-bit DSP side, and the engine the
+        // user had enabled only appeared after a restart (or never) - the
+        // "pill shows Android, equalizer dead" class.
+        seedAudioRoutePreferences()
+
         ioScope.launch {
             runCatching { tryptifyEngineController.start() }
                 .onFailure { Timber.tag(TAG).w(it, "Tryptify engine controller failed to start") }
@@ -1336,6 +1347,7 @@ class MusicService :
                 tryptifyUsbDriver.diagnostics.collect { diag ->
                     val stream = diag?.takeIf { it.sampleRateHz > 0 }
                     EngineRuntime.tryptifyUsbStream = stream
+                    EngineRuntime.revisionBump()
                     if (usbSinkActiveNow && tryptifyAudioProcessing && stream != null) {
                         BitPerfectRuntime.notifyUsbExclusive(
                             active = true,
@@ -1348,8 +1360,10 @@ class MusicService :
             }
             ioScope.launch {
                 while (isActive) {
-                    EngineRuntime.lastwaveUsbRateHz = lastwaveExclusiveUsb.currentRateHz()
-                    EngineRuntime.lastwaveUsbBitsPerSample = lastwaveExclusiveUsb.currentBitsPerSample()
+                    EngineRuntime.publishUsbWire(
+                        lastwaveExclusiveUsb.currentRateHz(),
+                        lastwaveExclusiveUsb.currentBitsPerSample(),
+                    )
                     if (usbSinkActiveNow && lastwaveAudioProcessing &&
                         EngineRuntime.lastwaveUsbRateHz > 0 && EngineRuntime.lastwaveUsbBitsPerSample > 0
                     ) {
@@ -1767,6 +1781,7 @@ class MusicService :
         }.distinctUntilChanged()
             .collectLatest(scope) { (bitPerfect, nativeRate) ->
                 val previouslyRequested = BitPerfectRuntime.requested
+                val previousNativeRate = BitPerfectRuntime.nativeSampleRatePreferred
                 if (BitPerfectRuntime.requested != bitPerfect || BitPerfectRuntime.nativeSampleRatePreferred != nativeRate) {
                     Timber.tag(TAG).i(
                         "Bit-Perfect request: %s (nativeRate=%s) — re-evaluates on next track",
@@ -1779,9 +1794,13 @@ class MusicService :
                 if (!bitPerfect) {
                     BitPerfectRuntime.clearTrack()
                 }
+                applyNativeRateOverride()
                 refreshMixerBitPerfectRoute()
 
-                if (previouslyRequested != bitPerfect && bitPerfectNeedsRouteReprepare()) {
+                val routeChange =
+                    previouslyRequested != bitPerfect ||
+                        previousNativeRate != nativeRate && (tryptifyAudioProcessing || lastwaveAudioProcessing)
+                if (routeChange && bitPerfectNeedsRouteReprepare()) {
                     scope.launch(Dispatchers.Main) {
                         runCatching { repreparePlayerForAudioRouteChange() }
                     }
@@ -1811,6 +1830,22 @@ class MusicService :
                 }
                 tryptifyAudioProcessing = tryptify
                 lastwaveAudioProcessing = lastwaveEffective
+
+                // The pill/UI reacts to the SELECTION the moment the preference
+                // flips - it does not wait for the router to latch the engine on
+                // the next configure or buffer.
+                EngineRuntime.publishWantedEngine(
+                    when {
+                        tryptify -> AudioEngineRouterProcessor.Engine.TRYPTIFY
+                        lastwaveEffective -> AudioEngineRouterProcessor.Engine.LASTWAVE
+                        else -> AudioEngineRouterProcessor.Engine.NONE
+                    },
+                )
+                EngineRuntime.publishEngineAvailability(
+                    AudioEngineRouterProcessor.tryptifyNativeAvailable(),
+                    lastwaveProcessor.isAvailable,
+                )
+
                 if (lastwave && tryptify) {
                     dataStore.edit { it[LastwaveAudioProcessingKey] = false }
                 }
@@ -1843,6 +1878,7 @@ class MusicService :
                 }
 
                 lastwaveUsbBitPerfect.setEnabled(false)
+                applyNativeRateOverride()
                 refreshMixerBitPerfectRoute()
                 applyFloatDspEngagement()
 
@@ -1855,6 +1891,30 @@ class MusicService :
                     // previously-configured side.
                     scope.launch(Dispatchers.Main) {
                         runCatching { repreparePlayerForAudioRouteChange() }
+                    }
+                    // Watchdog: if the router still has not latched the wanted
+                    // engine shortly after the re-prepare (a configure race or a
+                    // deferred reroute), re-prepare once more instead of leaving
+                    // the equalizer silent until the next track. Only one
+                    // watchdog may be pending at a time - rapid engine toggling
+                    // replaces it instead of stacking re-prepares.
+                    engineEngagementWatchdog?.cancel()
+                    engineEngagementWatchdog = scope.launch {
+                        delay(1500L)
+                        val wanted = EngineRuntime.wantedEngineState
+                        if (
+                            wanted != AudioEngineRouterProcessor.Engine.NONE &&
+                            EngineRuntime.activeEngine != wanted &&
+                            bitPerfectNeedsRouteReprepare()
+                        ) {
+                            Timber.tag(TAG).w(
+                                "Engine %s not engaged 1.5s after selection — forcing route re-prepare",
+                                wanted,
+                            )
+                            scope.launch(Dispatchers.Main) {
+                                runCatching { repreparePlayerForAudioRouteChange() }
+                            }
+                        }
                     }
                 }
             }
@@ -10187,7 +10247,7 @@ class MusicService :
             )
         }
         usbSinkActiveNow = usbExclusiveAudioEnabled
-        EngineRuntime.usbExclusiveActive = usbSinkActiveNow
+        EngineRuntime.publishUsbExclusive(usbSinkActiveNow)
 
         runCatching {
             if (usbSinkActiveNow) {
@@ -10231,7 +10291,7 @@ class MusicService :
                 !usbSinkActiveNow
         if (!requested) {
             mixerBitPerfectOutput.setEnabled(false)
-            EngineRuntime.lastwaveMixerBitPerfectActive = false
+            EngineRuntime.publishLastwaveMixerBitPerfect(false)
             if (BitPerfectRuntime.status.mixerBitPerfectActive) {
                 BitPerfectRuntime.notifyMixerBitPerfect(active = false, outputRateHz = 0)
             }
@@ -10255,7 +10315,7 @@ class MusicService :
             )
             mixerBitPerfectOutput.setEnabled(true)
             val verified = mixerBitPerfectOutput.isConfigured()
-            EngineRuntime.lastwaveMixerBitPerfectActive = verified && lastwaveAudioProcessing
+            EngineRuntime.publishLastwaveMixerBitPerfect(verified && lastwaveAudioProcessing)
             if (verified) {
                 val wireRate = mixerBitPerfectOutput.configuredRateHz()
                 val wireBits = mixerBitPerfectOutput.configuredBits()
@@ -10317,6 +10377,7 @@ class MusicService :
             usbSinkActiveNow || BitPerfectRuntime.requested ||
                 tryptifyAudioProcessing || lastwaveAudioProcessing
         primaryEngineRouter.outputFloat = floatRouteToSink
+        EngineRuntime.publishOutputFloat(floatRouteToSink)
         primaryFloatDspProcessor.outputFloat = floatRouteToSink
         primaryFloatDspProcessor.setEngaged(engaged)
         secondaryFloatDspProcessor?.let {
@@ -10411,6 +10472,84 @@ class MusicService :
             wl.release()
         }
     }
+
+    /**
+     * Seeds every audio-route flag from DataStore synchronously, BEFORE the
+     * player is built. Without this the first sink configure raced the async
+     * preference collectors: the router engaged Engine.NONE, the switching
+     * sink answered codec float-support queries from the 16-bit DSP side, and
+     * the engine the user enabled only appeared after a restart (or never).
+     * The collectors still run afterwards and reconcile any change made in
+     * between; this is only the deterministic starting point.
+     */
+    private fun seedAudioRoutePreferences() {
+        val prefs =
+            runCatching {
+                kotlinx.coroutines.runBlocking {
+                    kotlinx.coroutines.withTimeout(2_000L) {
+                        dataStore.data.first()
+                    }
+                }
+            }.getOrNull() ?: return
+        val bitPerfect = prefs[BitPerfectOutputKey] ?: BIT_PERFECT_OUTPUT_DEFAULT
+        BitPerfectRuntime.requested = bitPerfect
+        BitPerfectRuntime.nativeSampleRatePreferred = prefs[BitPerfectNativeRateKey] ?: BIT_PERFECT_NATIVE_RATE_DEFAULT
+        val tryptify = prefs[TryptifyAudioProcessingKey] ?: false
+        val lastwave = (prefs[LastwaveAudioProcessingKey] ?: false) && !tryptify
+        tryptifyAudioProcessing = tryptify
+        lastwaveAudioProcessing = lastwave
+        floatDspEnabled = prefs[FloatDspEnabledKey] ?: false
+        val crossfade = prefs[CrossfadeEnabledKey] ?: false
+        val automix = prefs[AutomixEnabledKey] ?: false
+        val offload = prefs[AudioOffload] ?: false
+        usbExclusiveRequested =
+            (prefs[UsbExclusiveAudioKey] ?: false) && !crossfade && !automix && !offload
+        audioOffloadPrefEnabled = offload
+        EngineRuntime.publishWantedEngine(
+            when {
+                tryptify -> AudioEngineRouterProcessor.Engine.TRYPTIFY
+                lastwave -> AudioEngineRouterProcessor.Engine.LASTWAVE
+                else -> AudioEngineRouterProcessor.Engine.NONE
+            },
+        )
+        EngineRuntime.publishEngineAvailability(
+            AudioEngineRouterProcessor.tryptifyNativeAvailable(),
+            lastwaveProcessor.isAvailable,
+        )
+        Timber.tag(TAG).i(
+            "Seeded audio route prefs: bitPerfect=%s nativeRate=%s tryptify=%s lastwave=%s",
+            bitPerfect,
+            BitPerfectRuntime.nativeSampleRatePreferred,
+            tryptify,
+            lastwave,
+        )
+    }
+
+    /**
+     * Wires the "Native Sample Rate" audiophile toggle. While it is ON (the
+     * default) the engine float route stays at the SOURCE rate end-to-end.
+     * While it is OFF - and neither bit-perfect output nor the USB-exclusive
+     * transport is active - the LastWave engine instead resamples to the
+     * device's native mixer rate through its libsoxr HQ path, mirroring the
+     * upstream LastWave-native Oboe behaviour (the native output targets the
+     * device rate; the platform fallback preserves the source rate).
+     */
+    private fun applyNativeRateOverride() {
+        val override =
+            if (BitPerfectRuntime.nativeSampleRatePreferred || BitPerfectRuntime.requested || usbSinkActiveNow) {
+                null
+            } else {
+                deviceNativeOutputRateHz()
+            }
+        lastwaveProcessor.setOutputSampleRateOverride(override)
+    }
+
+    private fun deviceNativeOutputRateHz(): Int? =
+        runCatching {
+            audioManager.getProperty(android.media.AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)
+                ?.toIntOrNull()
+                ?.takeIf { it in 8_000..384_000 }
+        }.getOrNull()
 
     private fun pipelineAnalyticsListener(): AnalyticsListener = object : AnalyticsListener {
         override fun onAudioInputFormatChanged(
@@ -10545,13 +10684,13 @@ class MusicService :
             if (tryptifyAudioProcessing && tryptifyUsbPinEnabled) {
                 tryptifyUsbRouter.usbOutputDevice.value?.let { device ->
                     localPlayer.setPreferredAudioDevice(device)
-                    EngineRuntime.tryptifyUsbPinActive = true
+                    EngineRuntime.publishTryptifyUsbPin(true)
                     Timber.tag(TAG).i("Tryptify USB pin engaged: ${tryptifyUsbRouter.describe(device)}")
                     return@runCatching
                 }
             }
             localPlayer.setPreferredAudioDevice(null)
-            EngineRuntime.tryptifyUsbPinActive = false
+            EngineRuntime.publishTryptifyUsbPin(false)
         }
     }
 
