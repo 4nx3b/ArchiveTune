@@ -91,7 +91,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.scale
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -776,7 +776,7 @@ fun ArtistScreen(
                                                                     (size.height * recordScale).toInt().coerceAtLeast(8),
                                                                 ),
                                                             ) {
-                                                                scale(recordScale, recordScale) {
+                                                                withTransform({ scale(recordScale, recordScale) }) {
                                                                     this@drawWithContent.drawContent()
                                                                 }
                                                             }
