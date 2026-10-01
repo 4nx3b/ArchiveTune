@@ -1,9 +1,15 @@
 name: Build APKs
 
+# Build-time fix: dev pushes no longer run this workflow. The Nightly
+# (canary) workflow builds the exact same two variants on every dev push
+# (gms-mobile-arm64 + gms-tv-universal) AND publishes them as real release
+# assets — this workflow's artifact uploads on dev were pure duplication,
+# two extra full R8 builds per push. Main pushes (rare, mirror or merge)
+# and manual dispatch keep the standalone artifact path.
 on:
   workflow_dispatch:
   push:
-    branches: [ 'main', 'dev' ]
+    branches: [ 'main' ]
     paths-ignore:
       - 'README.md'
       - 'fastlane/**'
