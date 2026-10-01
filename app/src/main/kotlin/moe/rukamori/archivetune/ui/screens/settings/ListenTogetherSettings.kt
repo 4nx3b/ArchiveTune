@@ -8,6 +8,7 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
@@ -17,7 +18,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -47,6 +50,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
+import dev.chrisbanes.haze.hazeSource
+import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import moe.rukamori.archivetune.ui.component.GlassPillTitleText
+import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.glassSource
+import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -72,6 +86,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
+import moe.rukamori.archivetune.constants.AppBarHeight
+import moe.rukamori.archivetune.ui.screens.settings.SettingsDimensions
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenTogetherAutoApprovalKey
 import moe.rukamori.archivetune.constants.ListenTogetherChatNotificationsKey
@@ -393,17 +409,38 @@ fun ListenTogetherSettings(
         )
     }
 
+    // ── The modern settings-page + playlist-header vocabulary ────────────
+    // Glass back pill with the page title ("Settings") riding in the same
+    // pill, the home-screen top haze band, and a scrollable body whose
+    // content passes BEHIND the floating mini player (trailing spacer as
+    // content padding instead of layout windowInsetsPadding, which used to
+    // stop the content dead above the mini player and leave a hard gap).
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+    val scrollState = rememberScrollState()
+    val playerAwareBottomPadding =
+        LocalPlayerAwareWindowInsets.current
+            .only(WindowInsetsSides.Bottom)
+            .asPaddingValues()
+            .calculateBottomPadding()
+
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         Modifier
-            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-            .verticalScroll(rememberScrollState())
+            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+            .verticalScroll(scrollState)
+            .let { m -> if (glassHeaderActive) m.glassSource(artworkBackdrop) else m }
+            .hazeSource(headerHaze)
             .padding(horizontal = 16.dp)
     ) {
-        Spacer(
-            Modifier.windowInsetsPadding(
-                LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top)
-            )
-        )
+        Spacer(Modifier.height(systemBarsTopPadding + AppBarHeight + 8.dp))
 
         val selectedServer = remember(serverUrl) { ListenTogetherServers.findByUrl(serverUrl) }
 
@@ -676,23 +713,66 @@ fun ListenTogetherSettings(
             )
         }
 
-        Spacer(modifier = Modifier.height(36.dp))
+        // Content padding (not layout padding): the body scrolls BEHIND the
+        // floating mini player — the spacer keeps the last control from
+        // resting underneath it at the end of the scroll.
+        Spacer(
+            modifier = Modifier.height(
+                playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding
+            )
+        )
     }
 
-    TopAppBar(
-        title = { Text(stringResource(R.string.listen_together)) },
-        navigationIcon = {
-            IconButton(
-                onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
+        // The home-screen haze band: appears once content scrolls under it.
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+            scrolled = scrollState.value > 0,
+        )
+
+        if (glassHeaderActive) {
+            // The liquid-glass back pill with the page title riding in the
+            // same pill — "Settings" here, matching the Listen Together page's
+            // "Listen Together" pill.
+            LiquidGlassActionPill(
+                backdrop = artworkBackdrop,
+                interactive = true,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
-                Icon(
-                    painterResource(R.drawable.arrow_back),
-                    contentDescription = null,
-                )
+                IconButton(
+                    onClick = navController::navigateUp,
+                    onLongClick = navController::backToMain,
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.arrow_back),
+                        contentDescription = null,
+                        tint = liquidGlassContentColor(),
+                    )
+                }
+                GlassPillTitleText(text = stringResource(R.string.settings))
             }
+        } else {
+            // Non-glass fallback: the previous plain top bar.
+            TopAppBar(
+                title = { Text(stringResource(R.string.listen_together)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                }
+            )
         }
-    )
+    }
 }
 
 @Composable

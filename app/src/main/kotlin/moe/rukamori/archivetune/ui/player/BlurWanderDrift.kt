@@ -166,6 +166,36 @@ internal fun blurBackdropFootprint(
 
 private const val BlurBackdropCoverSafety = 1.02f
 
+/**
+ * Landscape footprint: models the ACTUAL landscape transform — a constant
+ * rest scale with the 0.55x drift amplitude — instead of [blurBackdropFootprint]'s
+ * portrait assumption that drift only happens at the full lyrics scale. The old
+ * formula sized the layer for 2.4x-scale drift, which under-covers at 1.2x
+ * scale: the blurred square's straight edges (and their 64 dp
+ * BlurredEdgeTreatment.Rectangle transparent falloff band) swept up to
+ * ~225 dp past the screen edge over the black base — the "black lines coming
+ * from the corners" of the horizontal moving blur. This returns a RECT sized
+ * to the screen + drift + blur-edge margins (cheaper than the portrait
+ * square, too: roughly half the blurred pixels for a wide screen).
+ */
+internal fun blurBackdropFootprintLandscape(
+    width: Dp,
+    height: Dp,
+    restScale: Float,
+    maxDriftDp: Float,
+    driftFactor: Float,
+    blurEdgeMarginDp: Dp,
+): DpSize {
+    val w = width.value
+    val h = height.value
+    if (w <= 0f || h <= 0f || restScale <= 0f) return DpSize(width, height)
+    val drift = maxDriftDp * driftFactor
+    val margin = drift + blurEdgeMarginDp.value
+    val requiredW = (w + 2f * margin) / restScale * BlurBackdropCoverSafety
+    val requiredH = (h + 2f * margin) / restScale * BlurBackdropCoverSafety
+    return DpSize(requiredW.dp, requiredH.dp)
+}
+
 @Composable
 internal fun rememberBlurWanderDrift(
     active: Boolean,
@@ -188,6 +218,11 @@ internal fun rememberBlurWanderDrift(
                         drift.advance(unappliedMs)
                         unappliedMs = 0f
                     }
+                    // (Per-frame advance: the drift only drives translation
+                    // properties on an offscreen-composited layer, so updating
+                    // every frame costs a couple of float writes — while the
+                    // old 50 ms quantisation made the whole moving blur step
+                    // visibly ~12 times per second.)
                 }
                 lastFrameNanos = frameTimeNanos
             }
@@ -196,4 +231,4 @@ internal fun rememberBlurWanderDrift(
     return drift
 }
 
-private const val DriftUpdateIntervalMs = 50f
+private const val DriftUpdateIntervalMs = 0f
