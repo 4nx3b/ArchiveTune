@@ -3,7 +3,8 @@ package moe.rukamori.archivetune.ui.component
 import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
-import androidx.compose.animation.Animatable
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.EaseInOutSine
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -361,7 +362,7 @@ fun LiveAudioChainPill(
 
 private fun Modifier.shimmerOverlay(
     color: Color,
-    progress: Animatable<Float, *>,
+    progress: Animatable<Float, AnimationVector1D>,
 ): Modifier =
     drawBehind {
         val fraction = progress.value
