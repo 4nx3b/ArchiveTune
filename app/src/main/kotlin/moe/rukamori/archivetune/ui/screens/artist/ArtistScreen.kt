@@ -189,7 +189,6 @@ import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeArtistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubePlaylistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
-import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.backToMain
@@ -453,24 +452,39 @@ fun ArtistScreen(
                                 null
                             } else {
                                 withContext(Dispatchers.Default) {
-                                    val small = Bitmap.createScaledBitmap(snapshot, 24, 24, true)
+
+                                    // The ambience mirrors the BOTTOM band of the
+                                    // canvas so the wash connects to where the artwork
+                                    // hands over into the page gradient.
+                                    val bandTop =
+                                        (snapshot.height * CANVAS_AMBIENT_BAND_START).toInt()
+                                        .coerceIn(0, (snapshot.height - 2).coerceAtLeast(1))
+                                    val band =
+                                        if (bandTop in 0 until (snapshot.height - 1)) {
+                                            Bitmap.createBitmap(
+                                                snapshot,
+                                                0,
+                                                bandTop,
+                                                snapshot.width,
+                                                snapshot.height - bandTop,
+                                            )
+                                        } else {
+                                            snapshot
+                                        }
+                                    val small = Bitmap.createScaledBitmap(band, 24, 12, true)
                                     val palette =
                                         Palette
                                             .from(small)
                                             .maximumColorCount(8)
                                             .generate()
                                     val dominant = palette.dominantSwatch
-                                    val vivid =
-                                        palette.vibrantSwatch
-                                            ?: palette.lightVibrantSwatch
-                                            ?: palette.darkVibrantSwatch
-                                            ?: palette.mutedSwatch
+                                    val muted = palette.mutedSwatch
                                     when {
-                                        dominant != null && vivid != null && vivid.rgb != dominant.rgb ->
-                                            listOf(Color(vivid.rgb), Color(dominant.rgb))
+                                        dominant != null && muted != null && muted.rgb != dominant.rgb ->
+                                            listOf(Color(dominant.rgb), Color(muted.rgb))
 
                                         dominant != null -> listOf(Color(dominant.rgb))
-                                        vivid != null -> listOf(Color(vivid.rgb))
+                                        muted != null -> listOf(Color(muted.rgb))
                                         else -> null
                                     }
                                 }
@@ -500,24 +514,24 @@ fun ArtistScreen(
 
     val ambientPalette =
         remember(ambientSource, surfaceColor) {
-            BackdropTonePalette.fromColors(
+            BackdropTonePalette.fromColorsLight(
                 colors = ambientSource.orEmpty(),
                 fallbackColor = surfaceColor.toArgb(),
             )
         }
     val animatedAmbientTop by animateColorAsState(
         targetValue = ambientPalette.top,
-        animationSpec = tween(durationMillis = 450),
+        animationSpec = tween(durationMillis = ARTIST_AMBIENT_CROSSFADE_MILLIS),
         label = "artistAmbientTop",
     )
     val animatedAmbientMid by animateColorAsState(
         targetValue = ambientPalette.mid,
-        animationSpec = tween(durationMillis = 450),
+        animationSpec = tween(durationMillis = ARTIST_AMBIENT_CROSSFADE_MILLIS),
         label = "artistAmbientMid",
     )
     val animatedAmbientBottom by animateColorAsState(
         targetValue = ambientPalette.bottom,
-        animationSpec = tween(durationMillis = 450),
+        animationSpec = tween(durationMillis = ARTIST_AMBIENT_CROSSFADE_MILLIS),
         label = "artistAmbientBottom",
     )
 
@@ -606,7 +620,7 @@ fun ArtistScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .let { m -> if (glassHeaderActive) m.glassSource(artworkBackdrop) else m },
+                    .let { m -> if (liquidGlassHeaderActive) m.glassSource(artworkBackdrop) else m },
         ) {
 
             Box(
@@ -721,7 +735,13 @@ fun ArtistScreen(
                                 Modifier
                                     .matchParentSize()
                                     .graphicsLayer {
-                                        translationY = heroParallaxOffset * 0.5f
+
+                                        // Full-lag parallax keeps the artwork pinned on
+                                        // screen while the list scrolls over it. The
+                                        // previous half-lag opened a growing gap ABOVE
+                                        // the canvas where the page gradient bled over
+                                        // the artwork with extra height.
+                                        translationY = heroParallaxOffset
                                     },
                         ) {
                             if (thumbnail != null) {
@@ -2261,27 +2281,43 @@ private suspend fun extractAmbientArtworkColors(
     if (result !is SuccessResult) return null
     val bitmap = result.image?.toBitmap() ?: return null
 
-    val palette =
+    // Sample the BOTTOM band of the artist picture: the ambient wash should carry
+    // the colour the artwork ends on, so the gradient connects to the artwork
+    // instead of its (often much brighter) dominant colour.
+    val bandPalette =
         withContext(Dispatchers.Default) {
+            val bandTop =
+                (bitmap.height * ARTWORK_AMBIENT_BAND_START).toInt()
+                    .coerceIn(0, (bitmap.height - 2).coerceAtLeast(1))
+            val band =
+                if (bandTop in 0 until (bitmap.height - 1)) {
+                    runCatching {
+                        Bitmap.createBitmap(
+                            bitmap,
+                            0,
+                            bandTop,
+                            bitmap.width,
+                            bitmap.height - bandTop,
+                        )
+                    }.getOrDefault(bitmap)
+                } else {
+                    bitmap
+                }
             Palette
-                .from(bitmap)
+                .from(band)
                 .maximumColorCount(24)
                 .resizeBitmapArea(2000)
                 .generate()
         }
-    val gradient =
-        PlayerColorExtractor.extractGradientColors(
-            palette = palette,
-            fallbackColor = if (darkTheme) 0xFF15151A.toInt() else 0xFFF3F3F6.toInt(),
-        )
+    val dominantSwatch = bandPalette.dominantSwatch
+    val mutedSwatch = bandPalette.mutedSwatch
+    val fallbackColor = if (darkTheme) 0xFF15151A.toInt() else 0xFFF3F3F6.toInt()
     val stops =
         listOfNotNull(
-            gradient.firstOrNull(),
-            gradient.getOrNull(gradient.size / 2),
-            gradient.lastOrNull(),
-        ).distinct()
-            .take(3)
-            .ifEmpty { listOf(Color(if (darkTheme) 0xFF15151A.toInt() else 0xFFF3F3F6.toInt())) }
+            dominantSwatch?.let { Color(it.rgb) },
+            mutedSwatch?.takeIf { mutedSwatch.rgb != dominantSwatch?.rgb }?.let { Color(it.rgb) },
+        ).take(2)
+            .ifEmpty { listOf(Color(fallbackColor)) }
     PlayerPaletteCache.put(cacheKey, stops)
     return stops
 }
@@ -2291,6 +2327,14 @@ private const val AMBIENT_EXTRACT_SIZE_PX = 64
 private const val CANVAS_SAMPLE_INTERVAL_MILLIS = 350L
 private const val CANVAS_RECORD_INTERVAL_MILLIS = 120L
 private const val CANVAS_SAMPLE_LAYER_MAX_WIDTH_PX = 128
+
+// Bottom band of the canvas / artwork the ambience samples from.
+private const val CANVAS_AMBIENT_BAND_START = 0.62f
+private const val ARTWORK_AMBIENT_BAND_START = 0.62f
+
+// Deliberately unhurried ambient colour transitions; a canvas colour change
+// should ease in gently rather than snap.
+private const val ARTIST_AMBIENT_CROSSFADE_MILLIS = 1200
 
 private const val ArtistHeroArtworkSizePx = 1200
 private const val ArtistReleaseArtworkSizePx = 320

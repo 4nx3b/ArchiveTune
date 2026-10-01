@@ -12,12 +12,6 @@ import moe.rukamori.archivetune.constants.BIT_PERFECT_NATIVE_RATE_DEFAULT
 import moe.rukamori.archivetune.constants.BIT_PERFECT_OUTPUT_DEFAULT
 import moe.rukamori.archivetune.constants.BitPerfectNativeRateKey
 import moe.rukamori.archivetune.constants.BitPerfectOutputKey
-import androidx.compose.animation.core.EaseInOutSine
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,11 +26,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
@@ -56,20 +47,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
-import moe.rukamori.archivetune.ui.component.rememberLiveAudioChainLabels
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
@@ -236,12 +222,6 @@ fun AudiophileSettings(
                     .padding(top = topPadding)
                     .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
             ) {
-
-                LiveAudioChainCard(
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 12.dp),
-                )
 
                 PreferenceGroup(title = stringResource(R.string.audiophile_engines_group)) {
                     item {
@@ -578,219 +558,3 @@ private fun rateKhz(hz: Int): String =
         val k = hz / 1000.0
         if (k == k.toInt().toDouble()) "${k.toInt()} kHz" else String.format(java.util.Locale.US, "%.1f kHz", k)
     }
-
-@Composable
-private fun LiveAudioChainCard(modifier: Modifier = Modifier) {
-    val labels = rememberLiveAudioChainLabels()
-    val hasSignal = labels.hasSignal
-    val inputBitsLabel = labels.inputBits
-    val inputRateLabel = labels.inputRate
-    val stageLabel = labels.stage
-    val outputBitsLabel = labels.outputBits
-    val outputRateLabel = labels.outputRate
-    val outputRouteLabel = labels.route
-    val statusLine = labels.statusLine
-    val outputIsBitPerfect = labels.outputIsBitPerfect
-
-    val liveDotAlpha by rememberInfiniteTransition(label = "liveChainDot")
-        .animateFloat(
-            initialValue = 0.35f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 1_200, easing = EaseInOutSine),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "liveChainDotAlpha",
-        )
-
-    val chainShape = RoundedCornerShape(28.dp)
-    val pillShape = RoundedCornerShape(10.dp)
-    val chipShape = RoundedCornerShape(14.dp)
-    val accent = MaterialTheme.colorScheme.primary
-    val outputAccent = MaterialTheme.colorScheme.tertiary
-
-    Column(
-        modifier = modifier
-            .clip(chainShape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(outputAccent.copy(alpha = liveDotAlpha)),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = stringResource(R.string.live_audio_chain_title),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                letterSpacing = 1.2.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.weight(1f))
-            Text(
-                text = outputRouteLabel,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        if (!hasSignal) {
-            Text(
-                text = stringResource(R.string.live_audio_chain_idle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                ChainSideColumn(
-                    label = stringResource(R.string.live_audio_chain_input),
-                    primaryValue = inputBitsLabel,
-                    secondaryValue = inputRateLabel,
-                    tint = accent,
-                    pillShape = pillShape,
-                    modifier = Modifier.weight(1.15f),
-                )
-
-                ChainStageChip(
-                    label = stageLabel,
-                    shape = chipShape,
-                    modifier = Modifier.weight(1.1f),
-                )
-
-                ChainSideColumn(
-                    label = stringResource(R.string.live_audio_chain_output),
-                    primaryValue = outputBitsLabel,
-                    secondaryValue = outputRateLabel,
-                    tint = outputAccent,
-                    pillShape = pillShape,
-                    modifier = Modifier.weight(1.15f),
-                )
-            }
-
-            if (statusLine != null) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = statusLine,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (outputIsBitPerfect) {
-                        outputAccent
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ChainSideColumn(
-    label: String,
-    primaryValue: String,
-    secondaryValue: String,
-    tint: Color,
-    pillShape: androidx.compose.ui.graphics.Shape,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = tint,
-            letterSpacing = 1.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.height(6.dp))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .clip(pillShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-            ) {
-                Text(
-                    text = primaryValue,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .clip(pillShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-            ) {
-                Text(
-                    text = secondaryValue,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ChainStageChip(
-    label: String,
-    shape: androidx.compose.ui.graphics.Shape,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
-            contentAlignment = androidx.compose.ui.Alignment.Center,
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.graphic_eq),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(22.dp),
-            )
-        }
-        Spacer(Modifier.height(6.dp))
-        Box(
-            modifier = Modifier
-                .clip(shape)
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 0.8.sp,
-                maxLines = 1,
-            )
-        }
-    }
-}
-

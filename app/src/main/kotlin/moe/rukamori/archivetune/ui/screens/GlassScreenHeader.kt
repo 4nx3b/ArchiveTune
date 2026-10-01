@@ -56,13 +56,13 @@ fun rememberGlassScreenHeader(): GlassScreenHeader {
 
     val backdrop = rememberThrottledBackdrop(surfaceColor)
     val haze = rememberScreenHeaderHaze()
-    val active =
+    val available =
         liquidGlassEnabled &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            !lyricsFullScreen
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val active = available && !lyricsFullScreen
     return GlassScreenHeader(
         liquidGlassActive = active,
-        backdrop = if (active) backdrop else null,
+        backdrop = if (available) backdrop else null,
         haze = haze,
     )
 }

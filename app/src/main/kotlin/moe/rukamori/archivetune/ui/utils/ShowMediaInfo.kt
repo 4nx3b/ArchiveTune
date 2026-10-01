@@ -105,7 +105,9 @@ import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.codecLabel
 import moe.rukamori.archivetune.db.entities.isLossless
 import moe.rukamori.archivetune.playback.dsp.AudioEngineRouterProcessor
+import moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime
 import moe.rukamori.archivetune.playback.dsp.EngineRuntime
+import androidx.media3.common.C
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.telegram.isTelegramMediaId
 import tf.monochrome.android.audio.dsp.ChannelDetectorProcessor
@@ -674,24 +676,37 @@ fun ShowMediaInfo(videoId: String) {
                                                         ),
                                                     )
                                                 }
+                                                val pipelineStateValue = run {
+                                                    val bp = BitPerfectRuntime.status
+                                                    val inForm = when {
+                                                        bp.sourceSampleRate > 0 && bp.sourceIsLossy -> "Lossy Source"
+                                                        bp.sourceEncoding == C.ENCODING_PCM_FLOAT -> "Float PCM"
+                                                        bp.sourceBitDepth > 0 -> "${bp.sourceBitDepth}-bit Integer PCM"
+                                                        factsHere?.decodedFloat == true -> "Float PCM"
+                                                        else -> "${factsHere?.decodedBits ?: 16}-bit Integer PCM"
+                                                    }
+                                                    val outForm = when {
+                                                        EngineRuntime.usbExclusiveActive -> {
+                                                            val wireBits =
+                                                                EngineRuntime.lastwaveUsbBitsPerSample.takeIf { it > 0 }
+                                                                    ?: EngineRuntime.tryptifyUsbStream?.bitsPerSample?.takeIf { it > 0 }
+                                                                    ?: bp.outputBitDepth
+                                                            if (bp.outputEncoding == C.ENCODING_PCM_FLOAT) {
+                                                                "float USB out"
+                                                            } else {
+                                                                "$wireBits-bit USB out"
+                                                            }
+                                                        }
+                                                        bp.outputEncoding == C.ENCODING_PCM_FLOAT -> "float out"
+                                                        else -> "${bp.outputBitDepth}-bit out"
+                                                    }
+                                                    "$inForm → $outForm"
+                                                }
                                                 add(
                                                     MediaInfoDetail(
                                                         iconRes = R.drawable.solar_wave,
                                                         label = pipelineStateLabel,
-                                                        value =
-                                                            if (factsHere != null) {
-                                                                val inForm =
-                                                                    if (factsHere.decodedFloat) {
-                                                                        "Float PCM"
-                                                                    } else {
-                                                                        "${factsHere.decodedBits ?: 16}-bit Integer PCM"
-                                                                    }
-                                                                val outForm =
-                                                                    if (factsHere.outputFloat) "float out" else "16-bit out"
-                                                                "$inForm → $outForm"
-                                                            } else {
-                                                                unknownText
-                                                            },
+                                                        value = pipelineStateValue,
                                                     ),
                                                 )
                                                 add(

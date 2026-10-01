@@ -300,7 +300,7 @@ fun ListenTogetherScreen(
             state = lazyListState,
             modifier = Modifier
                 .fillMaxSize()
-                .let { m -> if (glassHeaderActive) m.glassSource(artworkBackdrop) else m }
+                .let { m -> if (liquidGlassHeaderActive) m.glassSource(artworkBackdrop) else m }
                 .hazeSource(headerHaze)
                 .imePadding(),
             contentPadding = PaddingValues(

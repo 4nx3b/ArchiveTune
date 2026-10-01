@@ -7,9 +7,12 @@
 
 package moe.rukamori.archivetune.ui.screens.search
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import moe.rukamori.archivetune.ui.utils.backToMain
@@ -17,29 +20,25 @@ import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.liquidGlass
 import moe.rukamori.archivetune.ui.component.glassSource
 import kotlinx.coroutines.delay
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -55,7 +54,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -73,9 +71,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import androidx.hilt.navigation.compose.hiltViewModel
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.DefaultSearchSourceKey
@@ -87,7 +85,6 @@ import moe.rukamori.archivetune.ui.component.SearchSourcePicker
 import moe.rukamori.archivetune.ui.screens.HomeAtmosphereBackground
 import moe.rukamori.archivetune.ui.screens.LocalSearchHazeState
 import dev.chrisbanes.haze.hazeSource
-import moe.rukamori.archivetune.viewmodels.SearchDiscoveryViewModel
 import moe.rukamori.archivetune.viewmodels.SearchHistoryViewModel
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -95,7 +92,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
 private val SearchHorizontalPadding = 24.dp
-private val SearchCardCornerRadius = 18.dp
+private const val RecentsHeightFraction = 0.55f
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -104,8 +101,6 @@ fun SearchScreen(
     onSearchQuery: (String) -> Unit,
     onVoiceSearch: () -> Unit = {},
     headerScrollConnection: NestedScrollConnection? = null,
-    listState: LazyListState? = null,
-    viewModel: SearchDiscoveryViewModel = hiltViewModel(),
     historyViewModel: SearchHistoryViewModel = hiltViewModel(),
 ) {
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -119,16 +114,19 @@ fun SearchScreen(
     val (disableBlur) = rememberPreference(DisableBlurKey, false)
 
     val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
     LaunchedEffect(Unit) {
-        delay(250)
-        runCatching { focusRequester.requestFocus() }
+        var attempt = 0
+        while (attempt < 3) {
+            delay(if (attempt == 0) 120L else 220L)
+            val focused = runCatching { focusRequester.requestFocus() }.isSuccess
+            if (focused) break
+            attempt++
+        }
+        keyboardController?.show()
     }
 
     val barState = rememberSearchResultsBarState()
-
-    var chromeHeightPx by remember { mutableIntStateOf(0) }
-    val density = LocalDensity.current
-    val chromeReserve = with(density) { chromeHeightPx.toDp() }
 
     Box(
         modifier =
@@ -156,131 +154,156 @@ fun SearchScreen(
                 HomeAtmosphereBackground()
             }
 
-            Box(
+            BoxWithConstraints(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .statusBarsPadding()
-                        .imePadding(),
+                        .windowInsetsPadding(
+                            WindowInsets.ime.union(
+                                LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom),
+                            ),
+                        ),
             ) {
-                val listBottomPadding =
-                    LocalPlayerAwareWindowInsets.current
-                        .only(WindowInsetsSides.Bottom)
-                        .asPaddingValues()
-                        .calculateBottomPadding() + 16.dp
+                val recentsMaxHeight = maxHeight * RecentsHeightFraction
+
                 Column(
                     modifier =
                         Modifier
-                            .fillMaxSize()
-                            .padding(top = chromeReserve)
-                            .verticalScroll(rememberScrollState()),
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                if (recentSearches.isEmpty()) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(top = 40.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                painter = painterResource(R.drawable.search),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                modifier = Modifier.size(40.dp),
-                            )
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                text = stringResource(R.string.search_no_recent),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                } else {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    start = SearchHorizontalPadding,
-                                    end = SearchHorizontalPadding,
-                                    top = 12.dp,
-                                    bottom = 6.dp,
-                                ),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.search_recent_searches),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(
-                            text = stringResource(R.string.clear),
-                            style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier =
-                                Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable(onClick = historyViewModel::clearAll)
-                                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                        )
-                    }
+                    RecentSearchesPanel(
+                        recentSearches = recentSearches,
+                        maxHeight = recentsMaxHeight,
+                        onClearAll = historyViewModel::clearAll,
+                        onDelete = historyViewModel::delete,
+                        onPick = onSearchQuery,
+                    )
 
-                    recentSearches.forEachIndexed { index, item ->
-                        RecentSearchRow(
-                            history = item,
-                            onDelete = historyViewModel::delete,
-                            onClick = { onSearchQuery(item.query) },
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = SearchHorizontalPadding),
-                        )
-                        if (index < recentSearches.lastIndex) {
+                    Spacer(Modifier.height(10.dp))
 
-                            HorizontalDivider(
-                                modifier =
-                                    Modifier.padding(
-                                        start = SearchHorizontalPadding + 58.dp,
-                                        end = SearchHorizontalPadding,
-                                    ),
-                                thickness = 0.5.dp,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                            )
-                        }
-                    }
+                    SearchTabBottomChrome(
+                        barState = barState,
+                        query = searchQuery,
+                        onQueryChange = { searchQuery = it },
+                        onSearch = {
+                            onSearchQuery(it)
+                        },
+                        onVoiceSearch = onVoiceSearch,
+                        onBack = navController::navigateUp,
+                        onBackLongClick = navController::backToMain,
+                        focusRequester = focusRequester,
+                        searchProvider = searchProvider,
+                        onSourceSelection = onSearchSourceSelection,
+                    )
                 }
-
-                Spacer(Modifier.height(listBottomPadding))
-            }
             }
         }
-
-        SearchTabTopChrome(
-            barState = barState,
-            query = searchQuery,
-            onQueryChange = { searchQuery = it },
-            onSearch = {
-                onSearchQuery(it)
-            },
-            onVoiceSearch = onVoiceSearch,
-            onBack = navController::navigateUp,
-            onBackLongClick = navController::backToMain,
-            focusRequester = focusRequester,
-            searchProvider = searchProvider,
-            onSourceSelection = onSearchSourceSelection,
-            onChromeSizeChanged = { chromeHeightPx = it },
-        )
     }
 }
 
 @Composable
-private fun SearchTabTopChrome(
+private fun RecentSearchesPanel(
+    recentSearches: List<SearchHistory>,
+    maxHeight: androidx.compose.ui.unit.Dp,
+    onClearAll: () -> Unit,
+    onDelete: (SearchHistory) -> Unit,
+    onPick: (String) -> Unit,
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = maxHeight)
+                .verticalScroll(rememberScrollState()),
+    ) {
+        if (recentSearches.isEmpty()) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        painter = painterResource(R.drawable.search),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(40.dp),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.search_no_recent),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        } else {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            start = SearchHorizontalPadding,
+                            end = SearchHorizontalPadding,
+                            top = 10.dp,
+                            bottom = 6.dp,
+                        ),
+            ) {
+                Text(
+                    text = stringResource(R.string.search_recent_searches),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = stringResource(R.string.clear),
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier =
+                        Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable(onClick = onClearAll)
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
+
+            recentSearches.forEachIndexed { index, item ->
+                RecentSearchRow(
+                    history = item,
+                    onDelete = onDelete,
+                    onClick = { onPick(item.query) },
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = SearchHorizontalPadding),
+                )
+                if (index < recentSearches.lastIndex) {
+
+                    HorizontalDivider(
+                        modifier =
+                            Modifier.padding(
+                                start = SearchHorizontalPadding + 58.dp,
+                                end = SearchHorizontalPadding,
+                            ),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchTabBottomChrome(
     barState: SearchResultsBarState,
     query: String,
     onQueryChange: (String) -> Unit,
@@ -291,32 +314,22 @@ private fun SearchTabTopChrome(
     focusRequester: FocusRequester,
     searchProvider: SearchProvider,
     onSourceSelection: (SearchSource, SearchProvider) -> Unit,
-    onChromeSizeChanged: (Int) -> Unit = {},
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     val backdrop = barState.backdrop
     val glassContentColor = if (backdrop != null) liquidGlassContentColor() else MaterialTheme.colorScheme.onSurface
 
-    Box(
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         modifier =
             Modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
-                .onSizeChanged { onChromeSizeChanged(it.height) },
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                ),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        start = 16.dp,
-                        end = 16.dp,
-                        top = 10.dp,
-                        bottom = 10.dp,
-                    ),
-        ) {
         val backShape = CircleShape
         val backModifier =
             if (backdrop != null) {
@@ -445,7 +458,6 @@ private fun SearchTabTopChrome(
             )
         }
     }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -568,4 +580,3 @@ private fun RecentSearchMonogram(query: String) {
         )
     }
 }
-

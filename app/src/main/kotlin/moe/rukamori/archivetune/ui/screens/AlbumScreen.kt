@@ -280,7 +280,7 @@ fun AlbumScreen(
     ) {
         LazyColumn(
             modifier =
-                (if (glassHeaderActive) {
+                (if (liquidGlassHeaderActive) {
                     Modifier.glassSource(artworkBackdrop)
                 } else {
                     Modifier

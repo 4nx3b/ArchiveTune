@@ -297,14 +297,21 @@ fun HistoryScreen(
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
 
     val liquidGlassHeaderActive =
-        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            !lyricsFullScreen
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+    // The recorder stays attached whenever glass is available (even while the
+    // fullscreen lyrics player covers the page) so its coordinates and layer
+    // content remain live - glass pills that recompose right after the player
+    // is minimized would otherwise draw from a detached recorder and stay
+    // invisible until the page is scrolled or touched. Only the pills hide
+    // while lyrics are open.
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
     val surfaceColor = MaterialTheme.colorScheme.surface
     val backdrop = rememberThrottledBackdrop(surfaceColor)
 
     val showPersistentLiquidGlassHeader =
-        liquidGlassHeaderActive && !showSearchBar
+        glassHeaderActive && !showSearchBar
 
     if (showClearHistoryDialog) {
         DefaultDialog(

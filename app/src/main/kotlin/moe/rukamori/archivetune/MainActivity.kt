@@ -243,6 +243,7 @@ import moe.rukamori.archivetune.constants.LaunchCountKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.LiquidGlassNavBarEnabledKey
 import moe.rukamori.archivetune.constants.MiniPlayerBottomSpacing
+import moe.rukamori.archivetune.constants.MiniPlayerCompactHeight
 import moe.rukamori.archivetune.constants.MiniPlayerHeight
 import moe.rukamori.archivetune.constants.MiniPlayerLastAnchorKey
 import moe.rukamori.archivetune.constants.NavigationBarAnimationSpec
@@ -1448,6 +1449,25 @@ class MainActivity : ComponentActivity() {
                     val compactSearchCircleVisible =
                         navBackStackEntry?.destination?.route?.startsWith("artist/") != true
 
+                    // Inside library sub-pages (playlists, history, liked, downloads)
+                    // the left floating circle behaves as a Library shortcut instead
+                    // of Home, matching the section the user navigated from.
+                    val compactLeftCircleIsLibrary =
+                        remember(navBackStackEntry?.destination?.route) {
+                            val route = navBackStackEntry?.destination?.route ?: ""
+                            route == "history" ||
+                                route == "local_songs" ||
+                                route == "library_playlists" ||
+                                route == "library_spotify_playlists" ||
+                                route == "library_artists" ||
+                                route.startsWith("playlist/") ||
+                                route.startsWith("auto_playlist/") ||
+                                route.startsWith("cache_playlist/") ||
+                                route.startsWith("spotify_playlist/") ||
+                                route.startsWith("online_playlist/") ||
+                                route.startsWith("top_playlist/")
+                        }
+
                     val navigationBarGlassGlow by rememberPreference(
                         NavigationBarGlassGlowKey,
                         defaultValue = true,
@@ -2419,7 +2439,7 @@ class MainActivity : ComponentActivity() {
                                                     val topFadeScrolled =
                                                         when {
                                                             isHomeRoute -> homeListState.canScrollBackward
-                                                            isSearchRoute -> searchListState.canScrollBackward
+                                                            isSearchRoute -> false
                                                             else -> true
                                                         }
                                                     val topFadeIntensity by animateFloatAsState(
@@ -2545,19 +2565,14 @@ class MainActivity : ComponentActivity() {
                                                             )
                                                         }
                                                     } else if (isSearchRoute) {
-                                                        Box(
-                                                            modifier = Modifier.fillMaxWidth(),
-                                                            contentAlignment = Alignment.Center,
-                                                        ) {
-                                                            Text(
-                                                                text = stringResource(R.string.search),
-                                                                color = MaterialTheme.colorScheme.onBackground,
-                                                                fontWeight = FontWeight.Bold,
-                                                                style = MaterialTheme.typography.titleLarge,
-                                                                maxLines = 1,
-                                                                overflow = TextOverflow.Ellipsis,
-                                                            )
-                                                        }
+
+                                                        // The search tab carries its own
+                                                        // bottom-anchored glass chrome; no
+                                                        // large header title is rendered so the
+                                                        // recents sit directly beneath the
+                                                        // status-bar area without the extra
+                                                        // app-bar band between them.
+                                                        Box(modifier = Modifier.fillMaxWidth())
                                                     } else {
                                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                                             Icon(
@@ -2983,7 +2998,7 @@ class MainActivity : ComponentActivity() {
 
                                                         val compactPillCentreLine =
                                                             floatingBarsBottomPadding +
-                                                                (navVisibleHeight + CompactControlSize) / 2
+                                                                (navVisibleHeight + MiniPlayerCompactHeight) / 2
                                                         with(navBarScrollDensity) {
                                                             (playerBottomSheetState.collapsedBound - compactPillCentreLine).toPx() * hideFraction
                                                         }
@@ -3087,13 +3102,37 @@ class MainActivity : ComponentActivity() {
                                                             },
                                                 ) {
                                                     CompactControlCircle(
-                                                        iconRes = Screens.Home.iconIdActive,
-                                                        contentDescription = stringResource(Screens.Home.titleId),
+                                                        iconRes =
+                                                            if (compactLeftCircleIsLibrary) {
+                                                                Screens.Library.iconIdActive
+                                                            } else {
+                                                                Screens.Home.iconIdActive
+                                                            },
+                                                        contentDescription =
+                                                            stringResource(
+                                                                if (compactLeftCircleIsLibrary) {
+                                                                    Screens.Library.titleId
+                                                                } else {
+                                                                    Screens.Home.titleId
+                                                                },
+                                                            ),
                                                         onClick = {
                                                             handlePrimaryNavigationClick(
-                                                                Screens.Home,
+                                                                if (compactLeftCircleIsLibrary) {
+                                                                    Screens.Library
+                                                                } else {
+                                                                    Screens.Home
+                                                                },
                                                                 navBackStackEntry?.destination?.hierarchy
-                                                                    ?.any { it.route == Screens.Home.route } == true,
+                                                                    ?.any {
+                                                                        it.route == (
+                                                                            if (compactLeftCircleIsLibrary) {
+                                                                                Screens.Library.route
+                                                                            } else {
+                                                                                Screens.Home.route
+                                                                            }
+                                                                        )
+                                                                    } == true,
                                                             )
                                                         },
                                                         backdrop = liquidGlassBackdrop,

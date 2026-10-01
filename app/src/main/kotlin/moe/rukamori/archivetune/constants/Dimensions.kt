@@ -28,6 +28,7 @@ val FloatingNavigationBarHorizontalPadding = 24.dp
 val FloatingNavigationBarBottomPadding = 16.dp
 val FloatingNavigationBarMaxWidth = 360.dp
 val MiniPlayerHeight = 70.dp
+val MiniPlayerCompactHeight = 64.dp
 val MiniPlayerBottomSpacing = 4.dp
 val QueuePeekHeight = 64.dp
 val AppBarHeight = 64.dp

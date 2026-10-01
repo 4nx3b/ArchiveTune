@@ -62,6 +62,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
+import moe.rukamori.archivetune.constants.MiniPlayerCompactHeight
 import moe.rukamori.archivetune.constants.MiniPlayerHeight
 import moe.rukamori.archivetune.constants.NavigationBarMaxWidth
 import moe.rukamori.archivetune.constants.SwipeSensitivityKey
@@ -329,7 +330,7 @@ private fun NewMiniPlayer(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(lerp(MiniPlayerHeight, CompactControlSize, compactFraction))
+                    .height(lerp(MiniPlayerHeight, MiniPlayerCompactHeight, compactFraction))
 
                     .graphicsLayer {
                         translationX = offsetX
