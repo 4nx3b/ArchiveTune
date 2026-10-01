@@ -87,11 +87,6 @@ class LocalPlaylistViewModel
                 .playlist(playlistId)
                 .stateIn(viewModelScope, SharingStarted.Lazily, null)
 
-        // No page canvas on local playlists (user request 2026-09-16: "the
-        // canvas shouldn't play in local playlists"). The header stays the
-        // plain Apple-Music-style text hero — canvas keeps playing only on
-        // the online/top/Spotify playlist pages, where it was also requested.
-
         val sortType: StateFlow<PlaylistSongSortType> =
             playlist
                 .map { it?.playlist?.songSortType.toEnum(PlaylistSongSortType.CUSTOM) }
@@ -412,7 +407,6 @@ class LocalPlaylistViewModel
                     val queries = suggestionQueries.value
 
                     try {
-
                         currentSuggestionPage?.continuation?.let { continuation ->
                             _isLoadingSuggestions.value = true
                             loadMoreFromContinuation(continuation)
@@ -425,7 +419,6 @@ class LocalPlaylistViewModel
                             currentSuggestionQueryIndex.value = nextIndex
                             loadNextSuggestionPage()
                         } else {
-
                             _playlistSuggestions.value = currentSuggestions.copy(hasMore = false)
                         }
                     } finally {
@@ -467,10 +460,8 @@ class LocalPlaylistViewModel
 
                 val added =
                     database.withTransaction {
-
                         val p = getPlaylistById(playlistId)
                         if (p == null) {
-
                             if (playlistId == moe.rukamori.archivetune.db.entities.PlaylistEntity.LIKED_PLAYLIST_ID) {
                                 insert(
                                     moe.rukamori.archivetune.db.entities.PlaylistEntity(
@@ -600,7 +591,6 @@ class LocalPlaylistViewModel
                             currentSuggestionQueryIndex.value = currentIndex + 1
                             loadNextSuggestionPage()
                         } else {
-
                             if (currentSuggestions != null) {
                                 _playlistSuggestions.value = currentSuggestions.copy(hasMore = false)
                             }

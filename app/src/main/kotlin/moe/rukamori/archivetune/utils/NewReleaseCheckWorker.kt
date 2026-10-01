@@ -46,7 +46,6 @@ class NewReleaseCheckWorker(
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (error: Exception) {
-
                     return@withContext Result.success()
                 }
             if (albums.isEmpty()) return@withContext Result.success()
@@ -67,7 +66,6 @@ class NewReleaseCheckWorker(
                 }
 
             if (seenIds.isEmpty()) {
-
                 NewReleaseNotificationManager.writeSeenReleaseIds(
                     applicationContext,
                     subscribedReleases.map { it.releaseId },

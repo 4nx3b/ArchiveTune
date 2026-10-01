@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -61,7 +62,6 @@ import moe.rukamori.archivetune.constants.BottomSheetAnimationSpec
 import moe.rukamori.archivetune.constants.BottomSheetSoftAnimationSpec
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import kotlin.math.roundToInt
 
 @Composable
 fun BottomSheet(
@@ -79,18 +79,11 @@ fun BottomSheet(
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    // Morph mode (the SpatialFlow recipe): the sheet corner radius and both
-    // crossfade layers animate continuously with the sheet progress — no
-    // discrete corner pop at the transition edges, and the shared layer (the
-    // floating artwork) bridges the mini and full content across the whole
-    // 0..1 travel instead of both sides fading out mid-flight.
     val morphShape =
         if (morphMode) {
             remember(state) {
                 PlayerSheetDynamicShape(
-                    // Reads state.progress inside createOutline (the draw
-                    // phase) so the corner rebuilds every frame without any
-                    // recomposition.
+
                     progressProvider = { state.progress.coerceIn(0f, 1f) },
                 )
             }
@@ -107,10 +100,7 @@ fun BottomSheet(
                         (state.expandedBound - state.value)
                             .roundToPx()
                             .coerceAtLeast(0)
-                    // Scroll-to-hide / route-change navbar: while the sheet sits
-                    // collapsed, let the mini player drift down into the space
-                    // the navigation bar vacated. Fades out with sheet progress
-                    // so the expanded player is never double-shifted.
+
                     val takeOver =
                         navbarHiddenOffset?.invoke()?.coerceAtLeast(0f) ?: 0f
                     translationY = y + takeOver * (1f - state.progress.coerceIn(0f, 1f))
@@ -145,14 +135,10 @@ fun BottomSheet(
                     },
                 ),
     ) {
-
         if (state.isExpandedOrExpanding && backHandlerEnabled && !LocalRootOverlayActive.current) {
             BackHandler(onBack = state::collapseSoft)
         }
 
-        // The shared layer rides above both crossfade containers: its content
-        // (the floating artwork morph) stays visible across the whole
-        // mini <-> full travel.
         if (sharedLayer != null) {
             val sharedZIndex by remember(state) {
                 derivedStateOf { if (state.progress > 0.5f) 3f else 2.5f }
@@ -170,7 +156,6 @@ fun BottomSheet(
             derivedStateOf { if (state.progress > 0.5f) 2f else 1f }
         }
         if (keepContentAlive) {
-
             BoxWithConstraints(
                 modifier =
                     Modifier
@@ -178,11 +163,6 @@ fun BottomSheet(
                         .zIndex(fullContentZIndex)
                         .graphicsLayer {
                             if (morphMode) {
-                                // SpatialFlow curves: the full player only
-                                // starts fading in past halfway — the shared
-                                // artwork layer covers the first half of the
-                                // travel. No settle translation: the floating
-                                // artwork's target IS this layer's layout slot.
                                 val p = state.progress.coerceIn(0f, 1f)
                                 alpha = ((p - 0.5f) * 2).coerceIn(0f, 1f)
                                 if (p <= 0.01f) translationY = 10_000f
@@ -221,8 +201,6 @@ fun BottomSheet(
                         .graphicsLayer {
                             alpha =
                                 if (morphMode) {
-                                    // Gone exactly at halfway, when the full
-                                    // layer starts taking over.
                                     (1f - 2f * state.progress.coerceIn(0f, 1f)).coerceIn(0f, 1f)
                                 } else {
                                     1f - (state.progress * 4).coerceAtMost(1f)
@@ -239,12 +217,6 @@ fun BottomSheet(
     }
 }
 
-/**
- * A shape whose top corner radius is read at draw time from [topCornerProvider]
- * (fed the live sheet progress), so the sheet corners morph continuously with
- * the mini <-> full transition instead of flipping between two fixed radii.
- * Draw-phase only: no recomposition per frame.
- */
 private class PlayerSheetDynamicShape(
     private val progressProvider: () -> Float,
 ) : Shape {
@@ -330,12 +302,6 @@ class BottomSheetState(
         }
     }
 
-    /**
-     * Velocity-carrying settle (the SpatialFlow trick): the fling velocity is
-     * handed into the spring as its initial velocity, so the sheet continues
-     * at the finger's speed instead of stopping dead on release and
-     * re-accelerating toward the anchor.
-     */
     fun collapse(animationSpec: AnimationSpec<Dp>, velocityPx: Float) {
         updateAnchor(COLLAPSED_ANCHOR)
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -360,7 +326,7 @@ class BottomSheetState(
     }
 
     private fun Float.toAnimatableVelocity(): Dp =
-        // px/s -> dp/s (the animatable's unit).
+
         with(density) { toDp() }
 
     private fun collapse(velocityPx: Float = 0f) {
@@ -533,6 +499,15 @@ fun rememberBottomSheetState(
             Animatable(0.dp, Dp.VectorConverter)
         }
 
+    // Tracks the bounds the animatable last settled against so a pure bounds
+    // change (rotation resizing the sheet) can SNAP to the new anchor instead
+    // of visibly re-sliding from the old orientation's height - that slide kept
+    // the kept-alive player content mid-flight and out of sync with the plain
+    // controls after rotating back to portrait.
+    var previousBounds by remember {
+        mutableStateOf(Triple(dismissedBound, expandedBound, collapsedBound))
+    }
+
     return remember(dismissedBound, expandedBound, collapsedBound, coroutineScope, animationsDisabled) {
         val initialValue =
             when (previousAnchor) {
@@ -542,10 +517,20 @@ fun rememberBottomSheetState(
                 else -> error("Unknown BottomSheet anchor")
             }
 
+        val wasSettledAtAnchor =
+            animatable.value == previousBounds.first ||
+                animatable.value == previousBounds.second ||
+                animatable.value == previousBounds.third
+
         animatable.updateBounds(dismissedBound.coerceAtMost(expandedBound), expandedBound)
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            animatable.animateTo(initialValue, if (animationsDisabled) snap() else BottomSheetAnimationSpec)
+            if (wasSettledAtAnchor && animatable.value != initialValue) {
+                animatable.snapTo(initialValue)
+            } else {
+                animatable.animateTo(initialValue, if (animationsDisabled) snap() else BottomSheetAnimationSpec)
+            }
         }
+        previousBounds = Triple(dismissedBound, expandedBound, collapsedBound)
 
         BottomSheetState(
             draggableState =

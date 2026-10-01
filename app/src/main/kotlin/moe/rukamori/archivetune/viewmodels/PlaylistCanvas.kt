@@ -16,14 +16,6 @@ import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.isLowDataModeActive
 import java.util.Locale
 
-/**
- * Page-level canvas for playlist headers — the playlist twin of
- * AlbumViewModel's album-page canvas. Keyed on the first song of the
- * list (Apple Music's motion-artwork endpoint deliberately rejects
- * playlist ids, so playlists resolve through song identity instead)
- * and gated by the shared "Enable canvas in albums and playlists page"
- * toggle plus low-data mode.
- */
 internal suspend fun fetchPlaylistCanvasArtwork(
     context: Context,
     firstSongId: String?,
@@ -31,6 +23,7 @@ internal suspend fun fetchPlaylistCanvasArtwork(
     firstSongArtist: String?,
     firstSongAlbumTitle: String? = null,
     spotifyTrackId: String? = null,
+    allowSpotify: Boolean = true,
 ): CanvasArtwork? {
     if (firstSongId.isNullOrBlank() || firstSongTitle.isNullOrBlank()) return null
 
@@ -41,15 +34,21 @@ internal suspend fun fetchPlaylistCanvasArtwork(
     val country = Locale.getDefault().country
     val storefront = if (country.length == 2) country.lowercase(Locale.ROOT) else "us"
 
-    return resolveCanvasArtworkForPlayback(
-        mediaId = firstSongId,
-        songTitleRaw = firstSongTitle,
-        artistNameRaw = firstSongArtist.orEmpty(),
-        storefront = storefront,
-        requireVertical = false,
-        allowNetwork = true,
-        albumTitle = firstSongAlbumTitle,
-        trySpotifyCanvas = true,
-        spotifyTrackId = spotifyTrackId,
-    )
+    val resolved =
+        resolveCanvasArtworkForPlayback(
+            mediaId = firstSongId,
+            songTitleRaw = firstSongTitle,
+            artistNameRaw = firstSongArtist.orEmpty(),
+            storefront = storefront,
+            requireVertical = false,
+            allowNetwork = true,
+            albumTitle = firstSongAlbumTitle,
+            trySpotifyCanvas = allowSpotify,
+            spotifyTrackId = spotifyTrackId,
+        ) ?: return null
+
+    if (!allowSpotify && resolved.inferredProvider() == CanvasArtwork.PROVIDER_SPOTIFY) {
+        return null
+    }
+    return resolved
 }

@@ -5,26 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * Looper player style — the typography.
- *
- * A port of Looper's AppFonts (github.com/SthrNilshaaa/looper, GPL-3.0,
- * lib/core/app_fonts.dart): the whole style is set in Jost — the geometric
- * sans Looper ships in assets/fonts/Jost — with the exact sizes and weights
- * its expanded player draws:
- *
- *   title        24sp Bold, letterSpacing 0.3
- *   artist       18sp Regular, white 60%
- *   now playing  16sp SemiBold
- *   pill labels  14sp Medium
- *   timestamps   12sp SemiBold, tabular figures
- *   quality chip 10sp SemiBold, letterSpacing 0.5
- *
- * The four static weights Looper actually uses (Regular 400, Medium 500,
- * SemiBold 600, Bold 700) are bundled from its asset folder; Jost is
- * SIL-OFL-licensed (see the Looper credits in README.md).
- */
-
 package moe.rukamori.archivetune.ui.player.looper
 
 import androidx.compose.material3.Typography

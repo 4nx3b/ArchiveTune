@@ -38,13 +38,21 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -80,6 +88,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.exoplayer.offline.Download
 import androidx.navigation.NavController
+import com.kyant.backdrop.Backdrop
 import com.valentinilk.shimmer.shimmer
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalDownloadUtil
@@ -92,6 +101,7 @@ import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
 import moe.rukamori.archivetune.db.entities.Album
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.playback.queues.LocalAlbumRadio
@@ -104,14 +114,14 @@ import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.NavigationTitle
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.component.shimmer.TextPlaceholder
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.AlbumMenu
 import moe.rukamori.archivetune.ui.menu.SelectionSongMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
@@ -164,7 +174,7 @@ fun AlbumScreen(
 
     val liquidGlassEnabled by rememberPreference(
         key = LiquidGlassEnabledKey,
-        defaultValue = false,
+        defaultValue = true,
     )
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -173,7 +183,9 @@ fun AlbumScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+
+    val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -257,7 +269,7 @@ fun AlbumScreen(
         }
     }
 
-    val artworkBackdrop = rememberBackdrop(surfaceColor)
+    val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
 
     val headerHaze = rememberScreenHeaderHaze()
     Box(
@@ -268,8 +280,8 @@ fun AlbumScreen(
     ) {
         LazyColumn(
             modifier =
-                (if (layerBackdropActive) {
-                    Modifier.layerBackdrop(artworkBackdrop)
+                (if (liquidGlassHeaderActive) {
+                    Modifier.glassSource(artworkBackdrop)
                 } else {
                     Modifier
                 }).hazeSource(headerHaze),
@@ -344,7 +356,7 @@ fun AlbumScreen(
                         canvasFallbackUrl = canvasArtwork?.videoUrl?.takeIf { albumCanvasEnabled },
                         canvasIsPlaying = true,
 
-                        canvasVisible = !lyricsFullScreen,
+                        canvasVisible = !lyricsFullScreen && !playerSheetOverlayActive,
                         onShuffle =
                             if (albumWithSongs.songs.isEmpty()) {
                                 null
@@ -389,7 +401,6 @@ fun AlbumScreen(
                                             }
 
                                             is HeaderDownloadState.Partial -> {
-
                                                 if (headerState.paused) {
                                                     sendResumePausedDownloads(
                                                         context = context,
@@ -708,10 +719,11 @@ fun AlbumScreen(
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
+            scrolled = lazyListState.canScrollBackward,
         )
 
         val currentAlbumWithSongs = albumWithSongs
-        if (layerBackdropActive && currentAlbumWithSongs != null &&
+        if (glassHeaderActive && currentAlbumWithSongs != null &&
             currentAlbumWithSongs.songs.isNotEmpty()
         ) {
             LiquidGlassActionPill(
@@ -752,6 +764,13 @@ fun AlbumScreen(
                     GlassPillTitleText(
                         text = pluralStringResource(R.plurals.n_song, count, count),
                     )
+                } else {
+
+                    GlassPillTitleText(
+                        text = currentAlbumWithSongs.album.title.ifBlank {
+                            stringResource(R.string.albums)
+                        },
+                    )
                 }
             }
             LiquidGlassActionPill(
@@ -762,7 +781,6 @@ fun AlbumScreen(
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
                 if (selection) {
-
                     val selectedCount = wrappedSongs.count { it.isSelected }
                     val allSelected = selectedCount == wrappedSongs.size && wrappedSongs.isNotEmpty()
                     Box(
@@ -815,7 +833,6 @@ fun AlbumScreen(
                         }
                     }
                 } else {
-
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -868,8 +885,25 @@ fun AlbumScreen(
             }
         }
 
-        if (!liquidGlassHeaderActive) {
+        val pinnedActionsAlbum = albumWithSongs
+        if (pinnedActionsAlbum?.songs?.isNotEmpty() == true) {
+            PinnedAlbumActionsRow(
+                visible = showTopBarTitle && !selection,
+                backdrop = artworkBackdrop.takeIf { glassHeaderActive },
+                onPlay = { playerConnection.playQueue(LocalAlbumRadio(pinnedActionsAlbum)) },
+                onShuffle = {
+                    playerConnection.playQueue(
+                        LocalAlbumRadio(pinnedActionsAlbum.copy(songs = pinnedActionsAlbum.songs.shuffled())),
+                    )
+                },
+                modifier =
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = systemBarsTopPadding + 60.dp),
+            )
+        }
 
+        if (!liquidGlassHeaderActive) {
         val topAppBarColors =
             if (transparentAppBar) {
                 TopAppBarDefaults.topAppBarColors(
@@ -910,7 +944,6 @@ fun AlbumScreen(
                 }
             },
             navigationIcon = {
-
                 if (selection || showTopBarTitle || !liquidGlassHeaderActive) {
                     IconButton(
                         onClick = {
@@ -979,7 +1012,6 @@ fun AlbumScreen(
                         )
                     }
                 } else {
-
                     if (showTopBarTitle || !liquidGlassHeaderActive) {
                         albumWithSongs?.let { currentAlbum ->
                             IconButton(
@@ -1013,3 +1045,77 @@ fun AlbumScreen(
 }
 
 private const val MediaDetailMetadataSeparator = "  •  "
+
+@Composable
+private fun PinnedAlbumActionsRow(
+    visible: Boolean,
+    backdrop: Backdrop?,
+    onPlay: () -> Unit,
+    onShuffle: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(180)) + expandVertically(tween(180)),
+        exit = fadeOut(tween(160)) + shrinkVertically(tween(160)),
+        modifier = modifier,
+    ) {
+        if (backdrop != null) {
+            LiquidGlassActionPill(
+                backdrop = backdrop,
+                interactive = true,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            ) {
+                androidx.compose.material3.IconButton(
+                    onClick = onShuffle,
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.shuffle),
+                        contentDescription = stringResource(R.string.shuffle),
+                        tint = liquidGlassContentColor(),
+                    )
+                }
+                androidx.compose.material3.IconButton(
+                    onClick = onPlay,
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.play),
+                        contentDescription = stringResource(R.string.play),
+                        tint = liquidGlassContentColor(),
+                    )
+                }
+            }
+        } else {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
+                tonalElevation = 3.dp,
+                shadowElevation = 6.dp,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            ) {
+                Row {
+                    androidx.compose.material3.IconButton(
+                        onClick = onShuffle,
+                        modifier = Modifier.size(48.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.shuffle),
+                            contentDescription = stringResource(R.string.shuffle),
+                        )
+                    }
+                    androidx.compose.material3.IconButton(
+                        onClick = onPlay,
+                        modifier = Modifier.size(48.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.play),
+                            contentDescription = stringResource(R.string.play),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

@@ -181,8 +181,6 @@ fun SimpMusicPlayerContent(
     val startColor = (palette.colors.getOrNull(0) ?: Backdrop).asSurface()
     val endColor = (palette.colors.getOrNull(1) ?: lerp(startColor, Backdrop, 0.6f)).asSurface()
 
-    // The two lower cards are YouTube facts about the track. Each hides itself when this is null,
-    // which covers a non-YouTube source as well as a lookup that came back empty.
     val mediaInfo = rememberMediaInfo(mediaMetadata.id)
 
     val scrollState = rememberScrollState()
@@ -204,7 +202,6 @@ fun SimpMusicPlayerContent(
 
     MaterialTheme(typography = SimpMusicTypography) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-
         val screenHeight = maxHeight
 
         val artworkSide =
@@ -225,7 +222,6 @@ fun SimpMusicPlayerContent(
 
                     .verticalScroll(scrollState, enabled = state.isExpanded),
         ) {
-
             Box(modifier = Modifier.fillMaxWidth().height(screenHeight)) {
                 SimpMusicArtworkPager(
                     queueWindows = queueWindows,
@@ -360,7 +356,6 @@ fun SimpMusicPlayerContent(
         }
 
         if (queueOpen) {
-
             SimpMusicQueueSheet(
                 playerConnection = playerConnection,
                 navController = navController,
@@ -369,7 +364,6 @@ fun SimpMusicPlayerContent(
         }
 
         if (lyricsFullscreenOpen) {
-
             SimpMusicFullscreenLyricsSheet(
                 mediaMetadata = mediaMetadata,
                 playerConnection = playerConnection,
@@ -541,7 +535,6 @@ private fun SimpMusicArtwork(
     side: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
 ) {
-
     val sleevePalette = rememberMeshPalette(metadata.thumbnailUrl?.highRes())
     val spotColor = sleevePalette.colors.firstOrNull() ?: Color.Black
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {

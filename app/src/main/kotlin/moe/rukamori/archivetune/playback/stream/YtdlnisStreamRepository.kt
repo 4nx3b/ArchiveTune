@@ -31,7 +31,6 @@ class YtdlnisStreamRepository
     constructor(
         @ApplicationContext private val context: Context,
     ) : AudioStreamRepository {
-
         override suspend fun resolve(request: AudioStreamRequest): ResolvedAudioStream {
             currentCoroutineContext().ensureActive()
             try {
@@ -63,7 +62,6 @@ class YtdlnisStreamRepository
         }
 
         private suspend fun tryNewPipe(request: AudioStreamRequest): ResolvedAudioStream? {
-
             return try {
                 val clazz = Class.forName("moe.rukamori.archivetune.innertube.NewPipeUtils")
                 val method = clazz.getMethod("getStreamUrl", String::class.java, String::class.java)

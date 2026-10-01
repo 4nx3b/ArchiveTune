@@ -162,7 +162,6 @@ internal fun TikTokRail(
                 .padding(end = 10.dp)
                 .padding(vertical = 6.dp),
     ) {
-
         AnimatedVisibility(
             visible = !lyricsActive,
             enter = fadeIn(tween(TIKTOK_RAIL_FADE_MS)),
@@ -390,7 +389,6 @@ private fun TikTokArtistAvatar(
                             }
                         },
             ) {
-
                 Canvas(modifier = Modifier.size(9.dp)) {
                     val stroke = 1.6.dp.toPx()
                     val half = stroke / 2f
@@ -430,7 +428,6 @@ internal fun rememberTikTokLikeAction(
         { likeOnly: Boolean ->
             val row = librarySong?.song
             when {
-
                 likeOnly && row?.liked == true -> Unit
 
                 row != null -> {

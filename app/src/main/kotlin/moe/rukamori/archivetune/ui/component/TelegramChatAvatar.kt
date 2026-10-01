@@ -65,7 +65,6 @@ fun TelegramChatAvatar(
     ) {
         val fullPhoto = fullPhotoPath
         when {
-
             fullPhoto != null -> {
                 AsyncImage(
                     model = File(fullPhoto),

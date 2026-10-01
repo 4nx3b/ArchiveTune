@@ -16,6 +16,8 @@ import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.speech.RecognizerIntent
 import android.content.pm.PackageManager
@@ -23,9 +25,9 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.os.IBinder
 import android.provider.OpenableColumns
-import android.provider.Settings
 import android.util.Rational
 import android.view.View
 import android.view.WindowManager
@@ -43,6 +45,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -116,6 +119,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -214,10 +218,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.aod.ACTION_AOD_MODE
 import moe.rukamori.archivetune.constants.AppBarHeight
+import moe.rukamori.archivetune.constants.PlayerHeaderGlassFadeRamp
+import moe.rukamori.archivetune.constants.SheetOverlayEpsilon
 import moe.rukamori.archivetune.constants.AppFontPreference
 import moe.rukamori.archivetune.constants.AppLanguageKey
-import moe.rukamori.archivetune.constants.AodAutoOnScreenDimKey
+import moe.rukamori.archivetune.constants.AodAutoStartScreenOffKey
 import moe.rukamori.archivetune.constants.AodAutoTimerSecondsKey
+import moe.rukamori.archivetune.constants.AodModeEnabledKey
 import moe.rukamori.archivetune.constants.CustomFontUriKey
 import moe.rukamori.archivetune.constants.CustomThemeColorKey
 import moe.rukamori.archivetune.constants.WallpaperExtractionFailedKey
@@ -235,6 +242,7 @@ import moe.rukamori.archivetune.constants.LaunchCountKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.LiquidGlassNavBarEnabledKey
 import moe.rukamori.archivetune.constants.MiniPlayerBottomSpacing
+import moe.rukamori.archivetune.constants.MiniPlayerCompactHeight
 import moe.rukamori.archivetune.constants.MiniPlayerHeight
 import moe.rukamori.archivetune.constants.MiniPlayerLastAnchorKey
 import moe.rukamori.archivetune.constants.NavigationBarAnimationSpec
@@ -250,8 +258,6 @@ import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
 import moe.rukamori.archivetune.constants.NavigationBarTintFrostedBlurKey
-import moe.rukamori.archivetune.constants.NavigationBarStyle
-import moe.rukamori.archivetune.constants.NavigationBarStyleKey
 import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.HideStatusBarKey
 import moe.rukamori.archivetune.constants.RemindAfterKey
@@ -292,10 +298,14 @@ import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.DISMISSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.EXPANDED_ANCHOR
 import moe.rukamori.archivetune.ui.component.FloatingNavigationToolbar
+import moe.rukamori.archivetune.ui.component.CompactControlCircle
+import moe.rukamori.archivetune.ui.component.CompactControlSize
+import moe.rukamori.archivetune.ui.component.NavigationBarGlassGlowKey
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
 import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
+import moe.rukamori.archivetune.ui.component.rememberLiquidGlassTuning
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.ThrottledLayerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberThrottledLayerBackdrop
@@ -307,9 +317,6 @@ import moe.rukamori.archivetune.ui.component.NewMenuItem
 import moe.rukamori.archivetune.ui.player.LocalRootOverlayActive
 import moe.rukamori.archivetune.ui.component.LocalNavigationBarBackdrop
 import moe.rukamori.archivetune.ui.component.NavigationBarBackdrop
-import com.kyant.backdrop.backdrops.LayerBackdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
@@ -333,6 +340,7 @@ import moe.rukamori.archivetune.ui.player.BottomSheetPlayer
 import moe.rukamori.archivetune.ui.player.ProvideVideoFullscreenState
 import moe.rukamori.archivetune.ui.screens.LOGIN_URL_ARGUMENT
 import moe.rukamori.archivetune.ui.screens.LoginScreen
+import moe.rukamori.archivetune.ui.screens.InAppChatNotificationsHost
 import moe.rukamori.archivetune.ui.screens.Screens
 import moe.rukamori.archivetune.ui.screens.buildLoginRoute
 import moe.rukamori.archivetune.ui.screens.navigationBuilder
@@ -359,6 +367,8 @@ import moe.rukamori.archivetune.utils.SyncUtils
 import moe.rukamori.archivetune.utils.Updater
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
+import moe.rukamori.archivetune.LocalListenTogetherManager
+import moe.rukamori.archivetune.listentogether.ListenTogetherManager
 import moe.rukamori.archivetune.utils.isLowRamDevice
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -392,14 +402,18 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var syncUtils: SyncUtils
 
+    @Inject
+    lateinit var listenTogetherManager: ListenTogetherManager
+
     private lateinit var navController: NavHostController
     private var pendingIntent: Intent? = null
     private var pendingDeepLinkQueue: Queue? = null
     private var pendingVoiceSearchQuery: String? = null
     private var pendingAodModeRequest = false
     private var pendingAodModeJob: Job? = null
+    private var aodPreferenceReadJob: Job? = null
     private var aodModeLaunchRequestCount by mutableIntStateOf(0)
-    private var pendingTogetherJoinLink: String? = null
+    private var isAodScreenOffReceiverRegistered = false
     private var pendingBackupRestoreUri by mutableStateOf<Uri?>(null)
     private var latestVersionName by mutableStateOf(BuildConfig.VERSION_NAME)
     private var latestUpdateChannel by mutableStateOf(defaultUpdateChannel)
@@ -420,15 +434,17 @@ class MainActivity : ComponentActivity() {
                     playerConnection?.dispose()
                     playerConnection =
                         PlayerConnection(this@MainActivity, service, database, lifecycleScope)
+
+                    listenTogetherManager.setPlayerConnection(playerConnection)
                     playPendingDeepLinkQueueIfReady()
                     playPendingVoiceSearchIfReady()
                     openPendingAodModeIfReady()
-                    joinPendingTogetherIfReady()
                 }
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
                 isMusicServiceBound = false
+                listenTogetherManager.setPlayerConnection(null)
                 disposePlayerConnection()
             }
         }
@@ -447,10 +463,55 @@ class MainActivity : ComponentActivity() {
         connection.playFromVoiceSearch(query)
     }
 
-    private fun requestAodMode() {
-        pendingAodModeRequest = true
-        startMusicServiceSafely()
-        openPendingAodModeIfReady()
+    private fun requestAodMode(requireAutoStart: Boolean = false) {
+        aodPreferenceReadJob?.cancel()
+        aodPreferenceReadJob =
+            lifecycleScope.launch {
+                try {
+                    val preferences = dataStore.data.first()
+                    val isAodEnabled = preferences[AodModeEnabledKey] ?: true
+                    val shouldAutoStart = preferences[AodAutoStartScreenOffKey] ?: true
+                    if (!isAodEnabled || (requireAutoStart && !shouldAutoStart)) return@launch
+
+                    pendingAodModeRequest = true
+                    startMusicServiceSafely()
+                    openPendingAodModeIfReady()
+                } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                    throw cancellation
+                } catch (throwable: Throwable) {
+                    pendingAodModeRequest = false
+                    reportException(throwable)
+                }
+            }
+    }
+
+    private val aodScreenOffReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(
+                context: Context?,
+                intent: Intent?,
+            ) {
+                if (intent?.action != Intent.ACTION_SCREEN_OFF) return
+                if (playerConnection?.player?.isPlaying != true) return
+                requestAodMode(requireAutoStart = true)
+            }
+        }
+
+    private fun registerAodScreenOffReceiver() {
+        if (isAodScreenOffReceiverRegistered) return
+        val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(aodScreenOffReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(aodScreenOffReceiver, filter)
+        }
+        isAodScreenOffReceiverRegistered = true
+    }
+
+    private fun unregisterAodScreenOffReceiver() {
+        if (!isAodScreenOffReceiverRegistered) return
+        unregisterReceiver(aodScreenOffReceiver)
+        isAodScreenOffReceiverRegistered = false
     }
 
     private fun openPendingAodModeIfReady() {
@@ -465,23 +526,6 @@ class MainActivity : ComponentActivity() {
                     aodModeLaunchRequestCount++
                 }
             }
-    }
-
-    private fun joinPendingTogetherIfReady() {
-        val pending = pendingTogetherJoinLink ?: return
-        val connection = playerConnection ?: return
-        pendingTogetherJoinLink = null
-        lifecycleScope.launch(Dispatchers.IO) {
-            val displayName =
-                runCatching { dataStore.data.first()[moe.rukamori.archivetune.constants.TogetherDisplayNameKey] }
-                    .getOrNull()
-                    ?.trim()
-                    .orEmpty()
-                    .ifBlank { Build.MODEL ?: getString(R.string.app_name) }
-            withContext(Dispatchers.Main) {
-                connection.service.joinTogether(pending, displayName)
-            }
-        }
     }
 
     private suspend fun awaitRestorablePlayback(connection: PlayerConnection): Boolean {
@@ -505,6 +549,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        registerAodScreenOffReceiver()
         serviceBindingJob = lifecycleScope.launch {
             try {
                 if (!isMusicServiceBound) {
@@ -529,23 +574,11 @@ class MainActivity : ComponentActivity() {
             service.clearResolvedSources(currentMediaId)
         }
 
-        // Every-launch background pool refresh — silent, throttled to one
-        // server fetch per 10 minutes so restarts never hammer the feed.
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching { PoolAccountManager.refreshForLaunch(this@MainActivity) }
         }
     }
 
-    /**
-     * Drops the current [PlayerConnection]. Safe to call repeatedly.
-     *
-     * unbindService() does NOT trigger onServiceDisconnected — Android only
-     * delivers that callback on a service crash — so every clean unbind path
-     * must dispose here, or the connection stays registered as a listener on
-     * the service's long-lived player and pins this Activity (plus its whole
-     * Compose tree) until the service itself dies. One leaked connection
-     * accumulates per background/foreground cycle without this.
-     */
     private fun disposePlayerConnection() {
         pendingAodModeJob?.cancel()
         pendingAodModeJob = null
@@ -567,6 +600,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        unregisterAodScreenOffReceiver()
         serviceBindingJob?.cancel()
         serviceBindingJob = null
         safeUnbindMusicService()
@@ -588,8 +622,7 @@ class MainActivity : ComponentActivity() {
             safeUnbindMusicService()
             stopService(Intent(this, MusicService::class.java))
         }
-        // onStop's unbind already disposed; safety net for any path that
-        // reaches destruction with a live connection.
+
         disposePlayerConnection()
         safeUnbindMusicService()
     }
@@ -663,6 +696,8 @@ class MainActivity : ComponentActivity() {
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
+        moe.rukamori.archivetune.utils.CrashReporter.onStartup(this)
+
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val display =
@@ -686,6 +721,8 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching { downloadUtil.prewarmDownloadConnections() }
         }
+
+        runCatching { listenTogetherManager.initialize() }
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             val initialLocale =
@@ -766,8 +803,17 @@ class MainActivity : ComponentActivity() {
                 }
                 moe.rukamori.archivetune.utils.UpdateNotificationManager
                     .checkForUpdates(this@MainActivity)
+
+                val presaveRadar =
+                    withContext(Dispatchers.IO) {
+                        dataStore.data.first()[moe.rukamori.archivetune.constants.PresaveReleaseRadarKey]
+                    } ?: false
                 moe.rukamori.archivetune.utils.NewReleaseNotificationManager
-                    .schedulePeriodicCheck(this@MainActivity)
+                    .schedulePeriodicCheck(this@MainActivity, fast = presaveRadar)
+                if (presaveRadar) {
+                    moe.rukamori.archivetune.utils.NewReleaseNotificationManager
+                        .runImmediateCheck(this@MainActivity)
+                }
             }
 
             val bottomSheetPageState =
@@ -926,10 +972,6 @@ class MainActivity : ComponentActivity() {
             val pureBlackEnabled by rememberPreference(PureBlackKey, defaultValue = false)
             val pureBlack = pureBlackEnabled && useDarkTheme
             val hideStatusBar by rememberPreference(HideStatusBarKey, defaultValue = false)
-            val navigationBarStyle by rememberEnumPreference(
-                NavigationBarStyleKey,
-                defaultValue = NavigationBarStyle.DEFAULT,
-            )
             val navigationBarFrostedBlur by rememberPreference(
                 NavigationBarFrostedBlurKey,
                 defaultValue = false,
@@ -940,12 +982,14 @@ class MainActivity : ComponentActivity() {
             )
             val liquidGlassEnabled by rememberPreference(
                 LiquidGlassEnabledKey,
-                defaultValue = false,
+                defaultValue = true,
             )
             val liquidGlassNavBarEnabled by rememberPreference(
                 LiquidGlassNavBarEnabledKey,
                 defaultValue = false,
             )
+
+            val liquidGlassTuning = rememberLiquidGlassTuning()
 
             val customThemeSeedPalette =
                 remember(customThemeColorValue) {
@@ -1010,10 +1054,7 @@ class MainActivity : ComponentActivity() {
                                             .Builder(this@MainActivity)
                                             .data(song.thumbnailUrl)
                                             .allowHardware(false)
-                                            // Dominant-color extraction needs a
-                                            // thumbnail, not the full-res image —
-                                            // without this every track change
-                                            // decodes a multi-MB software bitmap.
+
                                             .size(
                                                 PlayerColorExtractor.Config.IMAGE_SIZE,
                                                 PlayerColorExtractor.Config.IMAGE_SIZE,
@@ -1058,7 +1099,6 @@ class MainActivity : ComponentActivity() {
             ) {
                 val navController = rememberNavController()
                 val homeListState = rememberLazyListState()
-                val searchListState = rememberLazyListState()
                 val onboardingViewModel: OnboardingViewModel = hiltViewModel()
                 val onboardingState by onboardingViewModel.screenState.collectAsStateWithLifecycle()
                 var showOnboardingLogin by rememberSaveable { mutableStateOf(false) }
@@ -1153,6 +1193,12 @@ class MainActivity : ComponentActivity() {
                     val accountName by homeViewModel.accountName.collectAsStateWithLifecycle()
                     val networkBannerState by networkBannerViewModel.bannerState.collectAsStateWithLifecycle()
                     val hasUnreadNews by newsViewModel.hasUnreadNews.collectAsStateWithLifecycle()
+
+                    val (listenTogetherInTopBar) =
+                        rememberPreference(
+                            moe.rukamori.archivetune.constants.ListenTogetherInTopBarKey,
+                            defaultValue = true,
+                        )
                     var profileMenuExpanded by rememberSaveable { mutableStateOf(false) }
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val (previousTab) = rememberSaveable { mutableStateOf("home") }
@@ -1359,15 +1405,9 @@ class MainActivity : ComponentActivity() {
                                 !active
                         }
 
-                    // SpatialFlow-style scroll-driven navbar behaviour: scrolling
-                    // down the page hides the bar completely and the mini player
-                    // smoothly takes over the freed space; scrolling back up
-                    // smoothly restores it. Reset whenever the destination
-                    // changes so a freshly opened tab always starts with the
-                    // bar visible.
-                    var isNavBarHiddenByScroll by remember { mutableStateOf(false) }
+                    var isBottomUiCompact by remember { mutableStateOf(false) }
                     LaunchedEffect(navBackStackEntry?.destination?.route) {
-                        isNavBarHiddenByScroll = false
+                        isBottomUiCompact = false
                     }
                     val navBarScrollDensity = LocalDensity.current
                     val navBarHideScrollThresholdPx = with(navBarScrollDensity) { 14.dp.toPx() }
@@ -1379,39 +1419,84 @@ class MainActivity : ComponentActivity() {
                                     available: Offset,
                                     source: NestedScrollSource,
                                 ): Offset {
-                                    // Only real user gestures (drag or fling) drive the
-                                    // hide/show; programmatic scrolls (scroll-position
-                                    // restore on playlists, settings auto-scroll) must
-                                    // not touch the bar.
                                     if (source == NestedScrollSource.UserInput) {
                                         if (consumed.y < -navBarHideScrollThresholdPx) {
-                                            isNavBarHiddenByScroll = true
+                                            isBottomUiCompact = true
                                         } else if (consumed.y > navBarHideScrollThresholdPx) {
-                                            isNavBarHiddenByScroll = false
+                                            isBottomUiCompact = false
                                         }
                                     }
                                     return Offset.Zero
                                 }
                             }
                         }
+                    val bottomUiCompactFraction by animateFloatAsState(
+                        targetValue = if (isBottomUiCompact) 1f else 0f,
+                        animationSpec =
+                            if (disableAnimations) {
+                                snap()
+                            } else {
+                                spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = 400f,
+                                )
+                            },
+                        label = "bottomUiCompactFraction",
+                    )
 
-                    fun getBottomNavPadding(): Dp =
-                        if (shouldShowNavigationBar && !useRail) {
-                            NavigationBarHeight
-                        } else {
-                            0.dp
+                    // Inside library sub-pages (playlists, history, liked, downloads)
+                    // the left floating circle behaves as a Library shortcut instead
+                    // of Home, matching the section the user navigated from.
+                    val compactLeftCircleIsLibrary =
+                        remember(navBackStackEntry?.destination?.route) {
+                            val route = navBackStackEntry?.destination?.route ?: ""
+                            route == "history" ||
+                                route == "local_songs" ||
+                                route == "library_playlists" ||
+                                route == "library_spotify_playlists" ||
+                                route == "library_artists" ||
+                                route.startsWith("local_playlist/") ||
+                                route.startsWith("auto_playlist/") ||
+                                route.startsWith("cache_playlist/") ||
+                                route.startsWith("spotify_playlist/") ||
+                                route.startsWith("online_playlist/") ||
+                                route.startsWith("top_playlist/")
                         }
 
-                    val isFloatingNavBar = navigationBarStyle == NavigationBarStyle.FLOATING
-                    val floatingBarsBottomPadding =
-                        if (isFloatingNavBar) FloatingNavigationBarBottomPadding else NavigationBarBottomPadding
+                    val compactSearchCircleVisible =
+                        navBackStackEntry?.destination?.route?.startsWith("artist/") != true &&
+                            // Library sub-pages carry their own in-header search
+                            // affordance (History, playlists, liked, Spotify,
+                            // local songs, artists...). Rendering the compact
+                            // search circle next to the mini player there showed
+                            // TWO search pills at once - keep it only on screens
+                            // whose header has no search of its own.
+                            !compactLeftCircleIsLibrary
+
+                    val navigationBarGlassGlow by rememberPreference(
+                        NavigationBarGlassGlowKey,
+                        defaultValue = true,
+                    )
+                    val navGlassStrength by animateFloatAsState(
+                        targetValue = if (navigationBarGlassGlow) 1f else 0f,
+                        animationSpec = tween(420),
+                        label = "navGlassStrength",
+                    )
+
+                    val floatingBarsBottomPadding = FloatingNavigationBarBottomPadding
                     val (navBarHeightMultiplier) = rememberPreference(
                         moe.rukamori.archivetune.constants.NavigationBarHeightKey,
                         defaultValue = moe.rukamori.archivetune.constants.NAVIGATION_BAR_HEIGHT_DEFAULT,
                     )
                     val navVisibleHeight = NavigationBarHeight * navBarHeightMultiplier
-                    val navBarHorizontalPadding =
-                        if (isFloatingNavBar) FloatingNavigationBarHorizontalPadding else NavigationBarHorizontalPadding
+                    val navBarHorizontalPadding = FloatingNavigationBarHorizontalPadding
+
+                    fun getBottomNavPadding(): Dp =
+                        if (shouldShowNavigationBar && !useRail) {
+                            navVisibleHeight
+                        } else {
+                            0.dp
+                        }
 
                     val miniPlayerBgStyle by rememberEnumPreference(
                         MiniPlayerBackgroundStyleKey,
@@ -1425,12 +1510,15 @@ class MainActivity : ComponentActivity() {
                             null
                         }
 
+                    val frostedRecordClock = remember { longArrayOf(0L) }
+
                     val liquidGlassActive =
                         liquidGlassEnabled &&
                             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                    val liquidGlassBackdrop: LayerBackdrop? =
+
+                    val liquidGlassBackdrop: ThrottledLayerBackdrop? =
                         if (liquidGlassActive) {
-                            rememberLayerBackdrop()
+                            rememberThrottledLayerBackdrop()
                         } else {
                             null
                         }
@@ -1452,15 +1540,10 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    var inAppChatNotificationActive by remember { mutableStateOf(false) }
+
                     var glassPrewarmActive by remember { mutableStateOf(false) }
                     LaunchedEffect(Unit) {
-                        // Deferred past the cold-open window: the prewarm
-                        // compiles the AGSL vibrancy shader + blur RenderEffect
-                        // by drawing a backdrop for 450ms, which used to fire
-                        // two seconds in — exactly while the first home feed
-                        // was still rendering, janking the app's very first
-                        // interactions. 4.5s still warms the pipeline long
-                        // before a menu is ever opened.
                         delay(4500)
                         glassPrewarmActive = true
                         delay(450)
@@ -1469,13 +1552,17 @@ class MainActivity : ComponentActivity() {
 
                     val rootOverlayActive by remember {
                         derivedStateOf {
-                            menuGlassRecordingActive || bottomSheetPageState.isVisible
+
+                            menuGlassRecordingActive ||
+                                menuState.isVisible ||
+                                menuState.dialogContent != null ||
+                                bottomSheetPageState.isVisible
                         }
                     }
 
                     val bottomNavigationBarHeight by animateDpAsState(
                         targetValue =
-                            if (shouldShowNavigationBar && !useRail && !isNavBarHiddenByScroll) navVisibleHeight else 0.dp,
+                            if (shouldShowNavigationBar && !useRail && !isBottomUiCompact) navVisibleHeight else 0.dp,
                         animationSpec = if (disableAnimations) snap() else NavigationBarAnimationSpec,
                         label = "",
                     )
@@ -1485,7 +1572,8 @@ class MainActivity : ComponentActivity() {
                             dismissedBound = 0.dp,
                             collapsedBound =
                                 bottomInset +
-                                    (if (shouldShowNavigationBar && !useRail) floatingBarsBottomPadding else 0.dp) +
+
+                                    (if (!useRail) floatingBarsBottomPadding else 0.dp) +
                                     getBottomNavPadding() +
                                     MiniPlayerBottomSpacing +
                                     MiniPlayerHeight,
@@ -1498,7 +1586,7 @@ class MainActivity : ComponentActivity() {
                     )
                     val playerDesignStyle by rememberEnumPreference(
                         key = PlayerDesignStyleKey,
-                        defaultValue = PlayerDesignStyle.V4,
+                        defaultValue = PlayerDesignStyle.APPLE_MUSIC,
                     )
 
                     val aodModeEnabled by remember(playerConnection) {
@@ -1535,7 +1623,6 @@ class MainActivity : ComponentActivity() {
                     }
 
                     val aodAutoTimerSeconds by rememberPreference(AodAutoTimerSecondsKey, defaultValue = 0)
-                    val aodAutoOnScreenDim by rememberPreference(AodAutoOnScreenDimKey, defaultValue = false)
                     val isPlayingNow by remember(playerConnection) {
                         playerConnection?.isPlaying ?: MutableStateFlow(false)
                     }.collectAsStateWithLifecycle()
@@ -1553,37 +1640,6 @@ class MainActivity : ComponentActivity() {
                         if (playerBottomSheetState.isDismissed) return@LaunchedEffect
                         delay(aodAutoTimerSeconds * 1000L)
                         requestAodMode()
-                    }
-
-                    LaunchedEffect(
-                        aodAutoOnScreenDim,
-                        isPlayingNow,
-                        playerBottomSheetState.isExpanded,
-                        playerBottomSheetState.isDismissed,
-                        aodModeEnabled,
-                    ) {
-                        if (!aodAutoOnScreenDim) return@LaunchedEffect
-                        if (aodModeEnabled) return@LaunchedEffect
-                        if (!isPlayingNow) return@LaunchedEffect
-                        if (playerBottomSheetState.isExpanded) return@LaunchedEffect
-                        if (playerBottomSheetState.isDismissed) return@LaunchedEffect
-
-                        val systemTimeoutMs =
-                            Settings.System
-                                .getLong(
-                                    contentResolver,
-                                    Settings.System.SCREEN_OFF_TIMEOUT,
-                                    30_000L,
-                                ).coerceIn(5_000L, 600_000L)
-
-                        val triggerDelayMs = (systemTimeoutMs - 2_000L).coerceAtLeast(2_000L)
-                        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                        try {
-                            delay(triggerDelayMs)
-                            requestAodMode()
-                        } finally {
-                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                        }
                     }
 
                     LaunchedEffect(useDarkTheme, playerBottomSheetState.isExpanded, playerBackground, aodModeEnabled) {
@@ -1622,6 +1678,32 @@ class MainActivity : ComponentActivity() {
                     var yearInMusicSavedPlayerAnchor by rememberSaveable { mutableStateOf(-1) }
 
                     var isPlayerLyricsFullScreen by remember { mutableStateOf(false) }
+
+                    val isPlayerSheetOverlayActive by remember(playerBottomSheetState) {
+                        derivedStateOf {
+                            playerBottomSheetState.value >
+                                playerBottomSheetState.collapsedBound + SheetOverlayEpsilon
+                        }
+                    }
+
+                    // Deterministic glass restore after the player (or its lyrics)
+                    // closes: re-attaching the NavHost recorder bumps its own
+                    // consumer tick, but some close paths never re-attach (the
+                    // recorder stayed attached behind a sheet that only partially
+                    // rose, or a lyrics flag cleared without a sheet settle).
+                    // Bumping the tick when EITHER cover condition lifts forces
+                    // every global-backdrop consumer (top bar pills, compact
+                    // circles, nav bar, mini player) to redraw the frame after the
+                    // cover instead of keeping a stale, faded-out draw forever
+                    // ("invisible pill that is still clickable").
+                    var lastCoverActive by remember { mutableStateOf(false) }
+                    LaunchedEffect(isPlayerLyricsFullScreen, isPlayerSheetOverlayActive) {
+                        val coverActive = isPlayerLyricsFullScreen || isPlayerSheetOverlayActive
+                        if (lastCoverActive && !coverActive) {
+                            liquidGlassBackdrop?.notifyContentRestore()
+                        }
+                        lastCoverActive = coverActive
+                    }
 
                     val shouldHideStatusBars =
                         hideStatusBar ||
@@ -1671,6 +1753,24 @@ class MainActivity : ComponentActivity() {
                         )
                     val effectiveTopInset = effectiveStatusBarTop
 
+                    val playerSheetOverlayFraction by remember(
+                        playerBottomSheetState,
+                        effectiveStatusBarTop,
+                        maxHeight,
+                    ) {
+                        derivedStateOf {
+                            val sheetEdgeFromTop = maxHeight - playerBottomSheetState.value
+                            val pillZoneBottom = effectiveStatusBarTop + 60.dp
+                            val fadeStart = pillZoneBottom + PlayerHeaderGlassFadeRamp
+                            if (fadeStart <= pillZoneBottom) {
+                                if (sheetEdgeFromTop <= pillZoneBottom) 1f else 0f
+                            } else {
+                                ((fadeStart - sheetEdgeFromTop) / (fadeStart - pillZoneBottom))
+                                    .coerceIn(0f, 1f)
+                            }
+                        }
+                    }
+
                     LaunchedEffect(isYearInMusicScreen, playerConnection) {
                         val connection = playerConnection ?: return@LaunchedEffect
                         val player = connection.player
@@ -1712,12 +1812,15 @@ class MainActivity : ComponentActivity() {
                             bottomInset,
                             shouldShowNavigationBar,
                             playerBottomSheetState.isDismissed,
-                            navigationBarStyle,
                             effectiveStatusBarTop,
                         ) {
                             var bottom = bottomInset
+                            if (!useRail) {
+
+                                bottom += floatingBarsBottomPadding
+                            }
                             if (shouldShowNavigationBar && !useRail) {
-                                bottom += getBottomNavPadding() + floatingBarsBottomPadding
+                                bottom += getBottomNavPadding()
                             }
                             if (!playerBottomSheetState.isDismissed) {
                                 bottom += MiniPlayerHeight + MiniPlayerBottomSpacing
@@ -1786,6 +1889,33 @@ class MainActivity : ComponentActivity() {
                                     launchSingleTop = true
                                     restoreState = true
                                 }
+                            }
+                        }
+                    }
+
+                    // "Take me to the tab ROOT" navigation for the compact-mode
+                    // floating circles. The regular tab click restores the tab's
+                    // last screen (multi-back-stack), which is correct for the
+                    // nav bar - but from INSIDE a library sub-page that same
+                    // navigate+restoreState round-trip resurrects the sub-page
+                    // itself (the pop saves the segment keyed by the library
+                    // destination, then restoreState immediately re-instates
+                    // it), so the click visibly does nothing. Popping back to
+                    // the tab root instead goes directly to Library/Home.
+                    val navigateToTabRoot: (Screens) -> Unit = { screen ->
+                        val popped = runCatching { navController.popBackStack(screen.route, false) }.getOrDefault(false)
+                        if (!popped && navController.currentDestination?.route != screen.route) {
+                            navController.navigate(screen.route) {
+                                popUpTo(navController.graph.startDestinationId) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                            }
+                        }
+                        if (navController.currentDestination?.route == screen.route) {
+                            navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
+                            if (screen == Screens.Home) {
+                                coroutineScope.launch { homeScrollBehavior.state.resetHeightOffset() }
                             }
                         }
                     }
@@ -2077,6 +2207,7 @@ class MainActivity : ComponentActivity() {
                         LocalDensity provides scaledDensity,
                         LocalContentColor provides if (pureBlack) Color.White else contentColorFor(MaterialTheme.colorScheme.surface),
                         LocalPlayerConnection provides playerConnection,
+                        LocalListenTogetherManager provides listenTogetherManager,
                         LocalPlayerAwareWindowInsets provides playerAwareWindowInsets,
                         LocalStableSystemBarsTopPadding provides effectiveStatusBarTop,
                         LocalDownloadUtil provides downloadUtil,
@@ -2090,15 +2221,19 @@ class MainActivity : ComponentActivity() {
                         LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
                         LocalLiquidGlassBackdrop provides liquidGlassBackdrop,
                         moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop provides menuGlassBackdrop,
+                        moe.rukamori.archivetune.ui.component.LocalLiquidGlassTuning provides liquidGlassTuning,
+                        moe.rukamori.archivetune.ui.component.LocalBottomUiCompactFraction provides bottomUiCompactFraction,
                         moe.rukamori.archivetune.ui.player.LocalRootOverlayActive provides rootOverlayActive,
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
+                        moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive provides isPlayerSheetOverlayActive,
+                        moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction provides playerSheetOverlayFraction,
                     ) {
                         Row(
                             modifier =
                                 Modifier.let { base ->
                                     if (menuGlassBackdrop != null &&
-                                        (menuGlassRecordingActive || glassPrewarmActive)
+                                        (menuGlassRecordingActive || glassPrewarmActive || inAppChatNotificationActive)
                                     ) {
                                         base.throttledLayerBackdrop(menuGlassBackdrop)
                                     } else {
@@ -2148,9 +2283,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                 } else {
                                     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-                                    // Only the neutral frosted rail blurs — the tinted
-                                    // rail is a flat solid colour (tint wins if both
-                                    // flags are somehow stored on).
+
                                     val canRailBlur =
                                         navigationBarFrostedBlur && !navigationBarTintFrostedBlur &&
                                             navBarFrostedBackdrop != null && !isPreS
@@ -2161,9 +2294,7 @@ class MainActivity : ComponentActivity() {
                                         mutableStateOf(Offset.Zero)
                                     }
                                     val railDarkScheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
-                                    // Scheme-adaptive tinted rail — matches the tinted bar: light
-                                    // accent pastel in light mode, deep accent-tinted dark bar in
-                                    // dark mode, with the content polarity flipping with the scheme.
+
                                     val railTintedBaseColor =
                                         if (railDarkScheme) {
                                             lerp(Color.Black, MaterialTheme.colorScheme.primary, 0.30f)
@@ -2220,7 +2351,7 @@ class MainActivity : ComponentActivity() {
                                                                 navBarFrostedBackdrop.contentOffsetInRoot -
                                                                     railPositionInRoot
                                                             translate(offset.x, offset.y) {
-                                                                drawLayer(navBarFrostedBackdrop.layer)
+                                                                runCatching { drawLayer(navBarFrostedBackdrop.layer) }
                                                             }
                                                         },
                                             )
@@ -2273,9 +2404,6 @@ class MainActivity : ComponentActivity() {
                                                         .drawBackdrop(
                                                             backdrop = liquidGlassBackdrop,
                                                             effects = {
-                                                                // Vividness boost; no lens here on purpose - the
-                                                                // rail's rectangle shape has no corner radii for
-                                                                // the refraction SDF.
                                                                 colorControls(saturation = 1.7f)
                                                                 blur(4f.dp.toPx())
                                                             },
@@ -2325,6 +2453,54 @@ class MainActivity : ComponentActivity() {
                                             label = "homeBarTitleAlpha",
                                         )
 
+                                        // The floating home chrome (avatar, "Home" title,
+                                        // settings pill) hides while the feed scrolls DOWN and
+                                        // only comes back when the user scrolls UP - merely
+                                        // pausing a downward scroll must not reveal it again.
+                                        var homeLastItemIndex by remember { mutableIntStateOf(0) }
+                                        var homeLastScrollOffset by remember { mutableIntStateOf(0) }
+                                        var homeChromeHiddenByScroll by remember { mutableStateOf(false) }
+                                        LaunchedEffect(isHomeRoute) {
+                                            if (!isHomeRoute) {
+                                                homeChromeHiddenByScroll = false
+                                                return@LaunchedEffect
+                                            }
+                                            // Seed the direction tracker from the live
+                                            // position so re-entering Home never compares
+                                            // against a stale pre-navigation offset.
+                                            homeLastItemIndex = homeListState.firstVisibleItemIndex
+                                            homeLastScrollOffset = homeListState.firstVisibleItemScrollOffset
+                                            snapshotFlow {
+                                                homeListState.firstVisibleItemIndex to
+                                                    homeListState.firstVisibleItemScrollOffset
+                                            }.collect { (_, offset) ->
+                                                val goingDown = offset > homeLastScrollOffset ||
+                                                    homeListState.firstVisibleItemIndex > homeLastItemIndex
+                                                if (goingDown && homeListState.canScrollBackward) {
+                                                    homeChromeHiddenByScroll = true
+                                                } else if (!goingDown) {
+                                                    homeChromeHiddenByScroll = false
+                                                }
+                                                homeLastItemIndex = homeListState.firstVisibleItemIndex
+                                                homeLastScrollOffset = offset
+                                            }
+                                        }
+                                        val homeChromeHidden = isHomeRoute && homeChromeHiddenByScroll
+                                        val homeChromeAlpha by animateFloatAsState(
+                                            targetValue = if (homeChromeHidden) 0f else 1f,
+                                            animationSpec = tween(220),
+                                            label = "homeChromeAlpha",
+                                        )
+                                        val homeChromeSlide by animateFloatAsState(
+                                            targetValue = if (homeChromeHidden) 1f else 0f,
+                                            animationSpec = tween(240),
+                                            label = "homeChromeSlide",
+                                        )
+                                        val homeChromeHideModifier = Modifier.graphicsLayer {
+                                            alpha = homeChromeAlpha
+                                            translationY = -homeChromeSlide * 44.dp.toPx()
+                                        }
+
                                         var headerHeightPx by remember { mutableIntStateOf(0) }
                                         LaunchedEffect(currentScrollBehavior, headerHeightPx) {
                                             if (headerHeightPx > 0 && !isLibraryRoute) {
@@ -2358,6 +2534,18 @@ class MainActivity : ComponentActivity() {
                                                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                                                     !playerBottomSheetState.isExpandedOrExpanding
                                                 ) {
+
+                                                    val topFadeScrolled =
+                                                        when {
+                                                            isHomeRoute -> homeListState.canScrollBackward
+                                                            isSearchRoute -> false
+                                                            else -> true
+                                                        }
+                                                    val topFadeIntensity by animateFloatAsState(
+                                                        targetValue = if (topFadeScrolled) 1f else 0f,
+                                                        animationSpec = tween(durationMillis = 220),
+                                                        label = "topFadeIntensity",
+                                                    )
                                                     HomeTopFadeBlur(
                                                         hazeState =
                                                             when {
@@ -2367,6 +2555,7 @@ class MainActivity : ComponentActivity() {
                                                             },
                                                         pageColor = surfaceColor,
                                                         barHeight = AppBarHeight + effectiveStatusBarTop,
+                                                        intensityFraction = topFadeIntensity,
                                                     )
                                                 } else {
                                                 val appBarHeightPx = with(LocalDensity.current) { AppBarHeight.toPx() }
@@ -2411,9 +2600,9 @@ class MainActivity : ComponentActivity() {
                                                 navigationIcon = {
                                                     if (isHomeRoute) {
                                                         IconButton(
-                                                            onClick = { profileMenuExpanded = true },
+                                                            onClick = { if (!homeChromeHidden) profileMenuExpanded = true },
                                                             onLongClick = {},
-                                                            modifier = Modifier.padding(start = 10.dp),
+                                                            modifier = Modifier.padding(start = 10.dp).then(homeChromeHideModifier),
                                                         ) {
                                                             Surface(
                                                                 modifier = Modifier.size(36.dp),
@@ -2462,7 +2651,7 @@ class MainActivity : ComponentActivity() {
                                                         }
                                                     } else if (isHomeRoute) {
                                                         Box(
-                                                            modifier = Modifier.fillMaxWidth(),
+                                                            modifier = Modifier.fillMaxWidth().then(homeChromeHideModifier),
                                                             contentAlignment = Alignment.Center,
                                                         ) {
                                                             Text(
@@ -2475,19 +2664,14 @@ class MainActivity : ComponentActivity() {
                                                             )
                                                         }
                                                     } else if (isSearchRoute) {
-                                                        Box(
-                                                            modifier = Modifier.fillMaxWidth(),
-                                                            contentAlignment = Alignment.Center,
-                                                        ) {
-                                                            Text(
-                                                                text = stringResource(R.string.search),
-                                                                color = MaterialTheme.colorScheme.onBackground,
-                                                                fontWeight = FontWeight.Bold,
-                                                                style = MaterialTheme.typography.titleLarge,
-                                                                maxLines = 1,
-                                                                overflow = TextOverflow.Ellipsis,
-                                                            )
-                                                        }
+
+                                                        // The search tab carries its own
+                                                        // bottom-anchored glass chrome; no
+                                                        // large header title is rendered so the
+                                                        // recents sit directly beneath the
+                                                        // status-bar area without the extra
+                                                        // app-bar band between them.
+                                                        Box(modifier = Modifier.fillMaxWidth())
                                                     } else {
                                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                                             Icon(
@@ -2522,14 +2706,16 @@ class MainActivity : ComponentActivity() {
                                                             LocalLiquidGlassBackdrop.current
                                                         if (liquidGlassBackdrop != null) {
                                                             Box(
-                                                                modifier = Modifier.padding(end = 10.dp),
+                                                                modifier = Modifier.padding(end = 10.dp).then(homeChromeHideModifier),
                                                             ) {
                                                                 LiquidGlassIconButton(
                                                                     backdrop = liquidGlassBackdrop,
                                                                     painter = painterResource(R.drawable.settings),
                                                                     contentDescription = stringResource(R.string.settings),
                                                                     onClick = {
-                                                                        navController.navigate("settings")
+                                                                        if (!homeChromeHidden) {
+                                                                            navController.navigate("settings")
+                                                                        }
                                                                     },
                                                                 )
                                                                 if (showSettingsBadge) {
@@ -2549,11 +2735,13 @@ class MainActivity : ComponentActivity() {
                                                             }
                                                         } else {
                                                             FrostedHeaderPill(
-                                                                modifier = Modifier.padding(end = 6.dp),
+                                                                modifier = Modifier.padding(end = 6.dp).then(homeChromeHideModifier),
                                                             ) {
                                                                 IconButton(
                                                                     onClick = {
-                                                                        navController.navigate("settings")
+                                                                        if (!homeChromeHidden) {
+                                                                            navController.navigate("settings")
+                                                                        }
                                                                     },
                                                                     onLongClick = {},
                                                                 ) {
@@ -2604,15 +2792,21 @@ class MainActivity : ComponentActivity() {
                                                                         navController.navigate(MusicRecognitionRoute)
                                                                     },
                                                                 ),
-                                                                ProfileMenuItem(
-                                                                    icon = R.drawable.multi_user,
-                                                                    label = stringResource(R.string.music_together),
-                                                                    onClick = {
-                                                                        profileMenuExpanded = false
-                                                                        navController.navigate("settings/music_together")
-                                                                    },
-                                                                ),
-                                                            ),
+
+                                                                if (listenTogetherInTopBar) {
+                                                                    ProfileMenuItem(
+                                                                        icon = R.drawable.diversity_listen_together,
+                                                                        label = stringResource(R.string.listen_together),
+                                                                        onClick = {
+                                                                            profileMenuExpanded = false
+                                                                            navController.navigate("listen_together_from_topbar")
+                                                                        },
+                                                                    )
+                                                                } else {
+                                                                    null
+                                                                },
+
+                                                            ).filterNotNull(),
                                                             onDismiss = { profileMenuExpanded = false },
                                                         )
                                                     }
@@ -2649,9 +2843,8 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                     AnimatedVisibility(
-                                        visible =
-                                            active ||
-                                                navBackStackEntry?.destination?.route?.startsWith(OnlineSearchResultRoutePrefix) == true,
+
+                                        visible = active,
                                         enter = fadeIn(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 300)),
                                         exit = fadeOut(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 200)),
                                     ) {
@@ -2688,8 +2881,6 @@ class MainActivity : ComponentActivity() {
                                                                 SearchSource.ONLINE ->
                                                                     if (searchProvider == SearchProvider.SPOTIFY) {
                                                                         R.string.search_source_spotify
-                                                                    } else if (searchProvider == SearchProvider.AMAZON) {
-                                                                        R.string.source_amazon
                                                                     } else {
                                                                         R.string.search_yt_music
                                                                     }
@@ -2888,11 +3079,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 bottomBar = {
                                     Box {
-                                        val areBottomBarsPaired =
-                                            shouldShowNavigationBar &&
-                                                !useRail &&
-                                                !isFloatingNavBar &&
-                                                playerBottomSheetState.isCollapsed
+                                        val areBottomBarsPaired = false
 
                                         ProvideVideoFullscreenState {
                                             BottomSheetPlayer(
@@ -2901,26 +3088,32 @@ class MainActivity : ComponentActivity() {
                                                 pureBlack = pureBlack,
                                                 isMiniPlayerPairedWithNavigation = areBottomBarsPaired,
                                                 onLyricsVisibilityChange = { isPlayerLyricsFullScreen = it },
+                                                compactFraction = bottomUiCompactFraction,
+                                                compactHorizontalPadding = navBarHorizontalPadding,
+                                                compactReserveEndControl = compactSearchCircleVisible,
                                                 navbarHiddenOffset = {
-                                                    // When the navigation bar slides away (route change or
-                                                    // scroll-to-hide), the collapsed mini player takes over the
-                                                    // freed space: it drifts down by exactly the bar's footprint
-                                                    // (bar height + its padding), keeping the system gesture
-                                                    // inset clear. Scaled by (1 - sheet progress) inside
-                                                    // BottomSheet so the expanded player is unaffected.
-                                                    // Only on routes whose collapsed bound still contains the
-                                                    // bar footprint — routes that hide the bar outright
-                                                    // (settings, playlists, active search) already exclude it
-                                                    // from the bound, so drifting again would shove the mini
-                                                    // player right off the screen.
                                                     if (shouldShowNavigationBar && !useRail) {
                                                         val hideFraction =
                                                             1f - (
                                                                 bottomNavigationBarHeight.coerceAtMost(navVisibleHeight) /
                                                                     navVisibleHeight
                                                             )
+
+                                                        // The compact pill must clear the system navigation
+                                                        // hint bar exactly like the flanking circles row does
+                                                        // (which pads by bottomInset): without the inset term
+                                                        // the take-over translation pinned the pill centre
+                                                        // ~bottomInset dp LOWER than the circles, leaving its
+                                                        // bottom edge at ~23dp from the raw screen bottom -
+                                                        // visually attached to the gesture hint / 3-button bar.
+                                                        // Users with the hint hidden (inset == 0) keep the
+                                                        // exact same geometry as before.
+                                                        val compactPillCentreLine =
+                                                            bottomInset +
+                                                                floatingBarsBottomPadding +
+                                                                (navVisibleHeight + MiniPlayerCompactHeight) / 2
                                                         with(navBarScrollDensity) {
-                                                            (floatingBarsBottomPadding + navVisibleHeight).toPx() * hideFraction
+                                                            (playerBottomSheetState.collapsedBound - compactPillCentreLine).toPx() * hideFraction
                                                         }
                                                     } else {
                                                         0f
@@ -2929,11 +3122,10 @@ class MainActivity : ComponentActivity() {
                                             )
                                         }
 
-                                        if (useRail) return@Box
-
                                         val navSlideDistance =
                                             bottomInset + floatingBarsBottomPadding + navVisibleHeight
 
+                                        if (!useRail) {
                                         Box(
                                             modifier =
                                                 Modifier
@@ -2959,18 +3151,20 @@ class MainActivity : ComponentActivity() {
                                                                         )
                                                                 slideOffset + hideOffset
                                                             }
+
+                                                        alpha = 1f - bottomUiCompactFraction * 0.9f
                                                     },
                                         ) {
                                             FloatingNavigationToolbar(
                                                 items = navigationItems,
                                                 pureBlack = pureBlack,
                                                 isPairedWithMiniPlayer = areBottomBarsPaired,
-                                                style = navigationBarStyle,
                                                 frostedBlur = navigationBarFrostedBlur,
                                                 tintFrostedBlur = navigationBarTintFrostedBlur,
                                                 frostedBackdrop = navBarFrostedBackdrop,
                                                 liquidGlass = liquidGlassEnabled && liquidGlassNavBarEnabled,
                                                 liquidGlassBackdrop = liquidGlassBackdrop,
+                                                glowStrength = navGlassStrength,
                                                 modifier =
                                                     Modifier
                                                         .align(Alignment.BottomCenter)
@@ -2991,6 +3185,87 @@ class MainActivity : ComponentActivity() {
                                                     openSearch()
                                                 },
                                             )
+                                        }
+                                        }
+
+                                        if (shouldShowNavigationBar || !playerBottomSheetState.isDismissed) {
+                                            val compactRowAlpha =
+                                                bottomUiCompactFraction *
+                                                    (1f - playerBottomSheetState.progress.coerceIn(0f, 1f))
+                                            if (compactRowAlpha > 0.01f) {
+                                                Box(
+                                                    modifier =
+                                                        Modifier
+                                                            .align(Alignment.BottomCenter)
+                                                            .fillMaxWidth()
+                                                            .padding(horizontal = navBarHorizontalPadding)
+
+                                                            .padding(
+                                                                bottom = bottomInset +
+                                                                    floatingBarsBottomPadding +
+                                                                    (navVisibleHeight - CompactControlSize) / 2,
+                                                            )
+                                                            .height(CompactControlSize)
+                                                            .graphicsLayer {
+
+                                                                val slideDistancePx =
+                                                                    (bottomInset + floatingBarsBottomPadding + navVisibleHeight + 8.dp).toPx()
+                                                                translationY =
+                                                                    (1f - compactRowAlpha) * slideDistancePx
+                                                            },
+                                                ) {
+                                                    CompactControlCircle(
+                                                        iconRes =
+                                                            if (compactLeftCircleIsLibrary) {
+                                                                Screens.Library.iconIdActive
+                                                            } else {
+                                                                Screens.Home.iconIdActive
+                                                            },
+                                                        contentDescription =
+                                                            stringResource(
+                                                                if (compactLeftCircleIsLibrary) {
+                                                                    Screens.Library.titleId
+                                                                } else {
+                                                                    Screens.Home.titleId
+                                                                },
+                                                            ),
+                                                        onClick = {
+                                                            // The compact circle is a "go to the tab root"
+                                                            // shortcut: from a library sub-page this must
+                                                            // land on the main Library tab, not restore the
+                                                            // sub-page the multi-back-stack saved.
+                                                            navigateToTabRoot(
+                                                                if (compactLeftCircleIsLibrary) {
+                                                                    Screens.Library
+                                                                } else {
+                                                                    Screens.Home
+                                                                },
+                                                            )
+                                                        },
+                                                        backdrop = liquidGlassBackdrop,
+                                                        glowStrength = navGlassStrength,
+                                                        modifier = Modifier.align(Alignment.CenterStart),
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                    )
+
+                                                    if (compactSearchCircleVisible) {
+                                                        CompactControlCircle(
+                                                            iconRes = Screens.Search.iconIdInactive,
+                                                            contentDescription = stringResource(Screens.Search.titleId),
+                                                            onClick = {
+                                                                handlePrimaryNavigationClick(
+                                                                    Screens.Search,
+                                                                    navBackStackEntry?.destination?.hierarchy
+                                                                        ?.any { it.route == Screens.Search.route } == true,
+                                                                )
+                                                            },
+                                                            backdrop = liquidGlassBackdrop,
+                                                            glowStrength = navGlassStrength,
+                                                            modifier = Modifier.align(Alignment.CenterEnd),
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 },
@@ -3047,6 +3322,7 @@ class MainActivity : ComponentActivity() {
                                                     initialScale = 0.94f,
                                                 )
                                         } else {
+
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
                                                     animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
@@ -3062,6 +3338,7 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         } else {
+
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
                                     },
@@ -3080,6 +3357,7 @@ class MainActivity : ComponentActivity() {
                                                     initialScale = 0.94f,
                                                 )
                                         } else {
+
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
                                                     animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
@@ -3098,6 +3376,7 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         } else {
+
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
                                     },
@@ -3113,23 +3392,49 @@ class MainActivity : ComponentActivity() {
                                                     Modifier
                                                 },
                                             ).then(
-                                                if (navBarFrostedBackdrop != null) {
+                                                if (navBarFrostedBackdrop != null && !isPlayerSheetOverlayActive) {
+
                                                     Modifier
                                                         .onGloballyPositioned { coordinates ->
                                                             navBarFrostedBackdrop.contentOffsetInRoot =
                                                                 coordinates.positionInRoot()
                                                         }.drawWithContent {
-                                                            navBarFrostedBackdrop.layer.record {
-                                                                this@drawWithContent.drawContent()
+                                                            val now = SystemClock.uptimeMillis()
+                                                            if (now - frostedRecordClock[0] >= 100L) {
+                                                                frostedRecordClock[0] = now
+
+                                                                val recorded =
+                                                                    runCatching {
+                                                                        navBarFrostedBackdrop.layer.record {
+                                                                            this@drawWithContent.drawContent()
+                                                                        }
+                                                                    }.isSuccess
+                                                                if (recorded) {
+
+                                                                    runCatching {
+                                                                        drawLayer(navBarFrostedBackdrop.layer)
+                                                                    }
+                                                                    return@drawWithContent
+                                                                }
                                                             }
-                                                            drawLayer(navBarFrostedBackdrop.layer)
+
+                                                            drawContent()
+                                                        }
+                                                } else if (navBarFrostedBackdrop != null) {
+
+                                                    Modifier
+                                                        .onGloballyPositioned { coordinates ->
+                                                            navBarFrostedBackdrop.contentOffsetInRoot =
+                                                                coordinates.positionInRoot()
+                                                        }.drawWithContent {
+                                                            runCatching { drawLayer(navBarFrostedBackdrop.layer) }
                                                         }
                                                 } else {
                                                     Modifier
                                                 },
                                             ).then(
-                                                if (liquidGlassBackdrop != null && !isPlayerLyricsFullScreen) {
-                                                    Modifier.layerBackdrop(liquidGlassBackdrop)
+                                                if (liquidGlassBackdrop != null && !isPlayerLyricsFullScreen && !isPlayerSheetOverlayActive) {
+                                                    Modifier.throttledLayerBackdrop(liquidGlassBackdrop)
                                                 } else {
                                                     Modifier
                                                 },
@@ -3148,10 +3453,10 @@ class MainActivity : ComponentActivity() {
                                         onSearchQuery = onSearch,
                                         onVoiceSearch = launchVoiceSearch,
                                         homeListState = homeListState,
-                                        searchListState = searchListState,
                                         homeScrollConnection = homeScrollBehavior.nestedScrollConnection,
                                         searchScrollConnection = searchScrollBehavior.nestedScrollConnection,
                                         onlineSearchSort = onlineSearchSort,
+                                        onOnlineSearchSortChange = { onlineSearchSort = it },
                                     )
                                 }
                             }
@@ -3171,6 +3476,37 @@ class MainActivity : ComponentActivity() {
                             state = LocalMenuState.current,
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
+
+                        val lyricsExportTtmlLauncher =
+                            rememberLauncherForActivityResult(
+                                androidx.activity.result.contract.ActivityResultContracts.CreateDocument(
+                                    moe.rukamori.archivetune.utils.LyricsExportCoordinator.MIME_XML,
+                                ),
+                            ) { uri ->
+                                moe.rukamori.archivetune.utils.LyricsExportCoordinator
+                                    .onDestinationPicked(this@MainActivity, uri)
+                            }
+                        val lyricsExportTextLauncher =
+                            rememberLauncherForActivityResult(
+                                androidx.activity.result.contract.ActivityResultContracts.CreateDocument(
+                                    moe.rukamori.archivetune.utils.LyricsExportCoordinator.MIME_TEXT,
+                                ),
+                            ) { uri ->
+                                moe.rukamori.archivetune.utils.LyricsExportCoordinator
+                                    .onDestinationPicked(this@MainActivity, uri)
+                            }
+                        androidx.compose.runtime.LaunchedEffect(
+                            lyricsExportTtmlLauncher,
+                            lyricsExportTextLauncher,
+                        ) {
+                            moe.rukamori.archivetune.utils.LyricsExportCoordinator.requests.collect { pending ->
+                                if (pending.mime == moe.rukamori.archivetune.utils.LyricsExportCoordinator.MIME_XML) {
+                                    lyricsExportTtmlLauncher.launch(pending.fileName)
+                                } else {
+                                    lyricsExportTextLauncher.launch(pending.fileName)
+                                }
+                            }
+                        }
 
                         GlassPipelinePrewarm(
                             backdrop = menuGlassBackdrop,
@@ -3231,6 +3567,21 @@ class MainActivity : ComponentActivity() {
                                         end = 16.dp,
                                     ).zIndex(10f),
                         )
+
+                        if (listenTogetherManager != null) {
+                            InAppChatNotificationsHost(
+                                manager = listenTogetherManager,
+                                navController = navController,
+                                backdrop = LocalMenuGlassBackdrop.current,
+                                onActiveChanged = { inAppChatNotificationActive = it },
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(
+                                        top = if (shouldShowTopBar) effectiveTopInset + AppBarHeight + 8.dp else effectiveTopInset + 8.dp,
+                                    )
+                                    .zIndex(12f),
+                            )
+                        }
                     }
 
                     pendingBackupRestoreUri?.let { uri ->
@@ -3415,15 +3766,25 @@ class MainActivity : ComponentActivity() {
         val coroutineScope = lifecycleScope
 
         val authority = uri.authority?.lowercase()
-        if (uri.scheme.equals("archivetune", ignoreCase = true) && authority == "together") {
-            pendingTogetherJoinLink = uri.toString()
-            startMusicServiceSafely()
-            joinPendingTogetherIfReady()
-            return
-        }
 
         if (uri.scheme.equals("archivetune", ignoreCase = true) && authority == "login") {
             navController.navigate(buildLoginRoute(uri.getQueryParameter(LOGIN_URL_ARGUMENT)))
+            return
+        }
+
+        val listenCode =
+            uri.getQueryParameter("code")
+                ?: uri.getQueryParameter("room")
+                ?: uri.pathSegments.getOrNull(1)
+        val isListenLink =
+            uri.pathSegments.firstOrNull() == "listen" ||
+                uri.host?.equals("listen", ignoreCase = true) == true ||
+                uri.host?.equals("vivimusic-listen-together.onrender.com", ignoreCase = true) == true
+        if (!listenCode.isNullOrBlank() && isListenLink) {
+            val username =
+                dataStore.get(moe.rukamori.archivetune.constants.ListenTogetherUsernameKey, "")
+                    .ifBlank { "Guest" }
+            listenTogetherManager.joinRoom(listenCode, username)
             return
         }
 
@@ -3606,12 +3967,18 @@ class MainActivity : ComponentActivity() {
                                 BackupCategory.LIBRARY -> R.string.backup_category_library
                                 BackupCategory.ACCOUNT -> R.string.backup_category_account
                                 BackupCategory.SETTINGS -> R.string.backup_category_settings
+                                BackupCategory.FONTS -> R.string.backup_category_fonts
+                                BackupCategory.LYRICS -> R.string.backup_category_lyrics
+                                BackupCategory.CANVAS -> R.string.backup_category_canvas
                             }
                         val descRes =
                             when (category) {
                                 BackupCategory.LIBRARY -> R.string.backup_category_library_desc
                                 BackupCategory.ACCOUNT -> R.string.backup_category_account_desc
                                 BackupCategory.SETTINGS -> R.string.backup_category_settings_desc
+                                BackupCategory.FONTS -> R.string.backup_category_fonts_desc
+                                BackupCategory.LYRICS -> R.string.backup_category_lyrics_desc
+                                BackupCategory.CANVAS -> R.string.backup_category_canvas_desc
                             }
                         Surface(
                             modifier = Modifier.fillMaxWidth(),

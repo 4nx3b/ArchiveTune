@@ -11,7 +11,6 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 internal object TidalDns : Dns {
-
     private const val CLOUDFLARE_DOH = "https://cloudflare-dns.com/dns-query"
     private const val GOOGLE_DOH = "https://dns.google/resolve"
 
@@ -43,7 +42,6 @@ internal object TidalDns : Dns {
             .build()
 
     override fun lookup(hostname: String): List<InetAddress> {
-
         cache[hostname]?.let { entry ->
             if (entry.expiresAt > System.currentTimeMillis() && entry.addresses.isNotEmpty()) {
                 return entry.addresses
@@ -71,7 +69,6 @@ internal object TidalDns : Dns {
     }
 
     private fun resolveOverHttps(hostname: String): List<InetAddress> {
-
         val a = queryDoh(hostname, type = 1)
         val aaaa = if (a.isEmpty()) queryDoh(hostname, type = 28) else emptyList()
         return (a + aaaa).mapNotNull { ip ->

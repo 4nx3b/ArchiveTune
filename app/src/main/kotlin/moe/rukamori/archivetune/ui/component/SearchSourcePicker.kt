@@ -9,11 +9,13 @@ package moe.rukamori.archivetune.ui.component
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.RadioButton
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +23,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.SearchProvider
@@ -48,18 +51,22 @@ fun SearchSourcePicker(
                             R.drawable.spotify_icon
                         } else if (currentProvider == SearchProvider.APPLE_MUSIC) {
                             R.drawable.apple_music_icon
-                        } else if (currentProvider == SearchProvider.AMAZON) {
-                            R.drawable.ic_music
                         } else {
                             R.drawable.language
                         },
                     ),
                 contentDescription = stringResource(R.string.search_source_picker),
+
+                modifier = Modifier.size(22.dp),
             )
         }
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
+            shape = RoundedCornerShape(20.dp),
+            containerColor =
+                LocalUnglassColorScheme.current?.surfaceContainerHigh
+                    ?: MaterialTheme.colorScheme.surfaceContainerHigh,
         ) {
             if (includeLocal) {
                 SearchSourceMenuItem(
@@ -95,16 +102,6 @@ fun SearchSourcePicker(
                 expanded = false
                 onSelection(SearchSource.ONLINE, SearchProvider.APPLE_MUSIC)
             }
-            SearchSourceMenuItem(
-                // No dedicated Amazon Music mark ships in drawable/ yet; ic_music is the same
-                // stand-in the source pickers use for Amazon.
-                label = stringResource(R.string.source_amazon),
-                iconRes = R.drawable.ic_music,
-                selected = currentScope == SearchSource.ONLINE && currentProvider == SearchProvider.AMAZON,
-            ) {
-                expanded = false
-                onSelection(SearchSource.ONLINE, SearchProvider.AMAZON)
-            }
         }
     }
 }
@@ -117,20 +114,42 @@ private fun SearchSourceMenuItem(
     onClick: () -> Unit,
 ) {
     DropdownMenuItem(
-        text = { Text(label) },
+        text = {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                color =
+                    if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+            )
+        },
         onClick = onClick,
         leadingIcon = {
             Icon(
                 painter = painterResource(iconRes),
                 contentDescription = null,
+                tint =
+                    if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        LocalContentColor.current
+                    },
                 modifier = Modifier.size(20.dp),
             )
         },
         trailingIcon = {
-            RadioButton(
-                selected = selected,
-                onClick = null,
-            )
+            if (selected) {
+                Icon(
+                    painter = painterResource(R.drawable.solar_check_circle_linear),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         },
     )
 }

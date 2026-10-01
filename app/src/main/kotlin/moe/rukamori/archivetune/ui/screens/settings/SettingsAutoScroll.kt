@@ -123,7 +123,6 @@ class PreferencePositions {
     }
 
     private companion object {
-
         const val MEASURE_POLL_MS = 50L
         const val MEASURE_TIMEOUT_STEPS = 16
 

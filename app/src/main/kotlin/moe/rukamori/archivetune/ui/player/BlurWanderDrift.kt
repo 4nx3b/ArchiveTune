@@ -22,10 +22,12 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 internal class BlurWanderDrift(
     private val random: Random = Random.Default,
+    private val maxDriftDp: Float = DefaultWanderRadiusDp,
 ) {
     private val xState = mutableFloatStateOf(0f)
     private val yState = mutableFloatStateOf(0f)
@@ -43,7 +45,6 @@ internal class BlurWanderDrift(
     private var toY = 0f
     private var fromRotation = 0f
     private var toRotation = 0f
-    private var legAngle = random.nextFloat() * TwoPi
     private var legDurationMs = 0f
     private var legElapsedMs = 0f
 
@@ -71,18 +72,16 @@ internal class BlurWanderDrift(
         fromY = toY
         fromRotation = toRotation
 
-        val turn = MinTurnRadians + random.nextFloat() * (TwoPi - 2f * MinTurnRadians)
-        legAngle = (legAngle + turn) % TwoPi
-
-        val radius = WanderRadiusDp * (MinRadiusFraction + random.nextFloat() * (1f - MinRadiusFraction))
-        toX = cos(legAngle) * radius
-
-        toY = sin(legAngle) * radius
+        val radius = maxDriftDp * sqrt(random.nextFloat())
+        val angle = random.nextFloat() * TwoPi
+        toX = cos(angle) * radius
+        toY = sin(angle) * radius
 
         val rotationSign = if (random.nextBoolean()) 1f else -1f
         val rotationSpan =
             MinLegRotationDegrees + random.nextFloat() * (MaxLegRotationDegrees - MinLegRotationDegrees)
         toRotation = fromRotation + rotationSign * rotationSpan
+
         val distance = hypot(toX - fromX, toY - fromY)
         legDurationMs =
             (distance / WanderSpeedDpPerSecond * 1000f)
@@ -90,23 +89,30 @@ internal class BlurWanderDrift(
     }
 
     internal companion object {
-
-        const val WanderRadiusDp = 120f
+        const val DefaultWanderRadiusDp = 120f
 
         private const val WanderSpeedDpPerSecond = 26f
 
         private const val MinLegDurationMs = 6_000f
-        private const val MaxLegDurationMs = 18_000f
+
+        private const val MaxLegDurationMs = 26_000f
 
         private const val MinLegRotationDegrees = 18f
+
         private const val MaxLegRotationDegrees = 55f
-
-        private const val MinRadiusFraction = 0.5f
-
-        private const val MinTurnRadians = 1.25f
 
         private const val TwoPi = (2.0 * PI).toFloat()
     }
+}
+
+internal fun movingBlurWanderMaxDriftDp(
+    width: Dp,
+    height: Dp,
+): Float {
+    val w = width.value
+    val h = height.value
+    if (w <= 0f || h <= 0f) return BlurWanderDrift.DefaultWanderRadiusDp
+    return (hypot(w, h) / 2f) * 0.85f
 }
 
 internal fun blurBackdropFootprint(
@@ -114,7 +120,7 @@ internal fun blurBackdropFootprint(
     height: Dp,
     restScale: Float,
     driftScale: Float,
-    maxDriftDp: Float = BlurWanderDrift.WanderRadiusDp,
+    maxDriftDp: Float = BlurWanderDrift.DefaultWanderRadiusDp,
 ): DpSize {
     val w = width.value
     val h = height.value
@@ -131,10 +137,32 @@ internal fun blurBackdropFootprint(
 
 private const val BlurBackdropCoverSafety = 1.02f
 
+internal fun blurBackdropFootprintLandscape(
+    width: Dp,
+    height: Dp,
+    restScale: Float,
+    maxDriftDp: Float,
+    driftFactor: Float,
+    blurEdgeMarginDp: Dp,
+): DpSize {
+    val w = width.value
+    val h = height.value
+    if (w <= 0f || h <= 0f || restScale <= 0f) return DpSize(width, height)
+    val drift = maxDriftDp * driftFactor
+    val margin = drift + blurEdgeMarginDp.value
+    val requiredW = (w + 2f * margin) / restScale * BlurBackdropCoverSafety
+    val requiredH = (h + 2f * margin) / restScale * BlurBackdropCoverSafety
+    return DpSize(requiredW.dp, requiredH.dp)
+}
+
 @Composable
-internal fun rememberBlurWanderDrift(active: Boolean): BlurWanderDrift {
-    val drift = remember { BlurWanderDrift() }
-    LaunchedEffect(active) {
+internal fun rememberBlurWanderDrift(
+    active: Boolean,
+    maxDriftDp: Float = BlurWanderDrift.DefaultWanderRadiusDp,
+): BlurWanderDrift {
+    val drift = remember(maxDriftDp) { BlurWanderDrift(maxDriftDp = maxDriftDp) }
+
+    LaunchedEffect(active, maxDriftDp) {
         if (!active) return@LaunchedEffect
         var lastFrameNanos = 0L
         var unappliedMs = 0f
@@ -147,6 +175,7 @@ internal fun rememberBlurWanderDrift(active: Boolean): BlurWanderDrift {
                         drift.advance(unappliedMs)
                         unappliedMs = 0f
                     }
+
                 }
                 lastFrameNanos = frameTimeNanos
             }
@@ -155,4 +184,4 @@ internal fun rememberBlurWanderDrift(active: Boolean): BlurWanderDrift {
     return drift
 }
 
-private const val DriftUpdateIntervalMs = 50f
+private const val DriftUpdateIntervalMs = 0f

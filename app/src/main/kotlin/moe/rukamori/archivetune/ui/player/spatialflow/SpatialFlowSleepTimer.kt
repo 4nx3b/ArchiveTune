@@ -194,7 +194,6 @@ fun SpatialFlowSleepTimerSheet(
                         .animateContentSize(animationSpec = spring()),
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-
                     AnimatedVisibility(
                         visible = sleepTimerMode != SpatialFlowSleepTimerMode.END_OF_SONG,
                         enter = fadeIn() + expandVertically(),
@@ -334,7 +333,6 @@ fun SpatialFlowSleepTimerSheet(
                         .padding(bottom = 20.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-
                 Button(
                     onClick = {
                         onCancelTimer()

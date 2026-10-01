@@ -14,16 +14,20 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -90,29 +94,43 @@ fun CrossServiceImportPlaylistDialog(
             }
         },
         title = { Text(text = stringResource(R.string.cross_service_import_playlist_title)) },
-        icon = { Icon(painter = painterResource(R.drawable.playlist_import), contentDescription = null) },
+        icon = { Icon(painter = painterResource(R.drawable.solar_download_minimalistic_linear), contentDescription = null) },
         content = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                OutlinedTextField(
-                    value = urlValue,
-                    onValueChange = { urlValue = it },
-                    label = { Text(stringResource(R.string.cross_service_import_playlist_url_label)) },
-                    placeholder = { Text(stringResource(R.string.cross_service_import_playlist_url_placeholder)) },
-                    singleLine = true,
-                    enabled = !isLoading,
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
                     modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = stringResource(R.string.cross_service_import_playlist_supported),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Start,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                ) {
+                    Column(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                    ) {
+                        OutlinedTextField(
+                            value = urlValue,
+                            onValueChange = { urlValue = it },
+                            label = { Text(stringResource(R.string.cross_service_import_playlist_url_label)) },
+                            placeholder = { Text(stringResource(R.string.cross_service_import_playlist_url_placeholder)) },
+                            singleLine = true,
+                            enabled = !isLoading,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = stringResource(R.string.cross_service_import_playlist_supported),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Start,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
                 if (statusMessage != null) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
@@ -142,13 +160,13 @@ fun CrossServiceImportPlaylistDialog(
             }
         },
         buttons = {
-            TextButton(
+            OutlinedButton(
                 enabled = !isLoading,
                 onClick = {
                     resetState()
                     onDismiss()
                 },
-                shapes = ButtonDefaults.shapes(),
+                shape = RoundedCornerShape(18.dp),
             ) {
                 Text(text = stringResource(android.R.string.cancel))
             }
@@ -161,7 +179,6 @@ fun CrossServiceImportPlaylistDialog(
                     statusMessage = context.getString(R.string.cross_service_import_resolving_playlist)
                     coroutineScope.launch(Dispatchers.IO) {
                         try {
-
                             val credentials = CrossServiceImportCredentials.load(context)
                             val resolved = CrossServicePlaylistImporter.fetchPlaylist(url, credentials)
                                 .getOrElse { e ->
@@ -272,7 +289,6 @@ fun CrossServiceImportPlaylistDialog(
                             val isYtSyncEnabled = preferences == null || (preferences[YtmSyncKey] ?: true)
 
                             if (isSignedIn && isYtSyncEnabled && songIds.isNotEmpty()) {
-
                                 YouTube.createPlaylist(playlistName, songIds)
                                     .onSuccess { remoteBrowseId ->
                                         if (remoteBrowseId.isNotBlank()) {
@@ -332,8 +348,15 @@ fun CrossServiceImportPlaylistDialog(
                         }
                     }
                 },
-                shapes = ButtonDefaults.shapes(),
+                shape = RoundedCornerShape(18.dp),
+                contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
             ) {
+                Icon(
+                    painter = painterResource(R.drawable.solar_download_minimalistic_linear),
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.IconSize),
+                )
+                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
                 Text(text = stringResource(R.string.cross_service_import_action))
             }
         },

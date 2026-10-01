@@ -6,7 +6,6 @@ import java.util.Locale
 import kotlin.math.abs
 
 internal object TrackMatching {
-
     const val MIN_MATCH_SCORE = 60
 
     private val STOP_WORDS = setOf("the", "a", "an", "of", "and", "feat", "ft", "featuring", "with")
@@ -35,7 +34,6 @@ internal object TrackMatching {
             score += (artistOverlap * 60).toInt()
         }
         if (wantedDurationMs != null && candidateDurationMs != null) {
-
             if (durationMatches(wantedDurationMs, candidateDurationMs)) score += 30 else score -= 40
         }
         return score

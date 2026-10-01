@@ -296,5 +296,4 @@ object IconPackRuntimeManager {
             if (!sawCatalog) throw IllegalStateException("Icon pack zip is missing its catalog")
         }
     }
-
 }

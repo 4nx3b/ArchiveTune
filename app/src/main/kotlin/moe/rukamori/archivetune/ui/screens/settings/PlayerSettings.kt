@@ -56,14 +56,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.ArtworkProviderOrderKey
-import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
+import moe.rukamori.archivetune.constants.UsbExclusiveAudioKey
+import moe.rukamori.archivetune.constants.AutomixEnabledKey
+import moe.rukamori.archivetune.constants.AutomixPerformanceMode
+import moe.rukamori.archivetune.constants.AutomixPerformanceModeKey
 import moe.rukamori.archivetune.constants.PRELOAD_SONGS_RANGE
 import moe.rukamori.archivetune.constants.PreloadSongsCountKey
 import moe.rukamori.archivetune.constants.DEFAULT_PRELOAD_SONGS_COUNT
@@ -96,6 +100,7 @@ import moe.rukamori.archivetune.constants.WakelockKey
 import moe.rukamori.archivetune.ui.component.ArtistSeparatorsDialog
 import moe.rukamori.archivetune.ui.component.CrossfadeSliderPreference
 import moe.rukamori.archivetune.ui.component.DefaultDialog
+import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.NumberPickerPreference
@@ -109,6 +114,7 @@ import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.CanvasResolverEndpoints
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.roundToInt
@@ -123,6 +129,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -142,17 +149,17 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             SkipSilenceKey,
             defaultValue = false,
         )
-    val (audioNormalization, onAudioNormalizationChange) =
-        rememberPreference(
-            AudioNormalizationKey,
-            defaultValue = true,
-        )
     val (audioOffload, onAudioOffloadChange) =
         rememberPreference(
             AudioOffload,
             defaultValue = false,
         )
 
+    val (_, onUsbExclusiveAudioChange) =
+        rememberPreference(
+            UsbExclusiveAudioKey,
+            defaultValue = false,
+        )
     val (seekExtraSeconds, onSeekExtraSeconds) =
         rememberPreference(
             SeekExtraSeconds,
@@ -223,6 +230,16 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(
             CrossfadeGaplessKey,
             defaultValue = true,
+        )
+    val (automixEnabled, onAutomixEnabledChange) =
+        rememberPreference(
+            AutomixEnabledKey,
+            defaultValue = false,
+        )
+    val (automixPerformanceMode, onAutomixPerformanceModeChange) =
+        rememberEnumPreference(
+            AutomixPerformanceModeKey,
+            defaultValue = AutomixPerformanceMode.BALANCED,
         )
 
     val (archiveTuneCanvasEnabled, onArchiveTuneCanvasEnabledChange) =
@@ -322,37 +339,14 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    FrostedHeaderPill(plain = true) {
-                        IconButton(
-                            onClick = navController::navigateUp,
-                            onLongClick = navController::backToMain,
-                        ) {
-                            Icon(
-                                painterResource(R.drawable.arrow_back),
-                                contentDescription = null,
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.player_and_audio),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                ),
-            )
-        },
+                SettingsPageTopBar(
+                    titleText = stringResource(R.string.player_and_audio),
+                    onBack = navController::navigateUp,
+                    onBackLongClick = navController::backToMain,
+                )
+            },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -374,7 +368,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 .padding(top = topPadding)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
-
             PreferenceGroup(
                 title = stringResource(R.string.settings_section_player_content),
             ) {
@@ -393,6 +386,16 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                         description = stringResource(R.string.settings_lyrics_subtitle),
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         onClick = { navController.navigate("settings/lyrics") },
+                    )
+                }
+
+                item {
+
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.audiophile_settings_title)) },
+                        description = stringResource(R.string.audiophile_settings_subtitle),
+                        icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                        onClick = { navController.navigate("settings/player/audiophile") },
                     )
                 }
             }
@@ -461,6 +464,8 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             onCheckedChange = { enabled ->
                                 if (enabled) {
                                     onAudioOffloadChange(false)
+
+                                    onAutomixEnabledChange(false)
                                 }
                                 onCrossfadeEnabledChange(enabled)
                             },
@@ -491,6 +496,48 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
+                    Column(modifier = positions.modifierFor("automix")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.automix_title)) },
+                            description = stringResource(
+                                if (automixEnabled) R.string.automix_enabled_subtitle else R.string.automix_disabled_subtitle,
+                            ),
+                            icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
+                            checked = automixEnabled,
+                            onCheckedChange = { enabled ->
+                                if (enabled) {
+                                    onAudioOffloadChange(false)
+
+                                    onCrossfadeEnabledChange(false)
+                                }
+                                onAutomixEnabledChange(enabled)
+                            },
+                        )
+                    }
+                }
+
+                if (automixEnabled) {
+                    item {
+                        Column(modifier = positions.modifierFor("automix_performance")) {
+                            EnumListPreference(
+                                title = { Text(stringResource(R.string.automix_performance_title)) },
+                                description = stringResource(R.string.automix_performance_subtitle),
+                                icon = { Icon(painterResource(R.drawable.tune), null) },
+                                selectedValue = automixPerformanceMode,
+                                onValueSelected = onAutomixPerformanceModeChange,
+                                valueText = {
+                                    when (it) {
+                                        AutomixPerformanceMode.EFFICIENT -> stringResource(R.string.automix_performance_efficient)
+                                        AutomixPerformanceMode.BALANCED -> stringResource(R.string.automix_performance_balanced)
+                                        AutomixPerformanceMode.PERFORMANCE -> stringResource(R.string.automix_performance_max)
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+
+                item {
                     Column(modifier = positions.modifierFor("skip_silence")) {
                         SwitchPreference(
                             title = { Text(stringResource(R.string.skip_silence)) },
@@ -502,16 +549,9 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 }
 
-                item {
-                    Column(modifier = positions.modifierFor("audio_normalization")) {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.audio_normalization)) },
-                            icon = { Icon(painterResource(R.drawable.volume_up), null) },
-                            checked = audioNormalization,
-                            onCheckedChange = onAudioNormalizationChange,
-                        )
-                    }
-                }
+                // Audio normalization + ReplayGain moved to the Audiophile
+                // settings page next to the bit-perfect output chain they
+                // interact with.
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.audio_offload)) },
@@ -523,6 +563,8 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             if (enabled) {
                                 onSkipSilenceChange(false)
                                 onCrossfadeEnabledChange(false)
+                                onAutomixEnabledChange(false)
+                                onUsbExclusiveAudioChange(false)
                             }
                         },
                     )
@@ -677,7 +719,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
-
                     var showCanvasCheckDialog by remember { mutableStateOf(false) }
                     Column(modifier = positions.modifierFor("canvas_check")) {
                         PreferenceEntry(

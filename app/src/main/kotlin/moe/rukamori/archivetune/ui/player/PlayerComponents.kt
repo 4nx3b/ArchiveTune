@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.player
 
+import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -118,6 +119,7 @@ import moe.rukamori.archivetune.constants.PlayerHorizontalPadding
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.codecLabel
+import moe.rukamori.archivetune.db.entities.isLossless
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.extensions.toggleRepeatMode
 import moe.rukamori.archivetune.models.MediaMetadata
@@ -170,6 +172,7 @@ import androidx.graphics.shapes.RoundedPolygon
 import androidx.graphics.shapes.toPath
 import kotlin.math.abs
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -260,7 +263,6 @@ internal fun PlayerTextBackdrop(
     edgeFadeWidth: Dp = 24.dp,
     content: @Composable () -> Unit,
 ) {
-
     Box(modifier = modifier) {
         content()
     }
@@ -340,7 +342,6 @@ fun PlayerTitleSection(
             )
         }
     }
-
 }
 @Composable
 fun PlayerTopActions(
@@ -1288,6 +1289,27 @@ fun V8PlayerControlsContent(
             { playerConnection.seekToNext() }
         }
 
+    val menuState = LocalMenuState.current
+    val bottomSheetPageState = LocalBottomSheetPageState.current
+    val onMoreClick =
+        remember(mediaMetadata, navController, state, menuState, bottomSheetPageState) {
+            {
+                menuState.show {
+                    PlayerMenu(
+                        mediaMetadata = mediaMetadata,
+                        navController = navController,
+                        playerBottomSheetState = state,
+                        onShowDetailsDialog = {
+                            bottomSheetPageState.show {
+                                ShowMediaInfo(mediaMetadata.id)
+                            }
+                        },
+                        onDismiss = menuState::dismiss,
+                    )
+                }
+            }
+        }
+
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val horizontalPadding =
             if (landscape) {
@@ -1333,6 +1355,7 @@ fun V8PlayerControlsContent(
                 liked = currentSongLiked,
                 foreground = foreground,
                 onToggleLike = onToggleLike,
+                onMoreClick = onMoreClick,
                 onTitleClick = onTitleClick,
                 onArtistClick = onArtistClick,
             )
@@ -1385,6 +1408,7 @@ private fun V8MetadataActions(
     liked: Boolean,
     foreground: Color,
     onToggleLike: () -> Unit,
+    onMoreClick: () -> Unit,
     onTitleClick: () -> Unit,
     onArtistClick: (artistId: String) -> Unit,
 ) {
@@ -1440,6 +1464,14 @@ private fun V8MetadataActions(
                 containerColor = foreground.copy(alpha = 0.16f),
                 iconSize = 26.dp,
                 onClick = onToggleLike,
+            )
+            V8ActionButton(
+                iconRes = R.drawable.more_vert,
+                contentDescription = stringResource(R.string.more),
+                foreground = foreground,
+                containerColor = foreground.copy(alpha = 0.16f),
+                iconSize = 26.dp,
+                onClick = onMoreClick,
             )
         }
     }
@@ -2686,7 +2718,6 @@ fun PlayerBackground(
     Box(modifier = Modifier.fillMaxSize()) {
         when (playerBackground) {
             PlayerBackgroundStyle.BLUR -> {
-
                 val context = LocalContext.current
                 val backgroundHazeState = remember { HazeState() }
                 AnimatedContent(
@@ -2698,7 +2729,6 @@ fun PlayerBackground(
                 ) { thumbnailUrl ->
                     if (thumbnailUrl != null) {
                         Box(modifier = Modifier.fillMaxSize()) {
-
                             AsyncImage(
                                 model =
                                     ImageRequest
@@ -3074,13 +3104,11 @@ fun PlayerBackground(
                                             progress: Float,
                                             speed: Float = 1f,
                                         ): Float {
-
                                             val v = kotlin.math.sin(2f * kotlin.math.PI.toFloat() * (progress * speed + phase)).toFloat()
                                             return min + (max - min) * ((v + 1f) * 0.5f)
                                         }
 
                                         onDrawBehind {
-
                                             val progress = progressState.value
 
                                             val color1 = rotatedColorAt(0, progress)
@@ -3166,7 +3194,6 @@ fun PlayerBackground(
             }
 
             else -> {
-
             }
         }
     }
@@ -3203,6 +3230,8 @@ fun V10PlayerContent(
     sleepTimerTimeLeft: Long,
     onMenuClick: () -> Unit,
     onAddToPlaylistClick: () -> Unit,
+    currentFormat: FormatEntity? = null,
+    onShowDetails: () -> Unit = {},
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
 ) {
@@ -3237,7 +3266,6 @@ fun V10PlayerContent(
     val field = textButtonColor
 
     Column(modifier = modifier.fillMaxSize()) {
-
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -3304,6 +3332,14 @@ fun V10PlayerContent(
                     size = 44.dp
                 ) {
                     Icon(painter = painterResource(R.drawable.lyrics), contentDescription = "Lyrics", modifier = Modifier.size(22.dp))
+                }
+                EditorialCircleButton(
+                    onClick = onQueueClick,
+                    accent = accent,
+                    field = field,
+                    size = 44.dp
+                ) {
+                    Icon(painter = painterResource(R.drawable.queue_music), contentDescription = "Queue", modifier = Modifier.size(22.dp))
                 }
                 EditorialCircleButton(
                     onClick = onMenuClick,
@@ -3408,6 +3444,19 @@ fun V10PlayerContent(
                     ),
                 )
             }
+
+            EditorialMetadataRow(
+                album = mediaMetadata.album,
+                currentFormat = currentFormat,
+                accent = accent,
+                onAlbumClick = {
+                    mediaMetadata.album?.let { album ->
+                        state.collapseSoft()
+                        navController.navigate("album/${album.id}")
+                    }
+                },
+                onShowDetails = onShowDetails,
+            )
         }
 
         Spacer(modifier = Modifier.height(4.dp))
@@ -3776,6 +3825,108 @@ private fun V10ToggleButton(
                 modifier = Modifier.size(20.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun EditorialMetadataRow(
+    album: MediaMetadata.Album?,
+    currentFormat: FormatEntity?,
+    accent: Color,
+    onAlbumClick: () -> Unit,
+    onShowDetails: () -> Unit,
+) {
+    val albumTitle = album?.title?.takeIf { it.isNotBlank() }
+    if (albumTitle == null && currentFormat == null) return
+
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (albumTitle != null) {
+            Text(
+                text = albumTitle,
+                style =
+                    MaterialTheme.typography.labelMedium.copy(
+                        fontFamily = FontFamily.Serif,
+                        fontStyle = FontStyle.Italic,
+                    ),
+                color = accent.copy(alpha = 0.6f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                            onClick = onAlbumClick,
+                        ),
+            )
+        }
+
+        if (currentFormat != null) {
+            EditorialCodecBadge(
+                currentFormat = currentFormat,
+                accent = accent,
+                onClick = onShowDetails,
+            )
+        }
+    }
+}
+
+@Composable
+private fun EditorialCodecBadge(
+    currentFormat: FormatEntity,
+    accent: Color,
+    onClick: () -> Unit,
+) {
+    val losslessLabel = stringResource(R.string.quality_badge_lossless)
+    val hiresLabel = stringResource(R.string.quality_badge_hires)
+    val label =
+        remember(currentFormat, losslessLabel, hiresLabel) {
+            val rawCodec =
+                currentFormat.codecs
+                    .ifBlank { currentFormat.mimeType.substringAfter("/") }
+                    .uppercase()
+            val base =
+                when {
+                    rawCodec.contains("FLAC") -> "FLAC"
+                    rawCodec.contains("ALAC") -> "ALAC"
+                    else -> currentFormat.codecLabel()
+                }
+            if (currentFormat.isLossless()) {
+                val hiRes = (currentFormat.sampleRate ?: 0) >= 88_200
+                "$base · ${if (hiRes) hiresLabel else losslessLabel}"
+            } else {
+                base
+            }
+        }
+
+    Box(
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(accent.copy(alpha = 0.12f))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style =
+                MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.sp,
+                ),
+            color = accent.copy(alpha = 0.8f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

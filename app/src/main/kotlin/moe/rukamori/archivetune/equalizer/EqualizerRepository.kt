@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.EqualizerAutoHeadroomEnabledKey
+import moe.rukamori.archivetune.constants.EqualizerBandFreqsKey
 import moe.rukamori.archivetune.constants.EqualizerBandLevelsMbKey
 import moe.rukamori.archivetune.constants.EqualizerBassBoostEnabledKey
 import moe.rukamori.archivetune.constants.EqualizerBassBoostStrengthKey
@@ -84,6 +85,7 @@ class EqualizerRepository
                                 balance = (preferences[EqualizerBalanceKey] ?: 0f).coerceIn(-1f, 1f),
                                 eightDEnabled = preferences[Equalizer8DEnabledKey] ?: false,
                                 eightDSpeedHz = (preferences[Equalizer8DSpeedKey] ?: DEFAULT_8D_SPEED_HZ).coerceIn(0.03f, 0.25f),
+                                bandFreqsHz = decodeLevels(preferences[EqualizerBandFreqsKey]),
                             ),
                         capabilities = null,
                         profiles = profiles,
@@ -98,9 +100,13 @@ class EqualizerRepository
 
         suspend fun setControlMode(mode: EqualizerControlMode) = edit { it[EqualizerControlModeKey] = mode.storageValue }
 
-        suspend fun updateBandLevels(levelsMb: List<Int>) =
+        suspend fun updateBandLevels(
+            levelsMb: List<Int>,
+            freqsHz: List<Int> = emptyList(),
+        ) =
             edit {
                 it[EqualizerBandLevelsMbKey] = EqualizerJson.json.encodeToString(levelsMb)
+                it[EqualizerBandFreqsKey] = EqualizerJson.json.encodeToString(freqsHz)
                 it[EqualizerSelectedProfileIdKey] = MANUAL_PROFILE_ID
             }
 
@@ -232,6 +238,7 @@ class EqualizerRepository
         ) {
             preferences[EqualizerEnabledKey] = true
             preferences[EqualizerBandLevelsMbKey] = EqualizerJson.json.encodeToString(profile.bandLevelsMb)
+            preferences[EqualizerBandFreqsKey] = EqualizerJson.json.encodeToString(profile.bandCenterFreqHz)
             preferences[EqualizerOutputGainMbKey] = profile.outputGainMb.coerceIn(-1500, 1500)
             preferences[EqualizerOutputGainEnabledKey] = profile.outputGainEnabled ?: (profile.outputGainMb != 0)
             preferences[EqualizerBassBoostStrengthKey] = profile.bassBoostStrength.coerceIn(0, 1000)

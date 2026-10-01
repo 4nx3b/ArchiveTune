@@ -56,11 +56,9 @@ object AiRateLimiter {
 
             result
         } catch (e: CancellationException) {
-
             refund(feature, reservedAt)
             throw e
         } catch (e: Throwable) {
-
             refund(feature, reservedAt)
             Log.w(TAG, "${feature.label} call failed; refunded rate-limit slot: ${e.message}")
             throw e

@@ -11,6 +11,7 @@ package moe.rukamori.archivetune.ui.player
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -20,7 +21,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -29,6 +33,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
@@ -55,7 +60,36 @@ import androidx.compose.runtime.setValue
 private const val CanvasPlaybackStallCheckIntervalMs = 1_000L
 private const val CanvasPlaybackStallTimeoutMs = 5_000L
 
+private const val CanvasSyncPublishIntervalMs = 50L
+private const val CanvasSyncCheckIntervalMs = 200L
+
+private const val CanvasSyncRateLockThresholdMs = 80L
+
+// Hard seeks are visible as a jump on the blurred backdrop twin; they should
+// only fire for genuine desyncs (decoder stall, mismatched pause state), not
+// for transient timing jitter between the 50 ms leader publishes and the
+// 200 ms follower checks.
+private const val CanvasSyncSeekThresholdMs = 1_500L
+
+private const val CanvasSyncRateLockSpanMs = 2_000f
+
+private const val CanvasSyncMaxRateLockDelta = 0.03f
+
+// Detach window of the orientation settle cycle: long enough for the two
+// rotated-away canvas decoders to be released and the fresh decoder to finish
+// preparing off-surface, short enough to hide inside the twin's own 300 ms
+// first-frame fade-in.
+private const val CanvasOrientationCycleMs = 150L
+
 val LocalPlayerSheetVisible = staticCompositionLocalOf { true }
+
+class CanvasLoopSync {
+    @Volatile
+    var leaderSource: String? = null
+
+    @Volatile
+    var leaderPositionMs: Long = Long.MIN_VALUE
+}
 
 @Composable
 fun CanvasArtworkPlayer(
@@ -70,6 +104,26 @@ fun CanvasArtworkPlayer(
     maxVideoEdgePx: Int? = null,
 
     onPlaybackAvailabilityChange: ((available: Boolean) -> Unit)? = null,
+
+    loopSyncLeader: CanvasLoopSync? = null,
+
+    loopSyncFollower: CanvasLoopSync? = null,
+
+    onFirstFrameRendered: (() -> Unit)? = null,
+
+    /**
+     * Bump to force one detach -> settle -> re-attach surface cycle. Used by
+     * the AM player's blurred backdrop twin on orientation change: rotation
+     * recreates the whole player subtree (the two canvas ExoPlayers are
+     * released and rebuilt within the same frame) WITHOUT the surface cycle a
+     * minimise/maximise performs, and the twin created mid-codec-churn then
+     * rendered a laggy blurred canvas behind the bottom controls until the
+     * user manually recycled the player. The cycle replicates that heal:
+     * surface detaches for [CanvasOrientationCycleMs] (the decoder keeps
+     * preparing in the background), then re-attaches with a fresh first-frame
+     * pass and the loop-sync re-seek on STATE_READY.
+     */
+    refreshEpoch: Int = 0,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -84,11 +138,22 @@ fun CanvasArtworkPlayer(
     var isVideoReady by remember(initial) { mutableStateOf(false) }
     var hasPlaybackFailed by remember(initial) { mutableStateOf(false) }
 
+    var videoDisplayAspectRatio by remember(initial) { mutableStateOf<Float?>(null) }
+
     val sheetVisible = LocalPlayerSheetVisible.current
     val playbackActive = isPlaying && sheetVisible
     val contentVisible = visible && sheetVisible
     val shouldPlay by rememberUpdatedState(playbackActive)
     val reportAvailability by rememberUpdatedState(onPlaybackAvailabilityChange)
+
+    var surfaceCycleActive by remember { mutableStateOf(false) }
+    LaunchedEffect(refreshEpoch) {
+        if (refreshEpoch <= 0) return@LaunchedEffect
+        surfaceCycleActive = true
+        delay(CanvasOrientationCycleMs)
+        surfaceCycleActive = false
+    }
+    val effectiveContentVisible = contentVisible && !surfaceCycleActive
 
     val okHttpClient =
         remember {
@@ -202,9 +267,65 @@ fun CanvasArtworkPlayer(
         }
     }
 
-    LaunchedEffect(contentVisible) {
-        if (contentVisible) {
+    LaunchedEffect(effectiveContentVisible) {
+        if (effectiveContentVisible) {
             isVideoReady = false
+        }
+    }
+
+    if (loopSyncLeader != null) {
+        LaunchedEffect(exoPlayer, currentUrl) {
+            while (isActive) {
+                loopSyncLeader.leaderSource = currentUrl
+                loopSyncLeader.leaderPositionMs = exoPlayer.currentPosition
+                delay(CanvasSyncPublishIntervalMs)
+            }
+        }
+    }
+
+    if (loopSyncFollower != null) {
+        LaunchedEffect(exoPlayer, currentUrl, hasPlaybackFailed) {
+            while (isActive) {
+                if (
+                    !hasPlaybackFailed &&
+                    exoPlayer.playbackState == Player.STATE_READY &&
+                    exoPlayer.playerError == null
+                ) {
+                    val target = loopSyncFollower.leaderPositionMs
+                    if (
+                        target != Long.MIN_VALUE &&
+                        loopSyncFollower.leaderSource == currentUrl
+                    ) {
+                        val errorMs = target - exoPlayer.currentPosition
+                        val currentSpeed = exoPlayer.playbackParameters.speed
+                        when {
+                            kotlin.math.abs(errorMs) > CanvasSyncSeekThresholdMs -> {
+                                exoPlayer.seekTo(target.coerceAtLeast(0L))
+                                if (currentSpeed != 1f) exoPlayer.setPlaybackSpeed(1f)
+                            }
+
+                            kotlin.math.abs(errorMs) > CanvasSyncRateLockThresholdMs -> {
+                                val speed =
+                                    (1f + errorMs / CanvasSyncRateLockSpanMs)
+                                        .coerceIn(
+                                            1f - CanvasSyncMaxRateLockDelta,
+                                            1f + CanvasSyncMaxRateLockDelta,
+                                        )
+                                if (kotlin.math.abs(speed - currentSpeed) > 0.0005f) {
+                                    exoPlayer.setPlaybackSpeed(speed)
+                                }
+                            }
+
+                            else -> {
+                                if (kotlin.math.abs(1f - currentSpeed) > 0.0005f) {
+                                    exoPlayer.setPlaybackSpeed(1f)
+                                }
+                            }
+                        }
+                    }
+                }
+                delay(CanvasSyncCheckIntervalMs)
+            }
         }
     }
 
@@ -253,6 +374,11 @@ fun CanvasArtworkPlayer(
                 ) {
                     exoPlayer.setCanvasPlayback(shouldPlay)
                 }
+                if (event == Lifecycle.Event.ON_STOP) {
+
+                    runCatching { exoPlayer.setVideoSurface(null) }
+                    runCatching { exoPlayer.stop() }
+                }
             }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
@@ -282,15 +408,65 @@ fun CanvasArtworkPlayer(
 
                 override fun onRenderedFirstFrame() {
                     isVideoReady = true
+                    onFirstFrameRendered?.invoke()
                     reportAvailability?.invoke(true)
                     if (shouldPlay && !hasPlaybackFailed && exoPlayer.playerError == null) {
                         exoPlayer.setCanvasPlayback(isPlaying = true)
                     }
                 }
 
+                override fun onVideoSizeChanged(videoSize: VideoSize) {
+                    val width = videoSize.width
+                    val height = videoSize.height
+                    videoDisplayAspectRatio =
+                        if (width > 0 && height > 0) {
+                            val par = videoSize.pixelWidthHeightRatio
+                            (width.toFloat() * (if (par > 0f) par else 1f)) / height.toFloat()
+                        } else {
+                            null
+                        }
+                }
+
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (!shouldPlay || hasPlaybackFailed || exoPlayer.playerError != null) return
                     exoPlayer.setCanvasPlayback(isPlaying = true)
+
+                    if (playbackState == Player.STATE_READY && loopSyncFollower != null) {
+                        val target = loopSyncFollower.leaderPositionMs
+                        if (
+                            target != Long.MIN_VALUE &&
+                            loopSyncFollower.leaderSource == currentUrl
+                        ) {
+                            exoPlayer.seekTo(target.coerceAtLeast(0L))
+                        }
+                    }
+                }
+
+                override fun onPositionDiscontinuity(
+                    oldPosition: Player.PositionInfo,
+                    newPosition: Player.PositionInfo,
+                    reason: Int,
+                ) {
+                    if (reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION) return
+                    when {
+
+                        loopSyncLeader != null -> {
+                            loopSyncLeader.leaderSource = currentUrl
+                            loopSyncLeader.leaderPositionMs = exoPlayer.currentPosition
+                        }
+
+                        loopSyncFollower != null -> {
+                            val target = loopSyncFollower.leaderPositionMs
+                            if (
+                                target != Long.MIN_VALUE &&
+                                loopSyncFollower.leaderSource == currentUrl &&
+                                kotlin.math.abs(newPosition.positionMs - target) >
+                                    CanvasSyncRateLockThresholdMs
+                            ) {
+                                exoPlayer.seekTo(target.coerceAtLeast(0L))
+                            }
+                        }
+                    }
                 }
 
                 override fun onPlayWhenReadyChanged(
@@ -316,6 +492,7 @@ fun CanvasArtworkPlayer(
         val normalized = currentUrl.trim()
         isVideoReady = false
         hasPlaybackFailed = false
+        videoDisplayAspectRatio = null
 
         reportAvailability?.invoke(false)
         val lowercaseUrl = normalized.lowercase(Locale.ROOT)
@@ -353,17 +530,70 @@ fun CanvasArtworkPlayer(
         label = "canvasAlpha",
     )
 
-    if (contentVisible) {
-        ContentFrame(
-            player = exoPlayer,
-            surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-            contentScale = resizeMode.toContentScale(),
-            keepContentOnReset = false,
-            shutter = {},
-            modifier = modifier.alpha(alpha),
-        )
+    val aspect = videoDisplayAspectRatio
+    if (effectiveContentVisible) {
+        if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM && aspect != null && aspect > 0f) {
+
+            Box(modifier = modifier.clipToBounds()) {
+                ContentFrame(
+                    player = exoPlayer,
+                    surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+                    contentScale = resizeMode.toContentScale(),
+                    keepContentOnReset = false,
+                    shutter = {},
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .alpha(alpha)
+                            .canvasCoverLayout(aspect),
+                )
+            }
+        } else {
+            ContentFrame(
+                player = exoPlayer,
+                surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+                contentScale = resizeMode.toContentScale(),
+                keepContentOnReset = false,
+                shutter = {},
+                modifier = modifier.alpha(alpha),
+            )
+        }
     }
 }
+
+private fun Modifier.canvasCoverLayout(videoAspect: Float): Modifier =
+    layout { measurable, constraints ->
+        val containerWidth = constraints.maxWidth
+        val containerHeight = constraints.maxHeight
+        if (containerWidth <= 0 || containerHeight <= 0) {
+            val placeable = measurable.measure(constraints)
+            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+        } else {
+            val containerAspect = containerWidth.toFloat() / containerHeight.toFloat()
+            val targetWidth: Int
+            val targetHeight: Int
+            if (videoAspect >= containerAspect) {
+                targetHeight = containerHeight
+                targetWidth = (containerHeight.toFloat() * videoAspect + 0.5f).toInt().coerceAtLeast(containerWidth)
+            } else {
+                targetWidth = containerWidth
+                targetHeight = (containerWidth.toFloat() / videoAspect + 0.5f).toInt().coerceAtLeast(containerHeight)
+            }
+            val placeable =
+                measurable.measure(
+                    Constraints.fixed(
+                        targetWidth.coerceAtLeast(1),
+                        targetHeight.coerceAtLeast(1),
+                    )
+                )
+            layout(containerWidth, containerHeight) {
+                placeable.place(
+                    -((targetWidth - containerWidth) / 2),
+                    -((targetHeight - containerHeight) / 2),
+                )
+            }
+        }
+    }
 
 private fun Int.toContentScale(): ContentScale =
     when (this) {

@@ -44,8 +44,6 @@ import moe.rukamori.archivetune.spotify.SPOTIFY_LIKED_SONGS_ID
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 import moe.rukamori.archivetune.ui.utils.resize
-import moe.rukamori.archivetune.utils.joinByBullet
-import moe.rukamori.archivetune.utils.makeTimeString
 import androidx.compose.runtime.getValue
 
 @Composable
@@ -56,7 +54,6 @@ fun SpotifyLibraryPlaylistListItem(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(26.dp),
 ) {
-
     val libraryPlaylist = remember(playlist) { playlist.toLibraryPlaylist() }
     val openPlaylist = {
         navController.navigate("spotify_playlist/${playlist.id}")
@@ -132,7 +129,6 @@ fun SpotifyLikedSongsListItem(
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
-
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -202,16 +198,8 @@ fun SpotifyTrackListItem(
     showSongIconPlaceholder: Boolean = true,
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
-    val duration =
-        track.durationMs
-            .takeIf { it > 0 }
-            ?.toLong()
-            ?.let(::makeTimeString)
-    val subtitle =
-        joinByBullet(
-            track.artists.joinToString { it.name },
-            duration,
-        )
+
+    val subtitle = track.artists.joinToString { it.name }.takeIf { it.isNotBlank() }
 
     ListItem(
         title = track.name,

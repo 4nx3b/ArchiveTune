@@ -82,8 +82,6 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.cast.CastScreenState
 import moe.rukamori.archivetune.cast.CastUiState
 import moe.rukamori.archivetune.cast.CastViewModel
-import moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop
-import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import com.kyant.backdrop.Backdrop
@@ -98,9 +96,6 @@ fun rememberCastPlayerMenuAction(renderSheet: Boolean = true): NewAction? {
     val screenState by viewModel.screenState.collectAsStateWithLifecycle()
     val isRoutePickerVisible by viewModel.isRoutePickerVisible.collectAsStateWithLifecycle()
     val routePickerState by routePickerViewModel.screenState.collectAsStateWithLifecycle()
-    val menuState = LocalMenuState.current
-
-    val rootGlassHandlesPicker = LocalMenuGlassBackdrop.current != null
     val permissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
@@ -110,7 +105,11 @@ fun rememberCastPlayerMenuAction(renderSheet: Boolean = true): NewAction? {
     val castState = (screenState as? CastScreenState.Success)?.uiState ?: return null
     if (!castState.isAvailable) return null
 
-    if (renderSheet && !rootGlassHandlesPicker && isRoutePickerVisible) {
+    // The route-picker sheet must render whenever it is visible. The old
+    // "!rootGlassHandlesPicker" guard assumed a glass overlay host would draw
+    // the picker in liquid-glass mode, but that overlay was never composed
+    // anywhere — so with glass enabled the cast button opened NOTHING.
+    if (renderSheet && isRoutePickerVisible) {
         CastRoutePickerBottomSheet(
             castState = castState,
             screenState = routePickerState,
@@ -138,12 +137,11 @@ fun rememberCastPlayerMenuAction(renderSheet: Boolean = true): NewAction? {
     val text = stringResource(R.string.cast)
     val castIconRes = if (castState.isConnected) R.drawable.cast_connected else R.drawable.cast
     val onCastClick =
-        remember(context, permissionLauncher, viewModel, menuState, rootGlassHandlesPicker) {
+        remember(context, permissionLauncher, viewModel) {
             {
-
-                if (rootGlassHandlesPicker) {
-                    menuState.dismiss()
-                }
+                // The picker sheet renders above everything whenever visible, so
+                // the menu underneath no longer needs to be torn down first
+                // (dismissing it used to destroy the sheet with it in glass mode).
                 val permission = castDiscoveryPermission()
                 if (
                     permission == null ||

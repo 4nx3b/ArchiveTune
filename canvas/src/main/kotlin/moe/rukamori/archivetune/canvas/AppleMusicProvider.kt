@@ -105,6 +105,12 @@ object AppleMusicProvider {
     private const val APPLE_MUSIC_WEB_HOME = "https://music.apple.com/"
     private const val AMP_BASE_URL = "https://amp-api.music.apple.com"
     private const val CACHE_TTL_MS = 1000L * 60 * 60 * 24
+
+    // Misses get a much shorter TTL than hits: a canvas that did not exist is
+    // unlikely to appear mid-session, while retrying the same album over the
+    // network on every queue prefetch measurably drains battery and churns
+    // allocations (the same ids were observed re-fetching 5+ times a minute).
+    private const val NEGATIVE_CACHE_TTL_MS = 1000L * 60 * 15
     private const val APPLE_MUSIC_WEB_UA =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
 
@@ -138,6 +144,15 @@ object AppleMusicProvider {
      */
     suspend fun currentDevToken(): String? = ensureTokenFresh()?.trim()?.takeIf { it.isNotBlank() }
 
+    /** Non-suspend access to the last scraped web token, when it is still unexpired. */
+    fun cachedScrapedDevToken(): String? {
+        val token = appleMusicToken.trim()
+        if (token.isBlank()) return null
+        val expSec = appleMusicTokenExpAtSec
+        if (expSec != 0L && expSec <= System.currentTimeMillis() / 1000L) return null
+        return token
+    }
+
     suspend fun refreshToken(): String? =
         tokenRefreshMutex.withLock {
             appleMusicTokenLastRefreshAtMs = System.currentTimeMillis()
@@ -154,7 +169,12 @@ object AppleMusicProvider {
 
     private suspend fun ensureTokenFresh(): String {
         devTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { userDevToken ->
-            return userDevToken
+            val expSec = decodeJwtExpSec(userDevToken)
+            val nowSec = System.currentTimeMillis() / 1000L
+            if (expSec == 0L || expSec > nowSec) {
+                return userDevToken
+            }
+            Log.w("Apple Music user dev token expired (exp=${expSec}s) — falling back to the refreshed web token")
         }
         val nowSec = System.currentTimeMillis() / 1000L
         val isExpired = appleMusicTokenExpAtSec == 0L || appleMusicTokenExpAtSec <= nowSec
@@ -365,11 +385,14 @@ object AppleMusicProvider {
         artist: String,
         storefront: String = "us",
     ): CanvasArtwork? {
-        Log.d("getByAlbumArtist: album='$album', artist='$artist'")
         val key = cacheKey("sa", album, artist, storefront)
         cache[key]?.takeIf { it.expiresAtMs > System.currentTimeMillis() }?.let { return it.value }
         val result = searchAndFetchMotion(album, artist, album, storefront, "albums")
-        if (result != null) cache[key] = CacheEntry(result, System.currentTimeMillis() + CACHE_TTL_MS)
+        cache[key] =
+            CacheEntry(
+                result,
+                System.currentTimeMillis() + if (result != null) CACHE_TTL_MS else NEGATIVE_CACHE_TTL_MS,
+            )
         return result
     }
 
@@ -387,7 +410,11 @@ object AppleMusicProvider {
             cache[key]?.takeIf { it.expiresAtMs > System.currentTimeMillis() }?.let { return it.value }
         }
         val result = searchAndFetchMotion(song, artist, album, storefront, "songs", forceRefresh)
-        if (result != null) cache[key] = CacheEntry(result, System.currentTimeMillis() + CACHE_TTL_MS)
+        cache[key] =
+            CacheEntry(
+                result,
+                System.currentTimeMillis() + if (result != null) CACHE_TTL_MS else NEGATIVE_CACHE_TTL_MS,
+            )
         return result
     }
 
@@ -401,6 +428,121 @@ object AppleMusicProvider {
         cache[key] = CacheEntry(result, System.currentTimeMillis() + CACHE_TTL_MS)
         return result
     }
+
+    /**
+     * The artist's OWN motion artwork — the looping video that only ever appears on
+     * the artist page (Apple Music `editorialVideo.motionArtistFullscreen16x9` /
+     * `motionArtistSquare1x1`). Distinct from any album canvas of the same artist.
+     */
+    suspend fun getByArtistName(
+        artist: String,
+        storefront: String = "us",
+    ): CanvasArtwork? {
+        if (artist.isBlank()) return null
+        val key = cacheKey("artist", artist, storefront)
+        cache[key]?.takeIf { it.expiresAtMs > System.currentTimeMillis() }?.let { return it.value }
+        val result = searchArtistMotion(artist, storefront)
+        cache[key] = CacheEntry(result, System.currentTimeMillis() + CACHE_TTL_MS)
+        return result
+    }
+
+    private suspend fun searchArtistMotion(
+        artist: String,
+        storefront: String,
+    ): CanvasArtwork? =
+        runCatching {
+            val effectiveStorefront = if (storefront == "us") resolveStorefront() else storefront
+            val searchUrl = "$AMP_BASE_URL/v1/catalog/$effectiveStorefront/search"
+            var token = ensureTokenFresh()
+            var response =
+                client.get(searchUrl) {
+                    header("Authorization", "Bearer $token")
+                    mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { mt -> header("Media-User-Token", mt) }
+                    header("Origin", "https://music.apple.com")
+                    header("Referer", "https://music.apple.com/")
+                    header("User-Agent", APPLE_MUSIC_WEB_UA)
+                    parameter("term", artist)
+                    parameter("types", "artists")
+                    parameter("limit", "5")
+                    parameter("extend", "editorialVideo")
+                }
+            if (response.status == HttpStatusCode.Unauthorized) {
+                Log.w("artist search returned 401 — force-refreshing token and retrying once")
+                token = refreshToken() ?: token
+                response =
+                    client.get(searchUrl) {
+                        header("Authorization", "Bearer $token")
+                        mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { mt -> header("Media-User-Token", mt) }
+                        header("Origin", "https://music.apple.com")
+                        header("Referer", "https://music.apple.com/")
+                        header("User-Agent", APPLE_MUSIC_WEB_UA)
+                        parameter("term", artist)
+                        parameter("types", "artists")
+                        parameter("limit", "5")
+                        parameter("extend", "editorialVideo")
+                    }
+            }
+            if (response.status != HttpStatusCode.OK) {
+                Log.w("artist search failed with status ${response.status}")
+                return@runCatching null
+            }
+
+            val data =
+                response.body<JsonObject>()["results"]
+                    ?.jsonObject
+                    ?.get("artists")
+                    ?.jsonObject
+                    ?.get("data")
+                    ?.jsonArray
+                    ?: return@runCatching null
+
+            for (item in data) {
+                val obj = item.jsonObject
+                val attributes = obj["attributes"]?.jsonObject ?: continue
+                val name = attributes["name"]?.jsonPrimitive?.contentOrNull ?: continue
+                if (!name.equals(artist, ignoreCase = true) && normalized(name) != normalized(artist)) continue
+
+                val ev = attributes["editorialVideo"]?.jsonObject ?: continue
+                val urls = extractArtistMotionUrls(ev) ?: continue
+                Log.d("found artist motion artwork for $name (id ${obj["id"]})")
+                return@runCatching CanvasArtwork(
+                    name = name,
+                    artist = name,
+                    albumId = obj["id"]?.jsonPrimitive?.contentOrNull,
+                    albumName = name,
+                    animated = urls.fullscreen,
+                    animatedVertical = urls.square,
+                    videoUrl = urls.square ?: urls.wide,
+                    videoUrlVertical = urls.square,
+                    provider = CanvasArtwork.PROVIDER_APPLE_MUSIC,
+                )
+            }
+            Log.d("no artist motion artwork for $artist")
+            null
+        }.onFailure {
+            if (it is CancellationException) throw it
+            Log.e(it, "error in searchArtistMotion for $artist")
+        }.getOrNull()
+
+    private fun extractArtistMotionUrls(ev: JsonObject): ArtistMotionUrls? {
+        fun JsonObject.videoUrl(): String? =
+            this["video"]?.jsonPrimitive?.contentOrNull
+                ?: this["videoUrl"]?.jsonPrimitive?.contentOrNull
+                ?: this["hlsUrl"]?.jsonPrimitive?.contentOrNull
+
+        val fullscreen =
+            ev["motionArtistFullscreen16x9"]?.jsonObject?.videoUrl()
+                ?: ev["motionArtistWide16x9"]?.jsonObject?.videoUrl()
+        val square = ev["motionArtistSquare1x1"]?.jsonObject?.videoUrl()
+        val wide = ev["motionArtistWide16x9"]?.jsonObject?.videoUrl()
+        if (fullscreen.isNullOrBlank() && square.isNullOrBlank() && wide.isNullOrBlank()) {
+            Log.d("artist editorialVideo present but no motion video: ${ev.keys}")
+            return null
+        }
+        return ArtistMotionUrls(fullscreen = fullscreen, square = square, wide = wide)
+    }
+
+    private fun normalized(value: String): String = value.trim().lowercase(Locale.ROOT)
 
     suspend fun diagnose(
         song: String,
@@ -686,7 +828,7 @@ object AppleMusicProvider {
                 }
             }
 
-            Log.d("no editorialVideo for $albumId (available keys: ${attributes?.keys})")
+            Log.d("no editorialVideo for $albumId")
             null
         }.onFailure {
             if (it is CancellationException) throw it
@@ -805,6 +947,12 @@ object AppleMusicProvider {
     private data class EditorialVideoUrls(
         val animated: String?,
         val animatedVertical: String?,
+    )
+
+    private data class ArtistMotionUrls(
+        val fullscreen: String?,
+        val square: String?,
+        val wide: String?,
     )
 
     private fun extractEditorialVideoUrls(ev: JsonObject): EditorialVideoUrls {

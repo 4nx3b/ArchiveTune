@@ -13,7 +13,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
@@ -37,7 +36,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.FormatEntity
-import java.util.Locale
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -51,7 +49,6 @@ fun LosslessOrStats(
     val hiRes = lossless && (format?.sampleRate ?: 0) >= 88_200
     val hiQuality = !lossless && (format?.bitrate ?: 0) >= 250_000
     when {
-
         format == null || (isLoading && !lossless) -> LosslessLabel(
             text = "Upgrading Quality",
             animated = false,
@@ -63,8 +60,7 @@ fun LosslessOrStats(
             text = if (hiRes) "Hi-Res Lossless" else "Lossless",
 
             animated = true,
-            // The user-supplied lossless glyph: the Apple-style sawtooth wave
-            // marks every lossless stream in the quality pill.
+
             iconRes = R.drawable.ic_lossless_wave,
             modifier = modifier,
         )
@@ -82,15 +78,6 @@ fun LosslessOrStats(
 private fun FormatEntity.isLossless(): Boolean =
     mimeType.endsWith("flac") || mimeType.endsWith("alac")
 
-/**
- * The quality badge the player styles render over their artwork areas:
- * the lossless glyph plus the label, in the translucent-white convention
- * this file already uses. Every state now carries the lossless sawtooth
- * wave (the "Upgrading" / "Hi-Quality" states used a headphones glyph
- * before; the pill stays on one icon family). [animated] runs the label
- * through the shimmer sweep (the lossless / hi-res states), so an active
- * badge reads as live instead of a static caption.
- */
 @Composable
 private fun LosslessLabel(
     text: String,

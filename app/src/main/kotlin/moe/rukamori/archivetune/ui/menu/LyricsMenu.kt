@@ -7,6 +7,8 @@
 
 package moe.rukamori.archivetune.ui.menu
 
+import moe.rukamori.archivetune.ui.component.LocalLiquidGlassTuning
+import androidx.activity.compose.BackHandler
 import android.app.SearchManager
 import android.content.Intent
 import android.content.res.Configuration
@@ -43,6 +45,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -177,6 +180,27 @@ fun LyricsMenu(
     val isRefetching by viewModel.isRefetching.collectAsStateWithLifecycle()
     val coroutineScope = rememberCoroutineScope()
 
+    val exportLyricsText = lyricsProvider()?.lyrics.orEmpty()
+    val exportFormat = remember(exportLyricsText) { detectLyricsExportFormat(exportLyricsText) }
+    val exportFileBase = remember(exportFormat) {
+        val metadata = mediaMetadataProvider()
+        sanitizeExportFileBase("${metadata.artists.joinToString(", ") { it.name }} - ${metadata.title}")
+    }
+
+    fun launchExportLyrics() {
+        val payload = lyricsProvider()?.lyrics.orEmpty()
+        if (payload.isBlank()) {
+            Toast.makeText(context, R.string.export_lyrics_failed, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val fileName = "${exportFileBase}.${exportFormat.extension}"
+        val mime = when (exportFormat) {
+            LyricsExportFormat.TTML -> moe.rukamori.archivetune.utils.LyricsExportCoordinator.MIME_XML
+            LyricsExportFormat.LRC, LyricsExportFormat.PLAIN -> moe.rukamori.archivetune.utils.LyricsExportCoordinator.MIME_TEXT
+        }
+        moe.rukamori.archivetune.utils.LyricsExportCoordinator.request(context, payload, fileName, mime)
+    }
+
     LaunchedEffect(viewModel) {
         viewModel.refetchCompletionEvents.collect {
             onDismiss()
@@ -186,7 +210,7 @@ fun LyricsMenu(
     if (showEditDialog) {
         TextFieldDialog(
             onDismiss = { showEditDialog = false },
-            icon = { Icon(painter = painterResource(R.drawable.edit), contentDescription = null) },
+            icon = { Icon(painter = painterResource(R.drawable.solar_pen_linear), contentDescription = null) },
             title = { Text(text = mediaMetadataProvider().title) },
             initialTextFieldValue = TextFieldValue(lyricsProvider()?.lyrics.orEmpty()),
             singleLine = false,
@@ -369,7 +393,7 @@ fun LyricsMenu(
                 showLyricsSyncOffsetDialog = false
             },
             icon = {
-                Icon(painter = painterResource(R.drawable.speed), contentDescription = null)
+                Icon(painter = painterResource(R.drawable.solar_speed), contentDescription = null)
             },
             title = { Text(stringResource(R.string.lyrics_sync_offset)) },
             buttons = {
@@ -380,22 +404,22 @@ fun LyricsMenu(
                     Text(stringResource(R.string.reset))
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                TextButton(
+                OutlinedButton(
                     onClick = {
                         tempLyricsSyncOffset = lyricsSyncOffset.toFloat()
                         showLyricsSyncOffsetDialog = false
                     },
-                    shapes = ButtonDefaults.shapes(),
+                    shape = RoundedCornerShape(18.dp),
                 ) {
                     Text(stringResource(android.R.string.cancel))
                 }
-                TextButton(
+                FilledTonalButton(
                     onClick = {
                         onLyricsSyncOffsetChange(tempLyricsSyncOffset.roundToInt())
                         showLyricsSyncOffsetDialog = false
                         onDismiss()
                     },
-                    shapes = ButtonDefaults.shapes(),
+                    shape = RoundedCornerShape(18.dp),
                 ) {
                     Text(stringResource(android.R.string.ok))
                 }
@@ -493,25 +517,42 @@ fun LyricsMenu(
                     .imePadding(),
         ) {
             Surface(
-                shape = AlertDialogDefaults.shape,
+                shape = MaterialTheme.shapes.extraLarge,
                 color = AlertDialogDefaults.containerColor,
                 tonalElevation = AlertDialogDefaults.TonalElevation,
                 modifier = Modifier.widthIn(max = 560.dp),
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
-                    Icon(
-                        painter = painterResource(R.drawable.translate),
-                        contentDescription = null,
-                        tint = AlertDialogDefaults.iconContentColor,
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        text = stringResource(R.string.translate),
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = AlertDialogDefaults.titleContentColor,
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                            modifier = Modifier.size(34.dp),
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.translate),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                        Text(
+                            text = stringResource(R.string.translate),
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = AlertDialogDefaults.titleContentColor,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                     Spacer(Modifier.height(16.dp))
                     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                         OutlinedTextField(
@@ -634,10 +675,10 @@ fun LyricsMenu(
                     Spacer(Modifier.height(24.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TextButton(
+                        OutlinedButton(
                             onClick = {
                                 translationJob?.cancel()
                                 translationJob = null
@@ -648,7 +689,7 @@ fun LyricsMenu(
                                 isDialogAiTranslationRunning = false
                                 showTranslateDialog = false
                             },
-                            shapes = ButtonDefaults.shapes(),
+                            shape = RoundedCornerShape(18.dp),
                         ) {
                             Text(stringResource(android.R.string.cancel))
                         }
@@ -722,7 +763,7 @@ fun LyricsMenu(
                                     }
                                 }
                             },
-                            shapes = ButtonDefaults.shapes(),
+                            shape = RoundedCornerShape(18.dp),
                         ) {
                             if (isTranslationInProgress) {
                                 LoadingIndicator(modifier = Modifier.size(18.dp))
@@ -747,7 +788,6 @@ fun LyricsMenu(
             ),
     ) {
         item {
-
             val lyricsText = lyricsProvider()?.lyrics.orEmpty()
             val menuItems: List<AppleMusicLyricsMenuItem> =
                 listOf(
@@ -787,7 +827,6 @@ fun LyricsMenu(
                         isDestructive = false,
                         enabled = isAiRomanizationEnabled,
                         onClick = {
-
                             val status = AiLyricsRomanization.request(
                                 sessionKey =
                                     AiLyricsRomanization.sessionKey(
@@ -829,6 +868,14 @@ fun LyricsMenu(
                         isDestructive = false,
                         enabled = true,
                         onClick = { showSearchDialog = true },
+                    ),
+
+                    AppleMusicLyricsMenuItem(
+                        label = stringResource(R.string.export_lyrics),
+                        iconRes = R.drawable.download,
+                        isDestructive = false,
+                        enabled = lyricsText.isNotBlank(),
+                        onClick = { launchExportLyrics() },
                     ),
                 )
 
@@ -1036,16 +1083,16 @@ private fun LyricsSearchResultHeader(
             horizontalArrangement = rowArrangement,
         ) {
             Surface(
-                modifier = Modifier.size(56.dp),
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.size(34.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.28f),
             ) {
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                     Icon(
-                        painter = painterResource(R.drawable.manage_search),
+                        painter = painterResource(R.drawable.solar_magnifer_linear),
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.size(30.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
@@ -1053,6 +1100,7 @@ private fun LyricsSearchResultHeader(
                 Text(
                     text = stringResource(R.string.search_lyrics),
                     style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1078,7 +1126,7 @@ private fun LyricsSearchResultHeader(
                     modifier = Modifier.size(48.dp),
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.cached),
+                        painter = painterResource(R.drawable.solar_replay_linear),
                         contentDescription = stringResource(R.string.refetch),
                         tint = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
@@ -1089,7 +1137,7 @@ private fun LyricsSearchResultHeader(
                 modifier = Modifier.size(48.dp),
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.close),
+                    painter = painterResource(R.drawable.solar_close_circle_linear),
                     contentDescription = stringResource(R.string.close),
                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
@@ -1245,16 +1293,16 @@ private fun LyricsSearchTypeIcon(
         }
 
     Surface(
-        shape = MaterialTheme.shapes.extraLarge,
+        shape = CircleShape,
         color = containerColor,
-        modifier = Modifier.size(48.dp),
+        modifier = Modifier.size(36.dp),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 painter = painterResource(icon),
                 contentDescription = null,
                 tint = contentColor,
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(18.dp),
             )
         }
     }
@@ -1299,7 +1347,7 @@ private fun LyricsSearchMetadataPill(
 
     Surface(
         modifier = modifier,
-        shape = MaterialTheme.shapes.large,
+        shape = RoundedCornerShape(14.dp),
         color = containerColor,
     ) {
         Row(
@@ -1512,7 +1560,7 @@ private fun SearchLyricsInputDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            shape = AlertDialogDefaults.shape,
+            shape = MaterialTheme.shapes.extraLarge,
             color = AlertDialogDefaults.containerColor,
             tonalElevation = AlertDialogDefaults.TonalElevation,
             modifier =
@@ -1552,10 +1600,29 @@ private fun LyricsSearchInputHeader(onDismiss: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+            modifier = Modifier.size(34.dp),
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.solar_magnifer_linear),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
         Text(
             text = stringResource(R.string.search_lyrics),
             style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
             color = AlertDialogDefaults.titleContentColor,
             modifier = Modifier.weight(1f),
         )
@@ -1565,7 +1632,7 @@ private fun LyricsSearchInputHeader(onDismiss: () -> Unit) {
             shape = MaterialTheme.shapes.medium,
         ) {
             Icon(
-                painter = painterResource(R.drawable.close),
+                painter = painterResource(R.drawable.solar_close_circle_linear),
                 contentDescription = stringResource(R.string.close),
             )
         }
@@ -1652,7 +1719,7 @@ private fun LyricsSearchTextField(
                 null
             },
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
+        shape = RoundedCornerShape(14.dp),
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
     )
@@ -1674,9 +1741,10 @@ private fun LyricsSearchInputActions(
         OutlinedButton(
             onClick = onSearchOnline,
             contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+            shape = RoundedCornerShape(18.dp),
         ) {
             Icon(
-                painter = painterResource(R.drawable.language),
+                painter = painterResource(R.drawable.solar_magnifer_linear),
                 contentDescription = null,
                 modifier = Modifier.size(ButtonDefaults.IconSize),
             )
@@ -1687,9 +1755,10 @@ private fun LyricsSearchInputActions(
         Button(
             onClick = onSearch,
             contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+            shape = RoundedCornerShape(18.dp),
         ) {
             Icon(
-                painter = painterResource(R.drawable.search),
+                painter = painterResource(R.drawable.solar_magnifer_linear),
                 contentDescription = null,
                 modifier = Modifier.size(ButtonDefaults.IconSize),
             )
@@ -1713,7 +1782,6 @@ private fun AppleMusicLyricsMenuRow(
     item: AppleMusicLyricsMenuItem,
     modifier: Modifier = Modifier,
 ) {
-
     val headlineColor =
         if (item.isDestructive) {
             Color(0xFFFF453A)
@@ -1769,11 +1837,15 @@ fun AnchoredLyricsOverflowMenu(
     onLyricsSyncOffsetChange: (Int) -> Unit,
     onDismiss: () -> Unit,
     viewModel: LyricsMenuViewModel = hiltViewModel(),
-    backdrop: PlatformBackdrop? = null,
+    backdrop: com.kyant.backdrop.Backdrop? = null,
 
     scrimColor: Color = Color.Black.copy(alpha = 0.45f),
 ) {
     var dismissed by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = !dismissed) {
+        dismissed = true
+    }
 
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
@@ -1782,7 +1854,6 @@ fun AnchoredLyricsOverflowMenu(
     val alphaAnim = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
-
         if (dismissed) return@LaunchedEffect
 
         val scaleJob = scope.launch {
@@ -1843,20 +1914,21 @@ fun AnchoredLyricsOverflowMenu(
             iconBoundsInRoot.bottom + verticalOffsetPx + neededHeightPx > anchorSpaceHeightPx
     }
 
-    val frostedBlurModifier = remember(backdrop) {
+    val glassTuning = LocalLiquidGlassTuning.current
+    val frostedBlurModifier = remember(backdrop, glassTuning) {
         if (backdrop != null) {
             Modifier.drawBackdrop(
                 backdrop = backdrop,
                 effects = {
-                    // SpatialFlow-style vivid bleed + liquid edge refraction;
-                    // 32dp -> 20dp blur pays for the lens pass (net GPU savings).
-                    colorControls(saturation = 1.7f)
+                    colorControls(saturation = glassTuning.saturation)
 
-                    blur(20f.dp.toPx())
+                    blur((20f * glassTuning.blurFactor).dp.toPx())
 
                     lens(
-                        refractionHeight = 16f.dp.toPx(),
-                        refractionAmount = 40f.dp.toPx(),
+                        refractionHeight = (16f * glassTuning.refractionHeightFactor).dp.toPx(),
+                        refractionAmount = (40f * glassTuning.refractionAmountFactor).dp.toPx(),
+                        depthEffect = glassTuning.depth3D,
+                        chromaticAberration = glassTuning.chromaticAberration,
                     )
                 },
                 onDrawBackdrop = { drawBackdrop ->
@@ -1882,7 +1954,6 @@ fun AnchoredLyricsOverflowMenu(
                     if (!dismissed) dismissed = true
                 },
     ) {
-
         Box(
             modifier =
                 Modifier
@@ -1896,7 +1967,6 @@ fun AnchoredLyricsOverflowMenu(
                                 .coerceAtLeast(horizontalMarginPx)
                         val y =
                             if (opensAboveAnchor()) {
-
                                 (iconBoundsInRoot.top - verticalOffsetPx -
                                     (if (popupHeightPx > 0) popupHeightPx else with(density) { 360.dp.toPx() }.toInt()))
                                     .coerceAtLeast(0f)
@@ -1942,17 +2012,14 @@ fun AnchoredLyricsOverflowMenu(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                     ) {
-
                     },
         ) {
-
             LyricsMenu(
                 lyricsProvider = lyricsProvider,
                 mediaMetadataProvider = mediaMetadataProvider,
                 lyricsSyncOffset = lyricsSyncOffset,
                 onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
                 onDismiss = {
-
                     if (!dismissed) dismissed = true
                 },
                 viewModel = viewModel,
@@ -1961,4 +2028,27 @@ fun AnchoredLyricsOverflowMenu(
         }
     }
 }
+
+private enum class LyricsExportFormat(val extension: String) {
+    TTML("ttml"),
+    LRC("lrc"),
+    PLAIN("txt"),
+}
+
+private fun detectLyricsExportFormat(lyrics: String): LyricsExportFormat {
+    if (lyrics.isBlank()) return LyricsExportFormat.PLAIN
+    if (moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml(lyrics)) return LyricsExportFormat.TTML
+
+    val timedLine = Regex("""^\[.*?].*""")
+    if (lyrics.lineSequence().any { timedLine.matches(it.trim()) }) return LyricsExportFormat.LRC
+    return LyricsExportFormat.PLAIN
+}
+
+private fun sanitizeExportFileBase(raw: String): String =
+    raw
+        .map { ch -> if (ch.isLetterOrDigit() || ch in " -_()&.,'’" && !ch.isWhitespace()) ch else if (ch.isWhitespace()) ' ' else '_' }
+        .joinToString("")
+        .trim()
+        .take(120)
+        .ifBlank { "lyrics" }
 

@@ -48,7 +48,6 @@ fun LoadingScreen(
         val cancelAction = onCancel
         val resolvedCancelLabel = cancelLabel?.takeIf(String::isNotBlank)
         Dialog(onDismissRequest = {}) {
-
             UnglassedDialogTheme {
                 KeepStatusBarHiddenInDialog()
                 Card(

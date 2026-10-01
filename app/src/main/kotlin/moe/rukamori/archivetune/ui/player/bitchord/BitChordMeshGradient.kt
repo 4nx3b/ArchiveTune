@@ -118,7 +118,7 @@ fun MeshGradientBackground(
             val radius = size.maxDimension * 0.62f
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(color.copy(alpha = 0.85f), color.copy(alpha = 0f)),
+                    colors = listOf(color.copy(alpha = 0.95f), color.copy(alpha = 0f)),
                     center = center,
                     radius = radius,
                 ),
@@ -130,8 +130,8 @@ fun MeshGradientBackground(
         drawRect(
             brush = Brush.verticalGradient(
                 colors = listOf(
-                    Color.Black.copy(alpha = 0.10f),
-                    Color.Black.copy(alpha = 0.38f),
+                    Color.Black.copy(alpha = 0.05f),
+                    Color.Black.copy(alpha = 0.20f),
                 ),
             ),
         )
@@ -166,7 +166,6 @@ private fun paletteOf(bitmap: Bitmap): List<Color> {
             .map { Color(it.rgb) }
 
     val found = swatchesOf(Palette.from(bitmap)).ifEmpty {
-
         swatchesOf(Palette.from(bitmap).clearFilters())
     }
 
@@ -214,8 +213,8 @@ private fun Color.hsl(): FloatArray =
 private fun Color.tuned(): Color {
     val hsl = FloatArray(3)
     ColorUtils.colorToHSL(toArgb(), hsl)
-    hsl[1] = (hsl[1] * 1.35f).coerceAtMost(1f)
-    hsl[2] = hsl[2].coerceIn(0.28f, 0.58f)
+    hsl[1] = (hsl[1] * 1.6f).coerceAtMost(1f)
+    hsl[2] = hsl[2].coerceIn(0.22f, 0.68f)
     return Color(ColorUtils.HSLToColor(hsl))
 }
 

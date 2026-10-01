@@ -61,6 +61,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -128,27 +129,12 @@ fun TelegramSettings(
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    FrostedHeaderPill(plain = true) {
-                        IconButton(
-                            onClick = navController::navigateUp,
-                            onLongClick = navController::backToMain,
-                        ) {
-                            Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
-                        }
-                        Text(
-                            text = stringResource(R.string.telegram_integration),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    }
-                },
-            )
-        },
+                SettingsPageTopBar(
+                    titleText = stringResource(R.string.telegram_integration),
+                    onBack = navController::navigateUp,
+                    onBackLongClick = navController::backToMain,
+                )
+            },
     ) { innerPadding ->
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current

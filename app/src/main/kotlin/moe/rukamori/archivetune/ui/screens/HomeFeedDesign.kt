@@ -14,6 +14,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -54,6 +55,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
@@ -167,7 +169,6 @@ fun HomeShimmerBox(modifier: Modifier = Modifier, shape: Shape = HomeBlockShape)
         modifier
             .clip(shape)
             .drawWithCache {
-
                 val band = size.width * 0.5f
                 val startX = -band + sweep.value * (size.width + band * 2)
                 val brush =
@@ -730,19 +731,24 @@ fun HomeTopFadeBlur(
     pageColor: Color,
     barHeight: Dp,
     modifier: Modifier = Modifier,
+    intensityFraction: Float = 1f,
 ) {
+    if (intensityFraction <= 0.01f) {
+
+        return
+    }
     val height = barHeight + HomeTopFadeRun
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
                 .height(height)
+                .graphicsLayer { alpha = intensityFraction }
                 .hazeEffect(
                     state = hazeState,
 
                     style = HazeMaterials.ultraThin(pageColor),
                 ) {
-
                     progressive =
                         HazeProgressive.verticalGradient(
                             easing = EaseOutCubic,
@@ -769,6 +775,7 @@ fun HomeTopFadeBlur(
             modifier
                 .fillMaxWidth()
                 .height(height)
+                .graphicsLayer { alpha = intensityFraction }
                 .background(scrim),
     )
 }
@@ -782,16 +789,24 @@ fun ScreenHeaderHaze(
     systemBarsTopPadding: Dp,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    scrolled: Boolean = true,
 ) {
     if (!enabled) return
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     if (!liquidGlassEnabled) return
+
+    val intensity by animateFloatAsState(
+        targetValue = if (scrolled) 1f else 0f,
+        animationSpec = tween(durationMillis = 220),
+        label = "screenHeaderHazeIntensity",
+    )
     HomeTopFadeBlur(
         hazeState = hazeState,
         pageColor = MaterialTheme.colorScheme.surface,
         barHeight = systemBarsTopPadding + ScreenHeaderHazeBarZone,
         modifier = modifier,
+        intensityFraction = intensity,
     )
 }
 

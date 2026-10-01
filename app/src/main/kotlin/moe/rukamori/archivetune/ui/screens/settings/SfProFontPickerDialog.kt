@@ -53,6 +53,7 @@ import androidx.compose.runtime.setValue
 fun SfProFontPickerDialog(
     onDismiss: () -> Unit,
     onApply: (uri: String, displayName: String) -> Unit,
+    appliedFontName: String = "",
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -111,6 +112,16 @@ fun SfProFontPickerDialog(
                 text = stringResource(R.string.sf_pro_fonts),
                 style = MaterialTheme.typography.headlineSmall,
             )
+            if (appliedFontName.isNotBlank()) {
+                Text(
+                    text = stringResource(R.string.sf_pro_applied, appliedFontName),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
             Spacer(Modifier.height(8.dp))
 
             when {
@@ -180,6 +191,7 @@ fun SfProFontPickerDialog(
                                     entry = entry,
                                     downloading = downloadingName == entry.name,
                                     failed = downloadFailedName == entry.name,
+                                    applied = entry.name == appliedFontName,
                                     lowDataMode = lowDataModeActive,
                                     onClick = { downloadAndApply(entry) },
                                 )
@@ -200,6 +212,7 @@ private fun SfProFontRow(
     entry: SfProFontCatalog.FontEntry,
     downloading: Boolean,
     failed: Boolean,
+    applied: Boolean,
     lowDataMode: Boolean,
     onClick: () -> Unit,
 ) {
@@ -235,6 +248,8 @@ private fun SfProFontRow(
             Text(
                 text = entry.name,
                 style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (applied) FontWeight.SemiBold else null,
+                color = if (applied) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Unspecified,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -280,6 +295,14 @@ private fun SfProFontRow(
             CircularProgressIndicator(
                 modifier = Modifier.size(20.dp),
                 strokeWidth = 2.dp,
+            )
+        } else if (applied) {
+
+            Icon(
+                painter = painterResource(R.drawable.check),
+                contentDescription = stringResource(R.string.sf_pro_applied, entry.name),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp),
             )
         } else {
             IconButton(onClick = onClick) {

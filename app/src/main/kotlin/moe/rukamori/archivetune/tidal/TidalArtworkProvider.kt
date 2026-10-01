@@ -12,7 +12,6 @@ import moe.rukamori.archivetune.playback.artwork.TidalArtworkFetcher
 import moe.rukamori.archivetune.playback.artwork.TidalArtworkMatch
 
 object TidalArtworkProvider {
-
     fun fetcher(): TidalArtworkFetcher =
         TidalArtworkFetcher { request: ArtworkRequest ->
             val query =

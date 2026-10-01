@@ -84,7 +84,6 @@ class ArtworkResolver(
         for (provider in effectiveOrder) {
             when (provider) {
                 PreferredArtworkProvider.LOCAL_EMBEDDED -> {
-
                     continue
                 }
                 PreferredArtworkProvider.ORIGINAL_METADATA -> {
@@ -107,7 +106,6 @@ class ArtworkResolver(
                 PreferredArtworkProvider.SPOTIFY_CANVAS,
                 PreferredArtworkProvider.ARCHIVETUNE_CANVAS,
                 -> {
-
                     continue
                 }
             }
@@ -151,7 +149,6 @@ class ArtworkResolver(
         val mutex = keyMutexes.getOrPut(key) { Mutex() }
         return mutex.withLock {
             try {
-
                 synchronized(cacheLock) {
                     successCache[key]?.let { return@withLock it }
                 }

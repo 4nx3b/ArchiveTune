@@ -17,6 +17,8 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import timber.log.Timber
 import kotlin.math.min
 
+private const val MIN_SCROBBLE_THRESHOLD_MS = 30_000L
+
 class ScrobbleManager(
     private val scope: CoroutineScope,
     var minSongDuration: Int = 30,
@@ -29,6 +31,8 @@ class ScrobbleManager(
     private var songStartedAt: Long = 0L
     private var songStarted = false
     var useNowPlaying = true
+
+    private var scrobbledForId: String? = null
 
     private var currentMetadata: MediaMetadata? = null
     private var currentThresholdMillis: Long = 0L
@@ -44,6 +48,7 @@ class ScrobbleManager(
         currentMetadata = null
         currentThresholdMillis = 0L
         scrobbleTimerRunning = false
+        scrobbledForId = null
     }
 
     fun onSongStart(
@@ -52,6 +57,7 @@ class ScrobbleManager(
     ) {
         if (metadata == null) return
 
+        scrobbledForId = null
         flushPendingScrobbleIfNeeded()
         songStartedAt = System.currentTimeMillis() / 1000
         songStarted = true
@@ -70,7 +76,6 @@ class ScrobbleManager(
     }
 
     fun onSongStop() {
-
         flushPendingScrobbleIfNeeded()
         stopScrobbleTimer()
         songStarted = false
@@ -83,17 +88,27 @@ class ScrobbleManager(
         scrobbleJob?.cancel()
         val resolvedDuration = duration?.toInt()?.div(1000) ?: metadata.duration
 
-        if (resolvedDuration <= minSongDuration) {
+        val thresholdMillis =
+            if (resolvedDuration > 0) {
+                min(
+                    resolvedDuration * 1000L * scrobbleDelayPercent.toLong(),
+                    scrobbleDelaySeconds * 1000L,
+                )
+            } else {
+                scrobbleDelaySeconds * 1000L
+            }.coerceAtLeast(MIN_SCROBBLE_THRESHOLD_MS)
+
+        if (scrobbledForId == metadata.id) {
 
             currentMetadata = metadata
             currentThresholdMillis = 0L
+            scrobbleRemainingMillis = 0L
             scrobbleTimerRunning = false
             return
         }
 
-        val threshold = resolvedDuration * 1000L * scrobbleDelayPercent
-        scrobbleRemainingMillis = min(threshold.toLong(), scrobbleDelaySeconds * 1000L)
-        currentThresholdMillis = scrobbleRemainingMillis
+        scrobbleRemainingMillis = thresholdMillis
+        currentThresholdMillis = thresholdMillis
         currentMetadata = metadata
 
         if (scrobbleRemainingMillis <= 0) {
@@ -126,9 +141,9 @@ class ScrobbleManager(
     }
 
     private fun resumeScrobbleTimer(metadata: MediaMetadata) {
-
         if (scrobbleTimerRunning) return
         if (scrobbleRemainingMillis <= 0) return
+        if (scrobbledForId == metadata.id) return
 
         val current = currentMetadata
         if (current != null && !sameSong(current, metadata)) return
@@ -156,7 +171,6 @@ class ScrobbleManager(
     private fun flushPendingScrobbleIfNeeded() {
         val metadata = currentMetadata ?: return
         if (currentThresholdMillis <= 0L) {
-
             currentMetadata = null
             currentThresholdMillis = 0L
             return
@@ -166,11 +180,9 @@ class ScrobbleManager(
 
             val totalElapsed = (currentThresholdMillis - scrobbleRemainingMillis) + elapsed
             if (totalElapsed >= currentThresholdMillis) {
-
                 scrobbleSong(metadata)
             }
         } else if (!scrobbleTimerRunning && scrobbleRemainingMillis <= 0L) {
-
         }
 
         scrobbleJob?.cancel()
@@ -183,7 +195,6 @@ class ScrobbleManager(
     }
 
     private fun sameSong(a: MediaMetadata, b: MediaMetadata): Boolean {
-
         if (a.id == b.id) return true
         if (a.title == b.title &&
             a.artists.size == b.artists.size &&
@@ -193,6 +204,8 @@ class ScrobbleManager(
     }
 
     private fun scrobbleSong(metadata: MediaMetadata) {
+        scrobbledForId = metadata.id
+        scrobbleRemainingMillis = 0L
         scope.launch {
             LastFM
                 .scrobble(

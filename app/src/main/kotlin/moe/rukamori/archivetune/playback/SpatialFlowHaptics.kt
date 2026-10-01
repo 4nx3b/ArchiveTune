@@ -1,12 +1,5 @@
 @file:Suppress("DEPRECATION")
 
-/*
- * ArchiveTune (2026)
- * © Rukamori — github.com/rukamori
- * GPL-3.0 License | Contributors: see git history
- * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
- */
-
 package moe.rukamori.archivetune.playback
 
 import android.annotation.SuppressLint
@@ -32,7 +25,6 @@ import kotlin.math.min
 import kotlin.math.pow
 
 class SpatialFlowHapticEngine(context: Context) {
-
     private val context: Context = context.applicationContext
 
     private var attachedViewRef: WeakReference<View>? = null
@@ -182,7 +174,6 @@ class SpatialFlowHapticEngine(context: Context) {
         if (multiplier <= 0f) return
 
         try {
-
             val kickBaseAmp = 255
             val kickPeak = normalizer.normalize(kickBaseAmp, deviceProfile, multiplier)
             var kickTimings = longArrayOf(0, 40, 100, 50)
@@ -658,7 +649,6 @@ class SpatialFlowHapticEngine(context: Context) {
 
     private class DeviceCalibrationRunner {
         fun runCalibration() {
-
         }
     }
 

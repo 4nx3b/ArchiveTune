@@ -122,7 +122,6 @@ fun QobuzLoginScreen(navController: NavController) {
         if (secret != null) {
             saveToken(token, appId, secret)
         } else {
-
             captured = token to appId
         }
     }

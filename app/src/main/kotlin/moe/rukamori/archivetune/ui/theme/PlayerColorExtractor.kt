@@ -17,7 +17,6 @@ import kotlin.math.abs
 import kotlin.math.max
 
 object PlayerColorExtractor {
-
     const val GREYSCALE_WEIGHTED_SATURATION_THRESHOLD = 0.10f
     const val GREYSCALE_COLORFUL_RATIO_THRESHOLD = 0.08f
     const val GREYSCALE_NEUTRAL_RATIO_THRESHOLD = 0.90f

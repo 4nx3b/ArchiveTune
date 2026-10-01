@@ -87,6 +87,7 @@ import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.runtime.getValue
+import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 
 private const val DEFAULT_BLUR = 0f
 private const val DEFAULT_CONTRAST = 1f
@@ -145,37 +146,11 @@ fun CustomizeBackground(navController: NavController) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
-            MediumFlexibleTopAppBar(
-                title = {},
-                navigationIcon = {
-                    FrostedHeaderPill(plain = true) {
-                        IconButton(
-                            onClick = navController::navigateUp,
-                            modifier = Modifier.padding(start = 5.dp),
-                            colors = IconButtonDefaults.filledTonalIconButtonColors(),
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.arrow_back),
-                                contentDescription = stringResource(R.string.back_button_desc),
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.customize_background_title),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    }
-                },
-                colors =
-                    TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = Color.Transparent,
-                    ),
-                scrollBehavior = scrollBehavior,
-            )
-        },
+                SettingsPageTopBar(
+                    titleText = stringResource(R.string.customize_background_title),
+                    onBack = navController::navigateUp,
+                )
+            },
     ) { innerPadding ->
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current

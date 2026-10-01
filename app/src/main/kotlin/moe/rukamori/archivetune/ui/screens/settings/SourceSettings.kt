@@ -38,6 +38,14 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import moe.rukamori.archivetune.ui.component.PreferenceEntry
+import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import androidx.compose.foundation.layout.asPaddingValues
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
@@ -47,48 +55,25 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SourceSettings(navController: NavController, scrollTo: String? = null) {
-
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    FrostedHeaderPill(plain = true) {
-                        IconButton(
-                            onClick = navController::navigateUp,
-                            onLongClick = navController::backToMain,
-                        ) {
-                            Icon(
-                                painterResource(R.drawable.arrow_back),
-                                contentDescription = null,
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.source_settings),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                ),
-            )
-        },
+                SettingsPageTopBar(
+                    titleText = stringResource(R.string.source_settings),
+                    onBack = navController::navigateUp,
+                    onBackLongClick = navController::backToMain,
+                )
+            },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -114,7 +99,6 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                 .padding(top = topPadding)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
-
             PlaybackSourceSections(
                 navController = navController,
                 positions = positions,
@@ -128,3 +112,4 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
         }
 }
 }
+

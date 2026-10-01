@@ -47,7 +47,6 @@ fun PlayingIndicator(
     barWidth: Dp = 4.dp,
     cornerRadius: Dp = ThumbnailCornerRadius,
 ) {
-
     val transition = rememberInfiniteTransition(label = "playingIndicator")
     val cycleDurationMs = 1100
     val barValues: List<Float> =

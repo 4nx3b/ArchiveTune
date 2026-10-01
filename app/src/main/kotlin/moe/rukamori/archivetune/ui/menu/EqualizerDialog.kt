@@ -13,6 +13,7 @@
 
 package moe.rukamori.archivetune.ui.menu
 
+import moe.rukamori.archivetune.ui.component.LocalMenuDialogDismissal
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -51,10 +52,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -120,7 +124,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.ui.unit.sp
 import moe.rukamori.archivetune.equalizer.EqualizerControlMode
 import moe.rukamori.archivetune.equalizer.EqualizerTone
 import moe.rukamori.archivetune.viewmodels.EqualizerBandUiModel
@@ -130,9 +133,16 @@ import moe.rukamori.archivetune.constants.AudioPlaybackPitchKey
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedKey
 import moe.rukamori.archivetune.constants.AudioPlaybackSpeedPitchMatchKey
 import moe.rukamori.archivetune.constants.EqualizerAudioEffectsEnabledKey
+import moe.rukamori.archivetune.constants.LastwaveAudioProcessingKey
+import moe.rukamori.archivetune.constants.TryptifyAudioProcessingKey
 import moe.rukamori.archivetune.playback.EqReverbPreset
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import moe.rukamori.archivetune.ui.component.LocalUnglassColorScheme
+import moe.rukamori.archivetune.ui.component.UnglassedDialogTheme
 import moe.rukamori.archivetune.utils.rememberPreference
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import moe.rukamori.archivetune.viewmodels.EqualizerEffect
 import moe.rukamori.archivetune.viewmodels.EqualizerProfileUiModel
 import moe.rukamori.archivetune.viewmodels.EqualizerScreenState
@@ -181,19 +191,15 @@ fun EqualizerDialog(
         }
     }
 
+    val menuDialogDismissal = LocalMenuDialogDismissal.current
     Dialog(
-        onDismissRequest = onDismiss,
-        // Window config intentionally matches the long-working pre-restoration
-        // dialog (plain DialogWindowTheme path). The 6c8639207 rework had
-        // experimented with decorFitsSystemWindows=false — which silently
-        // switched the dialog onto the FloatingDialogWindowTheme +
-        // FLAG_LAYOUT_INSET_DECOR/setFitInsetsTypes(0) window path and was
-        // never validated outside the compile — and it crashed on open for
-        // real devices. The "status-bar gap" stays solved the old way:
-        // KeepStatusBarHiddenInDialog hides the bar while the dialog shows.
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        onDismissRequest = {
+            menuDialogDismissal?.invoke()
+            onDismiss()
+        },
+
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
-        KeepStatusBarHiddenInDialog()
         EqualizerScreen(
             state = state,
             snackbarHostState = snackbarHostState,
@@ -260,13 +266,6 @@ private fun EqualizerScreen(
     }
 }
 
-/**
- * The SpatialFlow-style audio effects screen behind two category pills:
- * "Equalizer" (the 5-band frequency shaping) and "Audio effects" (every
- * ported effect - 8D, reverb, bass, loudness, balance, speed, virtualizer -
- * behind one master "Enable audio effects" switch that gates both
- * customisation in this screen and application in the playback service).
- */
 @Composable
 private fun AudioEffectsContent(
     model: EqualizerUiModel,
@@ -278,28 +277,37 @@ private fun AudioEffectsContent(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
-    // Playback speed + pitch matching live in the player preferences; the
-    // MusicService applies them to the (primary and crossfade) players.
     val (playbackSpeed, onPlaybackSpeedChange) = rememberPreference(AudioPlaybackSpeedKey, defaultValue = 1.0f)
     val (isPitchMatched, onPitchMatchedChange) = rememberPreference(AudioPlaybackSpeedPitchMatchKey, defaultValue = false)
     val (playbackPitch, onPlaybackPitchChange) = rememberPreference(AudioPlaybackPitchKey, defaultValue = 1.0f)
     var isSpeedSwitchOn by remember { mutableStateOf(playbackSpeed != 1.0f) }
 
-    // Stereo balance keeps the reference behaviour: the section switch is a
-    // session-local affordance (off resets the position to the centre).
     var isBalanceSwitchOn by remember { mutableStateOf(model.balance != 0f) }
 
-    // Master switch for the Audio effects pill: until this is on, none of
-    // the ported effects can be customised here nor applied to any song.
     val (audioEffectsEnabled, onAudioEffectsEnabledChange) =
         rememberPreference(EqualizerAudioEffectsEnabledKey, defaultValue = false)
 
-    // 0 = Equalizer pill, 1 = Audio effects pill.
     var selectedTab by rememberSaveable { mutableStateOf(0) }
 
-    // Processing flourish: the reference shows the wavy card while it renders
-    // 8D offline and keeps it 1.2s past 100%. Ours is real time, so the card
-    // appears for 1.2s right after the user flips 8D on.
+    val (tryptifyAudioProcessing) = rememberPreference(TryptifyAudioProcessingKey, defaultValue = false)
+    val (lastwaveAudioProcessing) = rememberPreference(LastwaveAudioProcessingKey, defaultValue = false)
+
+    if (selectedTab == 2 && !tryptifyAudioProcessing) {
+        LaunchedEffect(Unit) { selectedTab = 0 }
+    }
+    if (selectedTab == 3 && !lastwaveAudioProcessing) {
+        LaunchedEffect(Unit) { selectedTab = 0 }
+    }
+
+    if (selectedTab == 2 && tryptifyAudioProcessing) {
+        TryptifyEqHost(onBack = { selectedTab = 0 })
+        return
+    }
+    if (selectedTab == 3 && lastwaveAudioProcessing) {
+        LastwaveEqHost(onBack = { selectedTab = 0 })
+        return
+    }
+
     var showProcessingCard by remember { mutableStateOf(false) }
     var observed8DEnabled by remember { mutableStateOf(model.eightDEnabled) }
     LaunchedEffect(model.eightDEnabled) {
@@ -318,21 +326,13 @@ private fun AudioEffectsContent(
         modifier =
             Modifier
                 .fillMaxSize()
-                // Plain opaque surface. The 16.0 rework had drawn the kyant
-                // liquid-glass header (layerBackdrop + drawBackdrop AGSL
-                // effects + hazeSource) INSIDE this Dialog window — this is
-                // the only real Dialog in the app that ever did, and it is
-                // the one ingredient the dialog still had that the long-
-                // working pre-16.0 version did not. Removed: the dialog now
-                // renders exactly like every other working dialog (plain
-                // material3, opaque window background).
+
                 .background(MaterialTheme.colorScheme.surface)
                 .statusBarsPadding()
                 .verticalScroll(scrollState)
                 .padding(horizontal = 24.dp)
                 .padding(top = 8.dp, bottom = 120.dp),
     ) {
-        // Header
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -340,10 +340,14 @@ private fun AudioEffectsContent(
             Text(
                 text =
                     stringResource(
-                        if (selectedTab == 0) {
-                            R.string.eq_tab_equalizer
-                        } else {
-                            R.string.eq_audio_effects
+                        when (selectedTab) {
+                            2 -> R.string.eq_tab_tryptify
+                            3 -> R.string.eq_tab_lastwave
+                            else -> if (selectedTab == 0) {
+                                R.string.eq_tab_equalizer
+                            } else {
+                                R.string.eq_audio_effects
+                            }
                         },
                     ),
                 style = MaterialTheme.typography.headlineMedium,
@@ -373,7 +377,6 @@ private fun AudioEffectsContent(
             }
         }
 
-        // Two category pills: Equalizer | Audio effects.
         Row(
             modifier =
                 Modifier
@@ -393,17 +396,27 @@ private fun AudioEffectsContent(
                 onClick = { selectedTab = 1 },
                 modifier = Modifier.weight(1f),
             )
+            if (tryptifyAudioProcessing) {
+                CategoryPill(
+                    label = stringResource(R.string.eq_tab_tryptify),
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            if (lastwaveAudioProcessing) {
+                CategoryPill(
+                    label = stringResource(R.string.eq_tab_lastwave),
+                    selected = selectedTab == 3,
+                    onClick = { selectedTab = 3 },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
 
         val columns = if (isLandscape) 2 else 1
 
         if (selectedTab == 0) {
-            // ===== EQUALIZER PILL =====
-            // The full original control set, restored: the basic/advanced mode
-            // selector, the fixed-band shaper, and (in advanced mode) the
-            // device's real band sliders with reset, the signal section
-            // (output gain + auto headroom) and the profiles row — plus the
-            // system-equalizer escape hatch.
             SegmentedFeatureCard(
                 items =
                     listOf(
@@ -423,7 +436,6 @@ private fun AudioEffectsContent(
                     ),
             )
 
-            // Basic <-> Advanced mode selector (the original card).
             SectionContainer {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
@@ -464,7 +476,6 @@ private fun AudioEffectsContent(
             }
 
             if (model.controlMode == EqualizerControlMode.BASIC) {
-                // Basic: the two tone sliders driving the device bands.
                 SegmentedFeatureCard(
                     items =
                         model.tones.map { tone ->
@@ -483,7 +494,6 @@ private fun AudioEffectsContent(
                         },
                 )
             } else {
-                // Advanced: the device's real band sliders with a reset action.
                 SectionContainer {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -523,7 +533,6 @@ private fun AudioEffectsContent(
                     }
                 }
 
-                // Signal: full-range output gain + auto headroom (originals).
                 LabelSliderSection(
                     title = stringResource(R.string.eq_output_gain),
                     label = stringResource(R.string.eq_signal),
@@ -548,7 +557,6 @@ private fun AudioEffectsContent(
                     interactionEnabled = model.enabled,
                 )
 
-                // Profiles row: save / manage / import (the originals).
                 SectionContainer {
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -569,7 +577,6 @@ private fun AudioEffectsContent(
                 }
             }
 
-            // The system equalizer escape hatch (original).
             SectionContainer {
                 ListItem(
                     headlineContent = { Text(stringResource(R.string.eq_open_system_equalizer)) },
@@ -579,7 +586,6 @@ private fun AudioEffectsContent(
                 )
             }
         } else {
-            // ===== AUDIO EFFECTS PILL =====
             AnimatedVisibility(
                 visible = showProcessingCard,
                 enter = expandVertically() + fadeIn(),
@@ -588,7 +594,6 @@ private fun AudioEffectsContent(
                 ProcessingCard(progress = 100)
             }
 
-            // Master switch: everything below stays read-only until it is on.
             SwitchSection(
                 title = stringResource(R.string.eq_enable_audio_effects),
                 desc = stringResource(R.string.eq_enable_audio_effects_desc),
@@ -604,11 +609,11 @@ private fun AudioEffectsContent(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Box(modifier = Modifier.weight(1f)) {
-                    // GROUP 1: (8D + Reverb + Bass)
                     SegmentedFeatureCard(
                         items =
                             listOf(
                                 {
+
                                     SwitchSection(
                                         title = stringResource(R.string.eq_8d),
                                         desc = stringResource(R.string.eq_8d_description),
@@ -616,6 +621,35 @@ private fun AudioEffectsContent(
                                         onToggle = viewModel::set8DEnabled,
                                         infoTooltip = stringResource(R.string.eq_8d_info),
                                         interactionEnabled = audioEffectsEnabled,
+                                        sliderContent = {
+                                            Column {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(
+                                                        text = stringResource(R.string.eq_8d_rotation_speed),
+                                                        style = MaterialTheme.typography.bodyLarge,
+                                                        modifier = Modifier.weight(1f),
+                                                    )
+                                                    Text(
+                                                        text = stringResource(R.string.eq_8d_speed_hz, model.eightDSpeedHz),
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        color =
+                                                            if (model.eightDEnabled) {
+                                                                MaterialTheme.colorScheme.primary
+                                                            } else {
+                                                                MaterialTheme.colorScheme.outline
+                                                            },
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.height(12.dp))
+                                                ResponsiveSlider(
+                                                    value = model.eightDSpeedHz,
+                                                    onValueChange = viewModel::update8DSpeedDraft,
+                                                    valueRange = 0.03f..0.25f,
+                                                    enabled = model.eightDEnabled && audioEffectsEnabled,
+                                                    onValueChangeFinished = viewModel::commit8DSpeed,
+                                                )
+                                            }
+                                        },
                                     )
                                 },
                                 {
@@ -651,7 +685,6 @@ private fun AudioEffectsContent(
                 }
 
                 Box(modifier = Modifier.weight(1f)) {
-                    // GROUP 2: (Loudness + Balance + Speed + Virtualizer)
                     SegmentedFeatureCard(
                         items =
                             listOf(
@@ -704,7 +737,7 @@ private fun AudioEffectsContent(
                                         onPitchMatchToggle = {
                                             val next = !isPitchMatched
                                             onPitchMatchedChange(next)
-                                            // Reset the explicit pitch when entering match mode.
+
                                             if (next) onPlaybackPitchChange(1.0f)
                                         },
                                         pitchValue = playbackPitch,
@@ -737,11 +770,6 @@ private fun AudioEffectsContent(
     }
 }
 
-/**
- * One of the two category pills at the top of the effects screen. Selected
- * pills use the theme's secondary container with a bold label; unselected
- * ones sit on surfaceContainerHigh with the variant color.
- */
 @Composable
 private fun CategoryPill(
     label: String,
@@ -778,8 +806,6 @@ private fun CategoryPill(
     }
 }
 
-// --- SUB-COMPOSABLES ---
-
 @Composable
 private fun ProcessingCard(progress: Int) {
     val infiniteTransition = rememberInfiniteTransition(label = "processing")
@@ -794,7 +820,6 @@ private fun ProcessingCard(progress: Int) {
         label = "pulse",
     )
 
-    // Smoothly animate the progress to avoid "jumping"
     val animatedProgress by animateFloatAsState(
         targetValue = progress / 100f,
         animationSpec = WavyProgressIndicatorDefaults.ProgressAnimationSpec,
@@ -817,9 +842,8 @@ private fun ProcessingCard(progress: Int) {
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.alpha(pulseAlpha),
             )
-            Spacer(modifier = Modifier.height(16.dp)) // More space for taller wave
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Custom thick stroke for a bolder "Expressive" feel
             val density = LocalDensity.current
             val thickStroke =
                 remember(density) {
@@ -881,10 +905,6 @@ private const val BASS_MAX_DB = 15f
 private const val LOUDNESS_MAX_DB = 12f
 private const val BALANCE_RANGE = 50f
 
-/**
- * Custom Switch with "Checked" icon (Checkmark) that is always white,
- * exactly like the reference implementation.
- */
 @Composable
 private fun ExpressiveSwitch(
     checked: Boolean,
@@ -902,7 +922,7 @@ private fun ExpressiveSwitch(
                         painter = painterResource(R.drawable.check),
                         contentDescription = null,
                         modifier = Modifier.size(SwitchDefaults.IconSize),
-                        tint = Color.White, // Always white in both dark/light
+                        tint = Color.White,
                     )
                 }
             } else {
@@ -1008,6 +1028,7 @@ private fun SwitchSection(
     onToggle: (Boolean) -> Unit,
     infoTooltip: String? = null,
     interactionEnabled: Boolean = true,
+    sliderContent: (@Composable () -> Unit)? = null,
 ) {
     var showDialog by remember { mutableStateOf(false) }
 
@@ -1040,25 +1061,32 @@ private fun SwitchSection(
         }
         Spacer(modifier = Modifier.height(12.dp))
         Text(text = desc, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (sliderContent != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            sliderContent()
+        }
     }
 
     if (showDialog && infoTooltip != null) {
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text(stringResource(R.string.eq_information)) },
-            text = { Text(infoTooltip) },
-            confirmButton = {
-                TextButton(onClick = { showDialog = false }) {
-                    Text(stringResource(R.string.got_it))
-                }
-            },
-            icon = {
-                Icon(
-                    painter = painterResource(R.drawable.info),
-                    contentDescription = null,
-                )
-            },
-        )
+
+        UnglassedDialogTheme {
+            AlertDialog(
+                onDismissRequest = { showDialog = false },
+                title = { Text(stringResource(R.string.eq_information)) },
+                text = { Text(infoTooltip) },
+                confirmButton = {
+                    TextButton(onClick = { showDialog = false }) {
+                        Text(stringResource(R.string.got_it))
+                    }
+                },
+                icon = {
+                    Icon(
+                        painter = painterResource(R.drawable.info),
+                        contentDescription = null,
+                    )
+                },
+            )
+        }
     }
 }
 
@@ -1280,21 +1308,18 @@ private fun SpeedSection(
         )
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Match Pitch Button - Compact and Centered
         Box(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
             TextButton(
                 onClick = onPitchMatchToggle,
                 enabled = enabled && interactionEnabled,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), // Smaller padding
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                 shapes = ButtonDefaults.shapes(),
-                modifier = Modifier.height(32.dp), // Smaller height
+                modifier = Modifier.height(32.dp),
             ) {
                 Text(text = stringResource(R.string.eq_match_pitch), style = MaterialTheme.typography.labelMedium)
             }
         }
 
-        // Independent pitch slider (moved here from the song overflow menu):
-        // 1x = follow the speed (vinyl), otherwise the explicit multiplier.
         if (!isPitchMatched) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -1374,6 +1399,14 @@ private fun ReverbSection(
 
         var expanded by remember { mutableStateOf(false) }
 
+        val unglassedScheme = LocalUnglassColorScheme.current ?: MaterialTheme.colorScheme
+        val dropdownFieldColors =
+            ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                focusedContainerColor = unglassedScheme.surfaceContainerLowest,
+                unfocusedContainerColor = unglassedScheme.surfaceContainerLowest,
+            )
+
+        UnglassedDialogTheme {
         ExposedDropdownMenuBox(
             expanded = expanded,
             onExpandedChange = { if (enabled && interactionEnabled) expanded = !expanded },
@@ -1385,7 +1418,7 @@ private fun ReverbSection(
                 readOnly = true,
                 label = { Text(stringResource(R.string.eq_preset)) },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                colors = dropdownFieldColors,
                 modifier = Modifier.menuAnchor().fillMaxWidth(),
                 enabled = enabled && interactionEnabled,
             )
@@ -1404,13 +1437,10 @@ private fun ReverbSection(
                 }
             }
         }
+        }
     }
 }
 
-/**
- * Optimized Responsive Slider that eliminates recomposition lag by managing
- * local drag state, while maintaining "Expressive" animations for value jumps.
- */
 @Composable
 private fun ResponsiveSlider(
     value: Float,
@@ -1423,14 +1453,12 @@ private fun ResponsiveSlider(
     var isDragging by remember { mutableStateOf(false) }
     var localValue by remember(value) { mutableFloatStateOf(value.coerceIn(valueRange)) }
 
-    // Sync local value with external updates when not dragging
     LaunchedEffect(value) {
         if (!isDragging) {
             localValue = value.coerceIn(valueRange)
         }
     }
 
-    // Only animate when the value changes externally (not during active dragging)
     val animatedValue by animateFloatAsState(
         targetValue = localValue,
         animationSpec =
@@ -1477,8 +1505,6 @@ private fun SectionContainer(content: @Composable ColumnScope.() -> Unit) {
     )
 }
 
-// --- PROFILE DIALOGS ---
-
 @Composable
 private fun SaveProfileDialog(
     name: String,
@@ -1486,24 +1512,26 @@ private fun SaveProfileDialog(
     onSave: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(text = stringResource(R.string.eq_save_profile)) },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = onNameChange,
-                label = { Text(text = stringResource(R.string.eq_profile_name)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        },
-        confirmButton = {
-            KeepStatusBarHiddenInDialog()
-            TextButton(onClick = onSave, enabled = name.isNotBlank()) { Text(text = stringResource(R.string.save)) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(text = stringResource(R.string.eq_close)) } },
-    )
+    UnglassedDialogTheme {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(text = stringResource(R.string.eq_save_profile)) },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = onNameChange,
+                    label = { Text(text = stringResource(R.string.eq_profile_name)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                KeepStatusBarHiddenInDialog()
+                TextButton(onClick = onSave, enabled = name.isNotBlank()) { Text(text = stringResource(R.string.save)) }
+            },
+            dismissButton = { TextButton(onClick = onDismiss) { Text(text = stringResource(R.string.eq_close)) } },
+        )
+    }
 }
 
 @Composable
@@ -1514,24 +1542,26 @@ private fun ManageProfilesDialog(
     onExport: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(text = stringResource(R.string.eq_profiles)) },
-        text = {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().height(360.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(count = profiles.size, key = { profiles[it].id }, contentType = { "profile" }) { index ->
-                    ProfileRow(profiles[index], onApply, onDelete, onExport)
+    UnglassedDialogTheme {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(text = stringResource(R.string.eq_profiles)) },
+            text = {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().height(360.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(count = profiles.size, key = { profiles[it].id }, contentType = { "profile" }) { index ->
+                        ProfileRow(profiles[index], onApply, onDelete, onExport)
+                    }
                 }
-            }
-        },
-        confirmButton = {
-            KeepStatusBarHiddenInDialog()
-            TextButton(onClick = onDismiss) { Text(text = stringResource(R.string.eq_close)) }
-        },
-    )
+            },
+            confirmButton = {
+                KeepStatusBarHiddenInDialog()
+                TextButton(onClick = onDismiss) { Text(text = stringResource(R.string.eq_close)) }
+            },
+        )
+    }
 }
 
 @Composable
@@ -1581,8 +1611,6 @@ private fun ProfileRow(
     }
 }
 
-// --- FALLBACK STATES ---
-
 @Composable
 private fun EqualizerLoading() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1623,4 +1651,297 @@ private fun EqualizerMessage(
             }
         }
     }
+}
+
+@Composable
+private fun TryptifyEqHost(onBack: () -> Unit) {
+    var subTab by rememberSaveable { mutableStateOf(0) }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
+            .statusBarsPadding(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            CategoryPill(
+                label = "AutoEQ",
+                selected = subTab == 0,
+                onClick = { subTab = 0 },
+                modifier = Modifier.weight(1f),
+            )
+            CategoryPill(
+                label = "Parametric EQ",
+                selected = subTab == 1,
+                onClick = { subTab = 1 },
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Box(modifier = Modifier.weight(1f)) {
+            if (subTab == 0) {
+                tf.monochrome.android.ui.eq.EqualizerScreen(onBack = onBack)
+            } else {
+                tf.monochrome.android.ui.eq.ParametricEqScreen(onBack = onBack)
+            }
+        }
+    }
+}
+
+@Composable
+private fun LastwaveEqHost(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val (eqEnabled, onEqEnabledChange) =
+        rememberPreference(LastwaveKeys.LW_EQ_ENABLED, defaultValue = false)
+    val (presetName, onPresetNameChange) =
+        rememberPreference(LastwaveKeys.LW_EQ_PRESET, defaultValue = "Default")
+    val (gainsCsv, onGainsCsvChange) =
+        rememberPreference(LastwaveKeys.LW_EQ_GAINS, defaultValue = "")
+    val (clarityEnabled, onClarityEnabledChange) =
+        rememberPreference(LastwaveKeys.LW_MUSIC_ENHANCER, defaultValue = true)
+    val (clarityPreset, onClarityPresetChange) =
+        rememberPreference(LastwaveKeys.LW_CLARITY_PRESET, defaultValue = 0)
+    val (clarityAtmosBypass, onClarityAtmosBypassChange) =
+        rememberPreference(LastwaveKeys.LW_CLARITY_ATMOS_BYPASS, defaultValue = false)
+
+    fun decodeGains(): List<Float> {
+        val fromPreset = com.lastwave.app.data.local.EqualizerPresets.byName(presetName)
+        val stored = gainsCsv.split(',').mapNotNull { it.trim().toFloatOrNull() }
+        return when {
+            stored.size == com.lastwave.app.data.local.EQ_BAND_FREQS_HZ.size -> stored
+            fromPreset != null -> fromPreset.gainsDb
+            else -> com.lastwave.app.data.local.EqualizerPresets.FLAT.gainsDb
+        }
+    }
+
+    fun encodeGains(gains: List<Float>): String =
+        gains.joinToString(",") { gain ->
+            "%.1f".format(java.util.Locale.ROOT, gain.coerceIn(-8f, 8f))
+        }
+
+    val gains = decodeGains()
+    val scrollState = rememberScrollState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
+            .statusBarsPadding()
+            .verticalScroll(scrollState)
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 120.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.eq_tab_lastwave),
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(top = 8.dp),
+            )
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.eq_close),
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            CategoryPill(
+                label = "15-band EQ",
+                selected = true,
+                onClick = { },
+                modifier = Modifier.weight(1f),
+            )
+            CategoryPill(
+                label = "Clarity",
+                selected = clarityEnabled,
+                onClick = { onClarityEnabledChange(!clarityEnabled) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        SectionContainer {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Equalizer",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "LastWave-native 15-band ISO graphic EQ (±8 dB), applied by the native engine on every track.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = eqEnabled, onCheckedChange = onEqEnabledChange)
+            }
+        }
+
+        SectionContainer {
+            Column {
+                Text(
+                    text = "Preset",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp),
+                ) {
+                    items(com.lastwave.app.data.local.EqualizerPresets.ALL) { preset ->
+                        val selected = presetName.equals(preset.name, ignoreCase = true)
+                        FilterChip(
+                            selected = selected,
+                            onClick = {
+                                onPresetNameChange(preset.name)
+                                onGainsCsvChange(encodeGains(preset.gainsDb))
+                                onEqEnabledChange(true)
+                            },
+                            label = { Text(preset.name) },
+                        )
+                    }
+                }
+            }
+        }
+
+        SectionContainer {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "Bands",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                com.lastwave.app.data.local.EQ_BAND_FREQS_HZ.forEachIndexed { index, hz ->
+                    val label = com.lastwave.app.data.local.eqBandLabel(hz)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.requiredWidth(44.dp),
+                        )
+                        Slider(
+                            value = gains.getOrElse(index) { 0f },
+                            onValueChange = { value ->
+                                val next = gains.toMutableList().also { it[index] = value }
+                                onGainsCsvChange(encodeGains(next))
+                            },
+                            onValueChangeFinished = {
+
+                                onPresetNameChange(com.lastwave.app.data.local.EqualizerPresets.CUSTOM_NAME)
+                            },
+                            valueRange = -8f..8f,
+                            steps = 31,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 8.dp),
+                            enabled = eqEnabled,
+                        )
+                        Text(
+                            text = "%+.1f dB".format(java.util.Locale.ROOT, gains.getOrElse(index) { 0f }),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.requiredWidth(64.dp),
+                        )
+                    }
+                }
+            }
+        }
+
+        SectionContainer {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Studio Master Clarity",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "The ported engine's subsonic filter, bass/boxiness shaping, presence lift, air shelf, mono-bass and harmonic exciter chain.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = clarityEnabled, onCheckedChange = onClarityEnabledChange)
+                }
+                Text(
+                    text = "Clarity preset",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        com.lastwave.app.playback.ClarityPresets.REFERENCE,
+                        com.lastwave.app.playback.ClarityPresets.SPEAKER,
+                        com.lastwave.app.playback.ClarityPresets.HEADPHONE,
+                        com.lastwave.app.playback.ClarityPresets.DAC,
+                    ).forEach { preset ->
+                        FilterChip(
+                            selected = clarityPreset == preset.index,
+                            onClick = { onClarityPresetChange(preset.index) },
+                            label = { Text(preset.displayName) },
+                        )
+                    }
+                }
+                Text(
+                    text = com.lastwave.app.playback.ClarityPresets.ALL
+                        .firstOrNull { it.index == clarityPreset }?.description.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Dolby Atmos bypass",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "Keep the clarity chain flat while Atmos content plays.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = clarityAtmosBypass, onCheckedChange = onClarityAtmosBypassChange)
+                }
+            }
+        }
+    }
+}
+
+private object LastwaveKeys {
+    val LW_EQ_ENABLED = booleanPreferencesKey("lw_eq_enabled")
+    val LW_EQ_PRESET = stringPreferencesKey("lw_eq_preset")
+    val LW_EQ_GAINS = stringPreferencesKey("lw_eq_gains")
+    val LW_MUSIC_ENHANCER = booleanPreferencesKey("lw_music_enhancer")
+    val LW_CLARITY_PRESET = intPreferencesKey("lw_clarity_preset")
+    val LW_CLARITY_ATMOS_BYPASS = booleanPreferencesKey("lw_clarity_atmos_bypass")
 }

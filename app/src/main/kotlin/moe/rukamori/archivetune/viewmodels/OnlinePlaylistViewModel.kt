@@ -51,7 +51,6 @@ class OnlinePlaylistViewModel
         savedStateHandle: SavedStateHandle,
         private val database: MusicDatabase,
     ) : ViewModel() {
-
         private val playlistId: String = savedStateHandle.get<String>("playlistId").orEmpty()
 
         private val _playlist = MutableStateFlow<PlaylistItem?>(null)
@@ -144,7 +143,6 @@ class OnlinePlaylistViewModel
         }
 
         private fun load(initial: Boolean) {
-
             if (playlistId.isBlank()) {
                 _error.value = "This playlist could not be opened (missing id)."
                 _isLoading.value = false

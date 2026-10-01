@@ -88,7 +88,6 @@ class SpotifyPlaylistViewModel
             }
             reloadJob = viewModelScope.launch(Dispatchers.IO) {
                 try {
-
                     val (playlist, tracks) =
                         withTimeoutOrNull(PLAYLIST_LOAD_TIMEOUT_MS) {
                             if (playlistId == SPOTIFY_LIKED_SONGS_ID) {
@@ -178,7 +177,6 @@ class SpotifyPlaylistViewModel
         }
 
         companion object {
-
             private const val PLAYLIST_LOAD_TIMEOUT_MS = 20_000L
         }
     }

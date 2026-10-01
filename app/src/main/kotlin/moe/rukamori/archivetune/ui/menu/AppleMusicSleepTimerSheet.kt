@@ -12,6 +12,10 @@ package moe.rukamori.archivetune.ui.menu
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +26,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
@@ -32,8 +37,6 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +52,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -65,13 +69,17 @@ import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
+private val SleepTimerExpressiveSpring = spring<Float>(
+    dampingRatio = Spring.DampingRatioLowBouncy,
+    stiffness = Spring.StiffnessMediumLow,
+)
+
 @Composable
 fun AppleMusicSleepTimerSheet(
     sleepTimer: SleepTimer,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-
     var remainingMs by remember { mutableLongStateOf(0L) }
     LaunchedEffect(sleepTimer, sleepTimer.isActive) {
         while (isActive) {
@@ -101,7 +109,6 @@ fun AppleMusicSleepTimerSheet(
         if (isActive) {
             sliderMinutes = activeTimerMinutes.toFloat()
         } else if (sliderMinutes > 0 && !isActive) {
-
             sliderMinutes = 0f
         }
     }
@@ -111,7 +118,7 @@ fun AppleMusicSleepTimerSheet(
             modifier
                 .fillMaxWidth()
                 .wrapContentHeight(),
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         tonalElevation = 3.dp,
     ) {
@@ -122,31 +129,33 @@ fun AppleMusicSleepTimerSheet(
                     .padding(horizontal = 20.dp, vertical = 16.dp)
                     .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
         ) {
-
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.secondaryContainer),
-                    contentAlignment = Alignment.Center,
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                    modifier = Modifier.size(34.dp),
                 ) {
-                    Icon(
-                        painter = painterResource(R.drawable.bedtime),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.solar_moon_stars_linear),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = stringResource(R.string.sleep_timer),
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
                     )
                     val statusText =
                         when {
@@ -188,43 +197,24 @@ fun AppleMusicSleepTimerSheet(
                                 (sleepTimer.triggerTime - System.currentTimeMillis()) -
                                     minutes.toLong() * 60_000L,
                             ) < 30_000L
-                    FilterChip(
+                    SleepTimerPresetChip(
+                        text = "${minutes}m",
                         selected = selected,
                         onClick = {
                             sleepTimer.start(minutes)
                             onDismiss()
                         },
-                        label = { Text("${minutes}m") },
-                        shape = RoundedCornerShape(20.dp),
-                        colors =
-                            FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                            ),
                     )
                 }
 
-                FilterChip(
+                SleepTimerPresetChip(
+                    text = stringResource(R.string.sleep_timer_end_of_song),
                     selected = isEndOfSong,
+                    leadingIconRes = R.drawable.skip_next,
                     onClick = {
                         sleepTimer.start(-1)
                         onDismiss()
                     },
-                    leadingIcon = {
-                        Icon(
-                            painter = painterResource(R.drawable.skip_next),
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    },
-                    label = { Text(stringResource(R.string.sleep_timer_end_of_song)) },
-                    shape = RoundedCornerShape(20.dp),
-                    colors =
-                        FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                            selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
                 )
             }
 
@@ -243,9 +233,10 @@ fun AppleMusicSleepTimerSheet(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        text = stringResource(R.string.sleep_timer_custom),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = stringResource(R.string.sleep_timer_custom).uppercase(),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
                     )
 
                     Box(
@@ -314,7 +305,7 @@ fun AppleMusicSleepTimerSheet(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(20.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .background(MaterialTheme.colorScheme.errorContainer)
                             .clickable {
                                 sleepTimer.clear()
@@ -325,7 +316,7 @@ fun AppleMusicSleepTimerSheet(
                     horizontalArrangement = Arrangement.Center,
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.close),
+                        painter = painterResource(R.drawable.solar_close_circle_linear),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onErrorContainer,
                         modifier = Modifier.size(18.dp),
@@ -355,3 +346,72 @@ private fun formatMinutes(minutes: Int): String =
             if (m == 0) "${h}h" else "${h}h ${m}m"
         }
     }
+
+@Composable
+private fun SleepTimerPresetChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    leadingIconRes: Int? = null,
+) {
+    val selectionScale by animateFloatAsState(
+        targetValue = if (selected) 1f else 0.94f,
+        animationSpec = SleepTimerExpressiveSpring,
+        label = "sleepTimerChipScale",
+    )
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color =
+            if (selected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            },
+        border =
+            if (!selected) {
+                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+            } else {
+                null
+            },
+        modifier =
+            Modifier
+                .graphicsLayer {
+                    scaleX = selectionScale
+                    scaleY = selectionScale
+                }
+                .clickable(onClick = onClick),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+        ) {
+            if (leadingIconRes != null) {
+                Icon(
+                    painter = painterResource(leadingIconRes),
+                    contentDescription = null,
+                    tint =
+                        if (selected) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                color =
+                    if (selected) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                maxLines = 1,
+            )
+        }
+    }
+}

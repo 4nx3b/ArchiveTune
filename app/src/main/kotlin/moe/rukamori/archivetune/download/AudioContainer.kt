@@ -13,7 +13,6 @@ enum class AudioContainer(
     ;
 
     companion object {
-
         const val PROBE_BYTES = 64
 
         fun detect(header: ByteArray): AudioContainer? {

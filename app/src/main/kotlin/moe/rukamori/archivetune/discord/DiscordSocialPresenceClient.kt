@@ -7,12 +7,12 @@
 
 package moe.rukamori.archivetune.discord
 
-import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import timber.log.Timber
+import kotlinx.coroutines.*
 
 object DiscordSocialPresenceClient {
     private const val TAG = "DiscordSocialPresenceClient"

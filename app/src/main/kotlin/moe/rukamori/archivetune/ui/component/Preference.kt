@@ -9,14 +9,9 @@
 
 package moe.rukamori.archivetune.ui.component
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.selection.toggleable
@@ -59,8 +54,6 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -95,6 +88,8 @@ import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_DEFAULT
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_RANGE
+import moe.rukamori.archivetune.ui.component.glassAwareCardBorder
+import moe.rukamori.archivetune.ui.component.glassAwareCardColor
 import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -107,10 +102,14 @@ val LocalPreferenceGroupPosition = compositionLocalOf<PreferenceGroupPosition?> 
 
 private val PreferenceGroupLargeCorner = 28.dp
 private val PreferenceGroupSmallCorner = 6.dp
-private val PreferenceGroupHorizontalPadding = 26.dp
-private val PreferenceEntryMinHeight = 88.dp
-private val PreferenceEntryHorizontalPadding = 22.dp
-private val PreferenceEntryVerticalPadding = 18.dp
+private val PreferenceGroupHorizontalPadding = 16.dp
+private val PreferenceEntryMinHeight = 56.dp
+private val PreferenceEntryHorizontalPadding = 16.dp
+private val PreferenceEntryVerticalPadding = 10.dp
+
+private val PreferenceGroupCardCorner = 20.dp
+
+private val PreferenceEntryIconSize = 22.dp
 
 @Composable
 private fun rememberPreferenceIconShape(): Shape = MaterialShapes.Ghostish.toShape()
@@ -181,7 +180,6 @@ fun PreferenceEntry(
         remember(groupPosition) {
             preferenceItemShapeForPosition(groupPosition)
         }
-    val preferenceIconShape = rememberPreferenceIconShape()
     val resolvedShape = shape ?: preferenceItemShape
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -215,29 +213,29 @@ fun PreferenceEntry(
                     modifier =
                         Modifier
                             .align(Alignment.CenterVertically)
-                            .size(44.dp)
-                            .clip(preferenceIconShape),
+                            .size(PreferenceEntryIconSize),
                     contentAlignment = Alignment.Center,
                 ) {
                     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.primary) {
                         icon()
                     }
                 }
-                Spacer(Modifier.width(16.dp))
+                Spacer(Modifier.width(14.dp))
             }
 
             Column(
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier.weight(1f),
             ) {
-                ProvideTextStyle(MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) {
+
+                ProvideTextStyle(MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)) {
                     title()
                 }
                 if (description != null) {
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.height(1.dp))
                     Text(
                         text = description,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -249,29 +247,44 @@ fun PreferenceEntry(
                 Box(modifier = Modifier.align(Alignment.CenterVertically)) {
                     trailingContent()
                 }
+            } else if (onClick != null && !inGroup) {
+                Spacer(Modifier.width(6.dp))
+                Icon(
+                    painter = painterResource(R.drawable.chevron_right),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                    modifier = Modifier.align(Alignment.CenterVertically).size(18.dp),
+                )
             }
         }
     }
 
-    Card(
-        shape = resolvedShape,
-        colors =
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = if (inGroup) 0.dp else 16.dp,
-                    vertical = if (inGroup) 0.dp else 3.dp,
-                ).graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                },
-    ) {
-        rowContent()
+    if (inGroup) {
+
+        Box(modifier = modifier.fillMaxWidth()) {
+            rowContent()
+        }
+    } else {
+        Card(
+            shape = resolvedShape,
+            colors =
+                CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = 16.dp,
+                        vertical = 3.dp,
+                    ).graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    },
+        ) {
+            rowContent()
+        }
     }
 }
 
@@ -837,37 +850,11 @@ fun SwitchPreference(
         description = description,
         icon = icon,
         trailingContent = {
-            Switch(
+
+            SpringySwitch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
                 enabled = isEnabled,
-                thumbContent = {
-                    AnimatedContent(
-                        targetState = checked,
-                        transitionSpec = {
-                            fadeIn(tween(100)) togetherWith fadeOut(tween(100))
-                        },
-                        label = "switchThumbIcon",
-                    ) { isChecked ->
-                        Icon(
-                            painter =
-                                painterResource(
-                                    id = if (isChecked) R.drawable.check else R.drawable.close,
-                                ),
-                            contentDescription = null,
-                            modifier = Modifier.size(SwitchDefaults.IconSize),
-                        )
-                    }
-                },
-                colors =
-                    SwitchDefaults.colors(
-                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                        checkedIconColor = MaterialTheme.colorScheme.primary,
-                        uncheckedThumbColor = MaterialTheme.colorScheme.onSurface,
-                        uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                        uncheckedIconColor = MaterialTheme.colorScheme.surfaceVariant,
-                    ),
             )
         },
         onClick = { onCheckedChange(!checked) },
@@ -1308,30 +1295,40 @@ fun PreferenceGroup(
         if (title != null) {
             PreferenceGroupTitle(
                 title = title,
-                modifier = Modifier.padding(horizontal = PreferenceGroupHorizontalPadding),
+                modifier = Modifier.padding(horizontal = PreferenceGroupHorizontalPadding + 8.dp),
             )
         }
 
-        Column(
+        val cardShape = RoundedCornerShape(PreferenceGroupCardCorner)
+        val cardColor = glassAwareCardColor()
+        androidx.compose.material3.Surface(
+            shape = cardShape,
+            color = cardColor,
+            border = null,
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = PreferenceGroupHorizontalPadding),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+                    .padding(horizontal = PreferenceGroupHorizontalPadding)
+                    .glassAwareCardBorder(cardShape),
         ) {
-            scope.items.forEachIndexed { index, itemContent ->
-                val position =
-                    when {
-                        itemCount == 1 -> PreferenceGroupPosition.Single
-                        index == 0 -> PreferenceGroupPosition.First
-                        index == itemCount - 1 -> PreferenceGroupPosition.Last
-                        else -> PreferenceGroupPosition.Middle
+            Column {
+                scope.items.forEachIndexed { index, itemContent ->
+                    if (index > 0) {
+                        PreferenceGroupDivider()
                     }
-                CompositionLocalProvider(
-                    LocalPreferenceInGroup provides true,
-                    LocalPreferenceGroupPosition provides position,
-                ) {
-                    itemContent()
+                    val position =
+                        when {
+                            itemCount == 1 -> PreferenceGroupPosition.Single
+                            index == 0 -> PreferenceGroupPosition.First
+                            index == itemCount - 1 -> PreferenceGroupPosition.Last
+                            else -> PreferenceGroupPosition.Middle
+                        }
+                    CompositionLocalProvider(
+                        LocalPreferenceInGroup provides true,
+                        LocalPreferenceGroupPosition provides position,
+                    ) {
+                        itemContent()
+                    }
                 }
             }
         }
@@ -1341,7 +1338,11 @@ fun PreferenceGroup(
 @Composable
 fun PreferenceGroupDivider(modifier: Modifier = Modifier) {
     HorizontalDivider(
-        modifier = modifier.padding(start = 60.dp),
+        modifier = modifier.padding(
+            start = PreferenceEntryHorizontalPadding +
+                PreferenceEntryIconSize +
+                14.dp,
+        ),
         thickness = 0.5.dp,
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
     )
@@ -1352,11 +1353,12 @@ fun PreferenceGroupTitle(
     title: String,
     modifier: Modifier = Modifier,
 ) {
+
     Text(
         text = title,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+        modifier = modifier.padding(vertical = 7.dp),
     )
 }

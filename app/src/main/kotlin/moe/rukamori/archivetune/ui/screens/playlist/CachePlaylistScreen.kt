@@ -99,10 +99,10 @@ import moe.rukamori.archivetune.ui.component.GlassPillTitleText
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.menu.SelectionSongMenu
@@ -259,7 +259,6 @@ fun CachePlaylistScreen(
             selection = false
         }
     } else {
-
         BackHandler {
             try {
                 if (!navController.popBackStack()) {
@@ -273,7 +272,6 @@ fun CachePlaylistScreen(
                         navController.navigate("library") { launchSingleTop = true }
                     }
                 } catch (_: Exception) {
-
                 }
             }
         }
@@ -307,16 +305,16 @@ fun CachePlaylistScreen(
         }
     }
 
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
 
-    val backdrop = rememberBackdrop(surfaceColor)
+    val backdrop = rememberThrottledBackdrop(surfaceColor)
 
     val transparentAppBar by remember {
         derivedStateOf {
@@ -335,7 +333,6 @@ fun CachePlaylistScreen(
     CompositionLocalProvider(
         LocalMiniPlayerDocked provides isListScrolling,
     ) {
-
     val headerHaze = rememberScreenHeaderHaze()
     Box(
         modifier =
@@ -349,8 +346,8 @@ fun CachePlaylistScreen(
                 Modifier
                     .fillMaxSize()
                     .then(
-                        if (layerBackdropActive) {
-                            Modifier.layerBackdrop(backdrop)
+                        if (liquidGlassHeaderActive) {
+                            Modifier.glassSource(backdrop)
                         } else {
                             Modifier
                         },
@@ -382,7 +379,6 @@ fun CachePlaylistScreen(
                 }
             } else {
                 if (filteredSongs.isNotEmpty() && !isSearching) {
-
                     item(key = "header") {
                         AppleMusicPlaylistHero(
                             sectionLabel = cachedLabel,
@@ -410,7 +406,6 @@ fun CachePlaylistScreen(
                                 )
                             },
                             additionalActions = {
-
                                 MediaDetailAction(
                                     contentDescription = R.string.export_all_songs,
                                     contentColor = Color.White,
@@ -434,7 +429,6 @@ fun CachePlaylistScreen(
                 }
 
                 if (filteredSongs.isNotEmpty()) {
-
                     item(key = "sortHeader") {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -533,10 +527,10 @@ fun CachePlaylistScreen(
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
+            scrolled = lazyListState.canScrollBackward,
         )
 
-        if (layerBackdropActive && !isSearching) {
-
+        if (glassHeaderActive && !isSearching) {
             LiquidGlassActionPill(
                 backdrop = backdrop,
                 interactive = true,
@@ -587,7 +581,6 @@ fun CachePlaylistScreen(
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
                 if (selection) {
-
                     Box(
                         modifier = Modifier.size(48.dp),
                         contentAlignment = Alignment.Center,
@@ -638,7 +631,6 @@ fun CachePlaylistScreen(
                         )
                     }
                 } else {
-
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -748,7 +740,6 @@ fun CachePlaylistScreen(
                 }
             },
             navigationIcon = {
-
                 if (isSearching || selection || showTopBarTitle || !liquidGlassHeaderActive) {
                     IconButton(onClick = {
                         when {
@@ -780,7 +771,6 @@ fun CachePlaylistScreen(
                         )
                     }
                     if (!isSearching && !selection && !liquidGlassHeaderActive) {
-
                         Text(
                             text = stringResource(R.string.library),
                             color = MaterialTheme.colorScheme.onBackground,
@@ -842,7 +832,6 @@ fun CachePlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-
                     if (showTopBarTitle || !liquidGlassHeaderActive) {
                         androidx.compose.material3.IconButton(onClick = { isSearching = true }) {
                             Icon(

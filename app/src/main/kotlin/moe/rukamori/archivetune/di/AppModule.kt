@@ -25,6 +25,7 @@ import dagger.hilt.components.SingletonComponent
 import moe.rukamori.archivetune.constants.MaxSongCacheSizeKey
 import moe.rukamori.archivetune.db.InternalDatabase
 import moe.rukamori.archivetune.db.MusicDatabase
+import moe.rukamori.archivetune.listentogether.ListenTogetherClient
 import moe.rukamori.archivetune.storage.StorageFolderKind
 import moe.rukamori.archivetune.storage.StorageLocationRepository
 import moe.rukamori.archivetune.utils.dataStore
@@ -200,6 +201,12 @@ object AppModule {
                 databaseProvider,
             )
         }
+
+    @Singleton
+    @Provides
+    fun provideListenTogetherClient(
+        @ApplicationContext context: Context,
+    ): ListenTogetherClient = ListenTogetherClient(context)
 }
 
 private const val CacheSizeBytesPerMegabyte = 1024L * 1024L

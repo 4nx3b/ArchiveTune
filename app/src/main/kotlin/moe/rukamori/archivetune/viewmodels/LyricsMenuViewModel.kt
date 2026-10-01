@@ -231,7 +231,6 @@ class LyricsMenuViewModel
             providerName: String = "",
         ) {
             viewModelScope.launch(Dispatchers.IO) {
-
                 val effectiveProviderName =
                     if (source == LyricsEntity.Source.AI_TRANSLATION && providerName.isBlank()) {
                         captureLyricsBeforeTranslation(mediaMetadata.id)
@@ -308,6 +307,8 @@ class LyricsMenuViewModel
                                 return@launch
                             }
                         }
+
+                        captureLyricsBeforeTranslation(mediaMetadata.id)
                         Log.d(
                             TAG,
                             "AI translate start: song=${mediaMetadata.title} automatic=$isAutomatic " +
@@ -338,6 +339,7 @@ class LyricsMenuViewModel
                         saveTranslatedLyrics(
                             mediaId = mediaMetadata.id,
                             lyrics = usableLyrics,
+                            submittedLyrics = lyrics,
                         )
                         Log.d(TAG, "AI translate success: song=${mediaMetadata.title} automatic=$isAutomatic")
                         if (!isAutomatic) {
@@ -347,7 +349,6 @@ class LyricsMenuViewModel
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-
                         Log.w(
                             TAG,
                             "AI translate failed: song=${mediaMetadata.title} automatic=$isAutomatic " +
@@ -406,16 +407,28 @@ class LyricsMenuViewModel
                 )
         }
 
-        private suspend fun saveTranslatedLyrics(mediaId: String, lyrics: String) {
-            captureLyricsBeforeTranslation(mediaId)
+        private suspend fun saveTranslatedLyrics(
+            mediaId: String,
+            lyrics: String,
+            submittedLyrics: String,
+        ) {
+
+            val current = database.withTransaction { getLyricsById(mediaId) }
+            if (current?.lyrics != submittedLyrics) {
+                Log.d(
+                    TAG,
+                    "AI translate result discarded: lyrics row changed while translating " +
+                        "(song id=$mediaId)",
+                )
+                _aiTranslationEvents.tryEmit(context.getString(R.string.translation_discarded))
+                return
+            }
 
             val snapshotMatch = _translationUndo.value?.takeIf { it.mediaId == mediaId }
             val preservedProviderName =
                 snapshotMatch?.providerName?.takeIf { it.isNotBlank() }
-                    ?: database
-                        .withTransaction { getLyricsById(mediaId) }
-                        ?.providerName
-                        .orEmpty()
+                    ?: current?.providerName
+                    .orEmpty()
             database.query {
                 replaceLyrics(
                     id = mediaId,

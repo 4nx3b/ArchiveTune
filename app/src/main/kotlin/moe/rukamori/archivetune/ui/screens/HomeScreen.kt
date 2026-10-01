@@ -166,13 +166,11 @@ fun HomeScreen(
                     },
                 ),
     ) {
-
         if (!disableBlur) {
             HomeAtmosphereBackground()
         }
         when (val state = screenState) {
             HomeScreenState.Loading -> {
-
                 HomeSkeletonFeed()
             }
 
@@ -289,7 +287,6 @@ private fun HomeContent(
             .takeIf { it.quickPicksMode == QuickPicks.QUICK_PICKS }
             ?.remoteQuickPicks
     Box(modifier = modifier.fillMaxSize()) {
-
         val pullState = rememberPullToRefreshState()
         PullToRefreshBox(
             isRefreshing = uiState.isRefreshing,
@@ -299,7 +296,6 @@ private fun HomeContent(
             modifier = Modifier.fillMaxSize(),
         ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-
                 val allRemoteSections = uiState.homePage?.sections.orEmpty()
                 val (livePerformanceSections, otherRemoteSections) =
                     remember(allRemoteSections) {
@@ -328,7 +324,6 @@ private fun HomeContent(
                             .fillMaxWidth()
                             .align(Alignment.TopCenter),
                 ) {
-
                     item(
                         key = "home_greeting_title",
                         contentType = "greeting_title",

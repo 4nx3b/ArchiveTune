@@ -155,7 +155,6 @@ fun TelegramBotChatScreen(
     }
 
     if (bot == null) {
-
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             TextButton(onClick = { navController.navigateUp() }) {
                 Text("Bot not found — tap to go back")
@@ -210,15 +209,12 @@ fun TelegramBotChatScreen(
         val latestPrompt = replies.filterIsInstance<BotReply.Prompt>().lastOrNull()?.prompt
 
         if (newTracks.isNotEmpty()) {
-
             noReply = false
             pendingPrompt = null
             persistTracks(newTracks, sourceTitle)
         } else if (latestPrompt != null) {
-
             pendingPrompt = latestPrompt
         } else {
-
             if (pendingPrompt == null) noReply = true
         }
     }
@@ -276,7 +272,6 @@ fun TelegramBotChatScreen(
         sending = true
         pendingChoiceText = button.text
         coroutineScope.launch {
-
             if (prompt.isCancelButton(button)) {
                 pendingPrompt = null
                 pendingChoiceText = null
@@ -312,7 +307,6 @@ fun TelegramBotChatScreen(
     }
 
     fun downloadTrack(track: TelegramTrack) {
-
         runCatching { downloadUtil.downloadCache.removeResource(track.mediaId) }
         val request = DownloadRequest.Builder(track.mediaId, track.mediaId.toUri())
             .setCustomCacheKey(track.mediaId)
@@ -421,7 +415,6 @@ fun TelegramBotChatScreen(
                                 expanded = showCommandMenu,
                                 onDismissRequest = { showCommandMenu = false },
                             ) {
-
                                 if (botCommands.isNotEmpty()) {
                                     botCommands.forEach { cmd ->
                                         DropdownMenuItem(
@@ -621,7 +614,6 @@ private fun BotResultRow(
     onDownload: () -> Unit,
     onAddToPlaylist: () -> Unit,
 ) {
-
     val thumbModel = remember(track) {
         telegramArtworkModel(track)
             ?: moe.rukamori.archivetune.telegram.TelegramClient.cacheArtwork(
@@ -644,7 +636,6 @@ private fun BotResultRow(
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
-
             Icon(
                 painter = painterResource(R.drawable.solar_music_note_2_linear),
                 contentDescription = null,

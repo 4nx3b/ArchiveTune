@@ -30,7 +30,6 @@ import androidx.compose.runtime.getValue
 fun rememberArchiveTuneLottieComposition(
     @RawRes rawRes: Int,
 ): LottieComposition? {
-
     val composition by rememberLottieComposition(
         LottieCompositionSpec.RawRes(rawRes),
     )

@@ -62,6 +62,7 @@ fun AuthWebViewScreen(
     subtitle: String,
     modifier: Modifier = Modifier,
     onRelease: ((WebView) -> Unit)? = null,
+    banner: (@Composable () -> Unit)? = null,
     footer: (@Composable () -> Unit)? = null,
     factory: (Context) -> WebView,
 ) {
@@ -96,6 +97,7 @@ fun AuthWebViewScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            banner?.invoke()
             AndroidView(
                 modifier =
                     Modifier

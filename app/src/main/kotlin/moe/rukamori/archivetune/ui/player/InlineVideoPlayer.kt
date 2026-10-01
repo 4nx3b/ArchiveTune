@@ -130,11 +130,6 @@ val LocalVideoFullscreenState = compositionLocalOf {
 
 val LocalVideoArtworkState = compositionLocalOf<VideoArtworkState?> { null }
 
-/**
- * Whether the current video artwork failed to initialise — the player styles
- * that render InlineVideoPlayer read this to fall back to the artwork stack
- * (the self-contained styles can't see Player()'s local failure state).
- */
 val LocalVideoPlaybackFailed = compositionLocalOf { false }
 
 val LocalVideoPreferredHeight = compositionLocalOf<Int?> { null }
@@ -150,6 +145,10 @@ val LocalIsInPipMode = compositionLocalOf { false }
 val LocalRootOverlayActive = compositionLocalOf { false }
 
 val LocalPlayerLyricsFullScreen = compositionLocalOf { false }
+
+val LocalPlayerSheetOverlayActive = compositionLocalOf { false }
+
+val LocalPlayerSheetOverlayFraction = compositionLocalOf { 0f }
 
 val LocalMiniPlayerDocked = compositionLocalOf { false }
 
@@ -168,9 +167,12 @@ fun InlineVideoControlsPill(
     availableHeights: List<Int> = LocalVideoAvailableHeights.current,
     selectedHeight: Int? = LocalVideoSelectedHeight.current,
     modifier: Modifier = Modifier,
+    qualityMenuOpen: Boolean? = null,
+    onQualityMenuOpenChange: ((Boolean) -> Unit)? = null,
 ) {
     val fullscreenHolder = LocalVideoFullscreenState.current
-    var qualityMenuOpen by remember { mutableStateOf(false) }
+    var internalQualityMenuOpen by remember { mutableStateOf(false) }
+    val setMenuOpen: (Boolean) -> Unit = onQualityMenuOpenChange ?: { internalQualityMenuOpen = it }
 
     Row(
         modifier =
@@ -184,7 +186,7 @@ fun InlineVideoControlsPill(
     ) {
         if (availableHeights.size > 1) {
             IconButton(
-                onClick = { qualityMenuOpen = true },
+                onClick = { setMenuOpen(true) },
                 modifier = Modifier.size(40.dp),
             ) {
                 Icon(
@@ -209,13 +211,13 @@ fun InlineVideoControlsPill(
         }
     }
 
-    if (qualityMenuOpen) {
+    if (qualityMenuOpen == null && internalQualityMenuOpen) {
         VideoQualitySheet(
             preferredHeight = preferredHeight,
             availableHeights = availableHeights,
             selectedHeight = selectedHeight,
             onPreferredHeightChange = onPreferredHeightChange,
-            onDismissRequest = { qualityMenuOpen = false },
+            onDismissRequest = { internalQualityMenuOpen = false },
         )
     }
 }
@@ -248,6 +250,7 @@ fun InlineVideoPlayer(
 
     if (!isFullscreen) {
         var controlsVisible by remember { mutableStateOf(false) }
+        var qualityMenuOpen by remember { mutableStateOf(false) }
         val fallbackPlayingFlow = remember { kotlinx.coroutines.flow.MutableStateFlow(false) }
         val isPlaying by (playerConnection?.isPlaying ?: fallbackPlayingFlow)
             .collectAsStateWithLifecycle()
@@ -267,8 +270,8 @@ fun InlineVideoPlayer(
                 ),
         ) {
             if (controlsOnTap) {
-                LaunchedEffect(controlsVisible, isPlaying) {
-                    if (controlsVisible && isPlaying) {
+                LaunchedEffect(controlsVisible, isPlaying, qualityMenuOpen) {
+                    if (controlsVisible && isPlaying && !qualityMenuOpen) {
                         kotlinx.coroutines.delay(INLINE_VIDEO_CONTROLS_AUTO_HIDE_MS)
                         controlsVisible = false
                     }
@@ -350,6 +353,8 @@ fun InlineVideoPlayer(
                         availableHeights = availableHeights,
                         selectedHeight = selectedHeight,
                         modifier = Modifier.padding(8.dp),
+                        qualityMenuOpen = qualityMenuOpen,
+                        onQualityMenuOpenChange = { qualityMenuOpen = it },
                     )
                 }
             } else if (showControls) {
@@ -362,6 +367,16 @@ fun InlineVideoPlayer(
                         Modifier
                             .align(Alignment.TopEnd)
                             .padding(8.dp),
+                )
+            }
+
+            if (qualityMenuOpen) {
+                VideoQualitySheet(
+                    preferredHeight = preferredHeight,
+                    availableHeights = availableHeights,
+                    selectedHeight = selectedHeight,
+                    onPreferredHeightChange = onPreferredHeightChange,
+                    onDismissRequest = { qualityMenuOpen = false },
                 )
             }
         }
@@ -475,13 +490,12 @@ fun FullscreenVideoOverlay(
         }
     }
 
-    LaunchedEffect(controlsVisible, isUserSeeking, qualityMenuOpen, showOverflowSheet, isInPipMode) {
-
+    LaunchedEffect(controlsVisible, isUserSeeking, qualityMenuOpen, aspectRatioMenuOpen, showOverflowSheet, isInPipMode) {
         if (isInPipMode) {
             controlsVisible = false
             return@LaunchedEffect
         }
-        if (controlsVisible && !isUserSeeking && !qualityMenuOpen && !showOverflowSheet) {
+        if (controlsVisible && !isUserSeeking && !qualityMenuOpen && !aspectRatioMenuOpen && !showOverflowSheet) {
             kotlinx.coroutines.delay(FullscreenControlsAutoHideMs)
             controlsVisible = false
         }
@@ -503,12 +517,10 @@ fun FullscreenVideoOverlay(
 
                             if (isInPipMode) return@detectTapGestures
                             if (showOverflowSheet) {
-
                                 scope.launch { sheetState.hide() }.invokeOnCompletion {
                                     if (!sheetState.isVisible) showOverflowSheet = false
                                 }
                             } else {
-
                                 controlsVisible = !controlsVisible
 
                                 gestureFeedback = null
@@ -597,7 +609,6 @@ fun FullscreenVideoOverlay(
                         onVerticalDrag = { change, dragAmount ->
                             val isLeftHalf = change.position.x < size.width / 2f
                             if (isLeftHalf && brightnessDragActive) {
-
                                 val delta = -dragAmount / 400f
                                 val next = (currentWindowBrightness(context) + delta).coerceIn(0f, 1f)
                                 applyWindowBrightness(context, next)
@@ -610,7 +621,6 @@ fun FullscreenVideoOverlay(
                             } else if (!isLeftHalf && volumeDragActive) {
                                 val maxVol = maxMediaVolume(context)
                                 if (maxVol > 0) {
-
                                     val delta = (-dragAmount / 150f) * maxVol
                                     val currentVol = audioManager(context)?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
                                     val next = (currentVol + delta).toInt().coerceIn(0, maxVol)
@@ -627,7 +637,6 @@ fun FullscreenVideoOverlay(
                     )
                 },
     ) {
-
         VideoArtworkSurface(
             state = state,
             resizeMode = effectiveResizeMode,
@@ -652,13 +661,12 @@ fun FullscreenVideoOverlay(
         }
 
         AnimatedVisibility(
-            visible = controlsVisible && !showOverflowSheet && !isInPipMode,
+            visible = controlsVisible && !showOverflowSheet && !qualityMenuOpen && !aspectRatioMenuOpen && !isInPipMode,
             enter = fadeIn(animationSpec = tween(200)),
             exit = fadeOut(animationSpec = tween(200)),
             modifier = Modifier.fillMaxSize(),
         ) {
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f))) {
-
                 headerMetadata?.let { meta ->
                     PlayerTextBackdrop(
                         textColor = Color.White,
@@ -712,7 +720,6 @@ fun FullscreenVideoOverlay(
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-
                     if (availableHeights.isNotEmpty()) {
                         Row(
                             modifier =
@@ -979,7 +986,6 @@ private fun VideoOverflowSheetContent(
                 .padding(horizontal = 24.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 text = stringResource(R.string.video_slider_style),
@@ -1204,7 +1210,6 @@ private fun currentWindowBrightness(context: Context): Float {
     val activity = context.findActivity() ?: return 0.5f
     val attrs = activity.window.attributes
     return if (attrs.screenBrightness == WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE) {
-
         val system =
             try {
                 Settings.System.getInt(activity.contentResolver, Settings.System.SCREEN_BRIGHTNESS)

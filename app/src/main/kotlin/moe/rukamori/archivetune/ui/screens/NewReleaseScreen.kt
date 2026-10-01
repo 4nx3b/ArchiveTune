@@ -24,10 +24,12 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.Column
@@ -84,6 +86,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
@@ -95,7 +98,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import coil3.compose.AsyncImage
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
@@ -107,7 +112,15 @@ import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.component.shimmer.GridItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
+import moe.rukamori.archivetune.ui.screens.search.onlineSearchResultRoute
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.PresavedRelease
+import moe.rukamori.archivetune.utils.ReleasePresaveKey
+import moe.rukamori.archivetune.utils.isReleased
+import moe.rukamori.archivetune.utils.parsePresavedReleases
+import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.utils.setPresavedReleases
+import moe.rukamori.archivetune.utils.togglePresavedRelease
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
@@ -145,15 +158,37 @@ fun NewReleaseScreen(
     var isSelectionMode by rememberSaveable { mutableStateOf(false) }
     val selectedReleaseIds = remember { mutableStateSetOf<String>() }
 
+    val (presavedRaw, _) = rememberPreference(ReleasePresaveKey, "")
+    val presavedReleases = remember(presavedRaw) { parsePresavedReleases(presavedRaw) }
+
+    val togglePresaveRelease: (AlbumItem, String) -> Unit = { album, releaseType ->
+        val presaved =
+            PresavedRelease(
+                releaseId = album.id,
+                title = album.title,
+                artistName = album.artists?.joinToString { it.name }.orEmpty(),
+                releaseType = releaseType,
+                releaseAtMillis = 0L,
+                thumbnailUrl = album.thumbnail.orEmpty(),
+            )
+        coroutineScope.launch {
+            context.setPresavedReleases(togglePresavedRelease(presavedReleases, presaved))
+        }
+    }
+
+    val removePresavedRelease: (PresavedRelease) -> Unit = { release ->
+        coroutineScope.launch {
+            context.setPresavedReleases(presavedReleases.filterNot { it.releaseId == release.releaseId })
+        }
+    }
+
     val glassHeader = rememberGlassScreenHeader()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-
             if (isSearchActive || !glassHeader.liquidGlassActive) {
-
             AnimatedContent(
                 targetState = isSearchActive,
                 transitionSpec = {
@@ -213,7 +248,6 @@ fun NewReleaseScreen(
                                 .padding(top = 8.dp, bottom = 4.dp),
                     ) {}
                 } else {
-
                     LargeFlexibleTopAppBar(
                         title = {
                             Text(
@@ -234,7 +268,6 @@ fun NewReleaseScreen(
                             }
                         },
                         actions = {
-
                             IconButton(
                                 onClick = {
                                     isSelectionMode = !isSelectionMode
@@ -332,9 +365,20 @@ fun NewReleaseScreen(
                         searchQuery = searchQuery,
                         isSelectionMode = isSelectionMode,
                         selectedIds = selectedReleaseIds,
+                        presavedReleases = presavedReleases,
+                        onTogglePresave = togglePresaveRelease,
+                        onOpenSavedRelease = { release ->
+                            val query =
+                                listOf(release.title, release.artistName)
+                                    .filter { it.isNotBlank() }
+                                    .joinToString(" ")
+                            if (query.isNotBlank()) {
+                                navController.navigate(onlineSearchResultRoute(query))
+                            }
+                        },
+                        onRemoveSavedRelease = removePresavedRelease,
                         onReleaseClick = { album ->
                             if (isSelectionMode) {
-
                                 haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                 if (album.id in selectedReleaseIds) {
                                     selectedReleaseIds.remove(album.id)
@@ -511,9 +555,6 @@ fun NewReleaseScreen(
                 Column(
                     modifier = Modifier.padding(horizontal = 16.dp),
                 ) {
-                    // Count sits clear of the 28dp corner radius (24dp total
-                    // horizontal inset) and gets equal vertical padding above
-                    // and below its own line.
                     Text(
                         text = stringResource(R.string.selected_count, selectedReleaseIds.size),
                         style = MaterialTheme.typography.titleMedium,
@@ -627,6 +668,11 @@ private enum class NewReleaseTab(
         iconRes = R.drawable.solar_queue_music_linear,
         contentType = "new_release_ep_grid_item",
     ),
+    Saved(
+        titleRes = R.string.listen_later,
+        iconRes = R.drawable.solar_bookmark_linear,
+        contentType = "new_release_saved_row",
+    ),
 }
 
 @Immutable
@@ -648,6 +694,10 @@ private fun NewReleaseGridContent(
     searchQuery: String,
     isSelectionMode: Boolean,
     selectedIds: SnapshotStateSet<String>,
+    presavedReleases: List<PresavedRelease>,
+    onTogglePresave: (AlbumItem, String) -> Unit,
+    onOpenSavedRelease: (PresavedRelease) -> Unit,
+    onRemoveSavedRelease: (PresavedRelease) -> Unit,
     onReleaseClick: (AlbumItem) -> Unit,
     onReleaseLongClick: (AlbumItem) -> Unit,
     onRefresh: () -> Unit,
@@ -674,6 +724,31 @@ private fun NewReleaseGridContent(
     val filteredAllSections = remember(allSections, query) {
         if (query.isEmpty()) allSections
         else allSections.map { it.copy(releases = it.releases.filter(::matchesQuery)) }.filter { it.releases.isNotEmpty() }
+    }
+
+    val savedReleaseIds = remember(presavedReleases) {
+        presavedReleases.mapTo(HashSet()) { it.releaseId }
+    }
+    val filteredSavedReleases = remember(presavedReleases, query) {
+        if (query.isEmpty()) {
+            presavedReleases
+        } else {
+            val q = query.lowercase()
+            presavedReleases.filter { release ->
+                release.title.lowercase().contains(q) ||
+                    release.artistName.lowercase().contains(q)
+            }
+        }
+    }
+
+    var savedNowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    if (selectedTab == NewReleaseTab.Saved) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                savedNowMillis = System.currentTimeMillis()
+                kotlinx.coroutines.delay(60_000L)
+            }
+        }
     }
 
     val gridState = rememberLazyGridState()
@@ -715,7 +790,32 @@ private fun NewReleaseGridContent(
             )
         }
 
-        if (query.isNotEmpty() && filteredAllSections.isEmpty() && filteredReleases.isEmpty()) {
+        if (selectedTab == NewReleaseTab.Saved) {
+            if (filteredSavedReleases.isEmpty()) {
+                item(
+                    key = "new_release_saved_empty",
+                    span = { GridItemSpan(maxLineSpan) },
+                    contentType = "new_release_saved_empty",
+                ) {
+                    SavedReleasesEmptyState()
+                }
+            } else {
+                items(
+                    items = filteredSavedReleases,
+                    key = { "presaved_${it.releaseId}" },
+                    span = { GridItemSpan(maxLineSpan) },
+                    contentType = { selectedTab.contentType },
+                ) { release ->
+                    SavedReleaseRow(
+                        release = release,
+                        nowMillis = savedNowMillis,
+                        onOpen = { onOpenSavedRelease(release) },
+                        onRemove = { onRemoveSavedRelease(release) },
+                        itemModifier = Modifier.animateItem(),
+                    )
+                }
+            }
+        } else if (query.isNotEmpty() && filteredAllSections.isEmpty() && filteredReleases.isEmpty()) {
             item(
                 key = "new_release_search_empty",
                 span = { GridItemSpan(maxLineSpan) },
@@ -750,6 +850,9 @@ private fun NewReleaseGridContent(
                         coroutineScope = coroutineScope,
                         isSelectionMode = isSelectionMode,
                         selectedIds = selectedIds,
+                        savedReleaseIds = savedReleaseIds,
+                        releaseType = section.tab.presaveReleaseType() ?: "album",
+                        onTogglePresave = onTogglePresave,
                         onReleaseClick = onReleaseClick,
                         onReleaseLongClick = onReleaseLongClick,
                     )
@@ -777,6 +880,7 @@ private fun NewReleaseGridContent(
                     activeAlbumId = activeAlbumId,
                     isPlaying = isPlaying,
                     coroutineScope = coroutineScope,
+
                     onReleaseClick = onReleaseClick,
                     onReleaseLongClick = onReleaseLongClick,
 
@@ -902,7 +1006,6 @@ private fun NewReleaseSectionHeader(
                 .padding(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-
             if (leadingIcon != null) {
                 Box(
                     modifier = Modifier
@@ -955,6 +1058,9 @@ private fun NewReleaseHorizontalSection(
     coroutineScope: CoroutineScope,
     isSelectionMode: Boolean,
     selectedIds: SnapshotStateSet<String>,
+    savedReleaseIds: Set<String>,
+    releaseType: String,
+    onTogglePresave: (AlbumItem, String) -> Unit,
     onReleaseClick: (AlbumItem) -> Unit,
     onReleaseLongClick: (AlbumItem) -> Unit,
 ) {
@@ -980,6 +1086,7 @@ private fun NewReleaseHorizontalSection(
                 activeAlbumId = activeAlbumId,
                 isPlaying = isPlaying,
                 coroutineScope = coroutineScope,
+
                 onReleaseClick = onReleaseClick,
                 onReleaseLongClick = onReleaseLongClick,
                 itemModifier = Modifier.animateItem(),
@@ -1000,13 +1107,11 @@ private fun NewReleaseSummaryHeader(
                 .fillMaxWidth()
                 .padding(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 8.dp),
     ) {
-
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
-
             Box(
                 modifier = Modifier
                     .size(32.dp)
@@ -1122,12 +1227,171 @@ private fun NewReleaseCategoryEmptyState(onRefresh: () -> Unit) {
     }
 }
 
+@Composable
+private fun SavedReleaseRow(
+    release: PresavedRelease,
+    nowMillis: Long,
+    onOpen: () -> Unit,
+    onRemove: () -> Unit,
+    itemModifier: Modifier = Modifier,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier =
+            itemModifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(onClick = onOpen)
+                .padding(start = 16.dp, top = 10.dp, end = 8.dp, bottom = 10.dp),
+    ) {
+        if (release.thumbnailUrl.isNotBlank()) {
+            AsyncImage(
+                model = release.thumbnailUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier =
+                    Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(10.dp)),
+            )
+        } else {
+            Box(
+                modifier =
+                    Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.solar_album_linear),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        }
+        Column(
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.weight(1f),
+        ) {
+            Text(
+                text = release.title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (release.artistName.isNotBlank()) {
+                Text(
+                    text = release.artistName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (release.isReleased(nowMillis)) {
+                Box(
+                    modifier =
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.presave_out_now),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+            } else {
+                Text(
+                    text = presavedReleaseCountdownText(release, nowMillis),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        IconButton(onClick = onRemove) {
+            Icon(
+                painter = painterResource(R.drawable.solar_close),
+                contentDescription = stringResource(R.string.presave_remove),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SavedReleasesEmptyState() {
+    Text(
+        text = stringResource(R.string.presave_empty),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 56.dp),
+    )
+}
+
+@Composable
+private fun presavedReleaseCountdownText(
+    release: PresavedRelease,
+    nowMillis: Long,
+): String {
+    val leftMillis = release.releaseAtMillis - nowMillis
+    val resource =
+        when {
+            leftMillis <= 0L -> R.string.release_countdown_imminent
+            leftMillis >= 24L * 60 * 60 * 1000 ->
+                R.string.release_countdown_days
+            leftMillis >= 60L * 60 * 1000 ->
+                R.string.release_countdown_hours
+            else -> R.string.release_countdown_minutes
+        }
+    return when (resource) {
+        R.string.release_countdown_days -> {
+            val days = (leftMillis / (24L * 60 * 60 * 1000)).toInt()
+            val hours = ((leftMillis % (24L * 60 * 60 * 1000)) / (60L * 60 * 1000)).toInt()
+            stringResource(resource, days, hours)
+        }
+        R.string.release_countdown_hours -> {
+            val hours = (leftMillis / (60L * 60 * 1000)).toInt()
+            val minutes = ((leftMillis % (60L * 60 * 1000)) / 60_000L).toInt()
+            stringResource(resource, hours, minutes)
+        }
+        R.string.release_countdown_minutes -> {
+            val minutes = (leftMillis / 60_000L).coerceAtLeast(1L).toInt()
+            stringResource(resource, minutes)
+        }
+        else -> stringResource(resource)
+    }
+}
+
 private fun NewReleaseContent.releasesFor(tab: NewReleaseTab): List<AlbumItem> =
     when (tab) {
         NewReleaseTab.All -> emptyList()
         NewReleaseTab.Albums -> albums
         NewReleaseTab.Singles -> singles
         NewReleaseTab.Ep -> eps
+        NewReleaseTab.Saved -> emptyList()
+    }
+
+private fun NewReleaseTab.presaveReleaseType(): String? =
+    when (this) {
+        NewReleaseTab.Albums -> "album"
+        NewReleaseTab.Singles -> "single"
+        NewReleaseTab.Ep -> "ep"
+        NewReleaseTab.All, NewReleaseTab.Saved -> null
     }
 
 private fun NewReleaseContent.releaseSections(): List<NewReleaseSection> =

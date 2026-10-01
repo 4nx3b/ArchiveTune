@@ -96,7 +96,6 @@ object TelegramChannelSync {
         title: String,
         losslessOnly: Boolean,
     ) {
-
         val ready =
             withTimeoutOrNull(READY_TIMEOUT_MS) {
                 while (!TelegramClient.isReady) {
@@ -130,7 +129,6 @@ object TelegramChannelSync {
                     fetchPageWithRetry(chatId, fromMessageId, filter, isFirstPage)
 
                 if (page == null) {
-
                     Timber.tag(TAG).w("fetchPageWithRetry exhausted for chat %d filter %s", chatId, filter.name)
                     break
                 }

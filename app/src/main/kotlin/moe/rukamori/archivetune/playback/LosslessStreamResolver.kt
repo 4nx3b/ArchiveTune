@@ -36,7 +36,6 @@ import timber.log.Timber
 import java.io.File
 
 object LosslessStreamResolver {
-
     fun resolveQobuz(
         context: Context,
         mediaId: String,
@@ -117,7 +116,6 @@ object LosslessStreamResolver {
         )
 
         if (accountFirst) {
-
             val userToken = readString(context, TidalAccessTokenKey)
             if (userToken.isNotBlank()) {
                 val country = readString(context, TidalCountryCodeKey).ifBlank { "US" }
@@ -141,7 +139,6 @@ object LosslessStreamResolver {
 
             val poolAccounts = PoolAccountManager.tidalAccounts()
             if (poolAccounts.isNotEmpty()) {
-
                 val stream = runCatching {
                     runBlocking(Dispatchers.IO) {
                         coroutineScope {

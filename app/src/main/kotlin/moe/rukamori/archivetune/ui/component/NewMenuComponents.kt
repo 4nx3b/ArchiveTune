@@ -59,11 +59,6 @@ fun NewActionButton(
 ) {
     val onGlassPopup = LocalGlassMenuContent.current
 
-    // Glass mode: the translucent "ghost" tile over the blur — unchanged.
-    // Solid mode (liquid glass off / no backdrop): outlined tile — transparent
-    // fill with a hairline border so the single elevated sheet surface shows
-    // through and the grid reads as one deliberate flat design instead of
-    // tonal cards stacking greys on the sheet.
     val containerColor =
         when {
             backgroundColor.isSpecified -> backgroundColor
@@ -71,14 +66,14 @@ fun NewActionButton(
             else -> Color.Transparent
         }
     val actionContentColor = if (contentColor.isSpecified) contentColor else MaterialTheme.colorScheme.onSurfaceVariant
-    val tileShape = if (onGlassPopup) ButtonDefaults.squareShape else RoundedCornerShape(16.dp)
+    val tileShape = if (onGlassPopup) RoundedCornerShape(18.dp) else RoundedCornerShape(16.dp)
 
     FilledTonalButton(
         onClick = onClick,
         modifier =
             modifier
                 .fillMaxWidth()
-                .heightIn(min = 96.dp)
+                .heightIn(min = 84.dp)
                 .then(
                     if (onGlassPopup) {
                         Modifier
@@ -260,11 +255,6 @@ fun MenuSurfaceSection(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // Sections are flat in both modes now. On glass they were already
-    // transparent (the blur shows through); in solid mode the old
-    // 0.92-alpha grey card stacked a second neutral on the elevated sheet
-    // and banding-diffed against it — grouping now comes from the hairline
-    // dividers between the flat list items instead of a nested card.
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = Color.Transparent,

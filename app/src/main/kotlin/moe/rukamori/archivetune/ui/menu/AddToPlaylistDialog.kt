@@ -9,8 +9,12 @@
 
 package moe.rukamori.archivetune.ui.menu
 
+import moe.rukamori.archivetune.ui.component.LocalMenuDialogDismissal
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,14 +49,12 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -68,6 +70,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -297,13 +300,30 @@ fun AddToPlaylistDialog(
     }
 
     if (isVisible) {
+        val menuDialogDismissal = LocalMenuDialogDismissal.current
         Dialog(
-            onDismissRequest = onDismiss,
+            onDismissRequest = {
+                menuDialogDismissal?.invoke()
+                onDismiss()
+            },
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
-
             UnglassedDialogTheme {
             KeepStatusBarHiddenInDialog()
+            var entered by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                entered = true
+            }
+            val entranceProgress by animateFloatAsState(
+                targetValue = if (entered) 1f else 0f,
+                animationSpec =
+                    spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                        visibilityThreshold = 0.01f,
+                    ),
+                label = "addToPlaylistEntrance",
+            )
             BoxWithConstraints(
                 modifier =
                     Modifier
@@ -318,8 +338,15 @@ fun AddToPlaylistDialog(
                         Modifier
                             .fillMaxWidth()
                             .widthIn(max = 560.dp)
-                            .heightIn(max = maxHeight),
-                    shape = AlertDialogDefaults.shape,
+                            .heightIn(max = maxHeight)
+                            .graphicsLayer {
+                                val p = entranceProgress.coerceIn(0f, 1f)
+                                alpha = p
+                                scaleX = 0.94f + 0.06f * p
+                                scaleY = 0.94f + 0.06f * p
+                                translationY = (1f - p) * 14f
+                            },
+                    shape = MaterialTheme.shapes.extraLarge,
                     color = AlertDialogDefaults.containerColor,
                     tonalElevation = AlertDialogDefaults.TonalElevation,
                 ) {
@@ -331,27 +358,29 @@ fun AddToPlaylistDialog(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier =
-                                        Modifier
-                                            .size(40.dp)
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.secondaryContainer),
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(34.dp),
                                 ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.playlist_add),
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        modifier = Modifier.size(22.dp),
-                                    )
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.fillMaxSize(),
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.solar_playlist_linear),
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    }
                                 }
 
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = stringResource(R.string.add_to_playlist),
                                         style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.SemiBold,
+                                        fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -365,6 +394,7 @@ fun AddToPlaylistDialog(
                                                     selectedPlaylistIds.size,
                                                 ),
                                             style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold,
                                             color = MaterialTheme.colorScheme.primary,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
@@ -385,7 +415,7 @@ fun AddToPlaylistDialog(
                                     Icon(
                                         painter =
                                             painterResource(
-                                                if (showSearchField) R.drawable.close else R.drawable.search,
+                                                if (showSearchField) R.drawable.solar_close_circle_linear else R.drawable.solar_magnifer_linear,
                                             ),
                                         contentDescription =
                                             stringResource(
@@ -403,15 +433,16 @@ fun AddToPlaylistDialog(
                                     placeholder = { Text(stringResource(R.string.search)) },
                                     leadingIcon = {
                                         Icon(
-                                            painter = painterResource(R.drawable.search),
+                                            painter = painterResource(R.drawable.solar_magnifer_linear),
                                             contentDescription = null,
+                                            modifier = Modifier.size(20.dp),
                                         )
                                     },
                                     trailingIcon = {
                                         if (searchQuery.isNotBlank()) {
                                             IconButton(onClick = { searchQuery = "" }) {
                                                 Icon(
-                                                    painter = painterResource(R.drawable.close),
+                                                    painter = painterResource(R.drawable.solar_close_circle_linear),
                                                     contentDescription = stringResource(R.string.close),
                                                 )
                                             }
@@ -477,39 +508,28 @@ fun AddToPlaylistDialog(
                             item(contentType = "create") {
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
 
-                                ListItem(
-                                    headlineContent = {
-                                        Text(
-                                            text = stringResource(R.string.create_playlist),
-                                            fontWeight = FontWeight.Medium,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    },
-                                    leadingContent = {
-                                        Box(
-                                            contentAlignment = Alignment.Center,
-                                            modifier =
-                                                Modifier
-                                                    .size(44.dp)
-                                                    .clip(RoundedCornerShape(12.dp))
-                                                    .background(MaterialTheme.colorScheme.primaryContainer),
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.add),
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                modifier = Modifier.size(20.dp),
-                                            )
-                                        }
-                                    },
+                                FilledTonalButton(
+                                    onClick = { showCreatePlaylistDialog = true },
+                                    shape = RoundedCornerShape(18.dp),
+                                    contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
                                     modifier =
                                         Modifier
                                             .fillMaxWidth()
-                                            .clickable { showCreatePlaylistDialog = true }
-                                            .padding(horizontal = 8.dp),
-                                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                                )
+                                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.solar_add_circle_linear),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = stringResource(R.string.create_playlist),
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
 
                             item(contentType = "playlistDivider") {
@@ -529,7 +549,7 @@ fun AddToPlaylistDialog(
                                     val rowBackground by animateColorAsState(
                                         targetValue =
                                             if (isSelected) {
-                                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
                                             } else {
                                                 Color.Transparent
                                             },
@@ -541,6 +561,8 @@ fun AddToPlaylistDialog(
                                         modifier =
                                             Modifier
                                                 .fillMaxWidth()
+                                                .padding(horizontal = 8.dp)
+                                                .clip(RoundedCornerShape(16.dp))
                                                 .background(rowBackground)
                                                 .clickable(enabled = !isAddingToPlaylist) {
                                                     selectedPlaylistIds =
@@ -597,10 +619,13 @@ fun AddToPlaylistDialog(
                                 Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) {
+                            OutlinedButton(
+                                onClick = onDismiss,
+                                shape = RoundedCornerShape(18.dp),
+                            ) {
                                 Text(stringResource(android.R.string.cancel))
                             }
 
@@ -673,7 +698,7 @@ fun AddToPlaylistDialog(
                                     }
                                 },
                                 contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
-                                shapes = ButtonDefaults.shapes(),
+                                shape = RoundedCornerShape(18.dp),
                             ) {
                                 if (isAddingToPlaylist) {
                                     CircularWavyProgressIndicator(
@@ -682,7 +707,7 @@ fun AddToPlaylistDialog(
                                     )
                                 } else {
                                     Icon(
-                                        painter = painterResource(R.drawable.done),
+                                        painter = painterResource(R.drawable.solar_check_circle_linear),
                                         contentDescription = null,
                                         modifier = Modifier.size(ButtonDefaults.IconSize),
                                     )
@@ -724,7 +749,7 @@ fun AddToPlaylistDialog(
         DefaultDialog(
             title = { Text(stringResource(R.string.duplicates)) },
             buttons = {
-                TextButton(
+                OutlinedButton(
                     onClick = {
                         coroutineScope.launch(Dispatchers.IO) {
                             var totalAdded = 0
@@ -747,12 +772,12 @@ fun AddToPlaylistDialog(
                         showDuplicateDialog = false
                         onDismiss()
                     },
-                    shapes = ButtonDefaults.shapes(),
+                    shape = RoundedCornerShape(18.dp),
                 ) {
                     Text(stringResource(R.string.skip_duplicates))
                 }
 
-                TextButton(
+                FilledTonalButton(
                     onClick = {
                         coroutineScope.launch(Dispatchers.IO) {
                             var totalAdded = 0
@@ -773,7 +798,7 @@ fun AddToPlaylistDialog(
                         showDuplicateDialog = false
                         onDismiss()
                     },
-                    shapes = ButtonDefaults.shapes(),
+                    shape = RoundedCornerShape(18.dp),
                 ) {
                     Text(stringResource(R.string.add_anyway))
                 }
@@ -798,6 +823,11 @@ fun AddToPlaylistDialog(
     }
 }
 
+private val AddToPlaylistExpressiveSpring = spring<Float>(
+    dampingRatio = Spring.DampingRatioLowBouncy,
+    stiffness = Spring.StiffnessMediumLow,
+)
+
 @Composable
 private fun AddToPlaylistSortChip(
     label: String,
@@ -806,25 +836,54 @@ private fun AddToPlaylistSortChip(
     modifier: Modifier = Modifier,
     minHeight: Dp = 40.dp,
 ) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label) },
-        leadingIcon = {
+    val selectionScale by animateFloatAsState(
+        targetValue = if (selected) 1f else 0.94f,
+        animationSpec = AddToPlaylistExpressiveSpring,
+        label = "sortChipScale",
+    )
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color =
             if (selected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHighest
+            },
+        modifier =
+            modifier
+                .heightIn(min = minHeight)
+                .graphicsLayer {
+                    scaleX = selectionScale
+                    scaleY = selectionScale
+                }
+                .clickable(onClick = onClick),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+        ) {
+            AnimatedVisibility(visible = selected) {
                 Icon(
-                    painter = painterResource(R.drawable.done),
+                    painter = painterResource(R.drawable.solar_check_circle_linear),
                     contentDescription = null,
-                    modifier = Modifier.size(FilterChipDefaults.IconSize),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(16.dp),
                 )
             }
-        },
-        modifier = modifier.heightIn(min = minHeight),
-        shape = RoundedCornerShape(16.dp),
-        border = null,
-        colors =
-            FilterChipDefaults.filterChipColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ),
-    )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                color =
+                    if (selected) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                maxLines = 1,
+            )
+        }
+    }
 }

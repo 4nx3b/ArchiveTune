@@ -133,7 +133,6 @@ internal class DeezerDecryptingDataSource(
             try {
                 DeezerCrypto.decryptChunk(chunk, filled, chunkKey)
             } catch (e: Exception) {
-
                 throw IOException("Deezer chunk decryption failed at index $nextChunkIndex", e)
             }
         }

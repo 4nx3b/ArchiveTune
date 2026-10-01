@@ -21,7 +21,7 @@ object SettingsDimensions {
 
     val ScreenHorizontalPadding = 16.dp
     val ScreenBottomPadding = 32.dp
-    val SectionSpacing = 14.dp
+    val SectionSpacing = 10.dp
     val SegmentedGroupHorizontalPadding = 26.dp
     val SegmentedItemGap = 2.dp
     val RowVerticalPadding = 14.dp
@@ -39,7 +39,7 @@ object SettingsDimensions {
     val DividerThickness = 0.5.dp
     val DividerStartIndent = 60.dp
 
-    val SectionHeaderBottomPadding = 6.dp
+    val SectionHeaderBottomPadding = 4.dp
     val SectionHeaderHorizontalPadding = 20.dp
 }
 

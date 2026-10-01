@@ -19,34 +19,26 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 object QobuzBackupProvider {
-    /**
-     * The community mirror this source shipped against
-     * (`mlc-ytify.kouzu.in`, a Vercel front for a ytify-based FLAC service)
-     * went dark in September 2026 — the Vercel deployment now serves a
-     * Hugging Face 404 page, and the HF space behind it is deleted. The
-     * resolver therefore walks an ENDPOINT CHAIN: any live instance of the
-     * same `/api/stream` + `/api/search` API (the mirror operator's own
-     * deployment, a friend's, or a self-host) can be plugged in from
-     * Settings → Sources → Qobuz backup → "Backup resolver endpoints",
-     * one URL per line, no app update needed.
-     */
-    private const val DEFAULT_ENDPOINT = "https://mlc-ytify.kouzu.in"
+    private const val DEFAULT_ENDPOINT = "https://mls.kouzu.in"
 
     @Volatile
     var configuredEndpoints: List<String> = emptyList()
 
+    private fun normalizeEndpoint(raw: String): String {
+
+        val https = if (raw.startsWith("http://")) "https://" + raw.removePrefix("http://") else raw
+
+        return https.replace("mlc-ytify.kouzu.in", "mls.kouzu.in")
+    }
+
     private fun endpointChain(): List<String> {
         val custom =
             configuredEndpoints
-                .map { it.trim().trimEnd('/') }
-                .filter { it.startsWith("http") }
+                .map { normalizeEndpoint(it.trim().trimEnd('/')) }
+                .filter { it.startsWith("https://") }
         return (custom + DEFAULT_ENDPOINT).distinct()
     }
 
-    // Circuit breaker: an endpoint that failed three consecutive resolutions
-    // is skipped for ten minutes, so a dead mirror no longer adds a full
-    // HTTP round-trip to EVERY song's source chain (that is what made the
-    // backup both "not working" and slow). Any success resets the breaker.
     private const val FAILURE_THRESHOLD = 3
     private const val COOLDOWN_MS = 10 * 60 * 1000L
 
@@ -75,9 +67,7 @@ object QobuzBackupProvider {
         return endpointChain().filter { endpointAvailable(it, now) }
     }
 
-    /** The full endpoint chain (custom + default) for settings/diagnostics UI. */
     fun endpointList(): List<String> = endpointChain()
-
     private const val USER_AGENT = "ArchiveTune-Android"
     private const val SEARCH_CACHE_MS = 10 * 60 * 1000L
 
@@ -102,7 +92,6 @@ object QobuzBackupProvider {
 
         val isLossless: Boolean,
     ) {
-
         val thumbnailUrl: String
             get() = "https://i.ytimg.com/vi/$videoId/hqdefault.jpg"
     }
@@ -175,12 +164,14 @@ object QobuzBackupProvider {
         limit: Int,
     ): List<Candidate> {
         for (base in activeEndpoints()) {
-            val candidates = fetchSearchFrom(base, query, limit)
-            if (candidates.isNotEmpty()) {
-                recordSuccess(base)
-                return candidates
+            when (val candidates = fetchSearchFrom(base, query, limit)) {
+                null -> recordFailure(base)
+                else -> {
+
+                    recordSuccess(base)
+                    if (candidates.isNotEmpty()) return candidates
+                }
             }
-            recordFailure(base)
         }
         return emptyList()
     }
@@ -189,7 +180,7 @@ object QobuzBackupProvider {
         base: String,
         query: String,
         limit: Int,
-    ): List<Candidate> {
+    ): List<Candidate>? {
         val url =
             "$base/api/search"
                 .toHttpUrl()
@@ -215,21 +206,21 @@ object QobuzBackupProvider {
                         query,
                         response.code,
                     )
-                    return@use emptyList()
+                    return@use null
                 }
                 parseSearchResponse(response.body?.string().orEmpty(), limit)
             }
         }.onFailure { error ->
             Timber.tag("QobuzBackup").d(error, "search \"%s\" failed", query)
-        }.getOrDefault(emptyList())
+        }.getOrDefault(null)
     }
 
     private fun parseSearchResponse(
         body: String,
         limit: Int,
-    ): List<Candidate> {
-        if (body.isBlank()) return emptyList()
-        val array = runCatching { JSONArray(body) }.getOrNull() ?: return emptyList()
+    ): List<Candidate>? {
+        if (body.isBlank()) return null
+        val array = runCatching { JSONArray(body) }.getOrNull() ?: return null
         val out = mutableListOf<Candidate>()
         for (index in 0 until array.length()) {
             if (out.size >= limit) break
@@ -264,7 +255,6 @@ object QobuzBackupProvider {
         val bitDepth: Int? = null,
         val durationMs: Long? = null,
     ) {
-
         val label: String
             get() = if (isLossless) "Qobuz backup (lossless)" else "Qobuz backup (kouzu.in)"
     }

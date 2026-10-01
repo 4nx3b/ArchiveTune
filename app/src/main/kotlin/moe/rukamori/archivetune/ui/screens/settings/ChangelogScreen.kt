@@ -91,6 +91,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -159,27 +160,12 @@ fun ChangelogScreen(
             ),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    FrostedHeaderPill(plain = true) {
-                        IconButton(
-                            onClick = navController::navigateUp,
-                            onLongClick = navController::backToMain,
-                        ) {
-                            Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
-                        }
-                        Text(
-                            text = stringResource(R.string.changelog),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    }
-                },
-            )
-        },
+                SettingsPageTopBar(
+                    titleText = stringResource(R.string.changelog),
+                    onBack = navController::navigateUp,
+                    onBackLongClick = navController::backToMain,
+                )
+            },
     ) { paddingValues ->
         Box(
             modifier =
@@ -191,7 +177,6 @@ fun ChangelogScreen(
                     ),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-
                 if (releases.isNotEmpty()) {
                     Row(
                         modifier =
@@ -295,7 +280,6 @@ fun ChangelogScreen(
                         ) {
                             currentRelease?.let { release ->
                                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-
                                     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
                                     val displayDateFormat = remember { SimpleDateFormat("MMMM d, yyyy", Locale.getDefault()) }
                                     val formattedDate =

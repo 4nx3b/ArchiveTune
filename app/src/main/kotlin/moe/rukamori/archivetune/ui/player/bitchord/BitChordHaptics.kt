@@ -23,7 +23,6 @@ import androidx.compose.ui.platform.LocalContext
 import java.util.concurrent.atomic.AtomicBoolean
 
 enum class Haptic {
-
     Tick,
 
     Tap,
@@ -121,7 +120,6 @@ private class HapticDevice private constructor(
     private val compiled = HashMap<Haptic, VibrationEffect>()
 
     fun play(haptic: Haptic) {
-
         if (!systemHapticsEnabled()) return
 
         val effect = synchronized(compiled) {
@@ -136,7 +134,6 @@ private class HapticDevice private constructor(
     }
 
     private fun compile(beats: List<Beat>): VibrationEffect = when {
-
         canCompose && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
             Primitives.compose(beats)
         canScaleAmplitude -> waveform(beats, coarse = false)
@@ -153,7 +150,6 @@ private class HapticDevice private constructor(
             amplitudes[i * 2 + 1] = (beat.kind.amplitude * beat.scale).toInt().coerceIn(1, 255)
         }
         return if (coarse) {
-
             VibrationEffect.createWaveform(timings, -1)
         } else {
             VibrationEffect.createWaveform(timings, amplitudes, -1)
@@ -164,7 +160,6 @@ private class HapticDevice private constructor(
         (beat.kind.pulseMs * 2.5f * (0.6f + 0.4f * beat.scale)).toLong().coerceIn(18, 40)
 
     companion object {
-
         private fun List<Beat>.outerTwo(): List<Beat> =
             if (size > 2) listOf(first(), last()) else this
 
@@ -234,7 +229,6 @@ private class HapticDevice private constructor(
 
 @RequiresApi(Build.VERSION_CODES.R)
 private object Primitives {
-
     fun supportedBy(vibrator: Vibrator): Boolean = vibrator.areAllPrimitivesSupported(
         VibrationEffect.Composition.PRIMITIVE_TICK,
         VibrationEffect.Composition.PRIMITIVE_CLICK,

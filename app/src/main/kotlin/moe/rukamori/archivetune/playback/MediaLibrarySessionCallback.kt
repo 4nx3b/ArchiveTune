@@ -1260,7 +1260,6 @@ class MediaLibrarySessionCallback
             startPositionMs: Long,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> =
             scope.future(Dispatchers.IO) {
-
                 val defaultResult =
                     MediaSession.MediaItemsWithStartPosition(emptyList(), startIndex, startPositionMs)
                 val firstItem = mediaItems.firstOrNull() ?: return@future defaultResult
@@ -2447,10 +2446,7 @@ class MediaLibrarySessionCallback
                     startPositionMs,
                 )
             }
-            // The selected song dropped out of the (re-shuffled / re-filtered)
-            // section list — starting at index 0 would play a DIFFERENT song than
-            // the one picked. Fall back to the cached search item for that id so
-            // the picked song still plays, with the section as a one-song queue.
+
             val cachedItem = onlineSearchItemCache[selectedSongId]
             return if (cachedItem != null) {
                 MediaSession.MediaItemsWithStartPosition(listOf(cachedItem), 0, startPositionMs)

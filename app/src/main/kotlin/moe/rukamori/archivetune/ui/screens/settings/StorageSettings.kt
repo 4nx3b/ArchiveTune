@@ -113,6 +113,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 
 @OptIn(ExperimentalCoilApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -307,34 +308,12 @@ fun StorageSettings(
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    FrostedHeaderPill(plain = true) {
-                        IconButton(
-                            onClick = navController::navigateUp,
-                            onLongClick = navController::backToMain,
-                        ) {
-                            Icon(
-                                painterResource(R.drawable.arrow_back),
-                                contentDescription = null,
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.storage),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                ),
-            )
-        },
+                SettingsPageTopBar(
+                    titleText = stringResource(R.string.storage),
+                    onBack = navController::navigateUp,
+                    onBackLongClick = navController::backToMain,
+                )
+            },
         snackbarHost = {
             SnackbarHost(
                 hostState = snackbarHostState,
@@ -346,7 +325,6 @@ fun StorageSettings(
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -419,7 +397,9 @@ fun StorageSettings(
                     )
                 }
                 item(visible = maxSongCacheSize > 0) {
-                    CacheUsagePreference(progress = playerCacheProgress)
+                    Column(modifier = positions.modifierFor("size_used")) {
+                        CacheUsagePreference(progress = playerCacheProgress)
+                    }
                 }
                 item {
                     PreferenceEntry(
@@ -652,7 +632,7 @@ private fun StorageFolderSection(
     positions: PreferencePositions,
 ) {
     PreferenceGroup(
-        modifier = positions.modifierFor("storage_folder"),
+        modifier = positions.modifierFor("storage_folder", "download_location", "storage_folder_pick"),
         title = stringResource(R.string.storage_folder),
     ) {
         when (state) {

@@ -33,6 +33,15 @@ fun DirectStream.pcmBitrateOrNull(channels: Int = 2): Int? {
     return rate * depth * channels
 }
 
+data class CurrentStreamInfo(
+    val mediaId: String,
+    val source: AudioSourceType,
+    val label: String,
+    val protocol: String? = null,
+    val sampleRate: Int? = null,
+    val bitDepth: Int? = null,
+)
+
 object TitleMatch {
     const val ACCEPT_THRESHOLD = 0.78
     private const val TITLE_ONLY_THRESHOLD = 0.95
@@ -239,29 +248,21 @@ object TitleMatch {
         val prefix = a.zip(b).takeWhile { (left, right) -> left == right }.size.coerceAtMost(4)
         return jaro + prefix * 0.1 * (1.0 - jaro)
     }
-
 }
 
 object AudioSourceConfig {
-    /**
-     * The resolution chain. Deliberately does NOT list [AudioSourceType.AMAZON].
-     *
-     * Amazon serves CENC-protected fragmented MP4 and this fork ships no decryption step, so its
-     * resolver can only ever return null. Listing it here would put a guaranteed miss in front of
-     * every listener's chain — a wasted step on every track, for a source that cannot play. It
-     * belongs here the day a resolver exists, and not before; the account, pool and settings
-     * plumbing around it is complete and waiting.
-     */
+
     val DEFAULT_ORDER: List<AudioSourceType> =
         listOf(
             AudioSourceType.TIDAL,
             AudioSourceType.QOBUZ,
             AudioSourceType.QOBUZ_BACKUP,
-            AudioSourceType.DEEZER,
-            AudioSourceType.APPLE,
             AudioSourceType.JIOSAAVN,
             AudioSourceType.YOUTUBE,
         )
+
+    private val RETIRED_FROM_CHAIN =
+        setOf(AudioSourceType.APPLE, AudioSourceType.DEEZER)
 
     private val ALWAYS_ENABLED = setOf(AudioSourceType.YOUTUBE)
 
@@ -274,6 +275,7 @@ object AudioSourceConfig {
                 ?.split(',')
                 ?.mapNotNull { parseType(it) }
                 ?.distinct()
+                ?.filterNot { it in RETIRED_FROM_CHAIN }
                 .orEmpty()
         if (stored.isEmpty()) return DEFAULT_ORDER
 
@@ -312,6 +314,17 @@ object AudioSourceConfig {
         parseOrder(rawOrder).filter { source ->
             isEnabled(source, enabledSet, defaults[source] ?: false)
         }
+
+    fun withSourceAdded(
+        rawOrder: String?,
+        source: AudioSourceType,
+    ): String {
+        if (source in RETIRED_FROM_CHAIN) return parseOrder(rawOrder).joinToString(",") { it.name }
+        val parsed = parseOrder(rawOrder)
+        if (source in parsed) return parsed.joinToString(",") { it.name }
+        val above = parsed.filterNot { it == AudioSourceType.YOUTUBE }
+        return (above + source + AudioSourceType.YOUTUBE).joinToString(",") { it.name }
+    }
 }
 
 object SongSourceOverride {
@@ -349,6 +362,32 @@ object SongSourceOverride {
     }
 }
 
+object SongCanvasDisabled {
+    fun parse(raw: String?): Set<String> =
+        raw
+            ?.split(';')
+            ?.mapNotNull { it.trim().takeIf(String::isNotEmpty) }
+            ?.toSet()
+            ?: emptySet()
+
+    fun serialize(ids: Set<String>): String = ids.joinToString(";")
+
+    fun isDisabled(
+        raw: String?,
+        songId: String,
+    ): Boolean = songId in parse(raw)
+
+    fun withDisabled(
+        raw: String?,
+        songId: String,
+        disabled: Boolean,
+    ): String {
+        val ids = parse(raw).toMutableSet()
+        if (disabled) ids.add(songId) else ids.remove(songId)
+        return serialize(ids)
+    }
+}
+
 object SongSourceQobuzTrackId {
     fun parse(raw: String?): Map<String, String> {
         if (raw.isNullOrBlank()) return emptyMap()
@@ -382,6 +421,23 @@ object SongSourceQobuzTrackId {
     }
 }
 
+object SongSourceTidalTrackId {
+    fun parse(raw: String?): Map<String, String> = SongSourceQobuzTrackId.parse(raw)
+
+    fun serialize(map: Map<String, String>): String = SongSourceQobuzTrackId.serialize(map)
+
+    fun get(
+        raw: String?,
+        songId: String,
+    ): String? = SongSourceQobuzTrackId.get(raw, songId)
+
+    fun withOverride(
+        raw: String?,
+        songId: String,
+        trackId: String?,
+    ): String = SongSourceQobuzTrackId.withOverride(raw, songId, trackId)
+}
+
 object SongSourceQobuzBackupVideoId {
     fun parse(raw: String?): Map<String, String> = SongSourceQobuzTrackId.parse(raw)
 
@@ -397,4 +453,21 @@ object SongSourceQobuzBackupVideoId {
         songId: String,
         videoId: String?,
     ): String = SongSourceQobuzTrackId.withOverride(raw, songId, videoId)
+}
+
+object SongSourceDeezerTrackId {
+    fun parse(raw: String?): Map<String, String> = SongSourceQobuzTrackId.parse(raw)
+
+    fun serialize(map: Map<String, String>): String = SongSourceQobuzTrackId.serialize(map)
+
+    fun get(
+        raw: String?,
+        songId: String,
+    ): String? = SongSourceQobuzTrackId.get(raw, songId)
+
+    fun withOverride(
+        raw: String?,
+        songId: String,
+        trackId: String?,
+    ): String = SongSourceQobuzTrackId.withOverride(raw, songId, trackId)
 }

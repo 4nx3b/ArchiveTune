@@ -14,7 +14,6 @@ import kotlinx.coroutines.CancellationException
 import java.util.Locale
 
 fun reportException(throwable: Throwable) {
-
     if (throwable is CancellationException) return
 
     Log.w("ArchiveTune", "reportException", throwable)

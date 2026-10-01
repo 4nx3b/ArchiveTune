@@ -24,16 +24,6 @@ import moe.rukamori.archivetune.constants.PlayerCustomImageUriKey
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.utils.rememberPreference
 
-/**
- * Lyrics-background takeover for the player styles that draw their lyrics with
- * white-only content over their own artwork backdrop (BitChord's mesh,
- * SimpMusic's diagonal wash). While their lyrics surface is open and the
- * Lyrics background style preference is not DEFAULT, this renders the shared
- * style instead: MOVING_BLUR (drifting blurred artwork), COLORING / CUSTOM
- * (the shared PlayerBackground), or the theme surface for FOLLOW_THEME —
- * under a scrim when the caller's content is white-only, so every glyph stays
- * readable in light and dark themes.
- */
 @Composable
 internal fun StyledLyricsBackground(
     style: LyricsBackgroundStyle,

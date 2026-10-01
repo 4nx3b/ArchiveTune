@@ -146,7 +146,6 @@ object UpdateNotificationManager {
                     }
                 }
             } catch (e: Exception) {
-
             }
         }
     }
@@ -167,7 +166,6 @@ object UpdateNotificationManager {
                 dataStore.edit { it[LastNotifiedVersionKey] = latestVersion }
             }
         } catch (e: Exception) {
-
         }
     }
 
@@ -233,7 +231,6 @@ object UpdateNotificationManager {
         try {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
         } catch (e: SecurityException) {
-
         }
     }
 

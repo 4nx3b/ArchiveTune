@@ -160,13 +160,11 @@ fun WavyMusicSlider(
         targetValue = normalizedValue,
         animationSpec =
             if (normalizedValue == 0f) {
-
                 spring(
                     dampingRatio = 0.75f,
                     stiffness = 200f,
                 )
             } else {
-
                 spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
                     stiffness = 380f,

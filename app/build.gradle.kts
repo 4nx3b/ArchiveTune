@@ -35,6 +35,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.aboutlibraries.android)
+    alias(libs.plugins.protobufPlugin)
 }
 
 val localProperties = Properties()
@@ -106,6 +107,15 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
 
+        // The LastWave engine links Google Oboe (prefab), which requires the
+        // shared C++ STL. All of the app's native targets then build against
+        // c++_shared so one STL serves every library.
+        externalNativeBuild {
+            cmake {
+                arguments += "-DANDROID_STL=c++_shared"
+            }
+        }
+
         val lastfmApiKey =
             localProperties.getProperty("LASTFM_API_KEY")
                 ?: System.getenv("LASTFM_API_KEY")
@@ -116,6 +126,20 @@ android {
                 ?: ""
         buildConfigField("String", "LASTFM_API_KEY", "\"$lastfmApiKey\"")
         buildConfigField("String", "LASTFM_SECRET", "\"$lastfmSecret\"")
+
+        // ListenBrainz OAuth client (register at metabrainz.org/account/applications;
+        // redirect URI "archivetune://listenbrainz-auth-callback"). When empty the
+        // ListenBrainz login screen falls back to the login-page + copy-token flow.
+        val listenBrainzClientId =
+            localProperties.getProperty("LISTENBRAINZ_CLIENT_ID")
+                ?: System.getenv("LISTENBRAINZ_CLIENT_ID")
+                ?: ""
+        val listenBrainzClientSecret =
+            localProperties.getProperty("LISTENBRAINZ_CLIENT_SECRET")
+                ?: System.getenv("LISTENBRAINZ_CLIENT_SECRET")
+                ?: ""
+        buildConfigField("String", "LISTENBRAINZ_CLIENT_ID", "\"$listenBrainzClientId\"")
+        buildConfigField("String", "LISTENBRAINZ_CLIENT_SECRET", "\"$listenBrainzClientSecret\"")
 
         val extractorBearer =
             localProperties.getProperty("EXTRACTOR_BEARER")
@@ -296,6 +320,18 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             isDebuggable = true
+            // R8 minified for every build (user request): debug artifacts ship
+            // the same shrinking/optimization pass as release so PR CI
+            // (assembleGmsMobileUniversalDebug) exercises the full proguard
+            // rule set and catches missing-class/missing-rule breakage before
+            // it reaches a release workflow. Line-number tables are kept via
+            // -keepattributes SourceFile,LineNumberTables for readable stacks.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             if (debugKeystoreFile.isFile) {
                 signingConfig = signingConfigs.getByName("debug")
             }
@@ -311,6 +347,15 @@ android {
         compose = true
         buildConfig = true
         prefab = true
+    }
+
+    // Automix's analysis front end (tempo/key/energy/structure DSP + the mel
+    // and vocal STFT front ends the ONNX models consume).
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     dependenciesInfo {
@@ -378,6 +423,27 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
+// Protobuf codegen for the Listen Together wire protocol (app/src/main/proto/
+// listentogether.proto). Same configuration as vivi-music beta: protoc toolchain
+// pinned by the version catalog, lite runtimes for both java and kotlin builtins.
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:${libs.versions.protobuf.get()}"
+    }
+    generateProtoTasks {
+        all().forEach { task ->
+            task.builtins {
+                create("java") {
+                    option("lite")
+                }
+                create("kotlin") {
+                    option("lite")
+                }
+            }
+        }
+    }
+}
+
 dependencies {
     implementation(libs.guava)
     implementation(libs.coroutines.guava)
@@ -438,7 +504,16 @@ dependencies {
 
     implementation(libs.media3)
     implementation("androidx.media3:media3-exoplayer-hls:${libs.versions.media3.get()}")
+    // LastWave audio engine output backend (Oboe/AAudio, prefab)
+    implementation("com.google.oboe:oboe:1.10.0")
+    // LastWave's userspace USB Audio Class driver module (exclusive USB DAC)
+    implementation(project(":audio:decent-usb-audio-driver"))
     implementation(libs.media3.session)
+
+    // Automix: the Beat This! beat/downbeat and open-unmix vocal models run
+    // through ONNX Runtime. The full android artifact, not -mobile: mobile
+    // only loads .ort sessions.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.28.0")
     implementation(libs.car.app)
     implementation(libs.media3.okhttp)
     implementation("androidx.media3:media3-ui:${libs.versions.media3.get()}")
@@ -488,6 +563,10 @@ dependencies {
     implementation(libs.ktor.server.cio)
     implementation(libs.ktor.server.websockets)
     implementation(libs.ktor.server.content.negotiation)
+
+    // Listen Together wire protocol (protobuf lite runtimes)
+    implementation(libs.protobuf.javalite)
+    implementation(libs.protobuf.kotlin.lite)
 
     implementation(libs.timber)
     testImplementation(libs.junit)

@@ -13,7 +13,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 object PlayerSliderColors {
-
     @Composable
     fun getSliderColors(
         activeColor: Color,
@@ -70,7 +69,6 @@ object PlayerSliderColors {
         )
 
     object Config {
-
         const val INACTIVE_TRACK_ALPHA = 0.22f
 
         const val THICK_INACTIVE_TRACK_ALPHA = 0.28f

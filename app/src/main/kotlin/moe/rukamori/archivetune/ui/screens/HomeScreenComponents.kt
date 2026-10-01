@@ -163,7 +163,6 @@ fun HomeSectionHeader(
     leadingIcon: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
-
     HomeFeedSectionHeader(
         title = title,
         subtitle = label.orEmpty(),
@@ -901,7 +900,6 @@ fun HomePageSectionTitle(
         title = section.title,
         label = section.label,
         leadingIcon = {
-
             val iconRes =
                 when {
                     section.title.contains("Live performance", ignoreCase = true) -> R.drawable.mic
@@ -919,7 +917,6 @@ fun HomePageSectionTitle(
         thumbnail =
             section.thumbnail?.let { thumbnailUrl ->
                 {
-
                     val imageRequest =
                         remember(thumbnailUrl, thumbSizePx) {
                             ImageRequest

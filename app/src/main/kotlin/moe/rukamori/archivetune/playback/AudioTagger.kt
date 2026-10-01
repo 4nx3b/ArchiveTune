@@ -22,7 +22,6 @@ import timber.log.Timber
 import java.io.File
 
 object AudioTagger {
-
     data class Metadata(
         val title: String? = null,
         val artist: String? = null,
@@ -93,7 +92,6 @@ object AudioTagger {
                     tag.setField(field)
                 }
                 is ID3v24Tag, is ID3v23Tag, is ID3v22Tag -> {
-
                     val artwork = ArtworkFactory.getNew().apply {
                         setBinaryData(bytes)
                         setMimeType(resolvedMime)
@@ -117,7 +115,6 @@ object AudioTagger {
     private fun guessImageMimeType(bytes: ByteArray): String {
         if (bytes.size < 4) return "image/jpeg"
         return when {
-
             (bytes[0].toInt() and 0xFF) == 0xFF &&
                 (bytes[1].toInt() and 0xFF) == 0xD8 &&
                 (bytes[2].toInt() and 0xFF) == 0xFF -> "image/jpeg"

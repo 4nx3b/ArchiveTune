@@ -7,14 +7,11 @@
 
 package moe.rukamori.archivetune.ui.screens.search
 
-import android.content.Intent
 import android.widget.Toast
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -24,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -32,10 +28,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
@@ -43,7 +40,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -56,15 +56,24 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AppBarHeight
+import moe.rukamori.archivetune.constants.SearchProvider
+import moe.rukamori.archivetune.constants.SearchSource
 import moe.rukamori.archivetune.extensions.togglePlayPause
+import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.innertube.models.AlbumItem
+import moe.rukamori.archivetune.innertube.models.ArtistItem
+import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.spotify.SpotifyPlaybackResolver
 import moe.rukamori.archivetune.spotify.SpotifySearchItem
-import moe.rukamori.archivetune.ui.component.ChipsRow
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.SearchSourcePicker
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.viewmodels.OnlineSearchSort
 import moe.rukamori.archivetune.viewmodels.SpotifySearchViewModel
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -80,6 +89,8 @@ private enum class SpotifySearchFilter {
 @Composable
 internal fun SpotifyOnlineSearchResult(
     navController: NavController,
+    searchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,
+    onSearchSortChange: (OnlineSearchSort) -> Unit = {},
     viewModel: SpotifySearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -91,17 +102,27 @@ internal fun SpotifyOnlineSearchResult(
         ?: remember { mutableStateOf(false) }
     val lazyListState = rememberLazyListState()
     var filter by rememberSaveable { mutableStateOf(SpotifySearchFilter.ALL) }
+    var fieldQuery by rememberSaveable(viewModel.query) { mutableStateOf(viewModel.query) }
 
     val visibleItems =
-        remember(state.items, filter) {
-            state.items.filter { item ->
-                when (filter) {
-                    SpotifySearchFilter.ALL -> true
-                    SpotifySearchFilter.TRACKS -> item is SpotifySearchItem.Track
-                    SpotifySearchFilter.ALBUMS -> item is SpotifySearchItem.Album
-                    SpotifySearchFilter.ARTISTS -> item is SpotifySearchItem.Artist
-                    SpotifySearchFilter.PLAYLISTS -> item is SpotifySearchItem.Playlist
+        remember(state.items, filter, searchSort) {
+            val filtered =
+                state.items.filter { item ->
+                    when (filter) {
+                        SpotifySearchFilter.ALL -> true
+                        SpotifySearchFilter.TRACKS -> item is SpotifySearchItem.Track
+                        SpotifySearchFilter.ALBUMS -> item is SpotifySearchItem.Album
+                        SpotifySearchFilter.ARTISTS -> item is SpotifySearchItem.Artist
+                        SpotifySearchFilter.PLAYLISTS -> item is SpotifySearchItem.Playlist
+                    }
                 }
+            if (searchSort == OnlineSearchSort.VIEWS) {
+
+                filtered.sortedByDescending { item ->
+                    (item as? SpotifySearchItem.Track)?.value?.popularity ?: -1
+                }
+            } else {
+                filtered
             }
         }
 
@@ -115,112 +136,229 @@ internal fun SpotifyOnlineSearchResult(
             }
     }
 
-    Column(
+    val barState = rememberSearchResultsBarState()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+    val playerAwareBottomPadding =
+        LocalPlayerAwareWindowInsets.current
+            .only(WindowInsetsSides.Bottom)
+            .asPaddingValues()
+            .calculateBottomPadding()
+
+    var resultsHeaderHeightPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val resultsHeaderReserve =
+        remember(resultsHeaderHeightPx, density) {
+            with(density) { resultsHeaderHeightPx.toDp() }
+        }
+    val headerScrollAwayFraction by remember {
+        derivedStateOf {
+            when {
+                resultsHeaderHeightPx <= 0 -> 0f
+                lazyListState.firstVisibleItemIndex > 0 -> 1f
+                else -> {
+                    val firstTop =
+                        lazyListState.layoutInfo.visibleItemsInfo
+                            .firstOrNull()?.offset?.toFloat() ?: 0f
+                    1f - (firstTop / resultsHeaderHeightPx).coerceIn(0f, 1f)
+                }
+            }
+        }
+    }
+
+    Box(
         modifier =
             Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
     ) {
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 0.dp,
+        // The recorder tags the scrollable content only; the glass header and
+        // bottom overlay stay SIBLINGS so the recorder can never contain its
+        // own liquidGlass consumers (a circular record crashes the RenderThread).
+        Box(
             modifier =
                 Modifier
-                    .fillMaxWidth()
-                    .padding(top = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding())
-                    .padding(top = AppBarHeight),
+                    .fillMaxSize()
+                    .searchResultsBarSource(barState),
         ) {
-            ChipsRow(
-                chips =
-                    listOf(
-                        SpotifySearchFilter.ALL to stringResource(R.string.filter_all),
-                        SpotifySearchFilter.TRACKS to stringResource(R.string.filter_songs),
-                        SpotifySearchFilter.ALBUMS to stringResource(R.string.filter_albums),
-                        SpotifySearchFilter.ARTISTS to stringResource(R.string.filter_artists),
-                        SpotifySearchFilter.PLAYLISTS to stringResource(R.string.filter_playlists),
-                    ),
-                currentValue = filter,
-                onValueUpdate = { filter = it },
-            )
-        }
-
-        when {
-            state.isLoading && state.items.isEmpty() -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+            when {
+                state.isLoading && state.items.isEmpty() -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
                 }
-            }
 
-            state.errorMessage != null && state.items.isEmpty() -> {
-                EmptyPlaceholder(
-                    icon = R.drawable.spotify_icon,
-                    text = state.errorMessage ?: stringResource(R.string.no_results_found),
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+                state.errorMessage != null && state.items.isEmpty() -> {
+                    EmptyPlaceholder(
+                        icon = R.drawable.spotify_icon,
+                        text = state.errorMessage ?: stringResource(R.string.no_results_found),
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
 
-            visibleItems.isEmpty() -> {
-                EmptyPlaceholder(
-                    icon = R.drawable.search,
-                    text = stringResource(R.string.no_results_found),
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+                visibleItems.isEmpty() -> {
+                    EmptyPlaceholder(
+                        icon = R.drawable.search,
+                        text = stringResource(R.string.no_results_found),
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
 
-            else -> {
-                LazyColumn(
-                    state = lazyListState,
-                    contentPadding =
-                        LocalPlayerAwareWindowInsets.current
-                            .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
-                            .add(WindowInsets(top = 8.dp))
-                            .asPaddingValues(),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    item(key = "spotify_result_label") {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                        ) {
-                            Text(
-                                text = stringResource(R.string.search_spotify),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
+                else -> {
+                    LazyColumn(
+                        state = lazyListState,
+                        contentPadding =
+                            LocalPlayerAwareWindowInsets.current
+                                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+                                .add(WindowInsets(top = systemBarsTopPadding + 4.dp + resultsHeaderReserve))
+                                .add(WindowInsets(bottom = SearchResultsOverlayReserve))
+                                .asPaddingValues(),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        item(key = "spotify_result_label") {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.search_spotify),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
+                        itemsIndexed(
+                            items = visibleItems,
+                            key = { _, item -> item.key },
+                            contentType = { _, item -> item::class },
+                        ) { _, item ->
+                            SpotifySearchResultRow(
+                                item = item,
+                                navController = navController,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                playerConnection = playerConnection,
+                                coroutineScope = coroutineScope,
+                            )
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                             )
                         }
-                    }
-                    itemsIndexed(
-                        items = visibleItems,
-                        key = { _, item -> item.key },
-                        contentType = { _, item -> item::class },
-                    ) { _, item ->
-                        SpotifySearchResultRow(
-                            item = item,
-                            navController = navController,
-                            mediaMetadata = mediaMetadata,
-                            isPlaying = isPlaying,
-                            playerConnection = playerConnection,
-                            coroutineScope = coroutineScope,
-                        )
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-                        )
-                    }
-                    if (state.isLoading) {
-                        item(key = "spotify_loading_more") {
-                            Box(
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                CircularProgressIndicator()
+                        if (state.isLoading) {
+                            item(key = "spotify_loading_more") {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator()
+                                }
                             }
                         }
                     }
                 }
             }
         }
+
+        SearchResultsTopHeader(
+            state = barState,
+            query = viewModel.query,
+            onBack = { navController.navigateUp() },
+            onBackLongClick = { navController.backToMain() },
+            chipsRow = {
+                SolidFilterChipsRow(
+                    chips =
+                        listOf(
+                            SpotifySearchFilter.ALL to stringResource(R.string.filter_all),
+                            SpotifySearchFilter.TRACKS to stringResource(R.string.filter_songs),
+                            SpotifySearchFilter.ALBUMS to stringResource(R.string.filter_albums),
+                            SpotifySearchFilter.ARTISTS to stringResource(R.string.filter_artists),
+                            SpotifySearchFilter.PLAYLISTS to stringResource(R.string.filter_playlists),
+                        ),
+                    currentValue = filter,
+                    onValueUpdate = { filter = it },
+                )
+            },
+            modifier =
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = systemBarsTopPadding + 4.dp)
+                    .onSizeChanged { resultsHeaderHeightPx = it.height }
+                    .graphicsLayer {
+                        translationY = -resultsHeaderHeightPx * headerScrollAwayFraction
+                        alpha = 1f - headerScrollAwayFraction
+                    },
+        )
+
+        ScreenHeaderHaze(
+            hazeState = barState.haze,
+            systemBarsTopPadding = systemBarsTopPadding + 4.dp,
+            scrolled = lazyListState.canScrollBackward,
+        )
+
+        SearchResultsBottomOverlay(
+            state = barState,
+            query = fieldQuery,
+            onQueryChange = { fieldQuery = it },
+            onSearch = { text ->
+                if (text.isNotBlank()) {
+                    val replacementRoute = onlineSearchResultRoute(text, SearchProvider.SPOTIFY)
+                    val currentDestinationId = navController.currentDestination?.id
+                    if (currentDestinationId != null) {
+                        navController.navigate(replacementRoute) {
+                            popUpTo(currentDestinationId) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    } else {
+                        navController.navigate(replacementRoute)
+                    }
+                }
+            },
+            onBack = { navController.navigateUp() },
+            onBackLongClick = { navController.backToMain() },
+            placeholder = stringResource(R.string.search_source_spotify),
+            bottomPadding = playerAwareBottomPadding,
+            lazyListState = lazyListState,
+            trailing = {
+
+                SearchSourcePicker(
+                    currentScope = SearchSource.ONLINE,
+                    currentProvider = SearchProvider.SPOTIFY,
+                    onSelection = { _, provider ->
+                        val text = fieldQuery.ifBlank { viewModel.query }
+                        if (text.isNotBlank()) {
+                            val replacementRoute = onlineSearchResultRoute(text, provider)
+                            val currentDestinationId = navController.currentDestination?.id
+                            if (currentDestinationId != null) {
+                                navController.navigate(replacementRoute) {
+                                    popUpTo(currentDestinationId) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            } else {
+                                navController.navigate(replacementRoute)
+                            }
+                        }
+                    },
+                    includeLocal = false,
+                )
+                SearchResultsSortMenu(
+                    selectedSort = searchSort,
+                    onSortSelected = onSearchSortChange,
+                )
+            },
+        )
     }
+}
+
+private suspend inline fun <reified T : YTItem> searchYouTubeCatalog(
+    query: String,
+    filter: YouTube.SearchFilter,
+): T? {
+    val anonymous = runCatching {
+        YouTube.search(query, filter, useAccountContext = false).getOrNull()
+    }.getOrNull()
+    anonymous?.items?.filterIsInstance<T>()?.firstOrNull()?.let { return it }
+    val fallback = runCatching { YouTube.search(query, filter).getOrNull() }.getOrNull()
+    return fallback?.items?.filterIsInstance<T>()?.firstOrNull()
 }
 
 @Composable
@@ -235,21 +373,63 @@ private fun SpotifySearchResultRow(
     val context = LocalContext.current
     val menuState = LocalMenuState.current
     var resolving by remember(item.key) { mutableStateOf(false) }
-    val openExternal = {
-        val type =
-            when (item) {
-                is SpotifySearchItem.Album -> "album"
-                is SpotifySearchItem.Artist -> "artist"
-                is SpotifySearchItem.Playlist -> "playlist"
-                is SpotifySearchItem.Track -> "track"
+
+    val openInApp = {
+        when (item) {
+            is SpotifySearchItem.Album -> {
+                if (!resolving) {
+                    resolving = true
+                    menuState.dismiss()
+                    coroutineScope.launch {
+                        try {
+                            val album = withContext(Dispatchers.IO) {
+                                val query = listOfNotNull(item.value.name, item.value.artists.firstOrNull()?.name)
+                                    .filter(String::isNotBlank)
+                                    .joinToString(" ")
+                                searchYouTubeCatalog<AlbumItem>(query, YouTube.SearchFilter.FILTER_ALBUM)
+                            }
+                            if (album != null) {
+                                navController.navigate("album/${album.id}")
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.no_results_found),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            }
+                        } finally {
+                            resolving = false
+                        }
+                    }
+                }
             }
-        runCatching {
-            context.startActivity(
-                Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse("https://open.spotify.com/$type/${item.id}"),
-                ),
-            )
+
+            is SpotifySearchItem.Artist -> {
+                if (!resolving) {
+                    resolving = true
+                    menuState.dismiss()
+                    coroutineScope.launch {
+                        try {
+                            val artist = withContext(Dispatchers.IO) {
+                                searchYouTubeCatalog<ArtistItem>(item.value.name, YouTube.SearchFilter.FILTER_ARTIST)
+                            }
+                            if (artist != null) {
+                                navController.navigate("artist/${artist.id}")
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.no_results_found),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            }
+                        } finally {
+                            resolving = false
+                        }
+                    }
+                }
+            }
+
+            else -> Unit
         }
     }
 
@@ -285,7 +465,7 @@ private fun SpotifySearchResultRow(
             }
 
             is SpotifySearchItem.Playlist -> navController.navigate("spotify_playlist/${item.id}")
-            is SpotifySearchItem.Album, is SpotifySearchItem.Artist -> openExternal()
+            is SpotifySearchItem.Album, is SpotifySearchItem.Artist -> openInApp()
         }
     }
 

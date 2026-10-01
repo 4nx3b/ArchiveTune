@@ -14,7 +14,6 @@ object VoiceSearchControllerLocator {
 
     fun get(context: Context): VoiceSearchController =
         instance ?: synchronized(this) {
-
             instance ?: DefaultVoiceSearchController().also { instance = it }
         }
 }

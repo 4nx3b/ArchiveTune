@@ -219,7 +219,6 @@ fun LibraryMixScreen(
                     ),
                 verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
-
                 item(key = "library_header", contentType = "header") {
                     LibraryHeaderRow()
                 }
@@ -270,7 +269,6 @@ fun LibraryMixScreen(
 
 @Composable
 private fun LibraryHeaderRow() {
-
     Row(
         modifier =
             Modifier
@@ -282,7 +280,6 @@ private fun LibraryHeaderRow() {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-
     }
 }
 
@@ -312,7 +309,6 @@ private fun LibraryCategoryList(
     onTop50Click: () -> Unit,
     onHistoryClick: () -> Unit,
 ) {
-
     val categories =
         buildList {
             add(
@@ -493,7 +489,6 @@ private fun LibraryCategoryRow(category: LibraryCategory) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-
             if (category.count > 0) {
                 Text(
                     text = category.count.toString(),
@@ -591,7 +586,6 @@ private fun RecentlyAddedGrid(
     coroutineScope: CoroutineScope,
     database: MusicDatabase,
 ) {
-
     val rows: List<List<Playlist>> = playlists.take(8).chunked(2)
     Column(
         modifier =
@@ -669,7 +663,6 @@ private fun RecentlyAddedGridItem(
         ) {
             val thumbnailUrl = playlist.thumbnails.getOrNull(0)
             if (thumbnailUrl.isNullOrBlank()) {
-
                 Box(
                     modifier =
                         Modifier
@@ -761,7 +754,6 @@ private fun RecentlyLikedList(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-
         Text(
             text = stringResource(R.string.recently_liked),
             color = MaterialTheme.colorScheme.onBackground,

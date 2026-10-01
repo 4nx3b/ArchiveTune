@@ -134,6 +134,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 
 private val AccountContentMaxWidth = 840.dp
 private val AvatarSize = 72.dp
@@ -279,36 +280,12 @@ fun AccountSettings(
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            androidx.compose.material3.TopAppBar(
-                title = {},
-                navigationIcon = {
-                    FrostedHeaderPill(plain = true) {
-                        IconButton(
-                            onClick = navController::navigateUp,
-                            onLongClick = navController::backToMain,
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.arrow_back),
-                                contentDescription = null,
-                            )
-                        }
-                        Text(
-                            text = accountLabel,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    }
-                },
-                colors =
-                    TopAppBarDefaults.topAppBarColors(
-
-                        containerColor = Color.Transparent,
-                        scrolledContainerColor = Color.Transparent,
-                    ),
-            )
-        },
+                SettingsPageTopBar(
+                    titleText = accountLabel,
+                    onBack = navController::navigateUp,
+                    onBackLongClick = navController::backToMain,
+                )
+            },
     ) { innerPadding ->
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
@@ -385,7 +362,6 @@ fun AccountSettings(
                 }
 
                 item {
-
                     val browserRowVisible = !isLoggedIn
                     val rowCount = (if (browserRowVisible) 1 else 0) + (if (hasOAuthSession) 1 else 0)
                     if (rowCount > 0) {

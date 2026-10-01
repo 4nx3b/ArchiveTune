@@ -94,7 +94,6 @@ fun LibraryScreen(navController: NavController) {
     val activeSelectedTagIds = if (showTagsInLibrary) selectedTagIds else emptySet()
     val libraryFilters =
         remember(showSpotifyPlaylists) {
-
             listOf(
                 LibraryFilter.LIBRARY,
                 LibraryFilter.SONGS,

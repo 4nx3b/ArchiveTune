@@ -114,7 +114,6 @@ object TidalCanvasCheck {
         when (account) {
             null ->
                 when (catalog) {
-
                     is CanvasSourceDiagnosis.Ok ->
                         catalog.copy(
                             detail = catalog.detail + " (no Tidal account signed in — add one in Tidal settings for account-quality sources)",

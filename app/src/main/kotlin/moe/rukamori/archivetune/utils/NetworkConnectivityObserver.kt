@@ -46,7 +46,6 @@ class NetworkConnectivityObserver(
         try {
             connectivityManager.registerNetworkCallback(request, networkCallback)
         } catch (e: Exception) {
-
             _networkStatus.trySend(true)
         }
 

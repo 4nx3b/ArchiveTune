@@ -45,7 +45,12 @@ class ArtistItemsViewModel
                 .get<String>("params")
                 ?.takeUnless { it.isBlank() || it == "null" }
 
-        val title = MutableStateFlow("")
+        private val routeTitle =
+            savedStateHandle
+                .get<String>("title")
+                ?.takeUnless { it.isBlank() || it == "null" }
+
+        val title = MutableStateFlow(routeTitle.orEmpty())
         val itemsPage = MutableStateFlow<ItemsPage?>(null)
         val itemsLayout = MutableStateFlow(ArtistItemsPageLayout.LIST)
 

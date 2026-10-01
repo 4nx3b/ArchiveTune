@@ -10,8 +10,12 @@
 package moe.rukamori.archivetune.ui.screens
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.widget.FrameLayout
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -56,6 +60,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -75,7 +80,9 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -84,6 +91,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -92,6 +100,7 @@ import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -112,6 +121,8 @@ import moe.rukamori.archivetune.viewmodels.YearInMusicUiState
 import moe.rukamori.archivetune.viewmodels.YearInMusicViewModel
 import java.text.NumberFormat
 import kotlin.coroutines.resume
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -225,37 +236,37 @@ private fun YearInMusicRecapScreen(
                         awaitNextPreDraw(view)
                         awaitNextPreDraw(view)
 
-                        val raw =
-                            ComposeToImage.captureViewBitmap(
-                                view = view,
-                                backgroundColor = RecapBlack.toArgb(),
-                            )
                         val bounds = currentCardBounds
+                        val currentCard = cards.getOrNull(pagerState.currentPage)
+
                         val cardBitmap =
-                            if (bounds != null && bounds.width > 0f && bounds.height > 0f) {
-                                ComposeToImage.cropBitmap(
-                                    source = raw,
-                                    left = bounds.left.toInt().coerceAtLeast(0),
-                                    top = bounds.top.toInt().coerceAtLeast(0),
-                                    width = bounds.width.toInt().coerceAtLeast(1),
-                                    height = bounds.height.toInt().coerceAtLeast(1),
-                                )
-                            } else {
-                                raw
+                            renderRecapCardAtScale(
+                                hostView = view,
+                                card = currentCard,
+                                bounds = bounds,
+                            ) ?: run {
+                                val raw =
+                                    ComposeToImage.captureViewBitmap(
+                                        view = view,
+                                        backgroundColor = RecapBlack.toArgb(),
+                                    )
+                                if (bounds != null && bounds.width > 0f && bounds.height > 0f) {
+                                    ComposeToImage.cropBitmap(
+                                        source = raw,
+                                        left = bounds.left.toInt().coerceAtLeast(0),
+                                        top = bounds.top.toInt().coerceAtLeast(0),
+                                        width = bounds.width.toInt().coerceAtLeast(1),
+                                        height = bounds.height.toInt().coerceAtLeast(1),
+                                    )
+                                } else {
+                                    raw
+                                }
                             }
 
-                        // Full-HD export: when the capture already meets the
-                        // 1080p floor the native pixels ship untouched (the
-                        // card fills the screen in capture mode, so its native
-                        // crop IS the full-screen image — no cover-fit upscale
-                        // that used to smear it); below the floor it enlarges
-                        // progressively instead of one big bilinear jump.
-                        val fitted =
-                            ComposeToImage.exportBitmapAtFhdFloor(source = cardBitmap)
                         val uri =
                             ComposeToImage.saveBitmapAsFile(
                                 context = context,
-                                bitmap = fitted,
+                                bitmap = cardBitmap,
                                 fileName = "ArchiveTune_YearInMusic_${content.selectedYear}_${currentPage + 1}",
                             )
                         val shareIntent =
@@ -1739,6 +1750,75 @@ private suspend fun awaitNextPreDraw(view: View) {
             if (vto.isAlive) vto.removeOnPreDrawListener(listener)
         }
         view.invalidate()
+    }
+}
+
+private suspend fun renderRecapCardAtScale(
+    hostView: View,
+    card: YearInMusicRecapCard?,
+    bounds: Rect?,
+): Bitmap? {
+    if (card == null || bounds == null || bounds.width <= 0f || bounds.height <= 0f) return null
+    if (card is YearInMusicRecapCard.Empty) return null
+    val parent = hostView.parent as? ViewGroup ?: return null
+    val context = hostView.context
+
+    val screenDensity = hostView.resources.displayMetrics.density
+    val fontScale = hostView.resources.configuration.fontScale
+
+    val srcPixels = bounds.width * bounds.height
+    val scale = sqrt(12_000_000f / srcPixels).coerceIn(2f, 3f)
+    val targetWidth = (bounds.width * scale).roundToInt().coerceAtLeast(1)
+    val targetHeight = (bounds.height * scale).roundToInt().coerceAtLeast(1)
+
+    val holder =
+        ComposeView(context).apply {
+
+            setContent {
+                CompositionLocalProvider(
+                    LocalDensity provides Density(screenDensity * scale, fontScale),
+                ) {
+                    RecapCardFrame(
+                        card = card,
+                        applySafeContentInsets = false,
+                        onCardClick = {},
+                        canAdvance = false,
+                        onTopSongLongClick = {},
+                        onTopArtistLongClick = {},
+                        onShare = {},
+                        isGenerating = false,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+
+    val layoutParams =
+        FrameLayout.LayoutParams(targetWidth, targetHeight).apply {
+            leftMargin = -30_000
+        }
+    return try {
+        parent.addView(holder, layoutParams)
+
+        repeat(3) { awaitNextPreDraw(holder) }
+        delay(900)
+        awaitNextPreDraw(holder)
+        if (holder.width <= 0 || holder.height <= 0) return null
+
+        val bitmap =
+            Bitmap.createBitmap(
+                holder.width,
+                holder.height,
+                Bitmap.Config.ARGB_8888,
+            )
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(RecapBlack.toArgb())
+        holder.draw(canvas)
+        bitmap
+    } catch (e: Exception) {
+        null
+    } finally {
+        runCatching { parent.removeView(holder) }
     }
 }
 

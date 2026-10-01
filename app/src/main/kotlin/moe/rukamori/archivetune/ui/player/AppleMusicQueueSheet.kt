@@ -193,12 +193,7 @@ fun AppleMusicQueueSheet(
 
             mutableQueueWindows.move(actualFromQueueIndex, toQueueIndex)
 
-            val destinationUid: Any? =
-                if (toQueueIndex == 0) {
-                    currentPlayingUid
-                } else {
-                    mutableQueueWindows.getOrNull(toQueueIndex - 1)?.uid
-                }
+            val destinationUid: Any? = mutableQueueWindows.getOrNull(toQueueIndex - 1)?.uid
             dragInfo = AMQueueDragInfo(draggedItemUid, destinationUid)
         }
 
@@ -214,7 +209,6 @@ fun AppleMusicQueueSheet(
             dragInfo = null
 
             if (sourceIndex != -1) {
-
                 val destinationIndex =
                     if (destinationAnchorIndex == -1) {
                         0
@@ -252,8 +246,8 @@ fun AppleMusicQueueSheet(
 
         Snapshot.withMutableSnapshot {
             mutableQueueWindows.clear()
-            val startIndex = currentWindowIndex.coerceAtLeast(0)
-            mutableQueueWindows.addAll(queueWindows.drop(startIndex))
+
+            mutableQueueWindows.addAll(queueWindows)
         }
     }
 
@@ -263,7 +257,6 @@ fun AppleMusicQueueSheet(
                 .fillMaxSize()
                 .background(Color.Transparent),
     ) {
-
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -397,6 +390,8 @@ fun AppleMusicQueueSheet(
                 ) {
                     val isActive = window.uid == currentPlayingUid
                     val metadata = window.mediaItem.metadata ?: return@ReorderableItem
+                    val isPlayed =
+                        currentWindowIndex >= 0 && index < currentWindowIndex && !isActive
 
                     val dismissBoxState =
                         rememberSwipeToDismissBoxState(
@@ -418,7 +413,6 @@ fun AppleMusicQueueSheet(
                     }
 
                     val content: @Composable () -> Unit = {
-
                         val rowBg =
                             if (isActive) adaptiveSurface.copy(alpha = 0.22f) else adaptiveSurface.copy(alpha = 0.10f)
                         val rowShape = RoundedCornerShape(12.dp)
@@ -440,7 +434,7 @@ fun AppleMusicQueueSheet(
 
                                 showActiveContainer = false,
 
-                                textColorOverride = Color.White,
+                                textColorOverride = if (isPlayed) Color.White.copy(alpha = 0.55f) else Color.White,
                                 trailingContent = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         IconButton(

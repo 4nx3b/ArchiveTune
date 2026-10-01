@@ -9,11 +9,26 @@ package moe.rukamori.archivetune.playback
 
 import android.media.MediaCodec
 import androidx.media3.common.PlaybackException
+import androidx.media3.exoplayer.audio.AudioOutput
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecDecoderException
 import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
 
-internal fun isRecoverableMediaCodecStateError(error: PlaybackException): Boolean {
+private val EXCLUSIVE_WRITE_ERROR_CODES = setOf(-9101, -9102, -9001, -9002, -896)
 
+internal fun isRecoverableExclusiveAudioWriteError(error: PlaybackException): Boolean {
+    if (error.errorCode != PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED) return false
+    return generateSequence<Throwable>(error) { it.cause }.any { throwable ->
+        val code = when (throwable) {
+            is AudioSink.WriteException -> throwable.errorCode
+            is AudioOutput.WriteException -> throwable.errorCode
+            else -> null
+        }
+        code != null && code in EXCLUSIVE_WRITE_ERROR_CODES
+    }
+}
+
+internal fun isRecoverableMediaCodecStateError(error: PlaybackException): Boolean {
     val isDecodingErrorCode =
         error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
             error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||

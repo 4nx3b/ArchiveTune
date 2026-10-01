@@ -28,9 +28,14 @@ val FloatingNavigationBarHorizontalPadding = 24.dp
 val FloatingNavigationBarBottomPadding = 16.dp
 val FloatingNavigationBarMaxWidth = 360.dp
 val MiniPlayerHeight = 70.dp
+val MiniPlayerCompactHeight = 64.dp
 val MiniPlayerBottomSpacing = 4.dp
 val QueuePeekHeight = 64.dp
 val AppBarHeight = 64.dp
+
+val SheetOverlayEpsilon = 2.dp
+
+val PlayerHeaderGlassFadeRamp = 96.dp
 
 val ListItemHeight = 72.dp
 val SuggestionItemHeight = 56.dp
@@ -51,9 +56,6 @@ val NavigationBarAnimationSpec =
         stiffness = Spring.StiffnessLow,
     )
 
-// SpatialFlow-tuned settle: slightly under-damped (0.85) with a snappier
-// stiffness, and reached WITH the finger's fling velocity so the sheet never
-// stops dead on release and re-accelerates.
 val BottomSheetAnimationSpec =
     spring<Dp>(
         dampingRatio = 0.85f,

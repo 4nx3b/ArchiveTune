@@ -73,7 +73,6 @@ object CipherDeobfuscator {
         } catch (e: CancellationException) {
             throw e
         } catch (e: CipherRendererGoneException) {
-
             onRendererGone(e, "deobfuscate")
             null
         } catch (e: Exception) {
@@ -137,7 +136,6 @@ object CipherDeobfuscator {
     }
 
     suspend fun transformNParamInUrl(url: String): String = deobfuscateMutex.withLock {
-
         Timber.tag(TAG).d("=== N-TRANSFORM URL ===")
         Timber.tag(TAG).d("Input URL length: ${url.length}")
         Timber.tag(TAG).d("Input URL preview: ${url.take(100)}...")
@@ -156,7 +154,6 @@ object CipherDeobfuscator {
     }
 
     private suspend fun transformNInternal(url: String): String {
-
         val nMatch = Regex("[?&]n=([^&]+)").find(url)
         if (nMatch == null) {
             Timber.tag(TAG).d("No 'n' parameter found in URL, skipping transform")

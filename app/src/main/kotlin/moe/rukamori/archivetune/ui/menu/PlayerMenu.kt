@@ -83,6 +83,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
@@ -100,6 +101,7 @@ import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
+import moe.rukamori.archivetune.constants.SongCanvasDisabledKey
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.CanvasArtworkRefetchResult
@@ -107,15 +109,16 @@ import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.db.entities.ArtistEntity
-import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
+import moe.rukamori.archivetune.constants.QobuzBackupEndpointsKey
 import moe.rukamori.archivetune.qobuz.QobuzBackupProvider
 import moe.rukamori.archivetune.ui.component.BottomSheetState
+import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.ListDialog
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
@@ -129,9 +132,13 @@ import moe.rukamori.archivetune.ui.player.fetchCanvasArtworkForPlayback
 import moe.rukamori.archivetune.ui.player.hasAnyCanvasSource
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
+import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.parseSpeedDialPins
+import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.audiosource.SongSourceOverride
+import moe.rukamori.archivetune.audiosource.SongCanvasDisabled
+import moe.rukamori.archivetune.constants.AudioSourceOrderKey
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.SongSourceOverrideKey
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -165,6 +172,7 @@ fun PlayerMenu(
     val context = LocalContext.current
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
+    val bottomSheetPageState = LocalBottomSheetPageState.current
     val deviceMusicVolumeController = rememberDeviceMusicVolumeController()
     val onPlayerVolumeChange =
         remember(deviceMusicVolumeController) {
@@ -200,7 +208,7 @@ fun PlayerMenu(
     val (spotifyCanvasEnabled) = rememberPreference(SpotifyCanvasKey, defaultValue = false)
     val (spotifySpDc) = rememberPreference(SpotifySpDcKey, defaultValue = "")
     val spotifyCanvasAvailable = spotifyCanvasEnabled || spotifySpDc.isNotBlank()
-    val playerDesignStyle by rememberEnumPreference(PlayerDesignStyleKey, defaultValue = PlayerDesignStyle.V4)
+    val playerDesignStyle by rememberEnumPreference(PlayerDesignStyleKey, defaultValue = PlayerDesignStyle.APPLE_MUSIC)
     val lowDataModeActive = rememberLowDataModeActive()
     val isCanvasArtworkRefetching by playerConnection.isCanvasArtworkRefetching.collectAsStateWithLifecycle()
 
@@ -209,6 +217,12 @@ fun PlayerMenu(
         hasCanvasArtwork = CanvasArtworkPlaybackCache.hasEntry(mediaMetadata.id)
     }
     val (speedDialSongIds, onSpeedDialSongIdsChange) = rememberPreference(SpeedDialSongIdsKey, "")
+
+    val (songCanvasDisabledRaw, onSongCanvasDisabledChange) = rememberPreference(SongCanvasDisabledKey, "")
+    val songCanvasDisabledForCurrent =
+        remember(songCanvasDisabledRaw, mediaMetadata.id) {
+            SongCanvasDisabled.isDisabled(songCanvasDisabledRaw.ifBlank { null }, mediaMetadata.id)
+        }
     val speedDialPins = remember(speedDialSongIds) { parseSpeedDialPins(speedDialSongIds) }
     val songPin = remember(mediaMetadata.id) { SpeedDialPin(type = SpeedDialPinType.SONG, id = mediaMetadata.id) }
     val isInSpeedDial =
@@ -239,7 +253,6 @@ fun PlayerMenu(
                             .map { it.trim() }
                             .filter { it.isNotEmpty() }
                     if (parts.size > 1) {
-
                         parts.map { name -> SplitArtist(name, artist) }
                     } else {
                         listOf(SplitArtist(artist.name, artist))
@@ -271,7 +284,6 @@ fun PlayerMenu(
                     result[artistId] = cached
                     value = result.toMap()
                 } else {
-
                     val fetched =
                         runCatching { YouTube.artist(artistId) }
                             .getOrNull()
@@ -338,7 +350,9 @@ fun PlayerMenu(
     }
     val availableSources =
         remember(mediaMetadata.id, showSourceDialog, sourceRevision) {
+
             playerConnection.service.availableSourcesForSong(mediaMetadata.id)
+                .filter { it != AudioSourceType.APPLE }
         }
 
     if (showSourceDialog) {
@@ -362,7 +376,6 @@ fun PlayerMenu(
                 val source = result.source
                 val trackId = result.trackId
                 if (source != AudioSourceType.YOUTUBE && trackId.isNotBlank()) {
-
                     onSongSourceChange(
                         SongSourceOverride.withOverride(songSourceRaw, mediaMetadata.id, source),
                     )
@@ -380,6 +393,20 @@ fun PlayerMenu(
                                 mediaId = mediaMetadata.id,
                                 source = source,
                                 qobuzBackupVideoId = trackId,
+                            )
+
+                        AudioSourceType.DEEZER ->
+                            playerConnection.service.setSongSourceOverrideWithDeezerTrackId(
+                                mediaId = mediaMetadata.id,
+                                source = source,
+                                deezerTrackId = trackId,
+                            )
+
+                        AudioSourceType.TIDAL ->
+                            playerConnection.service.setSongSourceOverrideWithTidalTrackId(
+                                mediaId = mediaMetadata.id,
+                                source = source,
+                                tidalTrackId = trackId,
                             )
 
                         else ->
@@ -413,7 +440,6 @@ fun PlayerMenu(
                         )
                     },
                     leadingContent = {
-
                         val thumbUrl =
                             splitArtist.originalArtist?.id?.let { id ->
                                 artistThumbnailsByKey[id]
@@ -494,11 +520,6 @@ fun PlayerMenu(
         )
     }
 
-    // "Canvas" source picker: choose which provider's canvas plays for the
-    // current song. The menu item only shows up when at least one integrated
-    // provider can serve it - instant playback-cache check first, then a
-    // provider probe bounded by a 4s timeout so a slow network can never hold
-    // the menu hostage.
     var showCanvasSourceDialog by rememberSaveable { mutableStateOf(false) }
     var canvasSources by remember(mediaMetadata.id) { mutableStateOf<List<CanvasSourceOption>>(emptyList()) }
     var canvasSourcesLoading by remember(mediaMetadata.id) { mutableStateOf(false) }
@@ -507,7 +528,6 @@ fun PlayerMenu(
         mutableStateOf(CanvasArtworkPlaybackCache.hasEntry(mediaMetadata.id))
     }
     LaunchedEffect(mediaMetadata.id, archiveTuneCanvasEnabled, spotifyCanvasAvailable, isCanvasArtworkRefetching) {
-        // Re-check the instant cache state first (covers post-refetch updates).
         if (CanvasArtworkPlaybackCache.hasEntry(mediaMetadata.id)) {
             canvasAvailable = true
             return@LaunchedEffect
@@ -590,9 +610,6 @@ fun PlayerMenu(
                 CanvasArtworkPlaybackCache.save(mediaMetadata.id, source.artwork)
             }
             if (saved) {
-                // Re-read the playable entry (local file URIs once the videos
-                // are on disk) and push it into the live render states so the
-                // playing canvas swaps right now, not on the next track change.
                 val playable =
                     withContext(Dispatchers.IO) {
                         CanvasArtworkPlaybackCache.getCachedOnlyFast(mediaMetadata.id)
@@ -610,12 +627,6 @@ fun PlayerMenu(
         }
     }
 
-    // Row click: make the chosen source's canvas the one that plays for this
-    // song (streams immediately, caches in the background) without forcing a
-    // full synchronous download. `replace` (not `put`) swaps any existing
-    // entry for the song — `put` would silently keep the previous source's
-    // artwork and the picker would appear to do nothing — and the published
-    // update makes the player re-render the artwork slot on the next frame.
     fun playCanvasSource(source: CanvasSourceOption) {
         showCanvasSourceDialog = false
         coroutineScope.launch {
@@ -635,8 +646,6 @@ fun PlayerMenu(
     if (showCanvasSourceDialog) {
         ListDialog(onDismiss = { showCanvasSourceDialog = false }) {
             item(key = "canvas_source_title") {
-                // Centered bold title (user request): the header is a plain
-                // centered label, not a ListItem row with a leading icon.
                 Box(
                     modifier =
                         Modifier
@@ -779,7 +788,6 @@ fun PlayerMenu(
                 bottom = 12.dp,
             ),
     ) {
-
         if (showSleepTimerSheet) {
             item {
                 AppleMusicSleepTimerSheet(
@@ -796,7 +804,10 @@ fun PlayerMenu(
                 NewActionGrid(
                     actions =
                         buildList {
-                            castPlayerMenuAction?.let(::add)
+
+                            if (playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC) {
+                                castPlayerMenuAction?.let(::add)
+                            }
                             if (!isLocalMedia && !mediaMetadata.isPodcast) {
                                 add(
                                     NewAction(
@@ -819,10 +830,58 @@ fun PlayerMenu(
                             if (
                                 !isLocalMedia &&
                                 isQueueTrigger != true &&
+                                (hasCanvasArtwork || songCanvasDisabledForCurrent) &&
+                                playerDesignStyle != PlayerDesignStyle.V5
+                            ) {
+                                add(
+                                    NewAction(
+                                        icon = {
+                                            Icon(
+                                                painter = painterResource(
+                                                    if (songCanvasDisabledForCurrent) {
+                                                        R.drawable.image
+                                                    } else {
+                                                        R.drawable.hide_image
+                                                    },
+                                                ),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(28.dp),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        text = stringResource(
+                                            if (songCanvasDisabledForCurrent) {
+                                                R.string.enable_canvas
+                                            } else {
+                                                R.string.disable_canvas
+                                            },
+                                        ),
+                                        onClick = {
+                                            onSongCanvasDisabledChange(
+                                                SongCanvasDisabled.withDisabled(
+                                                    songCanvasDisabledRaw,
+                                                    mediaMetadata.id,
+                                                    !songCanvasDisabledForCurrent,
+                                                ),
+                                            )
+                                            if (!songCanvasDisabledForCurrent) {
+
+                                                onDismiss()
+                                            }
+                                        },
+                                        enabled = true,
+                                    ),
+                                )
+                            }
+
+                            if (
+                                !isLocalMedia &&
+                                isQueueTrigger != true &&
                                 archiveTuneCanvasEnabled &&
                                 !lowDataModeActive &&
                                 playerDesignStyle != PlayerDesignStyle.V5 &&
-                                hasCanvasArtwork
+                                hasCanvasArtwork &&
+                                !songCanvasDisabledForCurrent
                             ) {
                                 add(
                                     NewAction(
@@ -866,6 +925,7 @@ fun PlayerMenu(
                                 )
                             }
 
+                            if (playerDesignStyle !in OnScreenShareStyles) {
                             add(
                                 if (isLocalMedia) {
                                     NewAction(
@@ -916,8 +976,8 @@ fun PlayerMenu(
                                     )
                                 },
                             )
+                            }
                             if (!isLocalMedia) {
-
                                 add(
                                     NewAction(
                                         icon = {
@@ -961,9 +1021,6 @@ fun PlayerMenu(
             MenuSectionDivider()
         }
 
-        // "Canvas": pick which provider's canvas plays for the current song -
-        // shown whenever any integrated provider can serve it (see the
-        // availability probe above).
         if (
             !isLocalMedia &&
             isQueueTrigger != true &&
@@ -1001,6 +1058,7 @@ fun PlayerMenu(
         item {
             MenuSurfaceSection {
                 Column {
+                    if (playerDesignStyle !in OnScreenAddToPlaylistStyles) {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
                         leadingContent = {
@@ -1020,6 +1078,7 @@ fun PlayerMenu(
                         color = MaterialTheme.colorScheme.outlineVariant,
                         thickness = 0.5.dp,
                     )
+                    }
                     ListItem(
                         headlineContent = {
                             Text(
@@ -1359,6 +1418,7 @@ fun PlayerMenu(
                         )
                     }
 
+                    if (playerDesignStyle !in OnScreenDetailsStyles) {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.details)) },
                         leadingContent = {
@@ -1374,6 +1434,7 @@ fun PlayerMenu(
                             },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
+                    }
 
                     if (isQueueTrigger != true) {
                         HorizontalDivider(
@@ -1382,7 +1443,7 @@ fun PlayerMenu(
                             thickness = 0.5.dp,
                         )
 
-                        if (playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC) {
+                        if (playerDesignStyle !in OnScreenSleepTimerStyles) {
                             ListItem(
                                 headlineContent = { Text(text = stringResource(R.string.sleep_timer)) },
                                 leadingContent = {
@@ -1423,7 +1484,6 @@ fun PlayerMenu(
     }
 }
 
-
 private fun AudioSourceType.sourceLabelRes(): Int =
     when (this) {
         AudioSourceType.TIDAL -> R.string.source_tidal
@@ -1431,7 +1491,6 @@ private fun AudioSourceType.sourceLabelRes(): Int =
         AudioSourceType.QOBUZ_BACKUP -> R.string.source_qobuz_backup
         AudioSourceType.DEEZER -> R.string.source_deezer
         AudioSourceType.APPLE -> R.string.source_apple_music
-        AudioSourceType.AMAZON -> R.string.source_amazon
         AudioSourceType.JIOSAAVN -> R.string.source_jiosaavn
         AudioSourceType.YOUTUBE -> R.string.source_youtube
     }
@@ -1443,9 +1502,7 @@ private fun AudioSourceType.sourceIconRes(): Int =
         AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
         AudioSourceType.APPLE -> R.drawable.provider_apple
-        // No dedicated Amazon Music mark ships in drawable/ yet; ic_music is the same stand-in
-        // PlaybackSourceSections uses for APPLE there.
-        AudioSourceType.AMAZON -> R.drawable.ic_music
+
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
@@ -1504,7 +1561,7 @@ private suspend fun searchOneSource(
     saavnLabel: String,
     losslessLabel: String,
     deezerLabel: String,
-    appleQualityLabel: String?,
+    context: android.content.Context,
 ): List<SourceSearchResult> =
     withContext(Dispatchers.IO) {
         when (source) {
@@ -1588,6 +1645,15 @@ private suspend fun searchOneSource(
             }
 
             AudioSourceType.QOBUZ_BACKUP -> {
+
+                runCatching {
+                    QobuzBackupProvider.configuredEndpoints =
+                        context.dataStore.data.first()[QobuzBackupEndpointsKey]
+                            .orEmpty()
+                            .split('\n')
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                }
                 runCatching { QobuzBackupProvider.searchCandidates(query, limit = 8) }
                     .getOrDefault(emptyList())
                     .map { candidate ->
@@ -1622,20 +1688,7 @@ private suspend fun searchOneSource(
             }
 
             AudioSourceType.APPLE -> {
-                runCatching { AppleMusicAudioProvider.searchCandidates(query, limit = 8) }
-                    .getOrDefault(emptyList())
-                    .map { candidate ->
-                        SourceSearchResult(
-                            source = AudioSourceType.APPLE,
-                            trackId = candidate.songId,
-                            title = candidate.title,
-                            artist = candidate.artist.orEmpty(),
-                            thumbnailUrl = candidate.thumbnailUrl,
-                            durationMs = candidate.durationMs,
-                            qualityLabel = appleQualityLabel,
-                            songItem = null,
-                        )
-                    }
+                emptyList()
             }
 
             AudioSourceType.JIOSAAVN -> {
@@ -1659,10 +1712,6 @@ private suspend fun searchOneSource(
                     }
             }
 
-            // Amazon serves CENC-protected streams this fork ships no decryption step for (see
-            // AmazonEnabledKey in PreferenceKeys.kt), so there is no provider to search here —
-            // this fork's source-search dialog simply never gets Amazon results.
-            AudioSourceType.AMAZON -> emptyList()
         }
     }
 
@@ -1676,6 +1725,7 @@ private fun SongSourceDialog(
     onPlayFromSource: (SourceSearchResult) -> Unit,
     initialQuery: String = "",
 ) {
+    val context = LocalContext.current
     var searchMode by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var sourceFilter by rememberSaveable { mutableStateOf<AudioSourceType?>(null) }
@@ -1697,21 +1747,30 @@ private fun SongSourceDialog(
             if (availability.manualPremium || availability.pooledPremium > 0) losslessLabel else mp3Label
         }
 
-    val appleQualityLabel =
-        remember(losslessLabel) {
-            if (AppleMusicAudioProvider.isAvailable()) losslessLabel else null
+    val (sourceOrderRaw, _) = rememberPreference(AudioSourceOrderKey, "")
+    val sourceOrder =
+        remember(sourceOrderRaw) {
+            AudioSourceConfig.parseOrder(sourceOrderRaw.ifBlank { null })
         }
-
     val searchableSources =
-        listOf(
-            AudioSourceType.YOUTUBE,
-            AudioSourceType.TIDAL,
-            AudioSourceType.QOBUZ,
-            AudioSourceType.QOBUZ_BACKUP,
-            AudioSourceType.DEEZER,
-            AudioSourceType.APPLE,
-            AudioSourceType.JIOSAAVN,
-        )
+        remember(sourceOrder) {
+            val eligible =
+                listOf(
+                    AudioSourceType.YOUTUBE,
+                    AudioSourceType.TIDAL,
+                    AudioSourceType.QOBUZ,
+                    AudioSourceType.QOBUZ_BACKUP,
+                    AudioSourceType.DEEZER,
+                    AudioSourceType.JIOSAAVN,
+                )
+            val ordered = sourceOrder.filter { it in eligible }
+            ordered + eligible.filterNot { it in ordered }
+        }
+    val orderedSources =
+        remember(sources, sourceOrder) {
+            val ordered = sourceOrder.filter { it in sources }
+            ordered + sources.filterNot { it in ordered }
+        }
 
     LaunchedEffect(searchMode, searchQuery) {
         if (!searchMode || searchQuery.length < 2) {
@@ -1736,7 +1795,7 @@ private fun SongSourceDialog(
                                     saavnLabel = saavnLabel,
                                     losslessLabel = losslessLabel,
                                     deezerLabel = deezerLabel,
-                                    appleQualityLabel = appleQualityLabel,
+                                    context = context,
                                 )
                             }.getOrDefault(emptyList())
                         resultsBySource = resultsBySource + (source to results)
@@ -1876,7 +1935,6 @@ private fun SongSourceDialog(
                         ) {
                             items(results, key = { result -> "${result.source.name}:${result.trackId}" }) { result ->
                                 SourceSearchResultRow(result = result) {
-
                                     if (result.songItem != null) {
                                         onPlaySong(result.songItem)
                                     } else {
@@ -1890,14 +1948,13 @@ private fun SongSourceDialog(
                     }
                 }
             } else {
-
                 SongSourceRow(
                     iconRes = R.drawable.tune,
                     label = stringResource(R.string.play_from_automatic),
                     checked = selected == null,
                     onClick = { onSelect(null) },
                 )
-                sources.forEach { source ->
+                orderedSources.forEach { source ->
                     SongSourceRow(
                         iconRes = source.sourceIconRes(),
                         label = stringResource(source.sourceLabelRes()),
@@ -2023,3 +2080,17 @@ private fun SongSourceRow(
         Text(text = label, style = MaterialTheme.typography.bodyLarge)
     }
 }
+
+private val OnScreenShareStyles =
+    setOf(PlayerDesignStyle.V4, PlayerDesignStyle.TIKTOK, PlayerDesignStyle.SPATIALFLOW)
+private val OnScreenAddToPlaylistStyles =
+    setOf(PlayerDesignStyle.V10, PlayerDesignStyle.TIKTOK, PlayerDesignStyle.SIMPMUSIC)
+private val OnScreenDetailsStyles =
+    setOf(PlayerDesignStyle.SIMPMUSIC, PlayerDesignStyle.APPLE_MUSIC)
+private val OnScreenSleepTimerStyles =
+    setOf(
+        PlayerDesignStyle.V5,
+        PlayerDesignStyle.V9,
+        PlayerDesignStyle.V10,
+        PlayerDesignStyle.APPLE_MUSIC,
+    )
