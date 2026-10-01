@@ -65,7 +65,11 @@ private const val CanvasSyncCheckIntervalMs = 200L
 
 private const val CanvasSyncRateLockThresholdMs = 80L
 
-private const val CanvasSyncSeekThresholdMs = 400L
+// Hard seeks are visible as a jump on the blurred backdrop twin; they should
+// only fire for genuine desyncs (decoder stall, mismatched pause state), not
+// for transient timing jitter between the 50 ms leader publishes and the
+// 200 ms follower checks.
+private const val CanvasSyncSeekThresholdMs = 1_500L
 
 private const val CanvasSyncRateLockSpanMs = 2_000f
 

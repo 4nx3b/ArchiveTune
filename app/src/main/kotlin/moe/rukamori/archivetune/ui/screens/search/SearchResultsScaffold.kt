@@ -603,11 +603,11 @@ fun SearchResultsTopHeader(
             )
         }
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(8.dp))
 
         Text(
             text = query,
-            style = MaterialTheme.typography.displaySmall,
+            style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 2,
@@ -615,7 +615,7 @@ fun SearchResultsTopHeader(
         )
 
         if (infoLine != null) {
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = infoLine,
                 style = MaterialTheme.typography.labelMedium,
@@ -626,11 +626,11 @@ fun SearchResultsTopHeader(
         }
 
         if (chipsRow != null) {
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(10.dp))
             chipsRow()
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(6.dp))
     }
 }
 

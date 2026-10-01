@@ -376,7 +376,7 @@ fun OnlineSearchResult(
             contentPadding =
                 LocalPlayerAwareWindowInsets.current
                     .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
-                    .add(WindowInsets(top = systemBarsTopPadding + 8.dp + resultsHeaderReserve))
+                    .add(WindowInsets(top = systemBarsTopPadding + 4.dp + resultsHeaderReserve))
                     .add(WindowInsets(bottom = SearchResultsOverlayReserve))
                     .asPaddingValues(),
             modifier =
@@ -533,7 +533,7 @@ fun OnlineSearchResult(
                 Modifier
                     .align(Alignment.TopCenter)
 
-                    .padding(top = systemBarsTopPadding + 8.dp)
+                    .padding(top = systemBarsTopPadding + 4.dp)
                     .onSizeChanged { resultsHeaderHeightPx = it.height }
                     .graphicsLayer {
                         translationY = -resultsHeaderHeightPx * headerScrollAwayFraction
@@ -543,7 +543,7 @@ fun OnlineSearchResult(
 
         ScreenHeaderHaze(
             hazeState = barState.haze,
-            systemBarsTopPadding = systemBarsTopPadding + 8.dp,
+            systemBarsTopPadding = systemBarsTopPadding + 4.dp,
             scrolled = lazyListState.canScrollBackward,
         )
 

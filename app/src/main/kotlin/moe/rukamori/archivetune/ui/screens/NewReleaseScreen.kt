@@ -13,7 +13,6 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -85,7 +84,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
@@ -882,10 +880,7 @@ private fun NewReleaseGridContent(
                     activeAlbumId = activeAlbumId,
                     isPlaying = isPlaying,
                     coroutineScope = coroutineScope,
-                    isSaved = album.id in savedReleaseIds,
-                    onTogglePresave = {
-                        onTogglePresave(album, selectedTab.presaveReleaseType() ?: "album")
-                    },
+
                     onReleaseClick = onReleaseClick,
                     onReleaseLongClick = onReleaseLongClick,
 
@@ -910,8 +905,6 @@ private fun SelectableReleaseItem(
     activeAlbumId: String?,
     isPlaying: Boolean,
     coroutineScope: CoroutineScope,
-    isSaved: Boolean,
-    onTogglePresave: () -> Unit,
     onReleaseClick: (AlbumItem) -> Unit,
     onReleaseLongClick: (AlbumItem) -> Unit,
     itemModifier: Modifier = Modifier,
@@ -936,12 +929,6 @@ private fun SelectableReleaseItem(
                     onLongClick = { onReleaseLongClick(album) },
                 ),
         )
-        if (!isSelectionMode) {
-            PresaveToggleButton(
-                isSaved = isSaved,
-                onToggle = onTogglePresave,
-            )
-        }
         if (isSelectionMode) {
             Box(
                 modifier =
@@ -1099,8 +1086,7 @@ private fun NewReleaseHorizontalSection(
                 activeAlbumId = activeAlbumId,
                 isPlaying = isPlaying,
                 coroutineScope = coroutineScope,
-                isSaved = album.id in savedReleaseIds,
-                onTogglePresave = { onTogglePresave(album, releaseType) },
+
                 onReleaseClick = onReleaseClick,
                 onReleaseLongClick = onReleaseLongClick,
                 itemModifier = Modifier.animateItem(),
@@ -1238,61 +1224,6 @@ private fun NewReleaseCategoryEmptyState(onRefresh: () -> Unit) {
         ) {
             Text(stringResource(R.string.refresh))
         }
-    }
-}
-
-@Composable
-private fun BoxScope.PresaveToggleButton(
-    isSaved: Boolean,
-    onToggle: () -> Unit,
-) {
-    val saveScale by animateFloatAsState(
-        targetValue = if (isSaved) 1f else 0.9f,
-        animationSpec = tween(150),
-        label = "presaveSaveScale",
-    )
-    Box(
-        modifier =
-            Modifier
-                .align(Alignment.TopEnd)
-                .padding(6.dp)
-                .size(32.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f))
-                .clickable(onClick = onToggle),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painter =
-                painterResource(
-                    if (isSaved) {
-                        R.drawable.solar_bookmark_bold
-                    } else {
-                        R.drawable.solar_bookmark_linear
-                    },
-                ),
-            contentDescription =
-                stringResource(
-                    if (isSaved) {
-                        R.string.presave_saved
-                    } else {
-                        R.string.presave_save
-                    },
-                ),
-            tint =
-                if (isSaved) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            modifier =
-                Modifier
-                    .size(18.dp)
-                    .graphicsLayer {
-                        scaleX = saveScale
-                        scaleY = saveScale
-                    },
-        )
     }
 }
 

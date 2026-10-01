@@ -1179,7 +1179,12 @@ fun BottomSheetPlayer(
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
     val playerSheetCanvasVisible by remember(state) {
-        derivedStateOf { state.progress > 0.5f }
+        // Keep the canvas players alive while the sheet is expanded OR animating
+        // back to the expanded anchor: on rotation the sheet re-anchors through
+        // a short slide whose progress dips below 0.5 - pausing and recreating
+        // both canvas players there left the artwork lagging behind the plain
+        // composable controls until the player was minimized and re-expanded.
+        derivedStateOf { state.progress > 0.5f || state.isExpandedOrExpanding }
     }
     CompositionLocalProvider(LocalPlayerSheetVisible provides playerSheetCanvasVisible) {
     val enrichedMetadata =

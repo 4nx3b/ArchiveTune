@@ -7,13 +7,33 @@ import android.media.AudioManager
 import android.media.AudioMixerAttributes
 import android.os.Build
 
-class UsbBitPerfectOutput(private val manager: AudioManager?) {
+class UsbBitPerfectOutput(
+    private val manager: AudioManager?,
+    private val allowAnyOutputDevice: Boolean = false,
+) {
     private var device: AudioDeviceInfo? = null
     private var format: AudioFormat? = null
     private var enabled = false
+    private var sourceBits: Int = 0
     private var attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()
     private var requestedDevice: AudioDeviceInfo? = null
+    private var configuredWireFormat: AudioFormat? = null
+
+    /** Depth of the source PCM, used to accept int modes that can carry it losslessly. */
+    @Synchronized
+    fun setSourceBits(bits: Int?) {
+        val value = bits ?: 0
+        if (value == sourceBits) return
+        sourceBits = value
+        apply()
+    }
+
+    @Synchronized
+    fun configuredRateHz(): Int = configuredWireFormat?.sampleRate ?: 0
+
+    @Synchronized
+    fun configuredBits(): Int = encodingBits(configuredWireFormat?.encoding)
 
     @Synchronized
     fun setDevice(value: AudioDeviceInfo?) {
@@ -52,7 +72,7 @@ class UsbBitPerfectOutput(private val manager: AudioManager?) {
         return runCatching {
             val preferred = manager?.getPreferredMixerAttributes(attributes, requestedDevice!!)
             preferred?.mixerBehavior == AudioMixerAttributes.MIXER_BEHAVIOR_BIT_PERFECT &&
-                sameFormat(preferred.format, format)
+                (configuredWireFormat == null || sameFormat(preferred.format, configuredWireFormat))
         }.getOrDefault(false)
     }
 
@@ -73,7 +93,12 @@ class UsbBitPerfectOutput(private val manager: AudioManager?) {
             clear()
             return
         }
-        if (target.type != AudioDeviceInfo.TYPE_USB_DEVICE && target.type != AudioDeviceInfo.TYPE_USB_HEADSET) return
+        if (!allowAnyOutputDevice &&
+            target.type != AudioDeviceInfo.TYPE_USB_DEVICE &&
+            target.type != AudioDeviceInfo.TYPE_USB_HEADSET
+        ) {
+            return
+        }
         runCatching {
             val all = manager?.getSupportedMixerAttributes(target).orEmpty()
             val bitPerfectModes = all.filter {
@@ -82,22 +107,35 @@ class UsbBitPerfectOutput(private val manager: AudioManager?) {
             if (bitPerfectModes.isEmpty()) {
                 android.util.Log.w(
                     TAG,
-                    "BIT-PERFECT unsupported by DAC ${target.productName}: " +
+                    "BIT-PERFECT unsupported by ${target.productName}: " +
                         "no BIT_PERFECT mixer mode advertised — clearing any stale preference",
                 )
 
                 clear()
                 return
             }
+            // The sink writes PCM_FLOAT at the source rate. An exact float mode
+            // at that rate is the perfect match; an integer mode at the same rate
+            // is equally lossless as long as its depth can carry the source bits
+            // (float32 -> intN >= source depth is an exact round trip).
             val supported = bitPerfectModes.firstOrNull { sameFormat(it.format, pcm) }
+                ?: bitPerfectModes.firstOrNull { candidate ->
+                    candidate.format?.let { fmt ->
+                        fmt.sampleRate == pcm.sampleRate &&
+                            encodingBits(fmt.encoding).let { bits ->
+                                bits >= 24 || (bits == 16 && sourceBits in 0..16)
+                            }
+                    } == true
+                }
             if (supported == null) {
                 val want = "${pcm.encoding}/${pcm.sampleRate}Hz/mask=${pcm.channelMask}"
                 val have = bitPerfectModes.mapNotNull { it.format }
                     .joinToString { "${it.encoding}/${it.sampleRate}Hz/mask=${it.channelMask}" }
                 android.util.Log.w(
                     TAG,
-                    "BIT-PERFECT format mismatch: want $want; DAC offers [$have] — " +
-                        "clearing stale preference to prevent mis-routed PCM (buzzing)",
+                    "BIT-PERFECT format mismatch: want $want (sourceBits=$sourceBits); " +
+                        "${target.productName} offers [$have] — clearing stale preference " +
+                        "to prevent mis-routed PCM (buzzing)",
                 )
 
                 clear()
@@ -105,10 +143,11 @@ class UsbBitPerfectOutput(private val manager: AudioManager?) {
             }
             if (manager?.setPreferredMixerAttributes(attributes, target, supported) == true) {
                 requestedDevice = target
+                configuredWireFormat = supported.format
                 android.util.Log.i(
                     TAG,
-                    "BIT-PERFECT mixer bypass granted: ${pcm.encoding}/${pcm.sampleRate}Hz " +
-                        "-> ${target.productName}",
+                    "BIT-PERFECT mixer bypass granted: ${supported.format?.encoding}/" +
+                        "${supported.format?.sampleRate}Hz -> ${target.productName}",
                 )
             } else {
                 android.util.Log.w(TAG, "BIT-PERFECT setPreferredMixerAttributes rejected by platform")
@@ -119,9 +158,19 @@ class UsbBitPerfectOutput(private val manager: AudioManager?) {
     private fun clear() {
         val previous = requestedDevice
         requestedDevice = null
+        configuredWireFormat = null
         if (Build.VERSION.SDK_INT >= 34 && previous != null) {
             runCatching { manager?.clearPreferredMixerAttributes(attributes, previous) }
         }
+    }
+
+    private fun encodingBits(encoding: Int?): Int = when (encoding) {
+        AudioFormat.ENCODING_PCM_FLOAT -> 32
+        AudioFormat.ENCODING_PCM_32BIT -> 32
+        AudioFormat.ENCODING_PCM_24BIT_PACKED -> 24
+        AudioFormat.ENCODING_PCM_16BIT -> 16
+        AudioFormat.ENCODING_PCM_8BIT -> 8
+        else -> 0
     }
 
     private fun sameFormat(a: AudioFormat?, b: AudioFormat?): Boolean {

@@ -425,12 +425,25 @@ fun ListenTogetherSettings(
             .calculateBottomPadding()
 
     Box(modifier = Modifier.fillMaxSize()) {
+    // The glass recorder must sit OUTSIDE the verticalScroll: chained after it
+    // the recorder's layer spans the full un-scrolled column height and only
+    // re-records when rows themselves invalidate, so the pill's backdrop sampled
+    // from it went stale (never tracked the viewport). Wrapping the scrolling
+    // content keeps the recorder viewport-sized and scrolling re-records it at
+    // the throttled interval, so the back pill renders live content behind it.
+    // The LiquidGlassActionPill stays a SIBLING below so the recorder never
+    // contains its own consumer.
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .let { m -> if (liquidGlassHeaderActive) m.glassSource(artworkBackdrop) else m }
+                .hazeSource(headerHaze)
+    ) {
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
             .verticalScroll(scrollState)
-            .let { m -> if (liquidGlassHeaderActive) m.glassSource(artworkBackdrop) else m }
-            .hazeSource(headerHaze)
             .padding(horizontal = 16.dp)
     ) {
         Spacer(Modifier.height(systemBarsTopPadding + AppBarHeight + 8.dp))
@@ -711,6 +724,7 @@ fun ListenTogetherSettings(
                 playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding
             )
         )
+    }
     }
 
         ScreenHeaderHaze(
