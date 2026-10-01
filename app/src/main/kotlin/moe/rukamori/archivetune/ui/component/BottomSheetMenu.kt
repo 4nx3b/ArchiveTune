@@ -146,11 +146,19 @@ fun BottomSheetMenu(
         state.dismissDialog()
     }
 
+    if (!renderState) return
+
+    // The MENU-level back handler MUST compose below this early return: it
+    // only comes into existence while the sheet is on screen, so it is added
+    // to the OnBackPressedDispatcher AFTER every navigation-level handler
+    // (this host composes once at the activity root, before the NavHost — a
+    // root-registered handler always loses the LIFO ordering to handlers the
+    // destination registered later). Registered here, a single predictive
+    // back swipe closes the popup instead of popping the playlist/history
+    // screen behind it.
     BackHandler(enabled = renderState) {
         state.isVisible = false
     }
-
-    if (!renderState) return
 
     val alpha = enterProgress.value
 

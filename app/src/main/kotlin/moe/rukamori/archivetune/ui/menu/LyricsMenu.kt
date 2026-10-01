@@ -1850,7 +1850,7 @@ fun AnchoredLyricsOverflowMenu(
     onLyricsSyncOffsetChange: (Int) -> Unit,
     onDismiss: () -> Unit,
     viewModel: LyricsMenuViewModel = hiltViewModel(),
-    backdrop: PlatformBackdrop? = null,
+    backdrop: com.kyant.backdrop.Backdrop? = null,
 
     scrimColor: Color = Color.Black.copy(alpha = 0.45f),
 ) {

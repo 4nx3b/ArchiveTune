@@ -3170,10 +3170,21 @@ class MainActivity : ComponentActivity() {
                                                             )
                                                             .height(CompactControlSize)
                                                             .graphicsLayer {
-                                                                alpha = compactRowAlpha
-                                                                val scale = 0.82f + 0.18f * bottomUiCompactFraction
-                                                                scaleX = scale
-                                                                scaleY = scale
+                                                                // The circles no longer fade — they SLIDE
+                                                                // out below the screen edge while the
+                                                                // mini player maximises into the full
+                                                                // screen player, and rise back up from
+                                                                // the bottom while it minimises (the
+                                                                // same motion language the nav bar's
+                                                                // own sink uses). Visibility follows the
+                                                                // same product as before: fully shown in
+                                                                // compact+idle, sliding away either when
+                                                                // the bar re-expands (scroll) or when the
+                                                                // player sheet takes over the bottom band.
+                                                                val slideDistancePx =
+                                                                    (bottomInset + floatingBarsBottomPadding + navVisibleHeight + 8.dp).toPx()
+                                                                translationY =
+                                                                    (1f - compactRowAlpha) * slideDistancePx
                                                             },
                                                 ) {
                                                     CompactControlCircle(
@@ -3370,13 +3381,32 @@ class MainActivity : ComponentActivity() {
                                                                 // escape the draw pass — the
                                                                 // "Recording currently in progress"
                                                                 // family of RenderThread crashes.
-                                                                runCatching {
-                                                                    navBarFrostedBackdrop.layer.record {
-                                                                        this@drawWithContent.drawContent()
+                                                                val recorded =
+                                                                    runCatching {
+                                                                        navBarFrostedBackdrop.layer.record {
+                                                                            this@drawWithContent.drawContent()
+                                                                        }
+                                                                    }.isSuccess
+                                                                if (recorded) {
+                                                                    // Blit the FRESH record for this
+                                                                    // frame's display — pixel-identical
+                                                                    // to drawContent(), at a fraction of
+                                                                    // a second full-content draw.
+                                                                    runCatching {
+                                                                        drawLayer(navBarFrostedBackdrop.layer)
                                                                     }
+                                                                    return@drawWithContent
                                                                 }
                                                             }
-                                                            runCatching { drawLayer(navBarFrostedBackdrop.layer) }
+                                                            // THE display path: always the LIVE
+                                                            // content. The previous shape blitted
+                                                            // the last recorded layer here, which
+                                                            // froze the ENTIRE NavHost display at
+                                                            // the 10 Hz record cadence — scrolling
+                                                            // and the miniplayer morph visibly
+                                                            // stepped ~10x per second (the "lags a
+                                                            // lot while scrolling" report).
+                                                            drawContent()
                                                         }
                                                 } else if (navBarFrostedBackdrop != null) {
                                                     // Overlay active: keep drawing the last recorded

@@ -159,13 +159,14 @@ class EnginePcmCodecTest {
         assertEquals(16384 / 32768f, output.float, 1e-6f)
         assertEquals(-16384 / 32768f, output.float, 1e-6f)
     }
-}
 
     /**
      * Native-format preservation (Bit-Perfect): PCM24-packed and PCM32 bytes
      * pass through byte-for-byte whenever the declared output encoding
      * matches the emitted one — a 24-bit stream can never silently collapse
-     * to 16-bit (or float) inside the codec.
+     * to 16-bit (or float) inside the codec. (This method was accidentally
+     * declared OUTSIDE the class body — JUnit rejected the whole file with
+     * "Test class should have exactly one public constructor".)
      */
     @Test
     fun pcm24AndPcm32_stayNative_whenDeclaredOutputMatches() {
@@ -200,3 +201,4 @@ class EnginePcmCodecTest {
         )
         assertSame(pcm32, out32)
     }
+}

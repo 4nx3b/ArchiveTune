@@ -413,6 +413,16 @@ fun buildSettingsGroups(
                 SettingsChild("Enable swipe to change song", "enable_swipe_thumbnail", listOf("swipe thumbnail", "swipe to change song", "swipe artwork", "swipe track")) { SearchResultSwitch(SwipeThumbnailKey, true) },
                 SettingsChild("Mini player swipe sensitivity", "swipe_sensitivity", listOf("swipe sensitivity", "mini player swipe", "gesture sensitivity")),
                 SettingsChild("Check source", "check_source", listOf("check source", "source health", "test source", "source diagnostics", "verify source", "source status")),
+                // Audiophile search-index children (moved from the removed
+                // standalone main-settings entry; the page itself lives at
+                // settings/player/audiophile via the Playback entry).
+                SettingsChild("Audiophile", "audiophile", listOf("audiophile", "dsp", "engine", "tryptify", "lastwave", "float", "usb exclusive", "bit perfect", "dac", "autoeq")),
+                SettingsChild("Bit-Perfect Output", "bit_perfect_output", listOf("bit perfect", "bitperfect", "native output", "direct playback", "pcm24", "pcm32", "sample rate", "native rate")) { SearchResultSwitch(BitPerfectOutputKey, false) },
+                SettingsChild("Native Sample Rate", "bit_perfect_native_rate", listOf("native sample rate", "source rate", "resampling", "rate matching")) { SearchResultSwitch(BitPerfectNativeRateKey, true) },
+                SettingsChild("32-bit float DSP", "float_dsp", listOf("dsp", "float", "32-bit", "limiter", "dither", "lossless dsp", "bit perfect")) { SearchResultSwitch(FloatDspEnabledKey, false) },
+                SettingsChild("USB exclusive output", "usb_exclusive_audio", listOf("usb", "exclusive", "dac", "bit perfect", "direct", "aaudio")) { SearchResultSwitch(UsbExclusiveAudioKey, false) },
+                SettingsChild("Enable Tryptify Audio Processing", "tryptify_audio_processing", listOf("tryptify", "dsp engine", "autoeq", "equalizer", "bit perfect", "usb dac", "libusb", "oxford", "mixing console")) { SearchResultSwitch(TryptifyAudioProcessingKey, false) },
+                SettingsChild("Enable Lastwave Audio Processing", "lastwave_audio_processing", listOf("lastwave", "lastwave-native", "dsp engine", "clarity", "studio master", "oboe", "soxr", "bit perfect", "usb dac", "graphic eq")) { SearchResultSwitch(LastwaveAudioProcessingKey, false) },
                 SettingsChild("Spotify catalog", "spotify_catalog_source", listOf("spotify catalog", "spotify metadata", "spotify source")),
                 SettingsChild("Enable Tidal source", "tidal_enable", listOf("tidal", "enable tidal", "tidal source", "lossless", "hifi")) { SearchResultSwitch(TidalEnabledKey, true) },
                 SettingsChild("Use my Tidal account first", "tidal_account_first", listOf("tidal account first", "my tidal account", "prefer my account")) { SearchResultSwitch(TidalAccountFirstKey, true) },
@@ -431,24 +441,10 @@ fun buildSettingsGroups(
             ),
         )
 
-    val audiophile =
-        SettingsItem(
-            key = "audiophile",
-            icon = painterResource(R.drawable.graphic_eq),
-            title = stringResource(R.string.audiophile_settings_title),
-            subtitle = stringResource(R.string.audiophile_settings_subtitle),
-            accentColor = SettingsIconPalette.Playback,
-            keywords = listOf("audiophile", "dsp", "engine", "tryptify", "lastwave", "float", "usb exclusive", "bit perfect", "dac", "autoeq"),
-            onClick = { navController.navigate("settings/player/audiophile") },
-            children = listOf(
-                SettingsChild("Bit-Perfect Output", "bit_perfect_output", listOf("bit perfect", "bitperfect", "native output", "direct playback", "pcm24", "pcm32", "sample rate", "native rate")) { SearchResultSwitch(BitPerfectOutputKey, false) },
-                SettingsChild("Native Sample Rate", "bit_perfect_native_rate", listOf("native sample rate", "source rate", "resampling", "rate matching")) { SearchResultSwitch(BitPerfectNativeRateKey, true) },
-                SettingsChild("32-bit float DSP", "float_dsp", listOf("dsp", "float", "32-bit", "limiter", "dither", "lossless dsp", "bit perfect")) { SearchResultSwitch(FloatDspEnabledKey, false) },
-                SettingsChild("USB exclusive output", "usb_exclusive_audio", listOf("usb", "exclusive", "dac", "bit perfect", "direct", "aaudio")) { SearchResultSwitch(UsbExclusiveAudioKey, false) },
-                SettingsChild("Enable Tryptify Audio Processing", "tryptify_audio_processing", listOf("tryptify", "dsp engine", "autoeq", "equalizer", "bit perfect", "usb dac", "libusb", "oxford", "mixing console")) { SearchResultSwitch(TryptifyAudioProcessingKey, false) },
-                SettingsChild("Enable Lastwave Audio Processing", "lastwave_audio_processing", listOf("lastwave", "lastwave-native", "dsp engine", "clarity", "studio master", "oboe", "soxr", "bit perfect", "usb dac", "graphic eq")) { SearchResultSwitch(LastwaveAudioProcessingKey, false) },
-            ),
-        )
+    // The standalone "Audiophile" entry was removed from the main settings
+    // page — the page is the documented sub-page of Playback settings
+    // (PlayerSettings owns its entry). Its search-index children moved under
+    // the `playback` item below so settings search still finds every toggle.
 
     val jioSaavn =
         SettingsItem(
@@ -1098,7 +1094,6 @@ fun buildSettingsGroups(
                     navigationBar,
 
                     playback,
-                    audiophile,
                     sources,
                     jioSaavn,
                     deezer,

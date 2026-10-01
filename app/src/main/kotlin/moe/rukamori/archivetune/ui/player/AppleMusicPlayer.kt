@@ -19,6 +19,7 @@ import android.os.Build
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
@@ -162,9 +163,8 @@ import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
-import moe.rukamori.archivetune.ui.component.PlatformBackdrop
-import moe.rukamori.archivetune.ui.component.layerBackdrop
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
@@ -194,6 +194,9 @@ private const val AmLyricsBlurDriftScale = 2.4f
 
 private const val AmCoverBlurScale = 1.2f
 
+/** Constant drift amplitude the landscape moving-blur runs at. */
+private const val AmLandscapeDriftFactor = 0.55f
+
 private const val AmLyricsBackdropMorphMs = 650
 
 private val AmBackdropBlurRadius = 64.dp
@@ -202,7 +205,7 @@ private const val AmCanvasBackdropUpscale = 6f
 
 private val AmCanvasBackdropBlurRadius = 72.dp
 
-private const val AmCanvasBackdropMaxVideoEdgePx = 480
+private const val AmCanvasBackdropMaxVideoEdgePx = 256
 
 private const val AppleMusicLyricsContentDeferMs = 160L
 
@@ -538,9 +541,15 @@ fun AppleMusicPlayerContent(
 
     var tapAreaRootOrigin by remember { mutableStateOf(Offset.Zero) }
 
-    val popupBackdrop: PlatformBackdrop? =
+    val popupBackdrop: com.kyant.backdrop.Backdrop? =
         if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            rememberBackdrop(Color.Transparent)
+            // THROTTLED recorder: the plain rememberBackdrop attached kyant's
+            // per-frame LayerBackdrop to the whole player subtree, and while
+            // the lyrics overflow menu was open that re-recorded BOTH canvas
+            // layers + the moving blur every single frame — a visible stutter
+            // on top of an already loaded player. 10 Hz is what every other
+            // glass surface in the app already runs at.
+            rememberThrottledBackdrop(Color.Transparent)
         } else {
             null
         }
@@ -582,7 +591,7 @@ fun AppleMusicPlayerContent(
                     .matchParentSize()
                     .let { base ->
                         if (popupBackdrop != null) {
-                            base.layerBackdrop(popupBackdrop)
+                            base.glassSource(popupBackdrop)
                         } else {
                             base
                         }
@@ -692,7 +701,7 @@ fun AppleMusicPlayerContent(
                 scaleY = scale
                 // Landscape keeps a constant gentle drift (0.55x amplitude);
                 // portrait ramps it with the lyrics morph as before.
-                val driftFactor = if (landscape) 0.55f else progress
+                val driftFactor = if (landscape) AmLandscapeDriftFactor else progress
                 if (driftFactor > 0f) {
                     translationX = blurWander.xDp.floatValue * driftDpToPx * driftFactor
                     translationY = blurWander.yDp.floatValue * driftDpToPx * driftFactor
@@ -703,14 +712,31 @@ fun AppleMusicPlayerContent(
             }
 
             val backdropFootprint =
-                remember(maxWidth, maxHeight) {
-                    blurBackdropFootprint(
-                        width = maxWidth,
-                        height = maxHeight,
-                        restScale = AmCoverBlurScale,
-                        driftScale = AmLyricsBlurDriftScale,
-                        maxDriftDp = wanderMaxDrift,
-                    )
+                remember(maxWidth, maxHeight, landscape) {
+                    if (landscape) {
+                        // Landscape models its own transform (constant 1.2x
+                        // scale + 0.55x drift + the 64dp blur falloff margin):
+                        // the portrait formula sized the layer for 2.4x-scale
+                        // drift, which under-covered at 1.2x and let the
+                        // blurred layer's edges sweep black lines in from the
+                        // screen corners.
+                        blurBackdropFootprintLandscape(
+                            width = maxWidth,
+                            height = maxHeight,
+                            restScale = AmCoverBlurScale,
+                            maxDriftDp = wanderMaxDrift,
+                            driftFactor = AmLandscapeDriftFactor,
+                            blurEdgeMarginDp = AmBackdropBlurRadius,
+                        )
+                    } else {
+                        blurBackdropFootprint(
+                            width = maxWidth,
+                            height = maxHeight,
+                            restScale = AmCoverBlurScale,
+                            driftScale = AmLyricsBlurDriftScale,
+                            maxDriftDp = wanderMaxDrift,
+                        )
+                    }
                 }
             Box(
                 modifier =
@@ -730,23 +756,34 @@ fun AppleMusicPlayerContent(
                                 .graphicsLayer(driftGraphicsLayer),
                     )
                 } else {
-                    AsyncImage(
-                        model = artworkRequest ?: artworkUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier =
-                            Modifier
-                                .requiredSize(backdropFootprint)
+                    // Crossfade the blurred colour mass instead of hard-
+                    // swapping it: track changes (and the mid-song thumbnail
+                    // upgrade) used to flip the entire backdrop in a single
+                    // frame — the "changes abruptly" report.
+                    val backdropModel = artworkRequest ?: artworkUrl
+                    Crossfade(
+                        targetState = backdropModel,
+                        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+                        label = "am-backdrop-artwork",
+                    ) { model ->
+                        AsyncImage(
+                            model = model,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier =
+                                Modifier
+                                    .requiredSize(backdropFootprint)
 
-                                .graphicsLayer(driftGraphicsLayer)
-                                .then(
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                        Modifier.blur(AmBackdropBlurRadius)
-                                    } else {
-                                        Modifier
-                                    },
-                                ),
-                    )
+                                    .graphicsLayer(driftGraphicsLayer)
+                                    .then(
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                            Modifier.blur(AmBackdropBlurRadius)
+                                        } else {
+                                            Modifier
+                                        },
+                                    ),
+                        )
+                    }
                 }
             }
 
@@ -1360,6 +1397,18 @@ private fun AppleMusicSharpArtwork(
 ) {
     val playerConnection = LocalPlayerConnection.current
 
+    // Canvas readiness: flips true when the loop's decoder renders its first
+    // frame; the static thumbnail + scrim below then dissolve (450ms) so the
+    // FIT canvas never reads as playing "on top of" the static artwork.
+    var canvasFrameReady by remember(canvasPrimaryUrl, canvasFallbackUrl) {
+        mutableStateOf(false)
+    }
+    val staticBaseAlpha by animateFloatAsState(
+        targetValue = if (canvasFrameReady) 0f else 1f,
+        animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing),
+        label = "am-canvas-static-base",
+    )
+
     val artworkFadeBrush = remember {
         Brush.verticalGradient(
             0.62f to Color.Black,
@@ -1475,22 +1524,35 @@ private fun AppleMusicSharpArtwork(
                 }
             }
         } else {
+            // The static base layer dissolves to nothing the moment the
+            // canvas decoder renders its first frame (tracked by
+            // [canvasFrameReady] below): the FIT loop letterboxes and fades
+            // its right edge, and a static thumbnail shining through those
+            // gaps read as "canvas playing on top of the static thumbnail".
+            // Until that first frame the thumbnail IS the visible artwork, so
+            // the canvas's own 300ms fade-in crossfades over it cleanly.
             Box(modifier = Modifier.matchParentSize()) {
-                AsyncImage(
-                    model = artworkRequest ?: artworkUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.matchParentSize(),
-                )
-                // Full-bleed canvas mode: the static cover sits BEHIND the FIT
-                // canvas as a dimmed base layer, so the loop's letterbox and
-                // dissolved edges read as part of the scene instead of a
-                // mismatched thumbnail shining through.
-                if (hasCanvas && landscapeCanvasFullBleed) {
+                if (staticBaseAlpha > 0.01f) {
+                    AsyncImage(
+                        model = artworkRequest ?: artworkUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .matchParentSize()
+                                .graphicsLayer { alpha = staticBaseAlpha },
+                    )
+                }
+                // Full-bleed canvas mode: a short dark scrim under the fading-
+                // in loop so the crossfade lands on a dimmed base rather than
+                // the raw thumbnail; it dissolves with the thumbnail once the
+                // loop is live.
+                if (hasCanvas && landscapeCanvasFullBleed && staticBaseAlpha > 0.01f) {
                     Box(
                         modifier =
                             Modifier
                                 .matchParentSize()
+                                .graphicsLayer { alpha = staticBaseAlpha }
                                 .background(Color.Black.copy(alpha = 0.55f)),
                     )
                 }
@@ -1529,6 +1591,7 @@ private fun AppleMusicSharpArtwork(
                         AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     },
                 loopSyncLeader = canvasLoopSync,
+                onFirstFrameRendered = { canvasFrameReady = true },
                 modifier = canvasModifier,
             )
         }

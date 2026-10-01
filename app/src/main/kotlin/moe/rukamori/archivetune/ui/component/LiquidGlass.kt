@@ -356,7 +356,6 @@ private class ThrottledLayerBackdropNode(
     }
 
     override fun ContentDrawScope.draw() {
-        drawContent()
         val now = SystemClock.uptimeMillis()
         if (now - lastRecordUptimeMillis >= backdrop.minIntervalMillis) {
             lastRecordUptimeMillis = now
@@ -364,19 +363,33 @@ private class ThrottledLayerBackdropNode(
             // Same Compose 1.12 dependency-tracker race as the draw side: a
             // record that races the layer being drawn elsewhere must not
             // take the app down — skip the re-record for this frame.
-            runCatching {
-                backdrop.graphicsLayer.record(size.toIntSize()) {
-                    val previousDensity = drawContext.density
-                    drawContext.density = density
-                    try {
-                        backdrop.contentPrefix(this@draw)
-                        this@draw.drawContent()
-                    } finally {
-                        drawContext.density = previousDensity
+            val recorded =
+                runCatching {
+                    backdrop.graphicsLayer.record(size.toIntSize()) {
+                        val previousDensity = drawContext.density
+                        drawContext.density = density
+                        try {
+                            backdrop.contentPrefix(this@draw)
+                            this@draw.drawContent()
+                        } finally {
+                            drawContext.density = previousDensity
+                        }
                     }
-                }
+                }.isSuccess
+            if (recorded && backdrop.graphicsLayer.size == size) {
+                // Reuse the fresh record for the display pass too: the old
+                // shape drew the WHOLE subtree twice on every record frame
+                // (once for the screen, once into the layer) — on a screenful
+                // of scrolling list content that doubled the frame time every
+                // 100ms, which read as jank "while scrolling" and "during the
+                // miniplayer morph". The recorded display list is pixel-
+                // identical to what drawContent() would emit here, so blitting
+                // it costs a fraction of a second full content draw.
+                runCatching { drawLayer(backdrop.graphicsLayer) }
+                return
             }
         }
+        drawContent()
     }
 
     override fun onGloballyPositioned(coordinates: LayoutCoordinates) {
@@ -386,7 +399,19 @@ private class ThrottledLayerBackdropNode(
     }
 
     override fun onDetach() {
-        backdrop.layerCoordinates = null
+        // Deliberately PRESERVE layerCoordinates through a detach. The root
+        // recorder detaches while the player sheet overlays the content —
+        // and the nulling here is exactly why every liquid-glass consumer
+        // (nav bar, compact circles, glass pills) dropped its glass the
+        // moment a minimise/maximise transition began: drawBackdrop() bails
+        // on null coordinates. With the last coordinates kept, consumers
+        // keep drawing the frozen backdrop through the whole transition —
+        // the content beneath the sheet is static, so the frozen picture is
+        // pixel-correct — and onGloballyPositioned refreshes the coordinates
+        // the instant the source re-attaches. The screen-level dispose (see
+        // rememberThrottledBackdrop's DisposableEffect) still nulls them when
+        // the whole screen truly leaves composition, so a dead layer can
+        // never leak into another screen's glass.
     }
 }
 

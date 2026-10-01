@@ -61,11 +61,14 @@ private const val CanvasPlaybackStallCheckIntervalMs = 1_000L
 private const val CanvasPlaybackStallTimeoutMs = 5_000L
 
 private const val CanvasSyncPublishIntervalMs = 50L
-private const val CanvasSyncCheckIntervalMs = 100L
+private const val CanvasSyncCheckIntervalMs = 200L
 
 /** Drift above which the follower engages the smooth rate lock (a small
- *  playback-speed delta that converges without a visible frame jump). */
-private const val CanvasSyncRateLockThresholdMs = 45L
+ *  playback-speed delta that converges without a visible frame jump). The
+ *  old 45 ms threshold + 5% clamp made the blurred twin visibly wobble its
+ *  frame pacing — behind a 12 dp blur nobody can see 80 ms of drift, but
+ *  everybody sees a decoder hiccup every time the speed changes. */
+private const val CanvasSyncRateLockThresholdMs = 80L
 
 /** Drift above which the follower gives up on smooth convergence and seeks. */
 private const val CanvasSyncSeekThresholdMs = 400L
@@ -76,7 +79,7 @@ private const val CanvasSyncSeekThresholdMs = 400L
 private const val CanvasSyncRateLockSpanMs = 2_000f
 
 /** Clamp for the rate-lock speed delta. */
-private const val CanvasSyncMaxRateLockDelta = 0.05f
+private const val CanvasSyncMaxRateLockDelta = 0.03f
 
 val LocalPlayerSheetVisible = staticCompositionLocalOf { true }
 
@@ -113,6 +116,10 @@ fun CanvasArtworkPlayer(
     loopSyncLeader: CanvasLoopSync? = null,
 
     loopSyncFollower: CanvasLoopSync? = null,
+
+    /** Fired once per URL when the decoder renders its first frame — lets
+     *  hosts crossfade the static artwork out from under the canvas. */
+    onFirstFrameRendered: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -407,6 +414,7 @@ fun CanvasArtworkPlayer(
 
                 override fun onRenderedFirstFrame() {
                     isVideoReady = true
+                    onFirstFrameRendered?.invoke()
                     reportAvailability?.invoke(true)
                     if (shouldPlay && !hasPlaybackFailed && exoPlayer.playerError == null) {
                         exoPlayer.setCanvasPlayback(isPlaying = true)

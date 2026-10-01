@@ -49,6 +49,20 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.union
+import android.os.Build
+import dev.chrisbanes.haze.hazeSource
+import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import moe.rukamori.archivetune.ui.component.GlassPillTitleText
+import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.glassSource
+import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
@@ -106,6 +120,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import coil3.compose.rememberAsyncImagePainter
@@ -269,22 +284,44 @@ fun ListenTogetherScreen(
         }
     }
 
-    LazyColumn(
-        state = lazyListState,
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .imePadding(),
-        contentPadding = PaddingValues(
-            start = 16.dp,
-            end = 16.dp,
-            top = windowInsets.asPaddingValues().calculateTopPadding() + 16.dp,
-            bottom = windowInsets.asPaddingValues().calculateBottomPadding() + 16.dp + AppBarHeight
-        ),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+    // ── Playlist-page vocabulary ─────────────────────────────────────────
+    // Glass header (back pill + title), scroll-gated top haze band, and a
+    // content-padding bottom that lets everything scroll BEHIND the floating
+    // mini player (the old + AppBarHeight dead space and the opaque
+    // item-level start/end paddings are gone — the hero and the section
+    // cards carry their own margins now).
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = lazyListState,
+            modifier = Modifier
+                .fillMaxSize()
+                .let { m -> if (glassHeaderActive) m.glassSource(artworkBackdrop) else m }
+                .hazeSource(headerHaze)
+                .imePadding(),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                bottom = windowInsets
+                    .union(WindowInsets.ime)
+                    .asPaddingValues()
+                    .calculateBottomPadding() + 16.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         item {
-            HeaderSection()
+            HeaderSection(
+                modifier = Modifier.padding(top = systemBarsTopPadding + AppBarHeight + 8.dp)
+            )
         }
 
         item {
@@ -453,25 +490,59 @@ fun ListenTogetherScreen(
         }
     }
 
-    if (shouldShowTopBar) {
-        TopAppBar(
-            title = {
-            },
-            navigationIcon = {
+        // The home-screen haze band: a translucent frosted strip that only
+        // appears once content has scrolled underneath it.
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+            scrolled = lazyListState.canScrollBackward,
+        )
+
+        if (glassHeaderActive) {
+            // The liquid-glass back pill with the page title riding in the
+            // same pill (exactly the playlist/album/artist header language).
+            LiquidGlassActionPill(
+                backdrop = artworkBackdrop,
+                interactive = true,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp),
+            ) {
                 IconButton(
                     onClick = navController::navigateUp,
-                    onLongClick = navController::backToMain
+                    onLongClick = navController::backToMain,
+                    modifier = Modifier.size(48.dp),
                 ) {
                     Icon(
-                        painterResource(R.drawable.arrow_back),
-                        contentDescription = null
+                        painter = painterResource(R.drawable.arrow_back),
+                        contentDescription = stringResource(R.string.back_button_desc),
+                        tint = liquidGlassContentColor(),
                     )
                 }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.background
+                GlassPillTitleText(text = stringResource(R.string.listen_together))
+            }
+        } else if (shouldShowTopBar) {
+            // Non-glass fallback: the previous plain top bar.
+            TopAppBar(
+                title = {
+                },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
-        )
+        }
     }
 }
 
@@ -510,45 +581,66 @@ private fun NotConfiguredContent() {
 }
 
 @Composable
-private fun HeaderSection() {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+private fun HeaderSection(modifier: Modifier = Modifier) {
+    // The playlist-hero vocabulary: a small uppercase accent section label,
+    // a big bold 34sp title and an onSurfaceVariant subtitle — the same
+    // typography, colours and spacing as AppleMusicPlaylistHeroContent.
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp, end = 4.dp, bottom = 4.dp),
+        horizontalAlignment = Alignment.Start,
     ) {
-        Box(
-            modifier = Modifier
-                .size(80.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
-            contentAlignment = Alignment.Center
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(bottom = 14.dp),
         ) {
-            Icon(
-                painter = painterResource(R.drawable.group_outlined),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(48.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.group_outlined),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(48.dp)
+                )
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.listen_together).uppercase(),
+                    color = moe.rukamori.archivetune.ui.component.AppleMusicStyleAccentColor,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    letterSpacing = 0.08.sp,
+                    maxLines = 1,
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = stringResource(R.string.listen_together),
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 34.sp,
+                    lineHeight = 38.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = stringResource(R.string.listen_together),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = stringResource(R.string.listen_together_description),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        Text(
+            text = stringResource(R.string.listen_together_description),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Normal,
+            fontSize = 15.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
