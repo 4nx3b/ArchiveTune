@@ -549,7 +549,6 @@ fun LyricsScreen(
                         }
                     }
                 }.pointerInput(Unit) {
-
                     detectTapGestures(
                         onTap = { pokeLyricsControls() },
                     )
@@ -844,10 +843,7 @@ internal fun MovingBlurBackground(
                 .clipToBounds()
                 .background(AppleMusicFallbackGradient.last()),
     ) {
-        // Screen-proportional wander amplitude (Apple Music lyrics-page
-        // behaviour, shared with every other player style): the blurred
-        // colour mass traverses the whole display instead of orbiting a
-        // narrow ring around the centre.
+
         val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
         val blurWander = rememberBlurWanderDrift(active = true, maxDriftDp = wanderMaxDrift)
         val preSDriftScale =
@@ -909,10 +905,7 @@ internal fun MovingBlurBackground(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
-                                    // Translation only: the pre-S bitmap is
-                                    // screen-shaped, so rotating it would
-                                    // uncover the corners (the post-S path
-                                    // rotates a square footprint safely).
+
                                     scaleX = preSDriftScale
                                     scaleY = preSDriftScale
                                     translationX = blurWander.xDp.floatValue.dp.toPx()
@@ -1118,7 +1111,6 @@ private fun AppleMusicTrackHeader(
         modifier = modifier.heightIn(min = 72.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-
         Box(
             modifier =
                 Modifier

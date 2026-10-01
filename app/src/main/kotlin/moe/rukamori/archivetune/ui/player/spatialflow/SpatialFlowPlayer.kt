@@ -185,7 +185,7 @@ fun SpatialFlowPlayerContent(
 
     val isDark = appIsDark
     val canvasAvailable = !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
-    // Lockstep the sharp stage canvas and the blurred backdrop copy of the same loop.
+
     val canvasLoopSync = remember { CanvasLoopSync() }
 
     val videoState = LocalVideoArtworkState.current
@@ -566,7 +566,6 @@ fun SpatialFlowPlayerContent(
 
                     Spacer(modifier = Modifier.height(36.dp))
                 } else if (!canvasAvailable && floatingArtwork) {
-
                     Box(
                         modifier =
                             Modifier
@@ -1102,7 +1101,6 @@ fun SpatialFlowPlayerContent(
                                     val t = lyricsArtworkProgress.coerceIn(0f, 1f)
                                     val bounds = artworkPagerBoundsInRoot
                                     if (bounds == null) {
-
                                         alpha = 0f
                                         return@graphicsLayer
                                     }

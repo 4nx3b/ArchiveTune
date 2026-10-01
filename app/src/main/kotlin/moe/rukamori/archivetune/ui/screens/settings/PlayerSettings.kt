@@ -167,8 +167,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             AudioOffload,
             defaultValue = false,
         )
-    // Write-only handle: enabling offload still releases the engine-owned
-    // USB-exclusive route (that toggle now lives on the Audiophile page).
+
     val (_, onUsbExclusiveAudioChange) =
         rememberPreference(
             UsbExclusiveAudioKey,
@@ -404,8 +403,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
-                    // The engine stack (float DSP, Tryptify, LastWave, USB-exclusive)
-                    // lives on its own page now.
+
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.audiophile_settings_title)) },
                         description = stringResource(R.string.audiophile_settings_subtitle),
@@ -479,9 +477,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             onCheckedChange = { enabled ->
                                 if (enabled) {
                                     onAudioOffloadChange(false)
-                                    // Crossfade and automix are mutually
-                                    // exclusive: at most one engine shapes a
-                                    // given track boundary.
+
                                     onAutomixEnabledChange(false)
                                 }
                                 onCrossfadeEnabledChange(enabled)
@@ -524,9 +520,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             onCheckedChange = { enabled ->
                                 if (enabled) {
                                     onAudioOffloadChange(false)
-                                    // Turning automix on hands every transition to
-                                    // the analysis engine: the manual crossfade
-                                    // slider stops applying.
+
                                     onCrossfadeEnabledChange(false)
                                 }
                                 onAutomixEnabledChange(enabled)
@@ -617,9 +611,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                     )
                 }
 
-                // The 32-bit float DSP, both engine toggles, every Tryptify
-                // engine feature and the USB-exclusive route moved to the
-                // dedicated Audiophile sub-page ("Audiophile" entry above).
                 item {
                     Column(modifier = positions.modifierFor("seek_seconds")) {
                         SwitchPreference(

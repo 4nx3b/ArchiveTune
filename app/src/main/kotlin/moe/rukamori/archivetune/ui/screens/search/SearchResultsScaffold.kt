@@ -95,12 +95,6 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.OnlineSearchSort
 import android.os.Build
 
-/**
- * Shared bottom-chrome state for the online search-results screens (and the main
- * settings page): a haze source for the transparent blurred top plus the layer
- * backdrop that feeds the liquid-glass pills. Same gating as
- * [moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader].
- */
 @Stable
 class SearchResultsBarState(
     val liquidGlassActive: Boolean,
@@ -114,10 +108,6 @@ fun rememberSearchResultsBarState(): SearchResultsBarState {
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
     val surfaceColor = MaterialTheme.colorScheme.surface
 
-    // Throttled recorder: the results list redraws on every scroll frame, and
-    // re-recording it into the glass layer per frame (plus re-running every
-    // pill's blur shader) is what made this page lag while the glass mini
-    // player was on screen. 10 Hz is visually identical behind an 18dp blur.
     val backdrop = rememberThrottledBackdrop(surfaceColor)
     val haze = rememberScreenHeaderHaze()
     val active =
@@ -131,7 +121,6 @@ fun rememberSearchResultsBarState(): SearchResultsBarState {
     )
 }
 
-/** Tags the scrolling content as the source for both the top haze and the glass pills. */
 fun Modifier.searchResultsBarSource(state: SearchResultsBarState): Modifier =
     this
         .then(
@@ -142,11 +131,6 @@ fun Modifier.searchResultsBarSource(state: SearchResultsBarState): Modifier =
         )
         .hazeSource(state.haze)
 
-/**
- * Adapts an existing [moe.rukamori.archivetune.ui.screens.GlassScreenHeader] (used by the
- * settings pages) into a [SearchResultsBarState] so the shared bottom overlay can reuse
- * the same backdrop/haze sources without double-tagging the content.
- */
 fun moe.rukamori.archivetune.ui.screens.GlassScreenHeader.toSearchResultsBarState(): SearchResultsBarState =
     SearchResultsBarState(
         liquidGlassActive = liquidGlassActive,
@@ -154,19 +138,8 @@ fun moe.rukamori.archivetune.ui.screens.GlassScreenHeader.toSearchResultsBarStat
         haze = haze,
     )
 
-/** Extra bottom content padding so list items clear the bottom overlay. */
 val SearchResultsOverlayReserve: Dp = 148.dp
 
-/**
- * The bottom overlay of the search-results screens:
- *
- *  [ category pills (glass/blur) ]
- *  [ back pill ] [ search pill    ]
- *
- * The back button is its own liquid-glass pill on the same line as the search
- * pill; the category pills sit above it. With liquid glass unavailable
- * (SDK < S or toggle off) both fall back to plain tonal pills.
- */
 @Composable
 fun BoxScope.SearchResultsBottomOverlay(
     state: SearchResultsBarState,
@@ -187,18 +160,13 @@ fun BoxScope.SearchResultsBottomOverlay(
     var lastObservedItemIndex by remember { mutableIntStateOf(0) }
     var lastObservedScrollOffset by remember { mutableIntStateOf(0) }
 
-    // "Hide search bar and category pills while scrolling" (Appearance): the
-    // chrome slides away once the list scrolls DOWN below the top and only
-    // returns when the user scrolls back UP — stopping the scroll no longer
-    // re-shows it (direction-latched, matching the compact bottom controls).
     val hideWhileScrolling by rememberPreference(HideSearchChromeWhileScrollingKey, defaultValue = false)
     var hiddenByScrollDirection by remember { mutableStateOf(false) }
     if (lazyListState != null) {
         LaunchedEffect(lazyListState) {
             snapshotFlow { lazyListState.firstVisibleItemIndex to lazyListState.firstVisibleItemScrollOffset }
                 .collect { (_, offset) ->
-                    // Rising offset = scrolling deeper into the list; the first
-                    // frame after a scroll stop keeps the latch (no re-show).
+
                     val goingDown = offset > lastObservedScrollOffset || lazyListState.firstVisibleItemIndex > lastObservedItemIndex
                     if (goingDown && lazyListState.canScrollBackward) {
                         hiddenByScrollDirection = true
@@ -216,16 +184,10 @@ fun BoxScope.SearchResultsBottomOverlay(
             hiddenByScrollDirection &&
             lazyListState.canScrollBackward
 
-    // While the keyboard is open it fully covers the mini player, so the
-    // player-aware bottom reserve would only add dead space between the search
-    // pill and the IME. Drop it for as long as the IME is visible.
     val density = LocalDensity.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val effectiveBottomPadding = (if (imeVisible) 0.dp else bottomPadding) + 10.dp
 
-    // While the global bottom controls are compact ([Home][pill][Search]) the
-    // whole overlay minimises with them — the compact Search circle takes over
-    // the search affordance, so this bar sinks out of the way in sync.
     val compactFraction = LocalBottomUiCompactFraction.current
 
     Column(
@@ -436,11 +398,6 @@ private fun SearchInputPill(
     }
 }
 
-/**
- * Horizontally scrollable category pills rendered above the search row. Every pill
- * is a frosted glass chip (blur of the content scrolling behind it) with a plain
- * tonal fallback, mirroring the search/back pill styling.
- */
 @Composable
 fun <E> GlassFilterChipsRow(
     state: SearchResultsBarState,
@@ -543,7 +500,6 @@ private fun GlassFilterChip(
     }
 }
 
-/** Compact sort menu shown inside the search pill's trailing slot. */
 @Composable
 fun SearchResultsSortMenu(
     selectedSort: OnlineSearchSort,
@@ -597,13 +553,6 @@ fun SearchResultsSortMenu(
     }
 }
 
-
-/**
- * The header of the search-results page: a translucent liquid-glass
- * "< Search" pill, the query as a LARGE bold title, a compact info line and
- * the category pills row beneath it — all part of the normal content flow
- * (no opaque app bar).
- */
 @Composable
 fun SearchResultsTopHeader(
     state: SearchResultsBarState,
@@ -620,7 +569,6 @@ fun SearchResultsTopHeader(
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp),
     ) {
-        // Translucent liquid-glass "< Search" back pill.
         val backdrop = state.backdrop
         val glassColor = if (backdrop != null) liquidGlassContentColor() else MaterialTheme.colorScheme.onSurface
         val pillShape = RoundedCornerShape(22.dp)
@@ -657,7 +605,6 @@ fun SearchResultsTopHeader(
 
         Spacer(Modifier.height(14.dp))
 
-        // The searched query as a large bold title.
         Text(
             text = query,
             style = MaterialTheme.typography.displaySmall,
@@ -687,11 +634,6 @@ fun SearchResultsTopHeader(
     }
 }
 
-/**
- * Horizontally scrollable SOLID category pills for the results header. These
- * are deliberately flat/tonal — NO liquid glass — contrasting with the glass
- * back pill above them.
- */
 @Composable
 fun <E> SolidFilterChipsRow(
     chips: List<Pair<E, String>>,

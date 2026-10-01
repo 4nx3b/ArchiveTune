@@ -239,12 +239,6 @@ private fun YearInMusicRecapScreen(
                         val bounds = currentCardBounds
                         val currentCard = cards.getOrNull(pagerState.currentPage)
 
-                        // True full-resolution export: the current card is
-                        // re-composed off-screen at a multiplied density, so
-                        // every glyph, border and image rasterizes at native
-                        // export pixels — no screen-resolution ceiling, no
-                        // upscaling. Falls back to the screen capture only if
-                        // the re-render is impossible on this device.
                         val cardBitmap =
                             renderRecapCardAtScale(
                                 hostView = view,
@@ -1759,17 +1753,6 @@ private suspend fun awaitNextPreDraw(view: View) {
     }
 }
 
-/**
- * Re-composes the given recap card off-screen at a multiplied [Density] and
- * rasterizes it directly at export pixels. The card keeps its exact dp
- * layout (same proportions as on screen) while every glyph, stroke and
- * image renders at 2-3x screen resolution — a genuinely higher-fidelity
- * bitmap, not an upscaled screen capture.
- *
- * The holder is attached under the screen's own parent (off-screen via a
- * large negative margin) so it inherits the window's lifecycle/saved-state
- * owners through the view tree, which ComposeView requires to compose.
- */
 private suspend fun renderRecapCardAtScale(
     hostView: View,
     card: YearInMusicRecapCard?,
@@ -1783,8 +1766,6 @@ private suspend fun renderRecapCardAtScale(
     val screenDensity = hostView.resources.displayMetrics.density
     val fontScale = hostView.resources.configuration.fontScale
 
-    // Pixel budget keeps the ARGB_8888 bitmap under ~48MB on any device;
-    // the floor of 2x guarantees the export beats every phone screen.
     val srcPixels = bounds.width * bounds.height
     val scale = sqrt(12_000_000f / srcPixels).coerceIn(2f, 3f)
     val targetWidth = (bounds.width * scale).roundToInt().coerceAtLeast(1)
@@ -1792,9 +1773,7 @@ private suspend fun renderRecapCardAtScale(
 
     val holder =
         ComposeView(context).apply {
-            // The default dispose strategy (composition released when the view
-            // detaches or the window goes away) is exactly the lifetime wanted
-            // for this throw-away off-screen renderer.
+
             setContent {
                 CompositionLocalProvider(
                     LocalDensity provides Density(screenDensity * scale, fontScale),
@@ -1820,8 +1799,7 @@ private suspend fun renderRecapCardAtScale(
         }
     return try {
         parent.addView(holder, layoutParams)
-        // Let composition run, then give Coil's larger image requests time to
-        // land before the final pre-draw.
+
         repeat(3) { awaitNextPreDraw(holder) }
         delay(900)
         awaitNextPreDraw(holder)

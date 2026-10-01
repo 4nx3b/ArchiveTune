@@ -123,8 +123,7 @@ class App :
             Timber.plant(Timber.DebugTree())
             return
         }
-        // Crash log capture first: the native signal handlers and the session
-        // breadcrumb mirror must be in place before anything else can die.
+
         runCatching { moe.rukamori.archivetune.utils.CrashReporter.install(this) }
         if (BuildConfig.DEBUG) {
             android.os.StrictMode.setThreadPolicy(
@@ -266,7 +265,6 @@ class App :
     }
 
     private fun initializeDeferredAsync() {
-
         moe.rukamori.archivetune.utils.SourceRefreshWorker.schedule(this)
 
         applicationScope.launch(Dispatchers.IO) {
@@ -450,9 +448,7 @@ class App :
             try {
                 Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
                     try {
-                        // File first: the DebugActivity hand-off below kills
-                        // the process, so this is the only chance to persist a
-                        // report the user can hand over later.
+
                         moe.rukamori.archivetune.utils.CrashReporter.writeJavaCrashReport(thread, throwable)
                         val sw = StringWriter()
                         val pw = PrintWriter(sw)
@@ -510,7 +506,6 @@ class App :
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
-
         val imageCacheConfig = resolveImageDiskCacheConfig(dataStore[MaxImageCacheSizeKey])
         val lowRam = isLowRamDevice()
 
@@ -538,9 +533,7 @@ class App :
             .components {
                 add(moe.rukamori.archivetune.telegram.TelegramThumbnailFetcher.Factory())
                 add(OkHttpNetworkFetcherFactory(imageHttpClient))
-                // GIF support for the Listen Together chat's Giphy shares: the
-                // API 28+ ImageDecoder path animates natively, BitmapFactory's
-                // GifDecoder covers everything older.
+
                 if (Build.VERSION.SDK_INT >= 28) {
                     add(coil3.gif.AnimatedImageDecoder.Factory())
                 } else {

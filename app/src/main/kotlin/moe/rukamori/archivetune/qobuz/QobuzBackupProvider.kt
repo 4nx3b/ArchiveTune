@@ -25,11 +25,9 @@ object QobuzBackupProvider {
     var configuredEndpoints: List<String> = emptyList()
 
     private fun normalizeEndpoint(raw: String): String {
-        // The app's network security policy blocks cleartext, so an http:// entry can
-        // never succeed — upgrade it to https instead of burning a failure + cooldown.
+
         val https = if (raw.startsWith("http://")) "https://" + raw.removePrefix("http://") else raw
-        // The old community mirror host went dark (DNS removed); it serves the same
-        // API as the default endpoint, so heal stored references to the live host.
+
         return https.replace("mlc-ytify.kouzu.in", "mls.kouzu.in")
     }
 
@@ -167,13 +165,9 @@ object QobuzBackupProvider {
     ): List<Candidate> {
         for (base in activeEndpoints()) {
             when (val candidates = fetchSearchFrom(base, query, limit)) {
-                // null = transport-level failure (HTTP error / exception / non-JSON body)
                 null -> recordFailure(base)
                 else -> {
-                    // A healthy response must never poison the circuit breaker — an
-                    // empty result simply means the track is not in this mirror's
-                    // catalog, so the endpoint stays warm and the next endpoints and
-                    // query variants still get a chance to answer.
+
                     recordSuccess(base)
                     if (candidates.isNotEmpty()) return candidates
                 }
@@ -182,11 +176,6 @@ object QobuzBackupProvider {
         return emptyList()
     }
 
-    /**
-     * @return null when the endpoint could not be reached or answered with a non-JSON
-     *         body (a real failure for the circuit breaker); an empty list when the
-     *         endpoint is healthy but has no matches for the query.
-     */
     private fun fetchSearchFrom(
         base: String,
         query: String,

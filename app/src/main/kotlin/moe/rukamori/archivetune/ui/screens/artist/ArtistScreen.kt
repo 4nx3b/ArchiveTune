@@ -245,15 +245,8 @@ fun ArtistScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    // The glass recording source stays attached for the whole lifetime of the
-    // screen: detaching kyant's LayerBackdrop while the player sheet covers the
-    // header nulls its layerCoordinates, and glass never comes back afterwards
-    // (the maximise->minimise "pills turn light" bug). The pills themselves fade
-    // with the sheet edge in their own draw phase, and the recorder is throttled,
-    // so an always-attached source is both correct and cheap.
     val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
-    // Mini-player-bound overlay signal for non-glass gating (canvas decode,
-    // hero animations) — keeps the OLD mini-bound semantics.
+
     val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
     val isArtistBlocked = (blockState as? ArtistBlockState.Success)?.isBlocked == true
 
@@ -367,11 +360,6 @@ fun ArtistScreen(
             }
         }
 
-    // ---- Pre-save & Release Countdown -----------------------------------
-    // While the toggle is on, the artist's UPCOMING catalogue entries show near
-    // the top of the page (below the hero) with a live countdown — the same
-    // card design the latest-release pill uses — plus a Listen Later bookmark
-    // that persists into the release presave store.
     val presaveRadarEnabled by rememberPreference(PresaveReleaseRadarKey, defaultValue = false)
     var upcomingReleases by remember { mutableStateOf<List<UpcomingRelease>>(emptyList()) }
     val radarArtistName = artistPage?.artist?.title ?: libraryArtist?.artist?.name
@@ -427,22 +415,6 @@ fun ArtistScreen(
 
     val isManuallyRefreshing = viewModel.isManuallyRefreshing
 
-    // ---- Dynamic artist background --------------------------------------
-    // Fallback chain (per spec): 1) the actively rendering Canvas  2) the
-    // ARTIST's own artwork  3) the plain theme surface. The currently playing
-    // track's album art is deliberately NOT a source — this page is about the
-    // artist, and a unrelated now-playing palette made the ambience change
-    // with whatever is playing elsewhere. Every hop is palette-extracted off
-    // the main thread, cached via PlayerPaletteCache, and the final stops are
-    // colour-animated so switching sources (or the canvas content itself
-    // changing) never flashes or jumps.
-
-    // (1) Canvas sampling — the hero's own CanvasArtworkPlayer is captured into
-    // a small GraphicsLayer while it renders; a throttled coroutine samples that
-    // layer, downsamples to a 24px thumbnail and extracts dominant colours. No
-    // second video player, no full-resolution processing, all palette work on
-    // Dispatchers.Default, and everything stops the moment the page is covered
-    // or the canvas stops rendering.
     val canvasSampleLayer: GraphicsLayer = rememberGraphicsLayer()
     val canvasRecordClock = remember { longArrayOf(0L) }
     var canvasSampleLayerSize by remember { mutableStateOf(IntSize.Zero) }
@@ -456,8 +428,7 @@ fun ArtistScreen(
     val heroVisible by remember {
         derivedStateOf { lazyListState.firstVisibleItemIndex == 0 }
     }
-    // Sampling pauses while the list is actively scrolling: the full-hero
-    // GPU readback (~9MB per sample) was the main source of scroll jank.
+
     val listScrolling by remember { derivedStateOf { lazyListState.isScrollInProgress } }
     val canvasSamplingActive =
         heroCanvasPresent && heroVisible && !lyricsFullScreen && !playerSheetOverlayActive && !listScrolling
@@ -466,27 +437,14 @@ fun ArtistScreen(
         if (!canvasSamplingActive) {
             canvasAmbientColors = null
         } else {
-            // Warm-up: give the canvas a moment to render its first frames
-            // before the first sample, then sample at a fast cadence so a new
-            // colour in the canvas registers within ~350 ms (the colour
-            // crossfade itself takes another 450 ms — smooth, never abrupt).
+
             delay(280)
             while (true) {
                 val layerSize = canvasSampleLayerSize
                 if (layerSize.width >= 8 && layerSize.height >= 8) {
                     val sampled =
                         try {
-                            // toImageBitmap() walks LayerSnapshotV28 →
-                            // RenderNode.beginRecording — it MUST run on the UI
-                            // thread. The old Dispatchers.Default read raced the
-                            // draw-side record() on the SAME GraphicsLayer and
-                            // whichever thread lost got "Recording currently in
-                            // progress - missing #endRecording() call?" straight
-                            // out of dispatchDraw (the artist-page crash). Take an
-                            // immutable software copy on main, then do the heavy
-                            // palette work on the background dispatcher. The
-                            // layer is already recorded at a small size, so the
-                            // readback is a few KB instead of ~9 MB.
+
                             val snapshot =
                                 canvasSampleLayer.toImageBitmap().asAndroidBitmap()
                                     .copy(Bitmap.Config.ARGB_8888, false)
@@ -526,7 +484,6 @@ fun ArtistScreen(
         }
     }
 
-    // (2) the artist's own artwork palette, cached.
     var artistArtworkColors by remember { mutableStateOf<List<Color>?>(null) }
     LaunchedEffect(thumbnail, isDarkTheme) {
         artistArtworkColors =
@@ -539,10 +496,7 @@ fun ArtistScreen(
     }
 
     val ambientSource = canvasAmbientColors ?: artistArtworkColors
-    // The immersive-player (V7) bottom-controls gradient ladder: the dominant
-    // colour projected into three value bands (bright top, mid, deep bottom).
-    // NO backdrop blur, NO theme-surface mixing — exactly the colour gradience
-    // the V7 player paints behind its transport controls.
+
     val ambientPalette =
         remember(ambientSource, surfaceColor) {
             BackdropTonePalette.fromColors(
@@ -566,13 +520,6 @@ fun ArtistScreen(
         label = "artistAmbientBottom",
     )
 
-    // The big release pills (latest + upcoming) float over the ambient
-    // gradient: their containers are tinted FROM the ambient palette — the
-    // actual backdrop colour at that scroll region — instead of a fixed grey
-    // surface role that read as a greyish island on both themes. The base is
-    // a mid/bottom blend with translucency so the gradient still shows
-    // through, and the content colours follow the tint's luminance so both
-    // dark and light mode stay legible over the always-toned bands.
     val ambientReleaseBase = lerp(animatedAmbientMid, animatedAmbientBottom, 0.45f)
     val releaseCardContainer = ambientReleaseBase.copy(alpha = 0.50f)
     val releaseCardContent =
@@ -589,12 +536,6 @@ fun ArtistScreen(
             lerp(ambientReleaseBase, Color.White, 0.35f)
         }
 
-    // Hero → background seam: the hero scrim's terminal colour must equal
-    // the PAGE gradient's colour at the hero-bottom fraction — not the
-    // screen-bottom band. The two gradients end at different colours
-    // wherever the hero's bottom edge lands mid-gradient, which was the
-    // sharp colour-inconsistency line below the control row. Both heights
-    // are measured so the seam lands exactly on any screen size.
     var pageContainerHeightPx by remember { mutableStateOf(0) }
     var heroMeasuredHeightPx by remember { mutableStateOf(0) }
     val heroBottomFraction =
@@ -613,7 +554,6 @@ fun ArtistScreen(
 
     val ambientAtHeroBottom = pageGradientColorAt(heroBottomFraction)
 
-    // Hero scroll: collapse + fade + parallax while the hero scrolls away.
     val heroCollapseFraction by remember {
         derivedStateOf {
             if (lazyListState.firstVisibleItemIndex == 0) {
@@ -633,8 +573,6 @@ fun ArtistScreen(
         }
     }
 
-    // Subscribe toggle shared by the hero favourite circle (both glass and
-    // classic mode) — identical behaviour to the old primary-actions row.
     val toggleArtistSubscription: () -> Unit = {
         database.transaction {
             val artist = libraryArtist?.artist
@@ -662,21 +600,14 @@ fun ArtistScreen(
                 .background(surfaceColor)
                 .onSizeChanged { pageContainerHeightPx = it.height },
     ) {
-        // Glass recorder wraps the atmospheric gradient AND the list: the
-        // liquid-glass pills then sample real content everywhere — over the
-        // gradient's empty regions too, instead of reading black wherever no
-        // list row happened to be behind them. The glass consumers (header
-        // pills below) stay SIBLINGS of this recorded subtree: a recorder that
-        // contains its own consumers is circular and crashes the RenderThread.
+
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
                     .let { m -> if (glassHeaderActive) m.glassSource(artworkBackdrop) else m },
         ) {
-            // Atmospheric background: the animated palette-gradient alone (the
-            // immersive-player colour gradience). The old 80dp blurred-artwork
-            // layer was removed per request — no backdrop blur on this page.
+
             Box(
                 modifier =
                     Modifier
@@ -774,28 +705,16 @@ fun ArtistScreen(
                         }
                     val isSubscribed = libraryArtist?.artist?.bookmarkedAt != null
 
-                    // The reference hero: immersive artwork with the name and
-                    // stats anchored at the bottom, a large circular play
-                    // button on the lower right, and (non-glass mode only)
-                    // share / favourite circles on the top right. In glass
-                    // mode those controls are fixed liquid-glass overlays
-                    // rendered above this list instead.
                     Box(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = ArtistHeroMinHeight)
-                                // clipToBounds: the parallax translates the
-                                // artwork DOWNWARDS at half scroll speed —
-                                // without clipping it bled through the sections
-                                // below (the profile picture / canvas showed
-                                // through the rows while scrolling).
+
                                 .clipToBounds()
                                 .onSizeChanged { heroMeasuredHeightPx = it.height },
                     ) {
-                        // Immersive hero image with a gentle parallax: the
-                        // artwork scrolls at half speed while the list moves
-                        // over it, so the hero "collapses" smoothly.
+
                         Box(
                             modifier =
                                 Modifier
@@ -834,16 +753,6 @@ fun ArtistScreen(
                                 }
                             }
 
-                            // Canvas overlay + ambient sampling recorder. The
-                            // draw hook re-records the canvas region into a
-                            // small GraphicsLayer on a throttle — the layer is
-                            // recorded at a REDUCED size (≤128 px wide) so the
-                            // sampler's readback costs a few KB instead of the
-                            // ~9 MB full-hero readback that used to jank
-                            // scrolling. The sampler coroutine (above) reads
-                            // that layer every ~350 ms. Recording pauses
-                            // whenever sampling is inactive, so a static hero
-                            // costs nothing.
                             if (heroCanvasPresent) {
                                 Box(
                                     modifier =
@@ -855,10 +764,7 @@ fun ArtistScreen(
                                                     val now = SystemClock.uptimeMillis()
                                                     if (now - canvasRecordClock[0] >= CANVAS_RECORD_INTERVAL_MILLIS) {
                                                         canvasRecordClock[0] = now
-                                                        // Same Compose 1.12 re-entrancy family as
-                                                        // LiquidGlass's recorder: a record that
-                                                        // races any other use of this layer must
-                                                        // never escape the draw pass.
+
                                                         runCatching {
                                                             val recordScale =
                                                                 (CANVAS_SAMPLE_LAYER_MAX_WIDTH_PX.toFloat() / size.width)
@@ -891,14 +797,6 @@ fun ArtistScreen(
                             }
                         }
 
-                        // Legibility scrim: dark at the very top for the
-                        // status/app-bar area, fading out through the middle
-                        // and back into the ambient background colour at the
-                        // bottom so hero and background read as one surface.
-                        // The terminal stops sample the PAGE gradient at the
-                        // hero-bottom fraction (measured), so the scrim ends
-                        // on exactly the colour the background continues with
-                        // — no seam, no hard line under the control row.
                         Box(
                             modifier =
                                 Modifier
@@ -914,8 +812,6 @@ fun ArtistScreen(
                                     ),
                         )
 
-                        // Non-glass mode: translucent share / favourite circles
-                        // pinned to the hero's top-right, below the app bar.
                         if (!liquidGlassHeaderActive) {
                             Row(
                                 modifier =
@@ -947,7 +843,6 @@ fun ArtistScreen(
                             }
                         }
 
-                        // Bottom identity block + hero actions.
                         Row(
                             modifier =
                                 Modifier
@@ -1009,8 +904,6 @@ fun ArtistScreen(
                                 }
                             }
 
-                            // Hero actions: shuffle + radio as restrained
-                            // translucent circles above the large play button.
                             Column(
                                 horizontalAlignment = Alignment.End,
                                 verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -1067,9 +960,6 @@ fun ArtistScreen(
                                     }
                                 }
 
-                                // Large circular play button, accent-coloured
-                                // from the ambient palette (theme primary when
-                                // no palette exists).
                                 val playButtonColor =
                                     ambientSource?.let {
                                         animatedAmbientTop
@@ -1236,9 +1126,7 @@ fun ArtistScreen(
                                 showInLibraryIcon = true,
                                 isActive = song.id == mediaMetadata?.id,
                                 isPlaying = isPlaying,
-                                // Rows float transparently over the palette
-                                // gradient — the old opaque surface islands
-                                // clashed with the animated background.
+
                                 swipeContentBackgroundColor = Color.Transparent,
                                 trailingContent = {
                                     IconButton(
@@ -1373,7 +1261,6 @@ fun ArtistScreen(
                         }
                     }
                 } else {
-
                     orderedRemoteSections.fastForEachIndexed { sectionIndex, section ->
                         if (section.items.isNotEmpty()) {
                             item(
@@ -1408,7 +1295,7 @@ fun ArtistScreen(
                                     item = song as SongItem,
                                     isActive = mediaMetadata?.id == song.id,
                                     isPlaying = isPlaying,
-                                    // Transparent over the palette gradient.
+
                                     swipeContentBackgroundColor = Color.Transparent,
                                     trailingContent = {
                                         IconButton(
@@ -1458,9 +1345,7 @@ fun ArtistScreen(
                                 )
                             }
                         } else if (section.items.isNotEmpty() && section.items.all { it is ArtistItem }) {
-                            // Related artists ("Fans might also like"): large
-                            // circular artwork with the name underneath, per
-                            // the reference design.
+
                             item(
                                 key = "youtube_section_artists_${sectionIndex}_${section.title}",
                                 contentType = CONTENT_TYPE_LIST,
@@ -1624,7 +1509,6 @@ fun ArtistScreen(
                     }
                 }
 
-                // ---- About / description, anchored at the bottom ----
                 artistPage
                     ?.description
                     ?.takeIf(String::isNotBlank)
@@ -1663,8 +1547,6 @@ fun ArtistScreen(
                     .align(Alignment.BottomCenter),
         )
 
-        // Glass-mode header controls: "< Home" pill top-left, Share /
-        // Favourite / overflow glass circles top-right — the reference layout.
         if (glassHeaderActive && (artistPage != null || showLocal)) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
@@ -1825,8 +1707,7 @@ private fun ArtistOverflowMenu(
                 .fillMaxWidth()
                 .padding(bottom = 12.dp),
     ) {
-        // Share / Copy link were removed from the artist overflow menu on
-        // request — sharing stays available through the hero Share button.
+
         ArtistOverflowMenuItem(
             text = stringResource(if (isBlocked) R.string.unblock_artist else R.string.block_artist),
             iconRes = R.drawable.block,
@@ -1867,7 +1748,6 @@ private fun ArtistOverflowMenuItem(
     )
 }
 
-/** A translucent circular icon button pinned over the hero artwork. */
 @Composable
 private fun ArtistHeroTranslucentCircle(
     iconRes: Int,
@@ -1902,10 +1782,6 @@ private fun ArtistHeroTranslucentCircle(
     }
 }
 
-/**
- * Related-artist tile: large circular artwork with the name underneath — the
- * reference treatment for "Fans might also like".
- */
 @Composable
 private fun ArtistCircleItem(
     item: ArtistItem,
@@ -1971,10 +1847,6 @@ private fun ArtistCircleItem(
     }
 }
 
-/**
- * The About / artist-description section, anchored at the bottom of the page.
- * Expanding plays a fluid spring animation rather than snapping open.
- */
 @Composable
 private fun ArtistAboutSection(
     description: String,
@@ -1995,8 +1867,7 @@ private fun ArtistAboutSection(
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(modifier = Modifier.height(12.dp))
-        // animateContentSize with a spring: the text block grows and shrinks
-        // fluidly when the collapsed/expanded line count flips.
+
         Box(
             modifier =
                 Modifier.animateContentSize(
@@ -2151,13 +2022,6 @@ private fun ArtistNewReleaseSection(
     }
 }
 
-/**
- * The Pre-save & Release Countdown column: the artist's upcoming catalogue
- * entries, rendered in the same card design as the latest-release pill but
- * labelled "UPCOMING RELEASE" and carrying a live countdown to the announced
- * release moment — plus a Listen Later bookmark that persists into the
- * release presave store.
- */
 @Composable
 private fun ArtistUpcomingReleasesColumn(
     releases: List<UpcomingRelease>,
@@ -2172,8 +2036,6 @@ private fun ArtistUpcomingReleasesColumn(
     val (presaveRaw, _) = rememberPreference(ReleasePresaveKey, "")
     val presaved = remember(presaveRaw) { parsePresavedReleases(presaveRaw) }
 
-    // A minute-resolution tick keeps every countdown honest without waking the
-    // CPU more than a music app already does.
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(releases) {
         while (true) {
@@ -2259,10 +2121,7 @@ private fun ArtistUpcomingReleasesColumn(
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        // The catalogue-reported artist name: with the strict
-                        // identity checks most entries now match the page's
-                        // artist, and when one does not it is obvious instead
-                        // of silently wrong.
+
                         if (release.artistName.isNotBlank()) {
                             Text(
                                 text = release.artistName,
@@ -2282,9 +2141,6 @@ private fun ArtistUpcomingReleasesColumn(
                         )
                     }
 
-                    // Listen Later: persists the release into the presave store
-                    // so it is already waiting in the library surfaces when it
-                    // officially drops.
                     androidx.compose.material3.IconButton(
                         onClick = {
                             val mapped =
@@ -2331,7 +2187,6 @@ private fun ArtistUpcomingReleasesColumn(
     }
 }
 
-/** "3 d 4 h left" / "5 h 12 m left" / "42 m left" — the moment-to-release. */
 @Composable
 private fun upcomingReleaseCountdownText(
     release: UpcomingRelease,
@@ -2366,13 +2221,6 @@ private fun upcomingReleaseCountdownText(
     }
 }
 
-// ---- Ambient background helpers ------------------------------------------
-
-/**
- * Extracts a 2-3 stop ambient palette from an artwork URL, off the main
- * thread, cached in [PlayerPaletteCache] so revisiting a page never
- * recomputes.
- */
 private suspend fun extractAmbientArtworkColors(
     context: Context,
     mediaId: String,
@@ -2608,10 +2456,7 @@ private fun buildArtistItemsRoute(
             append("&params=")
             append(encodedParams)
         }
-        // The section's own title rides the route so the glass header pill
-        // shows it immediately — without it the pill rendered back-arrow-only
-        // while the network fetch ran (and forever, if it failed), because the
-        // screen's title previously existed ONLY inside the fetched page.
+
         if (encodedTitle != null) {
             append("&title=")
             append(encodedTitle)

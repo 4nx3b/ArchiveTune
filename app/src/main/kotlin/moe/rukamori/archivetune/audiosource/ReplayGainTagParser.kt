@@ -11,29 +11,10 @@ import android.content.ContentResolver
 import android.net.Uri
 import java.io.InputStream
 
-/**
- * Parses ReplayGain / R128 loudness-correction tags from local audio files so the
- * playback normalization pipeline can level-lossless tracks the same way YouTube
- * tracks are leveled from their API loudness metadata.
- *
- * Supported containers:
- *  - FLAC  (Vorbis comments in METADATA_BLOCK type 4)
- *  - Ogg   (Vorbis comment header — searched in the leading pages)
- *  - MP3   (ID3v2.3/2.4 TXXX frames)
- *
- * Recognized tags (values in dB, e.g. "-6.53 dB" or "-6.53"):
- *  - REPLAYGAIN_TRACK_GAIN / REPLAYGAIN_ALBUM_GAIN   (reference ~ -18 LUFS, RG2 / 89 dB RG1)
- *  - R128_TRACK_GAIN / R128_ALBUM_GAIN               (reference -23 LUFS, EBU R128; Q7.8 fixed-point)
- *
- * All values are normalized to the ReplayGain 2.0 scale (reference -18 LUFS):
- * R128 values get +5 dB so both scales can feed the same loudness math.
- */
 object ReplayGainTagParser {
-
-    /** Reference loudness of ReplayGain 2.0 tags, in LUFS. */
     const val REPLAYGAIN_REFERENCE_LUFS = -18.0
 
-    private const val MAX_HEADER_BYTES = 1 shl 20 // 1 MiB cap — tags live at the head
+    private const val MAX_HEADER_BYTES = 1 shl 20
 
     data class ReplayGain(
         val trackDb: Double?,
@@ -83,10 +64,8 @@ object ReplayGainTagParser {
         }
     }
 
-    // ── FLAC ─────────────────────────────────────────────────────────────────
-
     private fun parseFlac(bytes: ByteArray): ReplayGain? {
-        var offset = 4 // "fLaC"
+        var offset = 4
         val comments = mutableListOf<Pair<String, String>>()
         var blocks = 0
         while (offset + 4 <= bytes.size && blocks < 64) {
@@ -109,24 +88,18 @@ object ReplayGainTagParser {
         return fromComments(comments)
     }
 
-    // ── Ogg (Vorbis / Opus comment header) ───────────────────────────────────
-
     private fun parseOgg(bytes: ByteArray): ReplayGain? {
-        // The Vorbis comment header lives inside the first few Ogg pages. Instead of
-        // implementing full page framing, scan the leading bytes for the comment
-        // header signature: "\x03vorbis" (Vorbis) or "OpusTags" (Opus).
+
         val signatures = listOf(byteArrayOf(3, 'v'.code.toByte(), 'o'.code.toByte(), 'r'.code.toByte()), byteArrayOf('O'.code.toByte(), 'p'.code.toByte(), 'u'.code.toByte(), 's'.code.toByte()))
         for (signature in signatures) {
             val index = indexOf(bytes, signature, limit = 64 * 1024) ?: continue
             val start =
-                if (signature[0] == 3.toByte()) index + 7 else index + 8 // skip "OpusTags"
+                if (signature[0] == 3.toByte()) index + 7 else index + 8
             val available = (bytes.size - start).coerceAtMost(256 * 1024)
             parseVorbisComments(bytes, start, available)?.let { return fromComments(it) }
         }
         return null
     }
-
-    // ── ID3v2 (MP3) ──────────────────────────────────────────────────────────
 
     private fun parseId3(bytes: ByteArray): ReplayGain? {
         val majorVersion = bytes[3].toInt() and 0xFF
@@ -155,7 +128,7 @@ object ReplayGainTagParser {
             if (frameId == "TXXX" && frameSize > 2) {
                 val encoding = bytes[dataStart].toInt() and 0xFF
                 var cursor = dataStart + 1
-                // Description (null-terminated in the frame encoding)
+
                 val descriptionEnd = findTerminator(bytes, cursor, end, encoding) ?: run { offset = dataStart + frameSize; continue }
                 val description = decodeString(bytes, cursor, descriptionEnd - cursor, encoding)
                 cursor =
@@ -173,8 +146,6 @@ object ReplayGainTagParser {
         }
         return fromComments(comments)
     }
-
-    // ── Vorbis comment list ──────────────────────────────────────────────────
 
     private fun parseVorbisComments(bytes: ByteArray, start: Int, length: Int): List<Pair<String, String>>? {
         var offset = start
@@ -204,8 +175,6 @@ object ReplayGainTagParser {
         return comments
     }
 
-    // ── value extraction ─────────────────────────────────────────────────────
-
     private fun fromComments(comments: List<Pair<String, String>>): ReplayGain? {
         if (comments.isEmpty()) return null
         var track: Double? = null
@@ -217,7 +186,7 @@ object ReplayGainTagParser {
             if (album == null && (key == "REPLAYGAIN_ALBUM_GAIN" || key == "ALBUM_GAIN")) {
                 album = parseGainDb(value)
             }
-            // R128 tags use Q7.8 fixed point (e.g. -1132 = -8.84 dB, ref -23 LUFS).
+
             if (track == null && key == "R128_TRACK_GAIN") {
                 track = parseQ78(value)?.plus(R128_TO_RG2_OFFSET_DB)
             }
@@ -229,10 +198,9 @@ object ReplayGainTagParser {
         return ReplayGain(trackDb = track, albumDb = album)
     }
 
-    private const val R128_TO_RG2_OFFSET_DB = 5.0 // -23 LUFS ref -> -18 LUFS ref
+    private const val R128_TO_RG2_OFFSET_DB = 5.0
 
     private fun parseGainDb(value: String): Double? {
-        // "-6.53 dB" / "-6.53dB" / "-6.53"
         val numeric = value.substringBefore("dB").trim()
         val parsed = numeric.toDoubleOrNull()
         return parsed?.takeIf { it.isFinite() && it in -60.0..60.0 }
@@ -243,8 +211,6 @@ object ReplayGainTagParser {
         if (!raw.isFinite() || raw !in -23040.0..23040.0) return null
         return raw / 256.0
     }
-
-    // ── byte helpers ─────────────────────────────────────────────────────────
 
     private fun syncSafeInt(bytes: ByteArray, offset: Int): Int? {
         if (offset + 4 > bytes.size) return null
@@ -292,7 +258,7 @@ object ReplayGainTagParser {
         return when (encoding) {
             1 -> String(bytes, from, safeLength, Charsets.UTF_16LE)
             2 -> String(bytes, from, safeLength, Charsets.UTF_16BE)
-            4 -> String(bytes, from, safeLength, Charsets.UTF_8) // id3v2.4 allows UTF-8 as 4? not standard; tolerated
+            4 -> String(bytes, from, safeLength, Charsets.UTF_8)
             else -> String(bytes, from, safeLength, Charsets.ISO_8859_1)
         }
     }

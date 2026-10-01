@@ -1,11 +1,4 @@
-/*
- * Hilt wiring for the ported Tryptify audio stack. Classes that carry their
- * own @Singleton @Inject constructors (the processors, Oxford effects,
- * repositories, LibusbUacDriver, UsbExclusiveController, the ViewModels)
- * bind themselves; this module provides the pieces that don't: the
- * preference facade, the file-backed DAOs, the measurement APIs and the
- * performance profile.
- */
+
 
 package moe.rukamori.archivetune.di
 
@@ -28,15 +21,11 @@ import tf.monochrome.android.performance.PerformanceProfile
 @Module
 @InstallIn(SingletonComponent::class)
 object TryptifyModule {
-
     @Provides
     @Singleton
     fun provideTryptifyPreferences(@ApplicationContext context: Context): PreferencesManager =
         PreferencesManager(context)
 
-    // The repositories and ViewModels inject the DAO INTERFACES (Tryptify's
-    // own types), so the providers bind the interfaces to the file-backed
-    // implementations.
     @Provides
     @Singleton
     fun provideEqPresetDao(@ApplicationContext context: Context): EqPresetDao =

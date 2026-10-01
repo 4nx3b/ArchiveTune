@@ -496,13 +496,6 @@ private fun LyricsShareHeader(
     }
 }
 
-/**
- * The live preview renders the ACTUAL export bitmap (the same
- * [ComposeToImage.createLyricsImage] pipeline, at a reduced preview resolution)
- * instead of a parallel Compose approximation — the preview is always
- * pixel-identical to what gets shared, and there is a single source of truth
- * for the card's visual design.
- */
 @Composable
 private fun PreviewContainer(
     payload: LyricsSharePayload,
@@ -526,7 +519,7 @@ private fun PreviewContainer(
     LaunchedEffect(payload, options, customTextColor, mediaMetadata?.thumbnailUrl) {
         if (options.vinylMode) return@LaunchedEffect
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return@LaunchedEffect
-        // Debounce so dragging a slider doesn't queue a render per frame.
+
         delay(200)
         val exportW = options.aspectRatio.exportWidth
         val exportH = options.aspectRatio.exportHeight
@@ -640,8 +633,6 @@ private fun ControlsSection(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-            // The style family: liquid glass (the current engine) plus the
-            // classic presets restored from the old share popup.
             LyricsShareControlGroup(title = stringResource(R.string.lyrics_share_style)) {
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
@@ -920,7 +911,6 @@ private fun LyricsAspectRatioOption(
     }
 }
 
-/** One style chip of the share-card style family (liquid glass + classics). */
 @Composable
 private fun LyricsStyleOption(
     style: LyricsShareStyle,

@@ -823,7 +823,6 @@ fun AddToPlaylistDialog(
     }
 }
 
-/** Expressive spring shared with the ShowMediaInfo details popup. */
 private val AddToPlaylistExpressiveSpring = spring<Float>(
     dampingRatio = Spring.DampingRatioLowBouncy,
     stiffness = Spring.StiffnessMediumLow,

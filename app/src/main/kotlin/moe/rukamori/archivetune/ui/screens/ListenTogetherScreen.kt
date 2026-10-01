@@ -285,12 +285,6 @@ fun ListenTogetherScreen(
         }
     }
 
-    // ── Playlist-page vocabulary ─────────────────────────────────────────
-    // Glass header (back pill + title), scroll-gated top haze band, and a
-    // content-padding bottom that lets everything scroll BEHIND the floating
-    // mini player (the old + AppBarHeight dead space and the opaque
-    // item-level start/end paddings are gone — the hero and the section
-    // cards carry their own margins now).
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -491,8 +485,6 @@ fun ListenTogetherScreen(
         }
     }
 
-        // The home-screen haze band: a translucent frosted strip that only
-        // appears once content has scrolled underneath it.
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
@@ -500,8 +492,7 @@ fun ListenTogetherScreen(
         )
 
         if (glassHeaderActive) {
-            // The liquid-glass back pill with the page title riding in the
-            // same pill (exactly the playlist/album/artist header language).
+
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 interactive = true,
@@ -524,7 +515,6 @@ fun ListenTogetherScreen(
                 GlassPillTitleText(text = stringResource(R.string.listen_together))
             }
         } else if (shouldShowTopBar) {
-            // Non-glass fallback: the previous plain top bar.
             TopAppBar(
                 title = {
                 },
@@ -583,9 +573,7 @@ private fun NotConfiguredContent() {
 
 @Composable
 private fun HeaderSection(modifier: Modifier = Modifier) {
-    // The playlist-hero vocabulary: a small uppercase accent section label,
-    // a big bold 34sp title and an onSurfaceVariant subtitle — the same
-    // typography, colours and spacing as AppleMusicPlaylistHeroContent.
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -811,20 +799,13 @@ private fun RoomStatusCard(
             .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-
             val serverUrl by rememberPreference(ListenTogetherServerUrlKey, ListenTogetherServers.defaultServerUrl)
 
-            // The invite link must point at the server the room actually lives on —
-            // only the vivi servers serve a web client at /listen. metroserver
-            // (The Meowery) has no web client, so the link button is hidden there.
             val webInviteSupported =
                 remember(serverUrl) {
                     ListenTogetherServers.findByUrl(serverUrl)?.protocol != ListenTogetherProtocol.PROTOBUF
                 }
 
-            // metroserver (The Meowery) has no chat relay at all — its protobuf
-            // protocol carries no chat message type — so the chat entry point is
-            // hidden entirely instead of leading to a dead composer.
             val chatSupported =
                 remember(serverUrl) {
                     ListenTogetherServers.findByUrl(serverUrl)?.protocol != ListenTogetherProtocol.PROTOBUF
@@ -1410,9 +1391,6 @@ private fun JoinCreateRoomSection(
                     .onFocusChanged { if (it.isFocused && !isInRoom) onFieldFocused() }
             )
 
-            // The host names the room before its code exists: the name shows
-            // in the chat header (and is broadcast to every joiner) while the
-            // code stays the join key. Optional — an unnamed room is fine.
             if (!isInRoom && roomCodeInput.length < 8) {
                 OutlinedTextField(
                     value = roomNameInput,
@@ -1459,7 +1437,6 @@ private fun JoinCreateRoomSection(
             }
 
             if (isInRoom) {
-
                 val isFirstFrame = remember { mutableStateOf(true) }
                 DisposableEffect(Unit) {
                     isFirstFrame.value = false
@@ -1715,9 +1692,6 @@ private fun JoinCreateRoomSection(
                 val hasUsername = usernameInput.trim().isNotBlank() || savedUsername.isNotBlank()
                 val hasRoomCode = roomCodeInput.length == 8
 
-                // The join/create button is ALWAYS present: with no username it
-                // renders greyed out (disabled) instead of vanishing, so the
-                // requirement is visible right where the username field is.
                 val containerColor by animateColorAsState(
                     targetValue = if (hasRoomCode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
                     animationSpec = spring(stiffness = Spring.StiffnessMedium),

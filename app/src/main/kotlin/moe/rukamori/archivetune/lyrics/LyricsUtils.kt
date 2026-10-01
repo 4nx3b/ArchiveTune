@@ -634,8 +634,7 @@ object LyricsUtils {
                     providerRomanizedWords = line.providerRomanizedWords,
                     providerRomanizedLanguage = line.providerRomanizedLanguage,
                     providerTranslationText = line.providerTranslationText,
-                    // Line-end bounds let findCurrentLineIndex keep the highlight on a
-                    // line until its own end instead of only until the next line starts.
+
                     durationMs = ((line.endTime - line.startTime) * scale * 1000.0)
                         .toLong()
                         .coerceAtLeast(0L),
@@ -694,11 +693,7 @@ object LyricsUtils {
                     ?: (entry.time + ENHANCED_LRC_TRAILING_LINE_DURATION_MS)
             val originalEndMs = (lastWord.endTime * 1000.0).toLong()
             var lastEndMs = originalEndMs
-            // A single-word line ("Hey") only carries the default 600ms sweep,
-            // which reads as an instant flash followed by a dead-straight line.
-            // Stretch its only word toward the next line so the letter-by-letter
-            // sweep actually covers the gap, capped so a long instrumental
-            // break never turns it into a crawl.
+
             if (words.size == 1 && lastEndMs < nextStartMs) {
                 lastEndMs =
                     minOf(
@@ -939,9 +934,7 @@ object LyricsUtils {
     private fun extractEnhancedLrcWordTimestamps(rawText: String): List<WordTimestamp>? {
         if (!ENHANCED_LRC_WORD_TIME_REGEX.containsMatchIn(rawText)) return null
         val tokens = ENHANCED_LRC_WORD_TOKEN_REGEX.findAll(rawText).toList()
-        // A single timed word is still a valid karaoke line: lines like "Hey"
-        // or "Oh-oh" carry exactly one <mm:ss.mmm> token, and dropping them
-        // here made those lines fall back to whole-line sync (no letter sweep).
+
         if (tokens.isEmpty()) return null
 
         val words = mutableListOf<WordTimestamp>()
@@ -952,11 +945,7 @@ object LyricsUtils {
                     .replace(WHITESPACE_REGEX, " ")
             val wordText = normalizedText.trim { it.isWhitespace() || it == NBSP }
             if (wordText.isEmpty()) return@forEachIndexed
-            // Keep one trailing space when the source carries it: verbatim
-            // word renderers (LyricsV2 / LyricsEnhanced karaoke) lay each word
-            // out as-is, so trimming the edge gap collapsed "Hello world" into
-            // "Helloworld" for enhanced LRC that embeds the separator after the
-            // word (the YouLyPlus generator and most enhanced-LRC files).
+
             val textWithGap = if (normalizedText.endsWith(" ")) "$wordText " else wordText
             val nextStartMs =
                 tokens
@@ -975,14 +964,7 @@ object LyricsUtils {
     }
 
     private fun extractYrcWordTimestamps(rawText: String): List<WordTimestamp>? {
-        // YRC-style word tokens inside a standard LRC line:
-        // `[00:27.395]I (27395,154)been (27549,191)tryna (27740,337)call(28077,883)`
-        // — emitted by the YouLyPlus provider, which carries the API's real
-        // per-word DURATIONS (an enhanced-LRC `<start>` token can only encode
-        // a start, forcing the end to "next token's start", which truncated
-        // long-held words). The lazy text capture keeps a word's trailing
-        // space exactly like the enhanced path, so verbatim word renderers
-        // still lay the line out correctly.
+
         if (!YRC_WORD_TIME_REGEX.containsMatchIn(rawText)) return null
         val tokens = YRC_WORD_TOKEN_REGEX.findAll(rawText).toList()
         if (tokens.isEmpty()) return null

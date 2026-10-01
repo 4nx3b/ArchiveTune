@@ -289,14 +289,9 @@ private fun AudioEffectsContent(
 
     var selectedTab by rememberSaveable { mutableStateOf(0) }
 
-    // Ported engine tabs: Tryptify EQ (the full AutoEQ + parametric EQ
-    // surface) and Lastwave EQ (the 15-band graphic EQ + Studio Master
-    // Clarity family) appear only while their engine is enabled.
     val (tryptifyAudioProcessing) = rememberPreference(TryptifyAudioProcessingKey, defaultValue = false)
     val (lastwaveAudioProcessing) = rememberPreference(LastwaveAudioProcessingKey, defaultValue = false)
 
-    // Engine turned off while its tab was open: bounce back to the stock
-    // Equalizer tab on the next frame (never write state mid-composition).
     if (selectedTab == 2 && !tryptifyAudioProcessing) {
         LaunchedEffect(Unit) { selectedTab = 0 }
     }
@@ -304,9 +299,6 @@ private fun AudioEffectsContent(
         LaunchedEffect(Unit) { selectedTab = 0 }
     }
 
-    // The Tryptify / Lastwave tabs host the ported engines' own screens,
-    // which manage their own scrolling — they must not sit inside this
-    // tab's verticalScroll Column.
     if (selectedTab == 2 && tryptifyAudioProcessing) {
         TryptifyEqHost(onBack = { selectedTab = 0 })
         return
@@ -425,7 +417,6 @@ private fun AudioEffectsContent(
         val columns = if (isLandscape) 2 else 1
 
         if (selectedTab == 0) {
-
             SegmentedFeatureCard(
                 items =
                     listOf(
@@ -622,9 +613,7 @@ private fun AudioEffectsContent(
                         items =
                             listOf(
                                 {
-                                    // SpatialFlow's 8D customisation: the rotation
-                                    // speed slider lives inside the 8D card and only
-                                    // engages while the effect is enabled.
+
                                     SwitchSection(
                                         title = stringResource(R.string.eq_8d),
                                         desc = stringResource(R.string.eq_8d_description),
@@ -1079,10 +1068,7 @@ private fun SwitchSection(
     }
 
     if (showDialog && infoTooltip != null) {
-        // Unglassed: the dialog renders inside the glass menu's color scheme,
-        // whose container colors are near-transparent — the raw AlertDialog
-        // then draws with no readable background. Re-applying the unglassed
-        // scheme gives it the standard opaque container.
+
         UnglassedDialogTheme {
             AlertDialog(
                 onDismissRequest = { showDialog = false },
@@ -1412,10 +1398,7 @@ private fun ReverbSection(
         val index = presetValue.toInt().coerceIn(0, 6)
 
         var expanded by remember { mutableStateOf(false) }
-        // The dropdown panel + field render with the glass menu scheme's
-        // container colors (near-transparent) when liquid glass is on;
-        // re-applying the UNGLASSED scheme for this section keeps both the
-        // field and the floating panel opaque and readable.
+
         val unglassedScheme = LocalUnglassColorScheme.current ?: MaterialTheme.colorScheme
         val dropdownFieldColors =
             ExposedDropdownMenuDefaults.outlinedTextFieldColors(
@@ -1670,21 +1653,6 @@ private fun EqualizerMessage(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Ported engine EQ tabs
-// ---------------------------------------------------------------------------
-
-/**
- * The Tryptify EQ tab: the complete ported Tryptify equalizer surface. The
- * AutoEQ sub-tab is Tryptify's EqualizerScreen (measurement smoothing, per-ear
- * calibration, headphone selection with rig filters, targets + custom target
- * import, algorithm choice, band count / max-frequency, preamp + automatic
- * preamp, tone shelves, saved presets, export, parametric band editing, help
- * + tutorial); the Parametric EQ sub-tab is Tryptify's standalone
- * ParametricEqScreen (its own enable, preamp, band list with spectrum
- * preview, presets + APO/CSV import). Together they carry every EQ setting
- * the Tryptify app exposes.
- */
 @Composable
 private fun TryptifyEqHost(onBack: () -> Unit) {
     var subTab by rememberSaveable { mutableStateOf(0) }
@@ -1723,14 +1691,6 @@ private fun TryptifyEqHost(onBack: () -> Unit) {
     }
 }
 
-/**
- * The Lastwave EQ tab: the ported LastWave-native equalizer surface — the
- * 15-band ISO graphic EQ (band sliders, the 12 curated presets + Custom, the
- * enable switch) plus the Studio Master Clarity family (enhancer switch,
- * clarity preset, Atmos bypass). Every setting writes the same lw_eq_* /
- * lw_music_enhancer / lw_clarity_* keys the ported engine collects, so the
- * native DSP chain picks changes up live.
- */
 @Composable
 private fun LastwaveEqHost(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -1814,7 +1774,6 @@ private fun LastwaveEqHost(onBack: () -> Unit) {
             )
         }
 
-        // ── Enable switch ──
         SectionContainer {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1836,7 +1795,6 @@ private fun LastwaveEqHost(onBack: () -> Unit) {
             }
         }
 
-        // ── Presets ──
         SectionContainer {
             Column {
                 Text(
@@ -1864,7 +1822,6 @@ private fun LastwaveEqHost(onBack: () -> Unit) {
             }
         }
 
-        // ── Band sliders ──
         SectionContainer {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
@@ -1891,8 +1848,7 @@ private fun LastwaveEqHost(onBack: () -> Unit) {
                                 onGainsCsvChange(encodeGains(next))
                             },
                             onValueChangeFinished = {
-                                // Manual edits leave the preset list — exactly
-                                // like upstream's setBandGain.
+
                                 onPresetNameChange(com.lastwave.app.data.local.EqualizerPresets.CUSTOM_NAME)
                             },
                             valueRange = -8f..8f,
@@ -1913,7 +1869,6 @@ private fun LastwaveEqHost(onBack: () -> Unit) {
             }
         }
 
-        // ── Studio Master Clarity ──
         SectionContainer {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
@@ -1982,7 +1937,6 @@ private fun LastwaveEqHost(onBack: () -> Unit) {
     }
 }
 
-/** LastWave-native preference keys, mirrored 1:1 from upstream. */
 private object LastwaveKeys {
     val LW_EQ_ENABLED = booleanPreferencesKey("lw_eq_enabled")
     val LW_EQ_PRESET = stringPreferencesKey("lw_eq_preset")

@@ -98,16 +98,8 @@ import moe.rukamori.archivetune.listentogether.GifShareApi
 import moe.rukamori.archivetune.listentogether.GiphyApi
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 
-/** Debounce for the GIF search field. */
 private const val GIF_SEARCH_DEBOUNCE_MS = 400L
 
-/**
- * Liquid-glass attachment menu anchored to the composer's paperclip button:
- * opens with the same morph (spring scale + fade from the anchor) the message
- * actions popup uses, over a locally-recorded chat backdrop. Song and GIF
- * attachments only — the wallpaper controls live in the chat's top-right
- * overflow menu now.
- */
 @Composable
 internal fun AttachmentMenuPopup(
     anchor: Rect,
@@ -122,9 +114,6 @@ internal fun AttachmentMenuPopup(
 
     var dismissed by remember { mutableStateOf(false) }
 
-    // The popup must answer the back gesture itself; without this the swipe
-    // fell through to the player sheet / navigation below and the popup looked
-    // impossible to dismiss with the gesture.
     BackHandler(enabled = !dismissed) {
         dismissed = true
     }
@@ -163,7 +152,7 @@ internal fun AttachmentMenuPopup(
         val height = if (popupHeightPx > 0) popupHeightPx else with(density) { 132.dp.toPx() }.toInt()
         val screenW = if (overlayWidthPx > 0) overlayWidthPx else width + 2 * marginPx
         val screenH = if (overlayHeightPx > 0) overlayHeightPx else 2000
-        // Sits above the composer's anchor (bottom-start), clamped on screen.
+
         val x = anchor.left.toInt().coerceIn(marginPx, (screenW - width - marginPx).coerceAtLeast(marginPx))
         val y = (anchor.top.toInt() - height - with(density) { 8.dp.toPx() }.toInt())
             .coerceAtLeast(marginPx)
@@ -315,15 +304,6 @@ private fun AttachmentOptionRow(
     }
 }
 
-/**
- * Bottom sheet with the GIF catalog: trending Giphy GIFs by default, a search
- * field, endless scroll pagination, and tap-to-send — plus a "My device" tab
- * that uploads any GIF the user picked (the keyboard's integrated GIF page
- * saves into the gallery exactly like any other share) through the anonymous
- * file host so it reaches the room exactly like a Giphy result: as a plain
- * HTTPS link on the [LTG:] envelope, original aspect ratio included. Sending
- * shares only the URL — the chat relay never processes the media.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun GifPickerSheet(
@@ -378,7 +358,6 @@ internal fun GifPickerSheet(
     }
 }
 
-/** Small rounded tab selector for the GIF sheet header. */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun TabPill(
@@ -410,7 +389,6 @@ private fun TabPill(
     }
 }
 
-/** The Giphy catalog: search + trending + endless scroll. */
 @Composable
 private fun GiphyCatalogTab(
     onPickGif: (url: String, width: Int, height: Int) -> Unit,
@@ -451,13 +429,11 @@ private fun GiphyCatalogTab(
         loading = false
     }
 
-    // Trending on open; debounced search as the query changes.
     LaunchedEffect(query) {
         delay(GIF_SEARCH_DEBOUNCE_MS)
         load(reset = true)
     }
 
-    // Endless scroll: fetch the next page as the end approaches.
     val closeToEnd by remember {
         derivedStateOf {
             val info = gridState.layoutInfo
@@ -583,12 +559,6 @@ private fun GiphyCatalogTab(
     }
 }
 
-/**
- * Custom GIFs: anything the user picked with the system picker — including GIFs
- * saved by the keyboard's integrated GIF page — uploads to the anonymous host
- * and then sends exactly like a Giphy result (link + intrinsic dimensions, so
- * receivers render the ORIGINAL aspect ratio, never a fixed cell).
- */
 @Composable
 private fun CustomGifTab(
     onPickGif: (url: String, width: Int, height: Int) -> Unit,

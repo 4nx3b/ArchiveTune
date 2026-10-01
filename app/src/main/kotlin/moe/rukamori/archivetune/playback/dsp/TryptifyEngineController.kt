@@ -2,7 +2,6 @@
 
 package moe.rukamori.archivetune.playback.dsp
 
-import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -23,7 +22,6 @@ import tf.monochrome.android.domain.model.EqBand
 import tf.monochrome.android.domain.model.ToneControls
 
 class TryptifyEngineController(
-    context: Context,
     private val scope: CoroutineScope,
     val mixBus: MixBusProcessor,
     val autoEq: AutoEqProcessor,
@@ -33,14 +31,12 @@ class TryptifyEngineController(
 
     private val systemEq: tf.monochrome.android.audio.eq.SystemAudioEqController,
 ) {
-    private val appContext = context.applicationContext
     private val json = Json { ignoreUnknownKeys = true }
 
     private var restoreJob: Job? = null
     private var engineEverReady = false
 
     fun start() {
-
         runCatching { systemEq.start() }
             .onFailure { Log.w(TAG, "system-wide AutoEQ controller failed to start", it) }
 
@@ -98,12 +94,7 @@ class TryptifyEngineController(
     }
 
     fun setEngineActive(active: Boolean) {
-        // The system-wide AutoEQ follows the ENGINE, not the pref: it must
-        // stop the moment Tryptify stops owning the chain (switching to
-        // LastWave used to leave the device-global DynamicsProcessing
-        // attached — the user kept hearing Tryptify's curve over the other
-        // engine's output). The user's own Tryptify prefs are never touched:
-        // per-engine customizations persist and reapply on switch-back.
+
         runCatching { systemEq.setEngineActive(active) }
             .onFailure { Log.w(TAG, "system-wide AutoEQ gate failed", it) }
         if (active) {
@@ -118,7 +109,6 @@ class TryptifyEngineController(
     private fun applyEqSettings(cfg: EqApply) {
         runCatching {
             if (cfg.systemWide) {
-
                 autoEq.applyBands(emptyList(), 0f, false)
                 return
             }

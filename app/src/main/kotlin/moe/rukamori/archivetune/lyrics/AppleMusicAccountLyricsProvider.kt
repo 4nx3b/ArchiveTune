@@ -49,11 +49,7 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
         duration: Int,
     ): Result<String> = runCatching {
         val ttml = fetchTtml(title, artist, album) ?: throw IllegalStateException("No Apple Music lyrics for $title — $artist")
-        // The raw TTML goes out unchanged: syllable-lyrics responses carry
-        // word-level <span begin/end> timing that the app's TTML parser and
-        // word-synced renderers consume directly. The old path collapsed it
-        // to line-synced LRC (stripping every span), which silently downgraded
-        // Apple Music from a word-synced source to a line-synced one.
+
         ttml
     }
 

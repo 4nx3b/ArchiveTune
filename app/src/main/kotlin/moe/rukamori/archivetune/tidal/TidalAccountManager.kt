@@ -299,9 +299,6 @@ object TidalAccountManager {
 
     class TidalUnauthorizedException : Exception("TIDAL access token rejected (401)")
 
-    /** The account is valid but cannot stream FULL assets at the requested
-     *  quality (free-tier / preview-only). Distinguishable so the resolver can
-     *  cool that account down without treating a plain search miss the same way. */
     class TidalPreviewException : Exception("TIDAL playbackinfo returned PREVIEW (no FULL asset)")
 
     suspend fun resolveDirectStream(
@@ -332,14 +329,6 @@ object TidalAccountManager {
             )
         }
 
-    /**
-     * Resolves playback info for an EXACT track id — the track the user picked
-     * in the source-search popup. No search, no fuzzy re-match: a hit here is
-     * always the intended track, and a miss is a real miss (the resolver then
-     * walks its remaining tiers). Marked trustedDirectId so the metadata gate
-     * cannot throw away a perfectly resolved direct pick (it used to reject
-     * it with "provider returned no matched metadata" and fall to YouTube).
-     */
     suspend fun resolveDirectStreamByTrackId(
         accessToken: String,
         trackId: String,
@@ -437,8 +426,7 @@ object TidalAccountManager {
                 null
             }
         if (result == null) {
-            // This used to be a silent null — every "Tidal falls back to
-            // YouTube" report hid its reason here.
+
             Timber.tag("TidalAccount").w("account track search produced no match >= 40 for \"%s\"", title)
         }
         return result
@@ -463,10 +451,7 @@ object TidalAccountManager {
             )
             if (direct != null) return direct
         } catch (e: TidalPreviewException) {
-            // An account that PREVIEWs at the requested quality is not
-            // necessarily a dead end: HI_RES_LOSSLESS/LOSSLESS degrade one
-            // tier before the whole account (and with it, Tidal) is skipped
-            // for this track.
+
             val fallbackQuality =
                 when (audioQuality) {
                     "HI_RES_LOSSLESS" -> "LOSSLESS"
@@ -488,8 +473,7 @@ object TidalAccountManager {
                     preferLiveDash = preferLiveDash,
                 )
             }
-            // Even AAC previews: the account genuinely cannot stream — let the
-            // caller cool it down instead of mistaking it for a search miss.
+
             Timber.tag("TidalAccount").w("playbackinfo PREVIEW at every quality tier; account cannot stream FULL")
             throw e
         }
@@ -525,9 +509,7 @@ object TidalAccountManager {
                 val json = JSONObject(payload)
 
                 if (json.optString("assetPresentation").equals("PREVIEW", ignoreCase = true)) {
-                    // Distinguish "this account cannot stream FULL assets" from a
-                    // plain miss: the quality-fallback wrapper decides whether to
-                    // retry a lower tier or give the account up for this track.
+
                     throw TidalPreviewException()
                 }
                 val manifestB64 = json.optString("manifest").takeIf { it.isNotBlank() } ?: return@use null

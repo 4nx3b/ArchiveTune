@@ -73,7 +73,6 @@ object CrashReporter {
     private val flusherStarted = AtomicBoolean(false)
     private val sessionLogLock = Any()
 
-    /** Install as early as possible in Application.onCreate (main process). */
     fun install(context: Context) {
         if (flusherStarted.getAndSet(true)) return
         appContext = context.applicationContext
@@ -81,10 +80,6 @@ object CrashReporter {
         val dir = resolveCrashDir(context.applicationContext)
         crashDir = dir
 
-        // Native layer: signal handlers that write a trace at the moment of
-        // death. Loading our own (16KB-aligned) library is safe everywhere;
-        // a failure here only degrades to "no native report", never to a
-        // startup crash.
         var nativeOk = false
         runCatching {
             System.loadLibrary("archivetune_crash")
@@ -93,14 +88,8 @@ object CrashReporter {
             GlobalLog.append(android.util.Log.WARN, TAG, "native crash handler unavailable: $it")
         }
 
-        // Preserve the previous session's breadcrumbs before starting a fresh
-        // session log: a native crash in that session is picked up by
-        // onStartup() later (MainActivity), which attaches this file.
         runCatching { rotateSessionLog(dir) }
 
-        // Java layer: chained handler for builds where App.kt does not
-        // install its own (automotive). The normal phone build replaces this
-        // handler with App.kt's, which calls writeJavaCrashReport() itself.
         runCatching {
             val previous = Thread.getDefaultUncaughtExceptionHandler()
             Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
@@ -124,10 +113,6 @@ object CrashReporter {
         runCatching { dir.mkdirs() }
         return dir
     }
-
-    // ------------------------------------------------------------------
-    // Session breadcrumbs
-    // ------------------------------------------------------------------
 
     private fun sessionLogFile(dir: File): File = File(dir, SESSION_LOG_FILE)
 
@@ -154,7 +139,7 @@ object CrashReporter {
                     val delta = when {
                         written == 0 -> entries
                         entries.size >= written -> entries.subList(written, entries.size)
-                        else -> entries // ring wrapped/trimmed: rewrite everything
+                        else -> entries
                     }
                     if (delta.isEmpty()) continue
                     synchronized(sessionLogLock) {
@@ -164,7 +149,6 @@ object CrashReporter {
                 } catch (_: InterruptedException) {
                     return@Thread
                 } catch (_: Throwable) {
-                    // Never let the reporter kill the app.
                 }
             }
         }.apply {
@@ -179,8 +163,7 @@ object CrashReporter {
         try {
             val file = sessionLogFile(dir)
             if (file.length() > SESSION_LOG_MAX_BYTES) {
-                // Rotate: keep the newest tail so the file stays bounded but
-                // the interesting end of the session survives.
+
                 val text = file.readText()
                 val keep = text.takeLast(SESSION_LOG_KEEP_ON_ROTATE).substringAfter('\n')
                 file.writeText(keep)
@@ -191,18 +174,13 @@ object CrashReporter {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Java crash reports
-    // ------------------------------------------------------------------
-
-    /** Called from the process's uncaught-exception handler; synchronous on purpose. */
     fun writeJavaCrashReport(thread: Thread, throwable: Throwable) {
         try {
             val dir = crashDir ?: resolveCrashDir(appContext ?: return)
             val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
             val file = File(dir, "crash_java_${stamp}.txt")
             file.writeText(buildReportHeader() + buildStackTraceSection(thread, throwable) + buildBreadcrumbsSection(dir))
-            // Best-effort log so the file's existence is visible in logcat too.
+
             android.util.Log.e(TAG, "Java crash report written to ${file.absolutePath}")
         } catch (_: Throwable) {
         }
@@ -239,8 +217,7 @@ object CrashReporter {
                 val entries = GlobalLog.logs.value
                 entries.takeLast(400).forEach { appendLine(GlobalLog.format(it)) }
             }
-            // The on-disk mirror can hold slightly more than the in-memory
-            // ring; include whatever the flusher managed to persist too.
+
             runCatching {
                 val mirror = sessionLogFile(dir)
                 if (mirror.isFile) {
@@ -250,16 +227,6 @@ object CrashReporter {
             }
         }
 
-    // ------------------------------------------------------------------
-    // Startup surfacing (MainActivity)
-    // ------------------------------------------------------------------
-
-    /**
-     * Detects crash reports from the previous session that the user has not
-     * been shown yet, copies them to Download/ArchiveTune/ and announces the
-     * folder. Cheap enough for the main thread; the copies happen inline
-     * (a few small files) so the toast is truthful the moment it is shown.
-     */
     fun onStartup(context: Context) {
         try {
             val dir = crashDir ?: resolveCrashDir(context.applicationContext)
@@ -283,8 +250,6 @@ object CrashReporter {
                 if (ok) copied++
             }
 
-            // Remember the newest one (even if a copy failed, so a storage
-            // outage does not re-toast the same reports forever).
             runCatching {
                 val newest = reports.maxOf { it.lastModified() }
                 marker.writeText(newest.toString())
@@ -315,8 +280,7 @@ object CrashReporter {
         val name = report.name.substringBeforeLast('.') + ".txt"
         val body = buildString {
             append(report.readText())
-            // Native traces carry no breadcrumbs of their own — attach the
-            // dying session's log so the register dump has context.
+
             if (report.name.startsWith("native_crash_") && prevSessionLog.isFile) {
                 appendLine()
                 appendLine("--- session breadcrumbs before the crash (newest last) ---")
@@ -378,11 +342,6 @@ object CrashReporter {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Native bridge
-    // ------------------------------------------------------------------
-
-    /** Installs the signal handlers; see native/crash/crash_handler.cpp. */
     @JvmStatic
     private external fun nativeInstall(dir: String): Boolean
 }

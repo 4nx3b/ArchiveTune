@@ -51,16 +51,7 @@ class GlassScreenHeader(
 fun rememberGlassScreenHeader(): GlassScreenHeader {
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    // The recording source stays attached for the whole lifetime of the screen:
-    // detaching `Modifier.layerBackdrop` while the player sheet covers the
-    // header nulls the backdrop's layerCoordinates, and the kyant
-    // implementation silently stops drawing ANY glass for it afterwards — the
-    // "pills turn light and never recover after maximise→minimise" bug. The
-    // pills themselves fade with the sheet's edge (LiquidGlassActionPill reads
-    // LocalPlayerSheetOverlayFraction in its draw phase), and the recorder is
-    // throttled to 10 Hz, so an always-attached source is both correct and
-    // cheap. The content behind the sheet doesn't redraw while covered, which
-    // means recording is naturally idle during the transition anyway.
+
     val surfaceColor = MaterialTheme.colorScheme.surface
 
     val backdrop = rememberThrottledBackdrop(surfaceColor)

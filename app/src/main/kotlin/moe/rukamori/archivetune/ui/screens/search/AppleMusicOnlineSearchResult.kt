@@ -270,8 +270,7 @@ internal fun AppleMusicOnlineSearchResult(
             bottomPadding = playerAwareBottomPadding,
             lazyListState = lazyListState,
             trailing = {
-                // Catalogue switch + sort menu stay reachable from the Apple
-                // Music results — same chrome as the YouTube results page.
+
                 SearchSourcePicker(
                     currentScope = SearchSource.ONLINE,
                     currentProvider = SearchProvider.APPLE_MUSIC,
@@ -292,10 +291,7 @@ internal fun AppleMusicOnlineSearchResult(
                     },
                     includeLocal = false,
                 )
-                // No sort menu here: the iTunes Search API carries no
-                // popularity or playcount, so the VIEWS ordering would be a
-                // visual no-op (the sort control lives on the YouTube/Spotify
-                // results pages where the data exists).
+
             },
         )
     }
@@ -377,8 +373,7 @@ internal fun AppleMusicItemRow(
 ) {
     val subtitle =
         when (item) {
-            // Song rows carry the artist name only — duration lives in the
-            // details popup, not on every row (matches YouTube/Spotify/local).
+
             is AppleMusicSearchItem.Track -> item.artist
 
             is AppleMusicSearchItem.Album ->

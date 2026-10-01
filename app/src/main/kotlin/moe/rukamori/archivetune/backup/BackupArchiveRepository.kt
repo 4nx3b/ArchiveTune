@@ -154,10 +154,6 @@ class BackupArchiveRepository
                     completedUnits++
                 }
 
-                // Custom fonts are their own backup category: the picker in the
-                // backup dialog controls them independently of the settings
-                // XML (fonts used to ride along with Settings before the
-                // split; restores still accept fonts/ entries from either).
                 if (includeFonts && fontFiles.isNotEmpty()) {
                     val buffer = ByteArray(BUFFER_SIZE)
                     fontFiles.forEach { file ->

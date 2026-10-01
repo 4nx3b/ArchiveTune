@@ -17,7 +17,6 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import timber.log.Timber
 import kotlin.math.min
 
-/** A listen shorter than this never becomes a scrobble (Last.fm's own floor). */
 private const val MIN_SCROBBLE_THRESHOLD_MS = 30_000L
 
 class ScrobbleManager(
@@ -33,12 +32,6 @@ class ScrobbleManager(
     private var songStarted = false
     var useNowPlaying = true
 
-    /**
-     * LastWave-style double-scrobble guard: once the timer fires for a song, the
-     * same song can never arm a second countdown. Previously scrobbleRemainingMillis
-     * was left > 0 by the timer path and a subsequent onSongResume re-armed a full
-     * countdown and scrobbled the same track twice.
-     */
     private var scrobbledForId: String? = null
 
     private var currentMetadata: MediaMetadata? = null
@@ -64,8 +57,6 @@ class ScrobbleManager(
     ) {
         if (metadata == null) return
 
-        // A fresh playback (new song, repeat-one restart, replay from the queue)
-        // legitimately re-arms scrobbling; only pause/resume must never re-arm it.
         scrobbledForId = null
         flushPendingScrobbleIfNeeded()
         songStartedAt = System.currentTimeMillis() / 1000
@@ -97,9 +88,6 @@ class ScrobbleManager(
         scrobbleJob?.cancel()
         val resolvedDuration = duration?.toInt()?.div(1000) ?: metadata.duration
 
-        // Short tracks (< minSongDuration) never scrobbled before; LastWave's rule:
-        // a 30-second floor applies to the threshold, not to eligibility — a 40 s
-        // track still scrobbles once 30 s of it have played.
         val thresholdMillis =
             if (resolvedDuration > 0) {
                 min(
@@ -111,8 +99,7 @@ class ScrobbleManager(
             }.coerceAtLeast(MIN_SCROBBLE_THRESHOLD_MS)
 
         if (scrobbledForId == metadata.id) {
-            // Already scrobbled this playback of the song (e.g. timer fired, then the
-            // same item restarted via a queue loop without an intervening song).
+
             currentMetadata = metadata
             currentThresholdMillis = 0L
             scrobbleRemainingMillis = 0L

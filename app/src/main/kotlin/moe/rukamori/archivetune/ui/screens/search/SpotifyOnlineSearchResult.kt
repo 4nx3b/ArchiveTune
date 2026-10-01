@@ -113,8 +113,7 @@ internal fun SpotifyOnlineSearchResult(
                     }
                 }
             if (searchSort == OnlineSearchSort.VIEWS) {
-                // Popularity is the closest analogue Spotify exposes to a view
-                // count; other result kinds keep their natural order.
+
                 filtered.sortedByDescending { item ->
                     (item as? SpotifySearchItem.Track)?.value?.popularity ?: -1
                 }
@@ -285,9 +284,7 @@ internal fun SpotifyOnlineSearchResult(
             bottomPadding = playerAwareBottomPadding,
             lazyListState = lazyListState,
             trailing = {
-                // The catalogue switch + sort menu must stay reachable from the
-                // Spotify results too — without them there was no way back to
-                // the YouTube catalogue from inside a Spotify search.
+
                 SearchSourcePicker(
                     currentScope = SearchSource.ONLINE,
                     currentProvider = SearchProvider.SPOTIFY,
@@ -317,13 +314,6 @@ internal fun SpotifyOnlineSearchResult(
     }
 }
 
-/**
- * Resolves a Spotify album/artist to the matching YouTube Music catalog item so the
- * details screen opens IN-APP (the previous behavior launched the Spotify app via an
- * open.spotify.com intent, which is jarring from an in-app search result).
- * Mirrors the SpotifyHomeViewModel resolution flow: anonymous search first, signed-in
- * context as fallback.
- */
 private suspend inline fun <reified T : YTItem> searchYouTubeCatalog(
     query: String,
     filter: YouTube.SearchFilter,

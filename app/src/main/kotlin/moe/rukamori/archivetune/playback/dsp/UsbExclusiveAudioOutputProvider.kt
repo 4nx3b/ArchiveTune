@@ -54,7 +54,6 @@ class UsbExclusiveAudioOutputProvider(
     private val listeners = CopyOnWriteArraySet<Listener>()
 
     init {
-
         runCatching {
             audioManager.registerAudioDeviceCallback(
                 object : AudioDeviceCallback() {
@@ -97,11 +96,7 @@ class UsbExclusiveAudioOutputProvider(
         val format = formatConfig.format
         if (MimeTypes.AUDIO_RAW != format.sampleMimeType) return false
         val encoding = format.pcmEncoding
-        // PCM24-packed and PCM32 are ACCEPTED: the exclusive drivers negotiate
-        // the wire bit depth themselves (ExclusiveUsbOutput resolves the
-        // source depth; Tryptify's ladder prefers the source depth). The old
-        // blanket rejection made a 24-bit bit-perfect pipe unnegotiable even
-        // when the DAC supported it.
+
         if (encoding != C.ENCODING_PCM_16BIT &&
             encoding != C.ENCODING_PCM_FLOAT &&
             encoding != C.ENCODING_PCM_24BIT &&

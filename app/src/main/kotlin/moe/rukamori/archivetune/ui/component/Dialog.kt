@@ -97,7 +97,6 @@ fun UnglassedDialogTheme(content: @Composable () -> Unit) {
     )
 }
 
-/** 34dp circle icon chip used in expressive dialog header rows. */
 @Composable
 private fun DialogIconChip(content: @Composable () -> Unit) {
     Surface(
@@ -118,11 +117,6 @@ private fun DialogIconChip(content: @Composable () -> Unit) {
     }
 }
 
-/**
- * Subtle expressive pop-in for platform dialogs: animates the CONTENT inside
- * the dialog window (alpha + 0.94->1 scale + small translation), never the
- * window itself, so dialog windowing/focus behavior is untouched.
- */
 @Composable
 private fun DialogExpressiveEntrance(content: @Composable () -> Unit) {
     var entered by remember { mutableStateOf(false) }
@@ -153,7 +147,6 @@ private fun DialogExpressiveEntrance(content: @Composable () -> Unit) {
     }
 }
 
-/** Expressive header row: optional leading circle chip + title. */
 @Composable
 private fun DialogHeaderRow(
     icon: (@Composable () -> Unit)?,

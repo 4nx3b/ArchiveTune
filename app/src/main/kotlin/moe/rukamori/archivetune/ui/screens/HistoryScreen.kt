@@ -295,12 +295,7 @@ fun HistoryScreen(
 
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    // The glass recording source stays attached for the whole lifetime of the
-    // screen: detaching kyant's LayerBackdrop while the player sheet covers the
-    // header nulls its layerCoordinates, and glass never comes back afterwards
-    // (the maximise->minimise "pills turn light" bug). The pills themselves fade
-    // with the sheet edge in their own draw phase, and the recorder is throttled,
-    // so an always-attached source is both correct and cheap.
+
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             !lyricsFullScreen
@@ -603,9 +598,7 @@ fun HistoryScreen(
             Modifier
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
-        // Transparent container while liquid glass is on (the mini player
-        // blurs whatever scrolls behind it); the opaque theme surface is the
-        // non-glass fallback.
+
         containerColor = glassAwareSurface(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
@@ -914,10 +907,7 @@ private fun LocalHistoryFeed(
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
                 ),
-                // Bottom as CONTENT padding (not layout insets): entries scroll
-                // under the glass mini player — that is what gives the player
-                // something to blur — while the trailing padding keeps the last
-                // entry fully clear of the player when scrolled to the end.
+
                 contentPadding =
                     PaddingValues(
                         bottom =
@@ -1063,10 +1053,7 @@ private fun RemoteHistoryFeed(
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
                 ),
-                // Bottom as CONTENT padding (not layout insets): entries scroll
-                // under the glass mini player — that is what gives the player
-                // something to blur — while the trailing padding keeps the last
-                // entry fully clear of the player when scrolled to the end.
+
                 contentPadding =
                     PaddingValues(
                         bottom =

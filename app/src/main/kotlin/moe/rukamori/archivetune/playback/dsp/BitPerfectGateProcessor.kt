@@ -15,17 +15,6 @@ import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
 
-/**
- * The FIRST processor of the audio chain. It never touches a single byte —
- * its job is to evaluate the CURRENT track against the active output route
- * the moment media3 configures the chain, and to latch the Bit-Perfect bypass
- * into [BitPerfectRuntime] so every processor configured AFTER it in the same
- * pass (all of them) sees the verdict immediately.
- *
- * While the bypass is engaged it also pins Sonic to unity and disables
- * silence skipping — those two media3 processors live in the fixed chain
- * array and have no app-level onConfigure to guard.
- */
 @androidx.media3.common.util.UnstableApi
 class BitPerfectGateProcessor(
     private val contextProvider: () -> Context?,
@@ -33,11 +22,9 @@ class BitPerfectGateProcessor(
     private val usbExclusiveActive: () -> Boolean,
     private val effectiveVolume: () -> Float,
 ) : BaseAudioProcessor() {
-
     @Volatile private var sonicAudioProcessor: SonicAudioProcessor? = null
     @Volatile private var silenceSkippingAudioProcessor: SilenceSkippingAudioProcessor? = null
 
-    /** The player factory hands in the media3 transport processors it created. */
     fun attachTransparentTargets(
         sonicAudioProcessor: SonicAudioProcessor,
         silenceSkippingAudioProcessor: SilenceSkippingAudioProcessor,
@@ -46,11 +33,6 @@ class BitPerfectGateProcessor(
         this.silenceSkippingAudioProcessor = silenceSkippingAudioProcessor
     }
 
-    /**
-     * Never active — an inactive processor is routed around entirely, so no
-     * byte of decoder PCM is copied through this gate. The evaluation is the
-     * side effect that matters.
-     */
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         val context = contextProvider()
         if (context == null) {
@@ -66,8 +48,7 @@ class BitPerfectGateProcessor(
                 effectiveVolume = effectiveVolume(),
             )
             if (bypass) {
-                // Silence skipping and Sonic WOULD modify samples (gaps and
-                // time-stretch) — pin them to their transparent settings.
+
                 silenceSkippingAudioProcessor?.setEnabled(false)
                 sonicAudioProcessor?.setSpeed(1f)
                 sonicAudioProcessor?.setPitch(1f)
@@ -82,10 +63,7 @@ class BitPerfectGateProcessor(
         return AudioProcessor.AudioFormat.NOT_SET
     }
 
-    // BaseAudioProcessor leaves queueInput abstract; this processor is never
-    // active (onConfigure always reports NOT_SET), so no input ever arrives.
     override fun queueInput(inputBuffer: ByteBuffer) {
-        // Intentionally empty: the gate is permanently inactive.
     }
 
     private companion object {

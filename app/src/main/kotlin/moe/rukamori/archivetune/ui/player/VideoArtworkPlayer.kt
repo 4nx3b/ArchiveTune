@@ -136,34 +136,19 @@ private const val VideoStuckBufferingTimeoutMs = 8000L
 
 private fun maxVideoHeightFor(preferredHeight: Int?): Int = VideoQualityPreference.ceilingFor(preferredHeight)
 
-/** Only used for a log line now — the audio hold waits for the video's first
- * frame for however long it takes; a slow network never degrades a video song
- * to an audio-only start. */
 private const val VideoReadyHoldTimeoutMs = 10000L
 
 private const val VideoClientAttemptTimeoutMs = 8000L
 
 private const val VideoSimpMusicAttemptTimeoutMs = 6000L
 
-/** Video LoadControl: start the video after only ~600ms of media has buffered
- * (media3's default is 2500ms — 4x the bytes before the first frame) and keep
- * up to 90s buffered ahead, prioritising time over size thresholds so a fast
- * network fills the buffer as aggressively as it can. */
 private const val VideoMinBufferMs = 15_000
 private const val VideoMaxBufferMs = 90_000
 private const val VideoBufferForPlaybackMs = 600
 private const val VideoBufferForPlaybackAfterRebufferMs = 1_000
 
-/** Safety valve on the both-streams barrier: if the audio player still hasn't
- * reached STATE_READY after this long, resume anyway so MusicService's own
- * stall recovery (which requires playWhenReady=true) can engage. */
 private const val AudioReadyBarrierTimeoutMs = 30_000L
 
-/**
- * How many times a failing video stream is re-resolved (at a 1080p ceiling, which
- * re-enables the SimpMusic extractor's early-return path) before the player gives
- * up and falls back to the artwork.
- */
 private const val MaxVideoRecoveryAttempts = 1
 
 private const val VideoLoadResumeDelayMs = 1000L
@@ -207,11 +192,6 @@ private fun cacheResolvedVideoStreamInfo(
     }
 }
 
-/**
- * Drops every cached stream for a video. Used when a resolved URL dies at
- * playback time: the cached "success" is poisoned, and a recovery attempt
- * must never be served the same dead URL straight back out of the cache.
- */
 private fun evictResolvedVideoStreamInfoForVideo(videoId: String) {
     synchronized(videoStreamInfoCache) {
         videoStreamInfoCache.keys.removeAll { it.startsWith("$videoId|") }
@@ -419,11 +399,6 @@ fun rememberVideoArtworkState(
             }
         }
 
-    // Fast-start load control: the default DefaultLoadControl demands 2.5s of
-    // buffered media before the first frame can render, which is exactly what
-    // made video songs feel slow to appear. 600ms cuts the pre-first-frame
-    // download 4x; the widened 90s ceiling lets a fast connection keep pulling
-    // data aggressively ("use more internet to load the video faster").
     val loadControl =
         remember {
             DefaultLoadControl
@@ -492,14 +467,6 @@ fun rememberVideoArtworkState(
             .d("Video ready — clearing hold flag (resume scheduled=${!resumeMainAudio})")
     }
 
-    /**
-     * Single funnel for every playback-time video failure (first-frame hold
-     * timeout, ExoPlayer errors, stuck buffering). Before falling back to the
-     * artwork, one recovery attempt re-resolves the stream at a 1080p ceiling —
-     * that ceiling re-enables the SimpMusic extractor, whose NewPipe-harvested
-     * URLs survive the bot-blocking that 403s plain innertube URLs, so a video
-     * song degrades to 1080p instead of dying into a blurred artwork.
-     */
     fun declareVideoFailure(reason: String) {
         if (state.hasPlaybackFailed) return
         state.isVideoReady = false
@@ -727,16 +694,12 @@ fun rememberVideoArtworkState(
         } else if (state.isResyncing) {
             exoPlayer.pause()
         } else if (!updatedMainAudioReady) {
-            // Both-streams barrier: the main audio is still loading (resolving,
-            // buffering or not even prepared). The video must never run ahead of
-            // it — playback starts when BOTH streams are loaded, or not at all.
+
             exoPlayer.pause()
         } else if (state.isResolvingUrl) {
-            // A stream is being (re-)resolved — preparing here would reload the
-            // failing media item and re-fire its error mid-recovery.
+
             exoPlayer.pause()
         } else if (!state.isVideoReady) {
-            // First frame not rendered yet — same barrier from the video side.
             exoPlayer.pause()
         } else {
             exoPlayer.setVideoPlayback(isPlaying)
@@ -760,9 +723,7 @@ fun rememberVideoArtworkState(
         if (state.streamUrl == null) return@LaunchedEffect
         delay(VideoReadyHoldTimeoutMs)
         if (awaitingVideoReady && !state.isVideoReady) {
-            // No forced fallback here by design: the audio hold waits for the
-            // first frame however long the network takes, and neither stream
-            // starts alone. Only a hard player error triggers recovery/fallback.
+
             Timber
                 .tag(VideoPlaybackLogTag)
                 .w("Video first frame still pending after ${VideoReadyHoldTimeoutMs}ms — audio stays held until it arrives")
@@ -784,8 +745,6 @@ fun rememberVideoArtworkState(
         state.bufferingRecoveries = 0
         state.isResolvingUrl = true
 
-        // The previously resolved URL may be cached (a "success" that 403'd at
-        // playback) — evict it so the recovery actually fetches a fresh stream.
         evictResolvedVideoStreamInfoForVideo(videoId)
 
         val recovered =
@@ -851,13 +810,6 @@ fun rememberVideoArtworkState(
         val delayMs = (state.pendingResumeAtMs - now).coerceAtLeast(0L)
         delay(delayMs)
 
-        // Both-streams-loaded barrier: after the settle delay, hold the resume
-        // until the video has rendered its first frame AND the main audio player
-        // has finished loading (STATE_READY). Whichever stream finishes last
-        // gates the start — neither the video nor the audio may begin alone,
-        // no matter how long the other takes. The generous valve only exists so
-        // a genuinely dead audio stream can still reach MusicService's own stall
-        // recovery (which needs playWhenReady=true to act).
         if (resumeVideo || resumeMainAudio) {
             val bothLoaded =
                 withTimeoutOrNull(AudioReadyBarrierTimeoutMs) {
@@ -911,10 +863,7 @@ fun rememberVideoArtworkState(
             if (state.bufferingStartedAtMs > 0L) {
                 val bufferedPos = exoPlayer.bufferedPosition
                 val bufferingForMs = SystemClock.elapsedRealtime() - state.bufferingStartedAtMs
-                // Progress-aware watchdog: as long as the buffered position keeps
-                // advancing the stream is merely SLOW, not stuck — the user
-                // prefers waiting over degrading, so restart the window and keep
-                // holding. Only a buffer that has not moved at all trips this.
+
                 val progressing = bufferedPos > lastWatchdogBufferedPos + 250L
                 lastWatchdogBufferedPos = bufferedPos
                 if (progressing) {
@@ -1070,16 +1019,11 @@ fun rememberVideoArtworkState(
                     state.isVideoReady &&
                     updatedMainAudioReady
                 ) {
-                    // Only resume into an already-playing, fully-loaded pair of
-                    // streams — never let the video (or audio) restart alone.
+
                     exoPlayer.setVideoPlayback(shouldPlay)
                 }
                 if (event == Lifecycle.Event.ON_STOP) {
-                    // Detach the surface while it is still alive (see
-                    // CanvasArtworkPlayer's identical branch): releasing the
-                    // codec against an already-disposed Compose surface is
-                    // what produces the MediaCodec dead-thread warnings on
-                    // every app-background.
+
                     runCatching { exoPlayer.setVideoSurface(null) }
                     runCatching { exoPlayer.stop() }
                 }
@@ -1582,7 +1526,6 @@ private suspend fun resolveVideoStreamUrl(
                 )
             }.let { ordered ->
                 if (heightCeiling > WebRemixMaxVideoHeight) {
-
                     val (highCeiling, lowCeiling) =
                         ordered.partition { it.clientName !in LowCeilingVideoClientNames }
                     highCeiling + lowCeiling
@@ -1591,11 +1534,6 @@ private suspend fun resolveVideoStreamUrl(
                 }
             }
 
-    // Race every usable innertube client CONCURRENTLY instead of paying each
-    // failure its full serial timeout: all attempts start at once (more network
-    // in flight = faster resolution), then the results are consumed in client
-    // priority order — the first result that satisfies the height ceiling wins,
-    // and the best-below-ceiling result otherwise.
     var racedWinner: VideoStreamInfo? = null
     coroutineScope {
         val attempts: List<Pair<YouTubeClient, Deferred<Result<VideoStreamInfo?>>>> =
@@ -1704,16 +1642,10 @@ private suspend fun resolveVideoStreamUrl(
             }
         }
 
-        // Cancel the losers that are still in flight so the scope returns promptly.
         attempts.forEach { (_, deferred) -> deferred.cancel() }
     }
     if (racedWinner != null) return racedWinner
 
-    // The innertube chain could not fully satisfy the ceiling. If nothing
-    // playable at 1080p-or-better came out of it, the SimpMusic extractor is
-    // the last resort: its NewPipe-harvested URLs keep working when the plain
-    // innertube URLs are bot-blocked and 403 — the exact failure mode that
-    // otherwise leaves video songs stuck on the artwork fallback.
     if (!simpMusicAttempted && (bestResult?.selectedHeight ?: 0) < WebRemixMaxVideoHeight) {
         simpMusicAttempted = true
         resolveVideoStreamUrlViaSimpMusic(videoId, preferredHeight)?.let { simpmusic ->
@@ -1731,7 +1663,6 @@ private suspend fun resolveVideoStreamUrl(
     }
 
     if (bestResult != null) {
-
         if (!bestResultFromSimpMusic) {
             YTPlayerUtils.markStreamUrlSuccessful(bestResult.streamUrl)
         }

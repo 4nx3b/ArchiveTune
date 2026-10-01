@@ -89,7 +89,6 @@ internal suspend fun resolveCanvasArtworkForPlayback(
             cachedArtwork.hasRequiredCanvasVariant(requireVertical) &&
                 cachedArtwork.matchesIdentity(songTitleRaw, artistNameRaw, strictIdentity)
         if (isValid) {
-
             if (
                 allowNetwork &&
                 preferArchiveTuneCanvasFirst &&
@@ -124,7 +123,6 @@ internal suspend fun resolveCanvasArtworkForPlayback(
     }
 
     return withContext(Dispatchers.IO) {
-
         if (preferArchiveTuneCanvasFirst) {
             val fetchedFirst =
                 fetchCanvasArtworkForPlayback(
@@ -278,8 +276,6 @@ internal suspend fun hasAnyCanvasSource(
         if (spotify != null && !spotify.preferredAnimationUrl.isNullOrBlank()) return true
     }
 
-    // Only remember the miss when the enabled sources were actually queried — a caller
-    // that disabled both must not poison the cache for the ones that did look.
     if (includeAppleMusic || (includeSpotify && strictIdentity)) {
         CanvasResolutionMissCache.markMissed(mediaId, requireVertical = false)
     }
@@ -380,12 +376,6 @@ private fun normalizeCanvasArtistName(raw: String): String {
     return first.replace(Regex("\\s+"), " ").trim()
 }
 
-/**
- * Short-lived negative-result cache for canvas resolution. Without it a song that
- * resolves to no canvas is re-queried against Apple Music + Spotify every time the
- * UI re-requests artwork (observed every ~2-4 minutes while playing), which burns
- * the Spotify REST quota with 429s and keeps the AMP search busy for nothing.
- */
 internal object CanvasResolutionMissCache {
     private const val TTL_MS = 10 * 60 * 1000L
     private val misses = ConcurrentHashMap<String, Long>()

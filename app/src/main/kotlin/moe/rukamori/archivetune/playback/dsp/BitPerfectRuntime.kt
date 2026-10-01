@@ -21,44 +21,15 @@ import androidx.media3.common.C
 import androidx.media3.common.Format
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * The single source of truth for the Bit-Perfect / Native Output system.
- *
- * Bit-Perfect mode bypasses EVERY sample-modifying processor (EQ, AutoEQ,
- * ReplayGain, loudness normalization, crossfeed, bass boost, reverb,
- * virtualizer, balance/pan, Sonic speed/pitch, silence skipping, transition
- * DSP, both DSP engines and software volume) and hands the decoder's PCM to
- * the output UNTOUCHED whenever the active route can carry that exact
- * encoding/rate/channel configuration. PCM16, PCM24-packed, PCM32 and FLOAT
- * all stay native; the sink's float pipeline (lossless for 24-bit, which is
- * exactly representable in an f32 mantissa) carries 24/32-bit depth to
- * direct-playback tracks.
- *
- * The evaluation runs per track (on the playback thread, at processor-chain
- * configure time) via [AudioManager.getDirectPlaybackSupport] on API 33+,
- * and the RESULT — not the request — drives the status line and the mixer
- * verification, so "Bit-Perfect" is only ever reported when the active output
- * genuinely carries the source format.
- */
 object BitPerfectRuntime {
-
-    /** Master toggle (Bit-Perfect Output). */
     @Volatile
     var requested: Boolean = false
 
-    /** Native Sample Rate sub-toggle (default ON): prefer the source rate. */
     @Volatile
     var nativeSampleRatePreferred: Boolean = true
 
-    /**
-     * True while the processor chain should be fully bypassed for the CURRENT
-     * track: bit-perfect requested, no engine/DSP engaged, and the output
-     * directly supports the source format. Set at chain-configure time by
-     * [evaluateTrack]; cleared by [clearTrack].
-     */
     private val bypassEngaged = AtomicBoolean(false)
 
-    /** Live state snapshot for the settings status row. */
     var status by mutableStateOf(Status.idle())
         private set
 
@@ -88,19 +59,9 @@ object BitPerfectRuntime {
         }
     }
 
-    /** Whether the DSP chain must pass bytes through untouched right now. */
     val chainBypassActive: Boolean
         get() = bypassEngaged.get()
 
-    /**
-     * Per-track evaluation. Called from the playback thread when the audio
-     * processor chain configures against a new input format.
-     *
-     * @param engineOrDspEngaged an engine (Tryptify/LastWave) or the float DSP
-     *        is currently engaged — bit-perfect never fights the engines.
-     * @param outputSampleRateHz the ACTUAL opened output rate when known
-     *        (0 = unknown yet).
-     */
     fun evaluateTrack(
         context: Context,
         inputEncoding: Int,
@@ -120,16 +81,13 @@ object BitPerfectRuntime {
         var failure: String? = null
 
         if (!requested) {
-            failure = null // simply off — not an error state
+            failure = null
         } else if (engineOrDspEngaged) {
             failure = "DSP engine active"
         } else if (audioManager == null) {
             failure = "AudioManager unavailable"
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Verified against AOSP AudioPolicyManager::getDirectPlaybackSupport:
-            // a PCM profile that matches the format/rate/channels under the
-            // DIRECT output flag reports AUDIO_DIRECT_BITSTREAM_SUPPORTED —
-            // despite the name, that flag is what a direct PCM path sets.
+
             val channelConfig =
                 if (channels == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
             val queryFormat =
@@ -140,22 +98,19 @@ object BitPerfectRuntime {
                     .build()
             val flags =
                 runCatching {
-                    @Suppress("NewApi") // guarded by SDK_INT
+                    @Suppress("NewApi")
                     AudioManager.getDirectPlaybackSupport(queryFormat, AUDIO_ATTRIBUTES_MUSIC)
                 }.getOrDefault(AudioManager.DIRECT_PLAYBACK_NOT_SUPPORTED)
             direct = (flags and AudioManager.DIRECT_PLAYBACK_BITSTREAM_SUPPORTED) != 0
             if (!direct) {
-                // The route cannot carry this exact format — normal fallback
-                // plays instead; never silently label it bit-perfect.
+
                 failure = "No direct support for ${bits}bit/${inputSampleRate}Hz"
             } else {
-                // Direct support exists at the source rate itself: no
-                // resampling on the direct path.
+
                 nativeRateMatched = true
             }
         } else {
-            // Below API 33 there is no direct-support query; report honestly
-            // instead of guessing.
+
             failure = "Requires Android 13+"
             direct = false
         }
@@ -164,9 +119,7 @@ object BitPerfectRuntime {
         bypassEngaged.set(bypass)
 
         val outputRate = if (outputSampleRateHz > 0) outputSampleRateHz else inputSampleRate
-        // Seed the container side only when no input-format report has landed
-        // yet for this track (identical-format track switches may not re-fire
-        // the renderer's input-format event).
+
         val seedSource = status.sourceSampleRate == 0
         status = status.copy(
             sourceEncoding = if (seedSource) inputEncoding else status.sourceEncoding,
@@ -192,16 +145,6 @@ object BitPerfectRuntime {
         return bypass
     }
 
-    /**
-     * Records the CONTAINER truth for the current track — the bit depth the
-     * file/stream actually carries (media3's FLAC extractor puts the
-     * STREAMINFO depth into Format.pcmEncoding; WAV/AIFF extractors do the
-     * same). Compressed formats without a pcm depth are flagged lossy. This
-     * is independent of the decoded depth: the platform FLAC decoder
-     * truncates 24-bit material to 16-bit PCM unless the float route
-     * negotiated an f32 decode — the INPUT side of the chain pill reports
-     * THIS value.
-     */
     fun reportContainerFormat(
         inputEncoding: Int,
         inputSampleRate: Int,
@@ -218,20 +161,17 @@ object BitPerfectRuntime {
         )
     }
 
-    /** Clears the per-track state (player release / no format). */
     fun clearTrack() {
         bypassEngaged.set(false)
         status = Status.idle()
     }
 
-    /** Notifies the runtime that the effective (software) volume changed. */
     fun notifyVolume(effectiveVolume: Float) {
         if (status.verifiedBitPerfect && (effectiveVolume == 1f) != !status.softwareVolumeActive) {
             status = status.copy(softwareVolumeActive = effectiveVolume != 1f)
         }
     }
 
-    /** Records a verified Android 14+ BIT_PERFECT mixer-attribute result. */
     fun notifyMixerBitPerfect(active: Boolean, outputRateHz: Int) {
         status = status.copy(
             mixerBitPerfectActive = active,
@@ -239,14 +179,13 @@ object BitPerfectRuntime {
         )
     }
 
-    /** Notifies the runtime of the actual USB-exclusive route state. */
     fun notifyUsbExclusive(active: Boolean, rate: Int, bits: Int) {
         status = status.copy(usbExclusiveActive = active)
         if (active) {
             status = status.copy(
                 outputSampleRate = rate,
                 outputBitDepth = bits,
-                // The exclusive wire bypasses the Android mixer entirely.
+
                 directPlaybackSupported = true,
                 nativeRateMatched = status.sourceSampleRate == rate,
                 resamplerActive = status.sourceSampleRate != rate,
@@ -257,12 +196,6 @@ object BitPerfectRuntime {
         }
     }
 
-    /**
-     * Android 14+ BIT_PERFECT mixer attributes for the active USB route:
-     * returns the mixer attributes the platform should apply, or null when
-     * none apply. Verification is done by the caller via
-     * [preferredMixerAttributesAreBitPerfect].
-     */
     fun preferredMixerAttributes(
         context: Context,
         device: AudioDeviceInfo?,
@@ -279,7 +212,7 @@ object BitPerfectRuntime {
         }
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return null
         val supported = runCatching {
-            @Suppress("NewApi") // guarded by SDK_INT
+            @Suppress("NewApi")
             audioManager.getSupportedMixerAttributes(device)
         }.getOrNull().orEmpty()
         val channelConfig =
@@ -294,7 +227,6 @@ object BitPerfectRuntime {
         }
     }
 
-    /** Verifies the applied mixer attributes really are BIT_PERFECT. */
     fun preferredMixerAttributesAreBitPerfect(
         context: Context,
         device: AudioDeviceInfo?,
@@ -303,7 +235,7 @@ object BitPerfectRuntime {
         if (device == null) return false
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
         return runCatching {
-            @Suppress("NewApi") // guarded by SDK_INT
+            @Suppress("NewApi")
             val preferred = audioManager.getPreferredMixerAttributes(AUDIO_ATTRIBUTES_MUSIC, device)
             preferred != null && preferred.mixerBehavior == AudioMixerAttributes.MIXER_BEHAVIOR_BIT_PERFECT
         }.getOrDefault(false)

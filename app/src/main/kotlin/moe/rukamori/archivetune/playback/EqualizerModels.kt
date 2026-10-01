@@ -88,16 +88,6 @@ internal object EqualizerJson {
         }
 }
 
-/**
- * Frequency-aware band-level mapping (ported technique from Tryptify's EQ stack):
- * a curve captured on one device (e.g. 5 bands at 60/230/910/3600/14000 Hz) must be
- * re-projected onto another device's band centers by FREQUENCY, not by array index —
- * index interpolation warps the curve whenever the band counts differ. Levels are
- * interpolated in log-frequency space, flat-extrapolated past the ends.
- *
- * Falls back to null when the source frequencies are unknown (legacy saves) or
- * degenerate, so callers can keep their index-based fallback.
- */
 fun mapBandLevelsByFrequency(
     levelsMb: List<Int>,
     sourceFreqHz: List<Int>,

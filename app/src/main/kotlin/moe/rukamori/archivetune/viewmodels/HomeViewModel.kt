@@ -1013,7 +1013,6 @@ class HomeViewModel
 
         private fun refresh() {
             if (!isRefreshing.compareAndSet(false, true)) {
-
                 val startedAt = refreshStartedAtMs.get()
                 val stuck = startedAt != 0L && System.currentTimeMillis() - startedAt > REFRESH_STUCK_WATCHDOG_MS
                 if (!stuck) return
@@ -1088,7 +1087,6 @@ class HomeViewModel
             viewModelScope.launch(Dispatchers.IO) {
                 reloadRequests.collectLatest { (generation, manual) ->
                     if (!manual) {
-
                         isRefreshing.first { !it }
                     }
                     recommendationJob?.cancelAndJoin()

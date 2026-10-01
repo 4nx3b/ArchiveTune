@@ -395,11 +395,6 @@ internal fun TikTokSongPage(
                 }
             }
 
-            // Reserve the karaoke-caption slot whenever the feature is on — on
-            // EVERY page, and whether or not the current song has synced lyrics
-            // (they also load asynchronously). The artwork box above therefore
-            // keeps a constant height and the artwork NEVER shifts up/shrinks
-            // when lyrics load, appear, change between songs, or during swipes.
             val mainLyricsEnabled by rememberPreference(TikTokMainLyricsEnabledKey, false)
             if (!immersive && mainLyricsEnabled && !lyricsOpen) {
                 Box(
@@ -416,9 +411,7 @@ internal fun TikTokSongPage(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
-                                    // Mirror the title/artist clearance: the right-side
-                                    // rail (~58dp of buttons, bottom-anchored and tall)
-                                    // must never overlap or cut the wrapped lyric rows.
+
                                     .padding(start = 16.dp, end = TIKTOK_CAPTION_TEXT_CLEARANCE + 16.dp)
                                     .padding(bottom = 4.dp),
                         )
@@ -533,8 +526,6 @@ internal fun TikTokSongPage(
                 }
             }
 
-            // The quality sheet lives outside the auto-hiding controls layer so it
-            // survives the controls fade-out timer instead of being disposed with it.
             if (videoQualityMenuOpen) {
                 VideoQualitySheet(
                     preferredHeight = LocalVideoPreferredHeight.current,

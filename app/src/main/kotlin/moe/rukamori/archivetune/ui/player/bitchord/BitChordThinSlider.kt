@@ -63,12 +63,6 @@ fun ThinSlider(
 ) {
     var dragging by remember { mutableStateOf(false) }
 
-    // The gesture handler runs under a Unit-keyed pointerInput — it adopts
-    // the FIRST composition's lambdas forever. Without re-reading the latest
-    // callbacks here, a drag-seek lands on a stale player instance after the
-    // service swaps the session player (automix/crossfade promotion), and the
-    // bar visually moves while nothing actually seeks. The lyrics path works
-    // because its tap handler re-adopts the current lambda every recomposition.
     val currentOnValueChange by rememberUpdatedState(onValueChange)
     val currentOnValueChangeFinished by rememberUpdatedState(onValueChangeFinished)
 

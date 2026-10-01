@@ -185,11 +185,7 @@ fun SwipeableMiniPlayerBox(
                                 },
                             )
                         } else {
-                            // Expanded: the pill insets itself to align with the
-                            // navigation bar edges. Compact: the padding eases to
-                            // zero so the pill's edge lands exactly one
-                            // CompactControlGap from the Home/Search circles (the
-                            // circles already sit at the nav-bar horizontal padding).
+
                             baseModifier.padding(
                                 horizontal = lerp(NavigationBarHorizontalPadding, 0.dp, compactFraction),
                             )
@@ -275,10 +271,7 @@ fun SwipeableMiniPlayerBox(
                             baseModifier
                         }
                     },
-            // The morphing pill CENTRES itself inside this fixed-height slot
-            // while it shrinks 70 -> 64 dp, so the compact pill's centre line
-            // stays exactly where the expanded mini player's was (a
-            // top-anchored shrink used to lift it 3 dp).
+
             contentAlignment = Alignment.Center,
         ) {
             content(offsetXAnimatable.value)
@@ -412,8 +405,7 @@ private fun MiniPlayerArtwork(
                     }
                 },
     ) {
-        // Reference design: a rounded-square cover with a hairline border —
-        // no progress ring around the thumbnail.
+
         Box(
             contentAlignment = Alignment.Center,
             modifier =
@@ -427,7 +419,6 @@ private fun MiniPlayerArtwork(
                         shape = MiniPlayerArtworkShape,
                     ),
         ) {
-
             val baseThumbnailUrl = mediaMetadata?.thumbnailUrl
             if (baseThumbnailUrl != null) {
                 val thumbnailSwapState =
@@ -501,9 +492,6 @@ private fun MiniPlayerTransportButton(
             }
         }
 
-    // Reference design: large, clean, system-style icons with NO circle or
-    // pill background behind them — the glass of the mini player itself is
-    // the surface. The touch target stays generous.
     val iconSize =
         when {
             compact -> if (isPrimary) 26.dp else 22.dp
@@ -534,7 +522,6 @@ private fun MiniPlayerTransportButton(
     }
 }
 
-/** The rounded-square cover shape of the mini player artwork (reference). */
 private val MiniPlayerArtworkShape = RoundedCornerShape(10.dp)
 
 @Composable
@@ -615,7 +602,6 @@ fun NewMiniPlayerContent(
     val canSkipNext by playerConnection.canSkipNext.collectAsStateWithLifecycle()
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Expanded content: fades and gently shrinks as the pill morphs.
         if (compactFraction < 0.95f) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -654,8 +640,6 @@ fun NewMiniPlayerContent(
             }
         }
 
-        // Compact content: [artwork] [title/artist] [pause] — grows in with
-        // the same curve so the pill's contents read as one morphing surface.
         if (compactFraction > 0.05f) {
             CompactMiniPlayerContent(
                 positionProvider = positionProvider,
@@ -677,14 +661,6 @@ fun NewMiniPlayerContent(
     }
 }
 
-/**
- * The compact-state mini player pill content: [artwork] [title/artist] [pause].
- * When a Search circle does NOT sit beside the pill ([showTransportControls],
- * e.g. the artist page), the freed end space carries the full compact transport
- * — [artwork] [title/artist] [previous] [pause] [next]. No shuffle/repeat in
- * either shape. The expanded row crossfades into this as the pill morphs, with
- * matched scale so the swap reads as one motion rather than a replace.
- */
 @Composable
 fun CompactMiniPlayerContent(
     positionProvider: () -> Long,

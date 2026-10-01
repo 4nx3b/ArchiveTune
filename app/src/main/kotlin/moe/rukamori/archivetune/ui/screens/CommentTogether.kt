@@ -148,7 +148,6 @@ import moe.rukamori.archivetune.ui.component.liquidGlass
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.utils.rememberPreference
 
-/** The list rows: chat messages interleaved with "who did what" system rows. */
 private sealed interface ChatRow {
     val timestamp: Long
 
@@ -185,27 +184,14 @@ fun CommentTogetherScreen(navController: NavController) {
     var attachmentAnchor by remember { mutableStateOf<Rect?>(null) }
     var jumpTargetKey by remember { mutableStateOf<String?>(null) }
 
-    // The chat's overflow menu (top-right glass pill): holds the wallpaper
-    // controls and the one-tap notification mute, so the composer's paperclip
-    // only ever means attachments.
     var overflowAnchor by remember { mutableStateOf<Rect?>(null) }
 
-    // One-tap mute for BOTH the in-app popup and the shade notification.
     var chatMuted by rememberPreference(ListenTogetherChatMutedKey, false)
 
-    // The local chat wallpaper (device-only, never synced, never seen by other
-    // members) rendered behind the conversation.
     var chatWallpaper by rememberPreference(ListenTogetherChatWallpaperKey, "")
 
-    // Glass contrast over that wallpaper, MEASURED from the image itself: a
-    // dark wallpaper gets a dark glass scrim with WHITE icons and text even
-    // while the app theme is light, and a bright one flips the pill bright
-    // with dark ink — the pill stays legible in every theme/wallpaper
-    // combination instead of following the theme's surface luminance.
     val chatWallpaperGlass = rememberChatWallpaperGlassColors(chatWallpaper)
 
-    // metroserver (The Meowery) speaks a protobuf protocol with no chat message
-    // type at all — the composer is replaced by an explanatory notice there.
     val serverUrl by rememberPreference(ListenTogetherServerUrlKey, ListenTogetherServers.defaultServerUrl)
     val chatSupported by remember(serverUrl) {
         mutableStateOf(ListenTogetherServers.findByUrl(serverUrl)?.protocol != ListenTogetherProtocol.PROTOBUF)
@@ -216,22 +202,12 @@ fun CommentTogetherScreen(navController: NavController) {
     val coroutineScope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
 
-    // Local liquid-glass source for the floating header pill, the composer
-    // capsule AND the anchored popups: the chat content records into it while
-    // the glass surfaces are composed as SIBLINGS below, so sampling can never
-    // recurse. Drawing from the app-wide LocalLiquidGlassBackdrop (the chat
-    // lives inside the subtree that backdrop records) caused a
-    // circular-rendering SIGSEGV.
     val chatGlassSource = rememberLayerBackdrop()
     val globalGlassEnabled = LocalLiquidGlassBackdrop.current != null
     val chatGlassBackdrop = if (globalGlassEnabled) chatGlassSource else null
 
-    // The haze fade behind the header (the home screen's effect): the chat
-    // content is the haze source, the top band blurs it as it scrolls under.
     val chatHazeState = remember { HazeState() }
 
-    // While the chat screen is on top, the client suppresses chat-message
-    // notifications (and the shade conversation is cancelled via markChatAsRead).
     DisposableEffect(Unit) {
         manager.setChatScreenVisible(true)
         onDispose {
@@ -240,15 +216,6 @@ fun CommentTogetherScreen(navController: NavController) {
         }
     }
 
-    // ---- reversed list geometry -------------------------------------------------
-    // The message list is reversed (newest at the visual bottom, index 0), the
-    // classic chat arrangement: the newest message is anchored to the list's
-    // start edge, so the shrinking viewport while the keyboard opens can never
-    // leave it hidden behind the IME — the resize keeps the start-anchored
-    // content pinned above the composer.
-    //
-    // Messages and system rows interleave by timestamp so "who did what" reads
-    // exactly where it happened in the conversation.
     val reversedRows = remember(messages, systemEvents) {
         (messages.map { ChatRow.Message(it) } + systemEvents.map { ChatRow.System(it) })
             .sortedBy { it.timestamp }
@@ -257,7 +224,6 @@ fun CommentTogetherScreen(navController: NavController) {
     val liveRowCount = remember(messages) { messages.count { !it.restored } }
     val hasRestoredMessages = remember(messages) { messages.any { it.restored } }
 
-    // "At the latest message" for the reversed list = reading near index 0.
     val atBottom by remember {
         derivedStateOf {
             val info = lazyListState.layoutInfo
@@ -266,8 +232,6 @@ fun CommentTogetherScreen(navController: NavController) {
         }
     }
 
-    // Auto-follow: while the reader is on the newest messages, every arrival
-    // (and every keyboard open) re-pins the list to the bottom.
     LaunchedEffect(reversedRows.size) {
         manager.markChatAsRead()
         if (reversedRows.isNotEmpty() && atBottom) {
@@ -275,9 +239,6 @@ fun CommentTogetherScreen(navController: NavController) {
         }
     }
 
-    // The chat always OPENS on the most recent message; the reversed list
-    // makes that the natural start position, so a plain snap is enough even
-    // for very long restored histories (no layout race to lose anymore).
     LaunchedEffect(Unit) {
         snapshotFlow { lazyListState.layoutInfo.totalItemsCount }
             .filter { it > 0 }
@@ -285,7 +246,6 @@ fun CommentTogetherScreen(navController: NavController) {
         lazyListState.scrollToItem(0)
     }
 
-    // Clear the jump highlight shortly after it lands.
     LaunchedEffect(jumpTargetKey) {
         if (jumpTargetKey == null) return@LaunchedEffect
         delay(1400)
@@ -294,13 +254,8 @@ fun CommentTogetherScreen(navController: NavController) {
 
     val pinnedMessages = remember(messages) { messages.filter { it.pinned } }
 
-    // Host role from the live room state (recomposes on host transfer) — drives
-    // the "delete for everyone" moderation action on other people's messages.
     val iAmHost = roomState?.hostId != null && roomState?.hostId == userId
 
-    // Own-message detection: session user id first, username as the fallback —
-    // restored history from a previous session carries the OLD session's user
-    // ids, and those messages must still land on the right side.
     val myUsername = manager.currentUsername
     fun isOwnMessage(message: ChatMessagePayload): Boolean =
         message.userId == userId || (myUsername != null && message.username == myUsername)
@@ -330,8 +285,7 @@ fun CommentTogetherScreen(navController: NavController) {
     }
 
     fun shareCurrentTrack() {
-        // Room state first (guests are synced from the host); the local player
-        // window covers hosts whose room state may lag its own track changes.
+
         val track = roomState?.currentTrack ?: manager.currentLocalTrack()
         if (track == null || track.id.isBlank() || track.id == "unknown") {
             Toast.makeText(context, R.string.listen_together_chat_nothing_playing, Toast.LENGTH_SHORT).show()
@@ -352,11 +306,7 @@ fun CommentTogetherScreen(navController: NavController) {
     fun jumpToMessage(forwardIndex: Int, key: String) {
         jumpTargetKey = key
         coroutineScope.launch {
-            // Instant (not animated) so long histories snap straight to the
-            // target; the highlight flash marks the row. The index resolves
-            // against the ACTUAL row list (messages interleaved with system
-            // rows), not the messages-only list — otherwise every newer
-            // "who did what" row shifts the landing spot.
+
             val reversedIndex = reversedRows.indexOfFirst { row ->
                 row is ChatRow.Message &&
                     "${row.payload.userId}:${row.payload.timestamp}" == key
@@ -371,18 +321,12 @@ fun CommentTogetherScreen(navController: NavController) {
         }
     }
 
-    // ---- in-chat mention queue -----------------------------------------------
-    // Mentions stack like pinned messages: the MOST RECENT one shows in the
-    // compact chip above the composer; jumping to it consumes that entry and
-    // the next most recent takes its place, until the queue empties. The chip
-    // carries the remaining count as a badge on the @ glyph.
     val mentionQueue = remember { mutableStateListOf<ChatMessagePayload>() }
     var lastSeenMentionCount by remember { mutableStateOf(0) }
     LaunchedEffect(mentionCount) {
         if (mentionCount > lastSeenMentionCount) {
             val myName = manager.currentUsername
-            // All mention messages not already queued, oldest→newest; inserted
-            // at the front in reverse so the NEWEST mention ends up first.
+
             val fresh = messages.filter { message ->
                 !isOwnMessage(message) &&
                     message.mentions.any { it.equals(myName ?: "", ignoreCase = true) } &&
@@ -394,7 +338,6 @@ fun CommentTogetherScreen(navController: NavController) {
         if (mentionCount == 0) mentionQueue.clear()
     }
 
-    // ---- wallpaper picker --------------------------------------------------------
     val wallpaperPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -409,36 +352,15 @@ fun CommentTogetherScreen(navController: NavController) {
         }
     }
 
-    // ---- screen geometry ----------------------------------------------------------
-    // The notch/status-bar inset comes from the app-level CompositionLocal: the
-    // plain WindowInsets.statusBars read returns ZERO here because ancestors of
-    // the NavHost already consume the top insets, which used to plant the glass
-    // header pill straight into the cutout on notched devices.
     val statusBarTop = LocalStableSystemBarsTopPadding.current
-    // The composer column floats over the list's bottom; the list reserves
-    // room for it so the newest message is never hidden behind the capsule.
-    // onGloballyPositioned sits BETWEEN imePadding and the navigation-bar
-    // inset padding, so the reserved height covers everything the composer
-    // column occupies on screen minus the IME region the list also lifts
-    // over — content can never render behind the input capsule.
+
     var composerHeightPx by remember { mutableStateOf(0) }
     val density = androidx.compose.ui.platform.LocalDensity.current
     val composerBottomPadding = with(density) { (composerHeightPx.toDp()) + 14.dp }
-    // The full floating header stack (glass pill + mention alert + pinned
-    // carousel) is measured and reserved as the list's TOP content padding
-    // instead of a fixed spacer: scrolling towards older messages carries
-    // them under the haze fade all the way to the very top of the screen —
-    // the same full-bleed scroll the home and settings pages have.
+
     var headerOverlayHeightPx by remember { mutableStateOf(0) }
     val headerOverlayBottomPadding = with(density) { headerOverlayHeightPx.toDp() + 8.dp }
 
-    // Root wrapper: the chat (inside the recorded box) and the floating glass
-    // surfaces (siblings, outside it) — the structure that keeps the liquid
-    // glass non-recursive. The wallpaper/scrim background fills the ENTIRE
-    // screen and never reacts to the IME: only the message list and the
-    // composer carry imePadding, so the strip the opening keyboard animates
-    // over shows the chat's own background instead of flashing the window's
-    // plain white background.
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -450,13 +372,7 @@ fun CommentTogetherScreen(navController: NavController) {
                     .hazeSource(chatHazeState)
                     .layerBackdrop(chatGlassSource)
         ) {
-            // Background: the local wallpaper (when set) over a dim scrim, or
-            // the plain theme surface. Inside the recorded box so both the top
-            // haze fade and the composer glass blur/sample it. The scrim is
-            // what keeps the glass surfaces (header pill, composer capsule)
-            // readable: they sample and blur whatever is behind them, so a
-            // bright wallpaper at 35% dim came through the glass almost
-            // unattenuated and washed the icons/text out.
+
             if (chatWallpaper.isNotBlank()) {
                 AsyncImage(
                     model = chatWallpaper,
@@ -481,11 +397,6 @@ fun CommentTogetherScreen(navController: NavController) {
                 )
             }
 
-            // An empty room renders an empty list — no placeholder icon
-            // and "no messages" copy; the composer already says everything
-            // there is to say. The list fills the WHOLE screen: the floating
-            // header stack is reserved through contentPadding (not a spacer),
-            // so older messages scroll under the glass pill to the very top.
             LazyColumn(
                     state = lazyListState,
                     modifier = Modifier
@@ -493,9 +404,7 @@ fun CommentTogetherScreen(navController: NavController) {
                         .imePadding(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = headerOverlayBottomPadding, bottom = composerBottomPadding),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                    // Newest at the visual bottom (see the comment above): the
-                    // list opens on the latest message and the keyboard resize
-                    // can never cover it.
+
                     reverseLayout = true,
                 ) {
                         val dividerSlot =
@@ -545,12 +454,6 @@ fun CommentTogetherScreen(navController: NavController) {
                 }
         }
 
-        // ---- floating liquid-glass header + haze fade (sibling of the recorded
-        // content: samples the recorded backdrop, no recursion possible). The
-        // whole stack (pill + mention alert + pinned carousel) is measured so
-        // the list can reserve it as top content padding while still letting
-        // content scroll beneath it to the top edge. The wallpaper-aware glass
-        // polarity is hoisted here so the mention alert shares it with the pill.
         val wallpaperGlassScrim: Color? = chatWallpaperGlass.scrim
         val headerContentColor = chatWallpaperGlass.contentColor ?: liquidGlassContentColor()
         Column(
@@ -561,13 +464,10 @@ fun CommentTogetherScreen(navController: NavController) {
                     headerOverlayHeightPx = coordinates.size.height
                 },
         ) {
-            // The same haze fade the home screen's header uses, blurring the
-            // chat content (and the wallpaper) as it scrolls under the header —
-            // with the glass pill floating ON the band, not stacked under it.
+
             Box(modifier = Modifier.fillMaxWidth()) {
                 if (globalGlassEnabled) {
-                    // Haze only once the chat has actually scrolled under the
-                    // header — same universal rule as every other screen.
+
                     val chatHazeIntensity by animateFloatAsState(
                         targetValue = if (lazyListState.canScrollBackward) 1f else 0f,
                         animationSpec = tween(durationMillis = 220),
@@ -581,14 +481,6 @@ fun CommentTogetherScreen(navController: NavController) {
                     )
                 }
 
-                // The header pill itself: back button + title inside liquid glass,
-                // over a transparent background (no opaque top bar anymore).
-                // Over a wallpaper the glass gets an explicit surface scrim whose
-                // polarity follows the MEASURED wallpaper luminance (dark image →
-                // dark scrim + white content, bright image → light scrim + dark
-                // ink), so the pill reads in light theme and dark alike. The
-                // mention-count badge is gone from the pill: the compact mention
-                // alert right below it is the indicator now.
                 Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -632,17 +524,8 @@ fun CommentTogetherScreen(navController: NavController) {
                         )
                     }
 
-                    // The overflow pill sits at the FAR RIGHT of the chat
-                    // screen — a flexible spacer absorbs all remaining header
-                    // width between the title pill and it (the title pill used
-                    // to carry weight(1f, fill=false), which only shrinks it to
-                    // content width and left the overflow pill glued to the
-                    // room name instead of the corner).
                     Spacer(Modifier.weight(1f))
 
-                    // The overflow pill (top-right): wallpaper controls and
-                    // the notification mute live behind it. Same glass, same
-                    // wallpaper-aware scrim as the back pill.
                     var overflowIconBounds by remember { mutableStateOf(Rect.Zero) }
                     LiquidGlassActionPill(
                         backdrop = chatGlassBackdrop,
@@ -660,7 +543,6 @@ fun CommentTogetherScreen(navController: NavController) {
                         )
                     }
                 } else {
-                    // Glass disabled: the same header, plain surfaces.
                     Surface(
                         shape = RoundedCornerShape(24.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
@@ -686,7 +568,6 @@ fun CommentTogetherScreen(navController: NavController) {
 
                     Spacer(Modifier.weight(1f))
 
-                    // Opaque twin of the overflow pill.
                     var overflowIconBounds by remember { mutableStateOf(Rect.Zero) }
                     Surface(
                         shape = RoundedCornerShape(24.dp),
@@ -704,16 +585,8 @@ fun CommentTogetherScreen(navController: NavController) {
                     }
                 }
             }
-            } // end header-overlay Box (haze band + glass pills)
+            }
 
-            // (The in-chat mention indicator no longer lives in the header
-            // stack: it is a compact chip floating above the composer, on the
-            // right — see the composer column below.)
-
-            // The pinned-message carousel rides at the bottom of the floating
-            // header stack: the list reserves the whole stack's height as top
-            // content padding, so nothing ever hides behind it at rest while
-            // older messages still scroll beneath the stack to the very top.
             if (pinnedMessages.isNotEmpty()) {
                 PinnedMessagesStack(
                     messages = pinnedMessages,
@@ -731,12 +604,6 @@ fun CommentTogetherScreen(navController: NavController) {
             }
         }
 
-        // ---- floating composer (sibling of the recorded content) ---------------
-        // imePadding sits OUTERMOST so the whole column (mention autocomplete,
-        // capsule, typing indicator) rides above the opening keyboard; the
-        // height probe sits between imePadding and the navigation-bar inset so
-        // the list reserves everything the column occupies except the IME band
-        // it lifts over itself.
         Column(
             modifier =
                 Modifier
@@ -754,13 +621,7 @@ fun CommentTogetherScreen(navController: NavController) {
                     .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             if (chatSupported) {
-                // The mention chip: a COMPACT pill (just the @ glyph with the
-                // remaining-mention count badge and the mentioner's avatar)
-                // floating above the composer on the RIGHT (corner-aligned with
-                // the composer's right edge), with a small gap to the input
-                // capsule — never flush against it. Tapping jumps to the most
-                // recent mention and consumes it; the next most recent then
-                // takes its place, pinned-message style.
+
                 if (mentionQueue.isNotEmpty()) {
                     val mention = mentionQueue.first()
                     Row(
@@ -794,8 +655,6 @@ fun CommentTogetherScreen(navController: NavController) {
                     }
                 }
 
-                // @-mention autocomplete: appears while the composer's text
-                // ends in an @token, listing the room's other members.
                 val mentionCandidates = remember(roomState, userId) {
                     roomState?.users?.filter { it.userId != userId }.orEmpty()
                 }
@@ -837,14 +696,11 @@ fun CommentTogetherScreen(navController: NavController) {
                     },
                     onAttachmentClick = { anchor -> attachmentAnchor = anchor },
                     glassBackdrop = chatGlassBackdrop,
-                    // Wallpaper mode: the capsule's scrim polarity AND its content
-                    // color both follow the measured wallpaper luminance (see
-                    // rememberChatWallpaperGlassColors).
+
                     scrim = chatWallpaperGlass.scrim,
                     contentColor = chatWallpaperGlass.contentColor,
                 )
 
-                // Typing indicator with layered avatars
                 AnimatedVisibility(
                     visible = typingUsers.isNotEmpty(),
                     enter = expandVertically() + fadeIn(),
@@ -881,8 +737,6 @@ fun CommentTogetherScreen(navController: NavController) {
         }
     }
 
-    // Anchored Instagram-style action popup (morph + liquid glass over the
-    // locally-recorded chat layer — see chatGlassSource above).
     actionTarget?.let { target ->
         MessageActionsPopup(
             target = target,
@@ -911,7 +765,6 @@ fun CommentTogetherScreen(navController: NavController) {
         )
     }
 
-    // Full emoji picker for reactions with any emoji.
     if (showEmojiPicker) {
         EmojiPickerSheet(
             onPick = { emoji ->
@@ -925,8 +778,6 @@ fun CommentTogetherScreen(navController: NavController) {
         )
     }
 
-    // Song picker opened from the composer's "/" quick action: search
-    // YouTube Music and share any result as a rich tappable card.
     if (showSongPicker) {
         ShareSongPickerSheet(
             currentTrack = roomState?.currentTrack ?: manager.currentLocalTrack(),
@@ -942,9 +793,6 @@ fun CommentTogetherScreen(navController: NavController) {
         )
     }
 
-    // GIF picker (Giphy + custom device GIFs) opened from the composer's GIF
-    // button or the attachment menu; picking one sends the link (and the
-    // GIF's intrinsic size, so receivers keep the original aspect ratio).
     if (showGifPicker) {
         GifPickerSheet(
             onPickGif = { url, width, height ->
@@ -955,10 +803,6 @@ fun CommentTogetherScreen(navController: NavController) {
         )
     }
 
-    // Attachment menu: liquid-glass morph popup over the composer with
-    // Song and GIF entries (see AttachmentMenuPopup). The wallpaper controls
-    // moved to the chat's top-right overflow menu, so the paperclip only
-    // ever means attachments.
     attachmentAnchor?.let { anchor ->
         AttachmentMenuPopup(
             anchor = anchor,
@@ -968,8 +812,7 @@ fun CommentTogetherScreen(navController: NavController) {
                 showSongPicker = true
             },
             onPickGif = {
-                // Open the bottom sheet after the overflow menu finishes its
-                // dismiss morph, as specified.
+
                 coroutineScope.launch {
                     delay(260)
                     showGifPicker = true
@@ -979,8 +822,6 @@ fun CommentTogetherScreen(navController: NavController) {
         )
     }
 
-    // The chat overflow menu (top-right pill): wallpaper controls + the
-    // one-tap notification mute, morphing in from the icon's corner.
     overflowAnchor?.let { anchor ->
         ChatOverflowMenuPopup(
             anchor = anchor,
@@ -1002,17 +843,6 @@ fun CommentTogetherScreen(navController: NavController) {
     }
 }
 
-/**
- * The compact mention chip: JUST the @ glyph (with the remaining-mention count
- * as an overlay badge) and the mentioner's profile picture — no name, no
- * message text, no full-width row with trailing dead space. It floats above
- * the composer on the RIGHT with a small gap to the input capsule.
- *
- * Liquid glass when the mode is on (same surface treatment as the header
- * pills, scrim polarity from the measured wallpaper); with the mode off the
- * exact same shape and dimensions render opaque. Tapping jumps to the most
- * recent mention; the trailing close clears every queued mention.
- */
 @Composable
 private fun MentionAlertChip(
     mention: ChatMessagePayload,
@@ -1050,8 +880,7 @@ private fun MentionAlertChip(
             .clickable(onClick = onJump)
             .padding(start = 10.dp, end = 2.dp, top = 5.dp, bottom = 5.dp),
     ) {
-        // The @ glyph with the remaining-mention count as an overlay badge —
-        // the chip's whole identity in one glance.
+
         BadgedBox(
             badge = {
                 if (count > 1) {
@@ -1066,8 +895,7 @@ private fun MentionAlertChip(
         ) {
             Text(
                 text = "@",
-                // Larger than the rest of the chip's glyphs — the @ is the
-                // chip's whole identity, so it reads first.
+
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black,
                 color = if (glassBackdrop != null) {
@@ -1097,13 +925,6 @@ private fun MentionAlertChip(
     }
 }
 
-/**
- * The chat's overflow popup: opens attached to the top-right overflow pill,
- * morphing in from its corner (spring scale + fade, the same recipe as the
- * message-actions and attachment popups) over liquid glass sampled from the
- * locally-recorded chat layer — opaque twin of the same dimensions when the
- * glass mode is off. Holds the wallpaper controls and the notification mute.
- */
 @Composable
 private fun ChatOverflowMenuPopup(
     anchor: Rect,
@@ -1121,9 +942,6 @@ private fun ChatOverflowMenuPopup(
 
     var dismissed by remember { mutableStateOf(false) }
 
-    // The popup must answer the back gesture itself; without this the swipe
-    // fell through to the player sheet / navigation below and the popup looked
-    // impossible to dismiss with the gesture.
     BackHandler(enabled = !dismissed) {
         dismissed = true
     }
@@ -1162,8 +980,7 @@ private fun ChatOverflowMenuPopup(
         val height = if (popupHeightPx > 0) popupHeightPx else with(density) { 132.dp.toPx() }.toInt()
         val screenW = if (overlayWidthPx > 0) overlayWidthPx else width + 2 * marginPx
         val screenH = if (overlayHeightPx > 0) overlayHeightPx else 2000
-        // Attached to the overflow icon (top-right): right-aligned with the
-        // anchor and opening DOWNWARDS from it, clamped on screen.
+
         val x = (anchor.right.toInt() - width)
             .coerceIn(marginPx, (screenW - width - marginPx).coerceAtLeast(marginPx))
         val y = (anchor.bottom.toInt() + with(density) { 8.dp.toPx() }.toInt())
@@ -1228,7 +1045,7 @@ private fun ChatOverflowMenuPopup(
                         this.alpha = alphaAnim.value
                         this.scaleX = scaleAnim.value
                         this.scaleY = scaleAnim.value
-                        // Morph from the anchor's own corner (top-right).
+
                         this.transformOrigin = TransformOrigin(1f, 0f)
                         this.shadowElevation = 18.dp.toPx()
                         this.shape = popupShape
@@ -1270,8 +1087,7 @@ private fun ChatOverflowMenuPopup(
                 label = stringResource(R.string.listen_together_chat_mute_notifications),
                 description = stringResource(R.string.listen_together_chat_mute_notifications_desc),
                 trailing = {
-                    // The mute is a live toggle: flipping it keeps the popup
-                    // open so the state is immediately visible on the switch.
+
                     Switch(
                         checked = muted,
                         onCheckedChange = { onToggleMute() },
@@ -1342,18 +1158,6 @@ private fun OverflowOptionRow(
     }
 }
 
-/**
- * The Telegram-style liquid-glass composer, recreated one-to-one from the
- * reference: a stadium capsule with the text field through the middle and a
- * paperclip (Song / GIF / wallpaper all live behind it in the attachment
- * popup). While typing, the paperclip yields
- * to the send button, exactly like the reference. The reply state grows the
- * capsule upward with the accent reply preview INSIDE it (arrow, "Reply to
- * name", snippet, close) instead of a separate strip above.
- *
- * The capsule is liquid glass over a transparent background — never an
- * opaque bar — so the conversation (and the wallpaper) shows through it.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TelegramGlassComposer(
@@ -1373,9 +1177,7 @@ private fun TelegramGlassComposer(
     val typing = text.isNotBlank()
     val replying = replyingTo != null || editingMessage != null
     val capsuleShape = RoundedCornerShape(28.dp)
-    // Over a wallpaper the reply/edit accent follows the measured content
-    // color — the labels themselves ("Reply to…" vs "Edit message") carry
-    // the distinction, so legibility wins over the theme's accent hues.
+
     val accent = contentColor
         ?: if (editingMessage != null) {
             MaterialTheme.colorScheme.tertiary
@@ -1396,11 +1198,7 @@ private fun TelegramGlassComposer(
         } else {
             Modifier
                 .background(
-                    // No-glass fallback: without a wallpaper the usual
-                    // translucent surfaceVariant; over a wallpaper the capsule
-                    // keeps the scrim's polarity so its content color still
-                    // contrasts (a dark image must not put white text on a
-                    // light fallback surface).
+
                     when {
                         scrim == null -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
                         scrim.luminance() < 0.5f -> Color.Black.copy(alpha = 0.72f)
@@ -1424,8 +1222,7 @@ private fun TelegramGlassComposer(
                 .then(capsuleModifier)
                 .padding(horizontal = 6.dp, vertical = 4.dp),
     ) {
-        // Reply / edit preview, inside the capsule (the reference's reply
-        // state): accent arrow + "Reply to <name>" + snippet + close.
+
         AnimatedVisibility(
             visible = replying,
             enter = expandVertically() + fadeIn(),
@@ -1484,7 +1281,6 @@ private fun TelegramGlassComposer(
             }
         }
 
-        // The input row.
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth(),
@@ -1503,9 +1299,7 @@ private fun TelegramGlassComposer(
                     .weight(1f)
                     .padding(end = 0.dp),
                 colors = if (contentColor != null) {
-                    // Wallpaper mode: typed text, cursor and placeholder all
-                    // follow the measured contrast color instead of the theme's
-                    // (light-theme dark ink over a dark scrim was unreadable).
+
                     OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color.Transparent,
                         unfocusedBorderColor = Color.Transparent,
@@ -1535,10 +1329,6 @@ private fun TelegramGlassComposer(
                 )
             )
 
-            // Trailing cluster: just the paperclip — Song, GIF and the
-            // wallpaper entries all live behind it in the attachment popup.
-            // Hidden while typing, when the send button takes its place,
-            // exactly like the reference.
             AnimatedVisibility(
                 visible = !typing,
                 enter = fadeIn(),
@@ -1564,7 +1354,6 @@ private fun TelegramGlassComposer(
                 }
             }
 
-            // Send button: appears only with text in the field.
             AnimatedVisibility(
                 visible = typing,
                 enter = fadeIn() + slideInVertically { it / 2 },
@@ -1592,11 +1381,6 @@ private fun TelegramGlassComposer(
     }
 }
 
-/**
- * The active @-mention query of a composer text: the text must currently end
- * in "@token" (the token may be empty right after typing "@"); typing a space
- * or removing the @ dismisses the suggestions.
- */
 private fun activeMentionQuery(text: String): String? {
     val atIdx = text.lastIndexOf('@')
     if (atIdx == -1) return null
@@ -1605,7 +1389,6 @@ private fun activeMentionQuery(text: String): String? {
     return if (valid) token else null
 }
 
-/** Autocomplete list of room members for the composer's active @token. */
 @Composable
 private fun MentionSuggestionList(
     query: String,
@@ -1674,26 +1457,15 @@ private fun MentionSuggestionList(
     }
 }
 
-/**
- * The glass-surface contrast choices a chat wallpaper implies.
- *
- * A null field means "no wallpaper" — the caller keeps its theme-derived
- * behavior. With a wallpaper set, every field is non-null and derived from
- * the image's MEASURED luminance: dark images drive a dark glass scrim with
- * white content (regardless of app theme — the reported bug was dark
- * wallpaper + light theme rendering dark ink on a dark pill), bright images
- * drive a light scrim with dark ink.
- */
 private class ChatWallpaperGlassPalette(
-    /** The glass surfaces' scrim (polarity follows the wallpaper). */
+
     val scrim: Color?,
-    /** The icons/text color that contrasts with [scrim]'d glass. */
+
     val contentColor: Color?,
-    /** The full-screen dim behind the conversation. */
+
     val backgroundDim: Color?,
 )
 
-/** Luminance threshold below which a wallpaper drives the dark-glass palette. */
 private const val WallpaperDarkLuminanceThreshold = 0.5f
 
 @Composable
@@ -1712,16 +1484,13 @@ private fun rememberChatWallpaperGlassColors(wallpaper: String): ChatWallpaperGl
     }
     return when {
         wallpaper.isBlank() -> ChatWallpaperGlassPalette(null, null, null)
-        // While the measurement is in flight (or failed — a broken image also
-        // renders nothing): assume dark. White content over the dark scrim is
-        // the safe default in both themes.
+
         luminance == null || luminance!! < WallpaperDarkLuminanceThreshold -> ChatWallpaperGlassPalette(
             scrim = Color.Black.copy(alpha = 0.45f),
             contentColor = Color.White,
             backgroundDim = MaterialTheme.colorScheme.scrim.copy(alpha = 0.52f),
         )
-        // Bright wallpaper: light glass scrim + dark ink, and a lighter
-        // full-screen dim so the image keeps its character.
+
         else -> ChatWallpaperGlassPalette(
             scrim = Color.White.copy(alpha = 0.50f),
             contentColor = Color(0xFF1C1B1F),
@@ -1730,10 +1499,6 @@ private fun rememberChatWallpaperGlassColors(wallpaper: String): ChatWallpaperGl
     }
 }
 
-/**
- * Average perceived luminance (0..1) of the wallpaper, measured over a tiny
- * 48px decode so the cost is one small bitmap, once per wallpaper change.
- */
 private suspend fun measureWallpaperLuminance(
     context: android.content.Context,
     source: String,
@@ -1746,7 +1511,7 @@ private suspend fun measureWallpaperLuminance(
             .size(48, 48)
             .build()
     val result = runCatching { context.imageLoader.execute(request) }.getOrNull() ?: return null
-    // ImageResult.image is nullable on the ErrorResult branch of Coil's API.
+
     val bitmap = runCatching { result.image?.toBitmap() }.getOrNull() ?: return null
     if (bitmap.width <= 0 || bitmap.height <= 0) return null
     var total = 0.0

@@ -217,7 +217,7 @@ fun PlayerMenu(
         hasCanvasArtwork = CanvasArtworkPlaybackCache.hasEntry(mediaMetadata.id)
     }
     val (speedDialSongIds, onSpeedDialSongIdsChange) = rememberPreference(SpeedDialSongIdsKey, "")
-    // Per-song "Disable canvas": reads the same map the player gates on.
+
     val (songCanvasDisabledRaw, onSongCanvasDisabledChange) = rememberPreference(SongCanvasDisabledKey, "")
     val songCanvasDisabledForCurrent =
         remember(songCanvasDisabledRaw, mediaMetadata.id) {
@@ -350,8 +350,7 @@ fun PlayerMenu(
     }
     val availableSources =
         remember(mediaMetadata.id, showSourceDialog, sourceRevision) {
-            // Apple Music is excluded from the Play From popup per product decision —
-            // it stays available as a global playback source, just not as a per-song pick.
+
             playerConnection.service.availableSourcesForSong(mediaMetadata.id)
                 .filter { it != AudioSourceType.APPLE }
         }
@@ -611,7 +610,6 @@ fun PlayerMenu(
                 CanvasArtworkPlaybackCache.save(mediaMetadata.id, source.artwork)
             }
             if (saved) {
-
                 val playable =
                     withContext(Dispatchers.IO) {
                         CanvasArtworkPlaybackCache.getCachedOnlyFast(mediaMetadata.id)
@@ -648,7 +646,6 @@ fun PlayerMenu(
     if (showCanvasSourceDialog) {
         ListDialog(onDismiss = { showCanvasSourceDialog = false }) {
             item(key = "canvas_source_title") {
-
                 Box(
                     modifier =
                         Modifier
@@ -807,8 +804,7 @@ fun PlayerMenu(
                 NewActionGrid(
                     actions =
                         buildList {
-                            // The Apple Music style already has a cast button in its
-                            // bottom action row — the menu copy would be a duplicate.
+
                             if (playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC) {
                                 castPlayerMenuAction?.let(::add)
                             }
@@ -869,10 +865,7 @@ fun PlayerMenu(
                                                 ),
                                             )
                                             if (!songCanvasDisabledForCurrent) {
-                                                // Disabling: the player gates the canvas off on
-                                                // the next recomposition and the static artwork
-                                                // takes over. Re-enabling with no cached entry
-                                                // needs a resolve — the refetch path covers it.
+
                                                 onDismiss()
                                             }
                                         },
@@ -932,8 +925,6 @@ fun PlayerMenu(
                                 )
                             }
 
-                            // Styles with a dedicated on-screen share action keep the
-                            // menu free of a duplicate entry.
                             if (playerDesignStyle !in OnScreenShareStyles) {
                             add(
                                 if (isLocalMedia) {
@@ -1067,7 +1058,6 @@ fun PlayerMenu(
         item {
             MenuSurfaceSection {
                 Column {
-                    // Styles with an on-screen add-to-playlist control skip the menu row.
                     if (playerDesignStyle !in OnScreenAddToPlaylistStyles) {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
@@ -1428,12 +1418,6 @@ fun PlayerMenu(
                         )
                     }
 
-                    // "Track info & specs" was merged INTO the Details popup
-                    // (ShowMediaInfo) — its overview + audio-specs data now
-                    // appears there, redesigned in the same expressive style.
-
-                    // SIMPMUSIC shows a details action in its own action row and the
-                    // Apple Music quality chip opens the same popup.
                     if (playerDesignStyle !in OnScreenDetailsStyles) {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.details)) },
@@ -1459,7 +1443,6 @@ fun PlayerMenu(
                             thickness = 0.5.dp,
                         )
 
-                        // Sleep timer also lives on-screen for these styles.
                         if (playerDesignStyle !in OnScreenSleepTimerStyles) {
                             ListItem(
                                 headlineContent = { Text(text = stringResource(R.string.sleep_timer)) },
@@ -1662,8 +1645,7 @@ private suspend fun searchOneSource(
             }
 
             AudioSourceType.QOBUZ_BACKUP -> {
-                // Refresh the user's mirror list so a freshly added endpoint is visible
-                // to the popup without waiting for a playback or health-check pass.
+
                 runCatching {
                     QobuzBackupProvider.configuredEndpoints =
                         context.dataStore.data.first()[QobuzBackupEndpointsKey]
@@ -1706,7 +1688,6 @@ private suspend fun searchOneSource(
             }
 
             AudioSourceType.APPLE -> {
-                // Apple Music is excluded from the Play From popup — never searched.
                 emptyList()
             }
 
@@ -1766,11 +1747,6 @@ private fun SongSourceDialog(
             if (availability.manualPremium || availability.pooledPremium > 0) losslessLabel else mp3Label
         }
 
-    // Apple Music is intentionally NOT offered in the Play From popup (neither the
-    // per-song radio list nor the cross-service search pills).
-    // Both listings follow the user's configured playback source priority (highest
-    // first). Sources parseOrder drops (retired from the chain, e.g. Deezer) stay
-    // offered, appended after the configured order in their previous relative order.
     val (sourceOrderRaw, _) = rememberPreference(AudioSourceOrderKey, "")
     val sourceOrder =
         remember(sourceOrderRaw) {
@@ -2105,10 +2081,6 @@ private fun SongSourceRow(
     }
 }
 
-
-// Player styles that already surface these actions directly on the player
-// screen — the full-screen overflow menu hides the duplicated entries for
-// them so no action appears twice for the same style.
 private val OnScreenShareStyles =
     setOf(PlayerDesignStyle.V4, PlayerDesignStyle.TIKTOK, PlayerDesignStyle.SPATIALFLOW)
 private val OnScreenAddToPlaylistStyles =

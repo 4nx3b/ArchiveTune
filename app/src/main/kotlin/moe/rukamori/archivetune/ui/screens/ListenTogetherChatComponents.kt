@@ -143,11 +143,7 @@ import java.util.Locale
 import kotlin.math.sin
 import androidx.compose.animation.core.animateFloatAsState
 
-/** Quick-reaction strip shown first in the anchored popup. */
 internal val QuickReactionEmojis = listOf("❤️", "👍", "😂", "😮", "😢", "🔥")
-
-// The full emoji keyboard lives in EmojiCatalog.kt (generated from the official
-// Unicode emoji-test.txt: 3781 fully-qualified emoji across 9 CLDR groups).
 
 private val ChatAvatarOptions = listOf(
     R.drawable.person, R.drawable.man, R.drawable.woman, R.drawable.man_1, R.drawable.man_2,
@@ -155,10 +151,6 @@ private val ChatAvatarOptions = listOf(
     R.drawable.woman_2, R.drawable.woman_3, R.drawable.woman_4, R.drawable.luxury_women,
 )
 
-/**
- * Circular room-member avatar for the chat: custom broadcast picture first,
- * then the picked avatar-index asset, then the username initial.
- */
 @Composable
 internal fun ChatAvatar(
     userId: String,
@@ -173,15 +165,8 @@ internal fun ChatAvatar(
     val currentUserId = manager?.userId?.collectAsState()?.value
     val customAvatars = manager?.customAvatars?.collectAsState()?.value ?: emptyMap()
 
-    // The avatar preference participates in the key so picking a new custom
-    // profile picture refreshes the self avatar live (and falling back from a
-    // custom picture to an index asset does too).
     val (selfAvatarPref) = rememberPreference(ListenTogetherAvatarIndexKey, 0)
 
-    // Restored history from a previous session carries that session's user
-    // ids, so identity falls back to the username: a message is "mine" when
-    // its username matches the local user's, and another member's avatar
-    // resolves through the room-state entry with their username.
     val myUsername = manager?.currentUsername
     val isSelf = userId == currentUserId || (myUsername != null && fallbackName == myUsername)
 
@@ -197,9 +182,7 @@ internal fun ChatAvatar(
                 manager.customAvatarFor(currentUserId)
             }
         } else {
-            // Direct hit first; when the message's user id is from an older
-            // session, route through the member's CURRENT id so the avatar
-            // broadcast they sent at join time still applies.
+
             customAvatars[userId] ?: user?.let { customAvatars[it.userId] }
         }
     val bitmap: Bitmap? =
@@ -275,11 +258,6 @@ internal fun ChatAvatar(
     }
 }
 
-/**
- * Typing indicator: the typing members' avatars layered on top of each other
- * (later members draw above earlier ones, separated by a surface outline),
- * followed by bouncing dots and the member names.
- */
 @Composable
 internal fun TypingIndicatorRow(
     typingUsers: List<TypingUser>,
@@ -353,9 +331,6 @@ internal fun TypingIndicatorRow(
     }
 }
 
-/** Data of the message whose anchored action popup is open. [isHost] is the
- * LOCAL user's host status (drives "delete for everyone" availability), as
- * opposed to [isMe] which is about the pressed message's author. */
 internal data class MessageActionTarget(
     val message: ChatMessagePayload,
     val bounds: Rect,
@@ -363,20 +338,6 @@ internal data class MessageActionTarget(
     val isHost: Boolean = false,
 )
 
-/**
- * Instagram-style action popup anchored to a long-pressed message bubble:
- * quick reactions, the full-emoji entry and reply/copy/edit/pin/delete, opening
- * with the lyrics-popup morph (spring scale + fade from the bubble edge) over a
- * liquid-glass backdrop.
- *
- * The glass backdrop is a LOCAL one recorded from the chat content only (see
- * CommentTogetherScreen): drawing from the app-wide LocalLiquidGlassBackdrop
- * here would make the popup — which lives inside the NavHost subtree that the
- * global backdrop records — sample a layer that is still being recorded into
- * itself. That circular rendering crashes the RenderThread with SIGSEGV. The
- * popup is composed as a SIBLING of the recorded box, so sampling the local
- * layer is a plain one-way read.
- */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun MessageActionsPopup(
@@ -399,9 +360,6 @@ internal fun MessageActionsPopup(
 
     var dismissed by remember { mutableStateOf(false) }
 
-    // The popup must answer the back gesture itself; without this the swipe
-    // fell through to the player sheet / navigation below and the popup looked
-    // impossible to dismiss with the gesture.
     BackHandler(enabled = !dismissed) {
         dismissed = true
     }
@@ -441,9 +399,7 @@ internal fun MessageActionsPopup(
         val estimatedWidth =
             if (popupWidthPx > 0) popupWidthPx else with(density) { 300.dp.toPx() }.toInt()
         val screenWidthPx = if (overlayWidthPx > 0) overlayWidthPx else estimatedWidth + 2 * marginPx
-        // The mini player draws OVER NavHost content, so the popup's usable
-        // area ends above it — without this clamp, a long-press on the
-        // bottom-most message opened the popup straight into the player bar.
+
         val playerBottomInsetPx =
             playerAwareBottomInset
                 .only(WindowInsetsSides.Bottom)
@@ -468,10 +424,6 @@ internal fun MessageActionsPopup(
 
     val scrimAlpha = 0.25f * alphaAnim.value
 
-    // Both looks share the same rounded menu chrome: an 18dp rounded sheet with
-    // divider rules between the reaction strip and the action row. With glass
-    // the surface samples and refracts the chat behind it; without glass it is
-    // a clean elevated dark menu (never an unclipped black square).
     val popupShape = RoundedCornerShape(18.dp)
 
     val frostedBlurModifier =
@@ -489,8 +441,7 @@ internal fun MessageActionsPopup(
                     },
                     onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
                     onDrawSurface = {
-                        // A light tint keeps the white icons/labels legible over
-                        // bright chat content behind the glass.
+
                         drawRect(Color.Black.copy(alpha = 0.30f))
                     },
                     shape = { popupShape },
@@ -550,7 +501,6 @@ internal fun MessageActionsPopup(
                     )
                     .padding(horizontal = 10.dp, vertical = 8.dp),
         ) {
-            // Quick reactions row
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -604,8 +554,6 @@ internal fun MessageActionsPopup(
                         .background(Color.White.copy(alpha = 0.14f)),
             )
 
-            // Action row — a FlowRow so the extra delete chips wrap onto a
-            // second line instead of overflowing the 320dp-wide popup.
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -635,14 +583,12 @@ internal fun MessageActionsPopup(
                     if (!dismissed) dismissed = true
                 }
                 if (target.isMe) {
-                    // One's own messages only ever delete room-wide.
                     PopupActionChip(icon = R.drawable.delete, label = stringResource(R.string.delete)) {
                         onDeleteForEveryone()
                         if (!dismissed) dismissed = true
                     }
                 } else {
-                    // Other people's messages: a private hide plus, for the
-                    // host, a room-wide moderation delete.
+
                     PopupActionChip(icon = R.drawable.delete, label = stringResource(R.string.delete)) {
                         onDeleteForMe()
                         if (!dismissed) dismissed = true
@@ -694,9 +640,6 @@ private fun PopupActionChip(
     }
 }
 
-/** Full emoji picker sheet opened from the anchored popup's "+" chip: every
- * emoji an Android keyboard offers (3781 fully-qualified sequences from the
- * Unicode emoji-test data), grouped with headers. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun EmojiPickerSheet(
@@ -748,7 +691,6 @@ internal fun EmojiPickerSheet(
     }
 }
 
-/** Horizontal chip row of the reactions already applied to a message. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun ReactionsRow(
@@ -799,14 +741,6 @@ internal fun ReactionsRow(
     }
 }
 
-/**
- * One chat message: the sender's avatar before their name (incoming) and the
- * local user's own avatar at the trailing edge (own messages — their custom
- * profile picture is visible to themselves, exactly as others' are), a
- * swipe-to-reply bubble with a long-press action popup trigger, reply preview,
- * shared-song cards, edited/pinned marks, deleted tombstones, the reaction
- * chips and a highlight flash when jumped to from the pinned banner.
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun MessageItem(
@@ -871,7 +805,6 @@ internal fun MessageItem(
             }
 
             Box {
-                // Reply hint revealed behind the bubble while swiping.
                 val swipeProgress = (swipeOffset.value / replyThresholdPx).coerceIn(0f, 1f)
                 Icon(
                     painter = painterResource(R.drawable.reply),
@@ -979,8 +912,6 @@ internal fun MessageItem(
                                 }
                             }
 
-                            // A shared GIF: animated locally from the link the
-                            // server relayed (the media never crosses the relay).
                             message.gifUrl?.let { gifUrl ->
                                 GifBubble(
                                     gifUrl = gifUrl,
@@ -1040,7 +971,6 @@ internal fun MessageItem(
                     }
                 }
 
-                // Jump-to-message highlight flash (from the pinned banner).
                 if (highlightAlpha > 0f) {
                     Box(
                         modifier =
@@ -1079,15 +1009,6 @@ internal fun MessageItem(
     }
 }
 
-/**
- * A GIF shared into the chat: the link the server relayed, animated locally
- * by Coil's GIF decoder. Tapping opens the original in the browser.
- *
- * The bubble lays out at the GIF's OWN aspect ratio — a fixed cell used to
- * crop tall or wide GIFs to a uniform box. The intrinsic size arrives with
- * the share ([ChatMessagePayload.gifWidth]/[gifHeight]); older messages
- * without it measure the image via Coil once it loads and re-layout then.
- */
 @Composable
 internal fun GifBubble(
     gifUrl: String,
@@ -1112,10 +1033,7 @@ internal fun GifBubble(
         val (width, height) = intrinsic
         val imageModifier =
             if (width > 0 && height > 0) {
-                // heightIn caps the box first, then aspectRatio picks the
-                // LARGEST ratio-true size inside the constraints: wide GIFs fill
-                // the bubble width, tall ones cap their height and slim their
-                // width — the original aspect always survives, never a crop.
+
                 Modifier
                     .heightIn(max = 300.dp)
                     .aspectRatio(width.toFloat() / height.toFloat())
@@ -1144,11 +1062,6 @@ internal fun GifBubble(
     }
 }
 
-/**
- * Instagram-style shared-song card inside a chat bubble: thumbnail, title,
- * artist and duration on a rounded tile; tapping it starts the song in the room
- * (host applies it directly, guests suggest it).
- */
 @Composable
 internal fun SharedTrackCard(
     track: TrackInfo,
@@ -1215,7 +1128,6 @@ internal fun SharedTrackCard(
     }
 }
 
-/** mm:ss for a track duration in milliseconds (blank when unknown). */
 internal fun formatTrackDuration(durationMs: Long): String {
     if (durationMs <= 0L) return ""
     val totalSeconds = durationMs / 1000L
@@ -1229,10 +1141,6 @@ internal fun formatTrackDuration(durationMs: Long): String {
     }
 }
 
-/**
- * Marker drawn where the restored (persisted) history ends and the live
- * conversation begins, so it is always clear which messages are older.
- */
 @Composable
 internal fun OlderMessagesDivider(modifier: Modifier = Modifier) {
     Row(
@@ -1306,14 +1214,6 @@ internal fun RepliedMessagePreview(
     }
 }
 
-/**
- * Banner bar over the chat list showing the pinned messages as a stacked
- * carousel — ONE constant-height row no matter how many messages are pinned.
- * The latest pin always displays first; tapping the bar steps to the pin
- * before it (wrapping around to the latest at the end) and jumps the chat to
- * that message, while swiping horizontally browses older/newer pins without
- * scrolling the list. The trailing button unpins the message on display.
- */
 @Composable
 internal fun PinnedMessagesStack(
     messages: List<ChatMessagePayload>,
@@ -1329,8 +1229,6 @@ internal fun PinnedMessagesStack(
     val maxSwipePx = with(density) { 96.dp.toPx() }
     val dragOffset = remember { Animatable(0f) }
 
-    // Latest pin first: recency of the pin itself, falling back to the message
-    // timestamp for history pinned before the stamp existed.
     val ordered = remember(messages) {
         messages.sortedByDescending { if (it.pinnedAt > 0) it.pinnedAt else it.timestamp }
     }
@@ -1339,9 +1237,6 @@ internal fun PinnedMessagesStack(
     var previousKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     var slideDirection by remember { mutableIntStateOf(1) }
 
-    // Follow the pinned set: a freshly pinned message takes over the bar (the
-    // "latest pin displays first" rule), the shown pin is kept while it stays
-    // pinned, and a shown pin that vanishes falls back to the latest.
     LaunchedEffect(ordered) {
         val keys = ordered.map { pinnedKeyOf(it) }
         val added = keys.toSet() - previousKeys
@@ -1380,9 +1275,7 @@ internal fun PinnedMessagesStack(
             verticalAlignment = Alignment.CenterVertically,
             modifier =
                 Modifier
-                    // Keyed on the displayed pin as well: browsing via tap changes
-                    // the shown message without changing the pinned set, and a
-                    // stale closure would then swipe-navigate from an old index.
+
                     .pointerInput(ordered, displayedKey) {
                         detectHorizontalDragGestures(
                             onHorizontalDrag = { change, dragAmount ->
@@ -1407,8 +1300,7 @@ internal fun PinnedMessagesStack(
                     }
                     .clickable {
                         if (ordered.size > 1) {
-                            // Tapping walks back through the pin history — and
-                            // lands the chat on the message it lands on.
+
                             slideDirection = 1
                             val next = ordered[(index + 1) % ordered.size]
                             displayedKey = pinnedKeyOf(next)
@@ -1448,8 +1340,6 @@ internal fun PinnedMessagesStack(
                 Spacer(modifier = Modifier.width(8.dp))
             }
 
-            // The carousel slot: exactly one preview at a time, sliding in the
-            // direction of travel and dragged along with the finger mid-gesture.
             Box(modifier = Modifier.weight(1f)) {
                 AnimatedContent(
                     targetState = displayedKey,
@@ -1506,17 +1396,10 @@ internal fun PinnedMessagesStack(
     }
 }
 
-/** Stable identity of a chat message across list updates. */
 private fun pinnedKeyOf(message: ChatMessagePayload): String = "${message.userId}:${message.timestamp}"
 
-/** @mention token: "@" plus the username run, mirroring the client's wire regex. */
 private val MENTION_SPAN_REGEX = Regex("@([\\p{L}\\p{N}_-]{2,32})")
 
-/**
- * Message body with tappable links plus @mention styling: mentions of anyone
- * in the room render bold in the theme's primary color, and a mention of the
- * LOCAL user gets an emphasized tint so their own pings stand out inline.
- */
 @Composable
 internal fun formatMessageWithMentions(
     text: String,
@@ -1554,8 +1437,7 @@ internal fun formatMessageWithMentions(
 @Composable
 internal fun formatMessageWithLinks(text: String): AnnotatedString {
     val context = LocalContext.current
-    // Any http(s) link is tappable. YouTube Music song links open in-app; every
-    // other URL opens directly through the system's default handler.
+
     val urlRegex = Regex("(https?://[^\\s<>\\\"]+)")
     val matches = urlRegex.findAll(text)
 
@@ -1613,12 +1495,6 @@ internal fun formatTime(timestamp: Long): String {
     return sdf.format(Date(timestamp))
 }
 
-/**
- * A "who did what" room event rendered as a slim centered system row,
- * Telegram-style: "Almighty God Thor changed the song to The Search",
- * "Mythicalshub joined", "someone is now the host". Centered, muted, never
- * interactive — pure context so the conversation reads like a session log.
- */
 @Composable
 internal fun SystemEventRow(
     event: ChatSystemEvent,

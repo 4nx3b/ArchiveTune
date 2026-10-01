@@ -198,8 +198,7 @@ fun SpotifyTrackListItem(
     showSongIconPlaceholder: Boolean = true,
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
-    // Row subtitles carry the artist name only — duration lives in the
-    // details popup, not on every row (consistent with YouTube/local rows).
+
     val subtitle = track.artists.joinToString { it.name }.takeIf { it.isNotBlank() }
 
     ListItem(

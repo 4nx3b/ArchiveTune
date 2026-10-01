@@ -60,9 +60,7 @@ object NewReleaseNotificationManager {
                 .Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .apply {
-                    // The near-instant cadence trades battery frugality for
-                    // timeliness: the pre-save radar checks every 15 minutes
-                    // (WorkManager's floor) and only asks for a connection.
+
                     if (!fast) {
                         setRequiresBatteryNotLow(true)
                     }
@@ -96,12 +94,6 @@ object NewReleaseNotificationManager {
         )
     }
 
-    /**
-     * A one-off expedited check, used on app open (and network regain) while
-     * the pre-save radar is enabled: a release that lands while the app is
-     * closed surfaces within moments of the next app use instead of waiting
-     * for the periodic window.
-     */
     fun runImmediateCheck(context: Context) {
         val constraints =
             Constraints

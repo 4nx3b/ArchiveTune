@@ -116,7 +116,6 @@ class ArtistViewModel
         val artistId = savedStateHandle.get<String>("artistId")!!
         var artistPage by mutableStateOf<ArtistPage?>(null)
 
-        /** Animated canvas for the artist hero, resolved from the artist's top song (Apple Music / Spotify). */
         val canvasArtwork = MutableStateFlow<CanvasArtwork?>(null)
 
         var isManuallyRefreshing by mutableStateOf(false)
@@ -234,10 +233,6 @@ class ArtistViewModel
         private suspend fun fetchArtistCanvas(page: ArtistPage) {
             val artistName = page.artist.title.takeIf { it.isNotBlank() } ?: return
 
-            // The artist's OWN motion artwork first — the looping video that only ever
-            // appears on the artist page. Only when the artist has none do we fall back
-            // to the canvas of the artist's top song (which resolves through an album
-            // editorial video and is effectively "a random album canvas").
             val artistCanvas =
                 runCatching {
                     if (context.dataStore.get(AlbumCanvasEnabledKey, true) && !context.isLowDataModeActive()) {
@@ -266,9 +261,7 @@ class ArtistViewModel
                         firstSongId = topSong.id,
                         firstSongTitle = topSong.title,
                         firstSongArtist = artistName,
-                        // The artist page only ever plays the standalone
-                        // ArchiveTune/BetterLyrics canvas — never a Spotify
-                        // canvas, not even a cached one.
+
                         allowSpotify = false,
                     )
                 }.getOrNull()

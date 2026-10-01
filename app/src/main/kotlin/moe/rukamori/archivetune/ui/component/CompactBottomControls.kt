@@ -33,36 +33,16 @@ import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import com.kyant.backdrop.Backdrop
 
-/**
- * "Glass glow" for the navigation bar, ported from NuvioMobile's
- * GlassBarSurface fallback: a soft vertical-gradient rim light hugging the
- * bar's capsule edge plus a gentle top sheen and a faint reflected floor
- * light. Drawn as a pure overlay in the draw phase so it composes with any
- * existing background (liquid glass, frosted, plain surface) without
- * touching the background pipeline itself.
- */
 val NavigationBarGlassGlowKey = booleanPreferencesKey("navigationBarGlassGlow")
 
-/**
- * The global expanded -> compact bottom-control animation progress (0f = fully
- * expanded bars, 1f = compact [Home][pill][Search] row). Screens read this to
- * fade their own bottom chrome — e.g. the search-results overlay minimises into
- * the compact Search circle while scrolling.
- */
 val LocalBottomUiCompactFraction = compositionLocalOf { 0f }
 
-/** Size of the standalone compact control circles ([Home] / [Search]). */
 val CompactControlSize = 64.dp
 
-/** Gap between a compact circle and the mini player pill. */
 val CompactControlGap = 12.dp
 
 private val GlowEdgeStrokeWidth = 0.75.dp
 
-/**
- * Draws the Nuvio-style glass glow rim over the content this modifier wraps.
- * [strength] animates 0..1 so toggling the setting crossfades the glow.
- */
 fun Modifier.glassGlowOverlay(
     strength: Float,
     shape: Shape,
@@ -80,7 +60,7 @@ fun Modifier.glassGlowOverlay(
                     else -> CornerRadius(r.x, r.y)
                 }
             val stroke = GlowEdgeStrokeWidth.toPx()
-            // Edge rim: bright at the top, dissolving to nothing at the bottom.
+
             drawRoundRect(
                 brush =
                     Brush.verticalGradient(
@@ -95,7 +75,7 @@ fun Modifier.glassGlowOverlay(
                 style = Stroke(stroke),
                 alpha = strength,
             )
-            // Top sheen: a whisper of light across the upper third of the glass.
+
             drawRoundRect(
                 brush =
                     Brush.verticalGradient(
@@ -106,7 +86,7 @@ fun Modifier.glassGlowOverlay(
                 cornerRadius = corner,
                 alpha = strength,
             )
-            // Reflected floor light along the very bottom edge.
+
             drawRoundRect(
                 brush =
                     Brush.verticalGradient(
@@ -119,11 +99,6 @@ fun Modifier.glassGlowOverlay(
         }
     }
 
-/**
- * A standalone circular glass control used by the compact bottom row:
- * liquid glass when a [Backdrop] is available (and the platform supports
- * it), otherwise a translucent surface that matches the navigation bar.
- */
 @Composable
 fun CompactControlCircle(
     iconRes: Int,
@@ -136,11 +111,7 @@ fun CompactControlCircle(
 ) {
     val useGlass = backdrop != null
     if (useGlass) {
-        // The SAME treatment as the mini player pill: an opaque surface tint
-        // behind the blurred backdrop. Without it the circles read as weak/empty
-        // glass on pages whose background behind them is flat or transparent
-        // (home atmosphere, settings' transparent scaffold) while they look
-        // strong on content-heavy pages — this pins the intensity everywhere.
+
         Box(
             modifier =
                 modifier

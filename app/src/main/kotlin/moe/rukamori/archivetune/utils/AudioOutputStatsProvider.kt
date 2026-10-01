@@ -11,12 +11,6 @@ import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 
-/**
- * Read-only snapshot of the current audio output route, used by the track-info
- * sheet and the debug nerd-stats to explain WHY Android reports a sample-rate
- * conversion: the app opens its AudioTrack at the source rate; when the device
- * mixes at a different rate the OS resampler is the one doing the work.
- */
 data class AudioOutputStats(
     val deviceLabel: String,
     val deviceTypeLabel: String,
@@ -25,10 +19,6 @@ data class AudioOutputStats(
 ) {
     val hasData: Boolean get() = mixSampleRate > 0 || deviceSampleRates.isNotEmpty()
 
-    /**
-     * Human explanation of the source→output rate relationship.
-     * Returns null when either rate is unknown.
-     */
     fun conversionDescription(sourceSampleRate: Int?): String? {
         val source = sourceSampleRate?.takeIf { it > 0 } ?: return null
         val output = when {
@@ -45,7 +35,6 @@ data class AudioOutputStats(
 }
 
 object AudioOutputStatsProvider {
-
     fun resolve(context: Context): AudioOutputStats {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             ?: return AudioOutputStats("Unknown", "Unknown", emptyList(), 0)
@@ -53,7 +42,6 @@ object AudioOutputStatsProvider {
         val device = resolveActiveSink(audioManager)
         val rates = device?.sampleRates?.filter { it > 0 }?.distinct()?.sorted() ?: emptyList()
 
-        // Framework property (all API levels): the primary output mix rate in Hz.
         val propertyRate =
             runCatching {
                 audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull() ?: 0

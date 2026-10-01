@@ -100,8 +100,6 @@ fun IntegrationScreen(
     val (listenBrainzEnabled, onListenBrainzEnabledChange) = rememberPreference(ListenBrainzEnabledKey, false)
     val (listenBrainzToken) = rememberPreference(ListenBrainzTokenKey, "")
 
-    // The connected Discord account's avatar (persisted after authorization)
-    // — shown in the Discord row's icon slot when present.
     val (discordAvatarUrl) = rememberPreference(DiscordAvatarUrlKey, "")
 
     val (manualSourceLogin, _) = rememberPreference(ManualSourceLoginEnabledKey, false)
@@ -112,7 +110,6 @@ fun IntegrationScreen(
     val showDeezerRow = manualSourceLogin || deezerArl.isNotBlank()
     val showTidalRow = manualSourceLogin || tidalAccessToken.isNotBlank()
     val showQobuzRow = manualSourceLogin || qobuzTokens.isNotBlank()
-
 
     val spotifyState by spotifyAccountViewModel.uiState.collectAsStateWithLifecycle()
     val (showSpotifyPlaylists, onShowSpotifyPlaylistsChange) = rememberPreference(ShowSpotifyPlaylistsKey, false)
@@ -384,11 +381,6 @@ fun IntegrationScreen(
                 }
             }
 
-            // ── Source Pool ──
-            // Community pool of shared Tidal/Qobuz/Deezer/Apple accounts. The v2
-            // protocol (X-Pool-Client: v2 + AES-256-GCM enc:1: fields keyed to the
-            // user's API key) is handled by PoolAccountManager/PoolCrypto; this group
-            // only surfaces the key entry + manual refresh.
             PreferenceGroup(
                 modifier = positions.modifierFor("source_pool"),
                 title = stringResource(R.string.pool_api_key_title),
@@ -524,11 +516,6 @@ fun IntegrationScreen(
     }
 }
 
-/**
- * The Discord row's icon: the connected account's avatar when one is
- * persisted, layered over the blurple-tinted glyph so the brand mark still
- * shows while the image loads (and stays as the fallback if it fails).
- */
 @Composable
 private fun DiscordAccountIcon(avatarUrl: String) {
     val context = LocalContext.current

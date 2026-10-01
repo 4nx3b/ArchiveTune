@@ -180,19 +180,6 @@ fun LyricsMenu(
     val isRefetching by viewModel.isRefetching.collectAsStateWithLifecycle()
     val coroutineScope = rememberCoroutineScope()
 
-    // ---- Export lyrics (respective formats) ---------------------------------
-    // The raw stored payload goes out in whatever format it already is:
-    // TTML as .ttml, LRC/enhanced-LRC/QRC-shaped content as .lrc, plain text
-    // as .txt.
-    //
-    // The payload is captured at CLICK time and handed to
-    // LyricsExportCoordinator, which stages it to cacheDir and lets the
-    // ROOT-level host in MainActivity drive the SAF picker. The launchers do
-    // not live here: this composable is the transient lyrics menu, and any
-    // layout that keeps launcher + payload inside it loses them whenever the
-    // picker round-trip tears down the composition (the "empty exported
-    // file" bug — the picker creates the destination document up front, so a
-    // lost callback leaves a 0-byte file behind).
     val exportLyricsText = lyricsProvider()?.lyrics.orEmpty()
     val exportFormat = remember(exportLyricsText) { detectLyricsExportFormat(exportLyricsText) }
     val exportFileBase = remember(exportFormat) {
@@ -1856,9 +1843,6 @@ fun AnchoredLyricsOverflowMenu(
 ) {
     var dismissed by remember { mutableStateOf(false) }
 
-    // The popup must answer the back gesture itself; without this the swipe
-    // fell through to the player sheet / navigation below and the popup looked
-    // impossible to dismiss with the gesture.
     BackHandler(enabled = !dismissed) {
         dismissed = true
     }
@@ -1936,7 +1920,6 @@ fun AnchoredLyricsOverflowMenu(
             Modifier.drawBackdrop(
                 backdrop = backdrop,
                 effects = {
-
                     colorControls(saturation = glassTuning.saturation)
 
                     blur((20f * glassTuning.blurFactor).dp.toPx())
@@ -2046,7 +2029,6 @@ fun AnchoredLyricsOverflowMenu(
     }
 }
 
-/** The file family the stored lyrics payload exports as. */
 private enum class LyricsExportFormat(val extension: String) {
     TTML("ttml"),
     LRC("lrc"),
@@ -2056,7 +2038,7 @@ private enum class LyricsExportFormat(val extension: String) {
 private fun detectLyricsExportFormat(lyrics: String): LyricsExportFormat {
     if (lyrics.isBlank()) return LyricsExportFormat.PLAIN
     if (moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml(lyrics)) return LyricsExportFormat.TTML
-    // Any timed line shape — plain LRC, enhanced LRC, QRC — exports as .lrc.
+
     val timedLine = Regex("""^\[.*?].*""")
     if (lyrics.lineSequence().any { timedLine.matches(it.trim()) }) return LyricsExportFormat.LRC
     return LyricsExportFormat.PLAIN

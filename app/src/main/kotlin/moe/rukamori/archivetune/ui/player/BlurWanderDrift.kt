@@ -25,19 +25,6 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
 
-/**
- * Shared wander engine behind every "moving blur" backdrop (the Apple
- * Music lyrics-page behaviour, used identically by all player styles).
- *
- * The anchor point drifts between random targets spread over the WHOLE
- * reachable disc — never a narrow ring around the centre — so the blurred
- * colour mass explores every part of the screen: it can sink into the lower
- * half, travel up past the top edge, and sweep back in again. Each leg is
- * cosine-eased, so velocity is zero at every waypoint: direction changes are
- * always smooth, with no flicker and no abrupt turns. The backdrop itself is
- * sized by [blurBackdropFootprint] to keep covering the display at any drift
- * offset, which is what makes the motion gapless.
- */
 internal class BlurWanderDrift(
     private val random: Random = Random.Default,
     private val maxDriftDp: Float = DefaultWanderRadiusDp,
@@ -85,11 +72,6 @@ internal class BlurWanderDrift(
         fromY = toY
         fromRotation = toRotation
 
-        // Uniform-area sampling over the full reachable disc: sqrt(u) keeps
-        // the distribution even across the area (a plain radius would pile
-        // targets near the centre) and lets offsets reach all the way out to
-        // the disc edge, so the colour mass regularly crosses the display
-        // bounds on its way to the opposite side.
         val radius = maxDriftDp * sqrt(random.nextFloat())
         val angle = random.nextFloat() * TwoPi
         toX = cos(angle) * radius
@@ -100,9 +82,6 @@ internal class BlurWanderDrift(
             MinLegRotationDegrees + random.nextFloat() * (MaxLegRotationDegrees - MinLegRotationDegrees)
         toRotation = fromRotation + rotationSign * rotationSpan
 
-        // Long traversals stay slow: the leg duration is derived from the
-        // distance (not clamped down to a sprint), so a full-screen sweep
-        // takes its time exactly like the Apple Music lyrics backdrop.
         val distance = hypot(toX - fromX, toY - fromY)
         legDurationMs =
             (distance / WanderSpeedDpPerSecond * 1000f)
@@ -110,7 +89,6 @@ internal class BlurWanderDrift(
     }
 
     internal companion object {
-        /** Legacy fixed amplitude, used only when no screen size is known. */
         const val DefaultWanderRadiusDp = 120f
 
         private const val WanderSpeedDpPerSecond = 26f
@@ -127,13 +105,6 @@ internal class BlurWanderDrift(
     }
 }
 
-/**
- * Screen-proportional wander amplitude shared by every player style, so the
- * moving blur behaves identically everywhere: the anchor can reach ~85% of
- * the half-diagonal away from the centre in any direction. Colour features
- * then traverse the entire display and briefly cross its bounds before the
- * (always-covering) backdrop sweeps them back in from the other side.
- */
 internal fun movingBlurWanderMaxDriftDp(
     width: Dp,
     height: Dp,
@@ -166,18 +137,6 @@ internal fun blurBackdropFootprint(
 
 private const val BlurBackdropCoverSafety = 1.02f
 
-/**
- * Landscape footprint: models the ACTUAL landscape transform — a constant
- * rest scale with the 0.55x drift amplitude — instead of [blurBackdropFootprint]'s
- * portrait assumption that drift only happens at the full lyrics scale. The old
- * formula sized the layer for 2.4x-scale drift, which under-covers at 1.2x
- * scale: the blurred square's straight edges (and their 64 dp
- * BlurredEdgeTreatment.Rectangle transparent falloff band) swept up to
- * ~225 dp past the screen edge over the black base — the "black lines coming
- * from the corners" of the horizontal moving blur. This returns a RECT sized
- * to the screen + drift + blur-edge margins (cheaper than the portrait
- * square, too: roughly half the blurred pixels for a wide screen).
- */
 internal fun blurBackdropFootprintLandscape(
     width: Dp,
     height: Dp,
@@ -202,9 +161,7 @@ internal fun rememberBlurWanderDrift(
     maxDriftDp: Float = BlurWanderDrift.DefaultWanderRadiusDp,
 ): BlurWanderDrift {
     val drift = remember(maxDriftDp) { BlurWanderDrift(maxDriftDp = maxDriftDp) }
-    // Keyed on maxDriftDp as well: a size change (rotation, fold/unfold,
-    // split-screen) recreates the drift instance above, and the animation
-    // loop must follow the new instance or the wander freezes at (0, 0).
+
     LaunchedEffect(active, maxDriftDp) {
         if (!active) return@LaunchedEffect
         var lastFrameNanos = 0L
@@ -218,11 +175,7 @@ internal fun rememberBlurWanderDrift(
                         drift.advance(unappliedMs)
                         unappliedMs = 0f
                     }
-                    // (Per-frame advance: the drift only drives translation
-                    // properties on an offscreen-composited layer, so updating
-                    // every frame costs a couple of float writes — while the
-                    // old 50 ms quantisation made the whole moving blur step
-                    // visibly ~12 times per second.)
+
                 }
                 lastFrameNanos = frameTimeNanos
             }

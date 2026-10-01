@@ -39,8 +39,7 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat =
         if (moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime.chainBypassActive) {
-            // Bit-Perfect: stay inactive so the chain routes around this
-            // processor (balance/rotation would modify samples).
+
             AudioProcessor.AudioFormat.NOT_SET
         } else if ((inputAudioFormat.encoding == C.ENCODING_PCM_16BIT ||
             inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT) &&
@@ -52,7 +51,6 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
         }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
-
         if (!inputBuffer.hasRemaining()) return
 
         val format = inputAudioFormat
@@ -100,8 +98,7 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
             val inLeft: Float
             val inRight: Float
             if (floatIn) {
-                // Normalise float [-1,1] onto the PCM-16 scale the internal
-                // math (limiter ceiling, echo gains) is calibrated against.
+
                 inLeft = inputBuffer.float * 32767f
                 inRight = inputBuffer.float * 32767f
             } else {
@@ -112,7 +109,6 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
             val left: Float
             val right: Float
             if (rotationOn) {
-
                 val swing = sin(localPhase).toFloat()
                 val modLeft = 0.5f + swingHalfWidth * swing
                 val modRight = 0.5f - swingHalfWidth * swing
@@ -163,7 +159,6 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
     }
 
     override fun onFlush() {
-
         echoHistory?.fill(0)
         echoWriteIndex = 0
     }

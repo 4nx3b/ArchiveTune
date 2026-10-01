@@ -77,8 +77,6 @@ object SourceCheckService {
         return result
     }
 
-    // Restored from 81f8b69f9^ — the engine commit's QQ Music removal
-    // accidentally carried this Tidal checker away with checkQqMusic.
     private suspend fun checkTidal(context: Context): SourceCheckResult {
         PoolAccountManager.refresh(context, force = false)
         val accounts = PoolAccountManager.tidalAccounts()
@@ -419,7 +417,6 @@ private data class CdnProbe(
     }
 
     private suspend fun checkDeezer(context: Context): SourceCheckResult {
-
         PoolAccountManager.refresh(context, force = false)
 
         val availability = DeezerAudioProvider.accountAvailability()
@@ -459,7 +456,6 @@ private data class CdnProbe(
     }
 
     private suspend fun checkJioSaavn(): SourceCheckResult {
-
         return runCatching {
             val result = SaavnService.searchSongs("a").getOrDefault(emptyList())
             if (result.isEmpty()) {
@@ -484,7 +480,6 @@ private data class CdnProbe(
     }
 
     private suspend fun checkYouTube(): SourceCheckResult {
-
         val probe =
             runCatching { YouTube.getMediaInfo(KOZU_PROBE_YT_ID).getOrNull() }
         return if (probe.getOrNull() != null) {

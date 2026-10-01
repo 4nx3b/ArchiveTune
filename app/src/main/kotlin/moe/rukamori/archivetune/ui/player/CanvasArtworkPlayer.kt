@@ -63,34 +63,16 @@ private const val CanvasPlaybackStallTimeoutMs = 5_000L
 private const val CanvasSyncPublishIntervalMs = 50L
 private const val CanvasSyncCheckIntervalMs = 200L
 
-/** Drift above which the follower engages the smooth rate lock (a small
- *  playback-speed delta that converges without a visible frame jump). The
- *  old 45 ms threshold + 5% clamp made the blurred twin visibly wobble its
- *  frame pacing — behind a 12 dp blur nobody can see 80 ms of drift, but
- *  everybody sees a decoder hiccup every time the speed changes. */
 private const val CanvasSyncRateLockThresholdMs = 80L
 
-/** Drift above which the follower gives up on smooth convergence and seeks. */
 private const val CanvasSyncSeekThresholdMs = 400L
 
-/** Milliseconds of drift that maps to a 100% speed delta before clamping:
- *  a 100 ms error drives roughly 1.05x/0.95x — invisible on a silent loop,
- *  and it burns the error off in about two seconds. */
 private const val CanvasSyncRateLockSpanMs = 2_000f
 
-/** Clamp for the rate-lock speed delta. */
 private const val CanvasSyncMaxRateLockDelta = 0.03f
 
 val LocalPlayerSheetVisible = staticCompositionLocalOf { true }
 
-/**
- * Keeps two [CanvasArtworkPlayer] instances rendering the same loop in lockstep — the
- * sharp hero canvas on top and the heavily blurred backdrop copy behind the player
- * controls (Apple Music / V7 / SpatialFlow styles). Each instance owns its own
- * ExoPlayer, so without a handshake they start at independent times and drift apart
- * with every loop; the leader publishes its position and the follower re-seeks when
- * the drift exceeds the threshold.
- */
 class CanvasLoopSync {
     @Volatile
     var leaderSource: String? = null
@@ -117,8 +99,6 @@ fun CanvasArtworkPlayer(
 
     loopSyncFollower: CanvasLoopSync? = null,
 
-    /** Fired once per URL when the decoder renders its first frame — lets
-     *  hosts crossfade the static artwork out from under the canvas. */
     onFirstFrameRendered: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
@@ -134,12 +114,6 @@ fun CanvasArtworkPlayer(
     var isVideoReady by remember(initial) { mutableStateOf(false) }
     var hasPlaybackFailed by remember(initial) { mutableStateOf(false) }
 
-    // Video aspect (width over height, pixel-width-height-ratio applied), tracked
-    // from the player's own onVideoSizeChanged. The media3 compose ContentFrame
-    // sizes its surface from PresentationState.videoSizeDp — but that state can
-    // stay null/stale for some streams (longer Apple Music motion canvases
-    // observed stuck stretched to the container), so this composable enforces the
-    // aspect itself for the ZOOM path instead of trusting it.
     var videoDisplayAspectRatio by remember(initial) { mutableStateOf<Float?>(null) }
 
     val sheetVisible = LocalPlayerSheetVisible.current
@@ -266,10 +240,6 @@ fun CanvasArtworkPlayer(
         }
     }
 
-    // Publish this instance's playback position for the blurred backdrop twin.
-    // 20 Hz is deliberately over-sampled: the follower's rate lock compares
-    // against this value, so a stale sample would show up as phase noise in
-    // the correction loop.
     if (loopSyncLeader != null) {
         LaunchedEffect(exoPlayer, currentUrl) {
             while (isActive) {
@@ -280,10 +250,6 @@ fun CanvasArtworkPlayer(
         }
     }
 
-    // Align this instance to the sharp twin's position. Small drift is
-    // converged with a proportional playback-rate lock (no frame jump — a
-    // canvas loop is silent, so ±5% speed is invisible); only large drift
-    // (initial join, a stall, a pause mismatch) takes a hard seek.
     if (loopSyncFollower != null) {
         LaunchedEffect(exoPlayer, currentUrl, hasPlaybackFailed) {
             while (isActive) {
@@ -376,12 +342,7 @@ fun CanvasArtworkPlayer(
                     exoPlayer.setCanvasPlayback(shouldPlay)
                 }
                 if (event == Lifecycle.Event.ON_STOP) {
-                    // Drop the video surface BEFORE the Compose surface is
-                    // disposed (children dispose first, so by the time the
-                    // DisposableEffect below releases the player the surface
-                    // is already dead). Releasing a codec against a dead
-                    // surface is what spams MediaCodec's EventHandler with
-                    // "sending message to a Handler on a dead thread".
+
                     runCatching { exoPlayer.setVideoSurface(null) }
                     runCatching { exoPlayer.stop() }
                 }
@@ -436,10 +397,7 @@ fun CanvasArtworkPlayer(
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (!shouldPlay || hasPlaybackFailed || exoPlayer.playerError != null) return
                     exoPlayer.setCanvasPlayback(isPlaying = true)
-                    // Follower: snap to the leader the instant we become READY,
-                    // BEFORE the first rendered frame — otherwise the blurred
-                    // twin starts at its own loop origin and shows the wrong
-                    // part of the loop for up to a check interval.
+
                     if (playbackState == Player.STATE_READY && loopSyncFollower != null) {
                         val target = loopSyncFollower.leaderPositionMs
                         if (
@@ -458,17 +416,12 @@ fun CanvasArtworkPlayer(
                 ) {
                     if (reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION) return
                     when {
-                        // Leader wrapped around the loop: publish immediately so
-                        // the follower corrects within one frame instead of up to
-                        // a publish interval later.
+
                         loopSyncLeader != null -> {
                             loopSyncLeader.leaderSource = currentUrl
                             loopSyncLeader.leaderPositionMs = exoPlayer.currentPosition
                         }
 
-                        // Follower wrapped but the leader has not (residual drift
-                        // near the loop boundary): re-align instantly so the two
-                        // never show opposite ends of the loop at the same time.
                         loopSyncFollower != null -> {
                             val target = loopSyncFollower.leaderPositionMs
                             if (
@@ -547,11 +500,7 @@ fun CanvasArtworkPlayer(
     val aspect = videoDisplayAspectRatio
     if (contentVisible) {
         if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM && aspect != null && aspect > 0f) {
-            // Self-enforced cover: the frame is laid out at the video's aspect,
-            // scaled to COVER the container (overflowing one axis), and the
-            // wrapper Box clips the overflow. This renders aspect-correct even
-            // when the ContentFrame's internal video-size state is missing, and
-            // degenerates to exactly the same geometry when it is not.
+
             Box(modifier = modifier.clipToBounds()) {
                 ContentFrame(
                     player = exoPlayer,
@@ -579,12 +528,6 @@ fun CanvasArtworkPlayer(
     }
 }
 
-/**
- * Lays the content out at the cover geometry of the incoming constraints for a
- * video with the given display aspect: the content keeps its aspect ratio and
- * fully covers the container, overflowing (and getting clipped by the caller)
- * whichever axis does not match.
- */
 private fun Modifier.canvasCoverLayout(videoAspect: Float): Modifier =
     layout { measurable, constraints ->
         val containerWidth = constraints.maxWidth
@@ -597,11 +540,9 @@ private fun Modifier.canvasCoverLayout(videoAspect: Float): Modifier =
             val targetWidth: Int
             val targetHeight: Int
             if (videoAspect >= containerAspect) {
-                // Video relatively wider: match the height, overflow the width.
                 targetHeight = containerHeight
                 targetWidth = (containerHeight.toFloat() * videoAspect + 0.5f).toInt().coerceAtLeast(containerWidth)
             } else {
-                // Video relatively taller: match the width, overflow the height.
                 targetWidth = containerWidth
                 targetHeight = (containerWidth.toFloat() / videoAspect + 0.5f).toInt().coerceAtLeast(containerHeight)
             }

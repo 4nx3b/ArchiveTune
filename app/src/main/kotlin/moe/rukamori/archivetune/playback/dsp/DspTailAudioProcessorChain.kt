@@ -14,19 +14,11 @@ class DspTailAudioProcessorChain(
     private val sonicAudioProcessor: SonicAudioProcessor,
     preProcessors: Array<AudioProcessor>,
     private val tailProcessor: AudioProcessor,
-    /**
-     * Upstream Tryptify's transport stages (VariRateAudioProcessor +
-     * StretchAudioProcessor), living INSIDE the engine router's chain. When
-     * the provider returns true the speed/pitch work is routed there —
-     * Sonic is pinned to unity so nothing doubles up — and the media-duration
-     * accounting follows the resampler's ratio exactly like upstream's
-     * TryptifyAudioProcessorChain does.
-     */
+
     private val engineTransportActive: () -> Boolean = { false },
     private val engineVariRate: tf.monochrome.android.audio.resample.VariRateAudioProcessor? = null,
     private val engineStretch: tf.monochrome.android.audio.stretch.StretchAudioProcessor? = null,
 ) : AudioProcessorChain {
-
     private val chainProcessors: Array<AudioProcessor> =
         preProcessors +
             arrayOf(
@@ -41,11 +33,7 @@ class DspTailAudioProcessorChain(
         val speed = playbackParameters.speed
         val pitch = playbackParameters.pitch
         if (engineTransportActive() && engineVariRate != null && engineStretch != null) {
-            // Upstream's split: pitch riding the tempo goes to the windowed-sinc
-            // resampler (Sonic would two-point interpolate it), everything else
-            // to Sonic — except Sonic is OUTSIDE the engine path here, so the
-            // whole job goes to the engine's stages: ratio = speed / pitch,
-            // stretch = the pure transposition.
+
             val ridesTempo = abs(pitch - speed) < TOLERANCE
             if (ridesTempo) {
                 engineVariRate.setRatio(speed)

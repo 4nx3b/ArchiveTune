@@ -28,11 +28,9 @@ object EngineRuntime {
     @Volatile
     var lastwaveMixerBitPerfectActive: Boolean = false
 
-    /** Set by BitPerfectSwitchingAudioSink at configure: which route owns playback. */
     @Volatile
     var bitPerfectSinkRouteActive: Boolean = false
 
-    /** The DECODED pcm encoding the renderer last handed the sink (audio/raw). */
     @Volatile
     var sinkDecodedEncoding: Int = C.ENCODING_PCM_16BIT
 }

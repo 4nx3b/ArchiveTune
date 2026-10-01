@@ -113,17 +113,6 @@ fun rememberBackdrop(color: Color): PlatformBackdrop =
         drawContent()
     }
 
-/**
- * A THROTTLED colored backdrop: the source content re-records into the shared
- * layer at most once per [minIntervalMillis] instead of on every draw frame.
- *
- * Scrolling lists that feed glass pills re-draw every frame; recording the
- * whole list into an offscreen GraphicsLayer per frame (kyant's plain
- * [layerBackdrop] does exactly that) plus re-running the pill's blur shader
- * is what made the search-results page visibly lag while a glass mini player
- * was on screen. The layer behind an 18dp blur pill updating at 10 Hz is
- * visually indistinguishable from per-frame updates, at a tenth of the cost.
- */
 @Composable
 fun rememberThrottledBackdrop(
     color: Color,
@@ -143,19 +132,8 @@ fun rememberThrottledBackdrop(
     return backdrop
 }
 
-// Delegates to kyant's real per-frame recorder. This used to call ITSELF —
-// a same-package declaration outranks the imported extension in Kotlin
-// resolution, so the body resolved to this very shim and the TikTok lyrics
-// menu / SimpMusic fullscreen sheet call sites StackOverflowed the moment
-// they attached. The import alias above forces the delegation to the
-// intended implementation.
 fun Modifier.layerBackdrop(backdrop: PlatformBackdrop): Modifier = this.kyantLayerBackdrop(backdrop)
 
-/**
- * Tags content as the recording source for ANY [Backdrop] flavour: the
- * throttled app-owned recorder (preferred for scrolling content — see
- * [rememberThrottledBackdrop]) or kyant's per-frame [LayerBackdrop].
- */
 fun Modifier.glassSource(backdrop: Backdrop): Modifier =
     when (backdrop) {
         is ThrottledLayerBackdrop -> throttledLayerBackdrop(backdrop)
@@ -167,11 +145,6 @@ val LocalLiquidGlassBackdrop = compositionLocalOf<Backdrop?> { null }
 
 val LocalMenuGlassBackdrop = compositionLocalOf<Backdrop?> { null }
 
-/**
- * The user-tunable liquid glass parameters (the "Liquid Glass" appearance
- * sub-page). Every factor is 1f at the factory defaults, so the stock tuning
- * reproduces the pre-settings rendering exactly.
- */
 @Stable
 data class LiquidGlassTuning(
     val intensity: LiquidGlassIntensity = LiquidGlassIntensity.STANDARD,
@@ -185,7 +158,6 @@ data class LiquidGlassTuning(
     val backdropVibrancy: Boolean = LIQUID_GLASS_BACKDROP_VIBRANCY_DEFAULT,
     val adaptiveLuminance: Boolean = LIQUID_GLASS_ADAPTIVE_LUMINANCE_DEFAULT,
 ) {
-    /** Preset tiers scale the refraction & blur strength together. */
     private val presetRefraction: Float =
         when (intensity) {
             LiquidGlassIntensity.SUBTLE -> 0.55f
@@ -221,7 +193,6 @@ data class LiquidGlassTuning(
 
 val LocalLiquidGlassTuning = compositionLocalOf { LiquidGlassTuning.STOCK }
 
-/** Reads every liquid-glass tuning preference into one [LiquidGlassTuning]. */
 @Composable
 fun rememberLiquidGlassTuning(): LiquidGlassTuning {
     val intensity by rememberEnumPreference(LiquidGlassIntensityKey, LiquidGlassIntensity.STANDARD)
@@ -295,11 +266,7 @@ class ThrottledLayerBackdrop internal constructor(
                 }
             translate(-offset.x, -offset.y)
         }) {
-            // Compose 1.12's child-dependency tracker (AndroidGraphicsLayer)
-            // can throw "Only add dependencies during a tracking" when the
-            // draw dispatch races a re-record of the same layer — the guard
-            // fires BEFORE any canvas mutation, so skipping just this frame's
-            // glass is safe (the surface scrim still draws).
+
             runCatching { drawLayer(graphicsLayer) }
         }
     }
@@ -360,9 +327,7 @@ private class ThrottledLayerBackdropNode(
         if (now - lastRecordUptimeMillis >= backdrop.minIntervalMillis) {
             lastRecordUptimeMillis = now
             val density = requireDensity()
-            // Same Compose 1.12 dependency-tracker race as the draw side: a
-            // record that races the layer being drawn elsewhere must not
-            // take the app down — skip the re-record for this frame.
+
             val recorded =
                 runCatching {
                     backdrop.graphicsLayer.record(size.toIntSize()) {
@@ -377,14 +342,7 @@ private class ThrottledLayerBackdropNode(
                     }
                 }.isSuccess
             if (recorded && backdrop.graphicsLayer.size == size.toIntSize()) {
-                // Reuse the fresh record for the display pass too: the old
-                // shape drew the WHOLE subtree twice on every record frame
-                // (once for the screen, once into the layer) — on a screenful
-                // of scrolling list content that doubled the frame time every
-                // 100ms, which read as jank "while scrolling" and "during the
-                // miniplayer morph". The recorded display list is pixel-
-                // identical to what drawContent() would emit here, so blitting
-                // it costs a fraction of a second full content draw.
+
                 runCatching { drawLayer(backdrop.graphicsLayer) }
                 return
             }
@@ -399,19 +357,7 @@ private class ThrottledLayerBackdropNode(
     }
 
     override fun onDetach() {
-        // Deliberately PRESERVE layerCoordinates through a detach. The root
-        // recorder detaches while the player sheet overlays the content —
-        // and the nulling here is exactly why every liquid-glass consumer
-        // (nav bar, compact circles, glass pills) dropped its glass the
-        // moment a minimise/maximise transition began: drawBackdrop() bails
-        // on null coordinates. With the last coordinates kept, consumers
-        // keep drawing the frozen backdrop through the whole transition —
-        // the content beneath the sheet is static, so the frozen picture is
-        // pixel-correct — and onGloballyPositioned refreshes the coordinates
-        // the instant the source re-attaches. The screen-level dispose (see
-        // rememberThrottledBackdrop's DisposableEffect) still nulls them when
-        // the whole screen truly leaves composition, so a dead layer can
-        // never leak into another screen's glass.
+
     }
 }
 
@@ -469,10 +415,7 @@ fun Modifier.liquidGlass(
                 },
             onDrawSurface = {
                 if (scrim != null) {
-                    // Caller-supplied surface scrim (e.g. glass floating over a
-                    // user wallpaper): the theme default darkens by ~27%, which
-                    // leaves white-on-white text when the sampled backdrop is a
-                    // bright image. The caller decides how much is enough.
+
                     drawRect(scrim.copy(alpha = (scrim.alpha * tuning.tintFactor).coerceIn(0f, 1f)))
                 } else {
                     val darken =
@@ -523,12 +466,7 @@ fun LiquidGlassActionPill(
     scrim: Color? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
-    // Header pills fade with the player sheet's top edge instead of being
-    // hard-swapped at the mini-player bound: while any part of the pill is
-    // still on screen it stays glass; it dissolves only as the sheet covers
-    // it, and fades back in as the sheet retreats. Defaults to 1f (fully
-    // visible) outside the NavHost scope — the player sheet itself never
-    // sees this local.
+
     val sheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
     Row(
         modifier =

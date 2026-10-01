@@ -60,41 +60,27 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.glassAwareCardBorder
 import moe.rukamori.archivetune.ui.component.glassAwareCardColor
 
-/** iOS-style geometry for the grouped settings cards. */
 object SettingsCardDimensions {
-    /** Screen edge -> card. */
     val ScreenPadding = 16.dp
 
-    /** Between adjacent groups (and caption -> previous group). */
     val GroupSpacing = 12.dp
 
-    /** Caption's bottom gap to its card. */
     val CaptionGap = 4.dp
 
-    /** Card corner radius — large, like the reference. */
     val CardCorner = 20.dp
 
-    /** Row height floor — compact like the reference (~52-56). */
     val RowMinHeight = 54.dp
 
-    /** Row internal padding. */
     val RowHorizontalPadding = 16.dp
     val RowVerticalPadding = 10.dp
 
-    /** Icon slot — the leading width the divider insets to. */
     val RowIconSize = 28.dp
 
-    /** The glyph inside the colorful tile (iOS ~17-18pt inside a 29pt tile). */
     val RowIconGlyphSize = 18.dp
 
-    /** Gap between icon and label. */
     val IconLabelGap = 14.dp
 }
 
-/**
- * One settings section: caption above, one unified translucent card below,
- * [SettingsItem]s as rows separated by hairline dividers.
- */
 @Composable
 fun SettingsGroupCard(
     group: SettingsGroup,
@@ -132,7 +118,6 @@ fun SettingsGroupCard(
     }
 }
 
-/** The shared translucent grouped-surface — also used by search results. */
 @Composable
 fun SettingsCardSurface(
     modifier: Modifier = Modifier,
@@ -153,7 +138,6 @@ fun SettingsCardSurface(
     }
 }
 
-/** Small, quiet section caption above each card (the reference's captions). */
 @Composable
 fun SettingsGroupCaption(
     title: String,
@@ -171,7 +155,6 @@ fun SettingsGroupCaption(
     )
 }
 
-/** Hairline separator inset to align with the row's label. */
 @Composable
 fun SettingsRowDivider(modifier: Modifier = Modifier) {
     androidx.compose.material3.HorizontalDivider(
@@ -199,18 +182,6 @@ private fun dividerColor(): Color {
     }
 }
 
-/**
- * The reference row: [icon tile] [title (+subtitle)] [badge/value] [chevron].
- *
- * iOS Settings-style colorful iconography: each row's glyph sits on a small
- * rounded-square tile filled with the row's accent color (a fixed vivid
- * palette per section, set in SettingsDataBuilders — not the old single
- * theme-primary tint). Rows that carry a connected-account profile picture
- * ([SettingsItem.iconUrl], e.g. the signed-in Google account) render that
- * image as a circular avatar in the same slot, with the tile glyph peeking
- * through until the image loads (and if it ever fails). Chevron only when
- * the row navigates.
- */
 @Composable
 fun SettingsListRow(
     item: SettingsItem,
@@ -305,15 +276,6 @@ fun SettingsListRow(
     }
 }
 
-/**
- * The row's leading icon slot: a small rounded-square tile filled with the
- * row's accent color carrying a white glyph (iOS Settings-style colorful
- * icons), or — when the row carries a connected-account profile picture — a
- * circular [AsyncImage] avatar layered OVER the same tile, so the glyph shows
- * through while the image loads and remains as the fallback if it fails.
- * The tile itself goes circular behind an avatar so its rounded-square
- * corners never peek out around the profile picture.
- */
 @Composable
 private fun SettingsRowLeadingIcon(
     icon: androidx.compose.ui.graphics.painter.Painter,
@@ -339,8 +301,6 @@ private fun SettingsRowLeadingIcon(
                 }
         }
 
-    // A circular avatar needs a circular accent tile behind it — a rounded
-    // square's corners would peek out around the profile picture.
     val tileShape = if (avatarRequest != null) avatarShape else RoundedCornerShape(8.dp)
 
     val tile: @Composable () -> Unit = {
@@ -361,8 +321,6 @@ private fun SettingsRowLeadingIcon(
         }
     }
 
-    // The avatar layers over the tile: while the image is loading (or if it
-    // fails) the tile glyph beneath still shows, so the slot is never empty.
     val leading: @Composable () -> Unit = {
         if (avatarRequest != null) {
             Box(modifier = Modifier.size(SettingsCardDimensions.RowIconSize)) {

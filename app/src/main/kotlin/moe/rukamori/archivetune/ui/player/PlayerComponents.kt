@@ -1288,9 +1288,7 @@ fun V8PlayerControlsContent(
         remember(playerConnection) {
             { playerConnection.seekToNext() }
         }
-    // V7 (Immersive) used to expose only the heart action — the full player
-    // overflow menu was unreachable except through the queue sheet. A matching
-    // overflow button now sits right next to the like button.
+
     val menuState = LocalMenuState.current
     val bottomSheetPageState = LocalBottomSheetPageState.current
     val onMoreClick =

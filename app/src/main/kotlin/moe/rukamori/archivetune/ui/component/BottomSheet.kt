@@ -78,7 +78,6 @@ fun BottomSheet(
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
-
     val morphShape =
         if (morphMode) {
             remember(state) {
@@ -163,7 +162,6 @@ fun BottomSheet(
                         .zIndex(fullContentZIndex)
                         .graphicsLayer {
                             if (morphMode) {
-
                                 val p = state.progress.coerceIn(0f, 1f)
                                 alpha = ((p - 0.5f) * 2).coerceIn(0f, 1f)
                                 if (p <= 0.01f) translationY = 10_000f
@@ -202,7 +200,6 @@ fun BottomSheet(
                         .graphicsLayer {
                             alpha =
                                 if (morphMode) {
-
                                     (1f - 2f * state.progress.coerceIn(0f, 1f)).coerceIn(0f, 1f)
                                 } else {
                                     1f - (state.progress * 4).coerceAtMost(1f)

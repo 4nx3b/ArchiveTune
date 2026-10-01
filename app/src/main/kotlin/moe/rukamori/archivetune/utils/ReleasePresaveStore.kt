@@ -20,25 +20,16 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import org.json.JSONArray
 import org.json.JSONObject
 
-/**
- * DataStore entry holding the saved releases as a JSON array string.
- * Declared here rather than in constants/PreferenceKeys.kt so parallel work
- * on that file cannot conflict with this feature.
- */
 val ReleasePresaveKey: Preferences.Key<String> = stringPreferencesKey("releasePresaves")
 
-/** One release the user saved ("Listen Later") before it dropped. */
 data class PresavedRelease(
-    /** Stable identity of the release within its source surface. */
+
     val releaseId: String,
     val title: String,
     val artistName: String,
-    /** Type label of the surface it was saved from ("album"/"single"/"ep"). */
+
     val releaseType: String,
-    /**
-     * Epoch milliseconds of the announced release moment, or 0 when the
-     * source surface carried no date — such entries count as available now.
-     */
+
     val releaseAtMillis: Long,
     val thumbnailUrl: String,
 ) {
@@ -68,7 +59,6 @@ data class PresavedRelease(
     }
 }
 
-/** Tolerant parse: a blank or corrupt value simply yields an empty list. */
 fun parsePresavedReleases(raw: String): List<PresavedRelease> {
     val trimmed = raw.trim()
     if (trimmed.isEmpty()) return emptyList()
@@ -87,10 +77,6 @@ fun serializePresavedReleases(list: List<PresavedRelease>): String {
     return array.toString()
 }
 
-/**
- * Adds [release] when absent (keyed by releaseId) or removes it when present,
- * preserving insertion order and capping the collection at [maxItems].
- */
 fun togglePresavedRelease(
     list: List<PresavedRelease>,
     release: PresavedRelease,
@@ -104,15 +90,9 @@ fun togglePresavedRelease(
     }
 }
 
-/** Persists [list] under [ReleasePresaveKey], replacing any previous value. */
 suspend fun Context.setPresavedReleases(list: List<PresavedRelease>) {
     dataStore.edit { it[ReleasePresaveKey] = serializePresavedReleases(list) }
 }
 
-/**
- * A saved release counts as released once its announced moment has passed.
- * Entries with no known date (releaseAtMillis <= 0) are treated as
- * "unknown -> released/available" so they never show a bogus countdown.
- */
 fun PresavedRelease.isReleased(nowMillis: Long = System.currentTimeMillis()): Boolean =
     releaseAtMillis <= 0L || releaseAtMillis in 1..nowMillis

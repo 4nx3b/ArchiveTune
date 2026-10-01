@@ -44,13 +44,6 @@ import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.R
 
-/**
- * A springy custom switch: the thumb travels on a low-bounce spring and
- * STRETCHES along its direction of travel (reading its own velocity), the
- * track color crossfades, and the checked/unchecked glyph fades inside the
- * thumb. Degrades to a snap when app-wide animations are disabled, and to the
- * plain Material switch semantics otherwise (same touch target + role).
- */
 @Composable
 fun SpringySwitch(
     checked: Boolean,
@@ -81,7 +74,7 @@ fun SpringySwitch(
     val trackWidth = 52.dp
     val trackHeight = 32.dp
     val thumbDiameter = 24.dp
-    val travel = trackWidth - thumbDiameter - 4.dp // 2dp inset each side
+    val travel = trackWidth - thumbDiameter - 4.dp
 
     val travelFraction = remember { Animatable(if (checked) 1f else 0f) }
     LaunchedEffect(checked) {
@@ -146,8 +139,6 @@ fun SpringySwitch(
                     size.height / 2f,
                 )
 
-            // Velocity-driven stretch (draw phase): while the thumb moves it
-            // elongates along the travel axis and squashes across it.
             val velocityStretch =
                 if (animationsDisabled) {
                     0f
@@ -166,7 +157,6 @@ fun SpringySwitch(
             )
         }
 
-        // The checked glyph fades in with the travel.
         Box(
             modifier =
                 Modifier

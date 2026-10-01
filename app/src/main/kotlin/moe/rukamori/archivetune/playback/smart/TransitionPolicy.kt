@@ -18,65 +18,21 @@ import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 
-/**
- * The confidence-aware transition policy.
- *
- * Analysis happens ahead of playback (see [TrackAnalyzer]), and the runtime
- * only decides how ambitious a transition the stored evidence can support.
- * Ambition degrades in explicit tiers as certainty falls (see
- * [TransitionTier]) rather than letting one engine quietly do beat math on
- * junk data.
- *
- * Every judgement here is made from stored analysis fields and their
- * confidences; nothing in this file touches PCM.
- */
-
-/**
- * Below this the analyzer's beat grid is treated as a guess, and no renderer
- * may stretch or phase-align against it. Catalog tempo lookups merge in with
- * `beatConfidence` 0, so a metadata BPM alone can never authorize
- * beat-matching.
- */
 const val MIN_BEATMATCH_CONFIDENCE = 0.55
 
-/**
- * Below this on both tracks, even the DJ-assisted crossfade (beat-quantized
- * anchors, EQ handoff) is off the table and the mix degrades to a plain fade.
- */
 const val MIN_DJ_CONFIDENCE = 0.2
 
-/** One octave either side of a typical dance tempo; outside this the analysis is noise. */
 const val MIN_BPM = 40.0
 const val MAX_BPM = 220.0
 
-/** How far a tempo pairing may drift from unity and still be considered transparent to stretch. */
 const val MAX_STRETCH_DEVIATION = 0.04
 
-/**
- * A vocal-activity mask value at or above this counts as singing. A fallback
- * analyzer that emits a flat 0.5 mask never trips vocal logic; only a real
- * mask can.
- */
 const val VOCAL_ACTIVE_THRESHOLD = 0.6
 
-/**
- * How much of the outgoing track's remaining *music* a transition may skip by
- * ending before its content does. A transition is allowed to leave a short
- * tail unplayed; it is not allowed to cut the song short.
- */
 const val MAX_DISCARDED_MUSIC_SECONDS = 12.0
 
-/**
- * Fraction of a track's own loud-end reference below which a sample counts as
- * silence rather than music, so a genuine gap costs nothing against the budget.
- */
 private const val AUDIBLE_ENERGY_FRACTION = 0.1
 
-/**
- * How much each candidate type is trusted as an entry point before scoring.
- * Drops are where an arrangement arrives, so they dominate; a pickup is just
- * "the file starts making sound" and a phrase boundary is only a grid line.
- */
 private val MIX_IN_TYPE_WEIGHT = mapOf(
     "main_drop" to 0.5,
     "intro_drop" to 0.4,
@@ -84,10 +40,6 @@ private val MIX_IN_TYPE_WEIGHT = mapOf(
     "phrase" to 0.1,
 )
 
-/**
- * Mirrors the analyzer's own scoring of mix-out candidates, used when an
- * analysis carries the scalar fields but not the candidate list.
- */
 private val MIX_OUT_TYPE_SCORE = mapOf(
     "energy_cliff" to 0.95,
     "interior_mix_out" to 0.95,
@@ -95,7 +47,6 @@ private val MIX_OUT_TYPE_SCORE = mapOf(
     "content_end" to 0.75,
 )
 
-/** Non-finite guards, matching the desktop planner's coercion of `NaN`/`Infinity` to zero. */
 internal fun Double.orZero(): Double = if (isFinite()) this else 0.0
 
 internal fun Double?.orZero(): Double = if (this != null && isFinite()) this else 0.0
@@ -103,10 +54,6 @@ internal fun Double?.orZero(): Double = if (this != null && isFinite()) this els
 internal fun clamp(value: Double, min: Double, max: Double): Double =
     if (value.isFinite()) max(min, min(max, value)) else min
 
-/**
- * Halves or doubles [incomingBpm] until it is as close as possible to
- * [outgoingBpm], the way a DJ counts a 63 BPM track against a 126 BPM one.
- */
 fun alignTempoOctave(outgoingBpm: Double, incomingBpm: Double): Double {
     if (outgoingBpm <= 0 || incomingBpm <= 0) return incomingBpm
     var aligned = incomingBpm
@@ -115,11 +62,6 @@ fun alignTempoOctave(outgoingBpm: Double, incomingBpm: Double): Double {
     return aligned
 }
 
-/**
- * Mean vocal activity over [start]..[end] on a track's own timeline, or null
- * when the analysis carries no usable mask there. The mask is indexed against
- * [TrackAnalysis.energyCurve] times.
- */
 fun vocalActivityBetween(analysis: TrackAnalysis, start: Double, end: Double): Double? {
     val mask = analysis.vocalActivityMask
     val curve = analysis.energyCurve
@@ -137,35 +79,12 @@ fun vocalActivityBetween(analysis: TrackAnalysis, start: Double, end: Double): D
     return if (count > 0) sum / count else null
 }
 
-/**
- * Both windows measurably singing at once. Null means "no evidence", which
- * never blocks; absence of a mask is not absence of a vocal, but acting on it
- * would punish every track a fallback analyzer handled.
- */
 fun isVocalClash(outgoingActivity: Double?, incomingActivity: Double?): Boolean =
     outgoingActivity != null &&
         incomingActivity != null &&
         outgoingActivity >= VOCAL_ACTIVE_THRESHOLD &&
         incomingActivity >= VOCAL_ACTIVE_THRESHOLD
 
-/**
- * How strongly two windows sing over each other: 0 for nothing worth acting on,
- * 1 for two fully vocal passages landing on one another.
- *
- * [isVocalClash]'s graded counterpart, and the reason for having both. A boolean
- * is the right shape for a routing decision — shorten the overlap or don't — but
- * it is the wrong shape for the renderer, which has to decide *how hard* to pull
- * the two voices apart. A pair scraping over the threshold and two choruses
- * colliding are the same `true` and want visibly different treatment.
- *
- * Governed by the quieter of the two, because a clash needs both sides: an
- * instrumental passage under a vocal is not a clash however loud the vocal is,
- * and taking a mean would let one strong side manufacture one.
- *
- * Null on either side is no evidence and answers zero, which leaves whatever the
- * caller would have done anyway. Absence of a mask is not absence of a vocal —
- * but acting on it would filter every track a fallback analyzer handled.
- */
 fun vocalOverlapAmount(outgoingActivity: Double?, incomingActivity: Double?): Double {
     if (outgoingActivity == null || incomingActivity == null) return 0.0
     val both = min(outgoingActivity, incomingActivity)
@@ -173,27 +92,6 @@ fun vocalOverlapAmount(outgoingActivity: Double?, incomingActivity: Double?): Do
     return ((both - VOCAL_ACTIVE_THRESHOLD) / (1.0 - VOCAL_ACTIVE_THRESHOLD)).coerceIn(0.0, 1.0)
 }
 
-/**
- * The fraction of a planned overlap where **both** tracks are singing at the
- * same instant, or null when either side has no mask.
- *
- * Why this exists alongside [vocalActivityBetween]: that one answers with a
- * *mean* over the window, and a mean is the wrong statistic for a clash. Twelve
- * seconds holding three seconds of vocal and nine of instrumental averages well
- * under [VOCAL_ACTIVE_THRESHOLD] and reads as clear — while the listener plainly
- * hears two voices for those three seconds. Every clash short of about half the
- * overlap was being averaged into silence, which is why a transition could be
- * planned as clean and still land two vocals on top of each other.
- *
- * Instant by instant instead. The outgoing track's own energy-curve samples are
- * the clock; each is mapped onto the incoming timeline through [rate], because a
- * stretched incoming track covers proportionally more of its own timeline in the
- * same wall-clock second. Unmeasured regions sit at the analyzer's neutral 0.5,
- * below the threshold, so they count as "not singing" rather than as evidence.
- *
- * Both curves are time-ascending, so the incoming index only ever moves forward:
- * this is one pass over each, not a search per sample.
- */
 fun simultaneousVocalFraction(
     outgoing: TrackAnalysis,
     incoming: TrackAnalysis,
@@ -227,24 +125,8 @@ fun simultaneousVocalFraction(
     return if (total > 0) both.toDouble() / total else null
 }
 
-/**
- * How much simultaneous vocal a transition may carry before it counts as a
- * clash worth reshaping the overlap for.
- *
- * Not zero. A mask is a model's estimate sampled on a coarse grid, and both
- * edges of a vocal phrase are soft, so demanding literal zero would refuse
- * overlaps that sound clean and spend the fade budget chasing a rounding error.
- * A twentieth of the window is roughly one energy-curve sample either side of a
- * boundary.
- */
 const val VOCAL_CLASH_TOLERANCE = 0.05
 
-/**
- * Seconds of audible music in [start]..[end] on a track's own timeline,
- * judged against the track's own loud-end reference so the measure is
- * independent of how the analyzer scales energy. Returns null when there is
- * no usable curve.
- */
 fun audibleSecondsBetween(analysis: TrackAnalysis, start: Double, end: Double): Double? {
     val curve = analysis.energyCurve
     if (curve.size < 2 || end <= start) return null
@@ -265,15 +147,6 @@ fun audibleSecondsBetween(analysis: TrackAnalysis, start: Double, end: Double): 
     return audible
 }
 
-/**
- * The earliest point the analysis claims the track makes sound.
- *
- * [TrackAnalysis.firstBeat] is not nullable the way the other two are, and
- * the analyzer uses 0.0 as its "nothing was measured" fallback. Counting that
- * zero as a real audible start pins this to 0 for any track without a beat
- * grid, which silently overrides a measured `audibleStartTime` and tells the
- * planner the whole head of the track is intro it can fade across.
- */
 internal fun audibleStartOf(analysis: TrackAnalysis): Double {
     val firstBeat = analysis.firstBeat.takeIf { it.isFinite() && it > 0 }
     val candidates = listOfNotNull(analysis.audibleStartTime, analysis.pickupTime, firstBeat)
@@ -281,20 +154,10 @@ internal fun audibleStartOf(analysis: TrackAnalysis): Double {
     return candidates.minOrNull() ?: 0.0
 }
 
-/** The value in [values] closest to [target] within [tolerance], or null when none qualifies. */
 internal fun nearestValue(values: List<Double>, target: Double, tolerance: Double): Double? =
     values.filter { it.isFinite() && abs(it - target) <= tolerance }
         .minByOrNull { abs(it - target) }
 
-/**
- * Ranks a track's analyzed mix-in candidates as entry points for a
- * transition, best first.
- *
- * Selection is a scoring problem, not a type lookup: the analyzer's own
- * score, the candidate type, downbeat alignment, whether there is any intro
- * before the point to bed under the outgoing track, and how vocal that intro
- * is all move a candidate up or down.
- */
 fun rankMixInCandidates(analysis: TrackAnalysis): List<RankedMixCandidate> {
     val candidates = analysis.mixInCandidates.filter { it.time.isFinite() && it.time >= 0 }
     if (candidates.isEmpty()) return emptyList()
@@ -305,11 +168,9 @@ fun rankMixInCandidates(analysis: TrackAnalysis): List<RankedMixCandidate> {
     return candidates.map { candidate ->
         var rankScore = candidate.score.orZero() + (MIX_IN_TYPE_WEIGHT[candidate.type] ?: 0.0)
         if (nearestValue(analysis.downbeats, candidate.time, beatSeconds / 2) != null) rankScore += 0.1
-        // A cold open: nothing before the point to play underneath the outgoing track, so entering
-        // here means starting the blend on the arrangement.
+
         if (candidate.time - audibleStart < beatSeconds * 4) rankScore -= 0.2
-        // Prefer entries whose run-up is instrumental; an intro that already sings will sing over
-        // the outgoing track for the whole pre-roll.
+
         val vocal = vocalActivityBetween(
             analysis,
             max(audibleStart, candidate.time - beatSeconds * 16),
@@ -325,7 +186,6 @@ fun rankMixInCandidates(analysis: TrackAnalysis): List<RankedMixCandidate> {
     }.sortedByDescending { it.rankScore }
 }
 
-/** Falls back to the scalar mix-out fields when the analysis carries no candidate list. */
 private fun mixOutCandidatesOf(analysis: TrackAnalysis, contentEnd: Double): List<MixCandidate> {
     val supplied = analysis.mixOutCandidates.filter { it.time.isFinite() && it.time > 0 }
     val candidates = supplied.map {
@@ -341,34 +201,19 @@ private fun mixOutCandidatesOf(analysis: TrackAnalysis, contentEnd: Double): Lis
             candidates += MixCandidate(outroStart, 0.9, "outro_start")
         }
     }
-    // Vocals describe how the overlap should be shaped, not where the outgoing song stops. The
-    // incoming instrumental runway can begin under an outgoing vocal; promoting vocal boundaries
-    // to exit anchors waits for the easy gap (or skips the vocal tail entirely) instead of asking
-    // the filter ride and gain curves to blend it. Only structural and energy candidates choose
-    // the exit. The transition always has somewhere to end: where the content does.
+
     if (candidates.none { abs(it.time - contentEnd) < 0.05 }) {
         candidates += MixCandidate(contentEnd, 0.75, "content_end")
     }
     return candidates
 }
 
-/** Resolves the content end from the analysis and the caller's overrides, in priority order. */
 private fun resolveContentEnd(analysis: TrackAnalysis, contentEnd: Double, duration: Double): Double =
     contentEnd.orZero().takeIf { it != 0.0 }
         ?: analysis.contentEndTime.orZero().takeIf { it != 0.0 }
         ?: duration.orZero().takeIf { it != 0.0 }
         ?: analysis.duration.orZero()
 
-/**
- * Ranks a track's analyzed mix-out candidates as places for a transition to
- * end, best first.
- *
- * Candidates that would skip more than [MAX_DISCARDED_MUSIC_SECONDS] of
- * remaining music are dropped outright: how confidently the analyzer marked a
- * boundary is no argument for cutting a song short, and both an outro marker
- * and a mid-track silence gap will happily do exactly that. Silence is free,
- * so a genuine interior gap still wins the anchor it deserves.
- */
 fun rankMixOutCandidates(
     analysis: TrackAnalysis,
     contentEnd: Double = 0.0,
@@ -379,8 +224,7 @@ fun rankMixOutCandidates(
     return mixOutCandidatesOf(analysis, end)
         .map { candidate ->
             val measured = audibleSecondsBetween(analysis, candidate.time, end)
-            // With no energy curve there is no way to tell skipped music from skipped silence, so
-            // the raw gap is charged in full and the budget errs toward playing the track.
+
             RankedMixCandidate(
                 time = candidate.time,
                 score = candidate.score,
@@ -394,11 +238,6 @@ fun rankMixOutCandidates(
         .sortedWith(compareByDescending<RankedMixCandidate> { it.rankScore }.thenByDescending { it.time })
 }
 
-/**
- * Where the outgoing track's transition ends: the best-ranked mix-out
- * candidate that stays inside the discarded-music budget, or the end of
- * content when none does.
- */
 fun resolveMixOutAnchor(
     analysis: TrackAnalysis,
     contentEnd: Double = 0.0,
@@ -413,12 +252,6 @@ fun resolveMixOutAnchor(
     )
 }
 
-/**
- * Decides how ambitious a transition the stored analysis supports.
- *
- * Reasons are ordered most-disqualifying first so callers can surface
- * `reasons.first()` as the routing verdict.
- */
 fun assessTransitionTier(
     analysis: TrackAnalysis,
     nextAnalysis: TrackAnalysis,

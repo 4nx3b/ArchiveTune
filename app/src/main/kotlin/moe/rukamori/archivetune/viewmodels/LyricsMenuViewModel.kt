@@ -307,9 +307,7 @@ class LyricsMenuViewModel
                                 return@launch
                             }
                         }
-                        // Snapshot the pre-translation row at REQUEST time so undo always
-                        // restores the lyrics the translation was started from — even if
-                        // the lyrics source is switched while the request is in flight.
+
                         captureLyricsBeforeTranslation(mediaMetadata.id)
                         Log.d(
                             TAG,
@@ -414,10 +412,7 @@ class LyricsMenuViewModel
             lyrics: String,
             submittedLyrics: String,
         ) {
-            // The lyrics source may have been switched while the AI request was in
-            // flight (e.g. from unsynced YouTube lyrics to a synced provider). The
-            // finished translation describes the OLD lyrics and must never clobber
-            // the newer row — discard it instead.
+
             val current = database.withTransaction { getLyricsById(mediaId) }
             if (current?.lyrics != submittedLyrics) {
                 Log.d(
