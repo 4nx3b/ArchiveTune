@@ -1309,13 +1309,32 @@ class MusicService :
 
             ioScope.launch {
                 tryptifyUsbDriver.diagnostics.collect { diag ->
-                    EngineRuntime.tryptifyUsbStream = diag?.takeIf { it.sampleRateHz > 0 }
+                    val stream = diag?.takeIf { it.sampleRateHz > 0 }
+                    EngineRuntime.tryptifyUsbStream = stream
+                    if (usbSinkActiveNow && tryptifyAudioProcessing && stream != null) {
+                        BitPerfectRuntime.notifyUsbExclusive(
+                            active = true,
+                            rate = stream.sampleRateHz,
+                            bits = stream.bitsPerSample,
+                            engineTransport = true,
+                        )
+                    }
                 }
             }
             ioScope.launch {
                 while (isActive) {
                     EngineRuntime.lastwaveUsbRateHz = lastwaveExclusiveUsb.currentRateHz()
                     EngineRuntime.lastwaveUsbBitsPerSample = lastwaveExclusiveUsb.currentBitsPerSample()
+                    if (usbSinkActiveNow && lastwaveAudioProcessing &&
+                        EngineRuntime.lastwaveUsbRateHz > 0 && EngineRuntime.lastwaveUsbBitsPerSample > 0
+                    ) {
+                        BitPerfectRuntime.notifyUsbExclusive(
+                            active = true,
+                            rate = EngineRuntime.lastwaveUsbRateHz,
+                            bits = EngineRuntime.lastwaveUsbBitsPerSample,
+                            engineTransport = true,
+                        )
+                    }
                     delay(1000)
                 }
             }
@@ -9893,10 +9912,15 @@ class MusicService :
         EngineRuntime.usbExclusiveActive = usbSinkActiveNow
 
         runCatching {
-            val rate = EngineRuntime.lastwaveUsbRateHz.takeIf { it > 0 }
-            val bits = EngineRuntime.lastwaveUsbBitsPerSample.takeIf { it > 0 }
-            if (usbSinkActiveNow && rate != null && bits != null) {
-                BitPerfectRuntime.notifyUsbExclusive(true, rate, bits)
+            if (usbSinkActiveNow) {
+                val engineTransport = tryptifyAudioProcessing || lastwaveAudioProcessing
+                val rate = EngineRuntime.lastwaveUsbRateHz.takeIf { it > 0 }
+                    ?: EngineRuntime.tryptifyUsbStream?.sampleRateHz?.takeIf { it > 0 }
+                val bits = EngineRuntime.lastwaveUsbBitsPerSample.takeIf { it > 0 }
+                    ?: EngineRuntime.tryptifyUsbStream?.bitsPerSample?.takeIf { it > 0 }
+                if (rate != null && bits != null) {
+                    BitPerfectRuntime.notifyUsbExclusive(true, rate, bits, engineTransport)
+                }
             }
         }
 
@@ -9931,6 +9955,9 @@ class MusicService :
         } else {
             lastwaveUsbBitPerfect.setEnabled(false)
             EngineRuntime.lastwaveMixerBitPerfectActive = false
+            if (BitPerfectRuntime.status.mixerBitPerfectActive) {
+                BitPerfectRuntime.notifyMixerBitPerfect(active = false, outputRateHz = 0)
+            }
         }
         applyFloatDspEngagement()
     }

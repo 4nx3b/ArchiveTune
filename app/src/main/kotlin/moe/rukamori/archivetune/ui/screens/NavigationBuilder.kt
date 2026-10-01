@@ -167,7 +167,6 @@ fun NavGraphBuilder.navigationBuilder(
             onSearchQuery = onSearchQuery,
             onVoiceSearch = onVoiceSearch,
             headerScrollConnection = searchScrollConnection,
-            listState = searchListState,
         )
     }
     composable("local_songs") {

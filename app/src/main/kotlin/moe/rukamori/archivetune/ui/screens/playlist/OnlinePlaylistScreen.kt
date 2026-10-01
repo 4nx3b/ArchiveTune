@@ -351,7 +351,7 @@ fun OnlinePlaylistScreen(
                 Modifier
                     .fillMaxSize()
                     .then(
-                        if (glassHeaderActive) {
+                        if (liquidGlassHeaderActive) {
                             Modifier.glassSource(artworkBackdrop)
                         } else {
                             Modifier

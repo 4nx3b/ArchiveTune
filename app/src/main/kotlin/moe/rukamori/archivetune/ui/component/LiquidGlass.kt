@@ -250,11 +250,25 @@ class ThrottledLayerBackdrop internal constructor(
 
     internal var layerCoordinates: LayoutCoordinates? by mutableStateOf(null)
 
+    // Bumped whenever a recorder node (re)attaches so every backdrop consumer
+    // redraws immediately instead of waiting for the next content invalidation.
+    // Without this, glass pills that recompose while their page sits still (e.g.
+    // right after the fullscreen player with lyrics is minimized) keep their last
+    // drawn frame - which was fully faded out - and appear gone until the user
+    // scrolls or touches the page.
+    internal var consumerInvalidationTick by mutableStateOf(0)
+
+    internal fun notifyRecorderAttached() {
+        consumerInvalidationTick++
+    }
+
     override fun DrawScope.drawBackdrop(
         density: Density,
         coordinates: LayoutCoordinates?,
         layerBlock: (GraphicsLayerScope.() -> Unit)?,
     ) {
+        val tick = consumerInvalidationTick
+        if (tick < 0) return
         val coordinates = coordinates ?: return
         val layerCoordinates = layerCoordinates ?: return
         withTransform({
@@ -320,6 +334,7 @@ private class ThrottledLayerBackdropNode(
         super.onAttach()
 
         lastRecordUptimeMillis = 0L
+        backdrop.notifyRecorderAttached()
     }
 
     override fun ContentDrawScope.draw() {

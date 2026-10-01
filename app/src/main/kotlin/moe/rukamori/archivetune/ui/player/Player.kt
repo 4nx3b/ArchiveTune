@@ -1054,11 +1054,20 @@ fun BottomSheetPlayer(
         mutableStateOf(false)
     }
 
-    LaunchedEffect(state.isExpandedOrExpanding) {
-        if (!state.isExpandedOrExpanding) isInlineLyricsOpen = false
-    }
-
     var isAppleMusicInlineLyricsOpen by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(state.isExpandedOrExpanding) {
+        if (!state.isExpandedOrExpanding) {
+            isInlineLyricsOpen = false
+
+            // The Apple Music lyrics flag must reset with the sheet as well: a
+            // stale true here keeps the lyrics-visibility edge detection level-
+            // dependent on this single remaining flag instead of both, which
+            // left pages rendering glass pills from a detached recorder after
+            // the player was minimized.
+            isAppleMusicInlineLyricsOpen = false
+        }
+    }
 
     LaunchedEffect(playerConnection) {
         playerConnection.songEndedEvents.collect {

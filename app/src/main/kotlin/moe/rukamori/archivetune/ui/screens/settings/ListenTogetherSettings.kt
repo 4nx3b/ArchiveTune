@@ -429,7 +429,7 @@ fun ListenTogetherSettings(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
             .verticalScroll(scrollState)
-            .let { m -> if (glassHeaderActive) m.glassSource(artworkBackdrop) else m }
+            .let { m -> if (liquidGlassHeaderActive) m.glassSource(artworkBackdrop) else m }
             .hazeSource(headerHaze)
             .padding(horizontal = 16.dp)
     ) {

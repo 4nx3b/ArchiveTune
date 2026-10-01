@@ -448,7 +448,7 @@ fun LocalSongScreen(
                 Modifier
                     .fillMaxSize()
                     .then(
-                        if (glassHeaderActive) {
+                        if (liquidGlassHeaderActive) {
                             Modifier.glassSource(backdrop)
                         } else {
                             Modifier

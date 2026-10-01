@@ -31,12 +31,54 @@ data class BackdropTonePalette(
                 bottom = bottom,
             )
         }
+
+        // Artist-page ambience: the source colour comes from the BOTTOM band of the
+        // artist picture / canvas, and the tones stay extremely light - saturation is
+        // crushed and the value floor raised so the wash reads as a faint tint of the
+        // artwork instead of a bright dominant colour.
+        fun fromColorsLight(
+            colors: List<Color>,
+            fallbackColor: Int,
+        ): BackdropTonePalette {
+            val sourceColor = colors.firstOrNull()
+            val fallback = Color(fallbackColor).backdropTone(
+                valueMin = 0.12f,
+                valueMax = 0.38f,
+                saturationScale = 0.45f,
+                saturationCap = 0.30f,
+            )
+            val top = sourceColor?.backdropTone(
+                valueMin = 0.32f,
+                valueMax = 0.66f,
+                saturationScale = 0.45f,
+                saturationCap = 0.30f,
+            ) ?: fallback
+            val mid = sourceColor?.backdropTone(
+                valueMin = 0.24f,
+                valueMax = 0.52f,
+                saturationScale = 0.45f,
+                saturationCap = 0.30f,
+            ) ?: top
+            val bottom = sourceColor?.backdropTone(
+                valueMin = 0.15f,
+                valueMax = 0.38f,
+                saturationScale = 0.45f,
+                saturationCap = 0.30f,
+            ) ?: mid
+            return BackdropTonePalette(
+                top = top,
+                mid = mid,
+                bottom = bottom,
+            )
+        }
     }
 }
 
 fun Color.backdropTone(
     valueMin: Float,
     valueMax: Float,
+    saturationScale: Float = 1.27f,
+    saturationCap: Float = 1f,
 ): Color {
     val hsv = FloatArray(3)
     android.graphics.Color.colorToHSV(toArgb(), hsv)
@@ -44,7 +86,7 @@ fun Color.backdropTone(
         if (hsv[1] < 0.12f) {
             hsv[1].coerceAtMost(0.08f)
         } else {
-            (hsv[1] * 1.27f).coerceIn(0f, 1f)
+            (hsv[1] * saturationScale).coerceIn(0f, saturationCap)
         }
     hsv[2] = hsv[2].coerceIn(valueMin, valueMax)
     return Color(android.graphics.Color.HSVToColor(hsv))

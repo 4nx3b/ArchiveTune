@@ -30,6 +30,12 @@ object BitPerfectRuntime {
 
     private val bypassEngaged = AtomicBoolean(false)
 
+    @Volatile
+    private var latchedUsbRateHz: Int = 0
+
+    @Volatile
+    private var latchedUsbBits: Int = 0
+
     var status by mutableStateOf(Status.idle())
         private set
 
@@ -79,11 +85,35 @@ object BitPerfectRuntime {
         var direct = false
         var nativeRateMatched = false
         var failure: String? = null
+        var usbRouteVerified = false
 
         if (!requested) {
             failure = null
+        } else if (usbExclusive) {
+
+            // The engine / float-DSP USB-exclusive transport writes PCM straight to the
+            // DAC through its own driver (libusb / usbdevfs / AAud), so the shared Android
+            // mixer is bypassed entirely. Rate and bit-depth are verified from the live
+            // wire values latched via notifyUsbExclusive().
+            direct = true
+            usbRouteVerified = latchedUsbRateHz > 0 &&
+                latchedUsbRateHz == inputSampleRate &&
+                latchedUsbBits >= bits
+            nativeRateMatched = latchedUsbRateHz <= 0 || latchedUsbRateHz == inputSampleRate
+            if (!usbRouteVerified && latchedUsbRateHz > 0) {
+                failure =
+                    if (latchedUsbRateHz != inputSampleRate) {
+                        "USB clock locked at ${latchedUsbRateHz}Hz"
+                    } else {
+                        "USB transport carries ${latchedUsbBits}bit"
+                    }
+            }
         } else if (engineOrDspEngaged) {
-            failure = "DSP engine active"
+
+            // The ported engines deliver bit-perfect output through their own
+            // USB-exclusive transport; over the shared mixer their chain is
+            // truncated to 16-bit by the platform sink.
+            failure = "DSP engine active \u2014 enable USB-exclusive output"
         } else if (audioManager == null) {
             failure = "AudioManager unavailable"
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -101,12 +131,14 @@ object BitPerfectRuntime {
                     @Suppress("NewApi")
                     AudioManager.getDirectPlaybackSupport(queryFormat, AUDIO_ATTRIBUTES_MUSIC)
                 }.getOrDefault(AudioManager.DIRECT_PLAYBACK_NOT_SUPPORTED)
-            direct = (flags and AudioManager.DIRECT_PLAYBACK_BITSTREAM_SUPPORTED) != 0
-            if (!direct) {
 
+            // DIRECT_PLAYBACK_SUPPORTED marks PCM that the platform can hand to the sink
+            // without transcoding; BITSTREAM only applies to compressed passthrough and can
+            // never be granted for a PCM query.
+            direct = (flags and AudioManager.DIRECT_PLAYBACK_SUPPORTED) != 0
+            if (!direct) {
                 failure = "No direct support for ${bits}bit/${inputSampleRate}Hz"
             } else {
-
                 nativeRateMatched = true
             }
         } else {
@@ -138,8 +170,8 @@ object BitPerfectRuntime {
             dspActive = engineOrDspEngaged,
             softwareVolumeActive = bypass && effectiveVolume != 1f,
             usbExclusiveActive = usbExclusive,
-            mixerBitPerfectActive = false,
-            verifiedBitPerfect = bypass,
+            mixerBitPerfectActive = if (usbExclusive) false else status.mixerBitPerfectActive,
+            verifiedBitPerfect = bypass || (requested && usbExclusive && usbRouteVerified),
             failureReason = failure,
         )
         return bypass
@@ -163,6 +195,8 @@ object BitPerfectRuntime {
 
     fun clearTrack() {
         bypassEngaged.set(false)
+        latchedUsbRateHz = 0
+        latchedUsbBits = 0
         status = Status.idle()
     }
 
@@ -179,20 +213,30 @@ object BitPerfectRuntime {
         )
     }
 
-    fun notifyUsbExclusive(active: Boolean, rate: Int, bits: Int) {
+    fun notifyUsbExclusive(
+        active: Boolean,
+        rate: Int,
+        bits: Int,
+        engineTransport: Boolean = false,
+    ) {
         status = status.copy(usbExclusiveActive = active)
         if (active) {
+            latchedUsbRateHz = rate
+            latchedUsbBits = bits
             status = status.copy(
                 outputSampleRate = rate,
                 outputBitDepth = bits,
-
                 directPlaybackSupported = true,
                 nativeRateMatched = status.sourceSampleRate == rate,
-                resamplerActive = status.sourceSampleRate != rate,
-                verifiedBitPerfect = status.sourceSampleRate == rate &&
+                resamplerActive = status.sourceSampleRate > 0 && status.sourceSampleRate != rate,
+                verifiedBitPerfect = requested &&
+                    status.sourceSampleRate == rate &&
                     bits >= status.sourceBitDepth &&
-                    !status.dspActive,
+                    (engineTransport || !status.dspActive),
             )
+        } else {
+            latchedUsbRateHz = 0
+            latchedUsbBits = 0
         }
     }
 

@@ -99,6 +99,7 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
     val floatPcmLabel = stringResource(R.string.live_audio_chain_float_pcm)
     val lossyLabel = stringResource(R.string.live_audio_chain_lossy)
     val floatWithDepthLabel = stringResource(R.string.live_audio_chain_float_with_depth, status.sourceBitDepth)
+    val sinkOutputRateLabel = status.outputSampleRate.takeIf { it > 0 }?.let(::rateKhz)
     val inputBits =
         when {
             status.sourceIsLossy -> lossyLabel
@@ -139,12 +140,17 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
             outputBits =
                 if (status.sourceIsLossy || status.sourceBitDepth <= 16) floatPcmLabel
                 else floatWithDepthLabel
-            outputRate = halRateHz?.let(::rateKhz) ?: inputRate
+            outputRate = sinkOutputRateLabel ?: (halRateHz?.let(::rateKhz) ?: inputRate)
         }
 
         hasSignal -> {
-            outputBits = "16-bit"
-            outputRate = halRateHz?.let(::rateKhz) ?: inputRate
+            outputBits =
+                if (status.outputEncoding == C.ENCODING_PCM_FLOAT) floatPcmLabel
+                else "${status.outputBitDepth}-bit"
+
+            // The app-level output runs at the source rate; the shared platform mixer
+            // behind it resamples on its own and is not part of this chain readout.
+            outputRate = sinkOutputRateLabel ?: (halRateHz?.let(::rateKhz) ?: inputRate)
         }
 
         else -> {

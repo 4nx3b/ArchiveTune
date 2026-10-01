@@ -37,7 +37,7 @@ val NavigationBarGlassGlowKey = booleanPreferencesKey("navigationBarGlassGlow")
 
 val LocalBottomUiCompactFraction = compositionLocalOf { 0f }
 
-val CompactControlSize = 64.dp
+val CompactControlSize = 56.dp
 
 val CompactControlGap = 12.dp
 
@@ -132,7 +132,7 @@ fun CompactControlCircle(
                 painter = painterResource(iconRes),
                 contentDescription = contentDescription,
                 tint = if (tint == Color.Unspecified) liquidGlassContentColor() else tint,
-                modifier = Modifier.size(26.dp),
+                modifier = Modifier.size(24.dp),
             )
         }
     } else {
@@ -153,7 +153,7 @@ fun CompactControlCircle(
                     painter = painterResource(iconRes),
                     contentDescription = contentDescription,
                     tint = if (tint == Color.Unspecified) MaterialTheme.colorScheme.onSurface else tint,
-                    modifier = Modifier.size(26.dp),
+                    modifier = Modifier.size(24.dp),
                 )
             }
         }
