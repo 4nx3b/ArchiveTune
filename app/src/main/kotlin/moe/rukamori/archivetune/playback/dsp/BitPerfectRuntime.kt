@@ -22,6 +22,11 @@ import androidx.media3.common.Format
 import java.util.concurrent.atomic.AtomicBoolean
 
 object BitPerfectRuntime {
+
+    // AudioManager.DIRECT_PLAYBACK_SUPPORTED (value 1 shl 0) is not exposed through
+    // the public SDK; only NOT_SUPPORTED and BITSTREAM_SUPPORTED are public.
+    private const val DIRECT_PLAYBACK_SUPPORTED_BIT = 1 shl 0
+
     @Volatile
     var requested: Boolean = false
 
@@ -132,10 +137,13 @@ object BitPerfectRuntime {
                     AudioManager.getDirectPlaybackSupport(queryFormat, AUDIO_ATTRIBUTES_MUSIC)
                 }.getOrDefault(AudioManager.DIRECT_PLAYBACK_NOT_SUPPORTED)
 
-            // DIRECT_PLAYBACK_SUPPORTED marks PCM that the platform can hand to the sink
-            // without transcoding; BITSTREAM only applies to compressed passthrough and can
-            // never be granted for a PCM query.
-            direct = (flags and AudioManager.DIRECT_PLAYBACK_SUPPORTED) != 0
+            // The PCM "directly supported" flag is the low bit of the bitmask
+            // returned by getDirectPlaybackSupport. AudioManager only exposes
+            // DIRECT_PLAYBACK_NOT_SUPPORTED and DIRECT_PLAYBACK_BITSTREAM_SUPPORTED
+            // through the public SDK - DIRECT_PLAYBACK_SUPPORTED itself is hidden,
+            // so its stable AOSP value is used here. BITSTREAM only applies to
+            // compressed passthrough and can never be granted for a PCM query.
+            direct = (flags and DIRECT_PLAYBACK_SUPPORTED_BIT) != 0
             if (!direct) {
                 failure = "No direct support for ${bits}bit/${inputSampleRate}Hz"
             } else {
