@@ -93,6 +93,7 @@ import moe.rukamori.archivetune.viewmodels.PoTokenViewModel
 import androidx.compose.foundation.layout.asPaddingValues
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 import androidx.compose.runtime.getValue
+import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 
 const val PO_TOKEN_ROUTE = "settings/po_token"
 
@@ -261,36 +262,12 @@ fun PoTokenScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
-            LargeFlexibleTopAppBar(
-                title = {},
-                navigationIcon = {
-                    FrostedHeaderPill(plain = true) {
-                        IconButton(
-                            onClick = navController::navigateUp,
-                            onLongClick = navController::backToMain,
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.arrow_back),
-                                contentDescription = stringResource(R.string.back_button_desc),
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.po_token_generation),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    }
-                },
-                colors =
-                    TopAppBarDefaults.largeTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = Color.Transparent,
-                    ),
-                scrollBehavior = scrollBehavior,
-            )
-        },
+                SettingsPageTopBar(
+                    titleText = stringResource(R.string.po_token_generation),
+                    onBack = navController::navigateUp,
+                    onBackLongClick = navController::backToMain,
+                )
+            },
     ) { innerPadding ->
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current

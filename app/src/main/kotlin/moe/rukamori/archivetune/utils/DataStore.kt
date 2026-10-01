@@ -160,9 +160,12 @@ object PreferenceStore {
 operator fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>): T? {
     val snapshot = PreferenceStore.snapshot
     if (snapshot != null) return snapshot[key]
-    return runBlocking(Dispatchers.IO) {
-        withTimeoutOrNull(1500) { data.first()[key] }
-    }
+
+    val loaded =
+        runBlocking(Dispatchers.IO) {
+            withTimeoutOrNull(1500) { PreferenceStore.awaitSnapshot() }
+        }
+    return loaded?.get(key)
 }
 
 fun <T> DataStore<Preferences>.get(

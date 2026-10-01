@@ -18,7 +18,10 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.datastore.preferences.core.edit
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import kotlinx.coroutines.flow.first
@@ -51,27 +54,60 @@ object NewReleaseNotificationManager {
         }
     }
 
-    fun schedulePeriodicCheck(context: Context) {
+    fun schedulePeriodicCheck(context: Context, fast: Boolean = false) {
         val constraints =
             Constraints
                 .Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
-                .setRequiresBatteryNotLow(true)
+                .apply {
+
+                    if (!fast) {
+                        setRequiresBatteryNotLow(true)
+                    }
+                }
                 .build()
 
         val request =
-            PeriodicWorkRequestBuilder<NewReleaseCheckWorker>(
-                12,
-                TimeUnit.HOURS,
-                6,
-                TimeUnit.HOURS,
-            ).setConstraints(constraints)
-                .build()
+            if (fast) {
+                PeriodicWorkRequestBuilder<NewReleaseCheckWorker>(
+                    15,
+                    TimeUnit.MINUTES,
+                    5,
+                    TimeUnit.MINUTES,
+                ).setConstraints(constraints)
+                    .build()
+            } else {
+                PeriodicWorkRequestBuilder<NewReleaseCheckWorker>(
+                    12,
+                    TimeUnit.HOURS,
+                    6,
+                    TimeUnit.HOURS,
+                ).setConstraints(constraints)
+                    .build()
+            }
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             WORK_NAME,
 
             ExistingPeriodicWorkPolicy.UPDATE,
+            request,
+        )
+    }
+
+    fun runImmediateCheck(context: Context) {
+        val constraints =
+            Constraints
+                .Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+        val request =
+            OneTimeWorkRequestBuilder<NewReleaseCheckWorker>()
+                .setConstraints(constraints)
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            "$WORK_NAME-immediate",
+            ExistingWorkPolicy.KEEP,
             request,
         )
     }
@@ -143,7 +179,6 @@ object NewReleaseNotificationManager {
             try {
                 NotificationManagerCompat.from(context).notify(notificationId, notification)
             } catch (security: SecurityException) {
-
             }
         }
 
@@ -168,7 +203,6 @@ object NewReleaseNotificationManager {
             try {
                 NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_BASE + 0xFFF, summary)
             } catch (security: SecurityException) {
-
             }
         }
     }

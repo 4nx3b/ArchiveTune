@@ -109,8 +109,6 @@ private fun sourceLabelResFor(cacheKey: String): Int =
     when (DownloadSourceConfig.downloadSourceForCacheKey(cacheKey)) {
         DownloadSource.QOBUZ -> R.string.download_source_qobuz
         DownloadSource.TIDAL -> R.string.download_source_tidal
-        DownloadSource.APPLE -> R.string.download_source_apple_music
-        DownloadSource.AMAZON -> R.string.source_amazon
         DownloadSource.DEEZER -> R.string.download_source_deezer
         DownloadSource.JIOSAAVN -> R.string.download_source_jiosaavn
         DownloadSource.QOBUZ_BACKUP -> R.string.download_source_qobuz_backup
@@ -413,7 +411,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                 },
                 actions = {
                     if (!isSearchActive && songs.isNotEmpty()) {
-
                         IconButton(onClick = { isSearchActive = true }) {
                             Icon(
                                 painter = painterResource(R.drawable.search),
@@ -459,7 +456,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                     ),
                                 ).padding(16.dp),
                     ) {
-
                         Text(
                             text =
                                 stringResource(
@@ -499,7 +495,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-
                             OutlinedButton(
                                 onClick = { showDeleteConfirm = true },
                                 enabled = !isExporting && !isDeleting && selectedIds.isNotEmpty(),
@@ -588,7 +583,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                 }
             }
             displayedSongs.isEmpty() -> {
-
                 Column(
                     modifier =
                         Modifier

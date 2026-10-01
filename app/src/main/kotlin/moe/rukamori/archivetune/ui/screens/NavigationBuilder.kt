@@ -72,10 +72,10 @@ import moe.rukamori.archivetune.ui.screens.settings.ExportDownloadedSongsScreen
 import moe.rukamori.archivetune.ui.screens.settings.HiddenPlaylistsScreen
 import moe.rukamori.archivetune.ui.screens.settings.IconScreen
 import moe.rukamori.archivetune.ui.screens.settings.IntegrationScreen
+import moe.rukamori.archivetune.ui.screens.settings.ListenTogetherSettings
 import moe.rukamori.archivetune.ui.screens.settings.InternetSettings
 import moe.rukamori.archivetune.ui.screens.settings.TidalSettings
 import moe.rukamori.archivetune.ui.screens.settings.QobuzSettings
-import moe.rukamori.archivetune.ui.screens.settings.AmazonSettings
 import moe.rukamori.archivetune.ui.screens.settings.DeezerSettings
 import moe.rukamori.archivetune.ui.screens.settings.JioSettings
 import moe.rukamori.archivetune.ui.screens.settings.TidalLoginScreen
@@ -83,16 +83,13 @@ import moe.rukamori.archivetune.ui.screens.settings.TIDAL_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.QobuzLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.QOBUZ_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.DeezerLoginScreen
-import moe.rukamori.archivetune.ui.screens.settings.AppleMusicLoginScreen
-import moe.rukamori.archivetune.ui.screens.settings.APPLE_MUSIC_LOGIN_ROUTE
-import moe.rukamori.archivetune.ui.screens.settings.AppleMusicSettings
-import moe.rukamori.archivetune.ui.screens.settings.AmazonLoginScreen
-import moe.rukamori.archivetune.ui.screens.settings.AMAZON_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.DEEZER_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LastFmLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LIBREFM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LibreFmLoginScreen
+import moe.rukamori.archivetune.ui.screens.settings.LISTENBRAINZ_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.ListenBrainzLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.TELEGRAM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.TelegramLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.YOUTUBE_OAUTH_ROUTE
@@ -105,10 +102,11 @@ import moe.rukamori.archivetune.ui.screens.settings.LogcatScreen
 import moe.rukamori.archivetune.ui.screens.settings.LyricsSettings
 import moe.rukamori.archivetune.ui.screens.settings.LyricsProvidersSettings
 import moe.rukamori.archivetune.ui.screens.settings.LyricsRomanisationSettings
-import moe.rukamori.archivetune.ui.screens.settings.MusicTogetherScreen
 import moe.rukamori.archivetune.ui.screens.settings.PO_TOKEN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.PalettePickerScreen
 import moe.rukamori.archivetune.ui.screens.settings.PlayerSettings
+import moe.rukamori.archivetune.ui.screens.settings.AudiophileSettings
+import moe.rukamori.archivetune.ui.screens.settings.LiquidGlassSettings
 import moe.rukamori.archivetune.ui.screens.settings.PoTokenScreen
 import moe.rukamori.archivetune.ui.screens.settings.PrivacySettings
 import moe.rukamori.archivetune.ui.screens.settings.SettingsScreen
@@ -129,10 +127,10 @@ fun NavGraphBuilder.navigationBuilder(
     onSearchQuery: (String) -> Unit = {},
     onVoiceSearch: () -> Unit = {},
     homeListState: LazyListState? = null,
-    searchListState: LazyListState? = null,
     homeScrollConnection: NestedScrollConnection? = null,
     searchScrollConnection: NestedScrollConnection? = null,
     onlineSearchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,
+    onOnlineSearchSortChange: (OnlineSearchSort) -> Unit = {},
 ) {
     composable(Screens.Home.route) {
         if (rememberHomeSource() == HomeSource.SPOTIFY) {
@@ -151,13 +149,23 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         LibraryScreen(navController)
     }
+    composable("listen_together") {
+        ListenTogetherScreen(navController, showTopBar = false)
+    }
+    composable(
+        route = "listen_together_from_topbar",
+    ) {
+        ListenTogetherScreen(navController, showTopBar = true)
+    }
+    composable("listen_together/chat") {
+        CommentTogetherScreen(navController)
+    }
     composable(Screens.Search.route) {
         SearchScreen(
             navController = navController,
             onSearchQuery = onSearchQuery,
             onVoiceSearch = onVoiceSearch,
             headerScrollConnection = searchScrollConnection,
-            listState = searchListState,
         )
     }
     composable("local_songs") {
@@ -289,6 +297,7 @@ fun NavGraphBuilder.navigationBuilder(
         OnlineSearchResult(
             navController = navController,
             searchSort = onlineSearchSort,
+            onSearchSortChange = onOnlineSearchSortChange,
         )
     }
     composable(
@@ -347,7 +356,7 @@ fun NavGraphBuilder.navigationBuilder(
         ArtistAlbumsScreen(navController, scrollBehavior)
     }
     composable(
-        route = "artist/{artistId}/items?browseId={browseId}&params={params}",
+        route = "artist/{artistId}/items?browseId={browseId}&params={params}&title={title}",
         arguments =
             listOf(
                 navArgument("artistId") {
@@ -360,6 +369,11 @@ fun NavGraphBuilder.navigationBuilder(
                 navArgument("params") {
                     type = NavType.StringType
                     nullable = true
+                },
+                navArgument("title") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
                 },
             ),
     ) {
@@ -533,6 +547,18 @@ fun NavGraphBuilder.navigationBuilder(
         PlayerSettings(navController, it.savedStateHandle["scrollTo"])
     }
     composable(
+        route = "settings/appearance/liquid_glass?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        LiquidGlassSettings(navController, it.savedStateHandle["scrollTo"])
+    }
+    composable(
+        route = "settings/player/audiophile?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        AudiophileSettings(navController, it.savedStateHandle["scrollTo"])
+    }
+    composable(
         route = "settings/sources?scrollTo={scrollTo}",
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
@@ -583,6 +609,9 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         IntegrationScreen(navController, it.savedStateHandle["scrollTo"])
     }
+    composable(route = "settings/integrations/listen_together") {
+        ListenTogetherSettings(navController, scrollBehavior)
+    }
     composable(
         route = "settings/tidal?scrollTo={scrollTo}",
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
@@ -602,12 +631,6 @@ fun NavGraphBuilder.navigationBuilder(
         DeezerSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable(
-        route = "settings/amazon?scrollTo={scrollTo}",
-        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
-    ) {
-        AmazonSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
-    }
-    composable(
         route = "settings/jiosaavn?scrollTo={scrollTo}",
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
@@ -622,22 +645,14 @@ fun NavGraphBuilder.navigationBuilder(
     composable(DEEZER_LOGIN_ROUTE) {
         DeezerLoginScreen(navController)
     }
-    composable(AMAZON_LOGIN_ROUTE) {
-        AmazonLoginScreen(navController)
-    }
-    composable(APPLE_MUSIC_LOGIN_ROUTE) {
-        AppleMusicLoginScreen(navController)
-    }
-    composable(
-        route = "settings/applemusic",
-    ) {
-        AppleMusicSettings(navController)
-    }
     composable(LASTFM_LOGIN_ROUTE) {
         LastFmLoginScreen(navController)
     }
     composable(LASTFM_LIBREFM_LOGIN_ROUTE) {
         LibreFmLoginScreen(navController)
+    }
+    composable(LISTENBRAINZ_LOGIN_ROUTE) {
+        ListenBrainzLoginScreen(navController)
     }
     composable(
         route = "settings/telegram?scrollTo={scrollTo}",
@@ -668,9 +683,6 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         AiIntegrationSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
-    }
-    composable("settings/music_together") {
-        MusicTogetherScreen(navController)
     }
     composable(
         route = "settings/lastfm?scrollTo={scrollTo}",

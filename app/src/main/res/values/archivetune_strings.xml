@@ -111,6 +111,51 @@
     <string name="no_title">No title</string>
     <string name="unknown_artist">Unknown artist</string>
     <string name="aod_customize_title">AOD customization</string>
+    <string name="aod_background_adaptive_art">Adaptive artwork</string>
+    <string name="aod_background_adaptive_frosted">Adaptive frosted</string>
+    <string name="aod_background_frosted_wallpaper">Frosted wallpaper</string>
+    <string name="aod_battery_percent">%d%%</string>
+    <string name="aod_clock_bold_digital">Bold digital</string>
+    <string name="aod_clock_elegant_thin">Elegant thin</string>
+    <string name="aod_clock_minimal">Minimal</string>
+    <string name="aod_clock_pixel_stacked">Pixel stacked</string>
+    <string name="aod_customize_ambient_brightness">Ambient Brightness</string>
+    <string name="aod_customize_auto_dimming">Auto-Dimming Low Power Mode</string>
+    <string name="aod_customize_auto_dimming_desc">Lowers screen opacity after 10 seconds of inactivity</string>
+    <string name="aod_customize_auto_lock">Auto-Lock on AOD Entry</string>
+    <string name="aod_customize_auto_lock_delay">Auto-Lock Delay</string>
+    <string name="aod_customize_auto_lock_delay_value">%ds</string>
+    <string name="aod_customize_auto_lock_desc">Automatically lock screen after a delay when entering AOD</string>
+    <string name="aod_customize_auto_start_screen_off">Display AOD when screen turns off</string>
+    <string name="aod_customize_auto_start_screen_off_desc">Automatically show AOD ambient screen when screen turns off during playback</string>
+    <string name="aod_customize_clock_style">Clock Style</string>
+    <string name="aod_customize_gestures">Gesture Controls</string>
+    <string name="aod_customize_gestures_desc">Double-tap to play/pause, swipe left/right to skip tracks</string>
+    <string name="aod_customize_marquee_titles">Marquee Song Titles</string>
+    <string name="aod_customize_marquee_titles_desc">Scroll long song titles instead of truncating</string>
+    <string name="aod_customize_minimal_locked_view">Minimal Locked View</string>
+    <string name="aod_customize_minimal_locked_view_desc">When locked, show only clock and song title — hides artwork and controls</string>
+    <string name="aod_customize_mode_enabled">Enable AOD mode</string>
+    <string name="aod_customize_mode_enabled_desc">Allow ArchiveTune to show the always-on player screen</string>
+    <string name="aod_customize_pixel_shift">OLED Burn-in Protection</string>
+    <string name="aod_customize_pixel_shift_desc">Periodically shifts display offset every 60 seconds</string>
+    <string name="aod_customize_proximity_blackout">Pocket &amp; Face-Down Blackout</string>
+    <string name="aod_customize_proximity_blackout_desc">Turn off screen when proximity sensor detects pocket or face-down placement</string>
+    <string name="aod_customize_screensaver_info_desc">To activate AOD automatically while charging or docked, go to Android Settings &gt; Display &gt; Screen saver and select ArchiveTune.</string>
+    <string name="aod_customize_screensaver_info_title">System Screen Saver (Charging AOD)</string>
+    <string name="aod_customize_security_power">Security &amp; Power</string>
+    <string name="aod_customize_shake_to_unlock">Shake to Unlock</string>
+    <string name="aod_customize_shake_to_unlock_desc">Shake your phone to exit touch-lock mode</string>
+    <string name="aod_customize_show_battery">Show Battery Status</string>
+    <string name="aod_customize_show_clock">Show Digital Clock</string>
+    <string name="aod_customize_smart_lock">Smart Lock &amp; Display</string>
+    <string name="aod_customize_touch_lock">Touch Lock Enabled</string>
+    <string name="aod_customize_touch_lock_desc">Prevents accidental touches on AOD screen</string>
+    <string name="aod_customize_true_ambient_mode">True Ambient Always-On</string>
+    <string name="aod_customize_true_ambient_mode_desc">Show minimal ambient artwork and clock when phone is untouched</string>
+    <string name="aod_hold_to_unlock">Hold for 1.5s to unlock</string>
+    <string name="aod_slide_to_lock">Slide to Lock &gt;&gt;&gt;</string>
+    <string name="aod_slide_to_unlock">Slide to Unlock &gt;&gt;&gt;</string>
     <string name="aod_customize_subtitle">Shape, layout, controls, and ambient styling</string>
     <string name="aod_customize_entry_desc">Customize the always-on player screen</string>
     <string name="aod_customize_preview">Live preview</string>
@@ -163,7 +208,6 @@
     <string name="aod_customize_auto_timer_off">Off</string>
     <string name="aod_customize_auto_timer_seconds">%1$d s</string>
     <string name="aod_customize_auto_on_screen_dim">Enter AOD when screen dims</string>
-    <string name="aod_customize_auto_on_screen_dim_desc">Holds the screen on past the system screen-off timeout and switches to AOD mode 2 seconds before the screen would have turned off. Useful while driving — AOD appears while the screen is still lit, so you can see what\'s playing without waking the device.</string>
     <string name="aod_lyrics_loading">Loading lyrics…</string>
     <string name="aod_lyrics_unavailable">No lyrics available</string>
     <string name="aod_shape_rounded">Rounded</string>
@@ -231,27 +275,34 @@
     <string name="lyrics_share_layout_square">Square</string>
     <string name="lyrics_share_layout_portrait">Portrait</string>
     <string name="lyrics_share_layout_story">Story</string>
+    <string name="lyrics_share_style">Style</string>
+    <string name="lyrics_share_style_liquid_glass">Liquid Glass</string>
+    <string name="lyrics_share_style_frosted_dark">Frosted Dark</string>
+    <string name="lyrics_share_style_frosted_light">Frosted Light</string>
+    <string name="lyrics_share_style_clear_glass">Clear Glass</string>
+    <string name="lyrics_share_style_deep_blur">Deep Blur</string>
+    <string name="lyrics_share_style_vivid_glow">Vivid Glow</string>
     <string name="lyrics_share_vinyl_mode">Vinyl mode</string>
     <string name="lyrics_share_vinyl_mode_desc">Render as a vinyl record with the album cover instead of the lyrics card</string>
     <string name="lyrics_share_resolution_value">%1$d x %2$d</string>
     <string name="lyrics_share_background_blur">Background blur</string>
     <string name="lyrics_share_background_blur_value">%1$d px</string>
+    <string name="lyrics_share_glass_dim">Dim</string>
+    <string name="lyrics_share_glass_dim_value">%1$d%%</string>
+    <string name="lyrics_share_glass_liquidy">Liquidy</string>
+    <string name="lyrics_share_glass_liquidy_value">%1$d%%</string>
+    <string name="lyrics_share_glass_refraction">Refraction</string>
+    <string name="lyrics_share_glass_refraction_value">%1$d%%</string>
+    <string name="lyrics_share_glass_opacity">Glass opacity</string>
+    <string name="lyrics_share_glass_opacity_value">%1$d%%</string>
     <string name="lyrics_line_blur">Blur lyrics lines</string>
     <string name="show_lyrics_player_controls">Show player controls</string>
     <string name="auto_hide_lyrics_player_controls">Auto-hide controls</string>
     <string name="auto_hide_lyrics_player_controls_description">Fade the controls after 5s and dock a slim seek bar at the bottom. Tap the screen to bring them back.</string>
-    <string name="lyrics_share_background_dim">Background dim</string>
-    <string name="lyrics_share_background_dim_value">%1$d%%</string>
     <string name="lyrics_share_show_cover">Show album cover</string>
     <string name="lyrics_share_show_cover_desc">Include the artwork in the header of the exported image.</string>
-    <string name="lyrics_share_style_album_tint">Album tint</string>
-    <string name="lyrics_share_style_frosted_dark">Frosted dark</string>
-    <string name="lyrics_share_style_frosted_light">Frosted light</string>
-    <string name="lyrics_share_style_clear_glass">Clear glass</string>
-    <string name="lyrics_share_style_deep_blur">Deep blur</string>
-    <string name="lyrics_share_style_vivid_glow">Vivid glow</string>
     <string name="lyrics_share_text_color">Lyrics text color</string>
-    <string name="lyrics_share_text_color_default">Style default</string>
+    <string name="lyrics_share_text_color_default">Reference</string>
     <string name="lyrics_share_text_color_custom">Custom</string>
     <string name="lyrics_share_text_color_white">White</string>
     <string name="lyrics_share_text_color_black">Black</string>
@@ -269,7 +320,6 @@
     <string name="lyrics_share_export_not_supported">Image sharing requires Android 6.0 or newer</string>
     <string name="lyrics_share_options">Options</string>
     <string name="lyrics_share_aspect_ratio">Aspect ratio</string>
-    <string name="lyrics_share_style">Style</string>
     <string name="lyrics_share_advanced">Advanced</string>
     <string name="lyrics_share_show_advanced">Show advanced options</string>
     <string name="lyrics_share_hide_advanced">Hide advanced options</string>
@@ -458,6 +508,18 @@
     <string name="percentage_format">%d%%</string>
     <string name="import_online">Import a \"m3u\" playlists</string>
     <string name="import_csv">Import a \"csv\" playlists</string>
+    <string name="export_playlist_csv">Export playlist as CSV</string>
+    <string name="export_playlist_csv_description">Choose a playlist and save its songs as a CSV file</string>
+    <string name="export_playlist_picker_title">Choose a playlist</string>
+    <string name="export_playlist_loading">Loading playlists</string>
+    <string name="export_playlist_empty">No non-empty playlists are available</string>
+    <string name="export_playlist_load_failed_retry">Unable to load playlists. Tap to retry</string>
+    <string name="export_playlist_in_progress">Exporting playlist</string>
+    <string name="export_playlist_writing">Writing CSV file</string>
+    <string name="export_playlist_success">Playlist exported as CSV</string>
+    <string name="export_playlist_failed">Unable to export playlist</string>
+    <string name="export_playlist_failed_retry">Unable to export playlist. Tap to try again</string>
+
     <string name="playlist_add_local_to_synced_note">Note: Adding local songs to synced/remote playlists is unsupported. Any other combination is valid</string>
     <string name="auto_download_on_like">Auto download on like</string>
     <string name="auto_download_on_like_desc">Automatically download songs when you like them</string>
@@ -521,6 +583,15 @@
     <string name="album_not_found_desc">The requested album could not be loaded</string>
     <string name="new_releases">New releases</string>
     <string name="latest_release">Latest Release</string>
+    <string name="upcoming_release">Upcoming Release</string>
+    <string name="upcoming_releases">Upcoming releases</string>
+    <string name="release_countdown_days">%1$d d %2$d h left</string>
+    <string name="release_countdown_hours">%1$d h %2$d m left</string>
+    <string name="release_countdown_minutes">%1$d m left</string>
+    <string name="release_countdown_imminent">Releasing any moment</string>
+    <string name="release_date_format">%1$s</string>
+    <string name="presave_release_radar">Pre-save &amp; release countdown</string>
+    <string name="presave_release_radar_summary">Show upcoming releases with a countdown at the top of subscribed artists\' pages, and check for new releases from subscribed artists far more often so the notification lands within minutes.</string>
     <string name="release_type_album">Album</string>
     <string name="release_type_single">Single</string>
     <string name="release_metadata">%1$s • %2$d</string>
@@ -553,8 +624,21 @@
     <string name="audio_crossfade_seconds">%1$s s</string>
     <string name="crossfade_gapless_title">Skip gapless albums</string>
     <string name="crossfade_gapless_description">Do not crossfade consecutive songs from the same album.</string>
+    <string name="automix_title">Automix</string>
+    <string name="automix_enabled_subtitle">Times and blends every transition from the tracks themselves. Turn it off if the phone gets hot or playback stutters.</string>
+    <string name="automix_disabled_subtitle">Times and blends transitions automatically, without a slider. Performance may vary on slower devices.</string>
+    <string name="automix_performance_title">Automix performance</string>
+    <string name="automix_performance_subtitle">How much CPU background analysis may use</string>
+    <string name="automix_performance_efficient">Efficient · 1 thread</string>
+    <string name="automix_performance_balanced">Balanced · 2 threads</string>
+    <string name="automix_performance_max">Performance · 4 threads</string>
+    <string name="automix_analysis_status">Automix · this song: %1$s · next: %2$s</string>
+    <string name="automix_state_analysing">analysing…</string>
+    <string name="automix_state_analysed">analysed</string>
+    <string name="automix_state_refining">analysed, refining…</string>
+    <string name="automix_state_waiting">waiting</string>
+    <string name="automix_state_failed">failed</string>
     <string name="auto_choose_playback_client">Auto choose playback client</string>
-    <string name="auto_choose_playback_client_desc">Try the fastest compatible YouTube client and fall back quickly when a client fails or times out.</string>
     <string name="auto_choose_playback_client_enabled_note">ArchiveTune chooses a compatible client using recent success, latency and failures.</string>
     <string name="auto_choose_playback_client_disabled_note">Only the selected playback client is used. Failures are reported without automatic client fallback.</string>
     <string name="player_stream_client">Playback client</string>
@@ -699,8 +783,64 @@
     <string name="backup_category_library_desc">Playlists, songs, history &amp; artists</string>
     <string name="backup_category_settings">App Settings</string>
     <string name="backup_category_settings_desc">Appearance, playback &amp; preferences</string>
+    <string name="backup_category_fonts">Fonts</string>
+
+    <!-- LastWave-native signal-path verdicts (ported with SignalPath.kt) -->
+    <string name="signal_detail_bit_perfect_unavailable">Nominal mixer rate %1$d Hz — bit-perfect mode not configured</string>
+    <string name="signal_detail_dsp_bypass">Bypassed — EQ, clarity &amp; effects off</string>
+    <string name="signal_detail_dsp_crossfade">Crossfade is mixing two streams</string>
+    <string name="signal_detail_dsp_off">Bit-Perfect off — enable it in Settings</string>
+    <string name="signal_detail_exclusive_failed">Exclusive failed: %1$s — using shared mixer</string>
+    <string name="signal_detail_gain_scaled">Gain %1$sx — unity required (ducking or fade active)</string>
+    <string name="signal_detail_gain_unity">0.0 dB — unity gain</string>
+    <string name="signal_detail_mixer_not_exclusive">Android mixer path — not exclusive usbdevfs</string>
+    <string name="signal_detail_mixer_src">Resamples %1$d Hz → %2$d Hz</string>
+    <string name="signal_detail_mixer_unreadable">Mixer rate unreadable</string>
+    <string name="signal_detail_no_dac">No USB DAC connected</string>
+    <string name="signal_detail_no_stream">No active stream</string>
+    <string name="signal_detail_not_routed">Not routed to %1$s</string>
+    <string name="signal_detail_resample_active">Active — %1$d Hz → %2$d Hz</string>
+    <string name="signal_detail_resample_bypass">Bypassed — %1$d Hz in / out</string>
+    <string name="signal_detail_resample_dac_unsupported">DAC unsupported (%1$d Hz) → Resampled to %2$d Hz (libsoxr)</string>
+    <string name="signal_detail_resample_unresolved">Output rate unresolved</string>
+    <string name="signal_detail_route_unverified">DAC routing requested; actual output route is not verified</string>
+    <string name="signal_detail_src">%1$s • %2$d-bit / %3$d Hz</string>
+    <string name="signal_detail_src_nobit">%1$s • %2$d Hz</string>
+    <string name="signal_detail_src_unknown">Unknown source sample rate</string>
+    <string name="signal_detail_sysvol_hw">Hardware volume — no digital scaling</string>
+    <string name="signal_detail_sysvol_max">MAX — no digital attenuation</string>
+    <string name="signal_detail_sysvol_scaled">%1$d/%2$d — digital attenuation before DAC</string>
+    <string name="signal_detail_tempo_active">%1$sx — resampling active</string>
+    <string name="signal_detail_tempo_ok">1.00x — no pitch processing</string>
+    <string name="signal_detail_unreadable">Unreadable</string>
+    <string name="signal_detail_usb_clock_fallback">DAC clock fallback (%1$d Hz unsupported → %2$d Hz)</string>
+    <string name="signal_detail_usb_clock_mismatch">DAC clock did not confirm the source rate</string>
+    <string name="signal_detail_usb_clock_ok">DAC clock matches the source rate (GET_CUR)</string>
+    <string name="signal_detail_usb_exclusive">USB exclusive — mixer bypassed, DAC owns the clock</string>
+    <string name="signal_detail_usb_exclusive_route">Exclusive usbdevfs — %1$s</string>
+    <string name="signal_detail_usb_hw_vol">UAC Feature Unit volume — PCM unscaled</string>
+    <string name="signal_detail_usb_ok_accepts">USB DAC — %1$s • DAC accepts %2$d Hz</string>
+    <string name="signal_detail_usb_ok_plain">USB DAC — %1$s</string>
+    <string name="signal_detail_usb_ok_rejects">USB DAC — %1$s • %2$d Hz not in DAC descriptor</string>
+    <string name="signal_label_appvol">App volume</string>
+    <string name="signal_label_dsp">DSP chain</string>
+    <string name="signal_label_mixer">Android mixer</string>
+    <string name="signal_label_output">Output</string>
+    <string name="signal_label_resampler">App resampler</string>
+    <string name="signal_label_source">Source</string>
+    <string name="signal_label_sysvol">System volume</string>
+    <string name="signal_label_tempo">Tempo</string>
+    <string name="signal_stream">Stream</string>
+
+    <string name="backup_category_fonts_desc">Custom downloaded fonts (the applied font is restored as a setting too)</string>
     <string name="backup_category_account">Account Details</string>
     <string name="backup_category_account_desc">YouTube, Spotify, Last.fm, Libre.fm, Discord &amp; proxy credentials</string>
+    <string name="backup_category_lyrics">Lyrics</string>
+    <string name="backup_category_lyrics_desc">Saved, chosen &amp; translated lyrics cache</string>
+    <string name="backup_category_canvas">Canvas</string>
+    <string name="backup_category_canvas_desc">Cached canvas video artwork</string>
+    <string name="backup_step_export_lyrics">Exporting lyrics</string>
+    <string name="restore_step_restoring_lyrics">Restoring lyrics</string>
     <string name="internal_service">Internal Service</string>
     <string name="external_service">External Service</string>
     <string name="restore_invalid_file">The selected file is not a valid backup archive.</string>
@@ -841,7 +981,6 @@
     <string name="yt_browser_sign_in">Sign in with browser</string>
     <string name="yt_browser_sign_in_desc">Full account: library, playlists, uploads and personalised browse.</string>
     <string name="yt_oauth_sign_in">Sign in with a code</string>
-    <string name="yt_oauth_sign_in_desc">Type a short code at google.com/device. No browser sign-in needed.</string>
     <string name="yt_oauth_sign_out">Sign out of the code session</string>
     <string name="yt_oauth_sign_out_desc">Revokes the token with Google and removes it from this device.</string>
     <string name="yt_oauth_step_open">Open google.com/device on any device, sign in to Google, then enter this code:</string>
@@ -890,42 +1029,15 @@
     <string name="android_auto_for_you">For You</string>
     <string name="android_auto_library">Library</string>
 
-    <!-- Amazon Music source label (PlayerMenu / PlaybackSourceSections / download + search pickers) -->
-    <string name="source_amazon">Amazon Music</string>
 
-    <!-- Amazon Music sign-in (WebView) + settings. Shaped like Deezer's: account-based, no
-         self-hosted proxy tier. Playback itself is not shipped — Amazon serves CENC-protected
-         streams and this fork deliberately does not ship the decryption step, so signing in only
-         gets metadata and catalogue browsing; amazon_playback_notice_* says so on the screen. -->
-    <string name="amazon_login">Sign in to Amazon Music</string>
-    <string name="amazon_login_description">Use your own Amazon Music account for metadata and catalogue lookups</string>
-    <string name="amazon_login_success">Signed in to Amazon Music</string>
-    <string name="amazon_login_invalid_session">Not signed in yet — finish signing in on this page.</string>
-    <string name="auth_webview_amazon_subtitle">Sign in to Amazon Music below. The session is saved automatically once you\'re signed in.</string>
-    <string name="amazon_account_name_generic">Amazon Music account</string>
-    <string name="amazon_sign_out">Sign out of Amazon Music</string>
-    <string name="amazon_signed_in_as">Signed in as %1$s</string>
-    <string name="amazon_signed_out">Signed out of Amazon Music</string>
-    <string name="amazon_playback_notice_title">Playback isn\'t available yet</string>
-    <string name="amazon_playback_notice_description">Amazon Music serves DRM-protected (CENC) streams, and this fork deliberately does not ship the decryption step that would need. Signing in only gets you metadata and catalogue browsing — songs will not play from this source.</string>
-    <string name="amazon_settings_playback_group">Playback preferences</string>
-    <string name="amazon_premium_toggle">Lossless-capable plan</string>
-    <string name="amazon_premium_toggle_description">Turn on if your account has an Unlimited HD or Ultra HD plan. There is no way for the app to check this on its own, so it\'s reported by you; it only orders resolution attempts once playback support exists.</string>
-    <string name="amazon_audio_quality">Preferred audio quality</string>
-    <string name="amazon_quality_ultra_hd">Ultra HD (24-bit)</string>
-    <string name="amazon_quality_hd">HD (16-bit lossless)</string>
-    <string name="amazon_quality_standard">Standard</string>
-    <string name="amazon_instances">Metadata instances</string>
-    <string name="amazon_instances_hint">One URL per line</string>
-    <string name="amazon_instances_empty">None configured — metadata resolves through your signed-in account only</string>
-    <string name="amazon_instances_count">%1$d instance(s) configured</string>
+    <!-- QQ Music settings. Playback exists through Tencent's partner programme only, so the screen
+         leads with what the maintainer has to provision; see QqMusicProvider for the boundaries. -->
 
-    <!-- Amazon Music section inside Player & Audio's source list (our fork's toggle row;
-         canary had no in-page toggle, so these two strings are this fork's extension). -->
-    <string name="amazon_enable">Enable Amazon Music source</string>
-    <string name="amazon_enable_description">Orderable in the source priority picker; stream resolution is not available yet — see Integration → Amazon Music</string>
-
-    <!-- Amazon Music catalog search (search-from popup + results screen; anonymous, no sign-in). -->
-    <string name="search_amazon">Search Amazon Music</string>
-    <string name="amazon_track_unavailable">Amazon Music track could not be mapped to a playable source.</string>
+    <string name="output_route">Output</string>
+    <string name="output_device">Device</string>
+    <string name="output_device_rates">Device sample rates</string>
+    <string name="output_mix_rate">Android mix rate</string>
+    <string name="output_conversion">Sample-rate conversion</string>
+    <string name="output_no_conversion">None — matches the output route</string>
+    <string name="media_info_title">Track info</string>
 </resources>

@@ -1,0 +1,413 @@
+package tf.monochrome.android.ui.eq
+
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
+import tf.monochrome.android.domain.model.AutoEqMeasurement
+import tf.monochrome.android.domain.model.Headphone
+import tf.monochrome.android.domain.model.MeasurementRig
+import tf.monochrome.android.ui.theme.MonoDimens
+import tf.monochrome.android.ui.components.SearchOverlay
+import moe.rukamori.archivetune.ui.component.UnglassedDialogTheme
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun HeadphoneSelectScreen(
+    viewModel: EqViewModel,
+    onHeadphoneSelected: (Headphone) -> Unit,
+    onDismiss: () -> Unit,
+    channel: EqChannel = EqChannel.LEFT,
+) {
+    val availableHeadphones by viewModel.availableHeadphones.collectAsStateWithLifecycle()
+    val uploadedHeadphones by viewModel.uploadedHeadphones.collectAsStateWithLifecycle()
+    val headphonesLoading by viewModel.headphonesLoading.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
+    val selectedRig by viewModel.selectedRig.collectAsStateWithLifecycle()
+    val availableRigs by viewModel.availableRigs.collectAsStateWithLifecycle()
+
+    var localSearchQuery by remember { mutableStateOf("") }
+    var pendingDelete by remember { mutableStateOf<Headphone?>(null) }
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        viewModel.loadAvailableHeadphones()
+    }
+
+    data class Row(val headphone: Headphone, val measurement: AutoEqMeasurement)
+
+    val rows = remember(availableHeadphones, localSearchQuery, selectedRig) {
+        availableHeadphones
+            .asSequence()
+            .filter { hp ->
+                localSearchQuery.isEmpty() || hp.name.contains(localSearchQuery, ignoreCase = true)
+            }
+            .flatMap { hp -> hp.measurements.map { Row(hp, it) } }
+            .filter { selectedRig == null || it.measurement.rig == selectedRig }
+            .toList()
+    }
+
+    val groupedByLetter = remember(rows) {
+        rows.groupBy {
+            val first = it.headphone.name.firstOrNull()?.uppercaseChar() ?: '#'
+            if (first.isLetter()) first else '#'
+        }.toSortedMap()
+    }
+
+    val availableLetters = remember(groupedByLetter) { groupedByLetter.keys }
+
+    data class ListEntry(
+        val isHeader: Boolean,
+        val letter: Char? = null,
+        val row: Row? = null,
+    )
+
+    val flatList = remember(groupedByLetter) {
+        buildList {
+            groupedByLetter.forEach { (letter, group) ->
+                add(ListEntry(isHeader = true, letter = letter))
+                group.forEach { add(ListEntry(isHeader = false, row = it)) }
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = MonoDimens.cardAlpha))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Database",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = selectedRig?.label ?: "All rigs",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                "${rows.size} measurements",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 8.dp),
+            )
+            IconButton(onClick = { viewModel.refreshHeadphones() }) {
+                Icon(Icons.Default.Refresh, "Refresh", modifier = Modifier.size(20.dp))
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, "Close", modifier = Modifier.size(20.dp))
+            }
+        }
+
+        if (availableRigs.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+
+                val uploadedRig = MeasurementRig.UPLOADED
+                if (uploadedHeadphones.isNotEmpty()) {
+                    item(key = "rig_uploaded") {
+                        FilterChip(
+                            selected = selectedRig == uploadedRig,
+                            onClick = {
+                                viewModel.setRigFilter(if (selectedRig == uploadedRig) null else uploadedRig)
+                            },
+                            label = { Text(uploadedRig.label) },
+                            colors = FilterChipDefaults.filterChipColors(),
+                        )
+                    }
+                }
+                item(key = "rig_all") {
+                    FilterChip(
+                        selected = selectedRig == null,
+                        onClick = { viewModel.setRigFilter(null) },
+                        label = { Text("All rigs") },
+                        colors = FilterChipDefaults.filterChipColors(),
+                    )
+                }
+                val remoteRigs = availableRigs.filter { it != uploadedRig }
+                items(
+                    count = remoteRigs.size,
+                    key = { i -> "rig_${remoteRigs[i].name}" },
+                ) { i ->
+                    val rig = remoteRigs[i]
+                    FilterChip(
+                        selected = selectedRig == rig,
+                        onClick = {
+                            viewModel.setRigFilter(if (selectedRig == rig) null else rig)
+                        },
+                        label = { Text(rig.label) },
+                        colors = FilterChipDefaults.filterChipColors(),
+                    )
+                }
+            }
+        }
+
+        SearchOverlay(
+            open = true,
+            query = localSearchQuery,
+            onQueryChange = { localSearchQuery = it },
+            placeholder = "Search model (e.g. HD 600)…",
+            onClose = null,
+            modifier = Modifier.weight(1f),
+
+            autoFocus = false,
+        ) { searchTopInset ->
+        Column(modifier = Modifier.fillMaxSize()) {
+
+        val listTopInset = if (error.isNullOrEmpty()) searchTopInset else 0.dp
+
+        if (!error.isNullOrEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = searchTopInset)
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .background(
+                        MaterialTheme.colorScheme.errorContainer,
+                        RoundedCornerShape(8.dp),
+                    )
+                    .padding(12.dp),
+            ) {
+                Text(
+                    error!!,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    fontSize = 12.sp,
+                )
+            }
+        }
+
+        if (headphonesLoading && availableHeadphones.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(top = listTopInset),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Loading measurements from AutoEq + squig.link...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        } else if (rows.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(top = listTopInset),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "No measurements match",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            Row(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    contentPadding = PaddingValues(top = listTopInset),
+                ) {
+                    flatList.forEachIndexed { index, entry ->
+                        if (entry.isHeader && entry.letter != null) {
+                            stickyHeader(key = "header_${entry.letter}") {
+                                Text(
+                                    entry.letter.toString(),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            MaterialTheme.colorScheme.surface
+                                                .copy(alpha = MonoDimens.cardAlpha)
+                                        )
+                                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                                )
+                            }
+                        } else if (entry.row != null) {
+                            item(
+                                key = "m_${entry.row.headphone.id}_${entry.row.measurement.source}_$index"
+                            ) {
+                                MeasurementRowItem(
+                                    headphone = entry.row.headphone,
+                                    measurement = entry.row.measurement,
+                                    onClick = {
+                                        viewModel.selectMeasurement(
+                                            entry.row.headphone,
+                                            entry.row.measurement,
+                                            channel,
+                                        )
+                                        onHeadphoneSelected(entry.row.headphone)
+                                    },
+                                    onLongClick = if (entry.row.measurement.rig == MeasurementRig.UPLOADED) {
+                                        { pendingDelete = entry.row.headphone }
+                                    } else null,
+                                )
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                AlphabeticalIndexSidebar(
+                    availableLetters = availableLetters,
+                    onLetterClicked = { letter ->
+                        scope.launch {
+                            val index = flatList.indexOfFirst {
+                                it.isHeader && it.letter == letter
+                            }
+                            if (index >= 0) {
+                                listState.animateScrollToItem(index)
+                            }
+                        }
+                    },
+                )
+            }
+        }
+        }
+        }
+    }
+
+    val toDelete = pendingDelete
+    if (toDelete != null) {
+        // Unglassed: this dialog renders inside the glass menu's color scheme,
+        // whose container colors are near-transparent — re-applying the
+        // unglassed scheme gives the dialog a standard opaque container.
+        UnglassedDialogTheme {
+            AlertDialog(
+                onDismissRequest = { pendingDelete = null },
+                title = { Text("Delete uploaded measurement?") },
+                text = { Text(toDelete.name) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.removeUploadedMeasurement(toDelete.id)
+                        pendingDelete = null
+                    }) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDelete = null }) {
+                        Text("Cancel")
+                    }
+                },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MeasurementRowItem(
+    headphone: Headphone,
+    measurement: AutoEqMeasurement,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Default.Headphones,
+            contentDescription = null,
+            modifier = Modifier.size(28.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                headphone.name,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "${measurement.source} • ${measurement.rig.label}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            ">",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}

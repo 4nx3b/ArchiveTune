@@ -115,14 +115,14 @@ import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.component.shimmer.TextPlaceholder
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.SelectionMediaMetadataMenu
 import moe.rukamori.archivetune.ui.menu.YouTubePlaylistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
@@ -141,6 +141,7 @@ import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.OnlinePlaylistViewModel
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
 import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
@@ -207,14 +208,16 @@ fun OnlinePlaylistScreen(
     var selection by remember { mutableStateOf(false) }
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
 
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+
+    val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -250,7 +253,6 @@ fun OnlinePlaylistScreen(
             savedScrollOffset = lazyListState.firstVisibleItemScrollOffset
             focusRequester.requestFocus()
         } else {
-
             withFrameNanos {}
             lazyListState.scrollToItem(savedScrollIndex, savedScrollOffset)
         }
@@ -264,7 +266,6 @@ fun OnlinePlaylistScreen(
     } else if (selection) {
         BackHandler { selection = false }
     } else {
-
         BackHandler {
             try {
                 if (!navController.popBackStack()) {
@@ -278,21 +279,13 @@ fun OnlinePlaylistScreen(
                         navController.navigate("library") { launchSingleTop = true }
                     }
                 } catch (_: Exception) {
-
                 }
             }
         }
     }
 
     val wrappedSongs =
-        // The MutableStateList must be created INSIDE remember: calling
-        // toMutableStateList() on the remembered result rebuilt a fresh list
-        // instance on every recomposition of this screen (playback state,
-        // view counts and download maps all recompose it constantly while a
-        // song plays), which re-invalidated the LazyColumn's items block and
-        // churned allocations every frame — one of the causes of laggy
-        // playlist scrolling. Selection stays observable: ItemWrapper.isSelected
-        // is itself a mutableStateOf.
+
         remember(filteredSongs) {
             filteredSongs.map { item -> ItemWrapper(item) }.toMutableStateList()
         }
@@ -341,7 +334,7 @@ fun OnlinePlaylistScreen(
         }
     }
 
-    val artworkBackdrop = rememberBackdrop(surfaceColor)
+    val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
 
     val headerHaze = rememberScreenHeaderHaze()
     ExpressivePullToRefreshBox(
@@ -358,8 +351,8 @@ fun OnlinePlaylistScreen(
                 Modifier
                     .fillMaxSize()
                     .then(
-                        if (layerBackdropActive) {
-                            Modifier.layerBackdrop(artworkBackdrop)
+                        if (liquidGlassHeaderActive) {
+                            Modifier.glassSource(artworkBackdrop)
                         } else {
                             Modifier
                         },
@@ -447,7 +440,6 @@ fun OnlinePlaylistScreen(
                         }
                     }
                 } else if (playlistSnapshot != null) {
-
                     val playlist = playlistSnapshot
                     item(key = "header") {
                         if (!isSearching) {
@@ -490,7 +482,7 @@ fun OnlinePlaylistScreen(
                                         ?.takeIf { pageCanvasEnabled },
                                 canvasFallbackUrl = canvasArtwork?.videoUrl?.takeIf { pageCanvasEnabled },
                                 canvasIsPlaying = true,
-                                canvasVisible = !lyricsFullScreen,
+                                canvasVisible = !lyricsFullScreen && !playerSheetOverlayActive,
                                 onShuffle =
                                     playlist.shuffleEndpoint?.let { shuffleEndpoint ->
                                         {
@@ -542,7 +534,6 @@ fun OnlinePlaylistScreen(
                                                     }
 
                                                     is HeaderDownloadState.Partial -> {
-
                                                         if (headerState.paused) {
                                                             sendResumePausedDownloads(
                                                                 context = context,
@@ -792,10 +783,11 @@ fun OnlinePlaylistScreen(
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
+            scrolled = lazyListState.canScrollBackward,
         )
 
         val currentPlaylistForGlass = playlist
-        if (layerBackdropActive && !isSearching && currentPlaylistForGlass != null) {
+        if (glassHeaderActive && !isSearching && currentPlaylistForGlass != null) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 interactive = true,
@@ -846,7 +838,6 @@ fun OnlinePlaylistScreen(
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
                 if (selection) {
-
                     val selectedCount = wrappedSongs.count { it.isSelected }
                     Box(
                         modifier = Modifier.size(48.dp),
@@ -895,7 +886,6 @@ fun OnlinePlaylistScreen(
                         )
                     }
                 } else {
-
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -994,7 +984,6 @@ fun OnlinePlaylistScreen(
                 }
             },
             navigationIcon = {
-
                 if (isSearching || selection || showTopBarTitle) {
                     IconButton(
                         onClick = {
@@ -1074,7 +1063,6 @@ fun OnlinePlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-
                     if (showTopBarTitle) {
                         IconButton(onClick = { isSearching = true }, onLongClick = {}) {
                             Icon(

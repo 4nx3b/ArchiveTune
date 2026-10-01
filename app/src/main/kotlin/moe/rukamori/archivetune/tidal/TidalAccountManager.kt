@@ -299,6 +299,8 @@ object TidalAccountManager {
 
     class TidalUnauthorizedException : Exception("TIDAL access token rejected (401)")
 
+    class TidalPreviewException : Exception("TIDAL playbackinfo returned PREVIEW (no FULL asset)")
+
     suspend fun resolveDirectStream(
         accessToken: String,
         title: String,
@@ -327,6 +329,25 @@ object TidalAccountManager {
             )
         }
 
+    suspend fun resolveDirectStreamByTrackId(
+        accessToken: String,
+        trackId: String,
+        durationMs: Long?,
+        audioQuality: String,
+        cacheDir: File,
+        preferLiveDash: Boolean = false,
+    ): DirectStream? =
+        withContext(Dispatchers.IO) {
+            resolvePlaybackInfo(
+                accessToken = accessToken,
+                trackId = trackId,
+                audioQuality = audioQuality,
+                durationMs = durationMs,
+                cacheDir = cacheDir,
+                preferLiveDash = preferLiveDash,
+            )?.copy(trustedDirectId = true)
+        }
+
     private fun searchTrack(
         accessToken: String,
         title: String,
@@ -343,65 +364,123 @@ object TidalAccountManager {
                 .header("Authorization", "Bearer $accessToken")
                 .get()
                 .build()
-        return runCatching {
-            resolveClient.newCall(request).execute().use { response ->
-                if (response.code == 401) throw TidalUnauthorizedException()
-                val payload = response.body?.string().orEmpty()
-                if (!response.isSuccessful || payload.isBlank()) return@use null
-                val items = JSONObject(payload).optJSONArray("items") ?: return@use null
+        val result =
+            runCatching {
+                resolveClient.newCall(request).execute().use { response ->
+                    if (response.code == 401) throw TidalUnauthorizedException()
+                    val payload = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        Timber.tag("TidalAccount").w("account track search failed: HTTP %d", response.code)
+                        return@use null
+                    }
+                    if (payload.isBlank()) return@use null
+                    val items = JSONObject(payload).optJSONArray("items") ?: return@use null
 
-                var bestMatch: SearchMatch? = null
-                var bestScore = Int.MIN_VALUE
-                for (i in 0 until items.length()) {
-                    val item = items.optJSONObject(i) ?: continue
-                    val id = item.optLong("id").takeIf { it > 0 }?.toString() ?: continue
-                    var score = 0
-                    val candTitle = item.optString("title")
-                    if (candTitle.equals(title, ignoreCase = true)) {
-                        score += 50
-                    } else if (candTitle.contains(title, ignoreCase = true) ||
-                        title.contains(candTitle, ignoreCase = true)
-                    ) {
-                        score += 25
+                    var bestMatch: SearchMatch? = null
+                    var bestScore = Int.MIN_VALUE
+                    for (i in 0 until items.length()) {
+                        val item = items.optJSONObject(i) ?: continue
+                        val id = item.optLong("id").takeIf { it > 0 }?.toString() ?: continue
+                        var score = 0
+                        val candTitle = item.optString("title")
+                        if (candTitle.equals(title, ignoreCase = true)) {
+                            score += 50
+                        } else if (candTitle.contains(title, ignoreCase = true) ||
+                            title.contains(candTitle, ignoreCase = true)
+                        ) {
+                            score += 25
+                        }
+                        val candArtists =
+                            item.optJSONArray("artists")?.let { arr ->
+                                (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optString("name") }
+                            }.orEmpty()
+                        if (primaryArtist.isNotBlank() &&
+                            candArtists.any { it.contains(primaryArtist, ignoreCase = true) }
+                        ) {
+                            score += 30
+                        }
+                        val candDurationMs = item.optLong("duration").takeIf { it > 0 }?.times(1000L)
+                        if (durationMs != null && candDurationMs != null &&
+                            abs(candDurationMs - durationMs) <= 5000L
+                        ) {
+                            score += 20
+                        }
+                        if (score > bestScore) {
+                            bestScore = score
+                            bestMatch =
+                                SearchMatch(
+                                    id = id,
+                                    title = candTitle,
+                                    artist = candArtists.joinToString(", ").takeIf { it.isNotBlank() },
+                                    album = item.optJSONObject("album")?.optString("title")?.takeIf { it.isNotBlank() },
+                                    durationMs = candDurationMs,
+                                )
+                        }
                     }
-                    val candArtists =
-                        item.optJSONArray("artists")?.let { arr ->
-                            (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optString("name") }
-                        }.orEmpty()
-                    if (primaryArtist.isNotBlank() &&
-                        candArtists.any { it.contains(primaryArtist, ignoreCase = true) }
-                    ) {
-                        score += 30
-                    }
-                    val candDurationMs = item.optLong("duration").takeIf { it > 0 }?.times(1000L)
-                    if (durationMs != null && candDurationMs != null &&
-                        abs(candDurationMs - durationMs) <= 5000L
-                    ) {
-                        score += 20
-                    }
-                    if (score > bestScore) {
-                        bestScore = score
-                        bestMatch =
-                            SearchMatch(
-                                id = id,
-                                title = candTitle,
-                                artist = candArtists.joinToString(", ").takeIf { it.isNotBlank() },
-                                album = item.optJSONObject("album")?.optString("title")?.takeIf { it.isNotBlank() },
-                                durationMs = candDurationMs,
-                            )
-                    }
+
+                    if (bestScore >= 40) bestMatch else null
                 }
-
-                if (bestScore >= 40) bestMatch else null
+            }.getOrElse {
+                if (it is TidalUnauthorizedException) throw it
+                Timber.tag("TidalAccount").w(it, "account track search error")
+                null
             }
-        }.getOrElse {
-            if (it is TidalUnauthorizedException) throw it
-            Timber.tag("TidalAccount").w(it, "account track search error")
-            null
+        if (result == null) {
+
+            Timber.tag("TidalAccount").w("account track search produced no match >= 40 for \"%s\"", title)
         }
+        return result
     }
 
     private fun resolvePlaybackInfo(
+        accessToken: String,
+        trackId: String,
+        audioQuality: String,
+        durationMs: Long?,
+        cacheDir: File,
+        preferLiveDash: Boolean,
+    ): DirectStream? {
+        try {
+            val direct = resolvePlaybackInfoOnce(
+                accessToken = accessToken,
+                trackId = trackId,
+                audioQuality = audioQuality,
+                durationMs = durationMs,
+                cacheDir = cacheDir,
+                preferLiveDash = preferLiveDash,
+            )
+            if (direct != null) return direct
+        } catch (e: TidalPreviewException) {
+
+            val fallbackQuality =
+                when (audioQuality) {
+                    "HI_RES_LOSSLESS" -> "LOSSLESS"
+                    "LOSSLESS" -> "HIGH"
+                    else -> null
+                }
+            if (fallbackQuality != null) {
+                Timber.tag("TidalAccount").w(
+                    "playbackinfo PREVIEW at %s; retrying at %s",
+                    audioQuality,
+                    fallbackQuality,
+                )
+                return resolvePlaybackInfoOnce(
+                    accessToken = accessToken,
+                    trackId = trackId,
+                    audioQuality = fallbackQuality,
+                    durationMs = durationMs,
+                    cacheDir = cacheDir,
+                    preferLiveDash = preferLiveDash,
+                )
+            }
+
+            Timber.tag("TidalAccount").w("playbackinfo PREVIEW at every quality tier; account cannot stream FULL")
+            throw e
+        }
+        return null
+    }
+
+    private fun resolvePlaybackInfoOnce(
         accessToken: String,
         trackId: String,
         audioQuality: String,
@@ -422,7 +501,7 @@ object TidalAccountManager {
         return runCatching {
             resolveClient.newCall(request).execute().use { response ->
                 if (response.code == 401) throw TidalUnauthorizedException()
-                val payload = response.body?.string().orEmpty()
+                val payload = response.body?.string() ?: return@use null
                 if (!response.isSuccessful || payload.isBlank()) {
                     Timber.tag("TidalAccount").w("playbackinfo failed: %d", response.code)
                     return@use null
@@ -430,8 +509,8 @@ object TidalAccountManager {
                 val json = JSONObject(payload)
 
                 if (json.optString("assetPresentation").equals("PREVIEW", ignoreCase = true)) {
-                    Timber.tag("TidalAccount").w("playbackinfo returned PREVIEW; skipping account stream")
-                    return@use null
+
+                    throw TidalPreviewException()
                 }
                 val manifestB64 = json.optString("manifest").takeIf { it.isNotBlank() } ?: return@use null
                 val manifestMime = json.optString("manifestMimeType").ifBlank { null }
@@ -446,7 +525,7 @@ object TidalAccountManager {
                 )
             }
         }.getOrElse {
-            if (it is TidalUnauthorizedException) throw it
+            if (it is TidalUnauthorizedException || it is TidalPreviewException) throw it
             Timber.tag("TidalAccount").w(it, "playbackinfo error")
             null
         }

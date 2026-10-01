@@ -260,12 +260,10 @@ private fun KaraokeWord(
                         if (nudgeEnabled && currentTime >= startTime && currentTime < startTime + totalImpulseTime) {
                             val timeSinceStart = currentTime - startTime
                             if (timeSinceStart < attackDuration) {
-
                                 val progress = timeSinceStart.toFloat() / attackDuration.toFloat()
                                 androidx.compose.ui.util
                                     .lerp(0f, maxShift, progress)
                             } else {
-
                                 val decayProgress = (timeSinceStart - attackDuration).toFloat() / decayDuration.toFloat()
                                 androidx.compose.ui.util
                                     .lerp(maxShift, 0f, decayProgress)
@@ -277,7 +275,6 @@ private fun KaraokeWord(
                     translationX = if (isRtl) -shift else shift
                 },
     ) {
-
         val effectiveFontSize = if (isBackground) fontSize * 0.7f else fontSize
         val effectiveAlpha = if (isBackground) 0.6f else 1f
 
@@ -582,7 +579,7 @@ fun Lyrics(
         selectedIndices.clear()
     }
 
-    val maxSelectionLimit = 5
+    val maxSelectionLimit = 7
 
     LaunchedEffect(showMaxSelectionToast) {
         if (showMaxSelectionToast) {
@@ -689,11 +686,9 @@ fun Lyrics(
             targetIndex: Int,
             isSeek: Boolean = false,
         ) {
-
             try {
                 val itemInfo = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
                 if (itemInfo != null) {
-
                     val viewportHeight = lazyListState.layoutInfo.viewportEndOffset - lazyListState.layoutInfo.viewportStartOffset
                     val center = lazyListState.layoutInfo.viewportStartOffset + (viewportHeight / 2)
                     val itemCenter = itemInfo.offset + itemInfo.size / 2
@@ -704,13 +699,11 @@ fun Lyrics(
                             value = offset.toFloat(),
                             animationSpec =
                                 if (isSeek) {
-
                                     spring(
                                         dampingRatio = Spring.DampingRatioLowBouncy,
                                         stiffness = Spring.StiffnessMedium,
                                     )
                                 } else {
-
                                     spring(
                                         dampingRatio = Spring.DampingRatioNoBouncy,
                                         stiffness = Spring.StiffnessLow,
@@ -719,15 +712,12 @@ fun Lyrics(
                         )
                     }
                 } else {
-
                     val firstVisibleIndex = lazyListState.firstVisibleItemIndex
                     val distance = abs(targetIndex - firstVisibleIndex)
 
                     if (distance > 15) {
-
                         lazyListState.scrollToItem(targetIndex)
                     } else {
-
                         lazyListState.animateScrollToItem(
                             index = targetIndex,
                             scrollOffset = 0,
@@ -735,7 +725,6 @@ fun Lyrics(
                     }
                 }
             } catch (e: Exception) {
-
             }
         }
 
@@ -786,7 +775,6 @@ fun Lyrics(
                 )
             }
         } else {
-
             LazyColumn(
                 state = lazyListState,
                 contentPadding =
@@ -1141,7 +1129,6 @@ fun Lyrics(
                                                         val nextText = baseWords.getOrNull(idx + 1)?.text
                                                         val includeSpace =
                                                             if (isCjk) {
-
                                                                 val currEdge =
                                                                     if (lineIsRtl) {
                                                                         word.text.firstOrNull()
@@ -1174,7 +1161,6 @@ fun Lyrics(
                                                         val wordDuration = wordEndMs - wordStartMs
 
                                                         if (isCjk && word.text.length > 3) {
-
                                                             val chars = word.text.toList()
                                                             chars.mapIndexed { charIdx, char ->
                                                                 val charStartMs = wordStartMs + (wordDuration * charIdx / chars.size)
@@ -1205,7 +1191,6 @@ fun Lyrics(
                                                         }
                                                     }
                                                 } else {
-
                                                     val nextLineTime =
                                                         lines.getOrNull(index + 1)?.time
                                                             ?: (item.time + 5000L).coerceAtLeast(item.time + 1000L)

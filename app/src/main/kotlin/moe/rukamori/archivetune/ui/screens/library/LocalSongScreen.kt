@@ -94,6 +94,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.kyant.backdrop.Backdrop
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
@@ -113,12 +114,11 @@ import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.ui.component.LargeFrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.AppleMusicPlaylistHero
 import moe.rukamori.archivetune.ui.component.LocalMenuState
-import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
-import moe.rukamori.archivetune.ui.component.layerBackdrop
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.SongMenu
 import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
@@ -166,18 +166,18 @@ fun LocalSongScreen(
         }
     }
 
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
 
-    val backdrop = rememberBackdrop(MaterialTheme.colorScheme.surface)
+    val backdrop = rememberThrottledBackdrop(MaterialTheme.colorScheme.surface)
 
-    val pillBackdrop: PlatformBackdrop? = backdrop.takeIf { layerBackdropActive }
+    val pillBackdrop: Backdrop? = backdrop.takeIf { glassHeaderActive }
     val (sortDescending, onSortDescendingChange) = rememberPreference(LocalSongsSortDescendingKey, true)
     val (sortTypeName, onSortTypeNameChange) = rememberPreference(LocalSongsSortTypeKey, LocalSongSortType.MODIFIED.name)
     val (minimumDurationSeconds, onMinimumDurationSecondsChange) =
@@ -448,8 +448,8 @@ fun LocalSongScreen(
                 Modifier
                     .fillMaxSize()
                     .then(
-                        if (layerBackdropActive) {
-                            Modifier.layerBackdrop(backdrop)
+                        if (liquidGlassHeaderActive) {
+                            Modifier.glassSource(backdrop)
                         } else {
                             Modifier
                         },

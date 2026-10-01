@@ -12,14 +12,20 @@ package moe.rukamori.archivetune.ui.menu
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -87,7 +93,7 @@ fun ImportPlaylistDialog(
 
     if (isVisible) {
         TextFieldDialog(
-            icon = { Icon(painter = painterResource(R.drawable.add), contentDescription = null) },
+            icon = { Icon(painter = painterResource(R.drawable.solar_download_minimalistic_linear), contentDescription = null) },
             title = { Text(text = stringResource(R.string.import_playlist)) },
             initialTextFieldValue = TextFieldValue(text = playlistTitle),
             autoFocus = false,
@@ -179,10 +185,22 @@ fun ImportPlaylistDialog(
                     resetState()
                 }
             },
+            icon = { Icon(painter = painterResource(R.drawable.solar_download_minimalistic_linear), contentDescription = null) },
             title = { Text(text = stringResource(R.string.import_playlist)) },
             content = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = stringResource(R.string.already_in_playlist))
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.already_in_playlist),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(16.dp),
+                        )
+                    }
                     if (isProcessingDuplicate) {
                         Spacer(modifier = Modifier.height(16.dp))
                         CircularWavyProgressIndicator()
@@ -190,16 +208,16 @@ fun ImportPlaylistDialog(
                 }
             },
             buttons = {
-                TextButton(
+                OutlinedButton(
                     enabled = !isProcessingDuplicate,
                     onClick = {
                         resetState()
                         onDismiss()
                     },
-                    shapes = ButtonDefaults.shapes(),
+                    shape = RoundedCornerShape(18.dp),
                 ) { Text(text = stringResource(android.R.string.cancel)) }
 
-                TextButton(
+                FilledTonalButton(
                     enabled = !isProcessingDuplicate,
                     onClick = {
                         isProcessingDuplicate = true
@@ -270,10 +288,10 @@ fun ImportPlaylistDialog(
                             }
                         }
                     },
-                    shapes = ButtonDefaults.shapes(),
+                    shape = RoundedCornerShape(18.dp),
                 ) { Text(text = stringResource(R.string.update_button)) }
 
-                TextButton(
+                Button(
                     enabled = !isProcessingDuplicate,
                     onClick = {
                         isProcessingDuplicate = true
@@ -319,7 +337,7 @@ fun ImportPlaylistDialog(
                             }
                         }
                     },
-                    shapes = ButtonDefaults.shapes(),
+                    shape = RoundedCornerShape(18.dp),
                 ) { Text(text = stringResource(R.string.import_playlist)) }
             },
         )

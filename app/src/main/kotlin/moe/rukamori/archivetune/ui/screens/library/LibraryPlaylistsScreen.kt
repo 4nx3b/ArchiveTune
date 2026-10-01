@@ -117,10 +117,10 @@ import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.PlaylistThumbnail
 import moe.rukamori.archivetune.ui.component.TagsManagementDialog
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.PlaylistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubePlaylistMenu
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
@@ -153,16 +153,16 @@ fun LibraryPlaylistsScreen(
     val activeSelectedTagIds = if (showTagsInLibrary) selectedTagIds else emptySet()
     var showTagsManagementDialog by rememberSaveable { mutableStateOf(false) }
 
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
     val surfaceColor = MaterialTheme.colorScheme.surface
-    val artworkBackdrop = rememberBackdrop(surfaceColor)
+    val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -177,7 +177,6 @@ fun LibraryPlaylistsScreen(
                     navController.navigate("library") { launchSingleTop = true }
                 }
             } catch (_: Exception) {
-
             }
         }
     }
@@ -273,8 +272,8 @@ fun LibraryPlaylistsScreen(
                         .fillMaxSize()
 
                         .then(
-                            if (layerBackdropActive) {
-                                Modifier.layerBackdrop(artworkBackdrop)
+                            if (liquidGlassHeaderActive) {
+                                Modifier.glassSource(artworkBackdrop)
                             } else {
                                 Modifier
                             },
@@ -311,7 +310,6 @@ fun LibraryPlaylistsScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-
                 var showSortMenu by remember { mutableStateOf(false) }
                 val currentSortLabel =
                     when (sortType) {
@@ -453,7 +451,7 @@ fun LibraryPlaylistsScreen(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (sortType == PlaylistSortType.CUSTOM && !layerBackdropActive) {
+                    if (sortType == PlaylistSortType.CUSTOM && !glassHeaderActive) {
                         IconButton(
                             onClick = { locked = !locked },
                             modifier = Modifier.size(40.dp),
@@ -467,7 +465,7 @@ fun LibraryPlaylistsScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                     }
 
-                    if (!layerBackdropActive) {
+                    if (!glassHeaderActive) {
                         Spacer(modifier = Modifier.width(12.dp))
 
                         IconButton(
@@ -596,7 +594,7 @@ fun LibraryPlaylistsScreen(
         }
         }
 
-        if (layerBackdropActive) {
+        if (glassHeaderActive) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 interactive = true,
@@ -666,7 +664,7 @@ fun LibraryPlaylistsScreen(
             }
         }
 
-        if (layerBackdropActive) {
+        if (glassHeaderActive) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 modifier =
@@ -856,7 +854,6 @@ fun rememberArtworkCardColor(
         val hue = hsv[0]
 
         if (useDarkTheme) {
-
             val s = (hsv[1] * 0.45f).coerceIn(0.06f, 0.20f)
             val v = if (pureBlack) 0.18f else 0.12f
             Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, s, v)))
@@ -877,7 +874,6 @@ fun PlaylistListCard(
     showDragHandle: Boolean = false,
     dragHandleModifier: Modifier = Modifier,
 ) {
-
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(

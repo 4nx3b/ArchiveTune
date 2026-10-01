@@ -87,6 +87,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,35 +101,12 @@ fun LastFMSettings(
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-
-            TopAppBar(
-                title = {},
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                ),
-                navigationIcon = {
-                    FrostedHeaderPill(plain = true) {
-                        IconButton(
-                            onClick = navController::navigateUp,
-                            onLongClick = navController::backToMain,
-                        ) {
-                            Icon(
-                                painterResource(R.drawable.arrow_back),
-                                contentDescription = null,
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.lastfm_integration),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    }
-                },
-            )
-        },
+                SettingsPageTopBar(
+                    titleText = stringResource(R.string.lastfm_integration),
+                    onBack = navController::navigateUp,
+                    onBackLongClick = navController::backToMain,
+                )
+            },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
 
@@ -319,14 +297,12 @@ private fun LastFmSettingsSuccess(
     showCustomEndpointDialog: Boolean,
     onShowCustomEndpointDialog: (Boolean) -> Unit,
 ) {
-
     var preferYtThumbnails by rememberPreference(LastFmPreferYtThumbnailsKey, defaultValue = false)
 
     PreferenceGroup(
         modifier = positions.modifierFor("lastfm_account"),
         title = stringResource(R.string.account),
     ) {
-
         item {
             PreferenceEntry(
                 modifier = positions.modifierFor("lastfm_connect_button"),
@@ -699,7 +675,6 @@ private fun LastFmCustomEndpointDialog(
             KeepStatusBarHiddenInDialog()
             TextButton(
                 onClick = {
-
                     val normalized = runCatching {
                         moe.rukamori.archivetune.lastfm.LastFM.normalizeEndpoint(endpoint.trim())
                     }.getOrNull()

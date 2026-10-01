@@ -29,7 +29,6 @@ import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 
 object CrossServicePlaylistImporter {
-
     data class ForeignTrack(
         val title: String,
         val artist: String?,
@@ -49,7 +48,6 @@ object CrossServicePlaylistImporter {
         YOUTUBE_MUSIC("YouTube Music"),
         SPOTIFY("Spotify"),
         APPLE_MUSIC("Apple Music"),
-        AMAZON_MUSIC("Amazon Music"),
         TIDAL("Tidal"),
         QOBUZ("Qobuz"),
         DEEZER("Deezer"),
@@ -75,7 +73,6 @@ object CrossServicePlaylistImporter {
         url.contains("music.youtube.com") || url.contains("youtube.com/playlist") -> ImportSource.YOUTUBE_MUSIC
         url.contains("spotify.com") || url.startsWith("spotify:") -> ImportSource.SPOTIFY
         url.contains("music.apple.com") -> ImportSource.APPLE_MUSIC
-        url.contains("music.amazon.com") -> ImportSource.AMAZON_MUSIC
         url.contains("tidal.com") -> ImportSource.TIDAL
         url.contains("qobuz.com") -> ImportSource.QOBUZ
         url.contains("deezer.com") -> ImportSource.DEEZER
@@ -111,38 +108,19 @@ object CrossServicePlaylistImporter {
                 }
                 ImportSource.SPOTIFY -> fetchSpotifyPlaylist(url)
                 ImportSource.APPLE_MUSIC -> fetchAppleMusicPlaylist(url)
-                ImportSource.AMAZON_MUSIC -> fetchAmazonMusicPlaylist(url)
                 ImportSource.TIDAL -> fetchTidalPlaylist(url, credentials)
                 ImportSource.QOBUZ -> fetchQobuzPlaylist(url, credentials)
                 ImportSource.DEEZER -> fetchDeezerPlaylist(url)
                 ImportSource.UNKNOWN -> error(
                     "Unrecognized URL — supported: YouTube Music, Spotify, Apple Music, " +
-                        "Amazon Music, Tidal, Qobuz, Deezer",
+                        "Tidal, Qobuz, Deezer",
                 )
             }
         }
     }
 
-    /**
-     * Minimum SpotifyMapper score for a YouTube Music hit to be accepted as the
-     * wanted track at import time.
-     *
-     * The importer used to take the first SongItem the search returned, unverified.
-     * For a track that only exists on the source service (Spotify/Deezer/Apple — no
-     * YouTube Music release), that first hit is whatever YouTube's fuzzy search
-     * returns for the title words — a *different song* ("Full Moon" by someone
-     * else for "Under the Full Moon: Psychedelic Reflections"), which then got
-     * stored into the playlist as if it were the track. Scoring fixes the pick;
-     * this threshold rejects the no-true-hit case so the track is skipped instead
-     * of imported wrong. A true match scores ≥ ~0.85 (title 0.45 + artist 0.35 +
-     * duration 0.20 weights); a same-vibes wrong song lands well under 0.4.
-     */
     private const val IMPORT_MATCH_THRESHOLD = 0.6
 
-    /**
-     * Picks the best-scoring YouTube Music hit for [track], or null when none of
-     * the results actually is the track. See [IMPORT_MATCH_THRESHOLD].
-     */
     private fun bestYouTubeMatch(
         track: ForeignTrack,
         search: SearchResult?,
@@ -169,14 +147,6 @@ object CrossServicePlaylistImporter {
             ?.first
     }
 
-    /**
-     * Resolves a list of [ForeignTrack]s to YouTube Music song ids via
-     * [YouTube.search]. Returns the ids (in the same order as the input
-     * where possible) — tracks that can't be matched are skipped.
-     *
-     * @param onProgress optional callback invoked with (resolved, total)
-     *        after each track resolves. Lets the UI show a live counter.
-     */
     suspend fun resolveToYouTubeMusic(
         tracks: List<ForeignTrack>,
         onProgress: ((Int, Int) -> Unit)? = null,
@@ -341,7 +311,6 @@ object CrossServicePlaylistImporter {
     }
 
     private fun extractAppleMusicTitle(html: String): String {
-
         val og = Pattern.compile("<meta[^>]+property=\"og:title\"[^>]+content=\"([^\"]+)\"").matcher(html)
         if (og.find()) return unescapeJson(og.group(1))
         val schema = Pattern.compile("\"@type\":\"MusicPlaylist\"[^}]*?\"name\":\"([^\"]+)\"").matcher(html)
@@ -418,62 +387,6 @@ object CrossServicePlaylistImporter {
         }
     }
 
-    private suspend fun fetchAmazonMusicPlaylist(url: String): ResolvedImport {
-        val html = fetchText(url)
-        val id = extractAmazonPlaylistId(url) ?: url
-        val title = extractAmazonMusicTitle(html)
-        val tracks = parseAmazonMusicTracks(html)
-        return ResolvedImport(
-            source = ImportSource.AMAZON_MUSIC,
-            sourcePlaylistId = id,
-            title = title,
-            thumbnailUrl = null,
-            tracks = tracks,
-        )
-    }
-
-    private fun extractAmazonPlaylistId(url: String): String? {
-        val m = Pattern.compile("playlists/([A-Z0-9]+)").matcher(url)
-        return if (m.find()) m.group(1) else null
-    }
-
-    private fun extractAmazonMusicTitle(html: String): String {
-        val og = Pattern.compile("<meta[^>]+property=\"og:title\"[^>]+content=\"([^\"]+)\"").matcher(html)
-        if (og.find()) return unescapeJson(og.group(1))
-        val title = Pattern.compile("<title>([^<]+)</title>").matcher(html)
-        if (title.find()) {
-            val raw = title.group(1).trim()
-
-            return raw.substringBefore(" |").ifBlank { raw }
-        }
-        return "Amazon Music Playlist"
-    }
-
-    private fun parseAmazonMusicTracks(html: String): List<ForeignTrack> {
-        val tracks = mutableListOf<ForeignTrack>()
-
-        val regex = Pattern.compile("\\{\"title\":\"([^\"]{2,120})\",\"artist\":\"([^\"]+)\"")
-        val m = regex.matcher(html)
-        while (m.find()) {
-            tracks.add(ForeignTrack(
-                title = unescapeJson(m.group(1)),
-                artist = unescapeJson(m.group(2)),
-            ))
-        }
-
-        if (tracks.isEmpty()) {
-            val alt = Pattern.compile("\\{\"trackName\":\"([^\"]{2,120})\",\"artistName\":\"([^\"]+)\"")
-            val am = alt.matcher(html)
-            while (am.find()) {
-                tracks.add(ForeignTrack(
-                    title = unescapeJson(am.group(1)),
-                    artist = unescapeJson(am.group(2)),
-                ))
-            }
-        }
-        return tracks.distinctBy { it.title to it.artist }
-    }
-
     private suspend fun fetchTidalPlaylist(url: String, credentials: Credentials): ResolvedImport {
         val id = extractTidalPlaylistId(url) ?: error("Couldn't extract Tidal playlist id from URL")
         val accessToken = credentials.tidalAccessToken?.takeIf { it.isNotBlank() }
@@ -501,7 +414,6 @@ object CrossServicePlaylistImporter {
             val items = root.optJSONArray("items") ?: break
             if (items.length() == 0) break
             for (i in 0 until items.length()) {
-
                 val wrapper = items.optJSONObject(i) ?: continue
                 if (wrapper.optString("type").let { it.isNotBlank() && it != "track" }) continue
                 val item = wrapper.optJSONObject("item") ?: wrapper
@@ -594,7 +506,6 @@ object CrossServicePlaylistImporter {
     }
 
     private fun extractTidalPlaylistId(url: String): String? {
-
         val m = Pattern.compile("playlist/([a-f0-9\\-]{20,40})").matcher(url)
         return if (m.find()) m.group(1) else null
     }
@@ -646,7 +557,6 @@ object CrossServicePlaylistImporter {
             .build()
         client.newCall(req).execute().use { res ->
             if (!res.isSuccessful) {
-
                 when (res.code) {
                     401, 403 -> error("Not authorised (HTTP ${res.code}) — the account or token may have expired")
                     404 -> error("Playlist not found (HTTP 404) — it may be private or the URL is wrong")

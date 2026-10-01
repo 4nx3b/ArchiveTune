@@ -83,7 +83,6 @@ object PlayerJsFetcher {
         synchronized(cacheWriteLock) { try {
             val cacheDir = getCacheDir()
             if (cacheDir.exists()) {
-
                 val files = cacheDir.listFiles()?.filter {
                     it.name.startsWith("player_") || it.name == "current_hash.txt"
                 }

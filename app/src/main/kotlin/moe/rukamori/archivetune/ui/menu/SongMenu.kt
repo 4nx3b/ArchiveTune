@@ -10,6 +10,7 @@
 package moe.rukamori.archivetune.ui.menu
 
 import android.content.Intent
+import android.media.audiofx.AudioEffect
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -32,14 +33,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -220,7 +219,6 @@ fun SongMenu(
                             .map { it.trim() }
                             .filter { it.isNotEmpty() }
                     if (parts.size > 1) {
-
                         parts.mapIndexed { index, name ->
                             SplitArtist(name, if (index == 0) artist else null)
                         }
@@ -407,13 +405,106 @@ fun SongMenu(
         }
     }
 
+    var showAddAfterDialog by rememberSaveable { mutableStateOf(false) }
+
+    var showEqualizerDialog by rememberSaveable { mutableStateOf(false) }
+
+    val activityResultLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
+
+    if (showAddAfterDialog) {
+        val queueWindows by playerConnection.queueWindows.collectAsStateWithLifecycle(initialValue = emptyList())
+        ListDialog(
+            onDismiss = { showAddAfterDialog = false },
+        ) {
+            val windows = queueWindows.take(100)
+            if (windows.isEmpty()) {
+                item {
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                text = stringResource(R.string.songmenu_queue_empty),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.queue_music),
+                                contentDescription = null,
+                            )
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+            } else {
+                items(windows) { window ->
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                text = window.mediaItem?.mediaMetadata?.title?.toString().orEmpty(),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        supportingContent = {
+                            val queueArtist = window.mediaItem?.mediaMetadata?.artist
+                            if (!queueArtist.isNullOrBlank()) {
+                                Text(
+                                    text = queueArtist.toString(),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.solar_forward_linear),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                playerConnection.addAfterQueueIndex(
+                                    window.firstPeriodIndex,
+                                    listOf(song.toMediaItem()),
+                                )
+                                showAddAfterDialog = false
+                                onDismiss()
+                            },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+            }
+        }
+    }
+
+    if (showEqualizerDialog) {
+        EqualizerDialog(
+            onDismiss = { showEqualizerDialog = false },
+            openSystemEqualizer = {
+                val intent =
+                    Intent(AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL).apply {
+                        putExtra(
+                            AudioEffect.EXTRA_AUDIO_SESSION,
+                            playerConnection.localPlayer.audioSessionId,
+                        )
+                        putExtra(AudioEffect.EXTRA_PACKAGE_NAME, context.packageName)
+                        putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC)
+                    }
+                if (intent.resolveActivity(context.packageManager) != null) {
+                    activityResultLauncher.launch(intent)
+                }
+            },
+        )
+    }
+
     MuzoSongMenuHeader(
         artworkUrl = song.song.thumbnailUrl,
         title = song.song.title,
         artist = song.artists.joinToString { it.name },
     )
 
-    Spacer(modifier = Modifier.height(16.dp))
+    Spacer(modifier = Modifier.height(12.dp))
 
     val bottomSheetPageState = LocalBottomSheetPageState.current
     val isLocalSong = song.song.isLocal
@@ -431,6 +522,9 @@ fun SongMenu(
     val downloadingLabel = stringResource(R.string.downloading)
     val downloadedLabel = stringResource(R.string.downloaded_label)
     val addToDotsLabel = stringResource(R.string.add_to_dots)
+    val addAfterText = stringResource(R.string.songmenu_add_after)
+    val equalizerFxText = stringResource(R.string.songmenu_equalizer_fx)
+    val playerThemeText = stringResource(R.string.songmenu_player_theme)
 
     val quickActions =
         remember(
@@ -511,7 +605,6 @@ fun SongMenu(
                             }
 
                             else -> {
-
                                 val dl = download
                                 if (dl != null && dl.state != Download.STATE_COMPLETED) {
                                     DownloadService.sendRemoveDownload(
@@ -579,7 +672,6 @@ fun SongMenu(
                 bottom = 12.dp,
             ),
     ) {
-
         if (showSleepTimerSheet) {
             item {
                 AppleMusicSleepTimerSheet(
@@ -591,9 +683,233 @@ fun SongMenu(
                 )
             }
         } else {
-
             item {
                 MuzoQuickActionRow(actions = quickActions)
+            }
+
+            item {
+                MenuSectionDivider()
+            }
+
+            item {
+                MenuSurfaceSection {
+                    val dividerModifier = Modifier.padding(horizontal = 16.dp)
+                    Column {
+                        ListItem(
+                            headlineContent = { Text(text = addToQueueText) },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.queue_music),
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier =
+                                Modifier.clickable {
+                                    onDismiss()
+                                    playerConnection.addToQueue(song.toMediaItem())
+                                },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+
+                        HorizontalDivider(
+                            modifier = dividerModifier,
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
+                        )
+
+                        ListItem(
+                            headlineContent = { Text(text = addAfterText) },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.solar_forward_linear),
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier = Modifier.clickable { showAddAfterDialog = true },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+
+                        HorizontalDivider(
+                            modifier = dividerModifier,
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
+                        )
+
+                        ListItem(
+                            headlineContent = { Text(text = stringResource(R.string.view_artist)) },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.artist),
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier =
+                                Modifier.clickable {
+                                    if (splitArtists.size == 1 && splitArtists[0].originalArtist != null) {
+                                        navController.navigate("artist/${splitArtists[0].originalArtist!!.id}")
+                                        onDismiss()
+                                    } else {
+                                        showSelectArtistDialog = true
+                                    }
+                                },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+
+                        if (song.song.albumId != null) {
+                            HorizontalDivider(
+                                modifier = dividerModifier,
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                thickness = 0.5.dp,
+                            )
+
+                            ListItem(
+                                headlineContent = { Text(text = stringResource(R.string.view_album)) },
+                                leadingContent = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.album),
+                                        contentDescription = null,
+                                    )
+                                },
+                                modifier =
+                                    Modifier.clickable {
+                                        onDismiss()
+                                        navController.navigate("album/${song.song.albumId}")
+                                    },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            )
+                        }
+
+                        HorizontalDivider(
+                            modifier = dividerModifier,
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
+                        )
+
+                        ListItem(
+                            headlineContent = { Text(text = equalizerFxText) },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.solar_wave),
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier = Modifier.clickable { showEqualizerDialog = true },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+
+                        HorizontalDivider(
+                            modifier = dividerModifier,
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
+                        )
+
+                        ListItem(
+                            headlineContent = { Text(text = playerThemeText) },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.solar_palette_linear),
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier =
+                                Modifier.clickable {
+                                    onDismiss()
+                                    navController.navigate("settings/appearance?scrollTo=player_design_style")
+                                },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+
+                        HorizontalDivider(
+                            modifier = dividerModifier,
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
+                        )
+
+                        ListItem(
+                            headlineContent = { Text(text = stringResource(R.string.details)) },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.info),
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier =
+                                Modifier.clickable {
+                                    onDismiss()
+                                    bottomSheetPageState.show {
+                                        ShowMediaInfo(song.id)
+                                    }
+                                },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+
+                        HorizontalDivider(
+                            modifier = dividerModifier,
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
+                        )
+
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    text =
+                                        stringResource(
+                                            if (isInSpeedDial) {
+                                                R.string.remove_from_speed_dial
+                                            } else {
+                                                R.string.pin_to_speed_dial
+                                            },
+                                        ),
+                                )
+                            },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(if (isInSpeedDial) R.drawable.bookmark_filled else R.drawable.bookmark),
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier =
+                                Modifier.clickable {
+                                    val updatedPins = toggleSpeedDialPin(speedDialPins, songPin)
+                                    onSpeedDialSongIdsChange(serializeSpeedDialPins(updatedPins))
+                                    onDismiss()
+                                },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+
+                        HorizontalDivider(
+                            modifier = dividerModifier,
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
+                        )
+
+                        ListItem(
+                            headlineContent = { Text(text = shareText) },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.share),
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier =
+                                Modifier.clickable {
+                                    onDismiss()
+                                    if (isLocalSong) {
+                                        shareLocalAudio(context, song.id, song.format?.mimeType)
+                                    } else {
+                                        val intent =
+                                            Intent().apply {
+                                                action = Intent.ACTION_SEND
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_TEXT, "https://music.youtube.com/watch?v=${song.id}")
+                                            }
+                                        context.startActivity(Intent.createChooser(intent, null))
+                                    }
+                                },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+                    }
+                }
             }
 
             item {
@@ -626,60 +942,6 @@ fun SongMenu(
                                 thickness = 0.5.dp,
                             )
                         }
-
-                        ListItem(
-                            headlineContent = { Text(text = addToQueueText) },
-                            leadingContent = {
-                                Icon(
-                                    painter = painterResource(R.drawable.queue_music),
-                                    contentDescription = null,
-                                )
-                            },
-                            modifier =
-                                Modifier.clickable {
-                                    onDismiss()
-                                    playerConnection.addToQueue(song.toMediaItem())
-                                },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        )
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                            thickness = 0.5.dp,
-                        )
-
-                        ListItem(
-                            headlineContent = { Text(text = shareText) },
-                            leadingContent = {
-                                Icon(
-                                    painter = painterResource(R.drawable.share),
-                                    contentDescription = null,
-                                )
-                            },
-                            modifier =
-                                Modifier.clickable {
-                                    onDismiss()
-                                    if (isLocalSong) {
-                                        shareLocalAudio(context, song.id, song.format?.mimeType)
-                                    } else {
-                                        val intent =
-                                            Intent().apply {
-                                                action = Intent.ACTION_SEND
-                                                type = "text/plain"
-                                                putExtra(Intent.EXTRA_TEXT, "https://music.youtube.com/watch?v=${song.id}")
-                                            }
-                                        context.startActivity(Intent.createChooser(intent, null))
-                                    }
-                                },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        )
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                            thickness = 0.5.dp,
-                        )
 
                         ListItem(
                             headlineContent = { Text(text = editText) },
@@ -757,42 +1019,6 @@ fun SongMenu(
                         )
                     },
                     modifier = Modifier.clickable { showChoosePlaylistDialog = true },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                )
-            }
-        }
-
-        item {
-            MenuSectionDivider()
-        }
-
-        item {
-            MenuSurfaceSection {
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text =
-                                stringResource(
-                                    if (isInSpeedDial) {
-                                        R.string.remove_from_speed_dial
-                                    } else {
-                                        R.string.pin_to_speed_dial
-                                    },
-                                ),
-                        )
-                    },
-                    leadingContent = {
-                        Icon(
-                            painter = painterResource(if (isInSpeedDial) R.drawable.bookmark_filled else R.drawable.bookmark),
-                            contentDescription = null,
-                        )
-                    },
-                    modifier =
-                        Modifier.clickable {
-                            val updatedPins = toggleSpeedDialPin(speedDialPins, songPin)
-                            onSpeedDialSongIdsChange(serializeSpeedDialPins(updatedPins))
-                            onDismiss()
-                        },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 )
             }
@@ -994,7 +1220,6 @@ fun SongMenu(
                                         },
                                         modifier =
                                             Modifier.clickable {
-
                                                 val dl = download
                                                 if (dl != null &&
                                                     dl.state != Download.STATE_COMPLETED
@@ -1110,56 +1335,6 @@ fun SongMenu(
             MenuSurfaceSection {
                 Column {
                     ListItem(
-                        headlineContent = { Text(text = stringResource(R.string.view_artist)) },
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(R.drawable.artist),
-                                contentDescription = null,
-                            )
-                        },
-                        modifier =
-                            Modifier.clickable {
-                                if (splitArtists.size == 1 && splitArtists[0].originalArtist != null) {
-                                    navController.navigate("artist/${splitArtists[0].originalArtist!!.id}")
-                                    onDismiss()
-                                } else {
-                                    showSelectArtistDialog = true
-                                }
-                            },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    )
-
-                    if (song.song.albumId != null) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                            thickness = 0.5.dp,
-                        )
-
-                        ListItem(
-                            headlineContent = { Text(text = stringResource(R.string.view_album)) },
-                            leadingContent = {
-                                Icon(
-                                    painter = painterResource(R.drawable.album),
-                                    contentDescription = null,
-                                )
-                            },
-                            modifier =
-                                Modifier.clickable {
-                                    onDismiss()
-                                    navController.navigate("album/${song.song.albumId}")
-                                },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        )
-                    }
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant,
-                        thickness = 0.5.dp,
-                    )
-
-                    ListItem(
                         headlineContent = { Text(text = stringResource(R.string.sleep_timer)) },
                         leadingContent = {
                             Icon(
@@ -1173,6 +1348,10 @@ fun SongMenu(
                     )
                 }
             }
+        }
+
+        item {
+            MenuSectionDivider()
         }
 
         if (!song.song.isLocal) item {
@@ -1314,31 +1493,7 @@ fun SongMenu(
                                 },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         )
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                            thickness = 0.5.dp,
-                        )
                     }
-
-                    ListItem(
-                        headlineContent = { Text(text = stringResource(R.string.details)) },
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(R.drawable.info),
-                                contentDescription = null,
-                            )
-                        },
-                        modifier =
-                            Modifier.clickable {
-                                onDismiss()
-                                bottomSheetPageState.show {
-                                    ShowMediaInfo(song.id)
-                                }
-                            },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    )
                 }
             }
         }

@@ -79,6 +79,7 @@ import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.MyTopFilter
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
@@ -132,6 +133,7 @@ fun TopPlaylistScreen(
     val canvasArtwork by viewModel.canvasArtwork.collectAsStateWithLifecycle()
     val pageCanvasEnabled by rememberPreference(key = AlbumCanvasEnabledKey, defaultValue = true)
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
+    val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
     val likeLength =
         remember(songs) {
             songs?.fastSumBy { it.song.duration } ?: 0
@@ -163,7 +165,6 @@ fun TopPlaylistScreen(
             selection = false
         }
     } else {
-
         BackHandler {
             try {
                 if (!navController.popBackStack()) {
@@ -177,7 +178,6 @@ fun TopPlaylistScreen(
                         navController.navigate("library") { launchSingleTop = true }
                     }
                 } catch (_: Exception) {
-
                 }
             }
         }
@@ -359,7 +359,7 @@ fun TopPlaylistScreen(
                                         ?.takeIf { pageCanvasEnabled },
                                 canvasFallbackUrl = canvasArtwork?.videoUrl?.takeIf { pageCanvasEnabled },
                                 canvasIsPlaying = true,
-                                canvasVisible = !lyricsFullScreen,
+                                canvasVisible = !lyricsFullScreen && !playerSheetOverlayActive,
                                 onShuffle = {
                                     playerConnection.playQueue(
                                         ListQueue(
@@ -394,7 +394,6 @@ fun TopPlaylistScreen(
                                                 }
 
                                                 is HeaderDownloadState.Partial -> {
-
                                                     if (headerState.paused) {
                                                         sendResumePausedDownloads(
                                                             context = context,
@@ -566,6 +565,7 @@ fun TopPlaylistScreen(
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
+            scrolled = lazyListState.canScrollBackward,
         )
 
         TopAppBar(

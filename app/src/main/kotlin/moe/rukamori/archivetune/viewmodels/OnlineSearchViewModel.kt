@@ -51,6 +51,18 @@ enum class OnlineSearchSort {
     VIEWS,
 }
 
+val PODCAST_SEARCH_FILTER = YouTube.SearchFilter("CLIENT_PODCASTS_CATEGORY")
+
+private fun YTItem.isPodcastEpisode(): Boolean {
+    val musicVideoType =
+        (this as? SongItem)
+            ?.endpoint
+            ?.watchEndpointMusicSupportedConfigs
+            ?.watchEndpointMusicConfig
+            ?.musicVideoType
+    return musicVideoType != null && musicVideoType.startsWith("MUSIC_VIDEO_TYPE_PODCAST")
+}
+
 @HiltViewModel
 class OnlineSearchViewModel
     @Inject
@@ -147,6 +159,10 @@ class OnlineSearchViewModel
             if (viewStateMap.containsKey(filterKey) || !loadingFilters.add(filterKey)) return
 
             try {
+                if (filter == PODCAST_SEARCH_FILTER) {
+                    loadPodcastFilter()
+                    return
+                }
                 YouTube
                     .search(query, filter)
                     .onSuccess { result ->
@@ -171,6 +187,29 @@ class OnlineSearchViewModel
                     }
             } finally {
                 loadingFilters.remove(filterKey)
+            }
+        }
+
+        private suspend fun loadPodcastFilter() {
+            try {
+                val episodes =
+                    (
+                        YouTube.search(query, FILTER_SONG).getOrNull()?.items.orEmpty() +
+                            YouTube.search(query, FILTER_VIDEO).getOrNull()?.items.orEmpty()
+                        )
+                        .filter { it.isPodcastEpisode() }
+                        .distinctBy { it.id }
+                val aiContentFilterPolicy = loadAiContentFilterPolicy()
+                viewStateMap[PODCAST_SEARCH_FILTER.value] =
+                    ItemsPage(
+                        filterAiContent(
+                            episodes,
+                            aiContentFilterPolicy,
+                        ),
+                        null,
+                    )
+            } finally {
+                loadingFilters.remove(PODCAST_SEARCH_FILTER.value)
             }
         }
 

@@ -72,7 +72,6 @@ fun IconButton(
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     content: @Composable () -> Unit,
 ) {
-
     val isPlainHeader = LocalPlainHeaderPill.current
     val effectiveColors =
         if (isPlainHeader) {

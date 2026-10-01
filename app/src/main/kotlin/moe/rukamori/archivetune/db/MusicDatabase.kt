@@ -59,7 +59,8 @@ import java.util.concurrent.Executor
 import kotlin.coroutines.resume
 
 private const val TAG = "MusicDatabase"
-private const val CURRENT_VERSION = 36
+
+private const val CURRENT_VERSION = 37
 
 class MusicDatabase(
     private val delegate: InternalDatabase,
@@ -158,6 +159,8 @@ class MusicDatabase(
         AutoMigration(from = 21, to = 22),
         AutoMigration(from = 34, to = 35),
         AutoMigration(from = 35, to = 36),
+
+        AutoMigration(from = 36, to = 37),
     ],
 )
 @TypeConverters(Converters::class)
@@ -220,10 +223,7 @@ abstract class InternalDatabase : RoomDatabase() {
 private class DatabaseCallback : RoomDatabase.Callback() {
     override fun onOpen(db: SupportSQLiteDatabase) {
         super.onOpen(db)
-        // One-shot off-thread setup. The executor is shut down as soon as the task is queued:
-        // shutdown() lets the already-submitted work run to completion, then terminates the idle
-        // thread instead of leaking one per database open (this fires on every open, including the
-        // repair path's rebuilds).
+
         val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
         executor.execute {
             try {

@@ -1,0 +1,35 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Solar-style podcast: mic capsule + broadcast arcs -->
+    <path
+        android:pathData="M12,3.5v4.4"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"/>
+    <path
+        android:pathData="M12,8.6m-2.1,0a2.1,2.1 0 1,1 4.2,0a2.1,2.1 0 1,1 -4.2,0"
+        android:fillColor="@android:color/white"/>
+    <path
+        android:pathData="M8.4,14.6a3.6,3.6 0 0,1 7.2,0"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"/>
+    <path
+        android:pathData="M5.4,12.4a6.6,6.6 0 0,0 0,7.2M18.6,12.4a6.6,6.6 0 1,1 0,7.2"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"/>
+    <path
+        android:pathData="M12,11v6.4"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"/>
+    <path
+        android:pathData="M9.2,20.5h5.6"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"/>
+</vector>

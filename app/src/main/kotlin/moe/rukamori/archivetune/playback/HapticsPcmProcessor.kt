@@ -20,7 +20,6 @@ import kotlin.math.abs
 class HapticsPcmProcessor(
     private val engineProvider: () -> SpatialFlowHapticEngine?,
 ) : BaseAudioProcessor() {
-
     private var subBassFilterState = 0f
     private var bassFilterState = 0f
     private var midFilterState = 0f
@@ -30,6 +29,10 @@ class HapticsPcmProcessor(
             inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT
         ) {
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
+        }
+
+        if (moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime.chainBypassActive) {
+            return AudioProcessor.AudioFormat.NOT_SET
         }
         return inputAudioFormat
     }

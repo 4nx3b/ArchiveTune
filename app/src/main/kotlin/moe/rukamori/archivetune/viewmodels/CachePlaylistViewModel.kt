@@ -15,7 +15,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.HideVideoKey
@@ -29,6 +28,7 @@ import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
 import java.time.LocalDateTime
 import javax.inject.Inject
+import kotlinx.coroutines.flow.*
 
 @HiltViewModel
 class CachePlaylistViewModel

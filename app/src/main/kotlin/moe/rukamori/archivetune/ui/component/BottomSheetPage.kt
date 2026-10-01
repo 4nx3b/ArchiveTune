@@ -87,15 +87,15 @@ fun BottomSheetPage(
     val coroutineScope = rememberCoroutineScope()
     var dragOffset by remember { mutableFloatStateOf(0f) }
 
+    BackHandler(enabled = state.isVisible) {
+        state.dismiss()
+    }
+
     AnimatedVisibility(
         visible = state.isVisible,
         enter = fadeIn(animationSpec = tween(300)),
         exit = fadeOut(animationSpec = tween(300)),
     ) {
-        BackHandler {
-            state.dismiss()
-        }
-
         Spacer(
             modifier =
                 Modifier
@@ -144,7 +144,6 @@ fun BottomSheetPage(
                         }
                     },
         ) {
-
             Box(
                 modifier =
                     Modifier

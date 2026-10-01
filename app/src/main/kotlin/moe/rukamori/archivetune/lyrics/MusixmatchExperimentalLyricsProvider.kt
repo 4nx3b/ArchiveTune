@@ -16,7 +16,6 @@ import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
 
 object MusixmatchExperimentalLyricsProvider : LyricsProvider {
-
     init {
         Musixmatch.logger = { message ->
             GlobalLog.append(Log.INFO, "Musixmatch", message)

@@ -120,12 +120,12 @@ import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
 import moe.rukamori.archivetune.ui.component.GlassPillTitleText
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.PlaylistMenu
 import moe.rukamori.archivetune.ui.menu.SelectionSongMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
@@ -176,8 +176,7 @@ fun LocalPlaylistScreen(
 
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val songs by viewModel.playlistSongs.collectAsStateWithLifecycle()
-    // No canvas on local playlist pages (user request 2026-09-16): the hero
-    // renders its plain Apple-Music text layout — no canvas URLs threaded in.
+
     val viewCounts by viewModel.viewCounts.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val coverState by viewModel.coverState.collectAsStateWithLifecycle()
@@ -193,7 +192,7 @@ fun LocalPlaylistScreen(
     var locked by rememberPreference(PlaylistEditLockKey, defaultValue = true)
     val swipeToSongEnabled by rememberPreference(SwipeToSongKey, defaultValue = true)
 
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
@@ -201,7 +200,7 @@ fun LocalPlaylistScreen(
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
     var showAssignTagsDialog by remember { mutableStateOf(false) }
 
     if (showAssignTagsDialog && playlist != null) {
@@ -286,7 +285,6 @@ fun LocalPlaylistScreen(
             selection = false
         }
     } else {
-
         BackHandler {
             try {
                 if (!navController.popBackStack()) {
@@ -295,13 +293,11 @@ fun LocalPlaylistScreen(
                     }
                 }
             } catch (_: Exception) {
-
                 try {
                     if (!navController.navigateUp()) {
                         navController.navigate("library") { launchSingleTop = true }
                     }
                 } catch (_: Exception) {
-
                 }
             }
         }
@@ -513,7 +509,6 @@ fun LocalPlaylistScreen(
             savedScrollIndex = lazyListState.firstVisibleItemIndex
             savedScrollOffset = lazyListState.firstVisibleItemScrollOffset
         } else {
-
             withFrameNanos {}
             lazyListState.scrollToItem(savedScrollIndex, savedScrollOffset)
         }
@@ -580,12 +575,11 @@ fun LocalPlaylistScreen(
         }
     }
 
-    val artworkBackdrop = rememberBackdrop(surfaceColor)
+    val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
 
     CompositionLocalProvider(
         LocalMiniPlayerDocked provides isListScrolling,
     ) {
-
     val headerHaze = rememberScreenHeaderHaze()
     ExpressivePullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -601,8 +595,8 @@ fun LocalPlaylistScreen(
                 Modifier
                     .fillMaxSize()
                     .then(
-                        if (layerBackdropActive) {
-                            Modifier.layerBackdrop(artworkBackdrop)
+                        if (liquidGlassHeaderActive) {
+                            Modifier.glassSource(artworkBackdrop)
                         } else {
                             Modifier
                         },
@@ -704,7 +698,6 @@ fun LocalPlaylistScreen(
                                                             showRemoveDownloadDialog = true
                                                         }
                                                         is HeaderDownloadState.Partial -> {
-
                                                             if (headerState.paused) {
                                                                 sendResumePausedDownloads(
                                                                     context = context,
@@ -1069,11 +1062,11 @@ fun LocalPlaylistScreen(
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
+            scrolled = lazyListState.canScrollBackward,
         )
 
         val currentPlaylist = playlist
-        if (layerBackdropActive && !isSearching && currentPlaylist != null) {
-
+        if (glassHeaderActive && !isSearching && currentPlaylist != null) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 interactive = true,
@@ -1118,7 +1111,6 @@ fun LocalPlaylistScreen(
                 )
             }
             if (selection) {
-
                 val selectedCount = selectedPlaylistSongs.size
                 val allSelected = selectedCount == filteredSongs.size && filteredSongs.isNotEmpty()
                 LiquidGlassActionPill(
@@ -1186,7 +1178,6 @@ fun LocalPlaylistScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
-
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -1252,7 +1243,6 @@ fun LocalPlaylistScreen(
         }
 
         if (!liquidGlassHeaderActive || isSearching) {
-
         val topAppBarColors =
             if (transparentAppBar) {
                 TopAppBarDefaults.topAppBarColors(
@@ -1312,7 +1302,6 @@ fun LocalPlaylistScreen(
                 }
             },
             navigationIcon = {
-
                 if (isSearching || selection || showTopBarTitle || !liquidGlassHeaderActive) {
                     IconButton(
                         onClick = {
@@ -1387,7 +1376,6 @@ fun LocalPlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-
                     if (showTopBarTitle || !liquidGlassHeaderActive) {
                         IconButton(
                             onClick = { isSearching = true },

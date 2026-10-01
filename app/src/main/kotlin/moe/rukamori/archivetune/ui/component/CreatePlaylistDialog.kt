@@ -9,10 +9,15 @@ package moe.rukamori.archivetune.ui.component
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -22,9 +27,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -120,7 +127,7 @@ private fun CreatePlaylistDialogContent(
     val onDone = remember(onSubmit) { { _: String -> onSubmit() } }
 
     TextFieldDialog(
-        icon = { Icon(painter = painterResource(R.drawable.playlist_add), contentDescription = null) },
+        icon = { Icon(painter = painterResource(R.drawable.solar_add_circle_linear), contentDescription = null) },
         title = { Text(text = stringResource(R.string.create_playlist)) },
         placeholder = { Text(text = stringResource(R.string.playlist_name)) },
         textFieldValue = data.name,
@@ -164,8 +171,8 @@ private fun SyncPlaylistSection(
         }
 
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(24.dp),
         modifier =
             Modifier
                 .fillMaxWidth()
@@ -178,23 +185,35 @@ private fun SyncPlaylistSection(
                     .padding(horizontal = 16.dp, vertical = 14.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Icon(
-                painter = painterResource(R.drawable.sync),
-                contentDescription = null,
-                tint =
-                    if (data.syncRequested) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                modifier = Modifier.padding(top = 2.dp),
-            )
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                modifier = Modifier.size(34.dp),
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.sync),
+                        contentDescription = null,
+                        tint =
+                            if (data.syncRequested) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
             Column(
                 modifier = Modifier.weight(1f),
             ) {
                 Text(
                     text = stringResource(R.string.sync_playlist),
                     style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(

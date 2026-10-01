@@ -18,6 +18,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.BuildConfig
+import moe.rukamori.archivetune.constants.PoolApiKeyKey
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -33,13 +34,12 @@ object PoolAccountManager {
 
     private const val MIN_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000L
 
-    private const val MIN_PARTIAL_REFRESH_INTERVAL_MS = 15 * 60 * 1000L
+    private const val MIN_PARTIAL_REFRESH_INTERVAL_MS = 5 * 60 * 60 * 1000L
 
     private val CACHE_TIDAL_KEY = stringPreferencesKey("poolTidalAccounts")
     private val CACHE_QOBUZ_KEY = stringPreferencesKey("poolQobuzAccounts")
     private val CACHE_DEEZER_KEY = stringPreferencesKey("poolDeezerAccounts")
     private val CACHE_APPLE_KEY = stringPreferencesKey("poolAppleMusicAccounts")
-    private val CACHE_AMAZON_KEY = stringPreferencesKey("poolAmazonAccounts")
 
     @Volatile
     private var poolApiKey: String? = null
@@ -84,21 +84,6 @@ object PoolAccountManager {
         val premium: Boolean,
     )
 
-    /**
-     * A shared Amazon Music subscriber credential. Modeled on [DeezerPoolAccount] rather than
-     * Tidal/Qobuz: no self-hosted proxy-instance tier, just one opaque per-account [session] blob
-     * (an Amazon Music web-session artifact) plus a [premium] flag for HD/Ultra HD entitlement.
-     *
-     * Nothing resolves audio with this yet — Amazon serves CENC-protected streams and this fork
-     * ships no decryption step (see AmazonEnabledKey in PreferenceKeys.kt) — but the pool plumbing
-     * is in place so a future AudioProvider only has to consume [amazonAccounts].
-     */
-    data class AmazonPoolAccount(
-        val id: Long?,
-        val session: String,
-        val premium: Boolean,
-    )
-
     @Volatile
     private var tidalCache: List<TidalPoolAccount> = emptyList()
 
@@ -112,10 +97,10 @@ object PoolAccountManager {
     private var appleMusicCache: List<AppleMusicPoolAccount> = emptyList()
 
     @Volatile
-    private var amazonCache: List<AmazonPoolAccount> = emptyList()
+    var lastRefreshAtMillis = 0L
+        private set
 
     @Volatile
-    private var lastRefreshAt = 0L
     private var lastLaunchRefreshAt = 0L
 
     @Volatile
@@ -143,9 +128,6 @@ object PoolAccountManager {
 
     private val poolBaseUrl: String?
         get() {
-            // Users routinely paste the full feed endpoint instead of the bare base URL; the client
-            // appends /api/accounts (with a legacy /api/sources fallback) itself, so a configured
-            // ".../api/sources" would 404 on every request while looking like a non-pool deployment.
             val raw = BuildConfig.SOURCE_PROVIDER_URL.trim()
             if (raw.isEmpty()) return null
             return raw
@@ -202,23 +184,10 @@ object PoolAccountManager {
 
     fun appleMusicAccounts(): List<AppleMusicPoolAccount> = appleMusicCache.sortedByDescending { it.premium }
 
-    fun amazonAccounts(): List<AmazonPoolAccount> =
-        ordered("amazon-music", amazonCache, { it.id }, { it.premium })
-
     fun hasAccounts(): Boolean =
         tidalCache.isNotEmpty() || qobuzCache.isNotEmpty() || deezerCache.isNotEmpty() ||
-            appleMusicCache.isNotEmpty() || amazonCache.isNotEmpty()
+            appleMusicCache.isNotEmpty()
 
-    /**
-     * True when every pooled service *that something can actually play* has at least one account.
-     *
-     * Deliberately excludes Amazon: no AudioProvider consumes [amazonCache] yet (this fork ships no
-     * CENC decryption step), so an empty Amazon cache is never "missing" anything a user can use.
-     * Folding it in here would mean any pool deployment slow to collect Amazon accounts — plausibly
-     * most of them, indefinitely — permanently downgrades every user from the 24h [refreshIntervalMs]
-     * to the 15-minute partial-pool one, hammering the server for a service nothing resolves through.
-     * Revisit this once an Amazon AudioProvider exists and eager discovery would actually help someone.
-     */
     private fun hasEveryService(): Boolean =
         tidalCache.isNotEmpty() && qobuzCache.isNotEmpty() && deezerCache.isNotEmpty() && appleMusicCache.isNotEmpty()
 
@@ -232,7 +201,6 @@ object PoolAccountManager {
         appContext = context.applicationContext
         withContext(Dispatchers.IO) {
             runCatching {
-
                 val passthrough: (String) -> String? = { raw -> raw }
                 cached(context, CACHE_TIDAL_KEY)?.takeIf { it.isNotBlank() }?.let {
                     tidalCache = parseTidal(JSONArray(it), passthrough)
@@ -246,28 +214,18 @@ object PoolAccountManager {
                 cached(context, CACHE_APPLE_KEY)?.takeIf { it.isNotBlank() }?.let {
                     appleMusicCache = parseAppleMusic(JSONArray(it), passthrough)
                 }
-                cached(context, CACHE_AMAZON_KEY)?.takeIf { it.isNotBlank() }?.let {
-                    amazonCache = parseAmazon(JSONArray(it), passthrough)
-                }
                 loadedFromDisk = true
                 Timber.tag(TAG).d(
-                    "Loaded cached accounts: tidal=%d qobuz=%d deezer=%d apple=%d amazon=%d",
+                    "Loaded cached accounts: tidal=%d qobuz=%d deezer=%d apple=%d",
                     tidalCache.size,
                     qobuzCache.size,
                     deezerCache.size,
                     appleMusicCache.size,
-                    amazonCache.size,
                 )
             }.onFailure { Timber.tag(TAG).w(it, "Failed to load cached pool accounts") }
         }
     }
 
-    /**
-     * Every-launch background refresh: pulls fresh accounts from the server
-     * when the app is opened, throttled to one fetch per 10 minutes so
-     * rotations and quick activity restarts never hammer the feed. Silent —
-     * no UI surface, success or failure.
-     */
     suspend fun refreshForLaunch(context: Context): Boolean =
         withContext(Dispatchers.IO) {
             val now = System.currentTimeMillis()
@@ -288,7 +246,7 @@ object PoolAccountManager {
             loadCached(context)
 
             val now = System.currentTimeMillis()
-            if (!force && hasAccounts() && now - lastRefreshAt < refreshIntervalMs()) {
+            if (!force && hasAccounts() && now - lastRefreshAtMillis < refreshIntervalMs()) {
                 return@withContext true
             }
             if (!force && now - lastFeedFailureAt < FEED_FAILURE_BACKOFF_MS) {
@@ -296,8 +254,7 @@ object PoolAccountManager {
             }
 
             refreshMutex.withLock {
-
-                if (!force && hasAccounts() && System.currentTimeMillis() - lastRefreshAt < refreshIntervalMs()) {
+                if (!force && hasAccounts() && System.currentTimeMillis() - lastRefreshAtMillis < refreshIntervalMs()) {
                     return@withLock true
                 }
                 if (!force && System.currentTimeMillis() - lastFeedFailureAt < FEED_FAILURE_BACKOFF_MS) {
@@ -305,12 +262,16 @@ object PoolAccountManager {
                 }
                 val url = accountsUrl ?: legacySourcesUrl
                 if (url == null) {
-
                     lastFeedError = null
                     Timber.tag(TAG).d("No Source Pool URL configured; nothing to refresh")
                 } else {
 
-                    val readKey = BuildConfig.SOURCE_PROVIDER_KEY
+                    val userKey =
+                        runCatching { context.dataStore.getAsync(PoolApiKeyKey) }
+                            .getOrNull()
+                            ?.trim()
+                            .orEmpty()
+                    val readKey = userKey.ifBlank { BuildConfig.SOURCE_PROVIDER_KEY }
                     poolApiKey = readKey.ifBlank { null }
 
                     var result = fetchAccounts(context, url, readKey)
@@ -372,7 +333,6 @@ object PoolAccountManager {
         return try {
             client.newCall(builder.get().build()).execute().use { response ->
                 if (!response.isSuccessful) {
-
                     if (response.code == 401) {
                         Timber.tag(TAG).w(
                             "Pool account feed rejected the presented key (HTTP 401) — " +
@@ -389,14 +349,8 @@ object PoolAccountManager {
                 val qobuz = parseQobuz(accountsArray(root, "qobuz"), decryptor)
                 val deezer = parseDeezer(accountsArray(root, "deezer"), decryptor)
                 val apple = parseAppleMusic(accountsArray(root, "apple-music"), decryptor)
-                val amazon = parseAmazon(accountsArray(root, "amazon-music"), decryptor)
-                // Don't overwrite the in-memory cache with an empty list when the pool returns a
-                // 200 with a partial/empty response (rate-limit, transient server bug, captive-portal
-                // interception, malformed JSON). The user symptom is "Qobuz and other source
-                // providers disappear all of a sudden while playing songs" — and the only way to
-                // recover was force-stop + re-open. Only update the cache when at least one list is
-                // non-empty. Otherwise keep the previous (non-empty) cache so playback keeps working.
-                val allEmpty = tidal.isEmpty() && qobuz.isEmpty() && deezer.isEmpty() && apple.isEmpty() && amazon.isEmpty()
+
+                val allEmpty = tidal.isEmpty() && qobuz.isEmpty() && deezer.isEmpty() && apple.isEmpty()
                 if (allEmpty && hasAccounts()) {
                     Timber
                         .tag(TAG)
@@ -406,17 +360,15 @@ object PoolAccountManager {
                     qobuzCache = qobuz
                     deezerCache = deezer
                     appleMusicCache = apple
-                    amazonCache = amazon
-                    lastRefreshAt = System.currentTimeMillis()
-                    persist(context, tidal, qobuz, deezer, apple, amazon)
+                    lastRefreshAtMillis = System.currentTimeMillis()
+                    persist(context, tidal, qobuz, deezer, apple)
                 }
                 Timber.tag(TAG).i(
-                    "Pool accounts refreshed: tidal=%d qobuz=%d deezer=%d apple=%d amazon=%d",
+                    "Pool accounts refreshed: tidal=%d qobuz=%d deezer=%d apple=%d",
                     tidal.size,
                     qobuz.size,
                     deezer.size,
                     apple.size,
-                    amazon.size,
                 )
                 FeedFetch(root, 200)
             }
@@ -432,7 +384,6 @@ object PoolAccountManager {
         qobuz: List<QobuzPoolAccount>,
         deezer: List<DeezerPoolAccount>,
         apple: List<AppleMusicPoolAccount>,
-        amazon: List<AmazonPoolAccount>,
     ) {
         val tidalJson =
             JSONArray().apply {
@@ -483,24 +434,12 @@ object PoolAccountManager {
                     )
                 }
             }.toString()
-        val amazonJson =
-            JSONArray().apply {
-                amazon.forEach {
-                    put(
-                        JSONObject()
-                            .put("id", it.id)
-                            .put("session", it.session)
-                            .put("premium", it.premium),
-                    )
-                }
-            }.toString()
         runCatching {
             context.dataStore.edit { prefs ->
                 prefs[CACHE_TIDAL_KEY] = PoolCacheCrypto.encrypt(tidalJson)
                 prefs[CACHE_QOBUZ_KEY] = PoolCacheCrypto.encrypt(qobuzJson)
                 prefs[CACHE_DEEZER_KEY] = PoolCacheCrypto.encrypt(deezerJson)
                 prefs[CACHE_APPLE_KEY] = PoolCacheCrypto.encrypt(appleJson)
-                prefs[CACHE_AMAZON_KEY] = PoolCacheCrypto.encrypt(amazonJson)
             }
         }.onFailure { Timber.tag(TAG).w(it, "Failed to persist pool accounts") }
     }
@@ -611,10 +550,9 @@ object PoolAccountManager {
                 "qobuz" -> qobuzCache = mergeList(qobuzCache, deadId, QobuzPoolAccount::id, replacementArr, ::parseQobuz, decryptor) ?: return@withLock
                 "deezer" -> deezerCache = mergeList(deezerCache, deadId, DeezerPoolAccount::id, replacementArr, ::parseDeezer, decryptor) ?: return@withLock
                 "apple-music" -> appleMusicCache = mergeList(appleMusicCache, deadId, AppleMusicPoolAccount::id, replacementArr, ::parseAppleMusic, decryptor) ?: return@withLock
-                "amazon-music" -> amazonCache = mergeList(amazonCache, deadId, AmazonPoolAccount::id, replacementArr, ::parseAmazon, decryptor) ?: return@withLock
                 else -> return@withLock
             }
-            persist(ctx, tidalCache, qobuzCache, deezerCache, appleMusicCache, amazonCache)
+            persist(ctx, tidalCache, qobuzCache, deezerCache, appleMusicCache)
         }
     }
 
@@ -709,25 +647,6 @@ object PoolAccountManager {
 
     private fun entryId(obj: JSONObject): Long? =
         obj.optLong("id", 0L).takeIf { it > 0L }
-
-    private fun parseAmazon(
-        arr: JSONArray?,
-        decryptor: (String) -> String?,
-    ): List<AmazonPoolAccount> {
-        if (arr == null) return emptyList()
-        val out = mutableListOf<AmazonPoolAccount>()
-        for (i in 0 until arr.length()) {
-            val obj = arr.optJSONObject(i) ?: continue
-            val session = field(obj, "session", decryptor) ?: continue
-            out +=
-                AmazonPoolAccount(
-                    id = entryId(obj),
-                    session = session,
-                    premium = obj.optBoolean("premium", false),
-                )
-        }
-        return out
-    }
 
     private fun parseAppleMusic(
         arr: JSONArray?,

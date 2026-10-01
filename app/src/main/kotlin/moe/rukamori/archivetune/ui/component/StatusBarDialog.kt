@@ -19,6 +19,18 @@ import androidx.core.view.WindowInsetsControllerCompat
 val LocalImmersiveStatusBarsHidden = compositionLocalOf { false }
 
 @Composable
+fun EdgeToEdgeDialogWindow() {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val dialogWindow = (view.parent as? DialogWindowProvider)?.window
+        if (dialogWindow != null) {
+            WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
+        }
+        onDispose { }
+    }
+}
+
+@Composable
 fun KeepStatusBarHiddenInDialog() {
     val hidden = LocalImmersiveStatusBarsHidden.current
     val view = LocalView.current

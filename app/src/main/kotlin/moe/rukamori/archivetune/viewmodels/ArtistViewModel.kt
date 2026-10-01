@@ -21,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
@@ -36,6 +37,9 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.artist.ArtistBlockRequest
 import moe.rukamori.archivetune.artist.ObserveArtistBlockedUseCase
 import moe.rukamori.archivetune.artist.SetArtistBlockedUseCase
+import moe.rukamori.archivetune.canvas.AppleMusicProvider
+import moe.rukamori.archivetune.canvas.models.CanvasArtwork
+import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.db.MusicDatabase
@@ -44,12 +48,15 @@ import moe.rukamori.archivetune.extensions.filterExplicit
 import moe.rukamori.archivetune.extensions.filterExplicitAlbums
 import moe.rukamori.archivetune.extensions.filterVideo
 import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.models.filterExplicit
 import moe.rukamori.archivetune.innertube.models.filterVideo
 import moe.rukamori.archivetune.innertube.pages.ArtistPage
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
+import moe.rukamori.archivetune.utils.isLowDataModeActive
 import moe.rukamori.archivetune.utils.reportException
+import java.util.Locale
 import javax.inject.Inject
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -109,6 +116,8 @@ class ArtistViewModel
         val artistId = savedStateHandle.get<String>("artistId")!!
         var artistPage by mutableStateOf<ArtistPage?>(null)
 
+        val canvasArtwork = MutableStateFlow<CanvasArtwork?>(null)
+
         var isManuallyRefreshing by mutableStateOf(false)
         private val eventChannel = Channel<ArtistEvent>(capacity = Channel.BUFFERED)
         val events = eventChannel.receiveAsFlow()
@@ -149,7 +158,6 @@ class ArtistViewModel
                 }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
         init {
-
             viewModelScope.launch {
                 context.dataStore.data
                     .map { preferences ->
@@ -196,6 +204,10 @@ class ArtistViewModel
 
                         artistPage = page.copy(sections = filteredSections)
 
+                        viewModelScope.launch(Dispatchers.IO) {
+                            fetchArtistCanvas(page)
+                        }
+
                         withContext(Dispatchers.IO) {
                             database.artist(artistId).firstOrNull()?.artist?.let { artistEntity ->
                                 database.update(artistEntity, page)
@@ -205,7 +217,6 @@ class ArtistViewModel
                         reportException(it)
                     }
                 if (manual) {
-
                     isManuallyRefreshing = false
                 }
             }
@@ -217,6 +228,44 @@ class ArtistViewModel
                 ArtistAction.CopyLink -> eventChannel.trySend(ArtistEvent.CopyLink(artistShareLink()))
                 ArtistAction.ToggleBlock -> toggleBlocked()
             }
+        }
+
+        private suspend fun fetchArtistCanvas(page: ArtistPage) {
+            val artistName = page.artist.title.takeIf { it.isNotBlank() } ?: return
+
+            val artistCanvas =
+                runCatching {
+                    if (context.dataStore.get(AlbumCanvasEnabledKey, true) && !context.isLowDataModeActive()) {
+                        val country = Locale.getDefault().country
+                        val storefront = if (country.length == 2) country.lowercase(Locale.ROOT) else "us"
+                        AppleMusicProvider.getByArtistName(artistName, storefront)
+                    } else {
+                        null
+                    }
+                }.getOrNull()
+            if (artistCanvas != null) {
+                canvasArtwork.value = artistCanvas
+                return
+            }
+
+            val topSong =
+                page.sections
+                    .asSequence()
+                    .flatMap { it.items.asSequence() }
+                    .filterIsInstance<SongItem>()
+                    .firstOrNull() ?: return
+            val artwork =
+                runCatching {
+                    fetchPlaylistCanvasArtwork(
+                        context = context,
+                        firstSongId = topSong.id,
+                        firstSongTitle = topSong.title,
+                        firstSongArtist = artistName,
+
+                        allowSpotify = false,
+                    )
+                }.getOrNull()
+            canvasArtwork.value = artwork
         }
 
         private fun toggleBlocked() {

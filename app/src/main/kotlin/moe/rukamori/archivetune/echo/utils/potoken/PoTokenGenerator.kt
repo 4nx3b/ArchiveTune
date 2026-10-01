@@ -38,7 +38,6 @@ class PoTokenGenerator {
                 }
             }
         } catch (e: TimeoutCancellationException) {
-
             Timber.tag(TAG).w("poToken generation timed out after ${POTOKEN_TIMEOUT_MS}ms; proceeding without PoToken")
             runBlocking {
                 webPoTokenGenLock.withLock {
@@ -69,7 +68,6 @@ class PoTokenGenerator {
     }
 
     private companion object {
-
         const val POTOKEN_TIMEOUT_MS = 8_000L
     }
 
@@ -102,10 +100,8 @@ class PoTokenGenerator {
             poTokenGenerator.generatePoToken(videoId)
         } catch (throwable: Throwable) {
             if (hasBeenRecreated) {
-
                 throw throwable
             } else {
-
                 Timber.tag(TAG).e(throwable, "Failed to obtain poToken, retrying")
                 return getWebClientPoToken(videoId = videoId, sessionId = sessionId, forceRecreate = true)
             }

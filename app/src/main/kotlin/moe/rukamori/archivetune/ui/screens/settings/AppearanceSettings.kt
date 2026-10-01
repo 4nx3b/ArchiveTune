@@ -88,6 +88,7 @@ import moe.rukamori.archivetune.constants.GridItemSize
 import moe.rukamori.archivetune.constants.GridItemsSizeKey
 import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
 import moe.rukamori.archivetune.constants.HideScrollbarKey
+import moe.rukamori.archivetune.constants.HideSearchChromeWhileScrollingKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.MinimalHomeModeKey
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
@@ -100,6 +101,7 @@ import moe.rukamori.archivetune.constants.PlayerButtonsStyle
 import moe.rukamori.archivetune.constants.PlayerButtonsStyleKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
+import moe.rukamori.archivetune.constants.TikTokMainLyricsEnabledKey
 import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
@@ -136,6 +138,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -162,7 +165,12 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     val (playerDesignStyle, onPlayerDesignStyleChange) =
         rememberEnumPreference(
             PlayerDesignStyleKey,
-            defaultValue = PlayerDesignStyle.V4,
+            defaultValue = PlayerDesignStyle.APPLE_MUSIC,
+        )
+    val (tikTokMainLyrics, onTikTokMainLyricsChange) =
+        rememberPreference(
+            TikTokMainLyricsEnabledKey,
+            defaultValue = false,
         )
     val (_, onAppleMusicExperienceChange) =
         rememberPreference(
@@ -215,7 +223,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     val (liquidGlassEnabled, onLiquidGlassEnabledChange) =
         rememberPreference(
             LiquidGlassEnabledKey,
-            defaultValue = false,
+            defaultValue = true,
         )
     val (pureBlack, onPureBlackChange) = rememberPreference(PureBlackKey, defaultValue = false)
     val (disableBlur, onDisableBlurChange) = rememberPreference(DisableBlurKey, defaultValue = false)
@@ -276,6 +284,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         )
     val (hideScrollbar, onHideScrollbarChange) =
         rememberPreference(HideScrollbarKey, defaultValue = false)
+    val (hideSearchChromeWhileScrolling, onHideSearchChromeWhileScrollingChange) =
+        rememberPreference(HideSearchChromeWhileScrollingKey, defaultValue = false)
     val (minimalHomeMode, onMinimalHomeModeChange) =
         rememberPreference(MinimalHomeModeKey, defaultValue = false)
 
@@ -441,6 +451,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     if (showSfProFontPicker) {
         SfProFontPickerDialog(
             onDismiss = { showSfProFontPicker = false },
+
+            appliedFontName = customFontName.takeIf { fontPreference == AppFontPreference.CUSTOM }.orEmpty(),
             onApply = { uri, name ->
                 onCustomFontUriChange(uri)
                 onCustomFontNameChange(name)
@@ -460,37 +472,14 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    FrostedHeaderPill(plain = true) {
-                        IconButton(
-                            onClick = navController::navigateUp,
-                            onLongClick = navController::backToMain,
-                        ) {
-                            Icon(
-                                painterResource(R.drawable.arrow_back),
-                                contentDescription = null,
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.appearance),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                ),
-            )
-        },
+                SettingsPageTopBar(
+                    titleText = stringResource(R.string.appearance),
+                    onBack = navController::navigateUp,
+                    onBackLongClick = navController::backToMain,
+                )
+            },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -512,19 +501,19 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(
-                modifier = positions.modifierFor("dynamic_theme"),
+                modifier = positions.modifierFor("dynamic_theme", "color_source"),
                 title = stringResource(R.string.theme),
             ) {
+
                 item {
-                    Column(modifier = positions.modifierFor("liquid_glass_effects")) {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.liquid_glass_effects)) },
-                            description = stringResource(R.string.liquid_glass_effects_desc),
-                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
-                            checked = liquidGlassEnabled,
-                            onCheckedChange = onLiquidGlassEnabledChange,
+                    Column(modifier = positions.modifierFor("liquid_glass_customisation")) {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.liquid_glass_settings_title)) },
+                            description = stringResource(R.string.liquid_glass_customisation_subtitle),
+                            icon = { Icon(painterResource(R.drawable.sliders), null) },
+                            onClick = { navController.navigate("settings/appearance/liquid_glass") },
                         )
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && liquidGlassEnabled) {
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
                             Text(
                                 text = stringResource(R.string.liquid_glass_effects_unsupported),
                                 style = MaterialTheme.typography.bodySmall,
@@ -575,7 +564,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 item(visible = !dynamicTheme || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
                     Column(modifier = positions.modifierFor("color_palette")) {
                         PreferenceEntry(
-                            modifier = positions.modifierFor("palette_picker"),
+                            modifier = positions.modifierFor("palette_picker", "theme_creator"),
                             title = { Text(stringResource(R.string.color_palette)) },
                             description = stringResource(R.string.customize_theme_colors),
                             icon = { Icon(painterResource(R.drawable.format_paint), null) },
@@ -720,7 +709,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                     item {
                         PreferenceEntry(
-                            modifier = positions.modifierFor("backdrop_blur_amount"),
+                            modifier = positions.modifierFor("backdrop_blur", "backdrop_blur_amount"),
                             title = { Text(stringResource(R.string.backdrop_blur_amount)) },
                             description = stringResource(R.string.backdrop_blur_amount_value, backdropBlurAmount),
                             icon = { Icon(painterResource(R.drawable.blur_on), null) },
@@ -827,6 +816,20 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                 }
                             },
                         )
+                    }
+                }
+
+                if (playerDesignStyle == PlayerDesignStyle.TIKTOK) {
+                    item {
+                        Column(modifier = positions.modifierFor("tiktok_main_lyrics")) {
+                            SwitchPreference(
+                                title = { Text(stringResource(R.string.tiktok_main_lyrics)) },
+                                description = stringResource(R.string.tiktok_main_lyrics_desc),
+                                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                                checked = tikTokMainLyrics,
+                                onCheckedChange = onTikTokMainLyricsChange,
+                            )
+                        }
                     }
                 }
 
@@ -1003,9 +1006,11 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
-                    ThumbnailCornerRadiusSelectorButton(
-                        onRadiusSelected = {},
-                    )
+                    Column(modifier = positions.modifierFor("thumbnail_corner_radius")) {
+                        ThumbnailCornerRadiusSelectorButton(
+                            onRadiusSelected = {},
+                        )
+                    }
                 }
 
                 item {
@@ -1118,7 +1123,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     PreferenceEntry(
-                        modifier = positions.modifierFor("navigation_bar_settings", "navigation_bar_style"),
+                        modifier = positions.modifierFor("navigation_bar_settings"),
                         title = { Text(stringResource(R.string.navigation_bar_settings_title)) },
                         description = stringResource(R.string.navigation_bar_settings_subtitle),
                         icon = { Icon(painterResource(R.drawable.nav_bar), null) },
@@ -1134,6 +1139,17 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         icon = { Icon(painterResource(R.drawable.filter_alt), null) },
                         checked = hideScrollbar,
                         onCheckedChange = onHideScrollbarChange,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("hide_search_chrome_while_scrolling"),
+                        title = { Text(stringResource(R.string.hide_search_chrome_while_scrolling)) },
+                        description = stringResource(R.string.hide_search_chrome_while_scrolling_desc),
+                        icon = { Icon(painterResource(R.drawable.search_off), null) },
+                        checked = hideSearchChromeWhileScrolling,
+                        onCheckedChange = onHideSearchChromeWhileScrollingChange,
                     )
                 }
 

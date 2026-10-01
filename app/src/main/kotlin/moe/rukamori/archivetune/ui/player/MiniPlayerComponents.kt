@@ -9,6 +9,10 @@
 
 package moe.rukamori.archivetune.ui.player
 
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.unit.lerp
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
@@ -41,14 +45,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -61,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -90,7 +90,6 @@ import moe.rukamori.archivetune.constants.NavigationBarHorizontalPadding
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
-import moe.rukamori.archivetune.together.isConnectedToSession
 import moe.rukamori.archivetune.ui.utils.getNextFallbackUrl
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -115,8 +114,6 @@ data class MiniPlayerContentColors(
     val secondaryButtonContainer: Color,
     val buttonIcon: Color,
     val disabledButtonIcon: Color,
-    val togetherContainer: Color,
-    val togetherContent: Color,
 )
 
 @Composable
@@ -130,6 +127,7 @@ fun SwipeableMiniPlayerBox(
     coroutineScope: CoroutineScope,
     pureBlack: Boolean = false,
     useLegacyBackground: Boolean = false,
+    compactFraction: Float = 0f,
     content: @Composable (Float) -> Unit,
 ) {
     val offsetXAnimatable = remember { Animatable(0f) }
@@ -187,7 +185,10 @@ fun SwipeableMiniPlayerBox(
                                 },
                             )
                         } else {
-                            baseModifier.padding(horizontal = NavigationBarHorizontalPadding)
+
+                            baseModifier.padding(
+                                horizontal = lerp(NavigationBarHorizontalPadding, 0.dp, compactFraction),
+                            )
                         }
                     }.let { baseModifier ->
                         if (swipeThumbnail) {
@@ -270,6 +271,8 @@ fun SwipeableMiniPlayerBox(
                             baseModifier
                         }
                     },
+
+            contentAlignment = Alignment.Center,
         ) {
             content(offsetXAnimatable.value)
 
@@ -377,8 +380,6 @@ fun RowScope.MiniPlayerInfo(
 @Composable
 private fun MiniPlayerArtwork(
     mediaMetadata: MediaMetadata?,
-    progress: () -> Float,
-    isLoading: Boolean,
     colors: MiniPlayerContentColors,
     onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -404,44 +405,20 @@ private fun MiniPlayerArtwork(
                     }
                 },
     ) {
-        if (isLoading) {
-            CircularWavyProgressIndicator(
-                modifier = Modifier.fillMaxSize(),
-                color = colors.progress,
-                trackColor = colors.progressTrack,
-            )
-        } else {
-            CircularWavyProgressIndicator(
-                progress = progress,
-                modifier = Modifier.fillMaxSize(),
-                color = colors.progress,
-                trackColor = colors.progressTrack,
-            )
-        }
 
         Box(
             contentAlignment = Alignment.Center,
             modifier =
                 Modifier
-                    .size(42.dp)
-                    .clip(CircleShape)
+                    .size(48.dp)
+                    .clip(MiniPlayerArtworkShape)
                     .background(colors.artworkContainer)
                     .border(
                         width = 1.dp,
                         color = colors.artworkBorder,
-                        shape = CircleShape,
+                        shape = MiniPlayerArtworkShape,
                     ),
         ) {
-            // The artwork always renders here, even when the SpatialFlow
-            // morph layer is expected to draw over this slot (canvas songs,
-            // plain songs). The floating layer sits at a higher z-index and
-            // shows the exact same image, so covering it is invisible — and if
-            // that layer ever fails to draw (rects not yet measured, artwork
-            // inactive, canvas URL blank) the thumbnail is still on screen
-            // instead of an empty ring. This is the fix for the
-            // "thumbnail doesn't load in mini player in spatialflow style"
-            // report: the placeholder-only path had no artwork of its own and
-            // no fallback when the shared layer could not draw.
             val baseThumbnailUrl = mediaMetadata?.thumbnailUrl
             if (baseThumbnailUrl != null) {
                 val thumbnailSwapState =
@@ -451,10 +428,7 @@ private fun MiniPlayerArtwork(
                         lowDataMode = rememberLowDataModeActive(),
                         isMusicVideo = mediaMetadata.isMusicVideo,
                     )
-                // Same hardening as every other artwork surface: a
-                // disk-cache-backed request plus the maxres -> hq720 -> mq
-                // fallback chain, so a single failed ytimg request can never
-                // park the 42dp slot empty for the rest of the session.
+
                 var displayUrl by remember(thumbnailSwapState.displayUrl) {
                     mutableStateOf(thumbnailSwapState.displayUrl)
                 }
@@ -499,20 +473,12 @@ private fun MiniPlayerTransportButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     isPrimary: Boolean = false,
+    compact: Boolean = false,
     colors: MiniPlayerContentColors,
 ) {
     val view = LocalView.current
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
 
-    val containerColor =
-        if (isPrimary) colors.primaryButtonContainer else colors.secondaryButtonContainer
-    val buttonColors =
-        IconButtonDefaults.iconButtonColors(
-            containerColor = containerColor,
-            contentColor = if (isPrimary) colors.primaryButtonIcon else colors.buttonIcon,
-            disabledContainerColor = Color.Transparent,
-            disabledContentColor = colors.disabledButtonIcon,
-        )
     val handleClick =
         remember(enableHapticFeedback, onClick, view) {
             {
@@ -525,37 +491,38 @@ private fun MiniPlayerTransportButton(
                 onClick()
             }
         }
-    val content: @Composable () -> Unit =
-        remember(iconResId, contentDescription, isPrimary) {
-            @Composable {
-                Icon(
-                    painter = painterResource(iconResId),
-                    contentDescription = contentDescription,
-                    modifier = Modifier.size(if (isPrimary) 24.dp else 20.dp),
-                )
-            }
-        }
 
-    if (isPrimary) {
-        FilledIconButton(
-            onClick = handleClick,
-            shapes = IconButtonDefaults.shapes(),
-            modifier = modifier.size(48.dp),
-            enabled = enabled,
-            colors = buttonColors,
-            content = content,
-        )
-    } else {
-        IconButton(
-            onClick = handleClick,
-            shapes = IconButtonDefaults.shapes(),
-            modifier = modifier.size(48.dp),
-            enabled = enabled,
-            colors = buttonColors,
-            content = content,
+    val iconSize =
+        when {
+            compact -> if (isPrimary) 26.dp else 22.dp
+            isPrimary -> 34.dp
+            else -> 28.dp
+        }
+    val tint = if (isPrimary) colors.primaryButtonIcon else colors.buttonIcon
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier =
+            modifier
+                .size(if (compact) 40.dp else 44.dp)
+                .clip(CircleShape)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    enabled = enabled,
+                    onClick = handleClick,
+                ),
+    ) {
+        Icon(
+            painter = painterResource(iconResId),
+            contentDescription = contentDescription,
+            tint = if (enabled) tint else colors.disabledButtonIcon,
+            modifier = Modifier.size(iconSize),
         )
     }
 }
+
+private val MiniPlayerArtworkShape = RoundedCornerShape(10.dp)
 
 @Composable
 private fun MiniPlayerTransportControls(
@@ -585,7 +552,7 @@ private fun MiniPlayerTransportControls(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MiniPlayerTransportButton(
-            iconResId = R.drawable.player_skip_previous,
+            iconResId = R.drawable.apple_skip_previous,
             contentDescription = stringResource(R.string.widget_previous),
             onClick = onPrevious,
             enabled = canSkipPrevious,
@@ -595,9 +562,9 @@ private fun MiniPlayerTransportControls(
         MiniPlayerTransportButton(
             iconResId =
                 when {
-                    playbackState == Player.STATE_ENDED -> R.drawable.player_replay
-                    isPlaying -> R.drawable.player_pause
-                    else -> R.drawable.player_play
+                    playbackState == Player.STATE_ENDED -> R.drawable.solar_replay_linear
+                    isPlaying -> R.drawable.pause_applemusic
+                    else -> R.drawable.play_applemusic
                 },
             contentDescription =
                 stringResource(
@@ -609,7 +576,7 @@ private fun MiniPlayerTransportControls(
         )
 
         MiniPlayerTransportButton(
-            iconResId = R.drawable.player_skip_next,
+            iconResId = R.drawable.apple_skip_next,
             contentDescription = stringResource(R.string.next),
             onClick = onNext,
             enabled = canSkipNext,
@@ -624,40 +591,114 @@ fun NewMiniPlayerContent(
     durationProvider: () -> Long,
     playerConnection: PlayerConnection,
     colors: MiniPlayerContentColors,
+    compactFraction: Float = 0f,
+    compactShowTransportControls: Boolean = false,
     onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val playbackState by playerConnection.playbackState.collectAsStateWithLifecycle()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
-    val togetherSessionState by playerConnection.service.togetherSessionState.collectAsStateWithLifecycle()
     val canSkipPrevious by playerConnection.canSkipPrevious.collectAsStateWithLifecycle()
     val canSkipNext by playerConnection.canSkipNext.collectAsStateWithLifecycle()
 
-    val isLoading = playbackState == Player.STATE_BUFFERING
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (compactFraction < 0.95f) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 8.dp)
+                        .graphicsLayer {
+                            alpha = 1f - compactFraction
+                            val scale = 1f - 0.10f * compactFraction
+                            scaleX = scale
+                            scaleY = scale
+                        },
+            ) {
+                MiniPlayerArtwork(
+                    mediaMetadata = mediaMetadata,
+                    colors = colors,
+                    onArtworkSlotPositioned = onArtworkSlotPositioned,
+                )
 
-    val progressProvider =
-        remember(positionProvider, durationProvider) {
+                mediaMetadata?.let {
+                    MiniPlayerInfo(
+                        mediaMetadata = it,
+                        colors = colors,
+                    )
+                } ?: Spacer(Modifier.weight(1f))
+
+                MiniPlayerTransportControls(
+                    isPlaying = isPlaying,
+                    playbackState = playbackState,
+                    canSkipPrevious = canSkipPrevious,
+                    canSkipNext = canSkipNext,
+                    playerConnection = playerConnection,
+                    colors = colors,
+                )
+            }
+        }
+
+        if (compactFraction > 0.05f) {
+            CompactMiniPlayerContent(
+                positionProvider = positionProvider,
+                durationProvider = durationProvider,
+                playerConnection = playerConnection,
+                colors = colors,
+                showTransportControls = compactShowTransportControls,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            alpha = compactFraction
+                            val scale = 0.92f + 0.08f * compactFraction
+                            scaleX = scale
+                            scaleY = scale
+                        },
+            )
+        }
+    }
+}
+
+@Composable
+fun CompactMiniPlayerContent(
+    positionProvider: () -> Long,
+    durationProvider: () -> Long,
+    playerConnection: PlayerConnection,
+    colors: MiniPlayerContentColors,
+    modifier: Modifier = Modifier,
+    showTransportControls: Boolean = false,
+    onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
+) {
+    val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
+    val playbackState by playerConnection.playbackState.collectAsStateWithLifecycle()
+    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
+    val canSkipPrevious by playerConnection.canSkipPrevious.collectAsStateWithLifecycle()
+    val canSkipNext by playerConnection.canSkipNext.collectAsStateWithLifecycle()
+
+    val onPlayPause =
+        remember(playbackState, playerConnection) {
             {
-                val duration = durationProvider()
-                if (duration > 0) {
-                    (positionProvider().toFloat() / duration).coerceIn(0f, 1f)
+                if (playbackState == Player.STATE_ENDED) {
+                    playerConnection.player.seekTo(0, 0)
+                    playerConnection.player.playWhenReady = true
                 } else {
-                    0f
+                    playerConnection.player.togglePlayPause()
                 }
             }
         }
+    val onPrevious = remember(playerConnection) { { playerConnection.seekToPrevious() } }
+    val onNext = remember(playerConnection) { { playerConnection.seekToNext() } }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
-            Modifier
-                .fillMaxSize()
-                .padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            modifier
+                .padding(start = 10.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
     ) {
         MiniPlayerArtwork(
             mediaMetadata = mediaMetadata,
-            progress = progressProvider,
-            isLoading = isLoading,
             colors = colors,
             onArtworkSlotPositioned = onArtworkSlotPositioned,
         )
@@ -669,30 +710,43 @@ fun NewMiniPlayerContent(
             )
         } ?: Spacer(Modifier.weight(1f))
 
-        if (togetherSessionState.isConnectedToSession) {
-            Surface(
-                shape = CircleShape,
-                color = colors.togetherContainer,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.player_all_inclusive),
-                    contentDescription = stringResource(R.string.music_together),
-                    tint = colors.togetherContent,
-                    modifier =
-                        Modifier
-                            .padding(7.dp)
-                            .size(14.dp),
-                )
-            }
+        if (showTransportControls) {
+            MiniPlayerTransportButton(
+                iconResId = R.drawable.apple_skip_previous,
+                contentDescription = stringResource(R.string.widget_previous),
+                onClick = onPrevious,
+                enabled = canSkipPrevious,
+                compact = true,
+                colors = colors,
+            )
         }
 
-        MiniPlayerTransportControls(
-            isPlaying = isPlaying,
-            playbackState = playbackState,
-            canSkipPrevious = canSkipPrevious,
-            canSkipNext = canSkipNext,
-            playerConnection = playerConnection,
+        MiniPlayerTransportButton(
+            iconResId =
+                when {
+                    playbackState == Player.STATE_ENDED -> R.drawable.solar_replay_linear
+                    isPlaying -> R.drawable.pause_applemusic
+                    else -> R.drawable.play_applemusic
+                },
+            contentDescription =
+                stringResource(
+                    if (playbackState == Player.STATE_ENDED || !isPlaying) R.string.play else R.string.widget_pause,
+                ),
+            onClick = onPlayPause,
+            isPrimary = true,
+            compact = true,
             colors = colors,
         )
+
+        if (showTransportControls) {
+            MiniPlayerTransportButton(
+                iconResId = R.drawable.apple_skip_next,
+                contentDescription = stringResource(R.string.next),
+                onClick = onNext,
+                enabled = canSkipNext,
+                compact = true,
+                colors = colors,
+            )
+        }
     }
 }

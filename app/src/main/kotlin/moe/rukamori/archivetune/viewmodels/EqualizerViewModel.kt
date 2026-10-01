@@ -35,6 +35,7 @@ import moe.rukamori.archivetune.equalizer.ManageEqualizerProfilesUseCase
 import moe.rukamori.archivetune.equalizer.ObserveEqualizerUseCase
 import moe.rukamori.archivetune.equalizer.UpdateEqualizerUseCase
 import moe.rukamori.archivetune.equalizer.equalizerToneIndices
+import moe.rukamori.archivetune.equalizer.normalizedDeviceLevels
 import moe.rukamori.archivetune.equalizer.resampleLevels
 import moe.rukamori.archivetune.playback.EqProfile
 import moe.rukamori.archivetune.playback.EqReverbPreset
@@ -292,10 +293,7 @@ class EqualizerViewModel
             val capabilities = config.capabilities ?: return
             draft.update { current ->
                 val levels =
-                    resampleLevels(
-                        levelsMb = current.bandLevelsMb ?: config.settings.bandLevelsMb,
-                        targetCount = capabilities.bandCount,
-                    ).toMutableList()
+                    normalizedDeviceLevels(config.settings, capabilities).toMutableList()
                 if (index in levels.indices) levels[index] = valueMb
                 current.copy(bandLevelsMb = levels)
             }
@@ -329,8 +327,9 @@ class EqualizerViewModel
 
         fun commitBands() {
             val levels = draft.value.bandLevelsMb ?: return
+            val freqs = configuration?.capabilities?.centerFreqHz.orEmpty()
             bandCommitJob?.cancel()
-            bandCommitJob = launchUpdate { updateEqualizer.updateBandLevels(levels) }
+            bandCommitJob = launchUpdate { updateEqualizer.updateBandLevels(levels, freqs) }
         }
 
         fun resetBands() {
@@ -503,7 +502,7 @@ private fun EqualizerConfiguration.toUiModel(
 ): EqualizerUiModel {
     val capabilities = requireNotNull(capabilities)
     val settings = withDraft(draft).settings
-    val bandLevels = resampleLevels(settings.bandLevelsMb, capabilities.bandCount)
+    val bandLevels = normalizedDeviceLevels(settings, capabilities)
     val toneModels =
         EqualizerTone.entries.map { tone ->
             val indices = equalizerToneIndices(tone, capabilities.centerFreqHz, capabilities.bandCount)
@@ -554,5 +553,4 @@ private fun EqualizerConfiguration.toUiModel(
     )
 }
 
-/** Number of bands the redesigned (SpatialFlow-style) effects screen shows. */
 private const val FIXED_UI_BAND_COUNT = 5

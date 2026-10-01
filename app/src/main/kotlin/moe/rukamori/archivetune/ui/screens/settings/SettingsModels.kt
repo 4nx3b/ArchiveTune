@@ -37,6 +37,8 @@ data class SettingsItem(
     val badge: String? = null,
     val showUpdateIndicator: Boolean = false,
     val accentColor: Color = Color.Unspecified,
+
+    val iconUrl: String? = null,
     val keywords: List<String> = emptyList(),
     val children: List<SettingsChild> = emptyList(),
     val onClick: () -> Unit,

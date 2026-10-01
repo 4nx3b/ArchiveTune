@@ -10,7 +10,6 @@ package moe.rukamori.archivetune.playback.artwork
 import moe.rukamori.archivetune.constants.PreferredArtworkProvider
 
 enum class ArtworkProvider {
-
     LOCAL_EMBEDDED,
 
     ORIGINAL_METADATA,
@@ -76,7 +75,6 @@ data class TidalArtworkMatch(
 )
 
 fun interface TidalArtworkFetcher {
-
     fun fetchArtwork(request: ArtworkRequest): TidalArtworkMatch?
 }
 

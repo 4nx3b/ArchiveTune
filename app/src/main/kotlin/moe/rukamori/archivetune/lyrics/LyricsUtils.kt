@@ -40,9 +40,11 @@ object LyricsUtils {
     val TIME_REGEX = Regex("""\[(\d{1,3}):(\d{2})(?:[.:](\d{2,3}))?\]""")
     private val WHITESPACE_REGEX = "\\s+".toRegex()
     private val ENHANCED_LRC_WORD_TIME_REGEX = Regex("""<\d{1,3}:\d{2}(?:[.:]\d{2,3})?>""")
+    private val ENHANCED_LRC_WORD_TOKEN_REGEX = Regex("""(<\d{1,3}:\d{2}(?:[.:]\d{2,3})?>)([^<]*)""")
     private val INLINE_MILLISECONDS_TIME_REGEX = Regex("""<\d{1,8}(?:,\d{1,8})?>""")
     private val YRC_LINE_REGEX = Regex("""\[(\d{1,8}),\d{1,8}\](.*)""")
     private val YRC_WORD_TIME_REGEX = Regex("""\(\d{1,8},\d{1,8}(?:,\d{1,8})?\)""")
+    private val YRC_WORD_TOKEN_REGEX = Regex("""(.*?)\((\d{1,8}),(\d{1,8})(?:,\d{1,8})?\)""")
     private val QrcTranslationLineRegex = Regex("""^\[(\d{1,8}),(\d{1,8})](.*)$""")
     private val QrcWordTimingDetectRegex = Regex("""\(\d{1,8},\d{1,8}(?:,\d{1,8})?\)""")
 
@@ -56,6 +58,10 @@ object LyricsUtils {
     private val TTML_END_ATTRIBUTE_REGEX = Regex("""\b(?:end|dur)\s*=""", RegexOption.IGNORE_CASE)
     private val INVISIBLE_CHARS_REGEX = Regex("""[\u200B\u200C\u200D\u2060\u00AD]""")
     private const val NBSP = '\u00A0'
+    private const val ENHANCED_LRC_LAST_WORD_DEFAULT_DURATION_MS = 600L
+    private const val MIN_WORD_DURATION_MS = 40L
+    private const val SINGLE_WORD_LINE_MAX_SWEEP_MS = 3_000L
+    private const val ENHANCED_LRC_TRAILING_LINE_DURATION_MS = 4_000L
     private const val GENERIC_ROMANIZATION_TRANSFORM = "Any-Latin; Latin-ASCII"
     private val OTHER_ROMANIZATION_EXCLUDED_SCRIPTS =
         setOf(
@@ -589,8 +595,11 @@ object LyricsUtils {
 
         return normalized.lineSequence().any { line ->
             LINE_REGEX.containsMatchIn(line) &&
-                (ENHANCED_LRC_WORD_TIME_REGEX.containsMatchIn(line) ||
-                    INLINE_MILLISECONDS_TIME_REGEX.containsMatchIn(line))
+                (
+                    ENHANCED_LRC_WORD_TIME_REGEX.containsMatchIn(line) ||
+                        INLINE_MILLISECONDS_TIME_REGEX.containsMatchIn(line) ||
+                        YRC_WORD_TIME_REGEX.containsMatchIn(line)
+                )
         }
     }
 
@@ -625,6 +634,10 @@ object LyricsUtils {
                     providerRomanizedWords = line.providerRomanizedWords,
                     providerRomanizedLanguage = line.providerRomanizedLanguage,
                     providerTranslationText = line.providerTranslationText,
+
+                    durationMs = ((line.endTime - line.startTime) * scale * 1000.0)
+                        .toLong()
+                        .coerceAtLeast(0L),
                 )
             }.sorted()
     }
@@ -663,8 +676,41 @@ object LyricsUtils {
                 result.addAll(entries)
             }
         }
-        return mergeLineSyncedTranslations(result).sorted()
+        val merged = mergeLineSyncedTranslations(result).sorted()
+        return clampEnhancedLrcLastWordEnds(merged)
     }
+
+    private fun clampEnhancedLrcLastWordEnds(entries: List<LyricsEntry>): List<LyricsEntry> =
+        entries.mapIndexed { index, entry ->
+            val words = entry.words ?: return@mapIndexed entry
+            if (words.isEmpty()) return@mapIndexed entry
+            val lastWord = words.last()
+            val nextStartMs =
+                entries
+                    .getOrNull(index + 1)
+                    ?.takeIf { it.time > entry.time }
+                    ?.time
+                    ?: (entry.time + ENHANCED_LRC_TRAILING_LINE_DURATION_MS)
+            val originalEndMs = (lastWord.endTime * 1000.0).toLong()
+            var lastEndMs = originalEndMs
+
+            if (words.size == 1 && lastEndMs < nextStartMs) {
+                lastEndMs =
+                    minOf(
+                        nextStartMs,
+                        (lastWord.startTime * 1000.0).toLong() + SINGLE_WORD_LINE_MAX_SWEEP_MS,
+                    )
+            }
+            if (lastEndMs > nextStartMs) {
+                val clamped = lastWord.copy(endTime = nextStartMs / 1000.0)
+                entry.copy(words = words.dropLast(1) + clamped)
+            } else if (lastEndMs != originalEndMs) {
+                val stretched = lastWord.copy(endTime = lastEndMs / 1000.0)
+                entry.copy(words = words.dropLast(1) + stretched)
+            } else {
+                entry
+            }
+        }
 
     private fun extractQrcTranslations(lyrics: String): Map<Long, String> {
         val wordTimedStartMs = mutableSetOf<Long>()
@@ -827,7 +873,11 @@ object LyricsUtils {
         }
         val matchResult = LINE_REGEX.matchEntire(line.trim()) ?: return null
         val times = matchResult.groupValues[1]
-        val text = cleanInlineWordTimingText(matchResult.groupValues[3])
+        val rawText = matchResult.groupValues[3]
+        val text = cleanInlineWordTimingText(rawText)
+        val inlineWords =
+            extractEnhancedLrcWordTimestamps(rawText)
+                ?: extractYrcWordTimestamps(rawText)
         val timeMatchResults = TIME_REGEX.findAll(times)
 
         return timeMatchResults
@@ -841,8 +891,104 @@ object LyricsUtils {
                     2 -> mil *= 10
                 }
                 val time = min * DateUtils.MINUTE_IN_MILLIS + sec * DateUtils.SECOND_IN_MILLIS + mil
-                LyricsEntry(time, text)
+                if (inlineWords != null) {
+                    val lineStartSec = time / 1000.0
+                    val words =
+                        inlineWords.map { word ->
+                            if (word.startTime >= lineStartSec - 0.001) {
+                                word
+                            } else {
+                                word.copy(
+                                    startTime = lineStartSec,
+                                    endTime = maxOf(word.endTime, lineStartSec + 0.05),
+                                )
+                            }
+                        }
+                    LyricsEntry(time, text, words = words)
+                } else {
+                    LyricsEntry(time, text)
+                }
             }.toList()
+    }
+
+    private fun parseEnhancedLrcStampMs(stamp: String): Long? {
+        val body = stamp.removePrefix("<").removeSuffix(">")
+        val parts = body.split(':', '.')
+        if (parts.size < 2) return null
+        val min = parts[0].toLongOrNull() ?: return null
+        val sec = parts[1].toLongOrNull() ?: return null
+        val mil = parts.getOrNull(2)?.let { fraction ->
+            when (fraction.length) {
+                1 -> fraction.toLongOrNull()?.times(100)
+                2 -> fraction.toLongOrNull()?.times(10)
+                else -> {
+                    val digits = fraction.take(3)
+                    val padded = digits.padEnd(3, '0')
+                    padded.toLongOrNull()
+                }
+            }
+        } ?: 0L
+        return min * DateUtils.MINUTE_IN_MILLIS + sec * DateUtils.SECOND_IN_MILLIS + mil
+    }
+
+    private fun extractEnhancedLrcWordTimestamps(rawText: String): List<WordTimestamp>? {
+        if (!ENHANCED_LRC_WORD_TIME_REGEX.containsMatchIn(rawText)) return null
+        val tokens = ENHANCED_LRC_WORD_TOKEN_REGEX.findAll(rawText).toList()
+
+        if (tokens.isEmpty()) return null
+
+        val words = mutableListOf<WordTimestamp>()
+        tokens.forEachIndexed { index, token ->
+            val startMs = parseEnhancedLrcStampMs(token.groupValues[1]) ?: return@forEachIndexed
+            val normalizedText =
+                token.groupValues[2]
+                    .replace(WHITESPACE_REGEX, " ")
+            val wordText = normalizedText.trim { it.isWhitespace() || it == NBSP }
+            if (wordText.isEmpty()) return@forEachIndexed
+
+            val textWithGap = if (normalizedText.endsWith(" ")) "$wordText " else wordText
+            val nextStartMs =
+                tokens
+                    .getOrNull(index + 1)
+                    ?.let { parseEnhancedLrcStampMs(it.groupValues[1]) }
+            val endMs = nextStartMs ?: (startMs + ENHANCED_LRC_LAST_WORD_DEFAULT_DURATION_MS)
+            words.add(
+                WordTimestamp(
+                    text = textWithGap,
+                    startTime = startMs / 1000.0,
+                    endTime = maxOf(endMs, startMs + MIN_WORD_DURATION_MS) / 1000.0,
+                ),
+            )
+        }
+        return words.takeIf { it.isNotEmpty() }
+    }
+
+    private fun extractYrcWordTimestamps(rawText: String): List<WordTimestamp>? {
+
+        if (!YRC_WORD_TIME_REGEX.containsMatchIn(rawText)) return null
+        val tokens = YRC_WORD_TOKEN_REGEX.findAll(rawText).toList()
+        if (tokens.isEmpty()) return null
+
+        val words = mutableListOf<WordTimestamp>()
+        tokens.forEach { token ->
+            val wordText =
+                token.groupValues[1]
+                    .replace(WHITESPACE_REGEX, " ")
+                    .trim { it.isWhitespace() || it == NBSP }
+                    .let { if (token.groupValues[1].endsWith(" ")) "$it " else it }
+            if (wordText.isBlank()) return@forEach
+            val startMs = token.groupValues[2].toLongOrNull() ?: return@forEach
+            val durationMs = token.groupValues[3].toLongOrNull() ?: return@forEach
+            val endMs = startMs + durationMs.coerceAtLeast(0L)
+            words.add(
+                WordTimestamp(
+                    text = wordText,
+                    startTime = startMs / 1000.0,
+                    endTime = maxOf(endMs, startMs + MIN_WORD_DURATION_MS) / 1000.0,
+                ),
+            )
+        }
+        return words.takeIf { it.isNotEmpty() }
     }
 
     private fun parseMillisecondsSyncedLine(line: String): List<LyricsEntry>? {
@@ -936,7 +1082,6 @@ object LyricsUtils {
         val words = raw.filter { it.text.isNotBlank() }
         if (words.isEmpty()) return false
         if (words.size == 1) {
-
             val only = words.first()
             return (only.endTime - only.startTime) > 0.0
         }
@@ -963,7 +1108,6 @@ object LyricsUtils {
                 kotlin.math.abs(startTimes[i] - expected) < tolerance
             }
             if (isEvenlyDistributed) {
-
                 val positiveDurations = durations.filter { it > 0.0 }
                 if (positiveDurations.size >= 3) {
                     val avg = positiveDurations.average()
@@ -971,7 +1115,6 @@ object LyricsUtils {
                         val variance = positiveDurations.map { (it - avg) * (it - avg) }.average()
                         val stddev = kotlin.math.sqrt(variance)
                         if (stddev / avg < 0.1) {
-
                             return false
                         }
                     }
@@ -1082,13 +1225,11 @@ object LyricsUtils {
             }
 
             if (!consumed) {
-
                 val oneCharCandidate = katakana[i].toString()
                 val mappedOneChar = KANA_ROMAJI_MAP[oneCharCandidate]
                 if (mappedOneChar != null) {
                     romajiBuilder.append(mappedOneChar)
                 } else {
-
                     romajiBuilder.append(oneCharCandidate)
                 }
                 i += 1
@@ -1508,7 +1649,6 @@ object LyricsUtils {
         for (word in words) {
             val wordStart = lineText.indexOf(word, startIndex = scanOffset)
             if (wordStart < 0) {
-
                 result.add(null)
                 continue
             }
@@ -1553,7 +1693,6 @@ object LyricsUtils {
     }
 
     private fun looksJapanese(text: String): Boolean {
-
         if (
             text.any {
                 hasScript(it, UnicodeScript.HIRAGANA) ||

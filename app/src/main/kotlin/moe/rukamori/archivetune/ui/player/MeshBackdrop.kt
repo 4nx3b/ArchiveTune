@@ -85,10 +85,9 @@ fun MeshBackdrop(
     trackKey: Any? = null,
     reduceAnimation: Boolean = false,
     blurRadius: Dp = 64.dp,
-    blobAlpha: Float = 0.82f,
+    blobAlpha: Float = 0.95f,
     scrim: Boolean = true,
 ) {
-
     val previous = remember { mutableStateOf(palette) }
     val target = remember { mutableStateOf(palette) }
     val fade = remember { Animatable(1f) }
@@ -158,8 +157,8 @@ fun MeshBackdrop(
                     Brush.verticalGradient(
                         colors =
                             listOf(
-                                Color.Black.copy(alpha = 0.10f),
-                                Color.Black.copy(alpha = 0.38f),
+                                Color.Black.copy(alpha = 0.05f),
+                                Color.Black.copy(alpha = 0.20f),
                             ),
                     ),
             )
@@ -220,7 +219,6 @@ private fun paletteOf(bitmap: Bitmap): List<Color> {
 
     val found =
         swatchesOf(Palette.from(bitmap)).ifEmpty {
-
             swatchesOf(Palette.from(bitmap).clearFilters())
         }
 
@@ -266,8 +264,8 @@ private fun Color.hsl(): FloatArray = FloatArray(3).also { ColorUtils.colorToHSL
 
 private fun Color.tuned(): Color {
     val hsl = hsl()
-    hsl[1] = (hsl[1] * 1.35f).coerceAtMost(1f)
-    hsl[2] = hsl[2].coerceIn(0.28f, 0.58f)
+    hsl[1] = (hsl[1] * 1.6f).coerceAtMost(1f)
+    hsl[2] = hsl[2].coerceIn(0.22f, 0.68f)
     return Color(ColorUtils.HSLToColor(hsl))
 }
 

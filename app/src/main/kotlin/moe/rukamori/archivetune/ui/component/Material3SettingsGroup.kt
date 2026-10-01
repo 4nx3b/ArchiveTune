@@ -11,16 +11,17 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
 
 @Composable
 fun Material3SettingsGroup(
@@ -30,7 +31,6 @@ fun Material3SettingsGroup(
     Column(
         modifier = Modifier.fillMaxWidth(),
     ) {
-
         title?.let {
             Text(
                 text = it,
@@ -83,7 +83,6 @@ private fun Material3SettingsItemRow(
                     ).padding(horizontal = 20.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-
             item.icon?.let { icon ->
                 Box(
                     modifier =
@@ -138,7 +137,6 @@ private fun Material3SettingsItemRow(
             Column(
                 modifier = Modifier.weight(1f),
             ) {
-
                 item.title()
 
                 item.description?.let { desc ->
@@ -175,4 +173,10 @@ data class Material3SettingsItem(
     val showBadge: Boolean = false,
     val isHighlighted: Boolean = false,
     val onClick: (() -> Unit)? = null,
+
+    val leadingContent: (@Composable () -> Unit)? = null,
+    val tintIcon: Boolean = true,
+    val iconShape: Shape? = null,
+    val enabled: Boolean = true,
+    val isExternalLink: Boolean = false,
 )

@@ -72,6 +72,7 @@ import moe.rukamori.archivetune.viewmodels.LyricsTestState
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 
 @Composable
 fun LyricsProvidersSettings(
@@ -131,30 +132,12 @@ fun LyricsProvidersSettings(
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    FrostedHeaderPill(plain = true) {
-                        IconButton(
-                            onClick = navController::navigateUp,
-                            onLongClick = navController::backToMain,
-                        ) {
-                            Icon(
-                                painterResource(R.drawable.arrow_back),
-                                contentDescription = null,
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.providers),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    }
-                },
-            )
-        },
+                SettingsPageTopBar(
+                    titleText = stringResource(R.string.providers),
+                    onBack = navController::navigateUp,
+                    onBackLongClick = navController::backToMain,
+                )
+            },
     ) { innerPadding ->
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
@@ -178,7 +161,6 @@ fun LyricsProvidersSettings(
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = stringResource(R.string.providers)) {
-
                 item {
                     SwitchPreference(
                         modifier = positions.modifierFor("prioritize_word_synced_lyrics"),

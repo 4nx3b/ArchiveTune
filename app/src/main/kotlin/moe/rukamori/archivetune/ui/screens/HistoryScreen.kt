@@ -13,6 +13,8 @@
 
 package moe.rukamori.archivetune.ui.screens
 
+import androidx.compose.foundation.layout.asPaddingValues
+import moe.rukamori.archivetune.ui.component.glassAwareSurface
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -103,6 +105,7 @@ import android.os.Build
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.delay
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -129,13 +132,12 @@ import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
 import moe.rukamori.archivetune.ui.component.LocalMenuState
-import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.TopSearch
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.SelectionMediaMetadataMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
@@ -291,17 +293,25 @@ fun HistoryScreen(
 
     var showClearHistoryDialog by remember { mutableStateOf(false) }
 
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
+
     val liquidGlassHeaderActive =
-        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            !lyricsFullScreen
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+    // The recorder stays attached whenever glass is available (even while the
+    // fullscreen lyrics player covers the page) so its coordinates and layer
+    // content remain live - glass pills that recompose right after the player
+    // is minimized would otherwise draw from a detached recorder and stay
+    // invisible until the page is scrolled or touched. Only the pills hide
+    // while lyrics are open.
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
     val surfaceColor = MaterialTheme.colorScheme.surface
-    val backdrop = rememberBackdrop(surfaceColor)
+    val backdrop = rememberThrottledBackdrop(surfaceColor)
 
     val showPersistentLiquidGlassHeader =
-        liquidGlassHeaderActive && !showSearchBar
+        glassHeaderActive && !showSearchBar
 
     if (showClearHistoryDialog) {
         DefaultDialog(
@@ -336,7 +346,6 @@ fun HistoryScreen(
     }
 
     val historySourceDock: @Composable () -> Unit = {
-
         Column(modifier = Modifier.fillMaxWidth()) {
             AppleMusicPlaylistHero(
                 sectionLabel = stringResource(R.string.recently_played),
@@ -596,14 +605,13 @@ fun HistoryScreen(
             Modifier
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
-        containerColor = MaterialTheme.colorScheme.surface,
+
+        containerColor = glassAwareSurface(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-
             if (!showSearchBar && !showPersistentLiquidGlassHeader) {
                 LargeFlexibleTopAppBar(
                     title = {
-
                         if (selectionCount > 0) {
                             FrostedHeaderPill {
                                 Text(
@@ -614,7 +622,6 @@ fun HistoryScreen(
                         }
                     },
                     navigationIcon = {
-
                         FrostedHeaderPill {
                             AppIconButton(
                                 onClick = {
@@ -682,7 +689,6 @@ fun HistoryScreen(
                         .hazeSource(headerHaze),
             ) {
                 if (!showSearchBar) {
-
                     val topPaddingForContent =
                         if (showPersistentLiquidGlassHeader) 0.dp
                         else innerPadding.calculateTopPadding()
@@ -692,10 +698,10 @@ fun HistoryScreen(
             ScreenHeaderHaze(
                 hazeState = headerHaze,
                 systemBarsTopPadding = systemBarsTopPadding,
+                scrolled = activeListState.canScrollBackward,
             )
 
             if (showPersistentLiquidGlassHeader) {
-
                 LiquidGlassActionPill(
                     backdrop = backdrop,
                     interactive = true,
@@ -865,7 +871,7 @@ fun HistoryScreen(
 private fun LocalHistoryFeed(
     listState: LazyListState,
     topPadding: Dp,
-    backdrop: PlatformBackdrop?,
+    backdrop: Backdrop?,
     headerContent: @Composable () -> Unit,
     filteredEvents: Map<DateAgo, List<EventWithSong>>,
     visibleEvents: List<EventWithSong>,
@@ -904,13 +910,19 @@ private fun LocalHistoryFeed(
                 .widthIn(max = 840.dp)
                 .padding(top = topPadding)
 
-                .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)
+                .then(if (backdrop != null) Modifier.glassSource(backdrop) else Modifier)
                 .windowInsetsPadding(
-                    LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
-                    ),
+                    LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
                 ),
-        contentPadding = PaddingValues(bottom = 112.dp),
+
+                contentPadding =
+                    PaddingValues(
+                        bottom =
+                            LocalPlayerAwareWindowInsets.current
+                                .only(WindowInsetsSides.Bottom)
+                                .asPaddingValues()
+                                .calculateBottomPadding() + 112.dp,
+                    ),
     ) {
         item("history_overview") {
             headerContent()
@@ -1024,7 +1036,7 @@ private fun LocalHistoryFeed(
 private fun RemoteHistoryFeed(
     listState: LazyListState,
     topPadding: Dp,
-    backdrop: PlatformBackdrop?,
+    backdrop: Backdrop?,
     headerContent: @Composable () -> Unit,
     remoteHistoryState: RemoteHistoryUiState,
     filteredSections: List<HistoryPage.HistorySection>,
@@ -1044,13 +1056,19 @@ private fun RemoteHistoryFeed(
                 .widthIn(max = 840.dp)
                 .padding(top = topPadding)
 
-                .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)
+                .then(if (backdrop != null) Modifier.glassSource(backdrop) else Modifier)
                 .windowInsetsPadding(
-                    LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
-                    ),
+                    LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
                 ),
-        contentPadding = PaddingValues(bottom = 112.dp),
+
+                contentPadding =
+                    PaddingValues(
+                        bottom =
+                            LocalPlayerAwareWindowInsets.current
+                                .only(WindowInsetsSides.Bottom)
+                                .asPaddingValues()
+                                .calculateBottomPadding() + 112.dp,
+                    ),
     ) {
         item("history_overview") {
             headerContent()
@@ -1260,7 +1278,6 @@ private fun HistorySourcePill(
     availableSources: List<HistorySource>,
     onSourceChange: (HistorySource) -> Unit,
 ) {
-
     var expanded by remember { mutableStateOf(false) }
     val accent = AppleMusicStyleAccentColor
     val onBackgroundColor = MaterialTheme.colorScheme.onBackground
@@ -1291,7 +1308,6 @@ private fun HistorySourcePill(
                 shape = RoundedCornerShape(percent = 50),
                 color = containerColor,
             ) {
-
                 Row(
                     modifier =
                         Modifier

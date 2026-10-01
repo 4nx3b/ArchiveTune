@@ -23,6 +23,8 @@ data class FormatEntity(
     val loudnessDb: Double?,
     val perceptualLoudnessDb: Double? = null,
     val playbackUrl: String?,
+    val replayGainTrackDb: Double? = null,
+    val replayGainAlbumDb: Double? = null,
 )
 
 fun FormatEntity.containerLabel(): String = mimeType.substringAfter("/").substringBefore(";").uppercase()
@@ -123,7 +125,6 @@ fun detectAudioExtensionFromSpans(
     val header = ByteArray(12)
     file.inputStream().use { if (it.read(header) < 4) return "mp3" }
     return when {
-
         header[0] == 0x66.toByte() && header[1] == 0x4C.toByte() &&
             header[2] == 0x61.toByte() && header[3] == 0x43.toByte() -> "flac"
 

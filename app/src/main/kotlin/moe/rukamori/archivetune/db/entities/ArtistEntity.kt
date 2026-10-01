@@ -13,10 +13,10 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.innertube.YouTube
 import org.apache.commons.lang3.RandomStringUtils
+import timber.log.Timber
 import java.time.LocalDateTime
 
 @Immutable
@@ -47,12 +47,32 @@ data class ArtistEntity(
         localToggleLike().also {
             if (isLocal) return@also
             CoroutineScope(Dispatchers.IO).launch {
-                if (channelId == null) {
-                    YouTube.subscribeChannel(YouTube.getChannelId(id), bookmarkedAt == null)
-                } else {
-                    YouTube.subscribeChannel(channelId, bookmarkedAt == null)
+                // The like button on the artist page must SUBSCRIBE: local
+                // bookmark + the real YouTube channel subscription. Two silent
+                // failure modes previously left the remote side a no-op:
+                //  - a missing channelId resolved through getChannelId(), which
+                //    returns "" (not null) when the lookup fails, and
+                //    subscribeChannel("") always failed silently;
+                //  - any subscribe error was swallowed by runCatching upstream.
+                // Both now log so the outcome is at least observable, and an
+                // unresolvable channel id skips the call instead of firing a
+                // guaranteed-failure request.
+                val targetChannelId =
+                    channelId ?: run {
+                        val resolved = YouTube.getChannelId(id)
+                        if (resolved.isBlank()) null else resolved
+                    }
+                if (targetChannelId == null) {
+                    Timber.tag("ArtistEntity")
+                        .w("Subscribe skipped for %s: no channelId could be resolved", id)
+                    return@launch
                 }
-                this.cancel()
+                YouTube
+                    .subscribeChannel(targetChannelId, bookmarkedAt == null)
+                    .onFailure { throwable ->
+                        Timber.tag("ArtistEntity")
+                            .w(throwable, "Subscribe failed for %s (channel %s)", id, targetChannelId)
+                    }
             }
         }
 

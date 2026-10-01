@@ -16,7 +16,6 @@ data class TranslatorLang(
 )
 
 object TranslatorLanguages {
-
     fun load(context: Context): List<TranslatorLang> {
         try {
             val json =
@@ -41,7 +40,6 @@ object TranslatorLanguages {
             }
             if (out.isNotEmpty()) return out
         } catch (_: Exception) {
-
         }
 
         return listOf(

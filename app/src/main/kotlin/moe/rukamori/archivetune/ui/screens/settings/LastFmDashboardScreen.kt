@@ -352,7 +352,6 @@ private fun List<RecentTrack>.mergeDuplicatesWithCount(): List<RecentTrackWithCo
         if (nowPlayingKey != null && key == nowPlayingKey && !track.isNowPlaying) continue
         val last = result.lastOrNull()
         if (last != null && last.track.trackArtworkKey() == key) {
-
             val mergedIsNowPlaying = last.track.isNowPlaying || track.isNowPlaying
             val representative = if (mergedIsNowPlaying && track.isNowPlaying) track else last.track
             result[result.lastIndex] = last.copy(
@@ -502,7 +501,6 @@ fun LastFmDashboardScreen(
         }
 
         val recent = remember(recentTracks) {
-
             recentTracks?.getOrNull().orEmpty().mergeDuplicatesWithCount()
         }
 
@@ -609,7 +607,6 @@ fun LastFmDashboardScreen(
                     playerAwareInsets.only(WindowInsetsSides.Horizontal),
                 ).glassHeaderSource(glassHeader),
         ) {
-
             Spacer(
                 Modifier.height(
                     if (glassHeader.liquidGlassActive) {
@@ -806,7 +803,6 @@ fun LastFmDashboardScreen(
                 onDismiss = { overflowTrack = null },
                 onOpenGenres = { navController.navigate(Screens.MoodAndGenres.route) },
                 onAddToPlaylist = {
-
                     val captured = track
                     overflowTrack = null
                     showAddToPlaylistTrack = captured
@@ -821,7 +817,6 @@ fun LastFmDashboardScreen(
             AddToPlaylistDialog(
                 isVisible = true,
                 onGetSong = {
-
                     Timber.d("AddToPlaylist onGetSong for title=%s artist=%s", track.title, track.artist.orEmpty())
                     val song = searchYtForLastFmTrack(track.title, track.artist)
                     if (song == null) {
@@ -942,7 +937,6 @@ private fun LastFmDashboardHeader(
                 label = "lastfm_header_search_swap",
             ) { searching ->
                 if (searching) {
-
                     SearchBar(
                         inputField = {
                             SearchBarDefaults.InputField(
@@ -983,7 +977,6 @@ private fun LastFmDashboardHeader(
                             .padding(horizontal = 4.dp),
                     ) {}
                 } else {
-
                     Text(
                         text = "Last.fm",
                         style = MaterialTheme.typography.headlineMedium,
@@ -1139,7 +1132,6 @@ private fun HeroStatsCard(
             }
         }
         else -> {
-
         }
     }
 }
@@ -1343,7 +1335,6 @@ private fun DashboardTrackRow(
     onOverflow: () -> Unit,
     theme: DashboardTheme,
 ) {
-
     val artworkKey = track.artworkKey()
 
     val preferYtThumbnails by rememberPreference(LastFmPreferYtThumbnailsKey, defaultValue = false)
@@ -1725,7 +1716,6 @@ private fun TrackOverflowSheet(
     var genre by remember(track.artworkKey()) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(track.title, track.artist) {
-
         genre = track.artist
             ?.takeIf { it.isNotBlank() }
             ?.let { artist ->
@@ -2157,7 +2147,6 @@ private suspend fun resolveYtThumbnail(title: String, artist: String?): String? 
     val first = findFirstSongItem(searchResult) ?: return null
     val videoId = first.id
     return if (videoId.length == 11) {
-
         buildYTThumbnailUrl(videoId, YTThumbQuality.HQ720)
     } else {
         first.thumbnail.takeIf(String::isNotBlank)

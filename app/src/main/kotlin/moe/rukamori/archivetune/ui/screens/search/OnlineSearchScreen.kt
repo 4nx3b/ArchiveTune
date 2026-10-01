@@ -9,20 +9,16 @@ package moe.rukamori.archivetune.ui.screens.search
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -41,18 +37,21 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
-import moe.rukamori.archivetune.innertube.models.*
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import moe.rukamori.archivetune.constants.SearchProvider
-import moe.rukamori.archivetune.ui.menu.*
 import moe.rukamori.archivetune.viewmodels.OnlineSearchSuggestionViewModel
 import moe.rukamori.archivetune.ui.screens.search.SpotifySearchItemRow
 import moe.rukamori.archivetune.ui.screens.search.queryText
 import moe.rukamori.archivetune.applemusic.queryText as appleMusicQueryText
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import moe.rukamori.archivetune.innertube.models.*
+import moe.rukamori.archivetune.ui.menu.*
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -136,10 +135,6 @@ fun OnlineSearchScreen(
                     key = { _, history -> "history_${history.query}" },
                     contentType = { _, _ -> "history" },
                 ) { index, history ->
-                    val itemShape =
-                        remember(index, viewState.history.size) {
-                            segmentedSearchItemShape(index, viewState.history.size)
-                        }
                     SuggestionItem(
                         query = history.query,
                         online = false,
@@ -153,7 +148,7 @@ fun OnlineSearchScreen(
                         onFillTextField = {
                             onQueryChange(TextFieldValue(history.query, TextRange(history.query.length)))
                         },
-                        shape = itemShape,
+                        showDivider = index < viewState.history.lastIndex,
                         modifier = Modifier.animateItem(),
                         pureBlack = pureBlack,
                     )
@@ -177,10 +172,6 @@ fun OnlineSearchScreen(
                     key = { _, suggestion -> "suggestion_$suggestion" },
                     contentType = { _, _ -> "suggestion" },
                 ) { index, suggestion ->
-                    val itemShape =
-                        remember(index, viewState.suggestions.size) {
-                            segmentedSearchItemShape(index, viewState.suggestions.size)
-                        }
                     SuggestionItem(
                         query = suggestion,
                         online = true,
@@ -191,7 +182,7 @@ fun OnlineSearchScreen(
                         onFillTextField = {
                             onQueryChange(TextFieldValue(suggestion, TextRange(suggestion.length)))
                         },
-                        shape = itemShape,
+                        showDivider = index < viewState.suggestions.lastIndex,
                         modifier = Modifier.animateItem(),
                         pureBlack = pureBlack,
                     )
@@ -246,37 +237,6 @@ fun OnlineSearchScreen(
                     contentType = { _, _ -> "apple_music_result" },
                 ) { _, item ->
                     AppleMusicItemRow(
-                        item = item,
-                        modifier =
-                            Modifier.combinedClickable(
-                                onClick = {
-                                    onSearch(item.appleMusicQueryText())
-                                    onDismiss()
-                                },
-                                onLongClick = {},
-                            ).animateItem(),
-                    )
-                }
-            }
-
-            if (viewState.amazonItems.isNotEmpty()) {
-                item(
-                    key = "amazon_results_header",
-                    contentType = "section_header",
-                ) {
-                    SearchSectionHeader(
-                        title = stringResource(R.string.source_amazon),
-                        pureBlack = pureBlack,
-                        modifier = Modifier.animateItem(),
-                    )
-                }
-
-                itemsIndexed(
-                    items = viewState.amazonItems,
-                    key = { _, item -> "amazon_${item.key}" },
-                    contentType = { _, _ -> "amazon_result" },
-                ) { _, item ->
-                    AmazonSearchItemRow(
                         item = item,
                         modifier =
                             Modifier.combinedClickable(
@@ -510,38 +470,6 @@ private fun SearchSectionHeader(
     )
 }
 
-private fun segmentedSearchItemShape(
-    index: Int,
-    count: Int,
-): Shape =
-    when {
-        count <= 1 -> {
-            RoundedCornerShape(SearchGroupOuterCorner)
-        }
-
-        index == 0 -> {
-            RoundedCornerShape(
-                topStart = SearchGroupOuterCorner,
-                topEnd = SearchGroupOuterCorner,
-                bottomEnd = SearchGroupInnerCorner,
-                bottomStart = SearchGroupInnerCorner,
-            )
-        }
-
-        index == count - 1 -> {
-            RoundedCornerShape(
-                topStart = SearchGroupInnerCorner,
-                topEnd = SearchGroupInnerCorner,
-                bottomEnd = SearchGroupOuterCorner,
-                bottomStart = SearchGroupOuterCorner,
-            )
-        }
-
-        else -> {
-            RoundedCornerShape(SearchGroupInnerCorner)
-        }
-    }
-
 @Composable
 fun SuggestionItem(
     modifier: Modifier = Modifier,
@@ -551,22 +479,8 @@ fun SuggestionItem(
     onDelete: () -> Unit = {},
     onFillTextField: () -> Unit,
     pureBlack: Boolean,
-    shape: Shape = MaterialTheme.shapes.large,
+    showDivider: Boolean = true,
 ) {
-    val containerColor =
-        if (pureBlack) {
-            Color.White.copy(alpha = 0.08f)
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerLow
-        }
-
-    val iconContainerColor =
-        if (pureBlack) {
-            Color.White.copy(alpha = 0.08f)
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHighest
-        }
-
     val iconTint =
         if (pureBlack) {
             Color.White.copy(alpha = 0.78f)
@@ -574,10 +488,9 @@ fun SuggestionItem(
             MaterialTheme.colorScheme.onSurfaceVariant
         }
 
-    Surface(
-        onClick = onClick,
-        shape = shape,
-        color = containerColor,
+    // Plain row - no container pill. Entries are separated by thin line
+    // dividers instead of being wrapped in a background-colored surface.
+    Column(
         modifier =
             modifier
                 .fillMaxWidth()
@@ -588,26 +501,16 @@ fun SuggestionItem(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    .clickable(onClick = onClick)
                     .heightIn(min = SearchRowMinHeight)
                     .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier =
-                    Modifier
-                        .size(40.dp)
-                        .background(
-                            color = iconContainerColor,
-                            shape = MaterialTheme.shapes.medium,
-                        ),
-            ) {
-                Icon(
-                    painterResource(if (online) R.drawable.search else R.drawable.history),
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
+            Icon(
+                painterResource(if (online) R.drawable.search else R.drawable.history),
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.padding(start = 10.dp).size(20.dp),
+            )
 
             Spacer(Modifier.width(14.dp))
 
@@ -650,6 +553,19 @@ fun SuggestionItem(
                 )
             }
         }
+
+        if (showDivider) {
+            HorizontalDivider(
+                modifier = Modifier.padding(start = 46.dp),
+                thickness = 0.5.dp,
+                color =
+                    if (pureBlack) {
+                        Color.White.copy(alpha = 0.10f)
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    },
+            )
+        }
     }
 }
 
@@ -657,5 +573,3 @@ private val SearchContentMaxWidth = 720.dp
 private val SearchHorizontalPadding = 12.dp
 private val SearchRowMinHeight = 64.dp
 private val SearchRowSpacing = 2.dp
-private val SearchGroupOuterCorner = 24.dp
-private val SearchGroupInnerCorner = 6.dp

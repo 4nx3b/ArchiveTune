@@ -187,7 +187,6 @@ object CanvasArtworkPlaybackCache {
                         ?.takeIf(File::isUsableFile)
                         ?.isValidCanvasVideo() == true
                     if (!regularValid && !verticalValid) {
-
                         synchronized(this@CanvasArtworkPlaybackCache) {
                             map.remove(mediaId)
                             schedulePersist()
@@ -232,10 +231,7 @@ object CanvasArtworkPlaybackCache {
                         preferCachedOnly = false,
                     )
                 }
-            // A freshly resolved canvas from the TOP-priority provider replaces
-            // an existing entry from the other provider — the old `current ?:
-            // artwork` keep-first rule is exactly how a lower-priority Spotify
-            // canvas stayed sticky after the user reordered priorities.
+
             val artworkToCache =
                 when {
                     current == null -> artwork

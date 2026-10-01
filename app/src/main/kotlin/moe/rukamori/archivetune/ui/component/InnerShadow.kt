@@ -65,7 +65,6 @@ private class InnerShadowElement(
     val shape: Shape,
     val shadow: () -> InnerShadow?,
 ) : ModifierNodeElement<InnerShadowNode>() {
-
     override fun create(): InnerShadowNode = InnerShadowNode(shape, shadow)
 
     override fun update(node: InnerShadowNode) {
@@ -100,7 +99,6 @@ private class InnerShadowNode(
     var shadow: () -> InnerShadow?,
 ) : Modifier.Node(),
     DrawModifierNode {
-
     override val shouldAutoInvalidate: Boolean = false
 
     private var shadowLayer: GraphicsLayer? = null

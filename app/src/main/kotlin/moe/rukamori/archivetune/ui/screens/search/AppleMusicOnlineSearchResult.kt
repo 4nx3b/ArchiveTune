@@ -14,7 +14,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
@@ -25,7 +24,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -36,17 +34,21 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -59,21 +61,25 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.applemusic.AppleMusicPlaybackResolver
 import moe.rukamori.archivetune.applemusic.AppleMusicSearchItem
-import moe.rukamori.archivetune.constants.AppBarHeight
+import moe.rukamori.archivetune.constants.SearchProvider
+import moe.rukamori.archivetune.constants.SearchSource
 import moe.rukamori.archivetune.constants.ListThumbnailSize
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadius
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
-import moe.rukamori.archivetune.ui.component.ChipsRow
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
 import moe.rukamori.archivetune.ui.component.ListItem
+import moe.rukamori.archivetune.ui.component.SearchSourcePicker
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.joinByBullet
-import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.viewmodels.AppleMusicSearchViewModel
+import moe.rukamori.archivetune.viewmodels.OnlineSearchSort
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -87,6 +93,8 @@ private enum class AppleMusicSearchFilter {
 @Composable
 internal fun AppleMusicOnlineSearchResult(
     navController: NavController,
+    searchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,
+    onSearchSortChange: (OnlineSearchSort) -> Unit = {},
     viewModel: AppleMusicSearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -94,6 +102,7 @@ internal fun AppleMusicOnlineSearchResult(
     val playerConnection = LocalPlayerConnection.current
     val lazyListState = rememberLazyListState()
     var filter by rememberSaveable { mutableStateOf(AppleMusicSearchFilter.ALL) }
+    var fieldQuery by rememberSaveable(viewModel.query) { mutableStateOf(viewModel.query) }
 
     val visibleItems =
         remember(state.items, filter) {
@@ -117,107 +126,209 @@ internal fun AppleMusicOnlineSearchResult(
             }
     }
 
-    Column(
+    val barState = rememberSearchResultsBarState()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+    val playerAwareBottomPadding =
+        LocalPlayerAwareWindowInsets.current
+            .only(WindowInsetsSides.Bottom)
+            .asPaddingValues()
+            .calculateBottomPadding()
+
+    var resultsHeaderHeightPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val resultsHeaderReserve =
+        remember(resultsHeaderHeightPx, density) {
+            with(density) { resultsHeaderHeightPx.toDp() }
+        }
+    val headerScrollAwayFraction by remember {
+        derivedStateOf {
+            when {
+                resultsHeaderHeightPx <= 0 -> 0f
+                lazyListState.firstVisibleItemIndex > 0 -> 1f
+                else -> {
+                    val firstTop =
+                        lazyListState.layoutInfo.visibleItemsInfo
+                            .firstOrNull()?.offset?.toFloat() ?: 0f
+                    1f - (firstTop / resultsHeaderHeightPx).coerceIn(0f, 1f)
+                }
+            }
+        }
+    }
+
+    Box(
         modifier =
             Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
     ) {
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 0.dp,
+        // The recorder tags the scrollable content only; the glass header and
+        // bottom overlay stay SIBLINGS so the recorder can never contain its
+        // own liquidGlass consumers (a circular record crashes the RenderThread).
+        Box(
             modifier =
                 Modifier
-                    .fillMaxWidth()
-                    .padding(top = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding())
-                    .padding(top = AppBarHeight),
+                    .fillMaxSize()
+                    .searchResultsBarSource(barState),
         ) {
-            ChipsRow(
-                chips =
-                    listOf(
-                        AppleMusicSearchFilter.ALL to stringResource(R.string.filter_all),
-                        AppleMusicSearchFilter.TRACKS to stringResource(R.string.filter_songs),
-                        AppleMusicSearchFilter.ALBUMS to stringResource(R.string.filter_albums),
-                        AppleMusicSearchFilter.ARTISTS to stringResource(R.string.filter_artists),
-                    ),
-                currentValue = filter,
-                onValueUpdate = { filter = it },
-            )
-        }
-
-        when {
-            state.isLoading && state.items.isEmpty() -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+            when {
+                state.isLoading && state.items.isEmpty() -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
                 }
-            }
 
-            state.errorMessage != null && state.items.isEmpty() -> {
-                EmptyPlaceholder(
-                    icon = R.drawable.apple_music_icon,
-                    text = state.errorMessage ?: stringResource(R.string.no_results_found),
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+                state.errorMessage != null && state.items.isEmpty() -> {
+                    EmptyPlaceholder(
+                        icon = R.drawable.apple_music_icon,
+                        text = state.errorMessage ?: stringResource(R.string.no_results_found),
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
 
-            visibleItems.isEmpty() -> {
-                EmptyPlaceholder(
-                    icon = R.drawable.search,
-                    text = stringResource(R.string.no_results_found),
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+                visibleItems.isEmpty() -> {
+                    EmptyPlaceholder(
+                        icon = R.drawable.search,
+                        text = stringResource(R.string.no_results_found),
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
 
-            else -> {
-                LazyColumn(
-                    state = lazyListState,
-                    contentPadding =
-                        LocalPlayerAwareWindowInsets.current
-                            .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
-                            .add(WindowInsets(top = 8.dp))
-                            .asPaddingValues(),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    item(key = "apple_music_result_label") {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                        ) {
-                            Text(
-                                text = stringResource(R.string.search_apple_music),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
+                else -> {
+                    LazyColumn(
+                        state = lazyListState,
+                        contentPadding =
+                            LocalPlayerAwareWindowInsets.current
+                                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+                                .add(WindowInsets(top = systemBarsTopPadding + 4.dp + resultsHeaderReserve))
+                                .add(WindowInsets(bottom = SearchResultsOverlayReserve))
+                                .asPaddingValues(),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        item(key = "apple_music_result_label") {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.search_apple_music),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
+                        itemsIndexed(
+                            items = visibleItems,
+                            key = { _, item -> item.key },
+                            contentType = { _, item -> item::class },
+                        ) { _, item ->
+                            AppleMusicSearchResultRow(
+                                item = item,
+                                playerConnection = playerConnection,
+                                coroutineScope = coroutineScope,
+                            )
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                             )
                         }
-                    }
-                    itemsIndexed(
-                        items = visibleItems,
-                        key = { _, item -> item.key },
-                        contentType = { _, item -> item::class },
-                    ) { _, item ->
-                        AppleMusicSearchResultRow(
-                            item = item,
-                            playerConnection = playerConnection,
-                            coroutineScope = coroutineScope,
-                        )
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-                        )
-                    }
-                    if (state.isLoading) {
-                        item(key = "apple_music_loading_more") {
-                            Box(
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                CircularProgressIndicator()
+                        if (state.isLoading) {
+                            item(key = "apple_music_loading_more") {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator()
+                                }
                             }
                         }
                     }
                 }
             }
         }
+
+        SearchResultsTopHeader(
+            state = barState,
+            query = viewModel.query,
+            onBack = { navController.navigateUp() },
+            onBackLongClick = { navController.backToMain() },
+            chipsRow = {
+                SolidFilterChipsRow(
+                    chips =
+                        listOf(
+                            AppleMusicSearchFilter.ALL to stringResource(R.string.filter_all),
+                            AppleMusicSearchFilter.TRACKS to stringResource(R.string.filter_songs),
+                            AppleMusicSearchFilter.ALBUMS to stringResource(R.string.filter_albums),
+                            AppleMusicSearchFilter.ARTISTS to stringResource(R.string.filter_artists),
+                        ),
+                    currentValue = filter,
+                    onValueUpdate = { filter = it },
+                )
+            },
+            modifier =
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = systemBarsTopPadding + 4.dp)
+                    .onSizeChanged { resultsHeaderHeightPx = it.height }
+                    .graphicsLayer {
+                        translationY = -resultsHeaderHeightPx * headerScrollAwayFraction
+                        alpha = 1f - headerScrollAwayFraction
+                    },
+        )
+
+        ScreenHeaderHaze(
+            hazeState = barState.haze,
+            systemBarsTopPadding = systemBarsTopPadding + 4.dp,
+            scrolled = lazyListState.canScrollBackward,
+        )
+
+        SearchResultsBottomOverlay(
+            state = barState,
+            query = fieldQuery,
+            onQueryChange = { fieldQuery = it },
+            onSearch = { text ->
+                if (text.isNotBlank()) {
+                    val replacementRoute = onlineSearchResultRoute(text, SearchProvider.APPLE_MUSIC)
+                    val currentDestinationId = navController.currentDestination?.id
+                    if (currentDestinationId != null) {
+                        navController.navigate(replacementRoute) {
+                            popUpTo(currentDestinationId) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    } else {
+                        navController.navigate(replacementRoute)
+                    }
+                }
+            },
+            onBack = { navController.navigateUp() },
+            onBackLongClick = { navController.backToMain() },
+            placeholder = stringResource(R.string.search_source_apple_music),
+            bottomPadding = playerAwareBottomPadding,
+            lazyListState = lazyListState,
+            trailing = {
+
+                SearchSourcePicker(
+                    currentScope = SearchSource.ONLINE,
+                    currentProvider = SearchProvider.APPLE_MUSIC,
+                    onSelection = { _, provider ->
+                        val text = fieldQuery.ifBlank { viewModel.query }
+                        if (text.isNotBlank()) {
+                            val replacementRoute = onlineSearchResultRoute(text, provider)
+                            val currentDestinationId = navController.currentDestination?.id
+                            if (currentDestinationId != null) {
+                                navController.navigate(replacementRoute) {
+                                    popUpTo(currentDestinationId) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            } else {
+                                navController.navigate(replacementRoute)
+                            }
+                        }
+                    },
+                    includeLocal = false,
+                )
+
+            },
+        )
     }
 }
 
@@ -297,11 +408,8 @@ internal fun AppleMusicItemRow(
 ) {
     val subtitle =
         when (item) {
-            is AppleMusicSearchItem.Track ->
-                joinByBullet(
-                    item.artist,
-                    item.durationMs.takeIf { it > 0 }?.let(::makeTimeString),
-                )
+
+            is AppleMusicSearchItem.Track -> item.artist
 
             is AppleMusicSearchItem.Album ->
                 joinByBullet(

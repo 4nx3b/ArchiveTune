@@ -86,6 +86,10 @@ liquid-glass = "2.0.0"
 # a software blur on older devices, so we no longer need the API 31+ gate that
 # the previous Compose BlurEffect approach required.
 haze = "1.7.2"
+# Protobuf — Listen Together wire protocol (ported from vivi-music beta, which
+# pins these exact versions: javalite runtime + com.google.protobuf Gradle plugin).
+protobuf = "4.33.5"
+protobufPlugin = "0.10.0"
 
 
 [libraries]
@@ -220,6 +224,10 @@ androidsvg = { module = "com.caverock:androidsvg-aar", version.ref = "androidsvg
 aboutlibraries-core = { module = "com.mikepenz:aboutlibraries-core", version.ref = "aboutLibraries" }
 liquid-glass = { module = "io.github.kyant0:backdrop", version.ref = "liquid-glass" }
 
+# Listen Together wire protocol (protobuf lite runtime, as in vivi-music beta)
+protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf" }
+protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", version.ref = "protobuf" }
+
 
 
 [plugins]
@@ -232,3 +240,4 @@ kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 aboutlibraries-android = { id = "com.mikepenz.aboutlibraries.plugin.android", version.ref = "aboutLibraries" }
+protobufPlugin = { id = "com.google.protobuf", version.ref = "protobufPlugin" }

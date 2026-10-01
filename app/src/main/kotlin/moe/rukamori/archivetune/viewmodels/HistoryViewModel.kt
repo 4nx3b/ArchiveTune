@@ -103,7 +103,6 @@ class HistoryViewModel
                     Timber.tag("History").w(e, "Silent remote history fetch failed")
                     when (snapshot) {
                         is RemoteHistoryUiState.Success -> {
-
                         }
 
                         is RemoteHistoryUiState.Loading,

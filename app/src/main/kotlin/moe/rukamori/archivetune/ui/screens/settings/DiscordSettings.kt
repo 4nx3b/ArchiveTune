@@ -17,13 +17,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,12 +41,10 @@ import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
-import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.*
 import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.discord.DiscordAuthCoordinator
 import moe.rukamori.archivetune.discord.DiscordOAuthRepository
@@ -77,6 +72,11 @@ import timber.log.Timber
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.WindowInsetsSides
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import kotlinx.coroutines.*
+import moe.rukamori.archivetune.constants.*
 
 enum class ActivitySource { ARTIST, ALBUM, SONG, APP }
 
@@ -479,7 +479,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             PreferenceGroup(
-                modifier = positions.modifierFor("discord_account"),
+                modifier = positions.modifierFor("discord_account", "discord_experimental"),
                 title = stringResource(R.string.account),
             ) {
                 item {

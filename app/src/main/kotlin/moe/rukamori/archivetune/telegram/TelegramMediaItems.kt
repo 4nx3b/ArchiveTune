@@ -11,7 +11,6 @@ import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.models.MediaMetadata
 
 fun TelegramTrack.toMediaMetadata(channelTitle: String? = null): MediaMetadata {
-
     val metadata = lookupMetadata
     return MediaMetadata(
         id = mediaId,

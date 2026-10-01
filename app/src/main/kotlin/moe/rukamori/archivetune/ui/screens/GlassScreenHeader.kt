@@ -32,10 +32,10 @@ import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
 import moe.rukamori.archivetune.ui.component.GlassPillTitleText
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
-import moe.rukamori.archivetune.ui.component.PlatformBackdrop
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
+import com.kyant.backdrop.Backdrop
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.runtime.getValue
@@ -43,32 +43,38 @@ import androidx.compose.runtime.getValue
 @Stable
 class GlassScreenHeader(
     val liquidGlassActive: Boolean,
-    val backdrop: PlatformBackdrop?,
+    val backdrop: Backdrop?,
     val haze: HazeState,
 )
 
 @Composable
 fun rememberGlassScreenHeader(): GlassScreenHeader {
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
+
     val surfaceColor = MaterialTheme.colorScheme.surface
 
-    val backdrop = rememberBackdrop(surfaceColor)
+    val backdrop = rememberThrottledBackdrop(surfaceColor)
     val haze = rememberScreenHeaderHaze()
-    val active =
+    val available =
         liquidGlassEnabled &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            !lyricsFullScreen
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val active = available && !lyricsFullScreen
     return GlassScreenHeader(
         liquidGlassActive = active,
-        backdrop = if (active) backdrop else null,
+        backdrop = if (available) backdrop else null,
         haze = haze,
     )
 }
 
 fun Modifier.glassHeaderSource(header: GlassScreenHeader): Modifier =
     this
-        .then(if (header.backdrop != null) Modifier.layerBackdrop(header.backdrop) else Modifier)
+        .then(
+            when (val backdrop = header.backdrop) {
+                null -> Modifier
+                else -> Modifier.glassSource(backdrop)
+            }
+        )
         .hazeSource(header.haze)
 
 @Composable
@@ -79,6 +85,7 @@ fun BoxScope.GlassScreenHeaderOverlay(
     onBackLongClick: () -> Unit,
     modifier: Modifier = Modifier,
     onSearch: (() -> Unit)? = null,
+    scrolled: Boolean = true,
     trailing: (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? = null,
 ) {
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
@@ -86,6 +93,7 @@ fun BoxScope.GlassScreenHeaderOverlay(
     ScreenHeaderHaze(
         hazeState = header.haze,
         systemBarsTopPadding = systemBarsTopPadding,
+        scrolled = scrolled,
     )
 
     val backdrop = header.backdrop

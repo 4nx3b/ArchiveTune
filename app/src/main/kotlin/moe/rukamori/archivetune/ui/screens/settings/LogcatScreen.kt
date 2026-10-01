@@ -330,6 +330,7 @@ private fun LogcatScreenContent(
             ScreenHeaderHaze(
                 hazeState = headerHaze,
                 systemBarsTopPadding = systemBarsTopPadding,
+                scrolled = listState.canScrollBackward,
             )
         }
     }

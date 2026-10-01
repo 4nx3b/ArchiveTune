@@ -72,8 +72,6 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.util.Locale
 
-// Shared by every sort branch below that orders by a display name (song/album title, artist name
-// list): a fresh PRIMARY-strength Collator per branch was otherwise created from scratch each time.
 private fun <T> List<T>.sortedByCollated(keySelector: (T) -> String): List<T> {
     val collator = Collator.getInstance(Locale.getDefault())
     collator.strength = Collator.PRIMARY
@@ -303,6 +301,10 @@ interface DatabaseDao {
     @Transaction
     @Query("SELECT * FROM playlist_song_map WHERE playlistId = :playlistId ORDER BY position")
     fun playlistSongs(playlistId: String): Flow<List<PlaylistSong>>
+
+    @Transaction
+    @Query("SELECT * FROM playlist_song_map WHERE playlistId = :playlistId ORDER BY position")
+    suspend fun getPlaylistSongs(playlistId: String): List<PlaylistSong>
 
     @Transaction
     @Query(
@@ -1661,6 +1663,9 @@ interface DatabaseDao {
 
     @Query("SELECT id FROM song")
     suspend fun allSongIdsOnce(): List<String>
+
+    @Query("SELECT * FROM lyrics")
+    suspend fun allLyricsOnce(): List<LyricsEntity>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEvents(events: List<Event>): List<Long>

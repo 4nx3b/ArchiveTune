@@ -66,18 +66,14 @@ fun AutoResizeText(
         fontSize = fontSizeValue.sp,
         onTextLayout = {
             if (it.didOverflowHeight && !readyToDraw) {
-
                 val nextFontSizeValue = fontSizeValue - fontSizeRange.step.value
                 if (nextFontSizeValue <= fontSizeRange.min.value) {
-
                     fontSizeValue = fontSizeRange.min.value
                     readyToDraw = true
                 } else {
-
                     fontSizeValue = nextFontSizeValue
                 }
             } else {
-
                 readyToDraw = true
             }
         },

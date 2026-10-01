@@ -70,10 +70,10 @@ import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SpotifyLikedSongsListItem
 import moe.rukamori.archivetune.ui.component.SpotifyLibraryPlaylistListItem
-import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.SpotifyPlaylistMenu
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.utils.backToMain
@@ -130,16 +130,16 @@ fun LibrarySpotifyPlaylistsScreen(
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
 
     val screenSettled = rememberLayerBackdropSettled()
 
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
     val surfaceColor = MaterialTheme.colorScheme.surface
-    val artworkBackdrop = rememberBackdrop(surfaceColor)
+    val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
 
     BackHandler {
         try {
@@ -152,7 +152,6 @@ fun LibrarySpotifyPlaylistsScreen(
                     navController.navigate("library") { launchSingleTop = true }
                 }
             } catch (_: Exception) {
-
             }
         }
     }
@@ -178,8 +177,8 @@ fun LibrarySpotifyPlaylistsScreen(
                     Modifier
                         .fillMaxSize()
                         .then(
-                            if (layerBackdropActive) {
-                                Modifier.layerBackdrop(artworkBackdrop)
+                            if (liquidGlassHeaderActive) {
+                                Modifier.glassSource(artworkBackdrop)
                             } else {
                                 Modifier
                             },
@@ -356,14 +355,12 @@ fun LibrarySpotifyPlaylistsScreen(
                         playlist = playlist,
                         navController = navController,
                         onMenuClick = {
-
                             menuState.show {
                                 SpotifyPlaylistMenu(
                                     playlist = playlist,
                                     coroutineScope = coroutineScope,
                                     onDismiss = menuState::dismiss,
                                     onHide = {
-
                                         viewModel.toggleHiddenPlaylist(playlist.id)
                                     },
                                 )
@@ -374,7 +371,7 @@ fun LibrarySpotifyPlaylistsScreen(
             }
         }
 
-        if (layerBackdropActive) {
+        if (glassHeaderActive) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 interactive = true,
@@ -444,7 +441,7 @@ fun LibrarySpotifyPlaylistsScreen(
             }
         }
 
-        if (layerBackdropActive) {
+        if (glassHeaderActive) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 modifier =
@@ -452,7 +449,6 @@ fun LibrarySpotifyPlaylistsScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
-
                 Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                     androidx.compose.material3.IconButton(onClick = {
                         showSearchField = !showSearchField

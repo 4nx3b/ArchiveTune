@@ -122,6 +122,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Matrix diet (build-time fix): each entry is a FULL R8 release
+          # build, and the x86 job was the slowest of all (~89 min) while
+          # serving emulators only; foss-universal is not shipped by this
+          # fork at all (build.yml removed it with exactly that rationale).
+          # Both are gone. Every ABI a user could have installed still has a
+          # canary path: arm64 / armeabi / x86_64 keep their own variants and
+          # `universal` covers everything else, so the in-app updater's strict
+          # `app-<device>-<arch>-nightly.apk` asset match keeps resolving.
           - device: mobile
             distribution: gms
             distributionName: Gms
@@ -132,11 +140,6 @@ jobs:
             distributionName: Gms
             deviceName: Mobile
             abi: armeabi
-          - device: mobile
-            distribution: gms
-            distributionName: Gms
-            deviceName: Mobile
-            abi: x86
           - device: mobile
             distribution: gms
             distributionName: Gms
@@ -152,30 +155,16 @@ jobs:
             distributionName: Gms
             deviceName: Tv
             abi: universal
-          - device: mobile
-            distribution: foss
-            distributionName: Foss
-            deviceName: Mobile
-            abi: universal
 
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: true
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
+      - name: Set up build environment
+        uses: ./.github/actions/setup-build
         with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - name: Set Up Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-cleanup: on-success
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+          variant-key: nightly-${{ matrix.distribution }}-${{ matrix.device }}-${{ matrix.abi }}
 
       - name: Resolve variant names
         id: variant

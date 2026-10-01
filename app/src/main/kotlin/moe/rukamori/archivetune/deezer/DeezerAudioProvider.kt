@@ -21,7 +21,6 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 object DeezerAudioProvider {
-
     data class Metadata(
         val trackId: String,
         val title: String,
@@ -77,7 +76,6 @@ object DeezerAudioProvider {
             if (trimmed.isNullOrEmpty()) {
                 null
             } else {
-
                 PoolAccountManager.DeezerPoolAccount(id = null, arl = trimmed, premium = premium)
             }
         val previous = manualAccount
@@ -189,12 +187,7 @@ object DeezerAudioProvider {
         val artists: List<String>,
         val album: String?,
         val durationMs: Long?,
-        /**
-         * When non-null, [matchTrack] first resolves the exact recording via Deezer's public
-         * `track/isrc:{isrc}` endpoint and only falls back to the title/artist search if that
-         * finds nothing. An ISRC names one recording, so this avoids the fuzzy search picking a
-         * different take (live/remaster/cover) for a catalogue-imported track.
-         */
+
         val isrc: String? = null,
     )
 
@@ -252,34 +245,20 @@ object DeezerAudioProvider {
                     .onFailure { Timber.tag(TAG).w(it, "get_url failed for track %s", trackId) }
                     .getOrNull()
             if (media == null) {
-
                 sessions.remove(account.arl)
                 continue
             }
 
             lastResolvedTrackId = trackId
             val stream =
-                Resolved(
-                    uri = DeezerCrypto.buildUri(media.url, trackId, session.masterSecret),
-                    mimeType = if (media.flac) MIME_FLAC else MIME_MPEG,
-
-                    codecs = if (media.flac) "flac" else "mp3",
-                    contentLength = media.contentLength,
-
-                    label =
-                        when (media.format.uppercase()) {
-                            FORMAT_FLAC -> "Deezer FLAC"
-                            FORMAT_MP3_320 -> "Deezer MP3 320"
-                            FORMAT_MP3_128 -> "Deezer MP3 128"
-                            else -> "Deezer"
-                        },
+                buildResolvedStream(
+                    session = session,
+                    media = media,
+                    trackId = trackId,
                     matchedTitle = match.title,
                     matchedArtist = match.artists.firstOrNull(),
                     matchedAlbum = match.album,
                     matchedDurationMs = match.durationMs,
-
-                    sampleRate = if (media.flac) 44_100 else null,
-                    bitDepth = if (media.flac) 16 else null,
                 )
             streamCache[cacheKey] = CachedStream(stream, System.currentTimeMillis() + STREAM_CACHE_MS)
             return stream
@@ -288,6 +267,91 @@ object DeezerAudioProvider {
         failureCache[cacheKey] = System.currentTimeMillis() + FAILURE_CACHE_MS
         return null
     }
+
+    suspend fun resolveByTrackId(
+        trackId: String,
+        format: String,
+    ): Resolved? {
+        if (trackId.isBlank()) return null
+        val accounts = accounts()
+        if (accounts.isEmpty()) return null
+
+        val now = System.currentTimeMillis()
+        val cacheKey = "id:$trackId:$format"
+        streamCache[cacheKey]?.let { cached ->
+            if (cached.expiresAt > now) return cached.stream
+            streamCache.remove(cacheKey)
+        }
+        failureCache[cacheKey]?.let { failedUntil ->
+            if (failedUntil > now) return null
+            failureCache.remove(cacheKey)
+        }
+
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val ordered = accounts.sortedByDescending { it.premium }
+            for (account in ordered) {
+                val session =
+                    runCatching { session(account) }
+                        .onFailure { Timber.tag(TAG).w(it, "session failed for pooled account") }
+                        .getOrNull() ?: continue
+                val media =
+                    runCatching { requestUrl(session, trackId, format) }
+                        .onFailure { Timber.tag(TAG).w(it, "get_url failed for track %s", trackId) }
+                        .getOrNull()
+                if (media == null) {
+                    sessions.remove(account.arl)
+                    continue
+                }
+                lastResolvedTrackId = trackId
+                val stream =
+                    buildResolvedStream(
+                        session = session,
+                        media = media,
+                        trackId = trackId,
+                        matchedTitle = "",
+                        matchedArtist = null,
+                        matchedAlbum = null,
+                        matchedDurationMs = null,
+                    )
+                streamCache[cacheKey] = CachedStream(stream, System.currentTimeMillis() + STREAM_CACHE_MS)
+                return@withContext stream
+            }
+            failureCache[cacheKey] = System.currentTimeMillis() + FAILURE_CACHE_MS
+            null
+        }
+    }
+
+    private fun buildResolvedStream(
+        session: Session,
+        media: Media,
+        trackId: String,
+        matchedTitle: String,
+        matchedArtist: String?,
+        matchedAlbum: String?,
+        matchedDurationMs: Long?,
+    ): Resolved =
+        Resolved(
+            uri = DeezerCrypto.buildUri(media.url, trackId, session.masterSecret),
+            mimeType = if (media.flac) MIME_FLAC else MIME_MPEG,
+
+            codecs = if (media.flac) "flac" else "mp3",
+            contentLength = media.contentLength,
+
+            label =
+                when (media.format.uppercase()) {
+                    FORMAT_FLAC -> "Deezer FLAC"
+                    FORMAT_MP3_320 -> "Deezer MP3 320"
+                    FORMAT_MP3_128 -> "Deezer MP3 128"
+                    else -> "Deezer"
+                },
+            matchedTitle = matchedTitle,
+            matchedArtist = matchedArtist,
+            matchedAlbum = matchedAlbum,
+            matchedDurationMs = matchedDurationMs,
+
+            sampleRate = if (media.flac) 44_100 else null,
+            bitDepth = if (media.flac) 16 else null,
+        )
 
     private fun session(account: PoolAccountManager.DeezerPoolAccount): Session {
         val now = System.currentTimeMillis()
@@ -298,7 +362,6 @@ object DeezerAudioProvider {
         val user = requireNotNull(results?.optJSONObject("USER")) { "no USER in session payload" }
 
         if (user.optLong("USER_ID", 0L) == 0L) {
-
             PoolAccountManager.report("deezer", "account", account.id, "dead")
             throw IllegalStateException("ARL rejected by gateway")
         }
@@ -373,10 +436,6 @@ object DeezerAudioProvider {
             searchCache.remove(key)
         }
 
-        // Exact-recording fast path: an ISRC identifies one recording, so when the queue item
-        // carried one, ask Deezer for that recording directly instead of guessing from a text
-        // search. A hit is authoritative (no scoring); a miss falls through to the search below,
-        // because Deezer does not carry every label's ISRC.
         query.isrc?.takeIf { it.isNotBlank() }?.let { isrc ->
             val exact =
                 runCatching { lookupByIsrc(isrc) }
@@ -426,13 +485,6 @@ object DeezerAudioProvider {
         return best
     }
 
-    /**
-     * Resolves an exact recording by ISRC through Deezer's public API (`GET /track/isrc:{isrc}`),
-     * which needs no session. Returns the matching [TrackMatching.Candidate], or null when Deezer
-     * has no track for the ISRC (the endpoint answers HTTP 200 with an `error` object in that case).
-     * The numeric `id` it returns is the same track id the gateway's SNG_ID uses, so [requestUrl]
-     * can stream it directly.
-     */
     private fun lookupByIsrc(isrc: String): TrackMatching.Candidate? {
         val req =
             Request
@@ -443,7 +495,7 @@ object DeezerAudioProvider {
         client.newCall(req).execute().use { res ->
             if (!res.isSuccessful) return null
             val obj = JSONObject(res.body?.string() ?: return null)
-            // Not-found and rate-limit responses come back as { "error": { … } } with HTTP 200.
+
             if (obj.has("error")) return null
             val id = obj.optLong("id", 0L).takeIf { it > 0L }?.toString() ?: return null
             val title = obj.optString("title").takeIf { it.isNotBlank() } ?: return null
@@ -459,10 +511,6 @@ object DeezerAudioProvider {
             )
         }
     }
-
-    // ---------------------------------------------------------------------------------------------
-    // Stream URL
-    // ---------------------------------------------------------------------------------------------
 
     private class Media(
         val url: String,
@@ -598,40 +646,90 @@ object DeezerAudioProvider {
         val trimmed = term.trim()
         if (trimmed.isEmpty()) return emptyList()
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            runCatching {
-                val encoded = java.net.URLEncoder.encode(trimmed, "UTF-8")
-                val req =
-                    Request
-                        .Builder()
-                        .url("https://api.deezer.com/search?q=$encoded&limit=$limit")
-                        .header("Accept", "application/json")
-                        .build()
-                client.newCall(req).execute().use { res ->
-                    if (!res.isSuccessful) {
-                        Timber.tag(TAG).w("searchCandidates HTTP %d for '%s'", res.code, trimmed)
-                        return@use emptyList<Metadata>()
+            val viaPublicApi =
+                runCatching {
+                    val encoded = java.net.URLEncoder.encode(trimmed, "UTF-8")
+                    val req =
+                        Request
+                            .Builder()
+                            .url("https://api.deezer.com/search?q=$encoded&limit=$limit")
+                            .header("Accept", "application/json")
+                            .build()
+                    client.newCall(req).execute().use { res ->
+                        if (!res.isSuccessful) {
+                            Timber.tag(TAG).w("searchCandidates HTTP %d for '%s'", res.code, trimmed)
+                            return@use emptyList<Metadata>()
+                        }
+                        val data =
+                            JSONObject(res.body?.string() ?: return@use emptyList<Metadata>())
+                                .optJSONArray("data") ?: return@use emptyList<Metadata>()
+                        (0 until data.length()).mapNotNull { i ->
+                            val obj = data.optJSONObject(i) ?: return@mapNotNull null
+                            val title = obj.optString("title").ifBlank { return@mapNotNull null }
+                            Metadata(
+                                trackId = obj.optLong("id").toString(),
+                                title = title,
+                                artist = obj.optJSONObject("artist")?.optString("name")?.ifBlank { null },
+                                album = obj.optJSONObject("album")?.optString("title")?.ifBlank { null },
+                                isrc = obj.optString("isrc").ifBlank { null },
+                                durationMs = obj.optLong("duration", 0L).takeIf { it > 0 }?.times(1000L),
+                                previewUrl = obj.optString("preview").ifBlank { null },
+                                coverUrl = obj.optJSONObject("album")?.optString("cover_big")?.ifBlank { null },
+                            )
+                        }
                     }
-                    val data =
-                        JSONObject(res.body?.string() ?: return@use emptyList<Metadata>())
-                            .optJSONArray("data") ?: return@use emptyList<Metadata>()
-                    (0 until data.length()).mapNotNull { i ->
-                        val obj = data.optJSONObject(i) ?: return@mapNotNull null
-                        val title = obj.optString("title").ifBlank { return@mapNotNull null }
-                        Metadata(
-                            trackId = obj.optLong("id").toString(),
-                            title = title,
-                            artist = obj.optJSONObject("artist")?.optString("name")?.ifBlank { null },
-                            album = obj.optJSONObject("album")?.optString("title")?.ifBlank { null },
-                            isrc = obj.optString("isrc").ifBlank { null },
-                            durationMs = obj.optLong("duration", 0L).takeIf { it > 0 }?.times(1000L),
-                            previewUrl = obj.optString("preview").ifBlank { null },
-                            coverUrl = obj.optJSONObject("album")?.optString("cover_big")?.ifBlank { null },
-                        )
-                    }
-                }
-            }.onFailure { Timber.tag(TAG).w(it, "searchCandidates failed for '%s'", trimmed) }
-                .getOrDefault(emptyList())
+                }.onFailure { Timber.tag(TAG).w(it, "searchCandidates failed for '%s'", trimmed) }
+                    .getOrDefault(emptyList())
+            if (viaPublicApi.isNotEmpty()) {
+                viaPublicApi
+            } else {
+
+                searchCandidatesViaGateway(trimmed, limit)
+            }
         }
+    }
+
+    private fun searchCandidatesViaGateway(
+        term: String,
+        limit: Int,
+    ): List<Metadata> {
+        val accounts = accounts()
+        if (accounts.isEmpty()) return emptyList()
+        for (account in accounts.sortedByDescending { it.premium }) {
+            val session =
+                runCatching { session(account) }
+                    .onFailure { Timber.tag(TAG).w(it, "gateway search: session failed") }
+                    .getOrNull() ?: continue
+            val results =
+                runCatching {
+                    val payload =
+                        JSONObject()
+                            .put("query", term)
+                            .put("start", 0)
+                            .put("nb", limit)
+                    val json = gateway(session.arl, session.apiToken, "search.music", payload)
+                    json.optJSONObject("results")?.optJSONArray("data") ?: JSONArray()
+                }.onFailure { Timber.tag(TAG).w(it, "gateway search failed for '%s'", term) }
+                    .getOrNull() ?: continue
+            val mapped =
+                (0 until results.length()).mapNotNull { i ->
+                    val obj = results.optJSONObject(i) ?: return@mapNotNull null
+                    val id = obj.optString("SNG_ID").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    val title = obj.optString("SNG_TITLE").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    Metadata(
+                        trackId = id,
+                        title = title,
+                        artist = obj.optString("ART_NAME").takeIf { it.isNotBlank() },
+                        album = obj.optString("ALB_TITLE").takeIf { it.isNotBlank() },
+                        isrc = obj.optString("ISRC").takeIf { it.isNotBlank() },
+                        durationMs = obj.optLong("DURATION", 0L).takeIf { it > 0 }?.times(1000L),
+                        previewUrl = null,
+                        coverUrl = null,
+                    )
+                }
+            if (mapped.isNotEmpty()) return mapped
+        }
+        return emptyList()
     }
 
     private fun buildSearchQuery(query: Query): String {
@@ -676,8 +774,16 @@ object DeezerAudioProvider {
     }
 
     private fun normalizedSimilarity(a: String, b: String): Double {
-        val na = a.lowercase().trim().replace(Regex("[^a-z0-9 ]"), "")
-        val nb = b.lowercase().trim().replace(Regex("[^a-z0-9 ]"), "")
+        // Unicode-aware: keep letters/digits from every script. The previous
+        // [^a-z0-9 ] form stripped every non-Latin character, so a Hindi/Bengali/
+        // Arabic/CJK title on one side collapsed to "" and the similarity (and
+        // with it the whole match) went to 0 - non-English songs could never
+        // auto-resolve or be found from the play-from popup via Deezer.
+        val normalize: (String) -> String = { s ->
+            s.lowercase().trim().replace(Regex("[^\\p{L}\\p{N} ]"), "")
+        }
+        val na = normalize(a)
+        val nb = normalize(b)
         if (na == nb) return 1.0
         if (na.isBlank() || nb.isBlank()) return 0.0
         val sa = na.split(" ").toSet()

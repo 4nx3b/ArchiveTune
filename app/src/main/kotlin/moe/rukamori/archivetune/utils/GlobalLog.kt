@@ -103,7 +103,6 @@ class GlobalLogTree : Timber.Tree() {
             val final = if (t != null) "$message\n$t" else message
             GlobalLog.append(priority, tag ?: "ArchiveTune", final)
         } catch (_: Exception) {
-
         }
     }
 }

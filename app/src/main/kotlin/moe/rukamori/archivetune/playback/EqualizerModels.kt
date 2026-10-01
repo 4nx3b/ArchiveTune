@@ -60,6 +60,7 @@ data class EqSettings(
     val balance: Float = 0f,
     val eightDEnabled: Boolean = false,
     val eightDSpeedHz: Float = 0.2f,
+    val bandFreqsHz: List<Int> = emptyList(),
 )
 
 enum class EqReverbPreset(
@@ -86,3 +87,35 @@ internal object EqualizerJson {
             encodeDefaults = true
         }
 }
+
+fun mapBandLevelsByFrequency(
+    levelsMb: List<Int>,
+    sourceFreqHz: List<Int>,
+    targetFreqHz: List<Int>,
+): List<Int>? {
+    if (levelsMb.isEmpty() || targetFreqHz.isEmpty()) return null
+    if (sourceFreqHz.size != levelsMb.size) return null
+    if (sourceFreqHz.any { it <= 0 } || targetFreqHz.any { it <= 0 }) return null
+    if (levelsMb.size == targetFreqHz.size && sourceFreqHz == targetFreqHz) return levelsMb
+
+    val sortedPairs = sourceFreqHz.zip(levelsMb).sortedBy { it.first }
+    val sourceLog = sortedPairs.map { ln(it.first.toDouble()) }
+    val sourceLevels = sortedPairs.map { it.second }
+
+    fun levelAtLogFreq(logFreq: Double): Int {
+        if (logFreq <= sourceLog.first()) return sourceLevels.first()
+        if (logFreq >= sourceLog.last()) return sourceLevels.last()
+        var hi = 1
+        while (hi < sourceLog.lastIndex && sourceLog[hi] < logFreq) hi++
+        val lo = hi - 1
+        val span = sourceLog[hi] - sourceLog[lo]
+        val t = if (span <= 0.0) 0.0 else (logFreq - sourceLog[lo]) / span
+        val a = sourceLevels[lo]
+        val b = sourceLevels[hi]
+        return (a + ((b - a) * t)).toInt()
+    }
+
+    return targetFreqHz.map { freq -> levelAtLogFreq(ln(freq.toDouble())) }
+}
+
+private fun ln(value: Double): Double = kotlin.math.ln(value)

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -44,8 +45,10 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.palette.graphics.Palette
 import coil3.imageLoader
@@ -59,14 +62,18 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
+import moe.rukamori.archivetune.constants.MiniPlayerCompactHeight
 import moe.rukamori.archivetune.constants.MiniPlayerHeight
 import moe.rukamori.archivetune.constants.NavigationBarMaxWidth
 import moe.rukamori.archivetune.constants.SwipeSensitivityKey
+import moe.rukamori.archivetune.ui.component.CompactControlGap
+import moe.rukamori.archivetune.ui.component.CompactControlSize
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
 import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.ui.component.LocalNavigationBarBackdrop
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
 import moe.rukamori.archivetune.ui.component.liquidGlass
+import moe.rukamori.archivetune.ui.component.LiquidGlassPillBlurRadius
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberPreSFrostedBitmap
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
@@ -84,9 +91,11 @@ fun MiniPlayer(
     modifier: Modifier = Modifier,
     pureBlack: Boolean,
     isPairedWithNavigation: Boolean = false,
+    compactFraction: Float = 0f,
+    compactHorizontalPadding: Dp = 16.dp,
+    compactReserveEndControl: Boolean = true,
     onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
-
     val docked = LocalMiniPlayerDocked.current
 
     val dockedAnim by animateFloatAsState(
@@ -100,9 +109,21 @@ fun MiniPlayer(
     val density = LocalDensity.current
     val translationXPx = with(density) { (-160).dp.toPx() }
     val translationYPx = with(density) { 10.dp.toPx() }
-    val dockedModifier =
-        if (dockedAnim > 0.001f) {
 
+    val compactStartInset = compactHorizontalPadding + CompactControlSize + CompactControlGap
+    // When a right-side floating control is reserved (search circle), the pill
+    // keeps the full start-mirrored inset. When there is NO end control the
+    // pill used to run flush against the screen edge (0dp end padding) - keep
+    // the horizontal screen padding instead so the compact pill has even
+    // spacing from the display border, matching the floating nav bar's rhythm.
+    val compactEndInset =
+        if (compactReserveEndControl) {
+            compactHorizontalPadding + CompactControlSize + CompactControlGap
+        } else {
+            compactHorizontalPadding
+        }
+    val dockedModifier =
+        (if (dockedAnim > 0.001f) {
             val scale = 1f - 0.5f * dockedAnim
             modifier
                 .graphicsLayer {
@@ -113,13 +134,19 @@ fun MiniPlayer(
                 }
         } else {
             modifier
-        }
+        }).padding(
+            start = lerp(0.dp, compactStartInset, compactFraction),
+            end = lerp(0.dp, compactEndInset, compactFraction),
+        )
     NewMiniPlayer(
         positionProvider = positionProvider,
         durationProvider = durationProvider,
         modifier = dockedModifier,
         pureBlack = pureBlack,
         isPairedWithNavigation = isPairedWithNavigation,
+        compactFraction = compactFraction,
+
+        compactShowTransportControls = !compactReserveEndControl,
         onArtworkSlotPositioned = onArtworkSlotPositioned,
     )
 }
@@ -131,6 +158,8 @@ private fun NewMiniPlayer(
     modifier: Modifier = Modifier,
     pureBlack: Boolean,
     isPairedWithNavigation: Boolean,
+    compactFraction: Float = 0f,
+    compactShowTransportControls: Boolean = false,
     onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -251,7 +280,7 @@ private fun NewMiniPlayer(
         }
     val liquidGlassMaster by rememberPreference(
         moe.rukamori.archivetune.constants.LiquidGlassEnabledKey,
-        defaultValue = false,
+        defaultValue = true,
     )
     val effectiveBackgroundStyle =
         when {
@@ -275,8 +304,10 @@ private fun NewMiniPlayer(
             useLiquidGlass = effectiveBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS,
         )
     val miniPlayerShape =
-        remember(isPairedWithNavigation) {
-            if (isPairedWithNavigation) {
+        remember(isPairedWithNavigation, compactFraction) {
+            if (compactFraction > 0.5f) {
+                RoundedCornerShape(percent = 50)
+            } else if (isPairedWithNavigation) {
                 RoundedCornerShape(
                     topStart = 28.dp,
                     topEnd = 28.dp,
@@ -298,12 +329,13 @@ private fun NewMiniPlayer(
         coroutineScope = coroutineScope,
         pureBlack = pureBlack,
         useLegacyBackground = false,
+        compactFraction = compactFraction,
     ) { offsetX ->
         Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(MiniPlayerHeight)
+                    .height(lerp(MiniPlayerHeight, MiniPlayerCompactHeight, compactFraction))
 
                     .graphicsLayer {
                         translationX = offsetX
@@ -320,6 +352,8 @@ private fun NewMiniPlayer(
                 durationProvider = durationProvider,
                 playerConnection = playerConnection,
                 colors = contentColors,
+                compactFraction = compactFraction,
+                compactShowTransportControls = compactShowTransportControls,
                 onArtworkSlotPositioned = onArtworkSlotPositioned,
             )
         }
@@ -358,15 +392,13 @@ private fun rememberMiniPlayerContentColors(
                 artworkContainer = Color.White.copy(alpha = 0.14f),
                 artworkBorder = Color.White.copy(alpha = 0.22f),
                 primaryButtonContainer = Color.White.copy(alpha = 0.92f),
-                primaryButtonIcon = Color.Black,
+
+                primaryButtonIcon = Color.White,
                 secondaryButtonContainer = Color.Black.copy(alpha = 0.22f),
-                buttonIcon = Color.White,
+                buttonIcon = Color.White.copy(alpha = 0.78f),
                 disabledButtonIcon = Color.White.copy(alpha = 0.38f),
-                togetherContainer = Color.White.copy(alpha = 0.16f),
-                togetherContent = Color.White,
             )
         } else if (useLiquidGlass) {
-
             MiniPlayerContentColors(
                 title = glassInk,
                 secondary = glassInk.copy(alpha = 0.72f),
@@ -376,12 +408,10 @@ private fun rememberMiniPlayerContentColors(
                 artworkBorder = glassInk.copy(alpha = 0.22f),
                 primaryButtonContainer = glassInk.copy(alpha = 0.92f),
 
-                primaryButtonIcon = if (glassInk == Color.White) Color.Black else Color.White,
+                primaryButtonIcon = glassInk,
                 secondaryButtonContainer = Color.Black.copy(alpha = 0.22f),
-                buttonIcon = glassInk,
+                buttonIcon = glassInk.copy(alpha = 0.78f),
                 disabledButtonIcon = glassInk.copy(alpha = 0.38f),
-                togetherContainer = glassInk.copy(alpha = 0.16f),
-                togetherContent = glassInk,
             )
         } else {
             MiniPlayerContentColors(
@@ -396,8 +426,6 @@ private fun rememberMiniPlayerContentColors(
                 secondaryButtonContainer = colorScheme.surfaceContainerHighest,
                 buttonIcon = colorScheme.onSurface,
                 disabledButtonIcon = colorScheme.onSurface.copy(alpha = 0.38f),
-                togetherContainer = colorScheme.primaryContainer,
-                togetherContent = colorScheme.onPrimaryContainer,
             )
         }
     }
@@ -412,7 +440,6 @@ private fun MiniPlayerBackground(
     palette: MiniPlayerBackgroundPalette?,
     modifier: Modifier = Modifier,
 ) {
-
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
     val effectiveStyle = if (isPreS && style == MiniPlayerBackgroundStyle.FROSTED) {
         MiniPlayerBackgroundStyle.THEME
@@ -438,6 +465,8 @@ private fun MiniPlayerBackground(
                             backdrop = liquidGlassBackdrop,
                             shape = MaterialTheme.shapes.extraLarge,
                             interactive = false,
+
+                            blurRadius = LiquidGlassPillBlurRadius,
                             baseColor = baseColor,
                         ),
                 )
@@ -454,7 +483,6 @@ private fun MiniPlayerBackground(
             if (backdrop == null) {
                 Box(modifier = modifier.background(baseColor))
             } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-
                 val positionInRootState = remember { mutableStateOf(Offset.Zero) }
                 val miniPlayerSizeState = remember { mutableStateOf(IntSize.Zero) }
                 val positionInRoot by positionInRootState
@@ -495,7 +523,6 @@ private fun MiniPlayerBackground(
                     }
                 }
             } else {
-
                 val positionInRootState = remember { mutableStateOf(Offset.Zero) }
                 val positionInRoot by positionInRootState
                 Box(
@@ -524,7 +551,7 @@ private fun MiniPlayerBackground(
                                 }.drawBehind {
                                     val offset = backdrop.contentOffsetInRoot - positionInRoot
                                     translate(offset.x, offset.y) {
-                                        drawLayer(backdrop.layer)
+                                        runCatching { drawLayer(backdrop.layer) }
                                     }
                                 },
                     )

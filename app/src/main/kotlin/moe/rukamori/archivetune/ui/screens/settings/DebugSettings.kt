@@ -61,6 +61,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -91,11 +92,17 @@ import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.utils.AudioOutputStats
+import moe.rukamori.archivetune.utils.AudioOutputStatsProvider
 import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 
 private fun sumCachedBytesForSong(
     downloadUtil: moe.rukamori.archivetune.playback.DownloadUtil?,
@@ -147,32 +154,12 @@ fun DebugSettings(navController: NavController) {
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    FrostedHeaderPill(plain = true) {
-                        IconButton(
-                            onClick = navController::navigateUp,
-                            onLongClick = navController::backToMain,
-                        ) {
-                            Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
-                        }
-                        Text(
-                            text = stringResource(R.string.experiment_settings),
-                                style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                ),
-            )
-        },
+                SettingsPageTopBar(
+                    titleText = stringResource(R.string.experiment_settings),
+                    onBack = navController::navigateUp,
+                    onBackLongClick = navController::backToMain,
+                )
+            },
     ) { innerPadding: PaddingValues ->
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
@@ -286,6 +273,7 @@ fun DebugSettings(navController: NavController) {
                     NerdStatsSection(playerConnection = playerConnection)
                 }
             }
+
             }
 
             ScreenHeaderHaze(
@@ -325,7 +313,6 @@ private fun DiscordDebugSection() {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-
                 Row(
                     modifier = Modifier.weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -479,6 +466,7 @@ private fun DebugTimestampItem(
 private fun NerdStatsSection(playerConnection: moe.rukamori.archivetune.playback.PlayerConnection?) {
     if (playerConnection == null) return
 
+    val context = LocalContext.current
     val currentFormat by playerConnection.currentFormat.collectAsStateWithLifecycle(initialValue = null)
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val player = playerConnection.player
@@ -490,6 +478,11 @@ private fun NerdStatsSection(playerConnection: moe.rukamori.archivetune.playback
     var playbackSpeed by remember { mutableStateOf(1.0f) }
 
     var fallbackSizeBytes by remember { mutableStateOf<Long?>(null) }
+    var outputStats by remember { mutableStateOf<AudioOutputStats?>(null) }
+
+    LaunchedEffect(Unit) {
+        outputStats = withContext(Dispatchers.IO) { AudioOutputStatsProvider.resolve(context) }
+    }
 
     LaunchedEffect(Unit) {
         while (isActive) {
@@ -600,6 +593,14 @@ private fun NerdStatsSection(playerConnection: moe.rukamori.archivetune.playback
                             icon = R.drawable.waves,
                             label = stringResource(R.string.sample_rate_label),
                             value = if (sampleRateKhz > 0) "$sampleRateKhz kHz" else stringResource(R.string.unknown_sample_rate),
+                            modifier = Modifier.weight(1f),
+                        )
+
+                        val outputRate = outputStats?.mixSampleRate ?: 0
+                        NerdStatChip(
+                            icon = R.drawable.solar_hertz,
+                            label = stringResource(R.string.output_mix_rate),
+                            value = if (outputRate > 0) "${outputRate / 1000} kHz" else stringResource(R.string.unknown_sample_rate),
                             modifier = Modifier.weight(1f),
                         )
 

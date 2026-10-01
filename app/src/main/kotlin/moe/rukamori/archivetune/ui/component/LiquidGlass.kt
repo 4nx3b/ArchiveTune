@@ -30,6 +30,7 @@ import androidx.compose.material3.IconButton as Material3IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.mutableStateOf
@@ -66,12 +67,35 @@ import androidx.compose.ui.util.lerp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop as kyantLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_ADAPTIVE_LUMINANCE_DEFAULT
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_BACKDROP_VIBRANCY_DEFAULT
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_BLUR_RADIUS_DEFAULT
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_CHROMATIC_ABERRATION_DEFAULT
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_DEPTH_3D_DEFAULT
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_REFRACTION_AMOUNT_DEFAULT
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_REFRACTION_HEIGHT_DEFAULT
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_SHADOW_DEPTH_DEFAULT
+import moe.rukamori.archivetune.constants.LIQUID_GLASS_TINT_OPACITY_DEFAULT
+import moe.rukamori.archivetune.constants.LiquidGlassChromaticAberrationKey
+import moe.rukamori.archivetune.constants.LiquidGlassAdaptiveLuminanceKey
+import moe.rukamori.archivetune.constants.LiquidGlassBackdropVibrancyKey
+import moe.rukamori.archivetune.constants.LiquidGlassBlurRadiusKey
+import moe.rukamori.archivetune.constants.LiquidGlassDepth3DKey
+import moe.rukamori.archivetune.constants.LiquidGlassIntensity
+import moe.rukamori.archivetune.constants.LiquidGlassIntensityKey
+import moe.rukamori.archivetune.constants.LiquidGlassRefractionAmountKey
+import moe.rukamori.archivetune.constants.LiquidGlassRefractionHeightKey
+import moe.rukamori.archivetune.constants.LiquidGlassShadowDepthKey
+import moe.rukamori.archivetune.constants.LiquidGlassTintOpacityKey
+import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.utils.rememberEnumPreference
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.getValue
@@ -89,11 +113,130 @@ fun rememberBackdrop(color: Color): PlatformBackdrop =
         drawContent()
     }
 
-fun Modifier.layerBackdrop(backdrop: PlatformBackdrop): Modifier = this.layerBackdrop(backdrop)
+@Composable
+fun rememberThrottledBackdrop(
+    color: Color,
+    minIntervalMillis: Long = ThrottledLayerBackdropDefaultIntervalMillis,
+): ThrottledLayerBackdrop {
+    val graphicsLayer = rememberGraphicsLayer()
+    val backdrop = remember(graphicsLayer, minIntervalMillis, color) {
+        ThrottledLayerBackdrop(
+            graphicsLayer = graphicsLayer,
+            minIntervalMillis = minIntervalMillis,
+            contentPrefix = { drawRect(color) },
+        )
+    }
+    DisposableEffect(backdrop) {
+        onDispose { backdrop.layerCoordinates = null }
+    }
+    return backdrop
+}
 
-val LocalLiquidGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
+fun Modifier.layerBackdrop(backdrop: PlatformBackdrop): Modifier = this.kyantLayerBackdrop(backdrop)
+
+fun Modifier.glassSource(backdrop: Backdrop): Modifier =
+    when (backdrop) {
+        is ThrottledLayerBackdrop -> throttledLayerBackdrop(backdrop)
+        is LayerBackdrop -> layerBackdrop(backdrop)
+        else -> this
+    }
+
+val LocalLiquidGlassBackdrop = compositionLocalOf<Backdrop?> { null }
 
 val LocalMenuGlassBackdrop = compositionLocalOf<Backdrop?> { null }
+
+@Stable
+data class LiquidGlassTuning(
+    val intensity: LiquidGlassIntensity = LiquidGlassIntensity.STANDARD,
+    val refractionHeightFraction: Float = LIQUID_GLASS_REFRACTION_HEIGHT_DEFAULT,
+    val refractionAmountFraction: Float = LIQUID_GLASS_REFRACTION_AMOUNT_DEFAULT,
+    val blurFraction: Float = LIQUID_GLASS_BLUR_RADIUS_DEFAULT,
+    val tintFraction: Float = LIQUID_GLASS_TINT_OPACITY_DEFAULT,
+    val shadowFraction: Float = LIQUID_GLASS_SHADOW_DEPTH_DEFAULT,
+    val depth3D: Boolean = LIQUID_GLASS_DEPTH_3D_DEFAULT,
+    val chromaticAberration: Boolean = LIQUID_GLASS_CHROMATIC_ABERRATION_DEFAULT,
+    val backdropVibrancy: Boolean = LIQUID_GLASS_BACKDROP_VIBRANCY_DEFAULT,
+    val adaptiveLuminance: Boolean = LIQUID_GLASS_ADAPTIVE_LUMINANCE_DEFAULT,
+) {
+    private val presetRefraction: Float =
+        when (intensity) {
+            LiquidGlassIntensity.SUBTLE -> 0.55f
+            LiquidGlassIntensity.STANDARD -> 1f
+            LiquidGlassIntensity.VIVID -> 1.45f
+        }
+
+    private val presetBlur: Float =
+        when (intensity) {
+            LiquidGlassIntensity.SUBTLE -> 0.70f
+            LiquidGlassIntensity.STANDARD -> 1f
+            LiquidGlassIntensity.VIVID -> 1.30f
+        }
+
+    val refractionHeightFactor: Float =
+        (refractionHeightFraction / LIQUID_GLASS_REFRACTION_HEIGHT_DEFAULT) * presetRefraction
+
+    val refractionAmountFactor: Float =
+        (refractionAmountFraction / LIQUID_GLASS_REFRACTION_AMOUNT_DEFAULT) * presetRefraction
+
+    val blurFactor: Float = (blurFraction / LIQUID_GLASS_BLUR_RADIUS_DEFAULT) * presetBlur
+
+    val tintFactor: Float = tintFraction / LIQUID_GLASS_TINT_OPACITY_DEFAULT
+
+    val shadowFactor: Float = shadowFraction / LIQUID_GLASS_SHADOW_DEPTH_DEFAULT
+
+    val saturation: Float = if (backdropVibrancy) 1.7f else 1.0f
+
+    companion object {
+        val STOCK = LiquidGlassTuning()
+    }
+}
+
+val LocalLiquidGlassTuning = compositionLocalOf { LiquidGlassTuning.STOCK }
+
+@Composable
+fun rememberLiquidGlassTuning(): LiquidGlassTuning {
+    val intensity by rememberEnumPreference(LiquidGlassIntensityKey, LiquidGlassIntensity.STANDARD)
+    val refractionHeight by rememberPreference(LiquidGlassRefractionHeightKey, LIQUID_GLASS_REFRACTION_HEIGHT_DEFAULT)
+    val refractionAmount by rememberPreference(LiquidGlassRefractionAmountKey, LIQUID_GLASS_REFRACTION_AMOUNT_DEFAULT)
+    val blurRadius by rememberPreference(LiquidGlassBlurRadiusKey, LIQUID_GLASS_BLUR_RADIUS_DEFAULT)
+    val tintOpacity by rememberPreference(LiquidGlassTintOpacityKey, LIQUID_GLASS_TINT_OPACITY_DEFAULT)
+    val shadowDepth by rememberPreference(LiquidGlassShadowDepthKey, LIQUID_GLASS_SHADOW_DEPTH_DEFAULT)
+    val depth3D by rememberPreference(LiquidGlassDepth3DKey, LIQUID_GLASS_DEPTH_3D_DEFAULT)
+    val chromaticAberration by rememberPreference(
+        LiquidGlassChromaticAberrationKey,
+        LIQUID_GLASS_CHROMATIC_ABERRATION_DEFAULT,
+    )
+    val backdropVibrancy by rememberPreference(LiquidGlassBackdropVibrancyKey, LIQUID_GLASS_BACKDROP_VIBRANCY_DEFAULT)
+    val adaptiveLuminance by rememberPreference(
+        LiquidGlassAdaptiveLuminanceKey,
+        LIQUID_GLASS_ADAPTIVE_LUMINANCE_DEFAULT,
+    )
+    return remember(
+        intensity,
+        refractionHeight,
+        refractionAmount,
+        blurRadius,
+        tintOpacity,
+        shadowDepth,
+        depth3D,
+        chromaticAberration,
+        backdropVibrancy,
+        adaptiveLuminance,
+    ) {
+        LiquidGlassTuning(
+            intensity = intensity,
+            refractionHeightFraction = refractionHeight,
+            refractionAmountFraction = refractionAmount,
+            blurFraction = blurRadius,
+            tintFraction = tintOpacity,
+            shadowFraction = shadowDepth,
+            depth3D = depth3D,
+            chromaticAberration = chromaticAberration,
+            backdropVibrancy = backdropVibrancy,
+            adaptiveLuminance = adaptiveLuminance,
+        )
+    }
+}
 
 internal const val ThrottledLayerBackdropDefaultIntervalMillis = 100L
 
@@ -101,21 +244,58 @@ internal const val ThrottledLayerBackdropDefaultIntervalMillis = 100L
 class ThrottledLayerBackdrop internal constructor(
     val graphicsLayer: GraphicsLayer,
     internal val minIntervalMillis: Long,
+    internal val contentPrefix: DrawScope.() -> Unit = {},
 ) : Backdrop {
-
     override val isCoordinatesDependent: Boolean get() = true
 
     internal var layerCoordinates: LayoutCoordinates? by mutableStateOf(null)
+
+    // Bumped whenever a recorder node (re)attaches so every backdrop consumer
+    // redraws immediately instead of waiting for the next content invalidation.
+    // Without this, glass pills that recompose while their page sits still (e.g.
+    // right after the fullscreen player with lyrics is minimized) keep their last
+    // drawn frame - which was fully faded out - and appear gone until the user
+    // scrolls or touches the page.
+    internal var consumerInvalidationTick by mutableStateOf(0)
+
+    // Re-entrancy guard: while the recorder node is capturing its subtree into
+    // graphicsLayer, any liquidGlass consumer nested INSIDE that subtree would
+    // draw the very layer that is still being recorded into itself - an
+    // infinitely recursive display list that overflows the RenderThread stack
+    // (native SIGSEGV). Skipping the backdrop draw in that window renders the
+    // consumer with its plain base/tint instead of crashing the process.
+    // Snapshot state (NOT a plain @Volatile) so that clearing the flag after a
+    // record pass invalidates every consumer that drew inside the window - a
+    // plain volatile left those pills drawn WITHOUT their backdrop until some
+    // unrelated invalidation happened ("invisible glass after lyrics" class).
+    internal var recordingInProgress by mutableStateOf(false)
+
+    internal fun notifyRecorderAttached() {
+        consumerInvalidationTick++
+    }
+
+    /**
+     * Forces every consumer of this backdrop to redraw on the next frame.
+     * Called when a cover state (player sheet / lyrics fullscreen) lifts: some
+     * restore paths do not re-attach the recorder node itself, and a pill whose
+     * last drawn frame predates the cover would otherwise keep showing that
+     * stale (often empty) frame indefinitely.
+     */
+    fun notifyContentRestore() {
+        consumerInvalidationTick++
+    }
 
     override fun DrawScope.drawBackdrop(
         density: Density,
         coordinates: LayoutCoordinates?,
         layerBlock: (GraphicsLayerScope.() -> Unit)?,
     ) {
+        val tick = consumerInvalidationTick
+        if (tick < 0) return
+        if (recordingInProgress) return
         val coordinates = coordinates ?: return
         val layerCoordinates = layerCoordinates ?: return
         withTransform({
-
             val offset =
                 try {
                     layerCoordinates.localPositionOf(coordinates)
@@ -124,7 +304,8 @@ class ThrottledLayerBackdrop internal constructor(
                 }
             translate(-offset.x, -offset.y)
         }) {
-            drawLayer(graphicsLayer)
+
+            runCatching { drawLayer(graphicsLayer) }
         }
     }
 }
@@ -171,32 +352,46 @@ private class ThrottledLayerBackdropElement(
 private class ThrottledLayerBackdropNode(
     var backdrop: ThrottledLayerBackdrop,
 ) : DrawModifierNode, GlobalPositionAwareModifierNode, Modifier.Node() {
-
     private var lastRecordUptimeMillis = 0L
 
     override fun onAttach() {
         super.onAttach()
 
         lastRecordUptimeMillis = 0L
+        backdrop.notifyRecorderAttached()
     }
 
     override fun ContentDrawScope.draw() {
-        drawContent()
         val now = SystemClock.uptimeMillis()
         if (now - lastRecordUptimeMillis >= backdrop.minIntervalMillis) {
             lastRecordUptimeMillis = now
             val density = requireDensity()
-            backdrop.graphicsLayer.record(size.toIntSize()) {
-                val previousDensity = drawContext.density
-                drawContext.density = density
-                try {
 
-                    this@draw.drawContent()
-                } finally {
-                    drawContext.density = previousDensity
-                }
+            val recorded =
+                runCatching {
+                    backdrop.recordingInProgress = true
+                    try {
+                        backdrop.graphicsLayer.record(size.toIntSize()) {
+                            val previousDensity = drawContext.density
+                            drawContext.density = density
+                            try {
+                                backdrop.contentPrefix(this@draw)
+                                this@draw.drawContent()
+                            } finally {
+                                drawContext.density = previousDensity
+                            }
+                        }
+                    } finally {
+                        backdrop.recordingInProgress = false
+                    }
+                }.isSuccess
+            if (recorded && backdrop.graphicsLayer.size == size.toIntSize()) {
+
+                runCatching { drawLayer(backdrop.graphicsLayer) }
+                return
             }
         }
+        drawContent()
     }
 
     override fun onGloballyPositioned(coordinates: LayoutCoordinates) {
@@ -206,7 +401,7 @@ private class ThrottledLayerBackdropNode(
     }
 
     override fun onDetach() {
-        backdrop.layerCoordinates = null
+
     }
 }
 
@@ -220,38 +415,36 @@ fun liquidGlassContentColor(): Color =
 
 @Composable
 fun Modifier.liquidGlass(
-    backdrop: PlatformBackdrop,
+    backdrop: Backdrop,
     shape: Shape = CircleShape,
     interactive: Boolean = true,
     baseColor: Color = Color.Unspecified,
     blurRadius: Dp = 8.dp,
+    scrim: Color? = null,
 ): Modifier {
-
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val tuning = LocalLiquidGlassTuning.current
 
-    return remember(backdrop, shape, interactive, baseColor, blurRadius, isDark) {
+    return remember(backdrop, shape, interactive, baseColor, blurRadius, isDark, scrim, tuning) {
         this.drawBackdrop(
             backdrop = backdrop,
             effects = {
                 val l = 0f
-                // SpatialFlow-style vividness: 1.7x saturation bleed instead of
-                // the stock 1.5x vibrancy, so the background colours move through
-                // the glass more visibly as the content scrolls behind it.
-                colorControls(saturation = 1.7f)
+
+                colorControls(saturation = tuning.saturation)
                 blur(
                     if (l > 0f) {
                         lerp(blurRadius.toPx() * 2f, blurRadius.toPx() * 4f, l)
                     } else {
-                        blurRadius.toPx()
+                        blurRadius.toPx() * tuning.blurFactor
                     },
                 )
-                // More liquid: taller refraction band, ~25% stronger edge bend
-                // and the depth uniform enabled (same shader, no extra cost).
+
                 lens(
-                    refractionHeight = 28f.dp.toPx(),
-                    refractionAmount = size.minDimension / 3.2f,
-                    depthEffect = true,
-                    chromaticAberration = false,
+                    refractionHeight = (28f * tuning.refractionHeightFactor).dp.toPx(),
+                    refractionAmount = size.minDimension * (tuning.refractionAmountFactor / 3.2f),
+                    depthEffect = tuning.depth3D,
+                    chromaticAberration = tuning.chromaticAberration,
                 )
             },
             onDrawBackdrop = { drawBackdrop ->
@@ -265,13 +458,26 @@ fun Modifier.liquidGlass(
                     null
                 },
             onDrawSurface = {
-                val luminanceAnimation = 0.5f
-                val darken = lerp(
-                    0.12f,
-                    0.5f,
-                    ((luminanceAnimation - 0.3f) / 0.5f).coerceIn(0f, 1f),
-                )
-                drawRect((if (isDark) Color.Black else Color.White).copy(alpha = darken))
+                if (scrim != null) {
+
+                    drawRect(scrim.copy(alpha = (scrim.alpha * tuning.tintFactor).coerceIn(0f, 1f)))
+                } else {
+                    val darken =
+                        if (tuning.adaptiveLuminance) {
+                            val luminanceAnimation = 0.5f
+                            lerp(
+                                0.12f,
+                                0.5f,
+                                ((luminanceAnimation - 0.3f) / 0.5f).coerceIn(0f, 1f),
+                            )
+                        } else {
+                            0.12f
+                        }
+                    drawRect(
+                        (if (isDark) Color.Black else Color.White)
+                            .copy(alpha = (darken * tuning.tintFactor).coerceIn(0f, 1f)),
+                    )
+                }
             },
         )
     }
@@ -279,16 +485,17 @@ fun Modifier.liquidGlass(
 
 @Composable
 fun LiquidGlassContainer(
-    backdrop: PlatformBackdrop,
+    backdrop: Backdrop,
     modifier: Modifier = Modifier,
     shape: Shape = CircleShape,
     interactive: Boolean = false,
     blurRadius: Dp = LiquidGlassPillBlurRadius,
+    scrim: Color? = null,
     contentAlignment: Alignment = Alignment.Center,
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(
-        modifier = modifier.liquidGlass(backdrop, shape, interactive, blurRadius = blurRadius),
+        modifier = modifier.liquidGlass(backdrop, shape, interactive, blurRadius = blurRadius, scrim = scrim),
         contentAlignment = contentAlignment,
         content = content,
     )
@@ -296,21 +503,26 @@ fun LiquidGlassContainer(
 
 @Composable
 fun LiquidGlassActionPill(
-    backdrop: PlatformBackdrop,
+    backdrop: Backdrop,
     modifier: Modifier = Modifier,
     interactive: Boolean = false,
     blurRadius: Dp = LiquidGlassPillBlurRadius,
+    scrim: Color? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
+
+    val sheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
     Row(
         modifier =
             modifier
+                .graphicsLayer { alpha = 1f - sheetOverlayFraction }
                 .height(48.dp)
                 .liquidGlass(
                     backdrop = backdrop,
                     shape = RoundedCornerShape(24.dp),
                     interactive = interactive,
                     blurRadius = blurRadius,
+                    scrim = scrim,
                 ),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
@@ -340,7 +552,7 @@ fun GlassPillTitleText(
 
 @Composable
 fun LiquidGlassIconButton(
-    backdrop: PlatformBackdrop,
+    backdrop: Backdrop,
     painter: Painter,
     modifier: Modifier = Modifier.size(48.dp),
     shape: Shape = CircleShape,
@@ -372,7 +584,7 @@ fun LiquidGlassIconButton(
 
 @Composable
 fun LiquidGlassIconButton(
-    backdrop: PlatformBackdrop,
+    backdrop: Backdrop,
     imageVector: ImageVector,
     modifier: Modifier = Modifier.size(48.dp),
     shape: Shape = CircleShape,

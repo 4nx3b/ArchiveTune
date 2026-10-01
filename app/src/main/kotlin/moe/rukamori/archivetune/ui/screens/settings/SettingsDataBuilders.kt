@@ -7,14 +7,16 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import moe.rukamori.archivetune.constants.BitPerfectOutputKey
+import moe.rukamori.archivetune.constants.BitPerfectNativeRateKey
+import moe.rukamori.archivetune.ui.component.SpringySwitch
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -22,10 +24,15 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
+import moe.rukamori.archivetune.constants.TikTokMainLyricsEnabledKey
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.SpotifyCanvasKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
+import moe.rukamori.archivetune.constants.FloatDspEnabledKey
+import moe.rukamori.archivetune.constants.LastwaveAudioProcessingKey
+import moe.rukamori.archivetune.constants.TryptifyAudioProcessingKey
+import moe.rukamori.archivetune.constants.UsbExclusiveAudioKey
 import moe.rukamori.archivetune.constants.AutoDownloadOnLikeKey
 import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
 import moe.rukamori.archivetune.constants.AutoStartOnBluetoothKey
@@ -59,9 +66,12 @@ import moe.rukamori.archivetune.constants.LyricsScrollKey
 import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import moe.rukamori.archivetune.constants.LiquidGlassChromaticAberrationKey
+import moe.rukamori.archivetune.constants.LiquidGlassDepth3DKey
+import moe.rukamori.archivetune.constants.LiquidGlassBackdropVibrancyKey
+import moe.rukamori.archivetune.constants.LiquidGlassAdaptiveLuminanceKey
 import moe.rukamori.archivetune.constants.LiquidGlassNavBarEnabledKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
-import moe.rukamori.archivetune.constants.NetworkMeteredKey
 import moe.rukamori.archivetune.constants.PauseListenHistoryKey
 import moe.rukamori.archivetune.constants.PauseOnDeviceMuteKey
 import moe.rukamori.archivetune.constants.PauseSearchHistoryKey
@@ -72,13 +82,11 @@ import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
 import moe.rukamori.archivetune.constants.SeekExtraSeconds
 import moe.rukamori.archivetune.constants.ShowHomeCategoryChipsKey
-import moe.rukamori.archivetune.constants.ShowLyricsKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
 import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
 import moe.rukamori.archivetune.constants.SkipSilenceKey
 import moe.rukamori.archivetune.constants.SmartTrimmerKey
 import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
-import moe.rukamori.archivetune.constants.SyncPlaybackToYouTubeHistoryKey
 import moe.rukamori.archivetune.constants.SwipeToSongKey
 import moe.rukamori.archivetune.constants.TelegramLosslessOnlyKey
 import moe.rukamori.archivetune.constants.TidalArtworkFallbackEnabledKey
@@ -86,7 +94,86 @@ import moe.rukamori.archivetune.constants.TidalEnabledKey
 import moe.rukamori.archivetune.constants.TranslateLyricsKey
 import moe.rukamori.archivetune.constants.UseSystemFontKey
 import moe.rukamori.archivetune.constants.WakelockKey
+import moe.rukamori.archivetune.constants.AllowAgeRestrictedKey
+import moe.rukamori.archivetune.constants.AodArtworkGlowKey
+import moe.rukamori.archivetune.constants.AodAutoStartScreenOffKey
+import moe.rukamori.archivetune.constants.AodShowAlbumKey
+import moe.rukamori.archivetune.constants.AodShowArtistKey
+import moe.rukamori.archivetune.constants.AodShowControlsKey
+import moe.rukamori.archivetune.constants.AodShowExitButtonKey
+import moe.rukamori.archivetune.constants.AodShowLyricsKey
+import moe.rukamori.archivetune.constants.AodShowProgressKey
+import moe.rukamori.archivetune.constants.AodShowThumbnailKey
+import moe.rukamori.archivetune.constants.AodShowTimeLabelsKey
+import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
+import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.DeezerEnabledKey
+import moe.rukamori.archivetune.constants.EnableDnsOverHttpsKey
+import moe.rukamori.archivetune.constants.EnableMusixmatchExperimentalKey
+import moe.rukamori.archivetune.constants.HideCachedCardKey
+import moe.rukamori.archivetune.constants.HideLikedSongsCardKey
+import moe.rukamori.archivetune.constants.HideLocalFilesCardKey
+import moe.rukamori.archivetune.constants.HideOfflineCardKey
+import moe.rukamori.archivetune.constants.HideTop50CardKey
+import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
+import moe.rukamori.archivetune.constants.LyricsLineBlurKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeChineseKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeHindiKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeJapaneseKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeKoreanKey
+import moe.rukamori.archivetune.constants.MinimalHomeModeKey
+import moe.rukamori.archivetune.constants.NavigationBarTintFrostedBlurKey
+import moe.rukamori.archivetune.constants.QobuzBackupEnabledKey
+import moe.rukamori.archivetune.constants.QobuzEnabledKey
+import moe.rukamori.archivetune.constants.ShowTagsInLibraryKey
+import moe.rukamori.archivetune.constants.StreamBypassProxyKey
+import moe.rukamori.archivetune.constants.SwipeThumbnailKey
+import moe.rukamori.archivetune.constants.TabletModeEnabledKey
+import moe.rukamori.archivetune.constants.TidalAccountFirstKey
+import moe.rukamori.archivetune.constants.TidalAnimatedCoversEnabledKey
+import moe.rukamori.archivetune.constants.ListenTogetherSyncVolumeKey
 import moe.rukamori.archivetune.utils.rememberPreference
+
+internal object SettingsIconPalette {
+    val Account = Color(0xFF4285F4)
+    val Stats = Color(0xFFEC407A)
+    val Appearance = Color(0xFFAB47BC)
+    val AppearanceExtras = Color(0xFF7E57C2)
+    val Aod = Color(0xFF3949AB)
+    val NavigationBar = Color(0xFF29B6F6)
+    val Playback = Color(0xFFEF5350)
+    val Sources = Color(0xFF26A69A)
+    val JioSaavn = Color(0xFFFFA726)
+    val QqMusic = Color(0xFF7CB342)
+    val Deezer = Color(0xFF9C27B0)
+    val Lyrics = Color(0xFF42A5F5)
+    val LyricsProviders = Color(0xFF26C6DA)
+    val LyricsRomanisation = Color(0xFF66BB6A)
+    val LanguagePacks = Color(0xFF8D6E63)
+    val Content = Color(0xFFFFB300)
+    val Behavior = Color(0xFF78909C)
+    val AndroidAuto = Color(0xFF00ACC1)
+    val Integration = Color(0xFF7C4DFF)
+    val AiIntegration = Color(0xFFF06292)
+    val DiscordExperimental = Color(0xFF5865F2)
+    val Tidal = Color(0xFF00BFA5)
+    val Qobuz = Color(0xFFFF8A65)
+    val Telegram = Color(0xFF29A9EB)
+    val Internet = Color(0xFF5C6BC0)
+    val PoToken = Color(0xFFFFB300)
+    val Storage = Color(0xFF78909C)
+    val Downloads = Color(0xFF66BB6A)
+    val BackupRestore = Color(0xFF8D6E63)
+    val DeveloperOptions = Color(0xFF90A4AE)
+    val Updates = Color(0xFF26A69A)
+    val About = Color(0xFF29B6F6)
+    val DefaultLinks = Color(0xFF42A5F5)
+
+    val AppleMusic = Color(0xFFFA2D48)
+    val LastFm = Color(0xFFD51007)
+    val ListenBrainz = Color(0xFF35B5AC)
+    val CrossServiceImport = Color(0xFF5C6BC0)
+}
 
 @Composable
 private fun SearchResultSwitch(
@@ -94,7 +181,7 @@ private fun SearchResultSwitch(
     defaultValue: Boolean,
 ) {
     val (checked, onCheckedChange) = rememberPreference(key, defaultValue)
-    Switch(
+    SpringySwitch(
         checked = checked,
         onCheckedChange = onCheckedChange,
     )
@@ -106,6 +193,7 @@ fun buildSettingsGroups(
     isAndroid12OrLater: Boolean,
     hasUpdate: Boolean,
     context: Context,
+    accountImageUrl: String? = null,
 ): List<SettingsGroup> {
     val account =
         SettingsItem(
@@ -113,7 +201,8 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.ic_account),
             title = stringResource(R.string.account),
             subtitle = stringResource(R.string.settings_account_subtitle),
-            accentColor = MaterialTheme.colorScheme.primary,
+            accentColor = SettingsIconPalette.Account,
+            iconUrl = accountImageUrl,
             keywords = listOf("account", "profile", "youtube", "sign in", "login", "logout", "token", "hidden", "playlist", "channels", "switch account"),
             onClick = { navController.navigate("settings/account") },
             children = listOf(
@@ -130,7 +219,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.stats),
             title = stringResource(R.string.settings_stats_title),
             subtitle = stringResource(R.string.settings_stats_subtitle),
-            accentColor = MaterialTheme.colorScheme.primary,
+            accentColor = SettingsIconPalette.Stats,
             keywords = listOf("stats", "statistics", "listening", "history", "top", "most played", "time"),
             onClick = { navController.navigate("stats") },
         )
@@ -140,7 +229,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.ic_palette),
             title = stringResource(R.string.appearance),
             subtitle = stringResource(R.string.settings_appearance_subtitle),
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.Appearance,
             keywords = listOf("appearance", "theme", "dark", "light", "color", "palette", "style", "design"),
             onClick = { navController.navigate("settings/appearance") },
             children = listOf(
@@ -152,14 +241,15 @@ fun buildSettingsGroups(
                 SettingsChild("Color source", "color_source", listOf("color source", "color", "dynamic color", "material you")),
                 SettingsChild("App icon", "app_icon", listOf("icon", "app icon", "icon pack", "launcher icon")),
                 SettingsChild("Disable blur", "disable_blur", listOf("blur", "disable blur", "no blur", "performance")) { SearchResultSwitch(DisableBlurKey, false) },
-                SettingsChild("Blur intensity", "blur_intensity", listOf("blur intensity", "blur amount", "blur level", "blur radius")),
+                SettingsChild("Blur intensity", "blur_intensity", listOf("blur intensity", "blur amount", "blur level", "blur radius")) { SearchResultSwitch(BackdropEnabledKey, true) },
                 SettingsChild("Backdrop blur", "backdrop_blur", listOf("backdrop", "backdrop blur", "background blur", "frosted")) { SearchResultSwitch(BackdropEnabledKey, false) },
                 SettingsChild("Font preference", "font_preference", listOf("font", "font style", "typography")),
                 SettingsChild("Use system font", "use_system_font", listOf("system font", "default font", "roboto")) { SearchResultSwitch(UseSystemFontKey, false) },
                 SettingsChild("Thumbnail corner radius", "thumbnail_corner_radius", listOf("thumbnail corner", "corner radius", "rounded thumbnail", "thumbnail shape")),
                 SettingsChild("Crop thumbnail to square", "crop_thumbnail_to_square", listOf("crop thumbnail", "square thumbnail", "thumbnail crop")) { SearchResultSwitch(CropThumbnailToSquareKey, false) },
-                SettingsChild("Enable canvas in album and playlist page", "album_canvas_enabled", listOf("album canvas", "playlist canvas", "canvas in album", "canvas in playlist", "canvas page", "motion artwork", "animated cover", "album header video", "playlist header video")) { SearchResultSwitch(AlbumCanvasEnabledKey, true) },
+                SettingsChild("Enable canvas in album, playlist and artist page", "album_canvas_enabled", listOf("album canvas", "playlist canvas", "artist canvas", "canvas in album", "canvas in playlist", "canvas in artist", "canvas page", "motion artwork", "animated cover", "album header video", "playlist header video", "artist header video")) { SearchResultSwitch(AlbumCanvasEnabledKey, true) },
                 SettingsChild("Player design style", "player_design_style", listOf("player design", "player layout", "player style")),
+                SettingsChild("Show lyrics on main player (TikTok)", "tiktok_main_lyrics", listOf("tiktok lyrics", "main player lyrics", "current line lyrics", "karaoke line", "tiktok player")) { SearchResultSwitch(TikTokMainLyricsEnabledKey, false) },
                 SettingsChild("Player background style", "player_background_style", listOf("player background", "player bg", "background style")),
                 SettingsChild("Lyrics background style", "lyrics_background_style", listOf("lyrics background", "lyrics bg")),
                 SettingsChild("Mini player background style", "mini_player_background_style", listOf("mini player", "mini player background")),
@@ -172,24 +262,26 @@ fun buildSettingsGroups(
                 SettingsChild("Disable animations", "disable_animations", listOf("animation", "disable animations", "no animations", "performance")) { SearchResultSwitch(DisableAnimationsKey, false) },
                 SettingsChild("Hide status bar", "hide_status_bar", listOf("status bar", "hide status", "immersive", "fullscreen", "hide bar")) { SearchResultSwitch(HideStatusBarKey, false) },
                 SettingsChild("Force high refresh rate", "force_high_refresh_rate", listOf("refresh rate", "high refresh", "120hz", "90hz", "smooth")) { SearchResultSwitch(ForceHighRefreshRateKey, false) },
-                SettingsChild("Navigation bar style", "navigation_bar_style", listOf("navigation bar", "nav bar", "bottom bar")),
                 SettingsChild("Frosted navigation bar", "frosted_nav_bar", listOf("frosted nav", "frosted navigation", "frosted blur")) { SearchResultSwitch(NavigationBarFrostedBlurKey, false) },
                 SettingsChild("Liquid Glass navigation bar", "liquid_glass_nav_bar", listOf("liquid glass", "glass nav", "glass navigation", "liquid nav")) { SearchResultSwitch(LiquidGlassNavBarEnabledKey, false) },
-                SettingsChild("Liquid Glass effects", "liquid_glass_effects", listOf("liquid glass", "glass effects", "liquid glass effects", "header glass", "mini player glass")) { SearchResultSwitch(LiquidGlassEnabledKey, false) },
+                SettingsChild("Liquid Glass effects", "liquid_glass_effects", listOf("liquid glass", "glass effects", "liquid glass effects", "header glass", "mini player glass")) { SearchResultSwitch(LiquidGlassEnabledKey, true) },
+                SettingsChild("Liquid Glass customisation", "liquid_glass_customisation", listOf("liquid glass tuning", "refraction", "chromatic aberration", "glass intensity", "blur radius", "vibrancy")),
+                SettingsChild("Chromatic aberration", "glass_chromatic_aberration", listOf("chromatic aberration", "prismatic", "color fringing", "lens")) { SearchResultSwitch(LiquidGlassChromaticAberrationKey, true) },
+                SettingsChild("3D depth effect", "glass_depth_3d", listOf("3d depth", "depth effect", "spatial refraction", "thick glass")) { SearchResultSwitch(LiquidGlassDepth3DKey, true) },
+                SettingsChild("Backdrop vibrancy", "glass_backdrop_vibrancy", listOf("vibrancy", "saturation", "color boost")) { SearchResultSwitch(LiquidGlassBackdropVibrancyKey, true) },
+                SettingsChild("Adaptive luminance", "glass_adaptive_luminance", listOf("adaptive luminance", "brightness balance", "contrast balance")) { SearchResultSwitch(LiquidGlassAdaptiveLuminanceKey, true) },
                 SettingsChild("Hide labels in navigation bar", "hide_navigation_bar_labels", listOf("hide labels", "navigation labels", "nav labels", "icons only")) { SearchResultSwitch(HideNavigationBarLabelsKey, false) },
                 SettingsChild("Navigation bar customization", "navigation_bar_settings", listOf("navigation bar", "nav bar dimensions", "nav bar opacity", "nav bar width", "nav bar height", "nav bar corner radius", "nav bar label spacing")),
                 SettingsChild("Hide scrollbar", "hide_scrollbar", listOf("scrollbar", "scroll bar", "hide scroll", "no scrollbar")) { SearchResultSwitch(HideScrollbarKey, false) },
                 SettingsChild("Default open tab", "default_open_tab", listOf("default tab", "home tab", "start page", "open tab")),
-                SettingsChild("Grid layout", "grid_layout", listOf("grid", "layout", "list view", "artist grid")),
                 SettingsChild("Show home category chips", "show_home_category_chips", listOf("home chips", "category chips", "home category", "chips")) { SearchResultSwitch(ShowHomeCategoryChipsKey, false) },
                 SettingsChild("Language", "app_language", listOf("language", "app language", "locale")),
                 SettingsChild("UI scale", "ui_scale", listOf("ui scale", "scale", "zoom", "interface size", "display size", "bigger", "smaller")),
                 SettingsChild("Custom font", "custom_font", listOf("custom font", "font file", "typeface", "own font")),
                 SettingsChild("Backdrop blur amount", "backdrop_blur_amount", listOf("backdrop blur amount", "backdrop intensity", "background blur amount")),
                 SettingsChild("Customized background", "customized_background", listOf("customized background", "custom background", "background image", "wallpaper")),
-                SettingsChild("Tablet mode", "tablet_mode", listOf("tablet mode", "tablet", "large screen", "landscape layout")),
-                SettingsChild("Minimal mode", "minimal_home_mode", listOf("minimal mode", "minimal home", "simple home", "clean home")),
-                SettingsChild("Change default library chip", "default_lib_chips", listOf("library chip", "default chip", "library filter", "default library tab")),
+                SettingsChild("Tablet mode", "tablet_mode", listOf("tablet mode", "tablet", "large screen", "landscape layout")) { SearchResultSwitch(TabletModeEnabledKey, false) },
+                SettingsChild("Minimal mode", "minimal_home_mode", listOf("minimal mode", "minimal home", "simple home", "clean home")) { SearchResultSwitch(MinimalHomeModeKey, false) },
                 SettingsChild("Liquid Glass effects", "liquid_glass_effects", listOf("liquid glass", "glass effects", "header glass", "mini player glass")),
                 SettingsChild("Theme creator", "theme_creator", listOf("theme creator", "create theme", "custom theme", "make theme")),
                 SettingsChild("Palette picker", "palette_picker", listOf("palette picker", "pick palette", "choose palette", "custom palette")),
@@ -203,18 +295,18 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.palette),
             title = "Appearance extras",
             subtitle = "Home and library card visibility",
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.AppearanceExtras,
             keywords = listOf("extras", "appearance extras", "home cards", "hide cards", "library cards", "quick picks cards"),
             onClick = { navController.navigate("settings/appearance/extras") },
             hidden = true,
             children = listOf(
                 SettingsChild("Show home category chips", "show_home_category_chips", listOf("home chips", "category chips", "home category", "chips")) { SearchResultSwitch(ShowHomeCategoryChipsKey, false) },
-                SettingsChild("Show tags in library", "show_tags_in_library", listOf("tags", "library tags", "show tags")),
-                SettingsChild("Hide Liked songs card", "hide_liked_songs_card", listOf("hide liked songs", "liked songs card", "favourites card", "hide card")),
-                SettingsChild("Hide Offline card", "hide_offline_card", listOf("hide offline", "offline card", "downloaded card", "hide card")),
-                SettingsChild("Hide Cached card", "hide_cached_card", listOf("hide cached", "cached card", "cache card", "hide card")),
-                SettingsChild("Hide Local Files card", "hide_local_files_card", listOf("hide local files", "local files card", "local card", "hide card")),
-                SettingsChild("Hide My top 50 card", "hide_top50_card", listOf("hide top 50", "top 50 card", "my top 50", "hide card")),
+                SettingsChild("Show tags in library", "show_tags_in_library", listOf("tags", "library tags", "show tags")) { SearchResultSwitch(ShowTagsInLibraryKey, false) },
+                SettingsChild("Hide Liked songs card", "hide_liked_songs_card", listOf("hide liked songs", "liked songs card", "favourites card", "hide card")) { SearchResultSwitch(HideLikedSongsCardKey, false) },
+                SettingsChild("Hide Offline card", "hide_offline_card", listOf("hide offline", "offline card", "downloaded card", "hide card")) { SearchResultSwitch(HideOfflineCardKey, false) },
+                SettingsChild("Hide Cached card", "hide_cached_card", listOf("hide cached", "cached card", "cache card", "hide card")) { SearchResultSwitch(HideCachedCardKey, false) },
+                SettingsChild("Hide Local Files card", "hide_local_files_card", listOf("hide local files", "local files card", "local card", "hide card")) { SearchResultSwitch(HideLocalFilesCardKey, false) },
+                SettingsChild("Hide My top 50 card", "hide_top50_card", listOf("hide top 50", "top 50 card", "my top 50", "hide card")) { SearchResultSwitch(HideTop50CardKey, false) },
             ),
         )
 
@@ -224,27 +316,27 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.palette),
             title = "AOD customization",
             subtitle = "Always-on display layout and style",
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.Aod,
             keywords = listOf("aod", "always on display", "always-on display", "lockscreen", "screensaver", "idle screen", "ambient display"),
             onClick = { navController.navigate("settings/appearance/aod_customized") },
             hidden = true,
             children = listOf(
-                SettingsChild("Show thumbnail", "aod_customize_show_thumbnail", listOf("aod thumbnail", "always on display artwork", "aod cover", "aod show thumbnail")),
-                SettingsChild("Show artist", "aod_customize_show_artist", listOf("aod artist", "always on display artist", "aod show artist")),
-                SettingsChild("Show album", "aod_customize_show_album", listOf("aod album", "always on display album", "aod show album")),
-                SettingsChild("Show progress", "aod_customize_show_progress", listOf("aod progress", "aod progress bar", "always on display progress")),
-                SettingsChild("Show time labels", "aod_customize_show_time_labels", listOf("aod time", "aod timestamps", "aod time labels", "always on display time")),
-                SettingsChild("Show controls", "aod_customize_show_controls", listOf("aod controls", "aod buttons", "always on display controls")),
-                SettingsChild("Show exit button", "aod_customize_show_exit_button", listOf("aod exit", "aod close button", "leave aod")),
-                SettingsChild("Show lyrics", "aod_customize_show_lyrics", listOf("aod lyrics", "always on display lyrics", "aod show lyrics")),
+                SettingsChild("Show thumbnail", "aod_customize_show_thumbnail", listOf("aod thumbnail", "always on display artwork", "aod cover", "aod show thumbnail")) { SearchResultSwitch(AodShowThumbnailKey, true) },
+                SettingsChild("Show artist", "aod_customize_show_artist", listOf("aod artist", "always on display artist", "aod show artist")) { SearchResultSwitch(AodShowArtistKey, true) },
+                SettingsChild("Show album", "aod_customize_show_album", listOf("aod album", "always on display album", "aod show album")) { SearchResultSwitch(AodShowAlbumKey, false) },
+                SettingsChild("Show progress", "aod_customize_show_progress", listOf("aod progress", "aod progress bar", "always on display progress")) { SearchResultSwitch(AodShowProgressKey, true) },
+                SettingsChild("Show time labels", "aod_customize_show_time_labels", listOf("aod time", "aod timestamps", "aod time labels", "always on display time")) { SearchResultSwitch(AodShowTimeLabelsKey, true) },
+                SettingsChild("Show controls", "aod_customize_show_controls", listOf("aod controls", "aod buttons", "always on display controls")) { SearchResultSwitch(AodShowControlsKey, true) },
+                SettingsChild("Show exit button", "aod_customize_show_exit_button", listOf("aod exit", "aod close button", "leave aod")) { SearchResultSwitch(AodShowExitButtonKey, true) },
+                SettingsChild("Show lyrics", "aod_customize_show_lyrics", listOf("aod lyrics", "always on display lyrics", "aod show lyrics")) { SearchResultSwitch(AodShowLyricsKey, true) },
                 SettingsChild("Background style", "aod_customize_background_style", listOf("aod background", "aod background style", "always on display background")),
                 SettingsChild("Accent style", "aod_customize_accent_style", listOf("aod accent", "aod accent style", "aod color")),
                 SettingsChild("Content position", "aod_customize_content_position", listOf("aod position", "aod content position", "aod layout")),
                 SettingsChild("Text alignment", "aod_customize_text_alignment", listOf("aod text alignment", "aod align", "aod centre", "aod center")),
                 SettingsChild("Slider style", "aod_customize_slider_style", listOf("aod slider", "aod slider style", "aod progress style")),
-                SettingsChild("Artwork glow", "aod_customize_artwork_glow", listOf("aod glow", "artwork glow", "aod artwork glow", "ambient glow")),
+                SettingsChild("Artwork glow", "aod_customize_artwork_glow", listOf("aod glow", "artwork glow", "aod artwork glow", "ambient glow")) { SearchResultSwitch(AodArtworkGlowKey, true) },
                 SettingsChild("Control style", "aod_customize_control_style", listOf("aod control style", "aod button style")),
-                SettingsChild("Enter AOD when screen dims", "aod_customize_auto_on_screen_dim", listOf("auto aod", "aod on dim", "automatic aod", "screen dim aod")),
+                SettingsChild("Display AOD when screen turns off", "aod_customize_auto_start_screen_off", listOf("auto aod", "aod screen off", "automatic aod", "screen dim aod")) { SearchResultSwitch(AodAutoStartScreenOffKey, true) },
             ),
         )
 
@@ -254,14 +346,13 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.palette),
             title = "Navigation bar",
             subtitle = "Navigation bar style and dimensions",
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.NavigationBar,
             keywords = listOf("navigation bar", "nav bar", "bottom bar", "tab bar", "navbar"),
             onClick = { navController.navigate("settings/appearance/navigation_bar") },
             hidden = true,
             children = listOf(
-                SettingsChild("Navigation bar style", "navigation_bar_style", listOf("navigation bar style", "nav bar style", "bottom bar style")),
                 SettingsChild("Frosted navigation bar", "navigation_bar_frosted_blur", listOf("frosted nav", "frosted navigation", "frosted blur")) { SearchResultSwitch(NavigationBarFrostedBlurKey, false) },
-                SettingsChild("Tint navigation bar", "navigation_bar_tint_frosted_blur", listOf("tint", "tint nav bar", "tinted nav bar", "coloured nav bar")),
+                SettingsChild("Tint frosted navigation bar", "navigation_bar_tint_frosted_blur", listOf("tint frosted", "tint nav bar", "frosted tint", "coloured nav bar")) { SearchResultSwitch(NavigationBarTintFrostedBlurKey, false) },
                 SettingsChild("Liquid Glass navigation bar", "liquid_glass_nav_bar", listOf("liquid glass nav", "glass navigation", "liquid nav")) { SearchResultSwitch(LiquidGlassNavBarEnabledKey, false) },
                 SettingsChild("Hide labels in navigation bar", "hide_navigation_bar_labels", listOf("hide labels", "navigation labels", "nav labels", "icons only")) { SearchResultSwitch(HideNavigationBarLabelsKey, false) },
                 SettingsChild("Navigation bar dimensions", "navigation_bar_dimensions", listOf("nav bar height", "nav bar width", "nav bar opacity", "nav bar corner radius", "nav bar label spacing", "nav bar size")),
@@ -274,7 +365,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.music_note),
             title = stringResource(R.string.settings_playback_title),
             subtitle = stringResource(R.string.settings_playback_subtitle),
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.Playback,
             keywords = listOf("playback", "player", "audio", "quality", "equalizer", "eq", "volume", "crossfade", "gapless", "flac", "lossless", "hi-res", "sample rate", "bitrate", "video", "music video", "video playback", "pip", "picture in picture", "floating", "minimize"),
             onClick = { navController.navigate("settings/player") },
             children = listOf(
@@ -286,6 +377,7 @@ fun buildSettingsGroups(
                 SettingsChild("Crossfade gapless", "crossfade_gapless", listOf("crossfade gapless", "gapless crossfade", "seamless crossfade")) { SearchResultSwitch(CrossfadeGaplessKey, true) },
                 SettingsChild("Skip silence", "skip_silence", listOf("silence", "skip silence", "blank", "quiet")) { SearchResultSwitch(SkipSilenceKey, false) },
                 SettingsChild("Audio normalization", "audio_normalization", listOf("normalization", "loudness", "normalize", "volume level")) { SearchResultSwitch(AudioNormalizationKey, true) },
+                SettingsChild("ReplayGain", "replay_gain", listOf("replaygain", "replay gain", "r128", "gain", "loudness correction", "track gain", "album gain")),
                 SettingsChild("Audio offload", "audio_offload", listOf("offload", "audio offload", "hardware decoder")) { SearchResultSwitch(AudioOffload, false) },
                 SettingsChild("Seek seconds add-up", "seek_seconds", listOf("seek", "skip", "forward", "rewind", "seconds")) { SearchResultSwitch(SeekExtraSeconds, false) },
                 SettingsChild("Pause on device mute", "pause_mute", listOf("mute", "pause mute", "headphone", "silence detect")) { SearchResultSwitch(PauseOnDeviceMuteKey, false) },
@@ -304,29 +396,36 @@ fun buildSettingsGroups(
                 SettingsChild("Manage playlist tags", "manage_playlist_tags", listOf("playlist tags", "tag management", "organize playlists")),
                 SettingsChild("Artwork priority", "artwork_priority", listOf("artwork priority", "artwork order", "cover priority", "artwork provider order", "artwork source order")),
                 SettingsChild("Preferred sources", "preferred_sources", listOf("preferred sources", "source priority", "source order", "audio source order", "which source first")),
-                SettingsChild("Auto choose playback client", "auto_choose_playback_client", listOf("auto choose client", "playback client auto", "automatic client", "client selection")),
+                SettingsChild("Auto choose playback client", "auto_choose_playback_client", listOf("auto choose client", "playback client auto", "automatic client", "client selection")) { SearchResultSwitch(AutoChoosePlaybackClientKey, true) },
                 SettingsChild("Playback client", "player_stream_client", listOf("playback client", "stream client", "player client", "innertube client", "android vr", "ios client", "web client")),
-                SettingsChild("Skip gapless albums", "crossfade_gapless_title", listOf("skip gapless albums", "gapless album", "gapless")),
-                SettingsChild("Progressive seek", "seek_seconds_addup", listOf("progressive seek", "seek add up", "seek accumulate", "double tap seek")),
-                SettingsChild("Enable swipe to change song", "enable_swipe_thumbnail", listOf("swipe thumbnail", "swipe to change song", "swipe artwork", "swipe track")),
+                SettingsChild("Skip gapless albums", "crossfade_gapless_title", listOf("skip gapless albums", "gapless album", "gapless")) { SearchResultSwitch(CrossfadeGaplessKey, true) },
+                SettingsChild("Progressive seek", "seek_seconds_addup", listOf("progressive seek", "seek add up", "seek accumulate", "double tap seek")) { SearchResultSwitch(SeekExtraSeconds, false) },
+                SettingsChild("Enable swipe to change song", "enable_swipe_thumbnail", listOf("swipe thumbnail", "swipe to change song", "swipe artwork", "swipe track")) { SearchResultSwitch(SwipeThumbnailKey, true) },
                 SettingsChild("Mini player swipe sensitivity", "swipe_sensitivity", listOf("swipe sensitivity", "mini player swipe", "gesture sensitivity")),
                 SettingsChild("Check source", "check_source", listOf("check source", "source health", "test source", "source diagnostics", "verify source", "source status")),
+
+                SettingsChild("Audiophile", "audiophile", listOf("audiophile", "dsp", "engine", "tryptify", "lastwave", "float", "usb exclusive", "bit perfect", "dac", "autoeq")),
+                SettingsChild("Bit-Perfect Output", "bit_perfect_output", listOf("bit perfect", "bitperfect", "native output", "direct playback", "pcm24", "pcm32", "sample rate", "native rate")) { SearchResultSwitch(BitPerfectOutputKey, false) },
+                SettingsChild("Native Sample Rate", "bit_perfect_native_rate", listOf("native sample rate", "source rate", "resampling", "rate matching")) { SearchResultSwitch(BitPerfectNativeRateKey, true) },
+                SettingsChild("32-bit float DSP", "float_dsp", listOf("dsp", "float", "32-bit", "limiter", "dither", "lossless dsp", "bit perfect")) { SearchResultSwitch(FloatDspEnabledKey, false) },
+                SettingsChild("USB exclusive output", "usb_exclusive_audio", listOf("usb", "exclusive", "dac", "bit perfect", "direct", "aaudio")) { SearchResultSwitch(UsbExclusiveAudioKey, false) },
+                SettingsChild("Enable Tryptify Audio Processing", "tryptify_audio_processing", listOf("tryptify", "dsp engine", "autoeq", "equalizer", "bit perfect", "usb dac", "libusb", "oxford", "mixing console")) { SearchResultSwitch(TryptifyAudioProcessingKey, false) },
+                SettingsChild("Enable Lastwave Audio Processing", "lastwave_audio_processing", listOf("lastwave", "lastwave-native", "dsp engine", "clarity", "studio master", "oboe", "soxr", "bit perfect", "usb dac", "graphic eq")) { SearchResultSwitch(LastwaveAudioProcessingKey, false) },
                 SettingsChild("Spotify catalog", "spotify_catalog_source", listOf("spotify catalog", "spotify metadata", "spotify source")),
-                SettingsChild("Enable Tidal source", "tidal_enable", listOf("tidal", "enable tidal", "tidal source", "lossless", "hifi")),
-                SettingsChild("Use my Tidal account first", "tidal_account_first", listOf("tidal account first", "my tidal account", "prefer my account")),
+                SettingsChild("Enable Tidal source", "tidal_enable", listOf("tidal", "enable tidal", "tidal source", "lossless", "hifi")) { SearchResultSwitch(TidalEnabledKey, true) },
+                SettingsChild("Use my Tidal account first", "tidal_account_first", listOf("tidal account first", "my tidal account", "prefer my account")) { SearchResultSwitch(TidalAccountFirstKey, true) },
                 SettingsChild("Tidal audio quality", "tidal_audio_quality", listOf("tidal quality", "tidal audio quality", "tidal hifi", "tidal max", "mqa")),
-                SettingsChild("Tidal animated covers", "tidal_animated_covers", listOf("tidal animated covers", "tidal canvas", "tidal video cover", "animated cover")),
+                SettingsChild("Tidal animated covers", "tidal_animated_covers", listOf("tidal animated covers", "tidal canvas", "tidal video cover", "animated cover")) { SearchResultSwitch(TidalAnimatedCoversEnabledKey, false) },
                 SettingsChild("Manage Tidal instances", "tidal_manage_instances", listOf("tidal instances", "tidal server", "tidal endpoint", "manage instances")),
-                SettingsChild("Enable Qobuz source", "qobuz_enable", listOf("qobuz", "enable qobuz", "qobuz source", "hi-res", "flac")),
+                SettingsChild("Enable Qobuz source", "qobuz_enable", listOf("qobuz", "enable qobuz", "qobuz source", "hi-res", "flac")) { SearchResultSwitch(QobuzEnabledKey, false) },
                 SettingsChild("Qobuz audio quality", "qobuz_audio_quality", listOf("qobuz quality", "qobuz audio quality", "hi-res", "flac", "cd quality", "24 bit")),
-                SettingsChild("Enable Qobuz backup server", "qobuz_backup_enable", listOf("qobuz backup", "backup server", "qobuz backup server", "lossless backup", "fallback server", "kouzu")),
+                SettingsChild("Enable Qobuz backup server", "qobuz_backup_enable", listOf("qobuz backup", "backup server", "qobuz backup server", "lossless backup", "fallback server", "kouzu")) { SearchResultSwitch(QobuzBackupEnabledKey, false) },
                 SettingsChild("Backup resolver endpoints", "qobuz_backup_endpoints", listOf("qobuz backup endpoints", "backup mirror", "backup url", "resolver endpoint", "mirror list", "kouzu")),
                 SettingsChild("Manage Qobuz instances", "qobuz_manage_instances", listOf("qobuz instances", "qobuz server", "qobuz endpoint", "manage instances")),
-                SettingsChild("Enable Deezer source", "deezer_enable", listOf("deezer", "enable deezer", "deezer source", "flac")),
+                SettingsChild("Enable Deezer source", "deezer_enable", listOf("deezer", "enable deezer", "deezer source", "flac")) { SearchResultSwitch(DeezerEnabledKey, false) },
                 SettingsChild("Deezer audio quality", "deezer_audio_quality", listOf("deezer quality", "deezer audio quality", "deezer flac")),
-                SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("jiosaavn", "jio saavn", "saavn", "enable jiosaavn", "indian music")),
+                SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("jiosaavn", "jio saavn", "saavn", "enable jiosaavn", "indian music")) { SearchResultSwitch(JioSaavnEnabledKey, false) },
                 SettingsChild("JioSaavn audio quality", "jiosaavn_audio_quality", listOf("jiosaavn quality", "saavn quality", "jiosaavn audio quality")),
-                SettingsChild("Enable Amazon Music source", "amazon_enable", listOf("amazon", "amazon music", "enable amazon", "amazon source", "amazon hd")),
             ),
         )
 
@@ -336,32 +435,14 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.provider_tidal),
             title = "JioSaavn",
             subtitle = "JioSaavn audio source",
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.JioSaavn,
             keywords = listOf("jiosaavn", "jio saavn", "saavn", "indian music", "bollywood", "vivimusic"),
             onClick = { navController.navigate("settings/jiosaavn") },
             hidden = true,
             children = listOf(
-                SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("enable jiosaavn", "jiosaavn source", "turn on jiosaavn")),
+                SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("enable jiosaavn", "jiosaavn source", "turn on jiosaavn")) { SearchResultSwitch(JioSaavnEnabledKey, false) },
                 SettingsChild("JioSaavn audio quality", "jiosaavn_audio_quality", listOf("jiosaavn quality", "saavn audio quality", "jiosaavn bitrate")),
                 SettingsChild("JioSaavn credit", "jiosaavn_credit", listOf("jiosaavn credit", "vivimusic", "jiosaavn about")),
-            ),
-        )
-
-    // Sources → Amazon Music sub-page.
-    val amazon =
-        SettingsItem(
-            key = "amazon",
-            icon = painterResource(R.drawable.login),
-            title = "Amazon Music",
-            subtitle = "Amazon Music account (metadata only)",
-            accentColor = MaterialTheme.colorScheme.tertiary,
-            keywords = listOf("amazon", "amazon music", "amazon login", "amazon hd", "amazon ultra hd"),
-            onClick = { navController.navigate("settings/amazon") },
-            hidden = true,
-            children = listOf(
-                SettingsChild("Sign in to Amazon Music", "amazon_login", listOf("amazon login", "amazon sign in", "connect amazon")),
-                SettingsChild("Sign out of Amazon Music", "amazon_sign_out", listOf("amazon logout", "amazon sign out", "disconnect amazon")),
-                SettingsChild("Amazon audio quality", "amazon_audio_quality", listOf("amazon quality", "amazon hd", "amazon ultra hd")),
             ),
         )
 
@@ -371,14 +452,14 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.provider_tidal),
             title = "Deezer",
             subtitle = "Deezer account and audio source",
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.Deezer,
             keywords = listOf("deezer", "deezer account", "deezer login", "arl", "deezer premium", "flac"),
             onClick = { navController.navigate("settings/deezer") },
             hidden = true,
             children = listOf(
                 SettingsChild("Sign in to Deezer", "deezer_login", listOf("deezer login", "deezer sign in", "connect deezer", "deezer arl")),
                 SettingsChild("Sign out of Deezer", "deezer_sign_out", listOf("deezer logout", "deezer sign out", "disconnect deezer")),
-                SettingsChild("Enable Deezer source", "deezer_enable", listOf("enable deezer", "deezer source", "turn on deezer")),
+                SettingsChild("Enable Deezer source", "deezer_enable", listOf("enable deezer", "deezer source", "turn on deezer")) { SearchResultSwitch(DeezerEnabledKey, false) },
                 SettingsChild("Deezer audio quality", "deezer_audio_quality", listOf("deezer quality", "deezer audio quality", "deezer flac")),
             ),
         )
@@ -388,7 +469,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.ic_music),
             title = stringResource(R.string.source_settings),
             subtitle = stringResource(R.string.source_settings_subtitle),
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.Sources,
             keywords = listOf("source", "music source", "youtube music", "spotify", "metadata source", "search source", "tidal", "qobuz", "provider", "streaming", "telegram", "telegram channel", "flac", "lossless", "private channel"),
             onClick = { navController.navigate("settings/sources") },
 
@@ -407,7 +488,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.ic_lyrics),
             title = stringResource(R.string.lyrics),
             subtitle = stringResource(R.string.settings_lyrics_subtitle),
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.Lyrics,
             keywords = listOf("lyrics", "lyric", "subtitle", "text", "sing along", "lrc", "translation", "romanize", "karaoke"),
             onClick = { navController.navigate("settings/lyrics") },
 
@@ -415,16 +496,15 @@ fun buildSettingsGroups(
             children = listOf(
                 SettingsChild("Lyrics provider", "lyrics_provider", listOf("lyrics provider", "source", "lrclib", "kugou", "netease", "musixmatch", "betterlyrics", "portato", "youlyplus", "unison")),
 
-                SettingsChild("Show lyrics", "show_lyrics", listOf("show lyrics", "display lyrics", "lyrics toggle", "lyrics show")) { SearchResultSwitch(ShowLyricsKey, false) },
                 SettingsChild("Translate lyrics", "translate_lyrics", listOf("translate", "translation", "lyrics translation")) { SearchResultSwitch(TranslateLyricsKey, false) },
                 SettingsChild("Enable translator", "enable_translator", listOf("translator", "translation engine", "lyrics translator")) { SearchResultSwitch(EnableTranslatorKey, false) },
                 SettingsChild("Lyrics font size", "lyrics_font_size", listOf("font size", "lyrics size", "text size", "lyrics text size")),
                 SettingsChild("Lyrics line spacing", "lyrics_line_spacing", listOf("line spacing", "lyrics spacing", "lyrics line gap", "lyrics padding")),
-                SettingsChild("Lyrics line blur", "lyrics_line_blur", listOf("lyrics blur", "line blur", "focus blur")),
-                SettingsChild("Lyrics romanize Japanese", "lyrics_romanize_japanese", listOf("romanize", "japanese", "romaji", "furigana")),
-                SettingsChild("Lyrics romanize Korean", "lyrics_romanize_korean", listOf("romanize", "korean", "romanization")),
-                SettingsChild("Lyrics romanize Chinese", "lyrics_romanize_chinese", listOf("romanize", "chinese", "pinyin")),
-                SettingsChild("Lyrics romanize Hindi", "lyrics_romanize_hindi", listOf("romanize", "hindi", "devanagari")),
+                SettingsChild("Lyrics line blur", "lyrics_line_blur", listOf("lyrics blur", "line blur", "focus blur")) { SearchResultSwitch(LyricsLineBlurKey, false) },
+                SettingsChild("Lyrics romanize Japanese", "lyrics_romanize_japanese", listOf("romanize", "japanese", "romaji", "furigana")) { SearchResultSwitch(LyricsRomanizeJapaneseKey, false) },
+                SettingsChild("Lyrics romanize Korean", "lyrics_romanize_korean", listOf("romanize", "korean", "romanization")) { SearchResultSwitch(LyricsRomanizeKoreanKey, true) },
+                SettingsChild("Lyrics romanize Chinese", "lyrics_romanize_chinese", listOf("romanize", "chinese", "pinyin")) { SearchResultSwitch(LyricsRomanizeChineseKey, true) },
+                SettingsChild("Lyrics romanize Hindi", "lyrics_romanize_hindi", listOf("romanize", "hindi", "devanagari")) { SearchResultSwitch(LyricsRomanizeHindiKey, true) },
                 SettingsChild("Lyrics romanize other languages", "lyrics_romanize_other", listOf("romanize", "other languages", "arabic", "thai", "cyrillic")),
                 SettingsChild("Lyrics click to seek", "lyrics_click", listOf("click lyrics", "tap lyrics", "seek lyrics")) { SearchResultSwitch(LyricsClickKey, false) },
                 SettingsChild("Lyrics auto-scroll", "lyrics_scroll", listOf("scroll", "auto scroll", "lyrics scroll")) { SearchResultSwitch(LyricsScrollKey, true) },
@@ -446,9 +526,7 @@ fun buildSettingsGroups(
                 SettingsChild("Providers", "providers", listOf("lyrics providers", "providers", "lyrics sources", "which lyrics provider")),
                 SettingsChild("Romanization", "romanization", listOf("romanization", "romanisation", "romanize", "romaji", "transliteration")),
                 SettingsChild("Language packs", "language_packs", listOf("language pack", "language packs", "romanization data", "dictionary")),
-                SettingsChild("Enable Tidal lyrics", "enable_tidal_lyrics", listOf("tidal lyrics", "enable tidal lyrics", "tidal lyric provider")),
-                SettingsChild("Enable Deezer lyrics", "enable_deezer_lyrics", listOf("deezer lyrics", "enable deezer lyrics", "deezer lyric provider")),
-                SettingsChild("Musixmatch (experimental)", "enable_musixmatch_experimental", listOf("musixmatch", "musixmatch experimental", "musixmatch lyrics")),
+                SettingsChild("Musixmatch (experimental)", "enable_musixmatch_experimental", listOf("musixmatch", "musixmatch experimental", "musixmatch lyrics")) { SearchResultSwitch(EnableMusixmatchExperimentalKey, false) },
                 SettingsChild("Lyrics text size", "lyrics_text_size", listOf("lyrics text size", "lyrics font size", "lyrics size", "bigger lyrics")),
             ),
         )
@@ -459,7 +537,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.lyrics),
             title = "Lyrics providers",
             subtitle = "Enable and prioritise lyrics sources",
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.LyricsProviders,
             keywords = listOf("lyrics provider", "lyrics providers", "lyrics source", "lrclib", "kugou", "musixmatch", "betterlyrics", "youlyplus", "unison"),
             onClick = { navController.navigate("settings/lyrics/providers") },
             hidden = true,
@@ -472,9 +550,7 @@ fun buildSettingsGroups(
                 SettingsChild("Enable KuGou lyrics provider", "enable_kugou", listOf("kugou", "kugou lyrics", "chinese lyrics")),
                 SettingsChild("Enable Unison lyrics", "enable_unison_lyrics", listOf("unison", "unison lyrics")),
 
-                SettingsChild("Enable Tidal lyrics", "enable_tidal_lyrics", listOf("tidal lyrics", "enable tidal lyrics")),
-                SettingsChild("Enable Deezer lyrics", "enable_deezer_lyrics", listOf("deezer lyrics", "enable deezer lyrics")),
-                SettingsChild("Musixmatch (experimental)", "enable_musixmatch_experimental", listOf("musixmatch", "musixmatch experimental")),
+                SettingsChild("Musixmatch (experimental)", "enable_musixmatch_experimental", listOf("musixmatch", "musixmatch experimental")) { SearchResultSwitch(EnableMusixmatchExperimentalKey, false) },
                 SettingsChild("Preferred lyrics provider", "set_first_lyrics_provider", listOf("preferred lyrics provider", "first lyrics provider", "lyrics priority")),
             ),
         )
@@ -485,15 +561,15 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.translate),
             title = "Lyrics romanization",
             subtitle = "Transliterate non-Latin lyrics",
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.LyricsRomanisation,
             keywords = listOf("romanization", "romanisation", "romanize", "romaji", "pinyin", "transliteration", "furigana", "hangul"),
             onClick = { navController.navigate("settings/lyrics/romanisation") },
             hidden = true,
             children = listOf(
-                SettingsChild("Romanize japanese lyrics", "lyrics_romanize_japanese", listOf("romanize japanese", "romaji", "furigana", "japanese lyrics")),
-                SettingsChild("Romanize korean lyrics", "lyrics_romanize_korean", listOf("romanize korean", "hangul", "korean lyrics")),
-                SettingsChild("Romanize chinese lyrics", "lyrics_romanize_chinese", listOf("romanize chinese", "pinyin", "chinese lyrics")),
-                SettingsChild("Romanize hindi lyrics", "lyrics_romanize_hindi", listOf("romanize hindi", "devanagari", "hindi lyrics")),
+                SettingsChild("Romanize japanese lyrics", "lyrics_romanize_japanese", listOf("romanize japanese", "romaji", "furigana", "japanese lyrics")) { SearchResultSwitch(LyricsRomanizeJapaneseKey, false) },
+                SettingsChild("Romanize korean lyrics", "lyrics_romanize_korean", listOf("romanize korean", "hangul", "korean lyrics")) { SearchResultSwitch(LyricsRomanizeKoreanKey, true) },
+                SettingsChild("Romanize chinese lyrics", "lyrics_romanize_chinese", listOf("romanize chinese", "pinyin", "chinese lyrics")) { SearchResultSwitch(LyricsRomanizeChineseKey, true) },
+                SettingsChild("Romanize hindi lyrics", "lyrics_romanize_hindi", listOf("romanize hindi", "devanagari", "hindi lyrics")) { SearchResultSwitch(LyricsRomanizeHindiKey, true) },
                 SettingsChild("Romanize other non-latin lyrics", "lyrics_romanize_other_languages", listOf("romanize other", "arabic", "thai", "cyrillic", "other languages")),
             ),
         )
@@ -503,7 +579,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.language),
             title = stringResource(R.string.content),
             subtitle = stringResource(R.string.settings_content_subtitle),
-            accentColor = MaterialTheme.colorScheme.primary,
+            accentColor = SettingsIconPalette.Content,
             keywords = listOf("content", "language", "locale", "country", "region", "app language", "explicit", "age restricted", "age", "mature", "video", "progressive", "quick picks"),
             onClick = { navController.navigate("settings/content") },
             children = listOf(
@@ -513,8 +589,7 @@ fun buildSettingsGroups(
                 SettingsChild("Hide video", "hide_video", listOf("video", "hide video", "music video", "mv")) { SearchResultSwitch(HideVideoKey, false) },
                 SettingsChild("Enable video", "enable_video", listOf("video", "music video", "mv", "enable video")),
                 SettingsChild("Quick picks", "quick_picks", listOf("quick picks", "quick mix", "smart mix", "recommendations")),
-                SettingsChild("Progressive playback", "progressive_playback", listOf("progressive", "gapless", "seamless")),
-                SettingsChild("Allow age-restricted content", "allow_age_restricted", listOf("age restricted", "allow age restricted", "mature content", "18+", "restricted")),
+                SettingsChild("Allow age-restricted content", "allow_age_restricted", listOf("age restricted", "allow age restricted", "mature content", "18+", "restricted")) { SearchResultSwitch(AllowAgeRestrictedKey, false) },
                 SettingsChild("Playlist recommendation source", "you_might_like_source", listOf("recommendation source", "you might like", "playlist recommendation", "suggestions source")),
                 SettingsChild("AI content filter", "ai_content_filter", listOf("ai content filter", "ai filter", "ai generated", "aislist", "filter ai music")),
                 SettingsChild("Hide AI-generated content", "ai_content_filter_hide", listOf("hide ai generated", "hide ai music", "ai content hide", "block ai")),
@@ -529,7 +604,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.translate),
             title = stringResource(R.string.language_packs),
             subtitle = stringResource(R.string.settings_language_packs_subtitle),
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.LanguagePacks,
             keywords = listOf("language pack", "translation", "translate", "localization", "i18n"),
             onClick = { navController.navigate("settings/language_packs") },
 
@@ -541,7 +616,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.swipe),
             title = stringResource(R.string.settings_behavior_title),
             subtitle = stringResource(R.string.settings_behavior_subtitle),
-            accentColor = MaterialTheme.colorScheme.primary,
+            accentColor = SettingsIconPalette.Behavior,
             keywords = listOf("behavior", "privacy", "swipe", "gesture", "history", "cache", "data", "screenshot", "haptic", "vibrate"),
             onClick = { navController.navigate("settings/privacy") },
             children = listOf(
@@ -549,11 +624,9 @@ fun buildSettingsGroups(
                 SettingsChild("Clear listen history", "clear_listen_history", listOf("clear history", "delete history", "reset history")),
                 SettingsChild("Pause search history", "pause_search_history", listOf("pause search", "stop search history", "private search")) { SearchResultSwitch(PauseSearchHistoryKey, false) },
                 SettingsChild("Clear search history", "clear_search_history", listOf("clear search", "delete search", "reset search")),
-                SettingsChild("Sync playback to YouTube history", "sync_yt_history", listOf("youtube history", "sync history", "playback history")) { SearchResultSwitch(SyncPlaybackToYouTubeHistoryKey, false) },
                 SettingsChild("Haptics", "haptics", listOf("haptic", "vibration", "haptic feedback", "vibrate")) { SearchResultSwitch(EnableHapticFeedbackKey, true) },
                 SettingsChild("Disable screenshot", "disable_screenshot", listOf("screenshot", "screen capture", "privacy", "no screenshot")) { SearchResultSwitch(DisableScreenshotKey, false) },
-                SettingsChild("Network metered", "network_metered", listOf("metered", "mobile data", "cellular", "data saver")) { SearchResultSwitch(NetworkMeteredKey, false) },
-                SettingsChild("Show tags in library", "show_tags_in_library", listOf("tags", "library tags", "show tags")),
+                SettingsChild("Show tags in library", "show_tags_in_library", listOf("tags", "library tags", "show tags")) { SearchResultSwitch(ShowTagsInLibraryKey, false) },
                 SettingsChild("Low data mode", "low_data_mode", listOf("low data", "data saver", "save data", "metered", "data mode")) { SearchResultSwitch(LowDataModeKey, true) },
                 SettingsChild("Force high refresh rate", "force_high_refresh_rate", listOf("refresh rate", "high refresh", "120hz", "90hz", "smooth")) { SearchResultSwitch(ForceHighRefreshRateKey, false) },
                 SettingsChild("Open supported links by default", "open_supported_links", listOf("open links", "supported links", "default links", "deep link", "default browser app")),
@@ -565,7 +638,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.directions_car),
             title = stringResource(R.string.android_auto),
             subtitle = stringResource(R.string.android_auto_settings_subtitle),
-            accentColor = MaterialTheme.colorScheme.primary,
+            accentColor = SettingsIconPalette.AndroidAuto,
             keywords = listOf("android auto", "androidauto", "car", "automotive", "driving", "aaosp", "vehicle", "head unit"),
             onClick = { navController.navigate("settings/android_auto") },
             children = listOf(
@@ -584,11 +657,10 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.auto_awesome),
             title = stringResource(R.string.integration),
             subtitle = stringResource(R.string.settings_integration_subtitle),
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.Integration,
             keywords = listOf("integration", "lastfm", "last.fm", "libre.fm", "scrobble", "scrobbling", "discord", "listenbrainz", "spotify", "apple music"),
             onClick = { navController.navigate("settings/integration") },
             children = listOf(
-                SettingsChild("Apple Music login", "applemusic", listOf("apple music", "applemusic", "itunes", "music kit", "apple login", "apple music login")),
                 SettingsChild("Last.fm scrobbling", "lastfm_scrobbling", listOf("lastfm", "last.fm", "libre.fm", "scrobble", "scrobbling", "listens")) { SearchResultSwitch(EnableLastFMScrobblingKey, false) },
                 SettingsChild("Last.fm account", "lastfm_account", listOf("lastfm account", "lastfm login", "lastfm session", "lastfm username")),
                 SettingsChild("Last.fm options", "lastfm_options", listOf("lastfm options", "lastfm settings", "scrobble toggle", "now playing")),
@@ -601,6 +673,8 @@ fun buildSettingsGroups(
                 SettingsChild("Discord image options", "discord_images", listOf("discord image", "large image", "large text", "discord artwork", "discord cover")),
                 SettingsChild("ListenBrainz", "listenbrainz", listOf("listenbrainz", "listen brainz", "scrobble")) { SearchResultSwitch(ListenBrainzEnabledKey, false) },
                 SettingsChild("ListenBrainz token", "listenbrainz_token", listOf("listenbrainz token", "listenbrainz api key", "listenbrainz credential")),
+                SettingsChild("Listen Together", "listen_together", listOf("listen together", "listen together settings", "room", "shared playback", "sync playback", "listen party", "group listening", "chat", "together")) { SearchResultSwitch(ListenTogetherSyncVolumeKey, false) },
+                SettingsChild("Listen Together screen", "listen_together_screen", listOf("listen together screen", "create room", "join room", "room code", "share room", "invite friends")),
                 SettingsChild("Spotify", "spotify", listOf("spotify", "spotify connect", "spotify playlists")) { SearchResultSwitch(ShowSpotifyPlaylistsKey, false) },
                 SettingsChild("Tidal", "tidal", listOf("tidal", "hifi", "master", "mqa", "lossless", "flac")) { SearchResultSwitch(TidalEnabledKey, false) },
                 SettingsChild("Tidal account", "tidal_account", listOf("tidal account", "tidal login", "tidal token", "tidal session")),
@@ -615,7 +689,7 @@ fun buildSettingsGroups(
                 SettingsChild("Telegram browse channels", "telegram_browse_channels", listOf("browse channels", "channels", "telegram channels", "music channels")),
                 SettingsChild("Telegram lossless only", "telegram_lossless_only", listOf("lossless", "flac", "lossless only", "high quality")) { SearchResultSwitch(TelegramLosslessOnlyKey, false) },
                 SettingsChild("Telegram logout", "telegram_logout", listOf("logout", "log out", "sign out", "disconnect telegram")),
-                SettingsChild("Import playlist from another service", "cross_service_import", listOf("import", "import playlist", "cross service", "youtube music import", "apple music import", "amazon music import", "tidal import", "deezer import", "playlist url", "import url", "import from url", "playlist from url")),
+                SettingsChild("Import playlist from another service", "cross_service_import", listOf("import", "import playlist", "cross service", "youtube music import", "apple music import", "tidal import", "deezer import", "playlist url", "import url", "import from url", "playlist from url")),
                 SettingsChild("Enable scrobbling", "enable_scrobbling", listOf("enable scrobbling", "scrobble", "scrobbler", "lastfm scrobble")) { SearchResultSwitch(EnableLastFMScrobblingKey, false) },
                 SettingsChild("Now playing", "lastfm_now_playing", listOf("now playing", "lastfm now playing", "scrobble now playing", "update now playing")),
                 SettingsChild("Prefer YouTube thumbnails", "lastfm_prefer_yt_thumbnails", listOf("prefer youtube thumbnails", "lastfm thumbnails", "scrobble artwork")),
@@ -646,7 +720,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.auto_awesome),
             title = "Discord experimental",
             subtitle = "Rich presence buttons and translation",
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.DiscordExperimental,
             keywords = listOf("discord experimental", "discord buttons", "rich presence buttons", "rpc buttons", "discord translator"),
             onClick = { navController.navigate("settings/discord/experimental") },
             hidden = true,
@@ -666,7 +740,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.provider_tidal),
             title = "Tidal",
             subtitle = "Tidal account and instances",
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.Tidal,
             keywords = listOf("tidal", "tidal account", "tidal instances", "hifi", "mqa", "lossless", "flac", "tidal login"),
             onClick = { navController.navigate("settings/tidal") },
             hidden = true,
@@ -691,12 +765,12 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.provider_tidal),
             title = "Qobuz",
             subtitle = "Qobuz account, tokens and instances",
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.Qobuz,
             keywords = listOf("qobuz", "qobuz account", "qobuz tokens", "qobuz instances", "hi-res", "flac", "cd quality", "24 bit", "qobuz login"),
             onClick = { navController.navigate("settings/qobuz") },
             hidden = true,
             children = listOf(
-                SettingsChild("Enable Qobuz source", "qobuz_enable", listOf("enable qobuz", "qobuz source", "turn on qobuz")),
+                SettingsChild("Enable Qobuz source", "qobuz_enable", listOf("enable qobuz", "qobuz source", "turn on qobuz")) { SearchResultSwitch(QobuzEnabledKey, false) },
                 SettingsChild("Qobuz audio quality", "qobuz_audio_quality", listOf("qobuz quality", "hi-res", "flac", "cd quality", "24 bit")),
                 SettingsChild("Sign in with Qobuz (web)", "qobuz_login_web", listOf("qobuz login", "qobuz sign in", "qobuz web login", "connect qobuz")),
                 SettingsChild("Add tokens (paste)", "qobuz_add_tokens", listOf("add qobuz tokens", "qobuz token", "app secret", "app id", "paste tokens")),
@@ -718,7 +792,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.ic_telegram),
             title = "Telegram",
             subtitle = "Telegram account and channels",
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.Telegram,
             keywords = listOf("telegram", "telegram channel", "telegram login", "telegram music", "telegram bots", "channel sync"),
             onClick = { navController.navigate("settings/telegram") },
             hidden = true,
@@ -737,7 +811,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.ai),
             title = stringResource(R.string.ai_integration),
             subtitle = stringResource(R.string.ai_integration_desc),
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.AiIntegration,
             keywords = listOf("ai", "artificial intelligence", "chatgpt", "openai", "gemini", "llm", "ai integration", "mix", "smart mix"),
             onClick = { navController.navigate("settings/ai_integration") },
 
@@ -749,7 +823,7 @@ fun buildSettingsGroups(
                 SettingsChild("AI model", "ai_model", listOf("model", "ai model", "gpt", "gemini model", "claude model")),
                 SettingsChild("Test API", "ai_test_api", listOf("test", "test api", "verify", "test connection", "ai test")),
                 SettingsChild("Hide AI mix", "hide_ai_mix", listOf("hide ai", "ai mix", "smart mix", "hide mix")) { SearchResultSwitch(HideAiMixKey, false) },
-                SettingsChild("Automatic translation", "auto_translate_lyrics", listOf("automatic translation", "auto translate", "auto translate lyrics", "translate automatically")),
+                SettingsChild("Automatic translation", "auto_translate_lyrics", listOf("automatic translation", "auto translate", "auto translate lyrics", "translate automatically")) { SearchResultSwitch(AutoTranslateLyricsKey, false) },
                 SettingsChild("Don't auto translate these languages", "auto_translate_excluded_languages", listOf("excluded languages", "skip translation", "do not translate", "translation exclusions")),
                 SettingsChild("Target language", "translate_language", listOf("target language", "translate to", "translation language")),
                 SettingsChild("Translation mode", "translate_mode", listOf("translation mode", "translate mode", "translation style")),
@@ -766,7 +840,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.wifi_proxy),
             title = stringResource(R.string.internet),
             subtitle = stringResource(R.string.settings_internet_subtitle),
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.Internet,
             keywords = listOf("internet", "proxy", "vpn", "network", "wifi", "connection", "traffic", "tor", "dns", "dns over https", "region", "country", "spoof", "geobypass", "geo bypass"),
             onClick = { navController.navigate("settings/internet") },
             children = listOf(
@@ -777,9 +851,9 @@ fun buildSettingsGroups(
                 SettingsChild("Proxy type", "proxy_type", listOf("proxy type", "socks5", "http proxy type", "proxy protocol")),
                 SettingsChild("Proxy username", "proxy_username", listOf("proxy username", "proxy auth", "proxy credentials", "proxy login")),
                 SettingsChild("Proxy password", "proxy_password", listOf("proxy password", "proxy auth", "proxy credentials", "proxy secret")),
-                SettingsChild("Bypass proxy for streams", "stream_bypass_proxy", listOf("bypass proxy", "stream proxy", "stream bypass", "skip proxy for streams")),
+                SettingsChild("Bypass proxy for streams", "stream_bypass_proxy", listOf("bypass proxy", "stream proxy", "stream bypass", "skip proxy for streams")) { SearchResultSwitch(StreamBypassProxyKey, false) },
                 SettingsChild("Test proxy connection", "test_proxy", listOf("test proxy", "verify proxy", "check proxy", "proxy test")),
-                SettingsChild("DNS over HTTPS", "dns_over_https", listOf("dns", "dns over https", "doh", "encrypted dns", "secure dns")),
+                SettingsChild("DNS over HTTPS", "dns_over_https", listOf("dns", "dns over https", "doh", "encrypted dns", "secure dns")) { SearchResultSwitch(EnableDnsOverHttpsKey, false) },
                 SettingsChild("DNS provider", "dns_provider", listOf("dns provider", "dns server", "dns resolver", "dns service")),
                 SettingsChild("DNS custom URL", "dns_custom_url", listOf("dns custom url", "custom dns", "dns endpoint", "dns url")),
                 SettingsChild("IP rotation", "ip_rotation", listOf("ip rotation", "rotate ip", "ip pool", "ip cycling")),
@@ -793,7 +867,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.token),
             title = stringResource(R.string.po_token_generation),
             subtitle = stringResource(R.string.settings_po_token_subtitle),
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.PoToken,
             keywords = listOf("po token", "potoken", "botguard", "youtube token", "playability"),
             onClick = { navController.navigate(PO_TOKEN_ROUTE) },
 
@@ -803,24 +877,13 @@ fun buildSettingsGroups(
             ),
         )
 
-    val musicTogether =
-        SettingsItem(
-            key = "music_together",
-            icon = painterResource(R.drawable.ic_share),
-            title = stringResource(R.string.music_together),
-            subtitle = "Listen in sync with friends",
-            accentColor = MaterialTheme.colorScheme.tertiary,
-            keywords = listOf("music together", "listen together", "listening party", "sync listening", "together", "room", "lan", "public room", "share session"),
-            onClick = { navController.navigate("settings/music_together") },
-            hidden = true,
-        )
     val storage =
         SettingsItem(
             key = "storage",
             icon = painterResource(R.drawable.storage),
             title = stringResource(R.string.storage),
             subtitle = stringResource(R.string.settings_storage_subtitle),
-            accentColor = MaterialTheme.colorScheme.primary,
+            accentColor = SettingsIconPalette.Storage,
             keywords = listOf("storage", "download", "cache", "disk", "space", "memory", "path", "location", "export", "export songs", "local storage", "save songs"),
             onClick = { navController.navigate("settings/storage") },
             children = listOf(
@@ -848,7 +911,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.download),
             title = stringResource(R.string.downloads),
             subtitle = stringResource(R.string.settings_downloads_subtitle),
-            accentColor = MaterialTheme.colorScheme.primary,
+            accentColor = SettingsIconPalette.Downloads,
             keywords = listOf("download", "downloader", "external downloader", "download source", "auto download", "export songs", "clear downloads", "offline"),
             onClick = { navController.navigate("settings/downloads") },
             children = listOf(
@@ -866,7 +929,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.backup),
             title = stringResource(R.string.backup_restore),
             subtitle = stringResource(R.string.settings_backup_restore_subtitle),
-            accentColor = MaterialTheme.colorScheme.primary,
+            accentColor = SettingsIconPalette.BackupRestore,
             keywords = listOf("backup", "restore", "export", "import", "data", "save", "scheduled", "playlist", "csv", "m3u"),
             onClick = { navController.navigate("settings/backup_restore") },
             children = listOf(
@@ -894,7 +957,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.experiment),
             title = stringResource(R.string.settings_developer_options_title),
             subtitle = stringResource(R.string.settings_developer_options_subtitle),
-            accentColor = MaterialTheme.colorScheme.tertiary,
+            accentColor = SettingsIconPalette.DeveloperOptions,
             keywords = listOf("developer", "debug", "experimental", "advanced", "logcat", "dev", "manual source", "changelog", "update"),
             onClick = { navController.navigate("settings/misc") },
             children = listOf(
@@ -918,7 +981,7 @@ fun buildSettingsGroups(
                 icon = painterResource(R.drawable.link),
                 title = stringResource(R.string.default_links),
                 subtitle = stringResource(R.string.open_supported_links),
-                accentColor = MaterialTheme.colorScheme.secondary,
+                accentColor = SettingsIconPalette.DefaultLinks,
                 keywords = listOf("default links", "links", "urls", "deep link", "supported links"),
                 onClick = {
                     try {
@@ -974,12 +1037,7 @@ fun buildSettingsGroups(
                         stringResource(R.string.settings_updates_subtitle)
                     },
                 showUpdateIndicator = hasUpdate,
-                accentColor =
-                    if (hasUpdate) {
-                        MaterialTheme.colorScheme.tertiary
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    },
+                accentColor = SettingsIconPalette.Updates,
                 badge = if (hasUpdate) "v${BuildConfig.VERSION_NAME}" else BuildConfig.VERSION_NAME,
                 onClick = { navController.navigate("settings/update") },
             )
@@ -992,7 +1050,7 @@ fun buildSettingsGroups(
             icon = painterResource(R.drawable.ic_about),
             title = stringResource(R.string.about),
             subtitle = stringResource(R.string.settings_about_subtitle),
-            accentColor = MaterialTheme.colorScheme.secondary,
+            accentColor = SettingsIconPalette.About,
             keywords = listOf("about", "info", "version", "license", "credits", "contributors", "changelog"),
             onClick = { navController.navigate("settings/about") },
             children = listOf(
@@ -1004,7 +1062,8 @@ fun buildSettingsGroups(
 
     return listOf(
         SettingsGroup(
-            title = stringResource(R.string.settings),
+
+            title = "",
             items = listOf(account, stats),
         ),
         SettingsGroup(
@@ -1019,7 +1078,6 @@ fun buildSettingsGroups(
                     playback,
                     sources,
                     jioSaavn,
-                    amazon,
                     deezer,
                     lyrics,
                     lyricsProviders,
@@ -1047,7 +1105,7 @@ fun buildSettingsGroups(
         ),
         SettingsGroup(
             title = stringResource(R.string.storage),
-            items = listOf(storage, downloads, backupRestore, musicTogether),
+            items = listOf(storage, downloads, backupRestore),
         ),
         SettingsGroup(
             title = stringResource(R.string.about),

@@ -56,7 +56,6 @@ fun LibreFmLoginScreen(navController: NavController) {
 
     fun finishLogin(auth: Authentication) {
         scope.launch {
-
             LastFM.configure(
                 endpoint = LastFM.LIBREFM_API_ENDPOINT,
                 apiKey = LastFmAppCredentials.API_KEY,
@@ -99,7 +98,6 @@ fun LibreFmLoginScreen(navController: NavController) {
         }
         scope.launch {
             val result = withContext(Dispatchers.IO) {
-
                 LastFM.configure(
                     endpoint = LastFM.LIBREFM_API_ENDPOINT,
                     apiKey = LastFmAppCredentials.API_KEY,
@@ -151,7 +149,6 @@ fun LibreFmLoginScreen(navController: NavController) {
                     displayZoomControls = false
                 }
                 resetAuthWebViewSession(ctx, this, clearCookies = true) {
-
                     loadUrl(libreFmAuthUrl())
                 }
             }

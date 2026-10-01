@@ -148,7 +148,6 @@ class AlbumViewModel
 
         private fun fetchAlbumCanvas(context: Context) {
             viewModelScope.launch {
-
                 if (!context.dataStore.get(AlbumCanvasEnabledKey, true)) return@launch
 
                 if (context.isLowDataModeActive()) return@launch
