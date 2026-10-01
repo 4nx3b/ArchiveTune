@@ -75,7 +75,14 @@ object TidalAudioProvider {
     private val ISRC_STRIP_REGEX = Regex("[^A-Z0-9]")
     private val ISRC_PATTERN_REGEX = Regex("[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
     private val DIACRITIC_REGEX = Regex("\\p{Mn}+")
-    private val NON_ALPHANUMERIC_REGEX = Regex("[^a-z0-9]+")
+
+    // Unicode-aware: keeps letters and digits from EVERY script. The previous
+    // [^a-z0-9]+ form deleted every non-Latin character, which BLANKED Hindi /
+    // Bengali / Arabic / CJK queries and titles: the matcher then rejected every
+    // candidate ("wanted title blank") and both the play-from popup search and
+    // the automatic lossless source resolution returned nothing for non-English
+    // songs. Matching the MusicService-side TitleMatch.normalize invariant.
+    private val NON_ALPHANUMERIC_REGEX = Regex("[^\\p{L}\\p{N}]+")
     private val WHITESPACE_REGEX = Regex("\\s+")
     private val FEATURED_ARTIST_TITLE_SUFFIX_REGEX = Regex("""\b(feat|ft|featuring)\b.*$""")
     private val EDITION_NOISE_WORD_REGEX = Regex("""\b(explicit|clean|remaster|remastered|version|audio|official)\b""")
@@ -2562,7 +2569,10 @@ object TidalAudioProvider {
         value
             .split(' ')
             .map { it.trim() }
-            .filter { it.length >= 2 && it !in STOP_WORDS }
+            // CJK scripts write meaningful single-character words - "愛" or "花"
+            // must survive tokenization or CJK titles can never overlap. Indic /
+            // Latin scripts keep the length >= 2 floor to drop noise.
+            .filter { (it.length >= 2 || it.any { ch -> ch.code >= 0x2E80 }) && it !in STOP_WORDS }
             .toSet()
 
     private fun tokenOverlap(

@@ -75,6 +75,12 @@ private const val CanvasSyncRateLockSpanMs = 2_000f
 
 private const val CanvasSyncMaxRateLockDelta = 0.03f
 
+// Detach window of the orientation settle cycle: long enough for the two
+// rotated-away canvas decoders to be released and the fresh decoder to finish
+// preparing off-surface, short enough to hide inside the twin's own 300 ms
+// first-frame fade-in.
+private const val CanvasOrientationCycleMs = 150L
+
 val LocalPlayerSheetVisible = staticCompositionLocalOf { true }
 
 class CanvasLoopSync {
@@ -104,6 +110,20 @@ fun CanvasArtworkPlayer(
     loopSyncFollower: CanvasLoopSync? = null,
 
     onFirstFrameRendered: (() -> Unit)? = null,
+
+    /**
+     * Bump to force one detach -> settle -> re-attach surface cycle. Used by
+     * the AM player's blurred backdrop twin on orientation change: rotation
+     * recreates the whole player subtree (the two canvas ExoPlayers are
+     * released and rebuilt within the same frame) WITHOUT the surface cycle a
+     * minimise/maximise performs, and the twin created mid-codec-churn then
+     * rendered a laggy blurred canvas behind the bottom controls until the
+     * user manually recycled the player. The cycle replicates that heal:
+     * surface detaches for [CanvasOrientationCycleMs] (the decoder keeps
+     * preparing in the background), then re-attaches with a fresh first-frame
+     * pass and the loop-sync re-seek on STATE_READY.
+     */
+    refreshEpoch: Int = 0,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -125,6 +145,15 @@ fun CanvasArtworkPlayer(
     val contentVisible = visible && sheetVisible
     val shouldPlay by rememberUpdatedState(playbackActive)
     val reportAvailability by rememberUpdatedState(onPlaybackAvailabilityChange)
+
+    var surfaceCycleActive by remember { mutableStateOf(false) }
+    LaunchedEffect(refreshEpoch) {
+        if (refreshEpoch <= 0) return@LaunchedEffect
+        surfaceCycleActive = true
+        delay(CanvasOrientationCycleMs)
+        surfaceCycleActive = false
+    }
+    val effectiveContentVisible = contentVisible && !surfaceCycleActive
 
     val okHttpClient =
         remember {
@@ -238,8 +267,8 @@ fun CanvasArtworkPlayer(
         }
     }
 
-    LaunchedEffect(contentVisible) {
-        if (contentVisible) {
+    LaunchedEffect(effectiveContentVisible) {
+        if (effectiveContentVisible) {
             isVideoReady = false
         }
     }
@@ -502,7 +531,7 @@ fun CanvasArtworkPlayer(
     )
 
     val aspect = videoDisplayAspectRatio
-    if (contentVisible) {
+    if (effectiveContentVisible) {
         if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM && aspect != null && aspect > 0f) {
 
             Box(modifier = modifier.clipToBounds()) {

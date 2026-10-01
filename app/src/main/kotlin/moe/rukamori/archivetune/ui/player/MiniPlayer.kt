@@ -111,11 +111,16 @@ fun MiniPlayer(
     val translationYPx = with(density) { 10.dp.toPx() }
 
     val compactStartInset = compactHorizontalPadding + CompactControlSize + CompactControlGap
+    // When a right-side floating control is reserved (search circle), the pill
+    // keeps the full start-mirrored inset. When there is NO end control the
+    // pill used to run flush against the screen edge (0dp end padding) - keep
+    // the horizontal screen padding instead so the compact pill has even
+    // spacing from the display border, matching the floating nav bar's rhythm.
     val compactEndInset =
         if (compactReserveEndControl) {
             compactHorizontalPadding + CompactControlSize + CompactControlGap
         } else {
-            0.dp
+            compactHorizontalPadding
         }
     val dockedModifier =
         (if (dockedAnim > 0.001f) {

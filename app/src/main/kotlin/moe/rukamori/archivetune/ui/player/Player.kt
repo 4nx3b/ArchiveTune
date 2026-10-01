@@ -1676,6 +1676,20 @@ fun BottomSheetPlayer(
             )
         }
 
+        // Orientation epoch: remembered OUTSIDE the orientation branch so it
+        // survives the landscape<->portrait subtree swap (the activity is not
+        // recreated - configChanges handles orientation). It bumps AFTER every
+        // orientation change and lets the freshly composed blurred-canvas twin
+        // run the same detach -> first-frame -> re-seek settle cycle that a
+        // manual minimise/maximise performs - without it the twin was created
+        // mid-codec-churn and rendered a laggy blurred canvas behind the bottom
+        // controls until the user manually recycled the player.
+        val currentOrientation = LocalConfiguration.current.orientation
+        var orientationRefreshEpoch by remember { mutableIntStateOf(0) }
+        LaunchedEffect(currentOrientation) {
+            orientationRefreshEpoch += 1
+        }
+
         when (LocalConfiguration.current.orientation) {
             Configuration.ORIENTATION_LANDSCAPE -> {
                 if (playerDesignStyle == PlayerDesignStyle.BITCHORD) {
@@ -2156,6 +2170,7 @@ fun BottomSheetPlayer(
                             onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                             onLyricsVisibilityChange = { isAppleMusicInlineLyricsOpen = it },
                             landscape = true,
+                            orientationRefreshEpoch = orientationRefreshEpoch,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2700,6 +2715,7 @@ fun BottomSheetPlayer(
                             lyricsSyncOffset = lyricsSyncOffset,
                             onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                             onLyricsVisibilityChange = { isAppleMusicInlineLyricsOpen = it },
+                            orientationRefreshEpoch = orientationRefreshEpoch,
 
                             modifier =
                                 Modifier

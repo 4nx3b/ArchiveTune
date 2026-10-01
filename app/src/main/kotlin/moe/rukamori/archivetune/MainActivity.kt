@@ -1444,9 +1444,6 @@ class MainActivity : ComponentActivity() {
                         label = "bottomUiCompactFraction",
                     )
 
-                    val compactSearchCircleVisible =
-                        navBackStackEntry?.destination?.route?.startsWith("artist/") != true
-
                     // Inside library sub-pages (playlists, history, liked, downloads)
                     // the left floating circle behaves as a Library shortcut instead
                     // of Home, matching the section the user navigated from.
@@ -1465,6 +1462,16 @@ class MainActivity : ComponentActivity() {
                                 route.startsWith("online_playlist/") ||
                                 route.startsWith("top_playlist/")
                         }
+
+                    val compactSearchCircleVisible =
+                        navBackStackEntry?.destination?.route?.startsWith("artist/") != true &&
+                            // Library sub-pages carry their own in-header search
+                            // affordance (History, playlists, liked, Spotify,
+                            // local songs, artists...). Rendering the compact
+                            // search circle next to the mini player there showed
+                            // TWO search pills at once - keep it only on screens
+                            // whose header has no search of its own.
+                            !compactLeftCircleIsLibrary
 
                     val navigationBarGlassGlow by rememberPreference(
                         NavigationBarGlassGlowKey,
@@ -1679,6 +1686,25 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // Deterministic glass restore after the player (or its lyrics)
+                    // closes: re-attaching the NavHost recorder bumps its own
+                    // consumer tick, but some close paths never re-attach (the
+                    // recorder stayed attached behind a sheet that only partially
+                    // rose, or a lyrics flag cleared without a sheet settle).
+                    // Bumping the tick when EITHER cover condition lifts forces
+                    // every global-backdrop consumer (top bar pills, compact
+                    // circles, nav bar, mini player) to redraw the frame after the
+                    // cover instead of keeping a stale, faded-out draw forever
+                    // ("invisible pill that is still clickable").
+                    var lastCoverActive by remember { mutableStateOf(false) }
+                    LaunchedEffect(isPlayerLyricsFullScreen, isPlayerSheetOverlayActive) {
+                        val coverActive = isPlayerLyricsFullScreen || isPlayerSheetOverlayActive
+                        if (lastCoverActive && !coverActive) {
+                            liquidGlassBackdrop?.notifyContentRestore()
+                        }
+                        lastCoverActive = coverActive
+                    }
+
                     val shouldHideStatusBars =
                         hideStatusBar ||
                             isYearInMusicScreen ||
@@ -1863,6 +1889,33 @@ class MainActivity : ComponentActivity() {
                                     launchSingleTop = true
                                     restoreState = true
                                 }
+                            }
+                        }
+                    }
+
+                    // "Take me to the tab ROOT" navigation for the compact-mode
+                    // floating circles. The regular tab click restores the tab's
+                    // last screen (multi-back-stack), which is correct for the
+                    // nav bar - but from INSIDE a library sub-page that same
+                    // navigate+restoreState round-trip resurrects the sub-page
+                    // itself (the pop saves the segment keyed by the library
+                    // destination, then restoreState immediately re-instates
+                    // it), so the click visibly does nothing. Popping back to
+                    // the tab root instead goes directly to Library/Home.
+                    val navigateToTabRoot: (Screens) -> Unit = { screen ->
+                        val popped = runCatching { navController.popBackStack(screen.route, false) }.getOrDefault(false)
+                        if (!popped && navController.currentDestination?.route != screen.route) {
+                            navController.navigate(screen.route) {
+                                popUpTo(navController.graph.startDestinationId) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                            }
+                        }
+                        if (navController.currentDestination?.route == screen.route) {
+                            navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
+                            if (screen == Screens.Home) {
+                                coroutineScope.launch { homeScrollBehavior.state.resetHeightOffset() }
                             }
                         }
                     }
@@ -3046,8 +3099,18 @@ class MainActivity : ComponentActivity() {
                                                                     navVisibleHeight
                                                             )
 
+                                                        // The compact pill must clear the system navigation
+                                                        // hint bar exactly like the flanking circles row does
+                                                        // (which pads by bottomInset): without the inset term
+                                                        // the take-over translation pinned the pill centre
+                                                        // ~bottomInset dp LOWER than the circles, leaving its
+                                                        // bottom edge at ~23dp from the raw screen bottom -
+                                                        // visually attached to the gesture hint / 3-button bar.
+                                                        // Users with the hint hidden (inset == 0) keep the
+                                                        // exact same geometry as before.
                                                         val compactPillCentreLine =
-                                                            floatingBarsBottomPadding +
+                                                            bottomInset +
+                                                                floatingBarsBottomPadding +
                                                                 (navVisibleHeight + MiniPlayerCompactHeight) / 2
                                                         with(navBarScrollDensity) {
                                                             (playerBottomSheetState.collapsedBound - compactPillCentreLine).toPx() * hideFraction
@@ -3167,22 +3230,16 @@ class MainActivity : ComponentActivity() {
                                                                 },
                                                             ),
                                                         onClick = {
-                                                            handlePrimaryNavigationClick(
+                                                            // The compact circle is a "go to the tab root"
+                                                            // shortcut: from a library sub-page this must
+                                                            // land on the main Library tab, not restore the
+                                                            // sub-page the multi-back-stack saved.
+                                                            navigateToTabRoot(
                                                                 if (compactLeftCircleIsLibrary) {
                                                                     Screens.Library
                                                                 } else {
                                                                     Screens.Home
                                                                 },
-                                                                navBackStackEntry?.destination?.hierarchy
-                                                                    ?.any {
-                                                                        it.route == (
-                                                                            if (compactLeftCircleIsLibrary) {
-                                                                                Screens.Library.route
-                                                                            } else {
-                                                                                Screens.Home.route
-                                                                            }
-                                                                        )
-                                                                    } == true,
                                                             )
                                                         },
                                                         backdrop = liquidGlassBackdrop,

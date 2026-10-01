@@ -287,6 +287,7 @@ fun AppleMusicPlayerContent(
     onLyricsVisibilityChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
+    orientationRefreshEpoch: Int = 0,
 ) {
     val canvasLoopSync = remember { CanvasLoopSync() }
 
@@ -397,6 +398,23 @@ fun AppleMusicPlayerContent(
     }
     DisposableEffect(Unit) {
         onDispose { onLyricsVisibilityChange(false) }
+    }
+
+    // The player's internal lyrics/queue state must collapse with the sheet:
+    // keepContentAlive keeps this composable alive after minimize, and a stale
+    // lyricsOpen=true survived the minimize (only the Player-level proxy flag
+    // reset). That left the AM lyrics view resurrected on the next expand and
+    // kept lyrics-visibility reporting level-dependent on this flag - which is
+    // what gated the NavHost glass recorder off after a lyrics session.
+    // Edge-triggered (true -> false) so the landscape default-open lyrics are
+    // not wiped on initial composition while the sheet is still animating.
+    var wasPlayerExpandedForMorph by remember { mutableStateOf(false) }
+    LaunchedEffect(playerExpanded) {
+        if (wasPlayerExpandedForMorph && !playerExpanded) {
+            if (lyricsOpen) lyricsOpen = false
+            if (queueOpen) queueOpen = false
+        }
+        wasPlayerExpandedForMorph = playerExpanded
     }
 
     var canvasVisibleForLyrics by remember { mutableStateOf(true) }
@@ -617,7 +635,18 @@ fun AppleMusicPlayerContent(
         val canvasActive =
             !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
 
-        val useCanvasBackdrop = canvasActive && !videoShowing && !isPreS
+        // Canvas is the visible MAIN visual (full-bleed leader video in
+        // landscape, blurred twin backdrop in portrait).
+        val canvasVisualActive = canvasActive && !videoShowing && !isPreS
+
+        // The blurred canvas TWIN never runs in landscape. Behind the landscape
+        // controls it produced an extremely abrupt moving blur - canvas videos
+        // cut hard between scenes and the loop-sync follower fires visible
+        // seekTo corrections - while the full-bleed canvas already IS the main
+        // visual on the other half of the screen. The landscape backdrop is the
+        // STATIC thumbnail blur (the drifting 64dp-blurred artwork that already
+        // sits underneath), which is exactly what the design calls for.
+        val useCanvasBackdrop = canvasVisualActive && !landscape
 
         val canvasBackdropReveal =
             remember { androidx.compose.animation.core.Animatable(0f) }
@@ -628,7 +657,10 @@ fun AppleMusicPlayerContent(
             )
         }
         val canvasScrimReveal by animateFloatAsState(
-            targetValue = if (useCanvasBackdrop) 1f else 0f,
+            // Keyed on canvasVisualActive (not useCanvasBackdrop): the lighter
+            // canvas scrim must stay over the landscape full-bleed canvas video
+            // even though the twin backdrop itself is portrait-only.
+            targetValue = if (canvasVisualActive) 1f else 0f,
             animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
             label = "am-canvas-scrim-reveal",
         )
@@ -773,6 +805,13 @@ fun AppleMusicPlayerContent(
                         visible = canvasVisibleForLyrics,
                         maxVideoEdgePx = AmCanvasBackdropMaxVideoEdgePx,
                         loopSyncFollower = canvasLoopSync,
+                        // Rotating the player recreates this twin WITHOUT the
+                        // surface detach cycle a minimise/maximise performs -
+                        // the fresh decoder then rendered a laggy blurred canvas
+                        // behind the bottom controls. The epoch forces the same
+                        // detach -> first-frame -> re-seek settle on every
+                        // orientation change.
+                        refreshEpoch = orientationRefreshEpoch,
                         modifier =
                             Modifier
                                 .fillMaxWidth(1f / AmCanvasBackdropUpscale)
@@ -893,6 +932,10 @@ fun AppleMusicPlayerContent(
                                     onMoreClick = onMoreClick,
                                     onMorePositioned = { moreIconBounds = it },
                                     contentWidth = null,
+                                    // Full-bleed canvas: the song name stays hidden -
+                                    // only the favourite + overflow chips remain,
+                                    // tightly spaced, on the blurred backdrop.
+                                    iconsOnly = true,
                                 )
                             }
                         }
@@ -1791,7 +1834,45 @@ private fun AppleMusicLandscapeTitleBlock(
     onMoreClick: () -> Unit,
     onMorePositioned: ((Rect) -> Unit)? = null,
     contentWidth: Dp? = null,
+    iconsOnly: Boolean = false,
 ) {
+    if (iconsOnly) {
+        // Full-bleed canvas landscape: no song name - the video IS the visual.
+        // Only the favourite and overflow chips remain, right-aligned with a
+        // tight 6dp gap (the old layout put 16dp between them next to the text).
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier =
+                Modifier
+                    .let { base ->
+                        if (contentWidth != null) {
+                            base.width(contentWidth)
+                        } else {
+                            base
+                                .fillMaxWidth()
+                                .padding(horizontal = AppleMusicContentPadding)
+                        }
+                    }
+                    .padding(top = 12.dp, bottom = 10.dp),
+        ) {
+            Spacer(Modifier.weight(1f))
+            AppleMusicChip(
+                iconRes = if (currentSongLiked) R.drawable.player_star_filled else R.drawable.player_star,
+                tint = Color.White,
+                contentDescription = null,
+                onClick = onToggleLike,
+            )
+            AppleMusicChip(
+                iconRes = R.drawable.player_more_horiz,
+                tint = Color.White,
+                contentDescription = null,
+                onClick = onMoreClick,
+                onPositioned = onMorePositioned,
+            )
+        }
+        return
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),

@@ -21,6 +21,8 @@ class BitPerfectGateProcessor(
     private val engineOrDspEngaged: () -> Boolean,
     private val usbExclusiveActive: () -> Boolean,
     private val effectiveVolume: () -> Float,
+    private val enginesEngaged: () -> Boolean = { false },
+    private val onRouteEvaluated: (() -> Unit)? = null,
 ) : BaseAudioProcessor() {
     @Volatile private var sonicAudioProcessor: SonicAudioProcessor? = null
     @Volatile private var silenceSkippingAudioProcessor: SilenceSkippingAudioProcessor? = null
@@ -46,7 +48,14 @@ class BitPerfectGateProcessor(
                 engineOrDspEngaged = engineOrDspEngaged(),
                 usbExclusive = usbExclusiveActive(),
                 effectiveVolume = effectiveVolume(),
+                enginesEngaged = enginesEngaged(),
             )
+            // The sink is configuring RIGHT NOW with this exact rate/depth - the
+            // mixer-attribute bit-perfect request must be (re)applied with the
+            // fresh values before the AudioTrack opens, otherwise a stale rate
+            // from the previous track can lock the platform mixer at e.g. 48kHz
+            // for a 96kHz stream (silent down-resample on some devices).
+            onRouteEvaluated?.invoke()
             if (bypass) {
 
                 silenceSkippingAudioProcessor?.setEnabled(false)

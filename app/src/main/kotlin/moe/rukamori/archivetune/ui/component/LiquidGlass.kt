@@ -264,10 +264,24 @@ class ThrottledLayerBackdrop internal constructor(
     // infinitely recursive display list that overflows the RenderThread stack
     // (native SIGSEGV). Skipping the backdrop draw in that window renders the
     // consumer with its plain base/tint instead of crashing the process.
-    @Volatile
-    internal var recordingInProgress: Boolean = false
+    // Snapshot state (NOT a plain @Volatile) so that clearing the flag after a
+    // record pass invalidates every consumer that drew inside the window - a
+    // plain volatile left those pills drawn WITHOUT their backdrop until some
+    // unrelated invalidation happened ("invisible glass after lyrics" class).
+    internal var recordingInProgress by mutableStateOf(false)
 
     internal fun notifyRecorderAttached() {
+        consumerInvalidationTick++
+    }
+
+    /**
+     * Forces every consumer of this backdrop to redraw on the next frame.
+     * Called when a cover state (player sheet / lyrics fullscreen) lifts: some
+     * restore paths do not re-attach the recorder node itself, and a pill whose
+     * last drawn frame predates the cover would otherwise keep showing that
+     * stale (often empty) frame indefinitely.
+     */
+    fun notifyContentRestore() {
         consumerInvalidationTick++
     }
 
