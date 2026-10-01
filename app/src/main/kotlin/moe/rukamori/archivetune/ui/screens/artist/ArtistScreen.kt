@@ -385,7 +385,45 @@ fun ArtistScreen(
                 listOf(topSongsSection) + sections.filterNot { it === topSongsSection }
             }
         }
+    // Hoisted so the overflow menu's shuffle/radio actions (and the header
+    // below) share one source of truth for the display name - previously these
+    // were declared inside the header item scope only.
+    val artistName = artistPage?.artist?.title ?: libraryArtist?.artist?.name
+    val unknownArtist = stringResource(R.string.unknown_artist)
+
     val showArtistOverflowMenu: () -> Unit = {
+        // Radio + shuffle moved here from the profile-picture area (they used
+        // to sit above the play circle) - the hero now shows only the play
+        // button, and these two actions live in the overflow menu like every
+        // other secondary action on the page.
+        val canShuffle =
+            if (showLocal) {
+                librarySongs.isNotEmpty()
+            } else {
+                artistPage?.artist?.shuffleEndpoint != null
+            }
+        val canRadio = !showLocal && artistPage?.artist?.radioEndpoint != null
+        val playShuffle: () -> Unit = {
+            if (showLocal) {
+                if (librarySongs.isNotEmpty()) {
+                    playerConnection.playQueue(
+                        ListQueue(
+                            title = artistName ?: unknownArtist,
+                            items = librarySongs.shuffled().map { it.toMediaItem() },
+                        ),
+                    )
+                }
+            } else {
+                artistPage?.artist?.shuffleEndpoint?.let { endpoint ->
+                    playerConnection.playQueue(YouTubeQueue(endpoint))
+                }
+            }
+        }
+        val playRadio: () -> Unit = {
+            artistPage?.artist?.radioEndpoint?.let { endpoint ->
+                playerConnection.playQueue(YouTubeQueue(endpoint))
+            }
+        }
         menuState.show {
             ArtistOverflowMenu(
                 isBlocked = isArtistBlocked,
@@ -403,6 +441,16 @@ fun ArtistScreen(
                                     .orEmpty()
                                     .isNotBlank()
                         ),
+                showShuffle = canShuffle,
+                showRadio = canRadio,
+                onShuffle = {
+                    playShuffle()
+                    menuState.dismiss()
+                },
+                onRadio = {
+                    playRadio()
+                    menuState.dismiss()
+                },
                 onAction = { action ->
                     viewModel.onAction(action)
                     menuState.dismiss()
@@ -581,7 +629,19 @@ fun ArtistScreen(
         database.transaction {
             val artist = libraryArtist?.artist
             if (artist != null) {
-                update(artist.toggleLike())
+                // Like on the artist page = SUBSCRIBE. An artist row saved
+                // without a channelId (older inserts, local scans) made the
+                // YouTube-side subscribe inside toggleLike() resolve the id
+                // per click - and silently no-op when that lookup failed.
+                // Backfill the channel id from the loaded remote page so the
+                // subscription (and every future toggle) has a real target.
+                val patched =
+                    if (artist.channelId.isNullOrBlank() && !artistPage?.artist?.channelId.isNullOrBlank()) {
+                        artist.copy(channelId = artistPage?.artist?.channelId)
+                    } else {
+                        artist
+                    }
+                update(patched.toggleLike())
             } else {
                 artistPage?.artist?.let { remoteArtist ->
                     insert(
@@ -679,8 +739,6 @@ fun ArtistScreen(
                 }
             } else {
                 item(key = "header") {
-                    val artistName = artistPage?.artist?.title ?: libraryArtist?.artist?.name
-                    val unknownArtist = stringResource(R.string.unknown_artist)
                     val songsLabel = stringResource(R.string.songs)
                     val albumsLabel = stringResource(R.string.albums)
                     val monthlyListenersLabel = stringResource(R.string.monthly_listeners)
@@ -918,57 +976,9 @@ fun ArtistScreen(
                                 horizontalAlignment = Alignment.End,
                                 verticalArrangement = Arrangement.spacedBy(14.dp),
                             ) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    val canShuffle =
-                                        if (showLocal) {
-                                            librarySongs.isNotEmpty()
-                                        } else {
-                                            artistPage?.artist?.shuffleEndpoint != null
-                                        }
-                                    val canRadio =
-                                        !showLocal && artistPage?.artist?.radioEndpoint != null
-                                    if (canShuffle || canRadio) {
-                                        if (canShuffle) {
-                                            ArtistHeroTranslucentCircle(
-                                                iconRes = R.drawable.ic_shuffle,
-                                                contentDescription = stringResource(R.string.shuffle),
-                                                contentColor = heroContentColor,
-                                                enabled = true,
-                                                onClick = {
-                                                    if (showLocal) {
-                                                        if (librarySongs.isNotEmpty()) {
-                                                            playerConnection.playQueue(
-                                                                ListQueue(
-                                                                    title = artistName ?: unknownArtist,
-                                                                    items = librarySongs.shuffled().map { it.toMediaItem() },
-                                                                ),
-                                                            )
-                                                        }
-                                                    } else {
-                                                        artistPage?.artist?.shuffleEndpoint?.let { endpoint ->
-                                                            playerConnection.playQueue(YouTubeQueue(endpoint))
-                                                        }
-                                                    }
-                                                },
-                                            )
-                                        }
-                                        if (canRadio) {
-                                            ArtistHeroTranslucentCircle(
-                                                iconRes = R.drawable.radio,
-                                                contentDescription = stringResource(R.string.start_radio),
-                                                contentColor = heroContentColor,
-                                                enabled = true,
-                                                onClick = {
-                                                    artistPage?.artist?.radioEndpoint?.let { endpoint ->
-                                                        playerConnection.playQueue(
-                                                            YouTubeQueue(endpoint),
-                                                        )
-                                                    }
-                                                },
-                                            )
-                                        }
-                                    }
-                                }
+                                // Shuffle and radio moved to the overflow menu -
+                                // the profile picture area shows ONLY the play
+                                // button now.
 
                                 val playButtonColor =
                                     ambientSource?.let {
@@ -1710,6 +1720,10 @@ private fun ArtistOverflowMenu(
     blockActionEnabled: Boolean,
     onAction: (ArtistAction) -> Unit,
     modifier: Modifier = Modifier,
+    showShuffle: Boolean = false,
+    showRadio: Boolean = false,
+    onShuffle: () -> Unit = {},
+    onRadio: () -> Unit = {},
 ) {
     Column(
         modifier =
@@ -1717,6 +1731,20 @@ private fun ArtistOverflowMenu(
                 .fillMaxWidth()
                 .padding(bottom = 12.dp),
     ) {
+        if (showShuffle) {
+            ArtistOverflowMenuItem(
+                text = stringResource(R.string.shuffle),
+                iconRes = R.drawable.ic_shuffle,
+                onClick = onShuffle,
+            )
+        }
+        if (showRadio) {
+            ArtistOverflowMenuItem(
+                text = stringResource(R.string.start_radio),
+                iconRes = R.drawable.radio,
+                onClick = onRadio,
+            )
+        }
 
         ArtistOverflowMenuItem(
             text = stringResource(if (isBlocked) R.string.unblock_artist else R.string.block_artist),

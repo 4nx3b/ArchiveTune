@@ -41,6 +41,32 @@ object BitPerfectRuntime {
     @Volatile
     private var latchedUsbBits: Int = 0
 
+    // Last inputs handed to evaluateTrack(). Kept so the runtime can re-run the
+    // verdict when ONLY the out-of-band factors change (engine selection flip,
+    // mixer re-grant) - the sink itself did not re-configure in that window, so
+    // nothing else would refresh the Compose status otherwise and the live
+    // audio chain pill keeps describing a route that no longer exists.
+    @Volatile
+    private var lastInputEncoding: Int = C.ENCODING_PCM_16BIT
+
+    @Volatile
+    private var lastInputSampleRate: Int = 0
+
+    @Volatile
+    private var lastInputChannels: Int = 2
+
+    @Volatile
+    private var lastEnginesEngaged: Boolean = false
+
+    @Volatile
+    private var lastUsbExclusive: Boolean = false
+
+    @Volatile
+    private var lastEffectiveVolume: Float = 1f
+
+    @Volatile
+    private var hasLatchedInput: Boolean = false
+
     var status by mutableStateOf(Status.idle())
         private set
 
@@ -82,10 +108,19 @@ object BitPerfectRuntime {
         usbExclusive: Boolean,
         outputSampleRateHz: Int = 0,
         effectiveVolume: Float = 1f,
+        enginesEngaged: Boolean = false,
     ): Boolean {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         val bits = bitDepthOf(inputEncoding)
         val channels = inputChannels.coerceIn(1, 2)
+
+        lastInputEncoding = inputEncoding
+        lastInputSampleRate = inputSampleRate
+        lastInputChannels = inputChannels
+        lastEnginesEngaged = enginesEngaged
+        lastUsbExclusive = usbExclusive
+        lastEffectiveVolume = effectiveVolume
+        hasLatchedInput = true
 
         var direct = false
         var nativeRateMatched = false
@@ -93,11 +128,13 @@ object BitPerfectRuntime {
         var usbRouteVerified = false
 
         // The bit-perfect float route: whenever bit-perfect output is requested
-        // and the USB-exclusive transport is not carrying the stream, the sink
-        // runs the chain in float32 at the source sample rate, so the source bit
-        // depth and rate are carried to the AudioTrack with no app-level
-        // resampling or truncation.
-        val floatRoute = requested && !usbExclusive
+        // OR a ported engine (Tryptify/LastWave) is engaged and the USB-exclusive
+        // transport is not carrying the stream, the sink runs the chain in
+        // float32 at the source sample rate, so the source bit depth and rate are
+        // carried to the AudioTrack with no app-level resampling or truncation.
+        // Engines must NEVER fall back to the 16-bit shared-mixer truncation -
+        // their output depth would silently collapse (24-bit -> 16-bit).
+        val floatRoute = (requested || enginesEngaged) && !usbExclusive
 
         if (!requested) {
             failure = null
@@ -170,7 +207,7 @@ object BitPerfectRuntime {
         val carriedBits = (if (seedSource) bits else status.sourceBitDepth).takeIf { it > 0 } ?: 32
         val mixerActive = !usbExclusive && status.mixerBitPerfectActive
         val mixerVerified =
-            requested && mixerActive &&
+            (requested || enginesEngaged) && mixerActive &&
                 (status.sourceSampleRate <= 0 || outputRate == status.sourceSampleRate)
 
         status = status.copy(
@@ -205,6 +242,34 @@ object BitPerfectRuntime {
             failureReason = failure,
         )
         return bypass
+    }
+
+    /**
+     * Re-runs the route verdict with the latched inputs after an out-of-band
+     * factor changed (engine selection flip while a track keeps playing).
+     * The sink did not re-configure, so onConfigure will not fire; without this
+     * re-evaluation the live audio chain pill keeps the stale engine/dsp
+     * readout until the next track or a bit-perfect toggle.
+     */
+    fun reevaluateEngines(
+        context: Context,
+        engineOrDspEngaged: Boolean,
+        enginesEngaged: Boolean,
+    ) {
+        if (!hasLatchedInput) return
+        if (lastInputSampleRate <= 0) return
+        runCatching {
+            evaluateTrack(
+                context = context,
+                inputEncoding = lastInputEncoding,
+                inputSampleRate = lastInputSampleRate,
+                inputChannels = lastInputChannels,
+                engineOrDspEngaged = engineOrDspEngaged,
+                usbExclusive = lastUsbExclusive,
+                effectiveVolume = lastEffectiveVolume,
+                enginesEngaged = enginesEngaged,
+            )
+        }
     }
 
     fun reportContainerFormat(
@@ -253,10 +318,12 @@ object BitPerfectRuntime {
             outputSampleRate = if (outputRateHz > 0) outputRateHz else status.outputSampleRate,
             outputBitDepth = if (bits > 0) bits else status.outputBitDepth,
         )
-        if (requested) {
+        if (requested || lastEnginesEngaged) {
             // The mixer route only owns the verified flag when it is the active
             // transport - never clobber a verified direct-playback bypass or a
-            // live USB-exclusive wire with the mixer's own verdict.
+            // live USB-exclusive wire with the mixer's own verdict. Engines ride
+            // the same float route as bit-perfect output, so a BIT_PERFECT mixer
+            // grant carries their stream losslessly too.
             val canClaim = !status.usbExclusiveActive && !status.directPlaybackSupported
             val rateMatches = outputRateHz <= 0 || status.sourceSampleRate <= 0 ||
                 outputRateHz == status.sourceSampleRate

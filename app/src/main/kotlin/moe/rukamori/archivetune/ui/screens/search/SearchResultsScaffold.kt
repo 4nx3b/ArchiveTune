@@ -110,13 +110,19 @@ fun rememberSearchResultsBarState(): SearchResultsBarState {
 
     val backdrop = rememberThrottledBackdrop(surfaceColor)
     val haze = rememberScreenHeaderHaze()
-    val active =
+    val available =
         liquidGlassEnabled &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            !lyricsFullScreen
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    // Same invariant as rememberGlassScreenHeader(): the RECORDER stays attached
+    // for as long as liquid glass is available - only the pill visibility flag
+    // is gated on lyrics fullscreen. Detaching the recorder during lyrics and
+    // re-attaching it afterwards relied entirely on the re-attach tick to make
+    // every pill redraw; when that miss fired the pills kept their last (fully
+    // faded) frame and appeared invisible while remaining clickable.
+    val active = available && !lyricsFullScreen
     return SearchResultsBarState(
         liquidGlassActive = active,
-        backdrop = if (active) backdrop else null,
+        backdrop = if (available) backdrop else null,
         haze = haze,
     )
 }

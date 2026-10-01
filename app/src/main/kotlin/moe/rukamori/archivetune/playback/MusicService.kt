@@ -288,6 +288,7 @@ import moe.rukamori.archivetune.constants.DefaultArtworkProviderOrder
 import moe.rukamori.archivetune.constants.deserializeArtworkProviderOrder
 import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.isLocalMediaId
+import moe.rukamori.archivetune.localmedia.LocalMediaUriHeals
 import moe.rukamori.archivetune.audiosource.ReplayGainTagParser
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
 import moe.rukamori.archivetune.constants.PlayerVolumeKey
@@ -429,7 +430,11 @@ import kotlin.math.pow
 import kotlin.math.roundToLong
 import kotlin.time.Duration.Companion.seconds
 
-private val JIO_SAAVN_NORMALIZE_REGEX = Regex("[^a-z0-9]")
+// Unicode-aware: with the old [^a-z0-9] form every non-Latin title normalized
+// to "", so ANY two non-Latin songs compared "equal" and JioSaavn candidate
+// selection ignored the title entirely (duration/artist alone decided - wrong
+// song picks). Keeping all script letters restores real title comparison.
+private val JIO_SAAVN_NORMALIZE_REGEX = Regex("[^\\p{L}\\p{N}]")
 
 private data class EnginePrefTuple(
     val tryptify: Boolean,
@@ -930,6 +935,8 @@ class MusicService :
             },
             usbExclusiveActive = { usbSinkActiveNow },
             effectiveVolume = { currentEffectivePlayerVolume() },
+            enginesEngaged = { tryptifyAudioProcessing || lastwaveAudioProcessing },
+            onRouteEvaluated = { refreshMixerBitPerfectRoute() },
         )
     }
 
@@ -1311,6 +1318,11 @@ class MusicService :
         super.onCreate()
         equalizerPlaybackController.attach(this)
         ensureScopesActive()
+
+        // Restore persisted MediaStore URI heals before any queue is rebuilt so
+        // local songs whose MediaStore row id changed resume playing instantly
+        // instead of failing once and healing on the error path.
+        ioScope.launch { LocalMediaUriHeals.loadBlocking(this@MusicService) }
 
         musicHapticsEngine = SpatialFlowHapticEngine(this)
 
@@ -1787,7 +1799,9 @@ class MusicService :
         }.distinctUntilChanged()
             .collectLatest(scope) { (tryptify, lastwave, downmixOn, usbPin, usbAttached) ->
                 val lastwaveEffective = lastwave && !tryptify
-                if (tryptifyAudioProcessing != tryptify || lastwaveAudioProcessing != lastwaveEffective) {
+                val engineSelectionChanged =
+                    tryptifyAudioProcessing != tryptify || lastwaveAudioProcessing != lastwaveEffective
+                if (engineSelectionChanged) {
                     Timber.tag(TAG).i(
                         "Audio engine selection: tryptify=%s lastwave=%s (raw lastwave=%s normalized off — engines are exclusive)",
                         tryptify,
@@ -1812,9 +1826,37 @@ class MusicService :
                     Timber.tag(TAG).d("Tryptify USB pin: DAC attached, framework routing pinned")
                 }
 
+                if (engineSelectionChanged) {
+                    // The live audio chain pill reads BitPerfectRuntime.status,
+                    // which is only recomputed when the sink re-configures. A
+                    // mid-track engine flip changes the route (float sink,
+                    // chain bypass, mixer re-grant) without any configure - so
+                    // re-evaluate immediately with the latched track values.
+                    // This runs BEFORE the mixer refresh so a subsequent
+                    // BIT_PERFECT grant can layer its wire rate on top of the
+                    // fresh verdict, exactly like the onConfigure path does.
+                    BitPerfectRuntime.reevaluateEngines(
+                        context = this@MusicService,
+                        engineOrDspEngaged = tryptify || lastwaveEffective || primaryFloatDspProcessor.engaged,
+                        enginesEngaged = tryptify || lastwaveEffective,
+                    )
+                }
+
                 lastwaveUsbBitPerfect.setEnabled(false)
                 refreshMixerBitPerfectRoute()
                 applyFloatDspEngagement()
+
+                if (engineSelectionChanged && bitPerfectNeedsRouteReprepare()) {
+                    // Re-prepare while actually playing - the same recovery the
+                    // bit-perfect toggle uses. Without it the router's deferred
+                    // switch can strand the OLD engine alive when the chain was
+                    // bypassed (router inactive -> reevaluate flag never
+                    // consumed), and the switching sink keeps feeding the
+                    // previously-configured side.
+                    scope.launch(Dispatchers.Main) {
+                        runCatching { repreparePlayerForAudioRouteChange() }
+                    }
+                }
             }
 
         currentFormat
@@ -7140,6 +7182,22 @@ class MusicService :
             }
         }
 
+        // Local (MediaStore) playback: the stored content URI no longer resolves -
+        // MediaStore row ids are unstable across re-scans, storage remounts and
+        // backup restores, so ExoPlayer fails with "No item at content://..."
+        // wrapped as a Source error. Re-resolve the song against the CURRENT
+        // MediaStore and swap in the healed URI while keeping the song's
+        // mediaId (and therefore every DB row, playlist entry and play count)
+        // untouched, then resume exactly where playback stopped.
+        if (isLocalMedia && isLocalSourceNotFoundError(error)) {
+            val resumeIndex = player.currentMediaItemIndex
+            val resumePosition = player.currentPosition.coerceAtLeast(0L)
+            val resumePlayback = player.playWhenReady
+            if (healLocalMediaSource(currentMediaId, resumeIndex, resumePosition, resumePlayback)) {
+                return
+            }
+        }
+
         val streamHttpFailure = findStreamHttpFailure(error)
         if (streamHttpFailure != null) {
             if (handleExtractorStreamHttpFailure(currentMediaId, isFullyDownloadedMedia, streamHttpFailure)) {
@@ -7424,6 +7482,92 @@ class MusicService :
 
     private fun isMediaCodecStateError(error: PlaybackException): Boolean =
         isRecoverableMediaCodecStateError(error)
+
+    private fun isLocalSourceNotFoundError(error: PlaybackException): Boolean {
+        if (error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND) return true
+        // Some provider failures surface as an unspecified IO error whose cause
+        // chain still carries the FileNotFoundException ("No item at ...") -
+        // match on the cause chain so those heal too.
+        return generateSequence<Throwable>(error) { it.cause }.take(6)
+            .any { it is java.io.FileNotFoundException }
+    }
+
+    /**
+     * Recovers a local song whose MediaStore URI went stale. Returns true when
+     * recovery was attempted (success or definitive failure); the caller must
+     * then skip the generic on-error handling because this function owns the
+     * outcome (it resumes playback itself, or performs the skip/stop fallback).
+     */
+    private fun healLocalMediaSource(
+        mediaId: String,
+        resumeIndex: Int,
+        resumePosition: Long,
+        resumePlayback: Boolean,
+    ): Boolean {
+        if (!mediaId.isLocalMediaId()) return false
+        if (!mediaId.startsWith("content://")) return false
+        if (LocalMediaUriHeals.isKnownUnhealable(mediaId)) return false
+        scope.launch(Dispatchers.IO) {
+            val song = runCatching { database.song(mediaId).first() }.getOrNull()
+            val healedUri = runCatching {
+                LocalMediaUriHeals.resolveReplacement(
+                    context = this@MusicService,
+                    staleMediaId = mediaId,
+                    title = song?.song?.title,
+                    durationMs = song?.song?.duration?.takeIf { it > 0 }?.let { it * 1000L },
+                    artist = song?.artists?.firstOrNull()?.name,
+                )
+            }.getOrNull()
+
+            if (healedUri == null) {
+                LocalMediaUriHeals.markUnhealable(mediaId)
+                Timber.tag(TAG).w(
+                    "Local media %s no longer resolves and no MediaStore replacement matched; " +
+                        "falling back to skip/stop handling",
+                    mediaId,
+                )
+                withContext(Dispatchers.Main) {
+                    if (dataStore.get(AutoSkipNextOnErrorKey, false)) {
+                        skipOnError()
+                    } else {
+                        stopOnError()
+                    }
+                }
+                return@launch
+            }
+
+            LocalMediaUriHeals.record(mediaId, healedUri)
+            LocalMediaUriHeals.persist(this@MusicService)
+            Timber.tag(TAG).i(
+                "Healed stale local media URI for %s -> %s (title=%s)",
+                mediaId,
+                healedUri,
+                song?.song?.title,
+            )
+
+            withContext(Dispatchers.Main) {
+                val index =
+                    (0 until player.mediaItemCount)
+                        .firstOrNull { player.getMediaItemAt(it).mediaId == mediaId }
+                        ?: resumeIndex.takeIf { it in 0 until player.mediaItemCount }
+                        ?: return@withContext
+                val item = player.getMediaItemAt(index)
+                val updated =
+                    item
+                        .buildUpon()
+                        .setUri(android.net.Uri.parse(healedUri))
+                        .build()
+                runCatching { player.replaceMediaItem(index, updated) }
+                    .onFailure {
+                        Timber.tag(TAG).w(it, "Failed to swap healed URI into the queue for %s", mediaId)
+                    }
+                player.seekTo(index, resumePosition)
+                player.prepare()
+                if (resumePlayback) player.play() else player.pause()
+            }
+        }
+        return true
+    }
 
     private fun isExclusiveAudioWriteError(error: PlaybackException): Boolean =
         isRecoverableExclusiveAudioWriteError(error)
@@ -9205,9 +9349,24 @@ class MusicService :
                 mediaId = mediaId,
                 knownContentLength = knownContentLength,
                 includePlayerCache = allowPlayerCacheShortCircuit,
-            )?.let { cachedDataSpec ->
+            )?.let { cachedHit ->
                 scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                return cachedDataSpec
+                // Cached playback (replays, preloaded songs, restored queue,
+                // offline downloads) previously returned WITHOUT publishing any
+                // stream info, so the track-info sheet showed "Worked provider /
+                // Stream delivery / Protocol: Unknown" for every song that was
+                // not freshly resolved - i.e. most normal listening. The cache
+                // key encodes which source produced the cached bytes, so the
+                // info is derivable right here.
+                publishCurrentStreamInfo(
+                    mediaId,
+                    cachedPlaybackStreamInfo(
+                        mediaId = mediaId,
+                        cacheKey = cachedHit.cacheKey,
+                        storedFormat = storedFormat,
+                    ),
+                )
+                return cachedHit.dataSpec
             }
         }
 
@@ -9478,6 +9637,17 @@ class MusicService :
                 )
             }?.let { cached ->
                 scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+                // The extractor path previously published nothing, leaving the
+                // track-info playback rows "Unknown" even on a fresh play.
+                publishCurrentStreamInfo(
+                    mediaId,
+                    CurrentStreamInfo(
+                        mediaId = mediaId,
+                        source = AudioSourceType.YOUTUBE,
+                        label = "YouTube Music (extractor)",
+                        protocol = deriveStreamProtocol(cached.url),
+                    ),
+                )
                 return dataSpec.withUri(cached.url.toUri())
             }
 
@@ -9539,6 +9709,17 @@ class MusicService :
                 authFingerprint = authFingerprint,
             )
         scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+        publishCurrentStreamInfo(
+            mediaId,
+            CurrentStreamInfo(
+                mediaId = mediaId,
+                source = AudioSourceType.YOUTUBE,
+                label = extraction.formatId?.takeIf { it.isNotBlank() }
+                    ?.let { "YouTube Music (extractor \u00b7 $it)" }
+                    ?: "YouTube Music (extractor)",
+                protocol = deriveStreamProtocol(streamUrl),
+            ),
+        )
         return dataSpec.withUri(streamUrl.toUri())
     }
 
@@ -9573,7 +9754,7 @@ class MusicService :
         mediaId: String,
         knownContentLength: Long?,
         includePlayerCache: Boolean = true,
-    ): DataSpec? {
+    ): CachedDataSpecHit? {
         val requestedLength =
             when {
                 dataSpec.length > 0L -> {
@@ -9626,12 +9807,84 @@ class MusicService :
             ) >= requestedLength
         } ?: return null
 
-        return dataSpec
-            .buildUpon()
-            .setKey(matchingKey)
-            .setLength(requestedLength)
-            .build()
+        return CachedDataSpecHit(
+            dataSpec = dataSpec
+                .buildUpon()
+                .setKey(matchingKey)
+                .setLength(requestedLength)
+                .build(),
+            cacheKey = matchingKey,
+        )
     }
+
+    /** Which cache key satisfied a short-circuit hit (also carries the source). */
+    private data class CachedDataSpecHit(
+        val dataSpec: DataSpec,
+        val cacheKey: String,
+    )
+
+    /**
+     * Reconstructs the "worked provider / stream delivery / protocol" info for
+     * a playback served from cache. The cache key prefix identifies the source
+     * (tidal: / qobuz: / qobuz_backup: / deezer: / apple: / jiosaavn: / ytm: /
+     * bare mediaId = YouTube), and the in-memory direct-stream cache for the
+     * same key - when still alive - carries the full provider label, wire
+     * protocol, sample rate and bit depth.
+     */
+    private fun cachedPlaybackStreamInfo(
+        mediaId: String,
+        cacheKey: String,
+        storedFormat: FormatEntity?,
+    ): CurrentStreamInfo {
+        val source = sourceTypeForCacheKey(cacheKey)
+        val direct = directStreamCache[cacheKey]?.stream
+        if (direct != null && source != AudioSourceType.YOUTUBE) {
+            return CurrentStreamInfo(
+                mediaId = mediaId,
+                source = source,
+                label = "${direct.label} (cached)",
+                protocol = deriveStreamProtocol(direct.uri),
+                sampleRate = direct.sampleRate,
+                bitDepth = direct.bitDepth,
+            )
+        }
+        val label =
+            when (source) {
+                AudioSourceType.YOUTUBE ->
+                    storedFormat?.itag?.takeIf { it > 0 }
+                        ?.let { "YouTube Music itag $it (cached)" }
+                        ?: "YouTube Music (cached)"
+                else -> "${source.displayLabel()} (cached)"
+            }
+        return CurrentStreamInfo(
+            mediaId = mediaId,
+            source = source,
+            label = label,
+            protocol = "Cached Playback",
+        )
+    }
+
+    private fun sourceTypeForCacheKey(cacheKey: String): AudioSourceType =
+        when {
+            cacheKey.startsWith(TIDAL_CACHE_KEY_PREFIX) -> AudioSourceType.TIDAL
+            cacheKey.startsWith("qobuz_backup:") -> AudioSourceType.QOBUZ_BACKUP
+            cacheKey.startsWith("qobuz:") -> AudioSourceType.QOBUZ
+            cacheKey.startsWith("deezer:") -> AudioSourceType.DEEZER
+            cacheKey.startsWith("apple:") -> AudioSourceType.APPLE
+            cacheKey.startsWith("jiosaavn:") -> AudioSourceType.JIOSAAVN
+            else -> AudioSourceType.YOUTUBE
+        }
+
+    private fun AudioSourceType.displayLabel(): String =
+        when (this) {
+            AudioSourceType.TIDAL -> "Tidal"
+            AudioSourceType.QOBUZ -> "Qobuz"
+            AudioSourceType.QOBUZ_BACKUP -> "Qobuz Backup"
+            AudioSourceType.DEEZER -> "Deezer"
+            AudioSourceType.APPLE -> "Apple Music"
+            AudioSourceType.JIOSAAVN -> "JioSaavn"
+            AudioSourceType.YOUTUBE -> "YouTube Music"
+        }
 
     private fun getContinuousCachedLengthForKey(
         key: String,
@@ -10054,11 +10307,17 @@ class MusicService :
                 )
 
         // The engine router declares float output whenever the USB-exclusive
-        // transport is live OR bit-perfect output is requested: engines running
-        // alongside bit-perfect output process and emit float at the source rate
-        // on the bit-perfect sink instead of the 16-bit mixer truncation.
-        primaryEngineRouter.outputFloat = usbSinkActiveNow || BitPerfectRuntime.requested
-        primaryFloatDspProcessor.outputFloat = usbSinkActiveNow || BitPerfectRuntime.requested
+        // transport is live, bit-perfect output is requested, OR a ported engine
+        // (Tryptify/LastWave) is engaged: engines running on the 16-bit sink had
+        // their float output truncated through floatToPcm16, silently collapsing
+        // 24-bit sources to 16-bit and dulling the sound. With an engine active
+        // the stream rides the bit-perfect float sink at the source rate/depth
+        // instead of the 16-bit mixer truncation.
+        val floatRouteToSink =
+            usbSinkActiveNow || BitPerfectRuntime.requested ||
+                tryptifyAudioProcessing || lastwaveAudioProcessing
+        primaryEngineRouter.outputFloat = floatRouteToSink
+        primaryFloatDspProcessor.outputFloat = floatRouteToSink
         primaryFloatDspProcessor.setEngaged(engaged)
         secondaryFloatDspProcessor?.let {
             it.outputFloat = false
@@ -10456,10 +10715,15 @@ class MusicService :
                     routeActive = {
                         if (primary) {
 
-                            // Engines ride the float sink too when bit-perfect output
-                            // is requested - their output is declared float at the
-                            // source rate instead of the 16-bit mixer truncation.
-                            BitPerfectRuntime.requested
+                            // Engines ride the float sink too - with bit-perfect
+                            // output requested OR a ported engine engaged their
+                            // output is declared float at the source rate instead
+                            // of the 16-bit mixer truncation, so the source bit
+                            // depth is never scaled down (24-bit -> 16-bit) no
+                            // matter which combination is enabled.
+                            BitPerfectRuntime.requested ||
+                                tryptifyAudioProcessing ||
+                                lastwaveAudioProcessing
                         } else {
                             BitPerfectRuntime.requested &&
                                 !tryptifyAudioProcessing &&
