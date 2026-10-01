@@ -22,7 +22,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.onSizeChanged
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,7 +33,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -57,6 +57,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -146,6 +147,12 @@ fun SearchScreen(
     // search-results screens: throttled, glass toggle + SDK, no lyrics FS).
     val barState = rememberSearchResultsBarState()
 
+    // The top chrome's measured height — reserved as the list's top padding so
+    // the recents start right under the search bar, never under the bar itself.
+    var chromeHeightPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val chromeReserve = with(density) { chromeHeightPx.toDp() }
+
     Box(
         modifier =
             Modifier
@@ -159,41 +166,54 @@ fun SearchScreen(
                     },
                 ),
     ) {
-        if (!disableBlur) {
-            HomeAtmosphereBackground()
-        }
-
+        // Recorded subtree: the atmosphere background AND the scrolling
+        // recents — so the glass pills sample real content everywhere,
+        // including the plain-gradient regions behind sparse lists (previously
+        // the recorder tagged the list alone and the pills read black wherever
+        // no row was behind them). The glass chrome stays a SIBLING of this
+        // subtree: a recorder that contains its own liquidGlass consumers is
+        // circular (the consumer would draw the very layer being recorded)
+        // and crashes the RenderThread the moment the tab is opened with glass
+        // enabled — exactly the pattern OnlineSearchResult and ArtistScreen
+        // already follow.
         Column(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .statusBarsPadding(),
+                    .let { m ->
+                        if (barState.backdrop != null) m.glassSource(barState.backdrop!!) else m
+                    },
         ) {
-            // ── Recent searches, above the search bar ──────────────────────
-            // The glass recorder tags the SCROLLABLE CONTENT only. The glass
-            // chrome below must stay a SIBLING of the recorded subtree: a
-            // recorder that contains its own liquidGlass consumers is
-            // circular (the consumer would draw the very layer being
-            // recorded) and crashes the RenderThread the moment the tab is
-            // opened with glass enabled — exactly the pattern
-            // OnlineSearchResult and ArtistScreen already follow.
-            Column(
+            if (!disableBlur) {
+                HomeAtmosphereBackground()
+            }
+
+            Box(
                 modifier =
                     Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .let { m ->
-                            if (barState.backdrop != null) m.glassSource(barState.backdrop!!) else m
-                        }
-                        .verticalScroll(rememberScrollState()),
+                        .fillMaxSize()
+                        .statusBarsPadding()
+                        .imePadding(),
             ) {
+                val listBottomPadding =
+                    LocalPlayerAwareWindowInsets.current
+                        .only(WindowInsetsSides.Bottom)
+                        .asPaddingValues()
+                        .calculateBottomPadding() + 16.dp
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .padding(top = chromeReserve)
+                            .verticalScroll(rememberScrollState()),
+                    contentPadding = PaddingValues(bottom = listBottomPadding),
+                ) {
                 if (recentSearches.isEmpty()) {
                     Box(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .weight(1f, fill = false)
-                                .padding(top = 96.dp),
+                                .padding(top = 40.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -272,35 +292,40 @@ fun SearchScreen(
 
                 Spacer(Modifier.height(16.dp))
             }
-
-            // ── The inline chrome: back circle + liquid-glass search bar ──
-            SearchTabBottomChrome(
-                barState = barState,
-                query = searchQuery,
-                onQueryChange = { searchQuery = it },
-                onSearch = {
-                    onSearchQuery(it)
-                },
-                onVoiceSearch = onVoiceSearch,
-                onBack = navController::navigateUp,
-                onBackLongClick = navController::backToMain,
-                focusRequester = focusRequester,
-                searchProvider = searchProvider,
-                onSourceSelection = onSearchSourceSelection,
-            )
+            }
         }
+
+        // ── The inline chrome, a SIBLING overlay pinned to the top: a
+        // standalone liquid-glass back circle next to the liquid-glass search
+        // pill. Never inside the recorded subtree (circular recorder).
+        SearchTabTopChrome(
+            barState = barState,
+            query = searchQuery,
+            onQueryChange = { searchQuery = it },
+            onSearch = {
+                onSearchQuery(it)
+            },
+            onVoiceSearch = onVoiceSearch,
+            onBack = navController::navigateUp,
+            onBackLongClick = navController::backToMain,
+            focusRequester = focusRequester,
+            searchProvider = searchProvider,
+            onSourceSelection = onSearchSourceSelection,
+            onChromeSizeChanged = { chromeHeightPx = it },
+        )
     }
 }
 
 /**
- * The bottom chrome of the search tab: a standalone liquid-glass back circle
- * next to the liquid-glass search pill that sits just above the keyboard.
- * Both fall back to plain tonal surfaces when glass is unavailable. The pill
- * keeps the catalogue (source) switch; the sort control lives exclusively on
- * the results page's search bar.
+ * The top chrome of the search tab: a standalone liquid-glass back circle
+ * next to the liquid-glass search pill, pinned just under the status bar.
+ * The recent searches flow directly beneath it. Both fall back to plain
+ * tonal surfaces when glass is unavailable. The pill keeps the catalogue
+ * (source) switch; the sort control lives exclusively on the results page's
+ * search bar.
  */
 @Composable
-private fun SearchTabBottomChrome(
+private fun SearchTabTopChrome(
     barState: SearchResultsBarState,
     query: String,
     onQueryChange: (String) -> Unit,
@@ -311,31 +336,33 @@ private fun SearchTabBottomChrome(
     focusRequester: FocusRequester,
     searchProvider: SearchProvider,
     onSourceSelection: (SearchSource, SearchProvider) -> Unit,
+    onChromeSizeChanged: (Int) -> Unit = {},
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
-    val density = LocalDensity.current
-    val imeVisible = WindowInsets.ime.getBottom(density) > 0
-    val playerAwareBottomPadding =
-        LocalPlayerAwareWindowInsets.current
-            .only(WindowInsetsSides.Bottom)
-            .asPaddingValues()
-            .calculateBottomPadding()
     val backdrop = barState.backdrop
     val glassContentColor = if (backdrop != null) liquidGlassContentColor() else MaterialTheme.colorScheme.onSurface
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    // Pinned just under the status bar; the recents flow beneath it.
+    Box(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .imePadding()
-                .padding(
-                    start = 16.dp,
-                    end = 16.dp,
-                    bottom = (if (imeVisible) 8.dp else playerAwareBottomPadding + 10.dp),
-                ),
+                .statusBarsPadding()
+                .onSizeChanged { onChromeSizeChanged(it.height) },
     ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 10.dp,
+                        bottom = 10.dp,
+                    ),
+        ) {
         // Standalone back button in liquid glass.
         val backShape = CircleShape
         val backModifier =
@@ -465,6 +492,7 @@ private fun SearchTabBottomChrome(
                 includeLocal = false,
             )
         }
+    }
     }
 }
 

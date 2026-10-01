@@ -1,5 +1,6 @@
 package moe.rukamori.archivetune.playback.dsp
 
+import androidx.media3.common.C
 import tf.monochrome.android.audio.usb.BypassDiagnostics
 
 object EngineRuntime {
@@ -27,6 +28,11 @@ object EngineRuntime {
     @Volatile
     var lastwaveMixerBitPerfectActive: Boolean = false
 
+    /** Set by BitPerfectSwitchingAudioSink at configure: which route owns playback. */
     @Volatile
-    var rendererFloatDecode: Boolean = false
+    var bitPerfectSinkRouteActive: Boolean = false
+
+    /** The DECODED pcm encoding the renderer last handed the sink (audio/raw). */
+    @Volatile
+    var sinkDecodedEncoding: Int = C.ENCODING_PCM_16BIT
 }

@@ -499,13 +499,28 @@ fun OnlineSearchResult(
         }
 
         // ── Top header overlay: glass "< Search" pill, LARGE query title,
-        // solid category pills — a SIBLING above the glass-tagged list that
-        // scrolls and fades away with the list's first item. ─────────────
+        // a compact info line and the solid category pills — a SIBLING above
+        // the glass-tagged list that scrolls and fades away with the list's
+        // first item. ─────────────────────────────────────────────────────
+        val providerName =
+            when (viewModel.searchProvider) {
+                SearchProvider.SPOTIFY -> "Spotify"
+                SearchProvider.APPLE_MUSIC -> "Apple Music"
+                else -> "YouTube Music"
+            }
+        val visibleResultCount =
+            allModeSections.sumOf { it.items.size }.takeIf { it > 0 }
+                ?: itemsPage?.items?.size?.takeIf { it > 0 }
+        val headerInfoLine =
+            visibleResultCount?.let { count ->
+                stringResource(R.string.search_results_info, count, providerName)
+            } ?: providerName
         SearchResultsTopHeader(
             state = barState,
             query = viewModel.query,
             onBack = { navController.navigateUp() },
-            onBackLongClick = { navController.backToMain() },
+            onBackLongClick = navController::backToMain,
+            infoLine = headerInfoLine,
             chipsRow = {
                 SolidFilterChipsRow(
                     chips =

@@ -376,7 +376,7 @@ private class ThrottledLayerBackdropNode(
                         }
                     }
                 }.isSuccess
-            if (recorded && backdrop.graphicsLayer.size == size) {
+            if (recorded && backdrop.graphicsLayer.size == size.toIntSize()) {
                 // Reuse the fresh record for the display pass too: the old
                 // shape drew the WHOLE subtree twice on every record frame
                 // (once for the screen, once into the layer) — on a screenful

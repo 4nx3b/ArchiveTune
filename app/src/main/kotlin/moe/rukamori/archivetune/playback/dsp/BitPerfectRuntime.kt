@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -65,6 +66,9 @@ object BitPerfectRuntime {
         val sourceEncoding: Int = C.ENCODING_PCM_16BIT,
         val sourceBitDepth: Int = 16,
         val sourceSampleRate: Int = 0,
+        val sourceIsLossy: Boolean = false,
+        val decodedEncoding: Int = C.ENCODING_PCM_16BIT,
+        val decodedBitDepth: Int = 16,
         val outputEncoding: Int = C.ENCODING_PCM_16BIT,
         val outputBitDepth: Int = 16,
         val outputSampleRate: Int = 0,
@@ -160,10 +164,17 @@ object BitPerfectRuntime {
         bypassEngaged.set(bypass)
 
         val outputRate = if (outputSampleRateHz > 0) outputSampleRateHz else inputSampleRate
-        status = Status(
-            sourceEncoding = inputEncoding,
-            sourceBitDepth = bits,
-            sourceSampleRate = inputSampleRate,
+        // Seed the container side only when no input-format report has landed
+        // yet for this track (identical-format track switches may not re-fire
+        // the renderer's input-format event).
+        val seedSource = status.sourceSampleRate == 0
+        status = status.copy(
+            sourceEncoding = if (seedSource) inputEncoding else status.sourceEncoding,
+            sourceBitDepth = if (seedSource) bits else status.sourceBitDepth,
+            sourceSampleRate = if (seedSource) inputSampleRate else status.sourceSampleRate,
+            sourceIsLossy = if (seedSource) false else status.sourceIsLossy,
+            decodedEncoding = inputEncoding,
+            decodedBitDepth = bits,
             outputEncoding = if (direct) inputEncoding else C.ENCODING_PCM_16BIT,
             outputBitDepth = if (direct) bits else 16,
             outputSampleRate = outputRate,
@@ -179,6 +190,32 @@ object BitPerfectRuntime {
             failureReason = failure,
         )
         return bypass
+    }
+
+    /**
+     * Records the CONTAINER truth for the current track — the bit depth the
+     * file/stream actually carries (media3's FLAC extractor puts the
+     * STREAMINFO depth into Format.pcmEncoding; WAV/AIFF extractors do the
+     * same). Compressed formats without a pcm depth are flagged lossy. This
+     * is independent of the decoded depth: the platform FLAC decoder
+     * truncates 24-bit material to 16-bit PCM unless the float route
+     * negotiated an f32 decode — the INPUT side of the chain pill reports
+     * THIS value.
+     */
+    fun reportContainerFormat(
+        inputEncoding: Int,
+        inputSampleRate: Int,
+        inputChannels: Int,
+    ) {
+        if (inputSampleRate <= 0) return
+        val hasPcmDepth = inputEncoding != C.ENCODING_INVALID && inputEncoding != Format.NO_VALUE
+        status = status.copy(
+            sourceEncoding = if (hasPcmDepth) inputEncoding else C.ENCODING_INVALID,
+            sourceBitDepth = if (hasPcmDepth) bitDepthOf(inputEncoding) else 0,
+            sourceSampleRate = inputSampleRate,
+            sourceIsLossy = !hasPcmDepth,
+            channels = inputChannels.coerceIn(1, 2),
+        )
     }
 
     /** Clears the per-track state (player release / no format). */

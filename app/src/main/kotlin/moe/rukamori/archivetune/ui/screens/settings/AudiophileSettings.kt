@@ -12,9 +12,6 @@ import moe.rukamori.archivetune.constants.BIT_PERFECT_NATIVE_RATE_DEFAULT
 import moe.rukamori.archivetune.constants.BIT_PERFECT_OUTPUT_DEFAULT
 import moe.rukamori.archivetune.constants.BitPerfectNativeRateKey
 import moe.rukamori.archivetune.constants.BitPerfectOutputKey
-import android.content.Context
-import android.media.AudioDeviceInfo
-import android.media.AudioManager
 import androidx.compose.animation.core.EaseInOutSine
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -51,7 +48,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,13 +65,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.media3.common.C
 import androidx.navigation.NavController
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.launch
-import moe.rukamori.archivetune.playback.dsp.AudioEngineRouterProcessor
-import moe.rukamori.archivetune.playback.dsp.EngineRuntime
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
+import moe.rukamori.archivetune.ui.component.rememberLiveAudioChainLabels
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
@@ -632,89 +626,27 @@ private fun rateKhz(hz: Int): String =
  *   [INPUT 24-bit | 44.1 kHz] → ( DSP / DIRECT HAL / ANDROID MIXER ) → [OUTPUT 24-bit | 44.1 kHz]
  *                                · USB Exclusive · Bit-Perfect ·
  *
- * INPUT comes from the playback service's decoded-format mirror (native PCM
- * depth, or the f32 pipe when the float route is engaged); OUTPUT reflects
- * the ACTUAL negotiated route (usbdevfs/libusb exclusive wire, verified
- * bit-perfect mixer attributes, or the Android mixer's HAL rate). Refreshes
- * every second and on every track/route change — [BitPerfectRuntime.status]
- * is Compose state and the engine/HAL half is polled.
+ * All labels come from the shared derivation in [rememberLiveAudioChainLabels]
+ * — the same one the track-info Details pill uses. INPUT is the container
+ * truth (FLAC STREAMINFO depth via the extractor); OUTPUT is the ACTUAL
+ * negotiated route (usbdevfs/libusb exclusive wire, verified bit-perfect
+ * mixer attributes, the Bit-Perfect float track, or the Android mixer's HAL
+ * rate). Refreshes every second and on every track/route change —
+ * [BitPerfectRuntime.status] is Compose state and the engine/HAL half is
+ * polled.
  */
 @Composable
 private fun LiveAudioChainCard(modifier: Modifier = Modifier) {
-    val status = BitPerfectRuntime.status
-    val context = LocalContext.current
-
-    // One-second poll of the volatile engine runtime + the HAL's own view.
-    // Compose state (status) already covers "whenever there's any change".
-    var pollTick by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(1_000L)
-            pollTick++
-        }
-    }
-    val runtime = EngineRuntime
-    val halRateHz = remember(pollTick) { readHalSampleRateHz(context) }
-    val routedLabel = remember(pollTick) { readRoutedOutputLabel(context) }
-    val usbExclusive = remember(pollTick) { runtime.usbExclusiveActive }
-    val tryptifyPinActive = remember(pollTick) { runtime.tryptifyUsbPinActive }
-    val engine = remember(pollTick) { runtime.activeEngine }
-    val usbRateHz = remember(pollTick) {
-        runtime.lastwaveUsbRateHz.takeIf { it > 0 }
-            ?: runtime.tryptifyUsbStream?.sampleRateHz?.takeIf { it > 0 }
-    }
-    val usbBits = remember(pollTick) {
-        runtime.lastwaveUsbBitsPerSample.takeIf { it > 0 }
-            ?: runtime.tryptifyUsbStream?.bitsPerSample?.takeIf { it > 0 }
-    }
-
-    val hasSignal = status.sourceSampleRate > 0
-    val floatPcmLabel = stringResource(R.string.live_audio_chain_float_pcm)
-    val inputBitsLabel =
-        if (status.sourceEncoding == C.ENCODING_PCM_FLOAT) floatPcmLabel
-        else "${status.sourceBitDepth}-bit"
-    val inputRateLabel = if (hasSignal) rateKhz(status.sourceSampleRate) else "—"
-
-    val stageLabel = when {
-        engine == AudioEngineRouterProcessor.Engine.TRYPTIFY -> "TRYPTIFY DSP"
-        engine == AudioEngineRouterProcessor.Engine.LASTWAVE -> "LASTWAVE DSP"
-        usbExclusive || status.verifiedBitPerfect -> stringResource(R.string.live_audio_chain_direct_hal)
-        else -> stringResource(R.string.live_audio_chain_android_mixer)
-    }
-
-    val outputBitsLabel: String
-    val outputRateLabel: String
-    when {
-        usbExclusive && usbBits != null && usbRateHz != null -> {
-            outputBitsLabel = if (status.sourceEncoding == C.ENCODING_PCM_FLOAT) floatPcmLabel else "${usbBits}-bit"
-            outputRateLabel = rateKhz(usbRateHz)
-        }
-        status.verifiedBitPerfect -> {
-            outputBitsLabel =
-                if (status.outputEncoding == C.ENCODING_PCM_FLOAT) floatPcmLabel
-                else "${status.outputBitDepth}-bit"
-            outputRateLabel =
-                if (status.outputSampleRate > 0) rateKhz(status.outputSampleRate) else inputRateLabel
-        }
-        hasSignal -> {
-            // The Android mixer route: the DSP sink's 16-bit pipeline feeds the
-            // HAL at its native mix rate — report that honestly.
-            outputBitsLabel = "16-bit"
-            outputRateLabel = halRateHz?.let(::rateKhz) ?: inputRateLabel
-        }
-        else -> {
-            outputBitsLabel = "—"
-            outputRateLabel = "—"
-        }
-    }
-
-    val outputRouteLabel = when {
-        usbExclusive -> stringResource(R.string.live_audio_chain_usb_exclusive)
-        tryptifyPinActive -> stringResource(R.string.live_audio_chain_usb_framework)
-        else -> routedLabel
-    }
-
-    val statusLine = rememberBitPerfectStatusLine()
+    val labels = rememberLiveAudioChainLabels()
+    val hasSignal = labels.hasSignal
+    val inputBitsLabel = labels.inputBits
+    val inputRateLabel = labels.inputRate
+    val stageLabel = labels.stage
+    val outputBitsLabel = labels.outputBits
+    val outputRateLabel = labels.outputRate
+    val outputRouteLabel = labels.route
+    val statusLine = labels.statusLine
+    val outputIsBitPerfect = labels.outputIsBitPerfect
 
     val liveDotAlpha by rememberInfiniteTransition(label = "liveChainDot")
         .animateFloat(
@@ -807,7 +739,7 @@ private fun LiveAudioChainCard(modifier: Modifier = Modifier) {
                 Text(
                     text = statusLine,
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (status.verifiedBitPerfect) {
+                    color = if (outputIsBitPerfect) {
                         outputAccent
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
@@ -918,51 +850,4 @@ private fun ChainStageChip(
     }
 }
 
-/** The HAL's advertised output mix rate — what the Android mixer runs at. */
-private fun readHalSampleRateHz(context: Context): Int? {
-    val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return null
-    return runCatching {
-        audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()
-    }.getOrNull()?.takeIf { it > 0 }
-}
 
-/** A short label for the currently routed output device (no callbacks). */
-private fun readRoutedOutputLabel(context: Context): String {
-    val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-        ?: return "Android Mixer"
-    val outputs = runCatching {
-        audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
-    }.getOrDefault(emptyList())
-    val orderedTypes = intArrayOf(
-        AudioDeviceInfo.TYPE_USB_HEADSET,
-        AudioDeviceInfo.TYPE_USB_DEVICE,
-        AudioDeviceInfo.TYPE_USB_ACCESSORY,
-        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
-        AudioDeviceInfo.TYPE_WIRED_HEADSET,
-        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-        AudioDeviceInfo.TYPE_HDMI,
-        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
-    )
-    // firstNotNullOfOrNull has no IntArray overload — walk the priority list.
-    var device: AudioDeviceInfo? = null
-    for (type in orderedTypes) {
-        val found = outputs.firstOrNull { it.type == type }
-        if (found != null) {
-            device = found
-            break
-        }
-    }
-    val routed = device ?: outputs.firstOrNull() ?: return "Android Mixer"
-    return when (routed.type) {
-        AudioDeviceInfo.TYPE_USB_DEVICE,
-        AudioDeviceInfo.TYPE_USB_HEADSET,
-        AudioDeviceInfo.TYPE_USB_ACCESSORY,
-        -> "USB Audio"
-        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "Bluetooth"
-        AudioDeviceInfo.TYPE_WIRED_HEADSET,
-        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-        -> "Wired"
-        AudioDeviceInfo.TYPE_HDMI -> "HDMI"
-        else -> "Speaker"
-    }
-}
