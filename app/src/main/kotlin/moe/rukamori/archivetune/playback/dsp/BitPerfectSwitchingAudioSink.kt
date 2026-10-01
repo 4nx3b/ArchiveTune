@@ -137,7 +137,11 @@ class BitPerfectSwitchingAudioSink(
 
     override fun getSkipSilenceEnabled(): Boolean = currentSink().skipSilenceEnabled
 
-    override fun getAudioAttributes(): AudioAttributes = currentSink().audioAttributes
+    override fun getAudioAttributes(): AudioAttributes =
+        // The interface getter is @Nullable (a sink that was never configured
+        // has no attributes yet) — the wrapper reports the platform default
+        // in that window instead of leaking null to the renderer.
+        currentSink().getAudioAttributes() ?: AudioAttributes.DEFAULT
 
     override fun getAudioTrackBufferSizeUs(): Long = currentSink().audioTrackBufferSizeUs
 
@@ -160,8 +164,8 @@ class BitPerfectSwitchingAudioSink(
     }
 
     override fun setAudioAttributes(audioAttributes: AudioAttributes) {
-        dspSink.audioAttributes = audioAttributes
-        bitPerfectSink.audioAttributes = audioAttributes
+        dspSink.setAudioAttributes(audioAttributes)
+        bitPerfectSink.setAudioAttributes(audioAttributes)
     }
 
     override fun setAudioSessionId(audioSessionId: Int) {
