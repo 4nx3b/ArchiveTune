@@ -552,7 +552,7 @@ private fun MiniPlayerTransportControls(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MiniPlayerTransportButton(
-            iconResId = R.drawable.solar_skip_previous_linear,
+            iconResId = R.drawable.apple_skip_previous,
             contentDescription = stringResource(R.string.widget_previous),
             onClick = onPrevious,
             enabled = canSkipPrevious,
@@ -563,8 +563,8 @@ private fun MiniPlayerTransportControls(
             iconResId =
                 when {
                     playbackState == Player.STATE_ENDED -> R.drawable.solar_replay_linear
-                    isPlaying -> R.drawable.solar_pause_linear
-                    else -> R.drawable.solar_play_linear
+                    isPlaying -> R.drawable.pause_applemusic
+                    else -> R.drawable.play_applemusic
                 },
             contentDescription =
                 stringResource(
@@ -576,7 +576,7 @@ private fun MiniPlayerTransportControls(
         )
 
         MiniPlayerTransportButton(
-            iconResId = R.drawable.solar_skip_next_linear,
+            iconResId = R.drawable.apple_skip_next,
             contentDescription = stringResource(R.string.next),
             onClick = onNext,
             enabled = canSkipNext,
@@ -712,7 +712,7 @@ fun CompactMiniPlayerContent(
 
         if (showTransportControls) {
             MiniPlayerTransportButton(
-                iconResId = R.drawable.solar_skip_previous_linear,
+                iconResId = R.drawable.apple_skip_previous,
                 contentDescription = stringResource(R.string.widget_previous),
                 onClick = onPrevious,
                 enabled = canSkipPrevious,
@@ -725,8 +725,8 @@ fun CompactMiniPlayerContent(
             iconResId =
                 when {
                     playbackState == Player.STATE_ENDED -> R.drawable.solar_replay_linear
-                    isPlaying -> R.drawable.solar_pause_linear
-                    else -> R.drawable.solar_play_linear
+                    isPlaying -> R.drawable.pause_applemusic
+                    else -> R.drawable.play_applemusic
                 },
             contentDescription =
                 stringResource(
@@ -740,7 +740,7 @@ fun CompactMiniPlayerContent(
 
         if (showTransportControls) {
             MiniPlayerTransportButton(
-                iconResId = R.drawable.solar_skip_next_linear,
+                iconResId = R.drawable.apple_skip_next,
                 contentDescription = stringResource(R.string.next),
                 onClick = onNext,
                 enabled = canSkipNext,

@@ -142,7 +142,13 @@ fun SearchScreen(
                 ),
     ) {
 
-        Column(
+        // The glass recorder tags the ATMOSPHERE ONLY. The glass chrome below
+        // must stay a SIBLING of the recorded subtree: a recorder that contains
+        // its own liquidGlass consumers is circular (the consumer would draw the
+        // very layer being recorded into itself) and crashes the RenderThread
+        // with a stack-overflow SIGSEGV the moment the tab opens with glass
+        // enabled - the same invariant OnlineSearchResult and ArtistScreen follow.
+        Box(
             modifier =
                 Modifier
                     .fillMaxSize()
@@ -153,8 +159,9 @@ fun SearchScreen(
             if (!disableBlur) {
                 HomeAtmosphereBackground()
             }
+        }
 
-            BoxWithConstraints(
+        BoxWithConstraints(
                 modifier =
                     Modifier
                         .fillMaxSize()
@@ -200,7 +207,6 @@ fun SearchScreen(
                     )
                 }
             }
-        }
     }
 }
 

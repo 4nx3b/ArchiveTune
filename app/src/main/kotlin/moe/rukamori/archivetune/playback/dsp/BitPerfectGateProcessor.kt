@@ -58,6 +58,14 @@ class BitPerfectGateProcessor(
                         "${inputAudioFormat.sampleRate}Hz/${inputAudioFormat.channelCount}ch " +
                         "passes the chain untouched",
                 )
+            } else if (BitPerfectRuntime.requested) {
+
+                // Silence skipping edits the stream (drops spans of quiet), which
+                // breaks the untouched-chain guarantee the bit-perfect float route
+                // provides; Sonic is already a no-op at 1x speed/pitch.
+                silenceSkippingAudioProcessor?.setEnabled(false)
+                sonicAudioProcessor?.setSpeed(1f)
+                sonicAudioProcessor?.setPitch(1f)
             }
         }
         return AudioProcessor.AudioFormat.NOT_SET

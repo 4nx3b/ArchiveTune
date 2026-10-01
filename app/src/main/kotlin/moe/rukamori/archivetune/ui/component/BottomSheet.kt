@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -498,6 +499,15 @@ fun rememberBottomSheetState(
             Animatable(0.dp, Dp.VectorConverter)
         }
 
+    // Tracks the bounds the animatable last settled against so a pure bounds
+    // change (rotation resizing the sheet) can SNAP to the new anchor instead
+    // of visibly re-sliding from the old orientation's height - that slide kept
+    // the kept-alive player content mid-flight and out of sync with the plain
+    // controls after rotating back to portrait.
+    var previousBounds by remember {
+        mutableStateOf(Triple(dismissedBound, expandedBound, collapsedBound))
+    }
+
     return remember(dismissedBound, expandedBound, collapsedBound, coroutineScope, animationsDisabled) {
         val initialValue =
             when (previousAnchor) {
@@ -507,10 +517,20 @@ fun rememberBottomSheetState(
                 else -> error("Unknown BottomSheet anchor")
             }
 
+        val wasSettledAtAnchor =
+            animatable.value == previousBounds.first ||
+                animatable.value == previousBounds.second ||
+                animatable.value == previousBounds.third
+
         animatable.updateBounds(dismissedBound.coerceAtMost(expandedBound), expandedBound)
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            animatable.animateTo(initialValue, if (animationsDisabled) snap() else BottomSheetAnimationSpec)
+            if (wasSettledAtAnchor && animatable.value != initialValue) {
+                animatable.snapTo(initialValue)
+            } else {
+                animatable.animateTo(initialValue, if (animationsDisabled) snap() else BottomSheetAnimationSpec)
+            }
         }
+        previousBounds = Triple(dismissedBound, expandedBound, collapsedBound)
 
         BottomSheetState(
             draggableState =

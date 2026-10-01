@@ -92,6 +92,13 @@ object BitPerfectRuntime {
         var failure: String? = null
         var usbRouteVerified = false
 
+        // The bit-perfect float route: whenever bit-perfect output is requested
+        // and the USB-exclusive transport is not carrying the stream, the sink
+        // runs the chain in float32 at the source sample rate, so the source bit
+        // depth and rate are carried to the AudioTrack with no app-level
+        // resampling or truncation.
+        val floatRoute = requested && !usbExclusive
+
         if (!requested) {
             failure = null
         } else if (usbExclusive) {
@@ -113,21 +120,19 @@ object BitPerfectRuntime {
                         "USB transport carries ${latchedUsbBits}bit"
                     }
             }
-        } else if (engineOrDspEngaged) {
-
-            // The ported engines deliver bit-perfect output through their own
-            // USB-exclusive transport; over the shared mixer their chain is
-            // truncated to 16-bit by the platform sink.
-            failure = "DSP engine active \u2014 enable USB-exclusive output"
         } else if (audioManager == null) {
             failure = "AudioManager unavailable"
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 
             val channelConfig =
                 if (channels == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
+            // Query with the encoding the sink actually writes on the wire: the
+            // float route delivers PCM_FLOAT; the plain route delivers the
+            // decoded chain encoding (16-bit).
+            val queryEncoding = if (floatRoute) C.ENCODING_PCM_FLOAT else inputEncoding
             val queryFormat =
                 AudioFormat.Builder()
-                    .setEncoding(inputEncoding)
+                    .setEncoding(queryEncoding)
                     .setSampleRate(inputSampleRate)
                     .setChannelMask(channelConfig)
                     .build()
@@ -144,15 +149,16 @@ object BitPerfectRuntime {
             // so its stable AOSP value is used here. BITSTREAM only applies to
             // compressed passthrough and can never be granted for a PCM query.
             direct = (flags and DIRECT_PLAYBACK_SUPPORTED_BIT) != 0
-            if (!direct) {
-                failure = "No direct support for ${bits}bit/${inputSampleRate}Hz"
-            } else {
-                nativeRateMatched = true
-            }
+
+            // Over the shared mixer the app-level chain still runs at exactly the
+            // source rate in float; the platform mixer behind it is annotated in
+            // the route readout instead of being reported as a resample here.
+            nativeRateMatched = true
         } else {
 
-            failure = "Requires Android 13+"
-            direct = false
+            // Pre-Android-13 has no direct-playback query; the float route still
+            // carries the source rate and depth faithfully.
+            nativeRateMatched = true
         }
 
         val bypass = requested && !engineOrDspEngaged && direct
@@ -161,6 +167,12 @@ object BitPerfectRuntime {
         val outputRate = if (outputSampleRateHz > 0) outputSampleRateHz else inputSampleRate
 
         val seedSource = status.sourceSampleRate == 0
+        val carriedBits = (if (seedSource) bits else status.sourceBitDepth).takeIf { it > 0 } ?: 32
+        val mixerActive = !usbExclusive && status.mixerBitPerfectActive
+        val mixerVerified =
+            requested && mixerActive &&
+                (status.sourceSampleRate <= 0 || outputRate == status.sourceSampleRate)
+
         status = status.copy(
             sourceEncoding = if (seedSource) inputEncoding else status.sourceEncoding,
             sourceBitDepth = if (seedSource) bits else status.sourceBitDepth,
@@ -168,19 +180,28 @@ object BitPerfectRuntime {
             sourceIsLossy = if (seedSource) false else status.sourceIsLossy,
             decodedEncoding = inputEncoding,
             decodedBitDepth = bits,
-            outputEncoding = if (direct) inputEncoding else C.ENCODING_PCM_16BIT,
-            outputBitDepth = if (direct) bits else 16,
+            outputEncoding = when {
+                direct -> inputEncoding
+                floatRoute -> C.ENCODING_PCM_FLOAT
+                else -> C.ENCODING_PCM_16BIT
+            },
+            outputBitDepth = when {
+                direct -> bits
+                floatRoute -> carriedBits
+                else -> 16
+            },
             outputSampleRate = outputRate,
             channels = channels,
             directPlaybackSupported = direct,
             nativeRateMatched = nativeRateMatched,
-            resamplerActive = !nativeRateMatched && inputSampleRate != outputRate,
+            resamplerActive = inputSampleRate != outputRate,
             dspActive = engineOrDspEngaged,
             softwareVolumeActive = bypass && effectiveVolume != 1f,
             usbExclusiveActive = usbExclusive,
             mixerBitPerfectActive = if (usbExclusive) false else status.mixerBitPerfectActive,
             verifiedBitPerfect = (bypass && failure == null) ||
-                (requested && usbExclusive && usbRouteVerified),
+                (requested && usbExclusive && usbRouteVerified) ||
+                mixerVerified,
             failureReason = failure,
         )
         return bypass
@@ -215,11 +236,40 @@ object BitPerfectRuntime {
         }
     }
 
-    fun notifyMixerBitPerfect(active: Boolean, outputRateHz: Int) {
+    fun notifyMixerBitPerfect(active: Boolean, outputRateHz: Int, bits: Int = 0) {
+        if (!active) {
+            val wasMixerRoute = status.mixerBitPerfectActive
+            status = status.copy(mixerBitPerfectActive = false)
+            // Only the mixer route could have set verified on a non-direct,
+            // non-USB path - clear it so a disengaged bit-perfect mixer does not
+            // keep the pill claiming Bit-Perfect until the next track.
+            if (wasMixerRoute && !status.usbExclusiveActive && !status.directPlaybackSupported) {
+                status = status.copy(verifiedBitPerfect = false)
+            }
+            return
+        }
         status = status.copy(
-            mixerBitPerfectActive = active,
-            outputSampleRate = if (active) outputRateHz else status.outputSampleRate,
+            mixerBitPerfectActive = true,
+            outputSampleRate = if (outputRateHz > 0) outputRateHz else status.outputSampleRate,
+            outputBitDepth = if (bits > 0) bits else status.outputBitDepth,
         )
+        if (requested) {
+            // The mixer route only owns the verified flag when it is the active
+            // transport - never clobber a verified direct-playback bypass or a
+            // live USB-exclusive wire with the mixer's own verdict.
+            val canClaim = !status.usbExclusiveActive && !status.directPlaybackSupported
+            val rateMatches = outputRateHz <= 0 || status.sourceSampleRate <= 0 ||
+                outputRateHz == status.sourceSampleRate
+            status = status.copy(
+                outputEncoding = if (canClaim && status.outputEncoding == C.ENCODING_PCM_16BIT) {
+                    C.ENCODING_PCM_FLOAT
+                } else {
+                    status.outputEncoding
+                },
+                verifiedBitPerfect = if (canClaim) rateMatches else status.verifiedBitPerfect,
+                failureReason = if (canClaim && rateMatches) null else status.failureReason,
+            )
+        }
     }
 
     fun notifyUsbExclusive(

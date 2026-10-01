@@ -53,8 +53,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
@@ -121,6 +119,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -2401,6 +2400,54 @@ class MainActivity : ComponentActivity() {
                                             label = "homeBarTitleAlpha",
                                         )
 
+                                        // The floating home chrome (avatar, "Home" title,
+                                        // settings pill) hides while the feed scrolls DOWN and
+                                        // only comes back when the user scrolls UP - merely
+                                        // pausing a downward scroll must not reveal it again.
+                                        var homeLastItemIndex by remember { mutableIntStateOf(0) }
+                                        var homeLastScrollOffset by remember { mutableIntStateOf(0) }
+                                        var homeChromeHiddenByScroll by remember { mutableStateOf(false) }
+                                        LaunchedEffect(isHomeRoute) {
+                                            if (!isHomeRoute) {
+                                                homeChromeHiddenByScroll = false
+                                                return@LaunchedEffect
+                                            }
+                                            // Seed the direction tracker from the live
+                                            // position so re-entering Home never compares
+                                            // against a stale pre-navigation offset.
+                                            homeLastItemIndex = homeListState.firstVisibleItemIndex
+                                            homeLastScrollOffset = homeListState.firstVisibleItemScrollOffset
+                                            snapshotFlow {
+                                                homeListState.firstVisibleItemIndex to
+                                                    homeListState.firstVisibleItemScrollOffset
+                                            }.collect { (_, offset) ->
+                                                val goingDown = offset > homeLastScrollOffset ||
+                                                    homeListState.firstVisibleItemIndex > homeLastItemIndex
+                                                if (goingDown && homeListState.canScrollBackward) {
+                                                    homeChromeHiddenByScroll = true
+                                                } else if (!goingDown) {
+                                                    homeChromeHiddenByScroll = false
+                                                }
+                                                homeLastItemIndex = homeListState.firstVisibleItemIndex
+                                                homeLastScrollOffset = offset
+                                            }
+                                        }
+                                        val homeChromeHidden = isHomeRoute && homeChromeHiddenByScroll
+                                        val homeChromeAlpha by animateFloatAsState(
+                                            targetValue = if (homeChromeHidden) 0f else 1f,
+                                            animationSpec = tween(220),
+                                            label = "homeChromeAlpha",
+                                        )
+                                        val homeChromeSlide by animateFloatAsState(
+                                            targetValue = if (homeChromeHidden) 1f else 0f,
+                                            animationSpec = tween(240),
+                                            label = "homeChromeSlide",
+                                        )
+                                        val homeChromeHideModifier = Modifier.graphicsLayer {
+                                            alpha = homeChromeAlpha
+                                            translationY = -homeChromeSlide * 44.dp.toPx()
+                                        }
+
                                         var headerHeightPx by remember { mutableIntStateOf(0) }
                                         LaunchedEffect(currentScrollBehavior, headerHeightPx) {
                                             if (headerHeightPx > 0 && !isLibraryRoute) {
@@ -2500,9 +2547,9 @@ class MainActivity : ComponentActivity() {
                                                 navigationIcon = {
                                                     if (isHomeRoute) {
                                                         IconButton(
-                                                            onClick = { profileMenuExpanded = true },
+                                                            onClick = { if (!homeChromeHidden) profileMenuExpanded = true },
                                                             onLongClick = {},
-                                                            modifier = Modifier.padding(start = 10.dp),
+                                                            modifier = Modifier.padding(start = 10.dp).then(homeChromeHideModifier),
                                                         ) {
                                                             Surface(
                                                                 modifier = Modifier.size(36.dp),
@@ -2551,7 +2598,7 @@ class MainActivity : ComponentActivity() {
                                                         }
                                                     } else if (isHomeRoute) {
                                                         Box(
-                                                            modifier = Modifier.fillMaxWidth(),
+                                                            modifier = Modifier.fillMaxWidth().then(homeChromeHideModifier),
                                                             contentAlignment = Alignment.Center,
                                                         ) {
                                                             Text(
@@ -2606,14 +2653,16 @@ class MainActivity : ComponentActivity() {
                                                             LocalLiquidGlassBackdrop.current
                                                         if (liquidGlassBackdrop != null) {
                                                             Box(
-                                                                modifier = Modifier.padding(end = 10.dp),
+                                                                modifier = Modifier.padding(end = 10.dp).then(homeChromeHideModifier),
                                                             ) {
                                                                 LiquidGlassIconButton(
                                                                     backdrop = liquidGlassBackdrop,
                                                                     painter = painterResource(R.drawable.settings),
                                                                     contentDescription = stringResource(R.string.settings),
                                                                     onClick = {
-                                                                        navController.navigate("settings")
+                                                                        if (!homeChromeHidden) {
+                                                                            navController.navigate("settings")
+                                                                        }
                                                                     },
                                                                 )
                                                                 if (showSettingsBadge) {
@@ -2633,11 +2682,13 @@ class MainActivity : ComponentActivity() {
                                                             }
                                                         } else {
                                                             FrostedHeaderPill(
-                                                                modifier = Modifier.padding(end = 6.dp),
+                                                                modifier = Modifier.padding(end = 6.dp).then(homeChromeHideModifier),
                                                             ) {
                                                                 IconButton(
                                                                     onClick = {
-                                                                        navController.navigate("settings")
+                                                                        if (!homeChromeHidden) {
+                                                                            navController.navigate("settings")
+                                                                        }
                                                                     },
                                                                     onLongClick = {},
                                                                 ) {
@@ -3215,10 +3266,11 @@ class MainActivity : ComponentActivity() {
                                                 )
                                         } else {
 
-                                            slideInHorizontally(
-                                                animationSpec = tween(300, easing = FastOutSlowInEasing),
-                                            ) { it / 4 } +
-                                                fadeIn(tween(180, easing = FastOutSlowInEasing))
+                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
+                                                scaleIn(
+                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
+                                                    initialScale = 0.94f,
+                                                )
                                         }
                                     },
                                     exitTransition = {
@@ -3230,10 +3282,7 @@ class MainActivity : ComponentActivity() {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         } else {
 
-                                            slideOutHorizontally(
-                                                animationSpec = tween(300, easing = FastOutSlowInEasing),
-                                            ) { -it / 8 } +
-                                                fadeOut(tween(200, easing = LinearOutSlowInEasing))
+                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
                                     },
                                     popEnterTransition = {
@@ -3252,10 +3301,11 @@ class MainActivity : ComponentActivity() {
                                                 )
                                         } else {
 
-                                            slideInHorizontally(
-                                                animationSpec = tween(300, easing = FastOutSlowInEasing),
-                                            ) { -it / 8 } +
-                                                fadeIn(tween(180, easing = FastOutSlowInEasing))
+                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
+                                                scaleIn(
+                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
+                                                    initialScale = 0.94f,
+                                                )
                                         }
                                     },
                                     popExitTransition = {
@@ -3270,10 +3320,7 @@ class MainActivity : ComponentActivity() {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         } else {
 
-                                            slideOutHorizontally(
-                                                animationSpec = tween(300, easing = FastOutSlowInEasing),
-                                            ) { it / 4 } +
-                                                fadeOut(tween(200, easing = LinearOutSlowInEasing))
+                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
                                     },
                                     modifier =

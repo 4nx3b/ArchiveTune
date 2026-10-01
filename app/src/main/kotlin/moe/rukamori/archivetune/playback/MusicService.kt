@@ -287,6 +287,8 @@ import moe.rukamori.archivetune.constants.ArtworkProviderOrderKey
 import moe.rukamori.archivetune.constants.DefaultArtworkProviderOrder
 import moe.rukamori.archivetune.constants.deserializeArtworkProviderOrder
 import moe.rukamori.archivetune.utils.PoolAccountManager
+import moe.rukamori.archivetune.utils.isLocalMediaId
+import moe.rukamori.archivetune.audiosource.ReplayGainTagParser
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
 import moe.rukamori.archivetune.constants.PlayerVolumeKey
 import moe.rukamori.archivetune.constants.RepeatModeKey
@@ -395,7 +397,6 @@ import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.getAsync
 import moe.rukamori.archivetune.telegram.TelegramDataSource
 import moe.rukamori.archivetune.telegram.isTelegramMediaId
-import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.isLowDataModeActive
 import moe.rukamori.archivetune.utils.reportException
 import moe.rukamori.archivetune.utils.retryWithoutPlaybackLoginContext
@@ -732,6 +733,8 @@ class MusicService :
 
     private val normalizeFactor = MutableStateFlow(1f)
     private val audioNormalizationFactorCache = ConcurrentHashMap<String, Float>()
+    private val formatSampleRateSynced = ConcurrentHashMap<String, Int>()
+    private val replayGainParseAttempted = ConcurrentHashMap.newKeySet<String>()
 
     private val _currentStreamInfo = MutableStateFlow<CurrentStreamInfo?>(null)
     val currentStreamInfo: StateFlow<CurrentStreamInfo?> get() = _currentStreamInfo
@@ -904,6 +907,16 @@ class MusicService :
     private val lastwaveUsbBitPerfect by lazy {
         com.lastwave.app.playback.UsbBitPerfectOutput(
             runCatching { getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager }.getOrNull(),
+        )
+    }
+
+    // Generalized mixer-attribute bit-perfect controller: unlike the engine's
+    // USB-only instance above, this one applies to ANY routed output device that
+    // advertises BIT_PERFECT mixer modes (USB DACs, wired headsets, HDMI...).
+    private val mixerBitPerfectOutput by lazy {
+        com.lastwave.app.playback.UsbBitPerfectOutput(
+            runCatching { getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager }.getOrNull(),
+            allowAnyOutputDevice = true,
         )
     }
 
@@ -1754,6 +1767,7 @@ class MusicService :
                 if (!bitPerfect) {
                     BitPerfectRuntime.clearTrack()
                 }
+                refreshMixerBitPerfectRoute()
 
                 if (previouslyRequested != bitPerfect && bitPerfectNeedsRouteReprepare()) {
                     scope.launch(Dispatchers.Main) {
@@ -1798,13 +1812,17 @@ class MusicService :
                     Timber.tag(TAG).d("Tryptify USB pin: DAC attached, framework routing pinned")
                 }
 
-                lastwaveUsbBitPerfect.setEnabled(lastwaveEffective && !usbSinkActiveNow)
+                lastwaveUsbBitPerfect.setEnabled(false)
+                refreshMixerBitPerfectRoute()
                 applyFloatDspEngagement()
             }
 
         currentFormat
             .collectLatest(scope) { format ->
                 currentFormatEntity = format
+                refreshMixerBitPerfectRoute()
+                maybeSyncFormatEntityWithDecodedStream()
+                maybeParseMissingReplayGain(format)
                 applyFloatDspEngagement()
             }
 
@@ -3616,7 +3634,14 @@ class MusicService :
         return ExoPlayer
             .Builder(this)
             .setMediaSourceFactory(createMediaSourceFactory())
-            .setRenderersFactory(createRenderersFactory(secondaryStereoPan, secondaryTransition, secondaryFloatDsp))
+            .setRenderersFactory(
+                createRenderersFactory(
+                    secondaryStereoPan,
+                    secondaryTransition,
+                    secondaryFloatDsp,
+                    primary = false,
+                ),
+            )
             .setLoadControl(createCrossfadeLoadControl())
             .setTrackSelector(DefaultTrackSelector(this, SafeTrackSelectionFactory()))
             .setHandleAudioBecomingNoisy(true)
@@ -9930,42 +9955,93 @@ class MusicService :
             }
         }
 
-        if (lastwaveAudioProcessing && !usbSinkActiveNow) {
-            runCatching {
-                val device = tryptifyUsbRouter.usbOutputDevice.value
-                val format = currentFormatEntity
-                val encoding = when {
-                    format?.isLossless() == true -> androidx.media3.common.C.ENCODING_PCM_24BIT
-                    else -> androidx.media3.common.C.ENCODING_PCM_16BIT
-                }
-                val rate = format?.sampleRate ?: 48000
-                lastwaveUsbBitPerfect.setDevice(device)
-                lastwaveUsbBitPerfect.setFormat(
-                    android.media.AudioFormat.Builder()
-                        .setEncoding(encoding)
-                        .setSampleRate(rate)
-                        .setChannelMask(android.media.AudioFormat.CHANNEL_OUT_STEREO)
-                        .build(),
-                )
-                lastwaveUsbBitPerfect.setEnabled(true)
-                val verified = lastwaveUsbBitPerfect.isConfigured()
-                EngineRuntime.lastwaveMixerBitPerfectActive = verified
-                if (verified) {
-                    BitPerfectRuntime.notifyMixerBitPerfect(active = true, outputRateHz = rate)
-                    Timber.tag(TAG).i(
-                        "USB BIT_PERFECT mixer attributes verified: %dHz",
-                        rate,
-                    )
-                }
-            }
-        } else {
-            lastwaveUsbBitPerfect.setEnabled(false)
+        // Mixer-attribute bit-perfect (Android 14+) is handled centrally by
+        // refreshMixerBitPerfectRoute(): it covers the engines AND plain
+        // bit-perfect output, for USB DACs as well as any other output that
+        // advertises BIT_PERFECT mixer modes.
+        refreshMixerBitPerfectRoute()
+        applyFloatDspEngagement()
+    }
+
+    // Attempts the platform's BIT_PERFECT mixer-attribute bypass (Android 14+)
+    // for the CURRENT routed output device whenever bit-perfect output (or an
+    // engine with its bit-perfect option) is active without the USB-exclusive
+    // transport. This is the mixer-level bit-perfect path the ported engines
+    // shipped with: when the DAC advertises a BIT_PERFECT mixer mode whose rate
+    // matches the source and whose depth can carry the source bits, the shared
+    // mixer stops converting the stream. Works for USB, wired and any other
+    // output that advertises bit-perfect mixer modes.
+    private fun refreshMixerBitPerfectRoute() {
+        if (Build.VERSION.SDK_INT < 34) return
+        val requested =
+            (BitPerfectRuntime.requested || tryptifyAudioProcessing || lastwaveAudioProcessing) &&
+                !usbSinkActiveNow
+        if (!requested) {
+            mixerBitPerfectOutput.setEnabled(false)
             EngineRuntime.lastwaveMixerBitPerfectActive = false
             if (BitPerfectRuntime.status.mixerBitPerfectActive) {
                 BitPerfectRuntime.notifyMixerBitPerfect(active = false, outputRateHz = 0)
             }
+            return
         }
-        applyFloatDspEngagement()
+        runCatching {
+            val status = BitPerfectRuntime.status
+            val rate = status.sourceSampleRate.takeIf { it > 0 }
+                ?: currentFormatEntity?.sampleRate?.takeIf { it > 0 }
+                ?: return
+            val sourceBits = status.sourceBitDepth.takeIf { it > 0 }
+            val device = currentRoutedOutputDevice() ?: return
+            mixerBitPerfectOutput.setDevice(device)
+            mixerBitPerfectOutput.setSourceBits(sourceBits)
+            mixerBitPerfectOutput.setFormat(
+                android.media.AudioFormat.Builder()
+                    .setEncoding(android.media.AudioFormat.ENCODING_PCM_FLOAT)
+                    .setSampleRate(rate)
+                    .setChannelMask(android.media.AudioFormat.CHANNEL_OUT_STEREO)
+                    .build(),
+            )
+            mixerBitPerfectOutput.setEnabled(true)
+            val verified = mixerBitPerfectOutput.isConfigured()
+            EngineRuntime.lastwaveMixerBitPerfectActive = verified && lastwaveAudioProcessing
+            if (verified) {
+                val wireRate = mixerBitPerfectOutput.configuredRateHz()
+                val wireBits = mixerBitPerfectOutput.configuredBits()
+                BitPerfectRuntime.notifyMixerBitPerfect(
+                    active = true,
+                    outputRateHz = wireRate,
+                    bits = wireBits,
+                )
+                Timber.tag(TAG).i(
+                    "BIT_PERFECT mixer attributes engaged: %dHz/%dbit -> %s",
+                    wireRate,
+                    wireBits,
+                    device.productName,
+                )
+            } else if (BitPerfectRuntime.status.mixerBitPerfectActive) {
+                BitPerfectRuntime.notifyMixerBitPerfect(active = false, outputRateHz = 0)
+            }
+        }
+    }
+
+    private fun currentRoutedOutputDevice(): android.media.AudioDeviceInfo? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
+        return runCatching {
+            val outputs = audioManager.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS)
+            val priority = intArrayOf(
+                android.media.AudioDeviceInfo.TYPE_USB_HEADSET,
+                android.media.AudioDeviceInfo.TYPE_USB_DEVICE,
+                android.media.AudioDeviceInfo.TYPE_USB_ACCESSORY,
+                android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                android.media.AudioDeviceInfo.TYPE_HDMI,
+                android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+            )
+            for (type in priority) {
+                outputs.firstOrNull { it.type == type && it.isSink }?.let { return it }
+            }
+            outputs.firstOrNull { it.isSink }
+        }.getOrNull()
     }
 
     private fun applyFloatDspEngagement() {
@@ -9977,8 +10053,12 @@ class MusicService :
                     (format.sampleRate ?: 0) >= 88_200
                 )
 
-        primaryEngineRouter.outputFloat = usbSinkActiveNow
-        primaryFloatDspProcessor.outputFloat = usbSinkActiveNow
+        // The engine router declares float output whenever the USB-exclusive
+        // transport is live OR bit-perfect output is requested: engines running
+        // alongside bit-perfect output process and emit float at the source rate
+        // on the bit-perfect sink instead of the 16-bit mixer truncation.
+        primaryEngineRouter.outputFloat = usbSinkActiveNow || BitPerfectRuntime.requested
+        primaryFloatDspProcessor.outputFloat = usbSinkActiveNow || BitPerfectRuntime.requested
         primaryFloatDspProcessor.setEngaged(engaged)
         secondaryFloatDspProcessor?.let {
             it.outputFloat = false
@@ -10129,6 +10209,67 @@ class MusicService :
                 inputChannels = channels,
             )
         }
+        refreshMixerBitPerfectRoute()
+        maybeSyncFormatEntityWithDecodedStream()
+    }
+
+    // Providers sometimes label a stream with the master's sample rate while the
+    // actually served file decodes at another rate (48 kHz transcodes are the
+    // common case). Reconcile the stored FormatEntity with the live decoder
+    // format so the details page, the format pills and the live audio chain
+    // readout all agree on the REAL wire format instead of mixing claims.
+    private fun maybeSyncFormatEntityWithDecodedStream() {
+        val entity = currentFormatEntity ?: return
+        val decodedRate = BitPerfectRuntime.status.sourceSampleRate.takeIf { it > 0 } ?: return
+        if (entity.sampleRate != null && entity.sampleRate == decodedRate) return
+        if (formatSampleRateSynced[entity.id] == decodedRate) return
+        ioScope.launch {
+            val written = runCatching {
+                database.updateLocalAudioMetadata(entity.id, entity.bitrate, decodedRate)
+                true
+            }.getOrDefault(false)
+            if (written) {
+                // Mark synced only after a successful write so a failed update
+                // retries on the next format emission instead of being dropped
+                // for the rest of the session.
+                formatSampleRateSynced[entity.id] = decodedRate
+                Timber.tag(TAG).i(
+                    "Format entity synced with decoded stream: %dHz (was %s)",
+                    decodedRate,
+                    entity.sampleRate,
+                )
+            }
+        }
+    }
+
+    // ReplayGain tags are parsed during library scans, so songs scanned before
+    // the parser shipped - or whose tags were unavailable at scan time - carry
+    // no RG data and normalization silently falls back to unity for them.
+    // Parse lazily at playback time and persist the tags so the factor applies
+    // from this play on (the currentFormat flow re-emits after the upsert and
+    // the normalization combine recomputes).
+    private fun maybeParseMissingReplayGain(format: FormatEntity?) {
+        if (format == null) return
+        if (!format.id.isLocalMediaId()) return
+        if (format.replayGainTrackDb != null || format.replayGainAlbumDb != null) return
+        if (!replayGainParseAttempted.add(format.id)) return
+        ioScope.launch {
+            runCatching {
+                val rg = ReplayGainTagParser.parse(contentResolver, Uri.parse(format.id), null)
+                if (rg.hasAny) {
+                    database.query {
+                        upsert(format.copy(replayGainTrackDb = rg.trackDb, replayGainAlbumDb = rg.albumDb))
+                    }
+                    Timber.tag(TAG).i(
+                        "ReplayGain tags parsed on demand: track=%s album=%s",
+                        rg.trackDb,
+                        rg.albumDb,
+                    )
+                }
+            }.onFailure {
+                Timber.tag(TAG).w(it, "On-demand ReplayGain parse failed for %s", format.id)
+            }
+        }
     }
 
     private fun pcmBitsOf(encoding: Int): Int? = when (encoding) {
@@ -10181,6 +10322,7 @@ class MusicService :
         stereoPanProcessor: StereoPanAudioProcessor,
         transitionFilter: TransitionFilterProcessor,
         floatDspProcessor: FloatDspProcessor,
+        primary: Boolean = true,
     ) =
         object : DefaultRenderersFactory(this) {
             init {
@@ -10268,6 +10410,14 @@ class MusicService :
                             ),
                         ).build()
 
+                // The bit-perfect sink keeps float output enabled so the source
+                // bit depth survives the whole chain. On the primary player it
+                // carries the SAME engine router as the DSP sink: engines that
+                // run while bit-perfect output is requested now process in
+                // float at the source rate instead of being truncated to the
+                // 16-bit shared-mixer path. The shared processor instances are
+                // safe here because BitPerfectSwitchingAudioSink only ever
+                // configures one of the two sinks at a time.
                 val bitPerfectSink =
                     DefaultAudioSink
                         .Builder(context)
@@ -10275,20 +10425,46 @@ class MusicService :
                         .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                         .setAudioOutputProvider(exclusiveProvider)
                         .setAudioProcessorChain(
-                            DefaultAudioSink.DefaultAudioProcessorChain(
-                                arrayOf<androidx.media3.common.audio.AudioProcessor>(bitPerfectGateProcessor),
-                                bitPerfectSilence,
-                                bitPerfectSonic,
-                            ),
+                            if (primary) {
+                                DspTailAudioProcessorChain(
+                                    silenceSkippingAudioProcessor = bitPerfectSilence,
+                                    sonicAudioProcessor = bitPerfectSonic,
+                                    preProcessors = arrayOf(
+                                        bitPerfectGateProcessor,
+                                    ),
+                                    tailProcessor = primaryEngineRouter,
+                                    engineTransportActive = {
+                                        tryptifyAudioProcessing &&
+                                            primaryEngineRouter.activeEngine ==
+                                            AudioEngineRouterProcessor.Engine.TRYPTIFY
+                                    },
+                                    engineVariRate = tryptifyVariRate,
+                                    engineStretch = tryptifyStretch,
+                                )
+                            } else {
+                                DefaultAudioSink.DefaultAudioProcessorChain(
+                                    arrayOf<androidx.media3.common.audio.AudioProcessor>(bitPerfectGateProcessor),
+                                    bitPerfectSilence,
+                                    bitPerfectSonic,
+                                )
+                            },
                         ).build()
 
                 return BitPerfectSwitchingAudioSink(
                     dspSink = dspSink,
                     bitPerfectSink = bitPerfectSink,
                     routeActive = {
-                        BitPerfectRuntime.requested &&
-                            !tryptifyAudioProcessing &&
-                            !lastwaveAudioProcessing
+                        if (primary) {
+
+                            // Engines ride the float sink too when bit-perfect output
+                            // is requested - their output is declared float at the
+                            // source rate instead of the 16-bit mixer truncation.
+                            BitPerfectRuntime.requested
+                        } else {
+                            BitPerfectRuntime.requested &&
+                                !tryptifyAudioProcessing &&
+                                !lastwaveAudioProcessing
+                        }
                     },
                 )
             }

@@ -873,19 +873,17 @@ fun AppleMusicPlayerContent(
                                 modifier = Modifier.fillMaxSize(),
                             )
 
+                            // The full-bleed canvas already carries the global
+                            // canvasScrimBrush gradient; a second content-wrapping
+                            // gradient here compressed a 0.35-0.6 black band into
+                            // exactly the song-name region and read as a black box
+                            // around the title.
                             Box(
                                 modifier =
                                     Modifier
                                         .align(Alignment.BottomCenter)
                                         .fillMaxWidth()
-                                        .padding(bottom = contentBottomPadding)
-                                        .background(
-                                            Brush.verticalGradient(
-                                                0f to Color.Transparent,
-                                                0.3f to Color.Black.copy(alpha = 0.35f),
-                                                1f to Color.Black.copy(alpha = 0.6f),
-                                            ),
-                                        ),
+                                        .padding(bottom = contentBottomPadding),
                             ) {
                                 AppleMusicLandscapeTitleBlock(
                                     mediaMetadata = mediaMetadata,

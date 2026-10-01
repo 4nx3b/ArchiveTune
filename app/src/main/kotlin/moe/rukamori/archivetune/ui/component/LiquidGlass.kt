@@ -258,6 +258,15 @@ class ThrottledLayerBackdrop internal constructor(
     // scrolls or touches the page.
     internal var consumerInvalidationTick by mutableStateOf(0)
 
+    // Re-entrancy guard: while the recorder node is capturing its subtree into
+    // graphicsLayer, any liquidGlass consumer nested INSIDE that subtree would
+    // draw the very layer that is still being recorded into itself - an
+    // infinitely recursive display list that overflows the RenderThread stack
+    // (native SIGSEGV). Skipping the backdrop draw in that window renders the
+    // consumer with its plain base/tint instead of crashing the process.
+    @Volatile
+    internal var recordingInProgress: Boolean = false
+
     internal fun notifyRecorderAttached() {
         consumerInvalidationTick++
     }
@@ -269,6 +278,7 @@ class ThrottledLayerBackdrop internal constructor(
     ) {
         val tick = consumerInvalidationTick
         if (tick < 0) return
+        if (recordingInProgress) return
         val coordinates = coordinates ?: return
         val layerCoordinates = layerCoordinates ?: return
         withTransform({
@@ -345,15 +355,20 @@ private class ThrottledLayerBackdropNode(
 
             val recorded =
                 runCatching {
-                    backdrop.graphicsLayer.record(size.toIntSize()) {
-                        val previousDensity = drawContext.density
-                        drawContext.density = density
-                        try {
-                            backdrop.contentPrefix(this@draw)
-                            this@draw.drawContent()
-                        } finally {
-                            drawContext.density = previousDensity
+                    backdrop.recordingInProgress = true
+                    try {
+                        backdrop.graphicsLayer.record(size.toIntSize()) {
+                            val previousDensity = drawContext.density
+                            drawContext.density = density
+                            try {
+                                backdrop.contentPrefix(this@draw)
+                                this@draw.drawContent()
+                            } finally {
+                                drawContext.density = previousDensity
+                            }
                         }
+                    } finally {
+                        backdrop.recordingInProgress = false
                     }
                 }.isSuccess
             if (recorded && backdrop.graphicsLayer.size == size.toIntSize()) {

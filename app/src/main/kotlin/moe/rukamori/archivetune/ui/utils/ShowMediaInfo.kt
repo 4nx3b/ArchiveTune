@@ -694,12 +694,17 @@ fun ShowMediaInfo(videoId: String) {
                                                                     ?: EngineRuntime.tryptifyUsbStream?.bitsPerSample?.takeIf { it > 0 }
                                                                     ?: bp.outputBitDepth
                                                             if (bp.outputEncoding == C.ENCODING_PCM_FLOAT) {
-                                                                "float USB out"
+                                                                "Float · ${wireBits}-bit USB out"
                                                             } else {
                                                                 "$wireBits-bit USB out"
                                                             }
                                                         }
-                                                        bp.outputEncoding == C.ENCODING_PCM_FLOAT -> "float out"
+                                                        bp.mixerBitPerfectActive -> {
+                                                            "${bp.outputBitDepth}-bit bit-perfect mixer"
+                                                        }
+                                                        bp.outputEncoding == C.ENCODING_PCM_FLOAT -> {
+                                                            "Float · ${bp.outputBitDepth}-bit out"
+                                                        }
                                                         else -> "${bp.outputBitDepth}-bit out"
                                                     }
                                                     "$inForm → $outForm"
@@ -1110,12 +1115,8 @@ private fun MediaInfoExpressiveRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Icon(
-                painter = painterResource(R.drawable.solar_copy),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.size(16.dp),
-            )
+            // Tapping the row still copies the value; the trailing copy glyph is
+            // intentionally omitted from the list rows per the cleaned-up design.
         }
         if (showDivider) {
             Box(

@@ -74,15 +74,16 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
     val status = BitPerfectRuntime.status
     val context = LocalContext.current
 
-    // HAL/route probes talk to the audio service over binder; reading them on the
-    // main thread every second caused recurring micro-jank while the pill is up.
+    // The routed-device label still needs a binder probe; the HAL mixer rate is
+    // deliberately NOT read here anymore - the chain readout reports the
+    // app-level sink output (source rate), and the platform mixer behind it is
+    // annotated by the stage/route labels instead of being reported as a
+    // resample.
     var pollTick by remember { mutableIntStateOf(0) }
-    var halRateHzValue by remember { mutableIntStateOf(0) }
     var routedLabelValue by remember { mutableStateOf("Android Mixer") }
     LaunchedEffect(Unit) {
         while (true) {
             withContext(Dispatchers.IO) {
-                halRateHzValue = readHalSampleRateHz(context) ?: 0
                 routedLabelValue = readRoutedOutputLabel(context)
             }
             pollTick++
@@ -90,7 +91,6 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
         }
     }
     val runtime = EngineRuntime
-    val halRateHz = halRateHzValue.takeIf { it > 0 }
     val routedLabel = routedLabelValue
     val usbExclusive = remember(pollTick) { runtime.usbExclusiveActive }
     val tryptifyPinActive = remember(pollTick) { runtime.tryptifyUsbPinActive }
@@ -109,7 +109,8 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
     val hasSignal = status.sourceSampleRate > 0
     val floatPcmLabel = stringResource(R.string.live_audio_chain_float_pcm)
     val lossyLabel = stringResource(R.string.live_audio_chain_lossy)
-    val floatWithDepthLabel = stringResource(R.string.live_audio_chain_float_with_depth, status.sourceBitDepth)
+    val floatDepth = status.sourceBitDepth.takeIf { it > 0 } ?: 32
+    val floatWithDepthLabel = stringResource(R.string.live_audio_chain_float_with_depth, floatDepth)
     val sinkOutputRateLabel = status.outputSampleRate.takeIf { it > 0 }?.let(::rateKhz)
     val inputBits =
         when {
@@ -131,16 +132,13 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
     var outputIsBitPerfect = false
     when {
         usbExclusive && usbBits != null && usbRateHz != null -> {
-            outputBits =
-                if (status.sourceEncoding == C.ENCODING_PCM_FLOAT) floatPcmLabel else "$usbBits-bit"
+            outputBits = "$usbBits-bit"
             outputRate = rateKhz(usbRateHz)
             outputIsBitPerfect = status.verifiedBitPerfect
         }
 
         status.verifiedBitPerfect -> {
-            outputBits =
-                if (status.outputEncoding == C.ENCODING_PCM_FLOAT) floatPcmLabel
-                else "${status.outputBitDepth}-bit"
+            outputBits = "${status.outputBitDepth}-bit"
             outputRate =
                 if (status.outputSampleRate > 0) rateKhz(status.outputSampleRate) else inputRate
             outputIsBitPerfect = true
@@ -148,20 +146,19 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
 
         floatRouteActive && sinkDecodedEncoding == C.ENCODING_PCM_FLOAT -> {
 
-            outputBits =
-                if (status.sourceIsLossy || status.sourceBitDepth <= 16) floatPcmLabel
-                else floatWithDepthLabel
-            outputRate = sinkOutputRateLabel ?: (halRateHz?.let(::rateKhz) ?: inputRate)
+            // The float route writes float32 carrying exactly the source depth;
+            // report the carried depth rather than a bare "Float" so the output
+            // bits always read as a concrete number matching the input.
+            outputBits = floatWithDepthLabel
+            outputRate = sinkOutputRateLabel ?: inputRate
         }
 
         hasSignal -> {
-            outputBits =
-                if (status.outputEncoding == C.ENCODING_PCM_FLOAT) floatPcmLabel
-                else "${status.outputBitDepth}-bit"
+            outputBits = "${status.outputBitDepth}-bit"
 
             // The app-level output runs at the source rate; the shared platform mixer
             // behind it resamples on its own and is not part of this chain readout.
-            outputRate = sinkOutputRateLabel ?: (halRateHz?.let(::rateKhz) ?: inputRate)
+            outputRate = sinkOutputRateLabel ?: inputRate
         }
 
         else -> {
@@ -185,13 +182,17 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
                 "Bit-Perfect • ${sourceBitDepth.takeIf { it > 0 } ?: decodedBitDepth}-bit • ${rateKhz(sourceSampleRate)}"
             verifiedBitPerfect ->
                 "Native Rate • ${sourceBitDepth.takeIf { it > 0 } ?: decodedBitDepth}-bit • ${rateKhz(sourceSampleRate)}"
+            mixerBitPerfectActive && sourceSampleRate > 0 ->
+                "Bit-Perfect mixer • ${outputBitDepth}-bit • ${rateKhz(outputSampleRate)}"
             floatRouteActive && sinkDecodedEncoding == C.ENCODING_PCM_FLOAT && sourceBitDepth > 16 ->
                 "Float route • ${sourceBitDepth}-bit depth into the Android mixer"
+            floatRouteActive && sinkDecodedEncoding == C.ENCODING_PCM_FLOAT ->
+                "Float route • ${floatDepth}-bit depth into the Android mixer"
             resamplerActive && sourceSampleRate > 0 && outputSampleRate > 0 ->
                 "Resampling • ${sourceBitDepth}-bit/${rateKhz(sourceSampleRate)} → ${rateKhz(outputSampleRate)}"
             dspActive && sourceBitDepth > 16 && decodedBitDepth <= 16 ->
                 "${sourceBitDepth}-bit → 16-bit • $engineNote"
-            failureReason != null -> "Bit-Perfect unavailable ($failureReason)"
+            failureReason != null -> failureReason
             else -> null
         }
     }
@@ -214,13 +215,6 @@ internal fun rateKhz(hz: Int): String =
         val k = hz / 1000.0
         if (k == k.toInt().toDouble()) "${k.toInt()} kHz" else String.format(Locale.US, "%.1f kHz", k)
     }
-
-internal fun readHalSampleRateHz(context: Context): Int? {
-    val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return null
-    return runCatching {
-        audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()
-    }.getOrNull()?.takeIf { it > 0 }
-}
 
 internal fun readRoutedOutputLabel(context: Context): String {
     val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
@@ -284,10 +278,12 @@ fun LiveAudioChainPill(
     val shimmerProgress = remember { Animatable(0f) }
     LaunchedEffect(labels.hasSignal) {
         if (labels.hasSignal) {
+            // Ping-pong sweep: the band travels across and back continuously, so
+            // the loop never snaps back to its start (which read as an abrupt
+            // end/restart each cycle).
             while (true) {
                 shimmerProgress.animateTo(1f, tween(2_600, easing = EaseInOutSine))
-                shimmerProgress.snapTo(0f)
-                delay(900L)
+                shimmerProgress.animateTo(0f, tween(2_600, easing = EaseInOutSine))
             }
         } else {
             shimmerProgress.snapTo(0f)
@@ -466,9 +462,11 @@ private fun ChainStageBadge(
         Box(
             modifier =
                 Modifier
+                    .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
                     .padding(horizontal = 8.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = label,
@@ -477,6 +475,8 @@ private fun ChainStageBadge(
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 0.6.sp,
                 maxLines = 1,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }

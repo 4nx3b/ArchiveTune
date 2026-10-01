@@ -7,11 +7,13 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
-import moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime
 import moe.rukamori.archivetune.constants.BIT_PERFECT_NATIVE_RATE_DEFAULT
 import moe.rukamori.archivetune.constants.BIT_PERFECT_OUTPUT_DEFAULT
 import moe.rukamori.archivetune.constants.BitPerfectNativeRateKey
 import moe.rukamori.archivetune.constants.BitPerfectOutputKey
+import moe.rukamori.archivetune.constants.AudioNormalizationKey
+import moe.rukamori.archivetune.constants.ReplayGainModeKey
+import moe.rukamori.archivetune.constants.ReplayGainMode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,11 +68,13 @@ import moe.rukamori.archivetune.constants.UsbExclusiveAudioKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
+import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.constants.AutomixEnabledKey
 
 @Composable
@@ -93,6 +97,13 @@ fun AudiophileSettings(
             BitPerfectNativeRateKey,
             defaultValue = BIT_PERFECT_NATIVE_RATE_DEFAULT,
         )
+    val (audioNormalization, onAudioNormalizationChange) =
+        rememberPreference(
+            AudioNormalizationKey,
+            defaultValue = true,
+        )
+    val (replayGainMode, onReplayGainModeChange) =
+        rememberEnumPreference(ReplayGainModeKey, defaultValue = ReplayGainMode.OFF)
     val (usbExclusiveAudio, onUsbExclusiveAudioChange) =
         rememberPreference(
             UsbExclusiveAudioKey,
@@ -234,15 +245,6 @@ fun AudiophileSettings(
                                 onCheckedChange = onBitPerfectChange,
                             )
 
-                            val statusText = rememberBitPerfectStatusLine()
-                            if (bitPerfect && statusText != null) {
-                                Text(
-                                    text = statusText,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(start = 56.dp, top = 2.dp, end = 16.dp),
-                                )
-                            }
                             if (bitPerfect) {
                                 SwitchPreference(
                                     title = { Text(stringResource(R.string.bit_perfect_native_rate)) },
@@ -431,6 +433,44 @@ fun AudiophileSettings(
                         }
                     }
                 }
+
+                // Loudness normalization lives with the audiophile output chain:
+                // the factor is applied as a lossless-preserving volume multiplier
+                // (ReplayGain / R128) and is bypassed automatically whenever a
+                // verified bit-perfect route is active.
+                PreferenceGroup(title = stringResource(R.string.audio_normalization)) {
+                    item {
+                        Column(modifier = positions.modifierFor("audio_normalization")) {
+                            SwitchPreference(
+                                title = { Text(stringResource(R.string.audio_normalization)) },
+                                icon = { Icon(painterResource(R.drawable.solar_volume), null) },
+                                checked = audioNormalization,
+                                onCheckedChange = onAudioNormalizationChange,
+                            )
+                        }
+                    }
+                    item {
+                        Column(modifier = positions.modifierFor("replay_gain")) {
+                            EnumListPreference(
+                                title = { Text(stringResource(R.string.replay_gain)) },
+                                description = stringResource(R.string.replay_gain_desc),
+                                icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                                selectedValue = replayGainMode,
+                                valueText = { mode ->
+                                    stringResource(
+                                        when (mode) {
+                                            ReplayGainMode.OFF -> R.string.replay_gain_off
+                                            ReplayGainMode.TRACK -> R.string.replay_gain_track
+                                            ReplayGainMode.ALBUM -> R.string.replay_gain_album
+                                        },
+                                    )
+                                },
+                                onValueSelected = onReplayGainModeChange,
+                                isEnabled = audioNormalization,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -533,28 +573,3 @@ private fun TryptifyFftSizeDialog(
     }
 }
 
-@Composable
-private fun rememberBitPerfectStatusLine(): String? {
-    val status = BitPerfectRuntime.status
-    return remember(status) {
-        with(status) {
-            when {
-                usbExclusiveActive && verifiedBitPerfect && nativeRateMatched ->
-                    "Bit-Perfect • ${sourceBitDepth}-bit • ${rateKhz(sourceSampleRate)}"
-                verifiedBitPerfect && nativeRateMatched ->
-                    "Bit-Perfect • ${sourceBitDepth}-bit • ${rateKhz(sourceSampleRate)}"
-                verifiedBitPerfect ->
-                    "Native Rate • ${sourceBitDepth}-bit • ${rateKhz(sourceSampleRate)}"
-                resamplerActive && sourceSampleRate > 0 && outputSampleRate > 0 ->
-                    "Resampling • ${sourceBitDepth}-bit/${rateKhz(sourceSampleRate)} → ${rateKhz(outputSampleRate)}"
-                else -> "Bit-Perfect unavailable" + (failureReason?.let { " ($it)" } ?: "")
-            }
-        }
-    }
-}
-
-private fun rateKhz(hz: Int): String =
-    if (hz % 1000 == 0) "${hz / 1000} kHz" else {
-        val k = hz / 1000.0
-        if (k == k.toInt().toDouble()) "${k.toInt()} kHz" else String.format(java.util.Locale.US, "%.1f kHz", k)
-    }
