@@ -170,9 +170,9 @@ class EnginePcmCodecTest {
     @Test
     fun pcm24AndPcm32_stayNative_whenDeclaredOutputMatches() {
         val pcm24 = ByteBuffer.allocateDirect(9).order(ByteOrder.nativeOrder())
-        pcm24.put(byteArrayOf(0x11, 0x22, 0x33, 0x44, 0x55, 0x66, -0x77, -0x88, -0x99)).flip()
+        pcm24.put(byteArrayOf(0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, -0x66, 0x7F)).flip()
         val pcm24Expected = ByteBuffer.allocateDirect(9).order(ByteOrder.nativeOrder())
-        pcm24Expected.put(byteArrayOf(0x11, 0x22, 0x33, 0x44, 0x55, 0x66, -0x77, -0x88, -0x99)).flip()
+        pcm24Expected.put(byteArrayOf(0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, -0x66, 0x7F)).flip()
 
         val out24 = EnginePcmCodec.encode(
             data = pcm24,

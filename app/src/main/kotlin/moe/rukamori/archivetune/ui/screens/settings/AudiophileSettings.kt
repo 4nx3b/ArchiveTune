@@ -943,10 +943,17 @@ private fun readRoutedOutputLabel(context: Context): String {
         AudioDeviceInfo.TYPE_HDMI,
         AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
     )
-    val device = orderedTypes.firstNotNullOfOrNull { type ->
-        outputs.firstOrNull { it.type == type }
-    } ?: outputs.firstOrNull() ?: return "Android Mixer"
-    return when (device.type) {
+    // firstNotNullOfOrNull has no IntArray overload — walk the priority list.
+    var device: AudioDeviceInfo? = null
+    for (type in orderedTypes) {
+        val found = outputs.firstOrNull { it.type == type }
+        if (found != null) {
+            device = found
+            break
+        }
+    }
+    val routed = device ?: outputs.firstOrNull() ?: return "Android Mixer"
+    return when (routed.type) {
         AudioDeviceInfo.TYPE_USB_DEVICE,
         AudioDeviceInfo.TYPE_USB_HEADSET,
         AudioDeviceInfo.TYPE_USB_ACCESSORY,
