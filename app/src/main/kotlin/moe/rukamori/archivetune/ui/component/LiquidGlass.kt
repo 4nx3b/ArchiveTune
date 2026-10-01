@@ -67,7 +67,7 @@ import androidx.compose.ui.util.lerp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop as kyantLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
@@ -143,7 +143,13 @@ fun rememberThrottledBackdrop(
     return backdrop
 }
 
-fun Modifier.layerBackdrop(backdrop: PlatformBackdrop): Modifier = this.layerBackdrop(backdrop)
+// Delegates to kyant's real per-frame recorder. This used to call ITSELF —
+// a same-package declaration outranks the imported extension in Kotlin
+// resolution, so the body resolved to this very shim and the TikTok lyrics
+// menu / SimpMusic fullscreen sheet call sites StackOverflowed the moment
+// they attached. The import alias above forces the delegation to the
+// intended implementation.
+fun Modifier.layerBackdrop(backdrop: PlatformBackdrop): Modifier = this.kyantLayerBackdrop(backdrop)
 
 /**
  * Tags content as the recording source for ANY [Backdrop] flavour: the

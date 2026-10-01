@@ -324,7 +324,12 @@ class ExclusiveUsbOutput @Inject constructor(
 
     fun restartIfStopped(): Boolean {
         val running = stream ?: return false
-        if (running.isAlive) return false
+        // An ALIVE stream needs no restart — "nothing to do" is success, not
+        // failure. The old `return false` here made LastwaveUsbdevfsAudioOutput
+        // treat a merely idle (but healthy) stream as "restart failed" and
+        // surface the spurious WriteException(-9102, recoverable) that
+        // MediaCodecAudioRenderer reported as "AudioTrack write failed: -9102".
+        if (running.isAlive) return true
         if (!running.start()) return false
         synchronized(lock) {
             paused = false

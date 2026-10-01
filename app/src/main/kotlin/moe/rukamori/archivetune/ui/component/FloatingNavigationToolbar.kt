@@ -559,7 +559,7 @@ fun FloatingNavigationToolbar(
                                 }.drawBehind {
                                     val offset = frostedBackdrop.contentOffsetInRoot - barPositionInRoot
                                     translate(offset.x, offset.y) {
-                                        drawLayer(frostedBackdrop.layer)
+                                        runCatching { drawLayer(frostedBackdrop.layer) }
                                     }
                                 },
                     )
