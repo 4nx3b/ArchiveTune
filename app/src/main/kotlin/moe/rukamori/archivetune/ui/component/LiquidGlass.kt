@@ -533,11 +533,22 @@ fun LiquidGlassActionPill(
     content: @Composable RowScope.() -> Unit,
 ) {
 
+    // Header pills fade with the player sheet's top edge instead of being
+    // hard-swapped at the mini-player bound: while any part of the pill is
+    // still on screen it stays glass; it dissolves only as the sheet covers
+    // it, and fades back in as the sheet retreats.
+    //
+    // The fraction is read INSIDE the graphicsLayer block (draw phase), never
+    // captured by value at composition time: a draw-phase state read keeps the
+    // alpha correct through any skipped recomposition, and the provider
+    // already forces the value to 0 whenever the sheet rests at/below the
+    // collapsed bound - so a pill can never stay stuck invisible while the
+    // page behind it is visible and interactive.
     val sheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
     Row(
         modifier =
             modifier
-                .graphicsLayer { alpha = 1f - sheetOverlayFraction }
+                .graphicsLayer { alpha = 1f - sheetOverlayFraction.value }
                 .height(48.dp)
                 .liquidGlass(
                     backdrop = backdrop,

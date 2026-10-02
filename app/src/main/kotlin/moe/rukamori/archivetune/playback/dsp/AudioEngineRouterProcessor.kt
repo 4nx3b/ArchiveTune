@@ -190,6 +190,14 @@ class AudioEngineRouterProcessor(
     private fun rerouteEngineIfChanged() {
         val input = inputAudioFormat
         if (input == AudioProcessor.AudioFormat.NOT_SET) return
+        // outputFloat can have been flipped by applyFloatDspEngagement() since
+        // the last onConfigure() (route engaged/disengaged, engines toggled).
+        // Reroutes that re-used the stale snapshot declared the wrong output
+        // encoding, so EnginePcmCodec converted the engine output with a stale
+        // target (float data re-interpreted as 16-bit or vice versa) -
+        // glitchy, sometimes distorted output right after a mid-track engine
+        // switch. Always re-snapshot before deciding the new output format.
+        activeOutputFloat = outputFloat
         engineAvailableTryptify = tryptifyNativeAvailable()
         engineAvailableLastwave = lastwaveProcessor.isAvailable
         EngineRuntime.publishEngineAvailability(engineAvailableTryptify, engineAvailableLastwave)

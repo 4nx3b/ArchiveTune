@@ -1755,23 +1755,40 @@ class MainActivity : ComponentActivity() {
                         )
                     val effectiveTopInset = effectiveStatusBarTop
 
-                    val playerSheetOverlayFraction by remember(
-                        playerBottomSheetState,
-                        effectiveStatusBarTop,
-                        maxHeight,
-                    ) {
-                        derivedStateOf {
-                            val sheetEdgeFromTop = maxHeight - playerBottomSheetState.value
-                            val pillZoneBottom = effectiveStatusBarTop + 60.dp
-                            val fadeStart = pillZoneBottom + PlayerHeaderGlassFadeRamp
-                            if (fadeStart <= pillZoneBottom) {
-                                if (sheetEdgeFromTop <= pillZoneBottom) 1f else 0f
-                            } else {
-                                ((fadeStart - sheetEdgeFromTop) / (fadeStart - pillZoneBottom))
-                                    .coerceIn(0f, 1f)
+                    // Provided as a State object (not the unwrapped Float): the
+                    // liquid-glass pills read it inside their graphicsLayer
+                    // block, so the fade tracks the sheet position at DRAW
+                    // time and can never get stuck at a stale composition-time
+                    // snapshot ("invisible but still clickable" pills after
+                    // lyrics -> minimize). The sheet-rests-collapsed guard
+                    // pins the value to 0 whenever the sheet is at/below its
+                    // collapsed bound, so a covered-zone math glitch can never
+                    // blank the pills while the page is visible.
+                    val playerSheetOverlayFractionState =
+                        remember(
+                            playerBottomSheetState,
+                            effectiveStatusBarTop,
+                            maxHeight,
+                        ) {
+                            derivedStateOf {
+                                val sheetOverlayActive =
+                                    playerBottomSheetState.value >
+                                        playerBottomSheetState.collapsedBound + SheetOverlayEpsilon
+                                if (!sheetOverlayActive) {
+                                    0f
+                                } else {
+                                    val sheetEdgeFromTop = maxHeight - playerBottomSheetState.value
+                                    val pillZoneBottom = effectiveStatusBarTop + 60.dp
+                                    val fadeStart = pillZoneBottom + PlayerHeaderGlassFadeRamp
+                                    if (fadeStart <= pillZoneBottom) {
+                                        if (sheetEdgeFromTop <= pillZoneBottom) 1f else 0f
+                                    } else {
+                                        ((fadeStart - sheetEdgeFromTop) / (fadeStart - pillZoneBottom))
+                                            .coerceIn(0f, 1f)
+                                    }
+                                }
                             }
                         }
-                    }
 
                     LaunchedEffect(isYearInMusicScreen, playerConnection) {
                         val connection = playerConnection ?: return@LaunchedEffect
@@ -2229,7 +2246,7 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
                         moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive provides isPlayerSheetOverlayActive,
-                        moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction provides playerSheetOverlayFraction,
+                        moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction provides playerSheetOverlayFractionState,
                     ) {
                         Row(
                             modifier =

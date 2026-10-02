@@ -148,7 +148,21 @@ val LocalPlayerLyricsFullScreen = compositionLocalOf { false }
 
 val LocalPlayerSheetOverlayActive = compositionLocalOf { false }
 
-val LocalPlayerSheetOverlayFraction = compositionLocalOf { 0f }
+/**
+ * The player-sheet cover fraction (0..1) that fades the liquid-glass header
+ * pills. Provided as a [androidx.compose.runtime.State] ON PURPOSE: consumers
+ * read it inside their graphicsLayer block (draw phase) so the alpha always
+ * tracks the live sheet position even when no recomposition reaches them.
+ * The old Float-by-value local captured a snapshot at composition time, and
+ * any broken recomposition link in the chain (sheet state -> derived read ->
+ * provider -> consumer) left the pill stuck at alpha = 0 - composed and
+ * clickable, but never rendered - after the lyrics cover lifted
+ * ("invisible glass pill" class).
+ */
+val LocalPlayerSheetOverlayFraction =
+    compositionLocalOf<androidx.compose.runtime.State<Float>> {
+        androidx.compose.runtime.mutableStateOf(0f)
+    }
 
 val LocalMiniPlayerDocked = compositionLocalOf { false }
 
