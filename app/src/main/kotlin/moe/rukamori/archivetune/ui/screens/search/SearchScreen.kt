@@ -5,6 +5,8 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
+@file:OptIn(ExperimentalFoundationApi::class)
+
 package moe.rukamori.archivetune.ui.screens.search
 
 import androidx.compose.foundation.layout.WindowInsets
@@ -48,10 +50,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -185,7 +184,6 @@ fun SearchScreen(
                         recentSearches = recentSearches,
                         maxHeight = recentsMaxHeight,
                         onClearAll = historyViewModel::clearAll,
-                        onDelete = historyViewModel::delete,
                         onPick = onSearchQuery,
                     )
 
@@ -215,7 +213,6 @@ private fun RecentSearchesPanel(
     recentSearches: List<SearchHistory>,
     maxHeight: androidx.compose.ui.unit.Dp,
     onClearAll: () -> Unit,
-    onDelete: (SearchHistory) -> Unit,
     onPick: (String) -> Unit,
 ) {
     Column(
@@ -284,7 +281,6 @@ private fun RecentSearchesPanel(
             recentSearches.forEachIndexed { index, item ->
                 RecentSearchRow(
                     history = item,
-                    onDelete = onDelete,
                     onClick = { onPick(item.query) },
                     modifier =
                         Modifier
@@ -296,7 +292,7 @@ private fun RecentSearchesPanel(
                     HorizontalDivider(
                         modifier =
                             Modifier.padding(
-                                start = SearchHorizontalPadding + 58.dp,
+                                start = SearchHorizontalPadding,
                                 end = SearchHorizontalPadding,
                             ),
                         thickness = 0.5.dp,
@@ -466,133 +462,41 @@ private fun SearchTabBottomChrome(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun RecentSearchRow(
     history: SearchHistory,
-    onDelete: (SearchHistory) -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-
-    val dismissState =
-        rememberSwipeToDismissBoxState(
-            confirmValueChange = { it == SwipeToDismissBoxValue.EndToStart },
-            positionalThreshold = { distance -> distance * 0.5f },
-        )
-
-    var processedDismiss by remember(history.id) { mutableStateOf(false) }
-    LaunchedEffect(dismissState.currentValue) {
-        if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart && !processedDismiss) {
-            processedDismiss = true
-            onDelete(history)
-        }
-        if (dismissState.currentValue == SwipeToDismissBoxValue.Settled) {
-            processedDismiss = false
-        }
-    }
-
-    // The swipe background only renders once the drag crosses the dismiss
-    // anchor: at rest the row is fully transparent (no card, no delete icon),
-    // and the icon appears exactly while the row is being swiped toward the
-    // direction that deletes it.
-    val swipeRevealed =
-        dismissState.targetValue == SwipeToDismissBoxValue.EndToStart ||
-            dismissState.currentValue == SwipeToDismissBoxValue.EndToStart
-
-    SwipeToDismissBox(
-        state = dismissState,
-        backgroundContent = {
-            if (swipeRevealed) {
-                val onError = MaterialTheme.colorScheme.error
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(onError.copy(alpha = 0.18f)),
-                    contentAlignment = Alignment.CenterEnd,
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.delete),
-                        contentDescription = null,
-                        tint = onError,
-                        modifier =
-                            Modifier
-                                .padding(end = 20.dp)
-                                .size(22.dp),
-                    )
-                }
-            }
-        },
-        enableDismissFromStartToEnd = false,
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp),
+                .combinedClickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 12.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-
-                    .combinedClickable(onClick = onClick)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-        ) {
-            RecentSearchMonogram(query = history.query)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = history.query,
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = stringResource(R.string.search_recent_label),
-                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Icon(
-                painter = painterResource(R.drawable.arrow_forward),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = history.query,
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = stringResource(R.string.search_recent_label),
+                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-    }
-}
-
-@Composable
-private fun RecentSearchMonogram(query: String) {
-    val initial = remember(query) {
-        query.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "·"
-    }
-
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier =
-            Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-    ) {
         Icon(
-            painter = painterResource(R.drawable.search),
+            painter = painterResource(R.drawable.arrow_forward),
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-            modifier = Modifier.size(26.dp),
-        )
-
-        Text(
-            text = initial,
-            style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
         )
     }
 }
+

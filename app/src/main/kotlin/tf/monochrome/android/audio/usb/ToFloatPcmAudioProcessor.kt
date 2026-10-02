@@ -22,6 +22,15 @@ internal class ToFloatPcmAudioProcessor : AudioProcessor {
             inputFormat = AudioFormat.NOT_SET
             return AudioFormat.NOT_SET
         }
+        // Float input needs no conversion at all: stay INACTIVE so the chain
+        // simply hands the buffer to the downstream EQ stages unchanged.
+        // (Being inactive is the passthrough: the chain skips this stage and
+        // keeps the input format as the running format.)
+        if (inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT) {
+            pendingFormat = AudioFormat.NOT_SET
+            inputFormat = AudioFormat.NOT_SET
+            return AudioFormat.NOT_SET
+        }
         pendingFormat = inputAudioFormat
         return AudioFormat(
             inputAudioFormat.sampleRate,
@@ -90,12 +99,20 @@ internal class ToFloatPcmAudioProcessor : AudioProcessor {
 
 @OptIn(UnstableApi::class)
 internal fun bytesPerSample(encoding: Int): Int = when (encoding) {
+    C.ENCODING_PCM_16BIT -> 2
     C.ENCODING_PCM_24BIT -> 3
     C.ENCODING_PCM_32BIT -> 4
+    C.ENCODING_PCM_FLOAT -> 4
     else -> 0
 }
 
 internal fun readSample(input: ByteBuffer, stride: Int): Float = when (stride) {
+    2 -> {
+        // 16-bit PCM -> float, full-scale at 32768
+        val b0 = input.get().toInt() and 0xFF
+        val b1 = input.get().toInt()
+        ((b1 shl 8) or b0) / 32_768f
+    }
     3 -> {
         val b0 = input.get().toInt() and 0xFF
         val b1 = input.get().toInt() and 0xFF

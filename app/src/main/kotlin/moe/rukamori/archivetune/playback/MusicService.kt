@@ -521,6 +521,12 @@ class MusicService :
         object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<AudioDeviceInfo>) {
                 if (addedDevices.any { it.isSink }) {
+                    // A newly attached DAC deserves a fresh exclusive handshake
+                    // even if the previous device exhausted the session budget.
+                    if (exclusiveRouteSessionFallback) {
+                        exclusiveRouteSessionFallback = false
+                        Timber.tag(TAG).i("USB audio device added; exclusive session fallback cleared")
+                    }
                     refreshUsbExclusiveRoute()
                     onAudioOutputDeviceChanged()
                 }
@@ -528,6 +534,10 @@ class MusicService :
 
             override fun onAudioDevicesRemoved(removedDevices: Array<AudioDeviceInfo>) {
                 if (removedDevices.any { it.isSink }) {
+                    if (exclusiveRouteSessionFallback) {
+                        exclusiveRouteSessionFallback = false
+                        Timber.tag(TAG).i("USB audio device removed; exclusive session fallback cleared")
+                    }
                     refreshUsbExclusiveRoute()
                     onAudioOutputDeviceChanged()
                 }
@@ -706,6 +716,28 @@ class MusicService :
     @Volatile
     private var exclusiveWriteRecoveryAttemptCount: Int = 0
     private val exclusiveWriteRecoveryMaxAttempts = 4
+
+    // Elapsed timestamp of the last exclusive write failure. Failures more
+    // than EXCLUSIVE_FAILURE_FRESH_WINDOW_MS apart start a FRESH incident
+    // (counter reset): the old mediaId-only reset never ran for repeated
+    // failures on the same song, so the counter grew past the budget
+    // ("recovery attempt 5/4" spam) forever.
+    @Volatile
+    private var lastExclusiveWriteFailureElapsedMs: Long = 0L
+
+    // Session-scoped fallback after the exclusive route repeatedly failed to
+    // engage (LastwaveUsbdevfsAudioOutput -9101 / AAud -896 write failures).
+    // While set, the USB-exclusive output is disengaged for the REST of this
+    // service session and playback continues through the standard framework
+    // route - music keeps playing instead of the old "budget exhausted; giving
+    // up" death spiral where local files simply never played. Cleared when the
+    // USB device set changes, when the user re-toggles the USB-exclusive
+    // preference, or on service restart - never per-track, so a DAC that
+    // negotiates deterministically badly does not re-fail 4x on every song.
+    @Volatile
+    private var exclusiveRouteSessionFallback: Boolean = false
+
+    private val exclusiveFailureFreshWindowMs = 15_000L
 
     private var nextHistorySessionToken = 0L
     private var currentHistorySessionToken = 0L
@@ -1337,6 +1369,15 @@ class MusicService :
         // "pill shows Android, equalizer dead" class.
         seedAudioRoutePreferences()
 
+        // The Tryptify AutoEQ target curves load lazily from bundled assets
+        // and need an application context; without this every curve parsed
+        // empty and every AutoEQ fit aborted with "Target curve not
+        // available" (EqViewModel initializes it too - this covers the
+        // audio-path side before any playback begins).
+        runCatching {
+            tf.monochrome.android.audio.eq.FrequencyTargets.init(applicationContext)
+        }
+
         ioScope.launch {
             runCatching { tryptifyEngineController.start() }
                 .onFailure { Timber.tag(TAG).w(it, "Tryptify engine controller failed to start") }
@@ -1359,9 +1400,11 @@ class MusicService :
                 }
             }
             ioScope.launch {
+                var lastPolledWireRateHz = -1
                 while (isActive) {
+                    val wireRateHz = lastwaveExclusiveUsb.currentRateHz()
                     EngineRuntime.publishUsbWire(
-                        lastwaveExclusiveUsb.currentRateHz(),
+                        wireRateHz,
                         lastwaveExclusiveUsb.currentBitsPerSample(),
                     )
                     if (usbSinkActiveNow && lastwaveAudioProcessing &&
@@ -1373,6 +1416,19 @@ class MusicService :
                             bits = EngineRuntime.lastwaveUsbBitsPerSample,
                             engineTransport = true,
                         )
+                    }
+                    // The wire clock can be renegotiated AFTER the chain
+                    // already configured (exclusive fallback rate picked
+                    // inside ExclusiveUsbOutput when the DAC descriptor lacks
+                    // the source rate). Re-running the engine-output-rate
+                    // wiring whenever the polled wire rate CHANGES aligns the
+                    // engine's soxr output to the live wire clock instead of
+                    // streaming source-rate PCM into a mismatched clock.
+                    if (wireRateHz != lastPolledWireRateHz) {
+                        lastPolledWireRateHz = wireRateHz
+                        if (wireRateHz > 0 || lastwaveAudioProcessing) {
+                            applyNativeRateOverride()
+                        }
                     }
                     delay(1000)
                 }
@@ -1763,6 +1819,17 @@ class MusicService :
             .collectLatest(scope) { (dsp, usbExclusive, crossfade, automix, offload) ->
                 floatDspEnabled = dsp
 
+                // Re-toggling the USB-exclusive preference is an explicit user
+                // retry: clear the session fallback so a fresh DAC handshake
+                // gets a full chance on the new intent.
+                if (lastUsbExclusivePrefValue != null && lastUsbExclusivePrefValue != usbExclusive) {
+                    if (exclusiveRouteSessionFallback) {
+                        exclusiveRouteSessionFallback = false
+                        Timber.tag(TAG).i("USB-exclusive preference re-toggled; session fallback cleared")
+                    }
+                }
+                lastUsbExclusivePrefValue = usbExclusive
+
                 usbExclusiveRequested = usbExclusive && !crossfade && !automix && !offload
                 audioOffloadPrefEnabled = offload
                 refreshUsbExclusiveRoute()
@@ -1894,22 +1961,34 @@ class MusicService :
                     }
                     // Watchdog: if the router still has not latched the wanted
                     // engine shortly after the re-prepare (a configure race or a
-                    // deferred reroute), re-prepare once more instead of leaving
-                    // the equalizer silent until the next track. Only one
-                    // watchdog may be pending at a time - rapid engine toggling
-                    // replaces it instead of stacking re-prepares.
+                    // deferred reroute), re-prepare again instead of leaving
+                    // the equalizer silent until the next track. Retries up to
+                    // 3 times (1.5s apart): a single one-shot probe could land
+                    // while the player was mid-stop of the previous re-prepare
+                    // and give up permanently - "sometimes the EQ works,
+                    // sometimes it doesn't". Only one watchdog may be pending
+                    // at a time - rapid engine toggling replaces it instead of
+                    // stacking re-prepares. Gives up cleanly when nothing is
+                    // playing (the next play() configures fresh anyway).
                     engineEngagementWatchdog?.cancel()
                     engineEngagementWatchdog = scope.launch {
-                        delay(1500L)
-                        val wanted = EngineRuntime.wantedEngineState
-                        if (
-                            wanted != AudioEngineRouterProcessor.Engine.NONE &&
-                            EngineRuntime.activeEngine != wanted &&
-                            bitPerfectNeedsRouteReprepare()
-                        ) {
+                        var watchdogAttempts = 0
+                        while (watchdogAttempts < 3) {
+                            delay(1500L)
+                            val wanted = EngineRuntime.wantedEngineState
+                            if (wanted == AudioEngineRouterProcessor.Engine.NONE) return@launch
+                            if (EngineRuntime.activeEngine == wanted) return@launch
+                            if (!bitPerfectNeedsRouteReprepare()) {
+                                // Player idle/empty/casting: the router will
+                                // latch on the next fresh playback configure.
+                                if (player.playbackState == Player.STATE_IDLE) return@launch
+                                continue
+                            }
+                            watchdogAttempts++
                             Timber.tag(TAG).w(
-                                "Engine %s not engaged 1.5s after selection — forcing route re-prepare",
+                                "Engine %s not engaged 1.5s after selection (probe %d/3) — forcing route re-prepare",
                                 wanted,
+                                watchdogAttempts,
                             )
                             scope.launch(Dispatchers.Main) {
                                 runCatching { repreparePlayerForAudioRouteChange() }
@@ -7410,6 +7489,15 @@ class MusicService :
             val resumePosition = player.currentPosition.coerceAtLeast(0L)
             val mediaItemIndex = player.currentMediaItemIndex
 
+            val nowElapsed = android.os.SystemClock.elapsedRealtime()
+            // A failure that arrives long after the previous one is a FRESH
+            // incident (transient USB hiccup recovered in between) - restart
+            // the budget instead of running on a stale, over-budget counter.
+            if (nowElapsed - lastExclusiveWriteFailureElapsedMs > exclusiveFailureFreshWindowMs) {
+                exclusiveWriteRecoveryAttemptCount = 0
+            }
+            lastExclusiveWriteFailureElapsedMs = nowElapsed
+
             if (currentMediaId != exclusiveWriteRecoveryMediaId) {
                 exclusiveWriteRecoveryMediaId = currentMediaId
                 exclusiveWriteRecoveryAttemptCount = 0
@@ -7452,10 +7540,39 @@ class MusicService :
                 return
             } else {
                 Timber.tag("MusicService").w(
-                    "Exclusive-route recovery budget exhausted for %s after %d attempts; giving up",
+                    "Exclusive-route recovery budget exhausted for %s after %d attempts; " +
+                        "falling back to the standard audio route for this session",
                     currentMediaId,
                     attemptNumber - 1,
                 )
+
+                // Deterministic negotiate failure (unsupported alt setting at
+                // this rate, permission, stream start): retrying the SAME
+                // exclusive route can never recover it. Disengage the
+                // exclusive transport for the rest of the session so the
+                // shared provider hands the sink a plain framework AudioTrack
+                // and the song actually plays. The engine keeps processing -
+                // only the exclusive transport is dropped.
+                exclusiveRouteSessionFallback = true
+                scope.launch(Dispatchers.Main) {
+                    try {
+                        runCatching { lastwaveExclusiveUsb.setWanted(false) }
+                        refreshUsbExclusiveRoute()
+                        repreparePlayerForAudioRouteChange()
+                    } catch (recoveryThrowable: Throwable) {
+                        Timber.tag("MusicService").e(
+                            recoveryThrowable,
+                            "Exclusive-route session fallback failed for %s; falling back to stop-on-error",
+                            currentMediaId,
+                        )
+                        stopOnError()
+                    }
+                }
+                // RETURN - the old fall-through re-entered the codec-state
+                // and generic handlers on every subsequent failure (the
+                // "attempt 5/4... 6/4... 7/4" log spam) and duplicated
+                // conflicting recovery work.
+                return
             }
         }
 
@@ -10236,14 +10353,16 @@ class MusicService :
     }
 
     private fun refreshUsbExclusiveRoute() {
-        val effective = usbExclusiveRequested && isUsbSinkCurrentlyActive()
+        val effective =
+            usbExclusiveRequested && isUsbSinkCurrentlyActive() && !exclusiveRouteSessionFallback
         if (effective != usbExclusiveAudioEnabled) {
             usbExclusiveAudioEnabled = effective
             Timber.tag(TAG).i(
-                "USB-exclusive output %s (requested=%s usbSinkAttached=%s)",
+                "USB-exclusive output %s (requested=%s usbSinkAttached=%s sessionFallback=%s)",
                 if (effective) "ENGAGED" else "disengaged",
                 usbExclusiveRequested,
                 isUsbSinkCurrentlyActive(),
+                exclusiveRouteSessionFallback,
             )
         }
         usbSinkActiveNow = usbExclusiveAudioEnabled
@@ -10273,6 +10392,10 @@ class MusicService :
         // bit-perfect output, for USB DACs as well as any other output that
         // advertises BIT_PERFECT mixer modes.
         refreshMixerBitPerfectRoute()
+        // The USB route flip changes which output rate the LastWave engine
+        // must target (wire clock vs device rate); without this call here the
+        // override could go stale between route changes.
+        applyNativeRateOverride()
         applyFloatDspEngagement()
     }
 
@@ -10533,16 +10656,66 @@ class MusicService :
      * device's native mixer rate through its libsoxr HQ path, mirroring the
      * upstream LastWave-native Oboe behaviour (the native output targets the
      * device rate; the platform fallback preserves the source rate).
+     *
+     * NEW: while the LastWave USB-exclusive transport is live, the engine's
+     * output rate must follow the WIRE clock the DAC actually negotiated.
+     * ExclusiveUsbOutput silently falls back to a playable hardware rate when
+     * the DAC descriptor lacks the source rate ("switching exclusive clock to
+     * XHz for soxr resampling") - but the engine was never told, so it kept
+     * emitting source-rate PCM into a wire running at a different clock:
+     * pitched-up, distorted playback on exactly those songs (the
+     * "some songs are distorted in lastwave" class). When the wire rate
+     * differs from the source rate, the override pins the engine output to
+     * the wire rate so its libsoxr HQ resampler runs, exactly like upstream.
      */
     private fun applyNativeRateOverride() {
-        val override =
-            if (BitPerfectRuntime.nativeSampleRatePreferred || BitPerfectRuntime.requested || usbSinkActiveNow) {
-                null
+        val wireRateHz =
+            if (usbSinkActiveNow && lastwaveAudioProcessing) {
+                lastwaveExclusiveUsb.currentRateHz().takeIf { it > 0 }
             } else {
-                deviceNativeOutputRateHz()
+                null
             }
+        val override =
+            wireRateHz
+                ?: if (BitPerfectRuntime.nativeSampleRatePreferred || BitPerfectRuntime.requested || usbSinkActiveNow) {
+                    null
+                } else {
+                    deviceNativeOutputRateHz()
+                }
         lastwaveProcessor.setOutputSampleRateOverride(override)
+
+        // A CHANGED override must reach the live engine: the processor only
+        // re-reads it at the next configure, so force one (re-prepare) while
+        // the engine is actually engaged and its CURRENT output rate differs
+        // from the new target - otherwise the chain keeps emitting at the
+        // stale rate for the rest of the track.
+        if (override != lastAppliedLastwaveRateOverrideHz) {
+            lastAppliedLastwaveRateOverrideHz = override
+            val engineCurrentOutRate = lastwaveProcessor.nativeOutputSampleRate
+            if (override != null &&
+                lastwaveAudioProcessing &&
+                engineCurrentOutRate > 0 &&
+                engineCurrentOutRate != override &&
+                bitPerfectNeedsRouteReprepare()
+            ) {
+                Timber.tag(TAG).w(
+                    "LastWave engine output realigned %dHz -> %dHz (%s); re-configuring the audio chain",
+                    engineCurrentOutRate,
+                    override,
+                    if (wireRateHz != null) "USB wire clock" else "device native rate",
+                )
+                scope.launch(Dispatchers.Main) {
+                    runCatching { repreparePlayerForAudioRouteChange() }
+                }
+            }
+        }
     }
+
+    @Volatile
+    private var lastAppliedLastwaveRateOverrideHz: Int? = null
+
+    @Volatile
+    private var lastUsbExclusivePrefValue: Boolean? = null
 
     private fun deviceNativeOutputRateHz(): Int? =
         runCatching {
