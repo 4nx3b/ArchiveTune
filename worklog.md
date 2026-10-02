@@ -3958,3 +3958,60 @@ Work Log:
 
 Stage Summary:
 - dev (this batch): 16 files, +~640/−390. Recent searches are bare rows with swipe-reveal delete; the results pages carry their query+filter-chips header as list content in both themes; every attached glass recorder gets the cover-lift restore broadcast; the AM player no longer re-records itself at 10Hz with no consumer; the Native Sample Rate toggle does something real; engines engage deterministically from the first configure and the live chain pill / track-info engine rows update the moment anything in the route changes; engine equalizers survive bit-perfect on/off cycles (same engagement fix).
+
+---
+Task ID: 55
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 6-item user batch — artist-page glass FAB, swipeless recents, dynamic library colors, Tryptify AutoEQ 'target curve not available' + in-app EQ engagement, exclusive-route local-playback failures + LastWave distortion (log-attached), glass pills invisible-but-clickable after lyrics (all pages)
+
+Work Log:
+- Analyzed the 3 uploaded screenshots (library red accents: category icons +
+  play overlays; Tryptify AutoEQ page 'Target curve not available' banner) and
+  the playback log (local FLAC -> AudioTrack write failed: -9101 x11,
+  recovery budget exhausted x8 with 'attempt 5/4' overruns, initial buffer
+  stalls for content:// media ids).
+- Glass pills: LocalPlayerSheetOverlayFraction now provides State<Float>;
+  LiquidGlassActionPill reads it inside the graphicsLayer block (draw-phase
+  read, immune to broken recomposition chains) and the provider pins the
+  fraction to 0 whenever the sheet rests collapsed. Root cause traced to the
+  b8308e748 cover-driven fade capturing a composition-time Float snapshot.
+- Recent searches: swipe-to-dismiss + initial-letter monogram removed; rows
+  are plain clickable text; Clear in the header is the only removal
+  affordance; SearchHistoryViewModel.delete dropped as dead code.
+- Library: LibraryAccentColor (0xFFFF375F) deleted — category icons now
+  colorScheme.primary, both circular play overlays primary/onPrimary (dynamic
+  in light + dark, follows Material You / seeds / per-song theme).
+- Artist page: HideOnScrollFAB gained an optional backdrop param — the
+  Library/Online switch renders as a liquid-glass action pill when the artist
+  glass header is active; all other call sites unchanged (default null).
+- Tryptify AutoEQ: FrequencyTargets.init() had zero call sites — every
+  bundled target curve parsed empty, so every fit aborted with 'Target curve
+  not available'. Now initialized in EqViewModel (init block before the target
+  property initializers) + MusicService.onCreate for the audio path.
+- Tryptify in-app EQ: ToFloatPcmAudioProcessor refused 16-bit AND float input
+  (only 24/32-bit passed) so the in-render-chain EQ starved on the most
+  common decoded formats while the out-of-chain system-wide EQ worked. Now
+  converts 16-bit->float and passes float through as an inactive stage.
+- Router: rerouteEngineIfChanged re-snapshots activeOutputFloat (stale flag
+  made EnginePcmCodec convert with the wrong output encoding after mid-track
+  engine switches); engagement watchdog retries 3x1.5s instead of one probe.
+- Exclusive failures: fresh-incident window resets the recovery counter;
+  RETURN after budget exhaustion (was falling through into the codec-state +
+  generic handlers, producing the 'attempt 5/4..' spam); session-scoped
+  standard-route fallback so local files actually play (cleared on USB device
+  change or pref re-toggle, never per-track).
+- LastWave distortion: ExclusiveUsbOutput silently negotiates a fallback
+  hardware clock when the DAC lacks the source rate, but the engine was never
+  told — source-rate PCM into a mismatched wire clock. applyNativeRateOverride
+  now pins the engine output to the live wire rate (soxr engages, upstream
+  parity), the 1s wire poll realigns on rate changes, and
+  refreshUsbExclusiveRoute re-runs the rate wiring it previously skipped.
+- Committed bff711604 on dev; CI green (7/7 check-runs: check + all 5 Nightly
+  R8 matrix jobs + universal).
+
+Stage Summary:
+- All 6 user tasks implemented and landed on dev @ bff711604; CI fully green.
+- The glass-invisible class is closed structurally (draw-phase read) rather
+  than by another restore broadcast; the exclusive-route failure class now
+  ends in audible playback instead of a give-up; the Tryptify EQ page has
+  working target curves and a working in-app path for 16-bit/float streams.
