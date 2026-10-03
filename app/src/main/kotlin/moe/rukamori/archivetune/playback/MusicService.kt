@@ -1879,6 +1879,17 @@ class MusicService :
                     if (!bitPerfect) {
                         BitPerfectRuntime.clearTrack()
                     }
+                    // "Bit-perfect + engine" must mean untouched samples THROUGH
+                    // the engine as well: LastWave's native clarity/EQ/peak
+                    // protection chain has a bit-perfect bypass that was never
+                    // wired, so the engine kept processing the PCM even with
+                    // bit-perfect ON. Route the request through so the engine's
+                    // own DSP stands down exactly when the user asked for
+                    // bit-perfect output (and resumes processing when OFF).
+                    runCatching { lastwaveEngine.setBitPerfect(bitPerfect) }
+                        .onFailure {
+                            Timber.tag(TAG).w(it, "LastWave native bit-perfect bypass toggle failed")
+                        }
                     applyNativeRateOverride()
                     refreshMixerBitPerfectRoute()
 
@@ -10456,6 +10467,17 @@ class MusicService :
         usbSinkActiveNow = usbExclusiveAudioEnabled
         EngineRuntime.publishUsbExclusive(usbSinkActiveNow)
 
+        // Bit-perfect strictness: the LastWave exclusive wire must run the
+        // SOURCE rate. With the flag set, ExclusiveUsbOutput refuses to
+        // renegotiate a fallback clock (which would engage its soxr
+        // resampler) and fails the configure instead, letting the recovery
+        // path disengage the exclusive route - the standard route then plays
+        // the source rate untouched. Without bit-perfect, the fallback
+        // negotiation stays enabled by design (playable audio beats silence).
+        runCatching {
+            lastwaveExclusiveUsb.setStrictSourceRateMode(BitPerfectRuntime.requested)
+        }
+
         runCatching {
             if (usbSinkActiveNow) {
                 val engineTransport = tryptifyAudioProcessing || lastwaveAudioProcessing
@@ -10758,7 +10780,14 @@ class MusicService :
      */
     private fun applyNativeRateOverride() {
         val wireRateHz =
-            if (usbSinkActiveNow && lastwaveAudioProcessing) {
+            if (usbSinkActiveNow && lastwaveAudioProcessing && !BitPerfectRuntime.requested) {
+                // Bit-perfect ON never pins the engine to a non-source wire
+                // rate (that would be the app resampling). The strict
+                // source-rate mode above makes a mismatched wire fail the
+                // configure and fall back to the standard route instead, so
+                // this branch only engages WITHOUT bit-perfect - the
+                // distortion fix for mismatched clocks keeps its soxr path
+                // exactly where it is wanted.
                 lastwaveExclusiveUsb.currentRateHz().takeIf { it > 0 }
             } else {
                 null

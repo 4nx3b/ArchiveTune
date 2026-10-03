@@ -106,6 +106,37 @@ class UsbExclusiveAudioOutputProvider(
         }
         if (format.channelCount > MAX_EXCLUSIVE_CHANNELS) return false
         if (currentUsbDevice() == null) return false
+        // Bit-perfect demands the wire run the SOURCE rate. When the attached
+        // DAC is already known not to clock that rate, decline the exclusive
+        // route UP FRONT: the standard AudioTrack route takes over at the
+        // source rate (with the BIT_PERFECT mixer-attribute attempt), instead
+        // of engaging the exclusive path and silently renegotiating the wire
+        // to a fallback clock + soxr ("Resampling • 44.1 kHz → 48 kHz").
+        if (BitPerfectRuntime.requested && format.sampleRate > 0) {
+            val sourceRate = format.sampleRate
+            when (engineSelection()) {
+                AudioEngineKind.LASTWAVE -> {
+                    val hwRates = lastwaveExclusiveUsb
+                        ?.supportedHardwareRatesHz()
+                        .orEmpty()
+                        .filter { it > 0 }
+                    if (hwRates.isNotEmpty() && sourceRate !in hwRates) return false
+                }
+
+                AudioEngineKind.TRYPTIFY -> {
+                    val ranges = tryptifyDriver?.supportedRates?.value.orEmpty()
+                    if (ranges.isNotEmpty() &&
+                        ranges.none { range ->
+                            sourceRate >= range.minHz && sourceRate <= range.maxHz
+                        }
+                    ) {
+                        return false
+                    }
+                }
+
+                AudioEngineKind.NONE -> Unit // AAudio: the granted rate is verified post-open
+            }
+        }
         return when (engineSelection()) {
             AudioEngineKind.TRYPTIFY ->
                 TryptifyLibusbAudioOutput.available() && tryptifyDriver != null &&
