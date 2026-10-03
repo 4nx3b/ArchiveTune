@@ -118,7 +118,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
-import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
@@ -342,7 +342,7 @@ internal data class MessageActionTarget(
 @Composable
 internal fun MessageActionsPopup(
     target: MessageActionTarget,
-    backdrop: LayerBackdrop?,
+    backdrop: Backdrop?,
     myUsername: String?,
     onReact: (String) -> Unit,
     onOpenEmojiPicker: () -> Unit,

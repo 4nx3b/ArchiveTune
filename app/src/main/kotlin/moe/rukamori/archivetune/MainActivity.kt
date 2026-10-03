@@ -1477,17 +1477,15 @@ class MainActivity : ComponentActivity() {
                     // player triggers THE PAGE's search instead of launching
                     // the global song search. Observed via the shared
                     // "openSearch" savedStateHandle key (ObserveOpenSearchRequest).
+                    // Playlist pages deliberately do NOT appear here: their
+                    // search pill was removed (two stacked search affordances
+                    // felt wrong next to the playlist's own header); history,
+                    // local songs and the Spotify playlist library keep theirs.
                     val compactRouteHasInPageSearch =
                         navBackStackEntry?.destination?.route?.let { route ->
                             route == "history" ||
                                 route == "local_songs" ||
-                                route == "library_spotify_playlists" ||
-                                route.startsWith("local_playlist/") ||
-                                route.startsWith("online_playlist/") ||
-                                route.startsWith("spotify_playlist/") ||
-                                route.startsWith("cache_playlist/") ||
-                                route.startsWith("top_playlist/") ||
-                                route.startsWith("auto_playlist/")
+                                route == "library_spotify_playlists"
                         } == true
 
                     val compactSearchCircleVisible =
@@ -3685,18 +3683,13 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    val openSearchFromRoute =
-                        navBackStackEntry
-                            ?.savedStateHandle
-                            ?.getStateFlow("openSearch", false)
-                            ?.collectAsStateWithLifecycle()
-
-                    LaunchedEffect(openSearchFromRoute?.value) {
-                        if (openSearchFromRoute?.value == true) {
-                            navBackStackEntry?.savedStateHandle?.set("openSearch", false)
-                            openSearch()
-                        }
-                    }
+                    // NOTE: there is deliberately NO MainActivity-level
+                    // observer on the "openSearch" savedStateHandle key here.
+                    // Every route that publishes that key observes it itself
+                    // (ObserveOpenSearchRequest) and opens ITS OWN in-page
+                    // search; a second, activity-level observer that called
+                    // the global openSearch() made the global search bar and
+                    // the page's search open stacked on top of each other.
                 }
             }
         }

@@ -114,8 +114,6 @@ import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
@@ -145,7 +143,9 @@ import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
 import moe.rukamori.archivetune.ui.component.LiquidGlassPillBlurRadius
 import moe.rukamori.archivetune.ui.component.liquidGlass
+import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
+import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.utils.rememberPreference
 
 private sealed interface ChatRow {
@@ -202,7 +202,10 @@ fun CommentTogetherScreen(navController: NavController) {
     val coroutineScope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
 
-    val chatGlassSource = rememberLayerBackdrop()
+    // Guarded throttled recorder (replaces Kyant's rememberLayerBackdrop,
+    // whose unguarded GraphicsLayer.record is the RenderNode re-entrancy
+    // crash class - see LiquidGlass.rememberBackdrop for the full note).
+    val chatGlassSource = rememberThrottledBackdrop(Color.Transparent)
     val globalGlassEnabled = LocalLiquidGlassBackdrop.current != null
     val chatGlassBackdrop = if (globalGlassEnabled) chatGlassSource else null
 

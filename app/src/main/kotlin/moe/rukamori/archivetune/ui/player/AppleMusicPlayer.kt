@@ -81,6 +81,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -263,14 +264,27 @@ private class CanvasSnapshotSourceNode(
 ) : DrawModifierNode, Modifier.Node() {
     var lastRecordUptimeMillis = 0L
 
+    // Re-entrancy guard: if this node is somehow re-drawn while one of its
+    // own record passes is still open (a parent layer recording the subtree
+    // twice in one frame, or a double attach during a transition), a nested
+    // graphicsLayer.record would hit RenderNode.beginRecording's
+    // "Recording currently in progress" path. Skipping the nested record
+    // keeps the layer consistent; the outer pass finishes normally.
+    var isRecording = false
+
     override fun ContentDrawScope.draw() {
         val now = SystemClock.uptimeMillis()
-        if (now - lastRecordUptimeMillis >= minIntervalMillis) {
+        if (!isRecording && now - lastRecordUptimeMillis >= minIntervalMillis) {
             lastRecordUptimeMillis = now
-            runCatching {
-                graphicsLayer.record(size.toIntSize()) {
-                    this@draw.drawContent()
+            isRecording = true
+            try {
+                runCatching {
+                    graphicsLayer.record(size.toIntSize()) {
+                        this@draw.drawContent()
+                    }
                 }
+            } finally {
+                isRecording = false
             }
         }
         // Intentionally draws nothing to the screen: see the doc above the
@@ -759,13 +773,29 @@ fun AppleMusicPlayerContent(
         // gaussian work. The twin decoder keeps running in real time - the
         // TextureView's async buffer queue drops unconsumed frames, so the
         // loop-sync follower stays aligned exactly as before.
+        //
+        // Threading contract (the 5 fps / out-of-sync regression): the layer
+        // readback (`toImageBitmap`) replays the RenderNode display list and
+        // may re-record it if HWUI trimmed it - it MUST run on the main
+        // dispatcher, paced by withFrameNanos so each bake consumes the frame
+        // the record pass just produced. Reading the layer from a background
+        // dispatcher raced the UI thread's record pass on the same RenderNode
+        // (records silently failing one frame in two, GPU readbacks stalling
+        // behind them), which is exactly the "plays at 5 fps and is not in
+        // sync until the player is recycled a few times" behaviour. Only the
+        // gaussian blur stays on Dispatchers.Default.
         val twinSnapshotLayer = rememberGraphicsLayer()
         var blurredTwinBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
         var twinBakeFailures by remember { mutableStateOf(0) }
         val twinBackdropHealthy = twinBakeFailures < 5
         val twinSnapshotBlurRadiusPx =
             with(LocalDensity.current) { (AmCanvasBackdropBlurRadius / AmCanvasBackdropUpscale).toPx() }
-        LaunchedEffect(useCanvasBackdrop) {
+        // Keyed on the canvas URLs as well: when the next track with its own
+        // canvas loads, the twin decoder re-prepares and the first frames are
+        // unavailable for a moment - the stale baked bitmap would otherwise
+        // keep showing the PREVIOUS song's blurred canvas over the new one
+        // until enough new bakes land.
+        LaunchedEffect(useCanvasBackdrop, canvasPrimaryUrl, canvasFallbackUrl) {
             blurredTwinBitmap = null
             twinBakeFailures = 0
             if (!useCanvasBackdrop) return@LaunchedEffect
@@ -781,17 +811,29 @@ fun AppleMusicPlayerContent(
                 }
                 val layer = twinSnapshotLayer
                 if (layer.size.width >= 8 && layer.size.height >= 8) {
-                    val baked =
-                        withContext(Dispatchers.Default) {
-                            runCatching {
-                                ImageBlurUtils
-                                    .blur(layer.toImageBitmap().asAndroidBitmap(), twinSnapshotBlurRadiusPx)
-                                    .asImageBitmap()
-                            }.getOrNull()
+                    // Frame-aligned readback: consume the layer right after a
+                    // display frame (and therefore after that frame's record
+                    // pass) instead of at an arbitrary point mid-frame.
+                    withFrameNanos { }
+                    val snapshot =
+                        runCatching {
+                            layer.toImageBitmap().asAndroidBitmap()
+                        }.getOrNull()
+                    if (snapshot != null) {
+                        val baked =
+                            withContext(Dispatchers.Default) {
+                                runCatching {
+                                    ImageBlurUtils
+                                        .blur(snapshot, twinSnapshotBlurRadiusPx)
+                                        .asImageBitmap()
+                                }.getOrNull()
+                            }
+                        if (baked != null) {
+                            twinBakeFailures = 0
+                            blurredTwinBitmap = baked
+                        } else {
+                            twinBakeFailures++
                         }
-                    if (baked != null) {
-                        twinBakeFailures = 0
-                        blurredTwinBitmap = baked
                     } else {
                         twinBakeFailures++
                     }

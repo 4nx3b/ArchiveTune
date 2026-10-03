@@ -3558,8 +3558,12 @@ class MusicService :
                     }
                     if (remainingToStart <= 0L && plan.fadeMs >= MIN_CROSSFADE_DURATION_MS) {
                         val positionMs = player.currentPosition
+                        // Full remaining tail - no end guard on the automix path:
+                        // the blend must land exactly on the outgoing song's
+                        // natural end (the old 150 ms guard plus cue-clock
+                        // drift cut the tail of every automixed track).
                         val remainingFadeMs =
-                            (duration - positionMs - CROSSFADE_END_GUARD_MS)
+                            (duration - positionMs)
                                 .coerceAtMost(plan.fadeMs)
                         if (remainingFadeMs >= MIN_CROSSFADE_DURATION_MS) {
                             startCrossfade(target, remainingFadeMs, plan)
@@ -3992,7 +3996,13 @@ class MusicService :
                     player.duration
                         .takeIf { it != C.TIME_UNSET && it > 0L }
                         ?.let { fullDuration ->
-                            val leftAfterWaitMs = fullDuration - player.currentPosition - CROSSFADE_END_GUARD_MS
+                            // Smart (automix) blends end ON the outgoing song's
+                            // natural end; the classic crossfade keeps its end
+                            // guard so the promotion still beats the ExoPlayer
+                            // auto-advance.
+                            val leftAfterWaitMs =
+                                fullDuration - player.currentPosition -
+                                    if (smart) 0L else CROSSFADE_END_GUARD_MS
                             if (leftAfterWaitMs < fadeMs) {
                                 fadeMs = leftAfterWaitMs.coerceAtLeast(MIN_CROSSFADE_DURATION_MS)
                                 Timber.tag(TAG).d(
@@ -4029,6 +4039,20 @@ class MusicService :
 
                     var elapsedMs = 0L
                     var lastTickMs = android.os.SystemClock.elapsedRealtime()
+                    // Smart blends are driven by the OUTGOING song's clock: the
+                    // fade-out reaches silence exactly at the outgoing track's
+                    // natural end regardless of the incoming player's cue or
+                    // beat-matching playback rate. The previous cue-clock
+                    // driver (incomingPlayer.currentPosition - cueTimeMs, at
+                    // incomingPlaybackRate) finished the blend early whenever
+                    // the rates diverged, and the promotion then truncated the
+                    // outgoing song's tail.
+                    val blendStartOutgoingPositionMs =
+                        if (smart) {
+                            player.currentPosition
+                        } else {
+                            0L
+                        }
                     while (isActive && elapsedMs < fadeMs) {
                         if (player.currentMediaItem?.mediaId != outgoingMediaId) {
                             cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
@@ -4066,9 +4090,8 @@ class MusicService :
                         if (crossfadePlaybackRequested) {
                             incomingPlayer.playWhenReady = true
                             if (smart) {
-
                                 elapsedMs =
-                                    (incomingPlayer.currentPosition - cueTimeMs)
+                                    (player.currentPosition - blendStartOutgoingPositionMs)
                                         .coerceIn(0L, fadeMs)
                             } else {
                                 elapsedMs = (elapsedMs + (nowMs - lastTickMs)).coerceAtMost(fadeMs)
@@ -4089,6 +4112,45 @@ class MusicService :
                         }
                         lastTickMs = nowMs
                         delay(CROSSFADE_FRAME_MS)
+                    }
+
+                    if (smart) {
+                        // Hold the fully-blended state (outgoing silent,
+                        // incoming at full volume) until the outgoing song
+                        // actually reaches its natural end. pauseAtEndOfMedia
+                        // Items keeps the outgoing player from auto-advancing;
+                        // this wait is what guarantees NO part of the outgoing
+                        // track is ever cut off. Bounded so a stalled decoder
+                        // can not hang the handover.
+                        val tailDeadlineMs =
+                            android.os.SystemClock.elapsedRealtime() + AUTO_MIX_TAIL_WAIT_MS
+                        while (isActive && player.currentMediaItem?.mediaId == outgoingMediaId) {
+                            val outgoingDuration = player.duration
+                            if (outgoingDuration == C.TIME_UNSET || outgoingDuration <= 0L) break
+                            if (player.playbackState == Player.STATE_ENDED) break
+                            if (player.currentPosition >= outgoingDuration - AUTO_MIX_TAIL_EPSILON_MS) break
+                            if (!player.playWhenReady &&
+                                player.playbackState == Player.STATE_READY &&
+                                player.currentPosition >= outgoingDuration - 250L
+                            ) {
+                                break
+                            }
+                            if (android.os.SystemClock.elapsedRealtime() >= tailDeadlineMs) {
+                                Timber.tag(TAG).d(
+                                    "crossfade[%d] outgoing end wait timed out; promoting",
+                                    generation,
+                                )
+                                break
+                            }
+                            applyCrossfadeVolumes(
+                                1f,
+                                crossfadeBaseVolume,
+                                crossfadeIncomingBaseVolume,
+                                localPlayer,
+                                incomingPlayer,
+                            )
+                            delay(CROSSFADE_FRAME_MS)
+                        }
                     }
 
                     finishCrossfade(target, incomingPlayer, generation)
@@ -11884,6 +11946,14 @@ class MusicService :
         const val AUTO_MIX_POLL_MS = 1_000L
         const val AUTO_MIX_RESOLVE_TIMEOUT_MS = 45_000L
         const val DEFAULT_AUTO_MIX_FALLBACK_MS = 6_000L
+
+        // After a smart (automix) blend completes, the handover waits for the
+        // outgoing song's natural end before promoting the incoming player.
+        // The wait is bounded so a stalled/seeking outgoing decoder cannot
+        // freeze the queue; the epsilon covers ExoPlayer's end-of-stream
+        // position granularity.
+        const val AUTO_MIX_TAIL_WAIT_MS = 2_000L
+        const val AUTO_MIX_TAIL_EPSILON_MS = 8L
 
         val USB_SINK_DEVICE_TYPES =
             intArrayOf(
