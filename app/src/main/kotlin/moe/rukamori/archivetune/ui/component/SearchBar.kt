@@ -9,6 +9,7 @@ package moe.rukamori.archivetune.ui.component
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -111,9 +112,15 @@ fun TopSearch(
     leftFocusRequester: FocusRequester? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+
     val animationProgress: Float by animateFloatAsState(
         targetValue = if (active) 1f else 0f,
-        animationSpec = tween(durationMillis = AnimationDurationMillis),
+        animationSpec =
+            if (active) {
+                tween(durationMillis = AnimationDurationMillis)
+            } else {
+                snap()
+            },
         label = "SearchBarAnimation",
     )
 

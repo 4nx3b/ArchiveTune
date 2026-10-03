@@ -23,8 +23,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 object BitPerfectRuntime {
 
-    // AudioManager.DIRECT_PLAYBACK_SUPPORTED (value 1 shl 0) is not exposed through
-    // the public SDK; only NOT_SUPPORTED and BITSTREAM_SUPPORTED are public.
     private const val DIRECT_PLAYBACK_SUPPORTED_BIT = 1 shl 0
 
     @Volatile
@@ -41,11 +39,6 @@ object BitPerfectRuntime {
     @Volatile
     private var latchedUsbBits: Int = 0
 
-    // Last inputs handed to evaluateTrack(). Kept so the runtime can re-run the
-    // verdict when ONLY the out-of-band factors change (engine selection flip,
-    // mixer re-grant) - the sink itself did not re-configure in that window, so
-    // nothing else would refresh the Compose status otherwise and the live
-    // audio chain pill keeps describing a route that no longer exists.
     @Volatile
     private var lastInputEncoding: Int = C.ENCODING_PCM_16BIT
 
@@ -127,23 +120,12 @@ object BitPerfectRuntime {
         var failure: String? = null
         var usbRouteVerified = false
 
-        // The bit-perfect float route: whenever bit-perfect output is requested
-        // OR a ported engine (Tryptify/LastWave) is engaged and the USB-exclusive
-        // transport is not carrying the stream, the sink runs the chain in
-        // float32 at the source sample rate, so the source bit depth and rate are
-        // carried to the AudioTrack with no app-level resampling or truncation.
-        // Engines must NEVER fall back to the 16-bit shared-mixer truncation -
-        // their output depth would silently collapse (24-bit -> 16-bit).
         val floatRoute = (requested || enginesEngaged) && !usbExclusive
 
         if (!requested) {
             failure = null
         } else if (usbExclusive) {
 
-            // The engine / float-DSP USB-exclusive transport writes PCM straight to the
-            // DAC through its own driver (libusb / usbdevfs / AAud), so the shared Android
-            // mixer is bypassed entirely. Rate and bit-depth are verified from the live
-            // wire values latched via notifyUsbExclusive().
             direct = true
             usbRouteVerified = latchedUsbRateHz > 0 &&
                 latchedUsbRateHz == inputSampleRate &&
@@ -160,12 +142,9 @@ object BitPerfectRuntime {
         } else if (audioManager == null) {
             failure = "AudioManager unavailable"
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-
             val channelConfig =
                 if (channels == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
-            // Query with the encoding the sink actually writes on the wire: the
-            // float route delivers PCM_FLOAT; the plain route delivers the
-            // decoded chain encoding (16-bit).
+
             val queryEncoding = if (floatRoute) C.ENCODING_PCM_FLOAT else inputEncoding
             val queryFormat =
                 AudioFormat.Builder()
@@ -179,22 +158,11 @@ object BitPerfectRuntime {
                     AudioManager.getDirectPlaybackSupport(queryFormat, AUDIO_ATTRIBUTES_MUSIC)
                 }.getOrDefault(AudioManager.DIRECT_PLAYBACK_NOT_SUPPORTED)
 
-            // The PCM "directly supported" flag is the low bit of the bitmask
-            // returned by getDirectPlaybackSupport. AudioManager only exposes
-            // DIRECT_PLAYBACK_NOT_SUPPORTED and DIRECT_PLAYBACK_BITSTREAM_SUPPORTED
-            // through the public SDK - DIRECT_PLAYBACK_SUPPORTED itself is hidden,
-            // so its stable AOSP value is used here. BITSTREAM only applies to
-            // compressed passthrough and can never be granted for a PCM query.
             direct = (flags and DIRECT_PLAYBACK_SUPPORTED_BIT) != 0
 
-            // Over the shared mixer the app-level chain still runs at exactly the
-            // source rate in float; the platform mixer behind it is annotated in
-            // the route readout instead of being reported as a resample here.
             nativeRateMatched = true
         } else {
 
-            // Pre-Android-13 has no direct-playback query; the float route still
-            // carries the source rate and depth faithfully.
             nativeRateMatched = true
         }
 
@@ -244,13 +212,6 @@ object BitPerfectRuntime {
         return bypass
     }
 
-    /**
-     * Re-runs the route verdict with the latched inputs after an out-of-band
-     * factor changed (engine selection flip while a track keeps playing).
-     * The sink did not re-configure, so onConfigure will not fire; without this
-     * re-evaluation the live audio chain pill keeps the stale engine/dsp
-     * readout until the next track or a bit-perfect toggle.
-     */
     fun reevaluateEngines(
         context: Context,
         engineOrDspEngaged: Boolean,
@@ -305,9 +266,7 @@ object BitPerfectRuntime {
         if (!active) {
             val wasMixerRoute = status.mixerBitPerfectActive
             status = status.copy(mixerBitPerfectActive = false)
-            // Only the mixer route could have set verified on a non-direct,
-            // non-USB path - clear it so a disengaged bit-perfect mixer does not
-            // keep the pill claiming Bit-Perfect until the next track.
+
             if (wasMixerRoute && !status.usbExclusiveActive && !status.directPlaybackSupported) {
                 status = status.copy(verifiedBitPerfect = false)
             }
@@ -319,11 +278,7 @@ object BitPerfectRuntime {
             outputBitDepth = if (bits > 0) bits else status.outputBitDepth,
         )
         if (requested || lastEnginesEngaged) {
-            // The mixer route only owns the verified flag when it is the active
-            // transport - never clobber a verified direct-playback bypass or a
-            // live USB-exclusive wire with the mixer's own verdict. Engines ride
-            // the same float route as bit-perfect output, so a BIT_PERFECT mixer
-            // grant carries their stream losslessly too.
+
             val canClaim = !status.usbExclusiveActive && !status.directPlaybackSupported
             val rateMatches = outputRateHz <= 0 || status.sourceSampleRate <= 0 ||
                 outputRateHz == status.sourceSampleRate

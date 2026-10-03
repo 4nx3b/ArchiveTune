@@ -227,7 +227,6 @@ fun PreferenceEntry(
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier.weight(1f),
             ) {
-
                 ProvideTextStyle(MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)) {
                     title()
                 }
@@ -260,7 +259,6 @@ fun PreferenceEntry(
     }
 
     if (inGroup) {
-
         Box(modifier = modifier.fillMaxWidth()) {
             rowContent()
         }
@@ -850,7 +848,6 @@ fun SwitchPreference(
         description = description,
         icon = icon,
         trailingContent = {
-
             SpringySwitch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
@@ -1353,7 +1350,6 @@ fun PreferenceGroupTitle(
     title: String,
     modifier: Modifier = Modifier,
 ) {
-
     Text(
         text = title,
         style = MaterialTheme.typography.labelMedium,

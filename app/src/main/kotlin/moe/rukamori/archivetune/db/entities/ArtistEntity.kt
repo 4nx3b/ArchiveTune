@@ -47,16 +47,7 @@ data class ArtistEntity(
         localToggleLike().also {
             if (isLocal) return@also
             CoroutineScope(Dispatchers.IO).launch {
-                // The like button on the artist page must SUBSCRIBE: local
-                // bookmark + the real YouTube channel subscription. Two silent
-                // failure modes previously left the remote side a no-op:
-                //  - a missing channelId resolved through getChannelId(), which
-                //    returns "" (not null) when the lookup fails, and
-                //    subscribeChannel("") always failed silently;
-                //  - any subscribe error was swallowed by runCatching upstream.
-                // Both now log so the outcome is at least observable, and an
-                // unresolvable channel id skips the call instead of firing a
-                // guaranteed-failure request.
+
                 val targetChannelId =
                     channelId ?: run {
                         val resolved = YouTube.getChannelId(id)

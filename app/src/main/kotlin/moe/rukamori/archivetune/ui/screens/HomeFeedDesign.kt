@@ -734,7 +734,6 @@ fun HomeTopFadeBlur(
     intensityFraction: Float = 1f,
 ) {
     if (intensityFraction <= 0.01f) {
-
         return
     }
     val height = barHeight + HomeTopFadeRun

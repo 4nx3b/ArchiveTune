@@ -36,9 +36,11 @@ class AaudioExclusiveAudioOutput(
         stream?.let { return it }
         if (!FloatDsp.available) return null
         val opened = AaudioNativeStream()
+        val wantedRate = if (config.sampleRate > 0) config.sampleRate else 48000
+        val wantedChannels = channelCountForMask(config.channelMask)
         val result = opened.open(
-            sampleRate = if (config.sampleRate > 0) config.sampleRate else 48000,
-            channels = channelCountForMask(config.channelMask),
+            sampleRate = wantedRate,
+            channels = wantedChannels,
             deviceId = deviceId,
             exclusive = true,
         )
@@ -46,6 +48,17 @@ class AaudioExclusiveAudioOutput(
             Log.w(
                 TAG,
                 "USB-exclusive AAudio stream NOT engaged (result=$result exclusive=${opened.isExclusive()} deviceId=$deviceId) — falling back to the standard output",
+            )
+            opened.release()
+            return null
+        }
+
+        if (opened.sampleRate() != wantedRate || opened.channelCount() != wantedChannels) {
+            Log.w(
+                TAG,
+                "USB-exclusive AAudio stream granted rate=${opened.sampleRate()}Hz " +
+                    "ch=${opened.channelCount()} instead of ${wantedRate}Hz/$wantedChannels — " +
+                    "falling back to the standard output instead of pitching the audio",
             )
             opened.release()
             return null

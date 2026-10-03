@@ -320,7 +320,6 @@ fun ListenBrainzLoginScreen(navController: NavController) {
                         view: WebView,
                         url: String?,
                     ) {
-
                         tryExtractToken(view, url)
                     }
                 }

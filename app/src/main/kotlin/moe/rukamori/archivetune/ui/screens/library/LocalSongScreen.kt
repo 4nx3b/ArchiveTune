@@ -71,7 +71,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -91,6 +90,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -112,6 +112,7 @@ import moe.rukamori.archivetune.localmedia.LocalSongScanConfig
 import moe.rukamori.archivetune.localmedia.SupportedLocalAudio
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.ui.component.LargeFrostedTopAppBar
+import moe.rukamori.archivetune.ui.component.LocalBottomUiCompactFraction
 import moe.rukamori.archivetune.ui.component.AppleMusicPlaylistHero
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
@@ -120,7 +121,6 @@ import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.SongMenu
-import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -131,6 +131,7 @@ import java.time.LocalDateTime
 import java.util.Locale
 import kotlin.math.roundToInt
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import moe.rukamori.archivetune.ui.component.ObserveOpenSearchRequest
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -156,15 +157,11 @@ fun LocalSongScreen(
     val scanSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showScanSheet by rememberSaveable { mutableStateOf(false) }
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
+
+    ObserveOpenSearchRequest(navController) { isSearchActive = true }
+
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var query by rememberSaveable { mutableStateOf("") }
-
-    val isListScrolling by remember {
-        derivedStateOf {
-            listState.firstVisibleItemIndex > 0 ||
-                listState.firstVisibleItemScrollOffset > 0
-        }
-    }
 
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val liquidGlassHeaderActive =
@@ -344,9 +341,6 @@ fun LocalSongScreen(
         )
     }
 
-    CompositionLocalProvider(
-        LocalMiniPlayerDocked provides isListScrolling,
-    ) {
     Box(
         modifier =
             Modifier
@@ -417,13 +411,20 @@ fun LocalSongScreen(
                                 .padding(top = 8.dp, bottom = 4.dp),
                     ) {}
                 } else {
+
+                    val compactFraction = LocalBottomUiCompactFraction.current
                     LargeFrostedTopAppBar(
                         titleRes = R.string.local_files,
                         onBack = navController::navigateUp,
                         onBackLongClick = { navController.backToMain() },
                         backdrop = pillBackdrop,
                         actions = {
-                            IconButton(onClick = { isSearchActive = true }) {
+                            IconButton(
+                                onClick = { if (compactFraction.value < 0.5f) isSearchActive = true },
+                                modifier = Modifier.graphicsLayer {
+                                    alpha = 1f - compactFraction.value
+                                },
+                            ) {
                                 Icon(
                                     painter = painterResource(R.drawable.search),
                                     contentDescription = stringResource(R.string.search),
@@ -636,7 +637,6 @@ fun LocalSongScreen(
         }
         }
 
-    }
     }
 }
 

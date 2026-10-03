@@ -425,14 +425,7 @@ fun ListenTogetherSettings(
             .calculateBottomPadding()
 
     Box(modifier = Modifier.fillMaxSize()) {
-    // The glass recorder must sit OUTSIDE the verticalScroll: chained after it
-    // the recorder's layer spans the full un-scrolled column height and only
-    // re-records when rows themselves invalidate, so the pill's backdrop sampled
-    // from it went stale (never tracked the viewport). Wrapping the scrolling
-    // content keeps the recorder viewport-sized and scrolling re-records it at
-    // the throttled interval, so the back pill renders live content behind it.
-    // The LiquidGlassActionPill stays a SIBLING below so the recorder never
-    // contains its own consumer.
+
     Box(
         modifier =
             Modifier
@@ -734,7 +727,6 @@ fun ListenTogetherSettings(
         )
 
         if (glassHeaderActive) {
-
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 interactive = true,

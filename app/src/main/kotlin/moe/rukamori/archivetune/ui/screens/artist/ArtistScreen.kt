@@ -63,8 +63,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -76,6 +78,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -176,6 +179,7 @@ import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import moe.rukamori.archivetune.ui.component.glassSource
+import moe.rukamori.archivetune.ui.component.liquidGlass
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
@@ -210,6 +214,8 @@ import moe.rukamori.archivetune.viewmodels.ArtistViewModel
 import java.util.Locale
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.Animatable
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 
@@ -385,25 +391,43 @@ fun ArtistScreen(
                 listOf(topSongsSection) + sections.filterNot { it === topSongsSection }
             }
         }
-    // Hoisted so the overflow menu's shuffle/radio actions (and the header
-    // below) share one source of truth for the display name - previously these
-    // were declared inside the header item scope only.
+
     val artistName = artistPage?.artist?.title ?: libraryArtist?.artist?.name
     val unknownArtist = stringResource(R.string.unknown_artist)
 
+    var artistOverflowMenuOpen by remember { mutableStateOf(false) }
+
     val showArtistOverflowMenu: () -> Unit = {
-        // Radio + shuffle moved here from the profile-picture area (they used
-        // to sit above the play circle) - the hero now shows only the play
-        // button, and these two actions live in the overflow menu like every
-        // other secondary action on the page.
-        val canShuffle =
-            if (showLocal) {
-                librarySongs.isNotEmpty()
-            } else {
-                artistPage?.artist?.shuffleEndpoint != null
-            }
-        val canRadio = !showLocal && artistPage?.artist?.radioEndpoint != null
-        val playShuffle: () -> Unit = {
+        artistOverflowMenuOpen = true
+    }
+
+    val artistOverflowCanShuffle: () -> Boolean = {
+        if (showLocal) {
+            librarySongs.isNotEmpty()
+        } else {
+            artistPage?.artist?.shuffleEndpoint != null
+        }
+    }
+    val artistOverflowCanRadio: () -> Boolean = {
+        !showLocal && artistPage?.artist?.radioEndpoint != null
+    }
+    val artistOverflowBlockActionEnabled: () -> Boolean = {
+        blockState !is ArtistBlockState.Loading &&
+            (
+                artistPage
+                    ?.artist
+                    ?.title
+                    .orEmpty()
+                    .isNotBlank() ||
+                    libraryArtist
+                        ?.artist
+                        ?.name
+                        .orEmpty()
+                        .isNotBlank()
+            )
+    }
+    val artistOverflowShuffleAction: () -> () -> Unit = {
+        {
             if (showLocal) {
                 if (librarySongs.isNotEmpty()) {
                     playerConnection.playQueue(
@@ -419,43 +443,12 @@ fun ArtistScreen(
                 }
             }
         }
-        val playRadio: () -> Unit = {
+    }
+    val artistOverflowRadioAction: () -> () -> Unit = {
+        {
             artistPage?.artist?.radioEndpoint?.let { endpoint ->
                 playerConnection.playQueue(YouTubeQueue(endpoint))
             }
-        }
-        menuState.show {
-            ArtistOverflowMenu(
-                isBlocked = isArtistBlocked,
-                blockActionEnabled =
-                    blockState !is ArtistBlockState.Loading &&
-                        (
-                            artistPage
-                                ?.artist
-                                ?.title
-                                .orEmpty()
-                                .isNotBlank() ||
-                                libraryArtist
-                                    ?.artist
-                                    ?.name
-                                    .orEmpty()
-                                    .isNotBlank()
-                        ),
-                showShuffle = canShuffle,
-                showRadio = canRadio,
-                onShuffle = {
-                    playShuffle()
-                    menuState.dismiss()
-                },
-                onRadio = {
-                    playRadio()
-                    menuState.dismiss()
-                },
-                onAction = { action ->
-                    viewModel.onAction(action)
-                    menuState.dismiss()
-                },
-            )
         }
     }
 
@@ -485,14 +478,12 @@ fun ArtistScreen(
         if (!canvasSamplingActive) {
             canvasAmbientColors = null
         } else {
-
             delay(280)
             while (true) {
                 val layerSize = canvasSampleLayerSize
                 if (layerSize.width >= 8 && layerSize.height >= 8) {
                     val sampled =
                         try {
-
                             val snapshot =
                                 canvasSampleLayer.toImageBitmap().asAndroidBitmap()
                                     .copy(Bitmap.Config.ARGB_8888, false)
@@ -501,10 +492,6 @@ fun ArtistScreen(
                             } else {
                                 withContext(Dispatchers.Default) {
 
-                                    // The ambience mirrors the BOTTOM band of the
-                                    // canvas so the wash connects to where the artwork
-                                    // hands over into the page gradient. Palette's
-                                    // region API avoids cropping bitmap copies per sample.
                                     val bandTop =
                                         (snapshot.height * CANVAS_AMBIENT_BAND_START).toInt()
                                             .coerceIn(0, (snapshot.height - 2).coerceAtLeast(1))
@@ -574,18 +561,27 @@ fun ArtistScreen(
 
     val ambientReleaseBase = lerp(animatedAmbientMid, animatedAmbientBottom, 0.45f)
     val releaseCardContainer = ambientReleaseBase.copy(alpha = 0.50f)
+
+    val staticReleasePalette =
+        remember(artistArtworkColors, surfaceColor) {
+            BackdropTonePalette.fromColorsLight(
+                colors = artistArtworkColors.orEmpty(),
+                fallbackColor = surfaceColor.toArgb(),
+            )
+        }
+    val staticReleaseBase = lerp(staticReleasePalette.mid, staticReleasePalette.bottom, 0.45f)
     val releaseCardContent =
-        if (ambientReleaseBase.luminance() > 0.5f) {
+        if (staticReleaseBase.luminance() > 0.5f) {
             MaterialTheme.colorScheme.onSurface
         } else {
             Color.White
         }
     val releaseCardMutedContent = releaseCardContent.copy(alpha = 0.72f)
     val releaseCardAccent =
-        if (ambientReleaseBase.luminance() > 0.5f) {
-            MaterialTheme.colorScheme.primary
+        if (staticReleaseBase.luminance() > 0.5f) {
+            MaterialTheme.colorScheme.onSurface
         } else {
-            lerp(ambientReleaseBase, Color.White, 0.35f)
+            Color.White.copy(alpha = 0.88f)
         }
 
     var pageContainerHeightPx by remember { mutableStateOf(0) }
@@ -629,12 +625,7 @@ fun ArtistScreen(
         database.transaction {
             val artist = libraryArtist?.artist
             if (artist != null) {
-                // Like on the artist page = SUBSCRIBE. An artist row saved
-                // without a channelId (older inserts, local scans) made the
-                // YouTube-side subscribe inside toggleLike() resolve the id
-                // per click - and silently no-op when that lookup failed.
-                // Backfill the channel id from the loaded remote page so the
-                // subscription (and every future toggle) has a real target.
+
                 val patched =
                     if (artist.channelId.isNullOrBlank() && !artistPage?.artist?.channelId.isNullOrBlank()) {
                         artist.copy(channelId = artistPage?.artist?.channelId)
@@ -664,14 +655,12 @@ fun ArtistScreen(
                 .background(surfaceColor)
                 .onSizeChanged { pageContainerHeightPx = it.height },
     ) {
-
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
                     .let { m -> if (liquidGlassHeaderActive) m.glassSource(artworkBackdrop) else m },
         ) {
-
             Box(
                 modifier =
                     Modifier
@@ -776,18 +765,12 @@ fun ArtistScreen(
                                 .clipToBounds()
                                 .onSizeChanged { heroMeasuredHeightPx = it.height },
                     ) {
-
                         Box(
                             modifier =
                                 Modifier
                                     .matchParentSize()
                                     .graphicsLayer {
 
-                                        // Full-lag parallax keeps the artwork pinned on
-                                        // screen while the list scrolls over it. The
-                                        // previous half-lag opened a growing gap ABOVE
-                                        // the canvas where the page gradient bled over
-                                        // the artwork with extra height.
                                         translationY = heroParallaxOffset
                                     },
                         ) {
@@ -976,9 +959,6 @@ fun ArtistScreen(
                                 horizontalAlignment = Alignment.End,
                                 verticalArrangement = Arrangement.spacedBy(14.dp),
                             ) {
-                                // Shuffle and radio moved to the overflow menu -
-                                // the profile picture area shows ONLY the play
-                                // button now.
 
                                 val playButtonColor =
                                     ambientSource?.let {
@@ -1123,6 +1103,7 @@ fun ArtistScreen(
                         item {
                             NavigationTitle(
                                 title = stringResource(R.string.songs),
+                                accentColor = MaterialTheme.colorScheme.onSurface,
                                 onClick = {
                                     navController.navigate("artist/${viewModel.artistId}/songs")
                                 },
@@ -1146,6 +1127,7 @@ fun ArtistScreen(
                                 showInLibraryIcon = true,
                                 isActive = song.id == mediaMetadata?.id,
                                 isPlaying = isPlaying,
+                                activeContainerBackdrop = true,
 
                                 swipeContentBackgroundColor = Color.Transparent,
                                 trailingContent = {
@@ -1214,7 +1196,8 @@ fun ArtistScreen(
                                     Text(
                                         text = stringResource(R.string.view_all),
                                         style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.primary,
+
+                                        color = MaterialTheme.colorScheme.onSurface,
                                         modifier =
                                             Modifier
                                                 .fillMaxWidth()
@@ -1230,6 +1213,7 @@ fun ArtistScreen(
                         item {
                             NavigationTitle(
                                 title = stringResource(R.string.albums),
+                                accentColor = MaterialTheme.colorScheme.onSurface,
                                 onClick = {
                                     navController.navigate("artist/${viewModel.artistId}/albums")
                                 },
@@ -1289,6 +1273,7 @@ fun ArtistScreen(
                             ) {
                                 NavigationTitle(
                                     title = section.title,
+                                    accentColor = MaterialTheme.colorScheme.onSurface,
                                     onClick =
                                         section.moreEndpoint?.let {
                                             {
@@ -1315,6 +1300,7 @@ fun ArtistScreen(
                                     item = song as SongItem,
                                     isActive = mediaMetadata?.id == song.id,
                                     isPlaying = isPlaying,
+                                    activeContainerBackdrop = true,
 
                                     swipeContentBackgroundColor = Color.Transparent,
                                     trailingContent = {
@@ -1365,7 +1351,6 @@ fun ArtistScreen(
                                 )
                             }
                         } else if (section.items.isNotEmpty() && section.items.all { it is ArtistItem }) {
-
                             item(
                                 key = "youtube_section_artists_${sectionIndex}_${section.title}",
                                 contentType = CONTENT_TYPE_LIST,
@@ -1553,6 +1538,7 @@ fun ArtistScreen(
             lazyListState = lazyListState,
             icon = if (showLocal) R.drawable.language else R.drawable.library_music,
             label = if (showLocal) stringResource(R.string.together_online) else stringResource(R.string.filter_library),
+            backdrop = if (glassHeaderActive) artworkBackdrop else null,
             onClick = {
                 showLocal = showLocal.not()
                 if (!showLocal && artistPage == null) viewModel.fetchArtistsFromYTM()
@@ -1643,13 +1629,26 @@ fun ArtistScreen(
                     modifier = Modifier.size(48.dp),
                     onClick = toggleArtistSubscription,
                 )
-                LiquidGlassIconButton(
-                    backdrop = artworkBackdrop,
-                    painter = painterResource(R.drawable.solar_more_circle_linear),
-                    contentDescription = stringResource(R.string.more_options),
-                    modifier = Modifier.size(48.dp),
-                    onClick = showArtistOverflowMenu,
-                )
+                Box {
+                    LiquidGlassIconButton(
+                        backdrop = artworkBackdrop,
+                        painter = painterResource(R.drawable.solar_more_circle_linear),
+                        contentDescription = stringResource(R.string.more_options),
+                        modifier = Modifier.size(48.dp),
+                        onClick = showArtistOverflowMenu,
+                    )
+                    ArtistOverflowDropdown(
+                        expanded = artistOverflowMenuOpen,
+                        onDismissRequest = { artistOverflowMenuOpen = false },
+                        isBlocked = isArtistBlocked,
+                        blockActionEnabled = artistOverflowBlockActionEnabled(),
+                        showShuffle = artistOverflowCanShuffle(),
+                        showRadio = artistOverflowCanRadio(),
+                        onShuffle = artistOverflowShuffleAction(),
+                        onRadio = artistOverflowRadioAction(),
+                        onAction = viewModel::onAction,
+                    )
+                }
             }
         }
     }
@@ -1684,13 +1683,26 @@ fun ArtistScreen(
             }
         },
         actions = {
-            IconButton(
-                onClick = showArtistOverflowMenu,
-                onLongClick = {},
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.more_horiz),
-                    contentDescription = stringResource(R.string.more_options),
+            Box {
+                IconButton(
+                    onClick = showArtistOverflowMenu,
+                    onLongClick = {},
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.more_horiz),
+                        contentDescription = stringResource(R.string.more_options),
+                    )
+                }
+                ArtistOverflowDropdown(
+                    expanded = artistOverflowMenuOpen,
+                    onDismissRequest = { artistOverflowMenuOpen = false },
+                    isBlocked = isArtistBlocked,
+                    blockActionEnabled = artistOverflowBlockActionEnabled(),
+                    showShuffle = artistOverflowCanShuffle(),
+                    showRadio = artistOverflowCanRadio(),
+                    onShuffle = artistOverflowShuffleAction(),
+                    onRadio = artistOverflowRadioAction(),
+                    onAction = viewModel::onAction,
                 )
             }
         },
@@ -1729,7 +1741,7 @@ private fun ArtistOverflowMenu(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(bottom = 12.dp),
+                .padding(vertical = 6.dp),
     ) {
         if (showShuffle) {
             ArtistOverflowMenuItem(
@@ -1738,12 +1750,18 @@ private fun ArtistOverflowMenu(
                 onClick = onShuffle,
             )
         }
+        if (showShuffle && showRadio) {
+            ArtistOverflowMenuDivider()
+        }
         if (showRadio) {
             ArtistOverflowMenuItem(
                 text = stringResource(R.string.start_radio),
                 iconRes = R.drawable.radio,
                 onClick = onRadio,
             )
+        }
+        if ((showShuffle || showRadio)) {
+            ArtistOverflowMenuDivider()
         }
 
         ArtistOverflowMenuItem(
@@ -1754,6 +1772,86 @@ private fun ArtistOverflowMenu(
         )
     }
 }
+
+@Composable
+private fun ArtistOverflowMenuDivider() {
+    HorizontalDivider(
+        modifier =
+            Modifier
+                .padding(horizontal = 20.dp, vertical = 2.dp)
+                .fillMaxWidth(0.72f),
+        thickness = 0.75.dp,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
+    )
+}
+
+@Composable
+private fun ArtistOverflowDropdown(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    isBlocked: Boolean,
+    blockActionEnabled: Boolean,
+    showShuffle: Boolean,
+    showRadio: Boolean,
+    onShuffle: () -> Unit,
+    onRadio: () -> Unit,
+    onAction: (ArtistAction) -> Unit,
+) {
+    val morph = remember { Animatable(0f) }
+    LaunchedEffect(expanded) {
+        if (expanded) {
+            morph.snapTo(0f)
+            morph.animateTo(
+                targetValue = 1f,
+                animationSpec =
+                    spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+            )
+        }
+    }
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        modifier = Modifier.widthIn(min = ArtistOverflowPopupWidth),
+        shape = RoundedCornerShape(18.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(6.dp),
+        shadowElevation = 14.dp,
+    ) {
+        Box(
+            modifier =
+                Modifier.graphicsLayer {
+                    val t = morph.value
+                    scaleX = 0.55f + 0.45f * t
+                    scaleY = 0.55f + 0.45f * t
+                    alpha = t
+                    transformOrigin = TransformOrigin(0.94f, 0.06f)
+                }
+        ) {
+            ArtistOverflowMenu(
+                isBlocked = isBlocked,
+                blockActionEnabled = blockActionEnabled,
+                onAction = { action ->
+                    onDismissRequest()
+                    onAction(action)
+                },
+                showShuffle = showShuffle,
+                showRadio = showRadio,
+                onShuffle = {
+                    onDismissRequest()
+                    onShuffle()
+                },
+                onRadio = {
+                    onDismissRequest()
+                    onRadio()
+                },
+            )
+        }
+    }
+}
+
+private val ArtistOverflowPopupWidth = 232.dp
 
 @Composable
 private fun ArtistOverflowMenuItem(
@@ -2298,10 +2396,6 @@ private suspend fun extractAmbientArtworkColors(
     if (result !is SuccessResult) return null
     val bitmap = result.image?.toBitmap() ?: return null
 
-    // Sample the BOTTOM band of the artist picture: the ambient wash should carry
-    // the colour the artwork ends on, so the gradient connects to the artwork
-    // instead of its (often much brighter) dominant colour. Palette's region API
-    // avoids cropping bitmap copies.
     val bandPalette =
         withContext(Dispatchers.Default) {
             val bandTop =
@@ -2341,12 +2435,9 @@ private const val CANVAS_SAMPLE_INTERVAL_MILLIS = 350L
 private const val CANVAS_RECORD_INTERVAL_MILLIS = 120L
 private const val CANVAS_SAMPLE_LAYER_MAX_WIDTH_PX = 128
 
-// Bottom band of the canvas / artwork the ambience samples from.
 private const val CANVAS_AMBIENT_BAND_START = 0.62f
 private const val ARTWORK_AMBIENT_BAND_START = 0.62f
 
-// Deliberately unhurried ambient colour transitions; a canvas colour change
-// should ease in gently rather than snap.
 private const val ARTIST_AMBIENT_CROSSFADE_MILLIS = 1200
 
 private const val ArtistHeroArtworkSizePx = 1200

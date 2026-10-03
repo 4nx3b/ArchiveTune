@@ -67,7 +67,8 @@ import androidx.compose.runtime.setValue
 fun BottomSheet(
     state: BottomSheetState,
     modifier: Modifier = Modifier,
-    backgroundColor: Color,
+
+    backgroundColor: () -> Color,
     onDismiss: (() -> Unit)? = null,
     keepContentAlive: Boolean = false,
     morphMode: Boolean = false,
@@ -121,15 +122,16 @@ fun BottomSheet(
                     if (opaqueBackground) {
                         Modifier.drawBehind {
                             if (state.progress > 0f) {
-                                drawRect(color = backgroundColor)
+                                drawRect(color = backgroundColor())
                             }
 
                         }
                     } else {
                         Modifier.drawBehind {
-                            val alpha = backgroundColor.alpha * state.progress.coerceIn(0f, 1f)
+                            val color = backgroundColor()
+                            val alpha = color.alpha * state.progress.coerceIn(0f, 1f)
                             if (alpha > 0f) {
-                                drawRect(color = backgroundColor, alpha = alpha)
+                                drawRect(color = color, alpha = alpha)
                             }
                         }
                     },
@@ -499,11 +501,6 @@ fun rememberBottomSheetState(
             Animatable(0.dp, Dp.VectorConverter)
         }
 
-    // Tracks the bounds the animatable last settled against so a pure bounds
-    // change (rotation resizing the sheet) can SNAP to the new anchor instead
-    // of visibly re-sliding from the old orientation's height - that slide kept
-    // the kept-alive player content mid-flight and out of sync with the plain
-    // controls after rotating back to portrait.
     var previousBounds by remember {
         mutableStateOf(Triple(dismissedBound, expandedBound, collapsedBound))
     }

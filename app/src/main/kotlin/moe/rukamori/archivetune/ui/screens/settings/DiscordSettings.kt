@@ -41,12 +41,14 @@ import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.discord.DiscordAuthCoordinator
+import moe.rukamori.archivetune.discord.DiscordAuthResult
 import moe.rukamori.archivetune.discord.DiscordOAuthRepository
 import moe.rukamori.archivetune.ui.component.EditTextPreference
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -195,58 +197,56 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
         }
 
     val launchAuthorization: () -> Unit = {
-        val session = DiscordOAuthRepository.createAuthorizationSession()
-        authorizationSession = session
         authorizationMessage = null
         authorizationUiModeName = DiscordAuthorizationUiMode.Waiting.name
 
-        runCatching {
-            context.startActivity(
-                Intent(Intent.ACTION_VIEW, session.authorizationUri).apply {
-                    addCategory(Intent.CATEGORY_BROWSABLE)
-                },
-            )
-        }.onFailure {
-            authorizationUiModeName = DiscordAuthorizationUiMode.Failure.name
-            authorizationMessage = it.message ?: context.getString(R.string.discord_authorization_failed)
+        coroutineScope.launch {
+            val session = DiscordOAuthRepository.beginAuthorization(context)
+            authorizationSession = session
+            runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, session.authorizationUri).apply {
+                        addCategory(Intent.CATEGORY_BROWSABLE)
+                    },
+                )
+            }.onFailure {
+                authorizationUiModeName = DiscordAuthorizationUiMode.Failure.name
+                authorizationMessage = it.message ?: context.getString(R.string.discord_authorization_failed)
+            }
         }
     }
 
-    LaunchedEffect(authorizationSession.state, authorizationUiMode) {
-        if (authorizationUiMode != DiscordAuthorizationUiMode.Waiting) {
-            return@LaunchedEffect
-        }
-
-        DiscordAuthCoordinator.redirects.collectLatest { redirect ->
-            if (redirect.getQueryParameter("state") != authorizationSession.state) {
-                return@collectLatest
-            }
-
-            DiscordOAuthRepository
-                .completeAuthorization(
-                    context = context,
-                    session = authorizationSession,
-                    redirect = redirect,
-                ).onSuccess { session ->
-                    val account =
-                        session.account
-                            ?: runCatching { DiscordOAuthRepository.fetchAccount(session.accessToken) }.getOrNull()
-
-                    authorizedToken = session.accessToken
-                    authorizedUsername = account?.username.orEmpty()
-                    authorizedName = account?.displayName.orEmpty()
-                    authorizedAvatarUrl = account?.avatarUrl.orEmpty()
-                    discordUsername = authorizedUsername
-                    discordName = authorizedName
-                    discordAvatarUrl = authorizedAvatarUrl
+    LaunchedEffect(Unit) {
+        DiscordAuthCoordinator.authResults.collect { result ->
+            when (result) {
+                is DiscordAuthResult.Success -> {
+                    result.account?.let { account ->
+                        authorizedUsername = account.username
+                        authorizedName = account.displayName
+                        authorizedAvatarUrl = account.avatarUrl.orEmpty()
+                    }
                     authorizationMessage = context.getString(R.string.discord_authorization_success)
                     authorizationUiModeName = DiscordAuthorizationUiMode.Success.name
                     authorizationSession = DiscordOAuthRepository.createAuthorizationSession()
-                }.onFailure {
-                    authorizationMessage = it.message ?: context.getString(R.string.discord_authorization_failed)
+                }
+
+                is DiscordAuthResult.Failure -> {
+                    authorizationMessage = result.message
                     authorizationUiModeName = DiscordAuthorizationUiMode.Failure.name
                     authorizationSession = DiscordOAuthRepository.createAuthorizationSession()
                 }
+            }
+        }
+    }
+
+    LaunchedEffect(authorizationUiModeName) {
+        if (authorizationUiModeName != DiscordAuthorizationUiMode.Waiting.name) {
+            return@LaunchedEffect
+        }
+        delay(90_000)
+        if (authorizationUiModeName == DiscordAuthorizationUiMode.Waiting.name) {
+            authorizationUiModeName = DiscordAuthorizationUiMode.Failure.name
+            authorizationMessage = context.getString(R.string.discord_authorization_timeout_hint)
         }
     }
 

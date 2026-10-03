@@ -492,7 +492,6 @@ fun ListenTogetherScreen(
         )
 
         if (glassHeaderActive) {
-
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 interactive = true,
@@ -573,7 +572,6 @@ private fun NotConfiguredContent() {
 
 @Composable
 private fun HeaderSection(modifier: Modifier = Modifier) {
-
     Column(
         modifier = modifier
             .fillMaxWidth()

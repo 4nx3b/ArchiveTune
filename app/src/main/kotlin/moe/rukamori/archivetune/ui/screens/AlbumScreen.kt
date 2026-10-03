@@ -765,7 +765,6 @@ fun AlbumScreen(
                         text = pluralStringResource(R.plurals.n_song, count, count),
                     )
                 } else {
-
                     GlassPillTitleText(
                         text = currentAlbumWithSongs.album.title.ifBlank {
                             stringResource(R.string.albums)

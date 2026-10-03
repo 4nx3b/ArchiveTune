@@ -89,7 +89,6 @@ object ReplayGainTagParser {
     }
 
     private fun parseOgg(bytes: ByteArray): ReplayGain? {
-
         val signatures = listOf(byteArrayOf(3, 'v'.code.toByte(), 'o'.code.toByte(), 'r'.code.toByte()), byteArrayOf('O'.code.toByte(), 'p'.code.toByte(), 'u'.code.toByte(), 's'.code.toByte()))
         for (signature in signatures) {
             val index = indexOf(bytes, signature, limit = 64 * 1024) ?: continue

@@ -126,8 +126,6 @@ private val LibraryGridSpacing = 14.dp
 private val LibraryGridHorizontalPadding = 20.dp
 private val LibraryArtworkCornerRadius = 10.dp
 
-private val LibraryAccentColor: Color = Color(0xFFFF375F)
-
 @Composable
 fun LibraryMixScreen(
     navController: NavController,
@@ -472,7 +470,7 @@ private fun LibraryCategoryRow(category: LibraryCategory) {
             Icon(
                 painter = painterResource(id = category.iconRes),
                 contentDescription = null,
-                tint = category.iconTint ?: LibraryAccentColor,
+                tint = category.iconTint ?: MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(LibraryCategoryIconSize),
             )
             Text(
@@ -698,7 +696,7 @@ private fun RecentlyAddedGridItem(
                             .padding(8.dp)
                             .size(28.dp)
                             .clip(CircleShape)
-                            .background(LibraryAccentColor)
+                            .background(MaterialTheme.colorScheme.primary)
                             .clickable {
                                 coroutineScope.launch {
                                     database.playlistSongs(playlist.id).firstOrNull()?.let { songs ->
@@ -715,7 +713,7 @@ private fun RecentlyAddedGridItem(
                     Icon(
                         painter = painterResource(id = R.drawable.play),
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.size(14.dp),
                     )
                 }
@@ -871,7 +869,7 @@ private fun RecentlyLikedItem(
                         .padding(8.dp)
                         .size(28.dp)
                         .clip(CircleShape)
-                        .background(LibraryAccentColor)
+                        .background(MaterialTheme.colorScheme.primary)
                         .clickable {
                             val startIndex = songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
                             playerConnection.playQueue(
@@ -887,7 +885,7 @@ private fun RecentlyLikedItem(
                 Icon(
                     painter = painterResource(id = R.drawable.play),
                     contentDescription = null,
-                    tint = Color.White,
+                    tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(14.dp),
                 )
             }

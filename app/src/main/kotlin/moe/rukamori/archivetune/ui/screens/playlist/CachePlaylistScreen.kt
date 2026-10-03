@@ -42,7 +42,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -103,7 +102,7 @@ import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
-import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked
+import moe.rukamori.archivetune.ui.component.ObserveOpenSearchRequest
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.menu.SelectionSongMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
@@ -229,6 +228,9 @@ fun CachePlaylistScreen(
 
     var selection by remember { mutableStateOf(false) }
     var isSearching by remember { mutableStateOf(false) }
+
+    ObserveOpenSearchRequest(navController) { isSearching = true }
+
     var query by remember { mutableStateOf(TextFieldValue()) }
     val focusRequester = remember { FocusRequester() }
     val lazyListState = rememberLazyListState()
@@ -298,13 +300,6 @@ fun CachePlaylistScreen(
         }
     }
 
-    val isListScrolling by remember {
-        derivedStateOf {
-            lazyListState.firstVisibleItemIndex > 0 ||
-                lazyListState.firstVisibleItemScrollOffset > 0
-        }
-    }
-
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -330,9 +325,6 @@ fun CachePlaylistScreen(
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
-    CompositionLocalProvider(
-        LocalMiniPlayerDocked provides isListScrolling,
-    ) {
     val headerHaze = rememberScreenHeaderHaze()
     Box(
         modifier =
@@ -867,7 +859,6 @@ fun CachePlaylistScreen(
         )
         }
 
-    }
     }
 }
 

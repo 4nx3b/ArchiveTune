@@ -251,7 +251,6 @@ object TitleMatch {
 }
 
 object AudioSourceConfig {
-
     val DEFAULT_ORDER: List<AudioSourceType> =
         listOf(
             AudioSourceType.TIDAL,

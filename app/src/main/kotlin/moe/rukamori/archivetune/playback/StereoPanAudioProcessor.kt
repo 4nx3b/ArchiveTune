@@ -39,7 +39,6 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat =
         if (moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime.chainBypassActive) {
-
             AudioProcessor.AudioFormat.NOT_SET
         } else if ((inputAudioFormat.encoding == C.ENCODING_PCM_16BIT ||
             inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT) &&
@@ -98,7 +97,6 @@ class StereoPanAudioProcessor : BaseAudioProcessor() {
             val inLeft: Float
             val inRight: Float
             if (floatIn) {
-
                 inLeft = inputBuffer.float * 32767f
                 inRight = inputBuffer.float * 32767f
             } else {

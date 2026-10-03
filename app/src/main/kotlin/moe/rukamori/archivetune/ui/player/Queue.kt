@@ -407,7 +407,7 @@ fun Queue(
 
     BottomSheet(
         state = state,
-        backgroundColor = Color.Unspecified,
+        backgroundColor = { Color.Unspecified },
         modifier = modifier,
 
         onCollapsedContentClick = {},

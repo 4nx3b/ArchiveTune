@@ -448,7 +448,6 @@ class App :
             try {
                 Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
                     try {
-
                         moe.rukamori.archivetune.utils.CrashReporter.writeJavaCrashReport(thread, throwable)
                         val sw = StringWriter()
                         val pw = PrintWriter(sw)

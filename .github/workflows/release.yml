@@ -545,15 +545,17 @@ jobs:
           cat > release_notes.md <<EOF
           # ArchiveTune ${VERSION}
 
-          The sources update: podcasts join the app, Apple Music and Amazon Music
-          become full members of the source chain, Tidal and the community
-          account pools arrive, the equalizer grows into a complete Audio
-          Effects console, Home learns to be Spotify, and the SpatialFlow player
-          finally collapses as smoothly as the original app.
+          The audiophile update: the Tryptify and LastWave engine pair arrives in
+          full, bit-perfect playback stops resampling for good, automix becomes a
+          native clean-room engine that starts each blend when the song itself
+          starts getting quiet, Listen Together is rebuilt from the vivi-music
+          reference with a complete chat suite, settings turns into grouped glass
+          cards with a liquid-glass tuning page, and search grows the compact
+          search circle beside the mini player.
 
           **Full changelog:** https://github.com/${{ github.repository }}/blob/${TAG}/changelogs.md
 
-          **All changes since v15.0:** https://github.com/${{ github.repository }}/compare/v15.0...${TAG}
+          **All changes since v16.0:** https://github.com/${{ github.repository }}/compare/v16.0...${TAG}
           EOF
 
           gh release create "$TAG" \

@@ -39,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -61,6 +62,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AccountImageUrlKey
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.ObserveOpenSearchRequest
 import moe.rukamori.archivetune.ui.component.glassAwareSurface
 import moe.rukamori.archivetune.ui.component.LocalSettingsDialogShowing
 import moe.rukamori.archivetune.ui.component.rememberSettingsDialogHostState
@@ -268,6 +270,9 @@ fun SettingsScreen(
 
     var searchQuery by remember { mutableStateOf("") }
 
+    var searchActivationTick by remember { mutableIntStateOf(0) }
+    ObserveOpenSearchRequest(navController) { searchActivationTick++ }
+
     val allSettingsGroups =
         buildSettingsGroups(
             navController = navController,
@@ -430,7 +435,6 @@ fun SettingsScreen(
                         key = "settings_group_$groupIndex",
                         contentType = "settings_group_card",
                     ) {
-
                         SettingsGroupCard(
                             group = group,
                             modifier = Modifier.animateItem(),
@@ -455,6 +459,7 @@ fun SettingsScreen(
                     placeholder = stringResource(R.string.search_settings),
                     bottomPadding = playerAwareBottomPadding,
                     lazyListState = listState,
+                    activationTick = searchActivationTick,
                     trailing = {
                         if (searchQuery.isNotEmpty()) {
                             IconButton(onClick = { searchQuery = "" }, onLongClick = {}) {

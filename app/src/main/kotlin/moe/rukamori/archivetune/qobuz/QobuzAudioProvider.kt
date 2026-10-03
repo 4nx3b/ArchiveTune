@@ -980,8 +980,7 @@ object QobuzAudioProvider {
         value
             .split(' ')
             .map { it.trim() }
-            // CJK single-character words are meaningful - keep them so CJK
-            // titles can overlap. Other scripts keep the length >= 2 floor.
+
             .filter { (it.length >= 2 || it.any { ch -> ch.code >= 0x2E80 }) && it !in STOP_WORDS }
             .toSet()
 
@@ -1024,12 +1023,7 @@ object QobuzAudioProvider {
             ?.lowercase(Locale.US)
             ?.let { Normalizer.normalize(it, Normalizer.Form.NFD) }
             ?.replace(Regex("\\p{Mn}+"), "")
-            // Unicode-aware: keep letters/digits from every script. The old
-            // [^a-z0-9]+ form deleted ALL non-Latin characters, blanking Hindi /
-            // Bengali / Arabic / CJK queries and titles - searchCandidates then
-            // early-returned emptyList() before any network call and scoreMatch
-            // rejected every candidate, so the play-from popup search and the
-            // automatic source resolution never worked for non-English songs.
+
             ?.replace(Regex("[^\\p{L}\\p{N}]+"), " ")
             ?.trim()
             .orEmpty()

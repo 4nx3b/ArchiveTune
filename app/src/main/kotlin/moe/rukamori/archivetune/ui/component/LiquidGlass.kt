@@ -66,7 +66,6 @@ import androidx.compose.ui.unit.toIntSize
 import androidx.compose.ui.util.lerp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop as kyantLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -101,17 +100,15 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
-typealias PlatformBackdrop = LayerBackdrop
+typealias PlatformBackdrop = ThrottledLayerBackdrop
 
 @Composable
 fun rememberLayerBackdropSettled(@Suppress("UNUSED_PARAMETER") delayMillis: Long = 0L): Boolean = true
 
 @Composable
 fun rememberBackdrop(color: Color): PlatformBackdrop =
-    rememberLayerBackdrop {
-        drawRect(color)
-        drawContent()
-    }
+
+    rememberThrottledBackdrop(color)
 
 @Composable
 fun rememberThrottledBackdrop(
@@ -132,7 +129,13 @@ fun rememberThrottledBackdrop(
     return backdrop
 }
 
-fun Modifier.layerBackdrop(backdrop: PlatformBackdrop): Modifier = this.kyantLayerBackdrop(backdrop)
+fun Modifier.layerBackdrop(backdrop: Backdrop): Modifier =
+    when (backdrop) {
+        is ThrottledLayerBackdrop -> throttledLayerBackdrop(backdrop)
+
+        is LayerBackdrop -> this.kyantLayerBackdrop(backdrop)
+        else -> this
+    }
 
 fun Modifier.glassSource(backdrop: Backdrop): Modifier =
     when (backdrop) {
@@ -240,6 +243,11 @@ fun rememberLiquidGlassTuning(): LiquidGlassTuning {
 
 internal const val ThrottledLayerBackdropDefaultIntervalMillis = 100L
 
+private val liveRecorderBackdrops =
+    java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<ThrottledLayerBackdrop, Boolean>(),
+    )
+
 @Stable
 class ThrottledLayerBackdrop internal constructor(
     val graphicsLayer: GraphicsLayer,
@@ -250,39 +258,27 @@ class ThrottledLayerBackdrop internal constructor(
 
     internal var layerCoordinates: LayoutCoordinates? by mutableStateOf(null)
 
-    // Bumped whenever a recorder node (re)attaches so every backdrop consumer
-    // redraws immediately instead of waiting for the next content invalidation.
-    // Without this, glass pills that recompose while their page sits still (e.g.
-    // right after the fullscreen player with lyrics is minimized) keep their last
-    // drawn frame - which was fully faded out - and appear gone until the user
-    // scrolls or touches the page.
     internal var consumerInvalidationTick by mutableStateOf(0)
 
-    // Re-entrancy guard: while the recorder node is capturing its subtree into
-    // graphicsLayer, any liquidGlass consumer nested INSIDE that subtree would
-    // draw the very layer that is still being recorded into itself - an
-    // infinitely recursive display list that overflows the RenderThread stack
-    // (native SIGSEGV). Skipping the backdrop draw in that window renders the
-    // consumer with its plain base/tint instead of crashing the process.
-    // Snapshot state (NOT a plain @Volatile) so that clearing the flag after a
-    // record pass invalidates every consumer that drew inside the window - a
-    // plain volatile left those pills drawn WITHOUT their backdrop until some
-    // unrelated invalidation happened ("invisible glass after lyrics" class).
     internal var recordingInProgress by mutableStateOf(false)
 
     internal fun notifyRecorderAttached() {
         consumerInvalidationTick++
     }
 
-    /**
-     * Forces every consumer of this backdrop to redraw on the next frame.
-     * Called when a cover state (player sheet / lyrics fullscreen) lifts: some
-     * restore paths do not re-attach the recorder node itself, and a pill whose
-     * last drawn frame predates the cover would otherwise keep showing that
-     * stale (often empty) frame indefinitely.
-     */
     fun notifyContentRestore() {
         consumerInvalidationTick++
+        notifyAllContentRestored()
+    }
+
+    private companion object {
+        fun notifyAllContentRestored() {
+            val snapshots: List<ThrottledLayerBackdrop>
+            synchronized(liveRecorderBackdrops) {
+                snapshots = liveRecorderBackdrops.keys.toList()
+            }
+            snapshots.forEach { it.consumerInvalidationTick++ }
+        }
     }
 
     override fun DrawScope.drawBackdrop(
@@ -290,21 +286,25 @@ class ThrottledLayerBackdrop internal constructor(
         coordinates: LayoutCoordinates?,
         layerBlock: (GraphicsLayerScope.() -> Unit)?,
     ) {
-        val tick = consumerInvalidationTick
-        if (tick < 0) return
+
+        @Suppress("UNUSED_VARIABLE") val tick = consumerInvalidationTick
         if (recordingInProgress) return
         val coordinates = coordinates ?: return
         val layerCoordinates = layerCoordinates ?: return
-        withTransform({
-            val offset =
-                try {
-                    layerCoordinates.localPositionOf(coordinates)
-                } catch (_: Exception) {
+
+        if (!layerCoordinates.isAttached || !coordinates.isAttached) return
+        val offset =
+            try {
+                layerCoordinates.localPositionOf(coordinates)
+            } catch (_: Exception) {
+
+                runCatching {
                     coordinates.positionInWindow() - layerCoordinates.positionInWindow()
-                }
+                }.getOrNull()
+            } ?: return
+        withTransform({
             translate(-offset.x, -offset.y)
         }) {
-
             runCatching { drawLayer(graphicsLayer) }
         }
     }
@@ -356,7 +356,7 @@ private class ThrottledLayerBackdropNode(
 
     override fun onAttach() {
         super.onAttach()
-
+        liveRecorderBackdrops[backdrop] = true
         lastRecordUptimeMillis = 0L
         backdrop.notifyRecorderAttached()
     }
@@ -386,7 +386,6 @@ private class ThrottledLayerBackdropNode(
                     }
                 }.isSuccess
             if (recorded && backdrop.graphicsLayer.size == size.toIntSize()) {
-
                 runCatching { drawLayer(backdrop.graphicsLayer) }
                 return
             }
@@ -401,7 +400,12 @@ private class ThrottledLayerBackdropNode(
     }
 
     override fun onDetach() {
+        liveRecorderBackdrops.remove(backdrop)
 
+        if (backdrop.layerCoordinates?.isAttached == false) {
+            backdrop.layerCoordinates = null
+            backdrop.consumerInvalidationTick++
+        }
     }
 }
 
@@ -459,7 +463,6 @@ fun Modifier.liquidGlass(
                 },
             onDrawSurface = {
                 if (scrim != null) {
-
                     drawRect(scrim.copy(alpha = (scrim.alpha * tuning.tintFactor).coerceIn(0f, 1f)))
                 } else {
                     val darken =
@@ -515,7 +518,7 @@ fun LiquidGlassActionPill(
     Row(
         modifier =
             modifier
-                .graphicsLayer { alpha = 1f - sheetOverlayFraction }
+                .graphicsLayer { alpha = 1f - sheetOverlayFraction.value }
                 .height(48.dp)
                 .liquidGlass(
                     backdrop = backdrop,

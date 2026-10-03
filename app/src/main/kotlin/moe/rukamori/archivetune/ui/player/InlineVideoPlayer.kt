@@ -148,9 +148,10 @@ val LocalPlayerLyricsFullScreen = compositionLocalOf { false }
 
 val LocalPlayerSheetOverlayActive = compositionLocalOf { false }
 
-val LocalPlayerSheetOverlayFraction = compositionLocalOf { 0f }
-
-val LocalMiniPlayerDocked = compositionLocalOf { false }
+val LocalPlayerSheetOverlayFraction =
+    compositionLocalOf<androidx.compose.runtime.State<Float>> {
+        androidx.compose.runtime.mutableStateOf(0f)
+    }
 
 @Composable
 fun ProvideVideoFullscreenState(content: @Composable () -> Unit) {

@@ -70,6 +70,8 @@ import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.LiquidGlassNavBarEnabledKey
 import moe.rukamori.archivetune.ui.component.NavigationBarGlassGlowKey
+import moe.rukamori.archivetune.ui.component.NavigationBarGlassGlowIntensityKey
+import moe.rukamori.archivetune.ui.component.NAVIGATION_BAR_GLASS_GLOW_INTENSITY_DEFAULT
 import moe.rukamori.archivetune.constants.NavigationBarTintFrostedBlurKey
 import moe.rukamori.archivetune.constants.NavigationBarHeight
 import moe.rukamori.archivetune.constants.NavigationBarHeightKey
@@ -110,6 +112,11 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
         rememberPreference(LiquidGlassNavBarEnabledKey, defaultValue = false)
     val (navigationBarGlassGlow, onNavigationBarGlassGlowChange) =
         rememberPreference(NavigationBarGlassGlowKey, defaultValue = true)
+    val (navigationBarGlassGlowIntensity, onNavigationBarGlassGlowIntensityChange) =
+        rememberPreference(
+            NavigationBarGlassGlowIntensityKey,
+            defaultValue = NAVIGATION_BAR_GLASS_GLOW_INTENSITY_DEFAULT,
+        )
 
     val onFrostedBlurChange: (Boolean) -> Unit = { checked ->
         onNavigationBarFrostedBlurChange(checked)
@@ -247,6 +254,21 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         icon = { Icon(painterResource(R.drawable.solar_brightness_high_linear), null) },
                         checked = navigationBarGlassGlow,
                         onCheckedChange = onNavigationBarGlassGlowChange,
+                    )
+                }
+
+                item {
+
+                    SliderPreferenceRow(
+                        title = stringResource(R.string.navigation_bar_glass_glow_intensity),
+                        description = stringResource(R.string.navigation_bar_glass_glow_intensity_desc),
+                        iconRes = R.drawable.tune,
+                        value = navigationBarGlassGlowIntensity,
+                        onValueChange = onNavigationBarGlassGlowIntensityChange,
+                        range = 0.2f..2f,
+                        valueLabel = { "${(it * 100).roundToInt()}%" },
+                        default = NAVIGATION_BAR_GLASS_GLOW_INTENSITY_DEFAULT,
+                        enabled = navigationBarGlassGlow,
                     )
                 }
 

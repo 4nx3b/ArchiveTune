@@ -352,7 +352,6 @@ object DownloadSourceConfig {
         runCatching { DownloadSource.valueOf(name.trim().uppercase()) }.getOrNull()
 
     fun parseOrder(rawOrder: String?): List<DownloadSource> {
-
         val stored =
             rawOrder
                 ?.split(',')
@@ -624,6 +623,10 @@ val LastFmPreferYtThumbnailsKey = booleanPreferencesKey("lastfmPreferYtThumbnail
 val DiscordTokenKey = stringPreferencesKey("discordToken")
 val DiscordRefreshTokenKey = stringPreferencesKey("discordRefreshToken")
 val DiscordTokenExpiresAtKey = longPreferencesKey("discordTokenExpiresAt")
+
+val DiscordPendingAuthStateKey = stringPreferencesKey("discordPendingAuthState")
+val DiscordPendingAuthVerifierKey = stringPreferencesKey("discordPendingAuthVerifier")
+val DiscordPendingAuthStartedAtKey = longPreferencesKey("discordPendingAuthStartedAt")
 val DiscordInfoDismissedKey = booleanPreferencesKey("discordInfoDismissed")
 val DiscordUsernameKey = stringPreferencesKey("discordUsername")
 val DiscordNameKey = stringPreferencesKey("discordName")

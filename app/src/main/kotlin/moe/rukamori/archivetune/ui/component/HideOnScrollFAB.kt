@@ -13,8 +13,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -30,7 +34,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.kyant.backdrop.Backdrop
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
@@ -45,6 +51,7 @@ fun HideOnScrollFAB(
     @DrawableRes icon: Int,
     label: String,
     modifier: Modifier = Modifier,
+    backdrop: Backdrop? = null,
     onClick: () -> Unit,
 ) {
     val animationsDisabled = LocalAnimationsDisabled.current
@@ -61,6 +68,7 @@ fun HideOnScrollFAB(
         HideOnScrollFabButton(
             icon = icon,
             label = label,
+            backdrop = backdrop,
             onClick = onClick,
         )
     }
@@ -73,6 +81,7 @@ fun BoxScope.HideOnScrollFAB(
     lazyListState: LazyListState,
     @DrawableRes icon: Int,
     label: String,
+    backdrop: Backdrop? = null,
     onClick: () -> Unit,
 ) {
     HideOnScrollFAB(
@@ -81,6 +90,7 @@ fun BoxScope.HideOnScrollFAB(
         icon = icon,
         label = label,
         modifier = Modifier.align(Alignment.BottomEnd),
+        backdrop = backdrop,
         onClick = onClick,
     )
 }
@@ -149,10 +159,53 @@ fun BoxScope.HideOnScrollFAB(
 private fun HideOnScrollFabButton(
     @DrawableRes icon: Int,
     label: String,
+    backdrop: Backdrop? = null,
     onClick: () -> Unit,
 ) {
     val view = LocalView.current
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
+
+    if (backdrop != null) {
+        LiquidGlassActionPill(
+            backdrop = backdrop,
+            interactive = true,
+            modifier = Modifier.padding(16.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier =
+                    Modifier
+                        .height(48.dp)
+                        .clickable(
+                            onClick = {
+                                if (enableHapticFeedback) {
+                                    view.performHapticFeedback(
+                                        android.view.HapticFeedbackConstants.CONTEXT_CLICK,
+                                        android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
+                                    )
+                                }
+                                onClick()
+                            },
+                        )
+                        .padding(horizontal = 18.dp),
+            ) {
+                Icon(
+                    painter = painterResource(icon),
+                    contentDescription = null,
+                    tint = liquidGlassContentColor(),
+                )
+                Text(
+                    text = label,
+                    color = liquidGlassContentColor(),
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                )
+            }
+        }
+        return
+    }
 
     ExtendedFloatingActionButton(
         modifier = Modifier.padding(16.dp),

@@ -74,11 +74,13 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
     val status = BitPerfectRuntime.status
     val context = LocalContext.current
 
-    // The routed-device label still needs a binder probe; the HAL mixer rate is
-    // deliberately NOT read here anymore - the chain readout reports the
-    // app-level sink output (source rate), and the platform mixer behind it is
-    // annotated by the stage/route labels instead of being reported as a
-    // resample.
+    val runtime = EngineRuntime
+    val engine = runtime.activeEngineState
+    val wantedEngine = runtime.wantedEngineState
+    val tryptifyAvailable = runtime.tryptifyAvailableState
+    val lastwaveAvailable = runtime.lastwaveAvailableState
+    val revision = runtime.revision
+
     var pollTick by remember { mutableIntStateOf(0) }
     var routedLabelValue by remember { mutableStateOf("Android Mixer") }
     LaunchedEffect(Unit) {
@@ -90,21 +92,25 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
             delay(1_000L)
         }
     }
-    val runtime = EngineRuntime
     val routedLabel = routedLabelValue
-    val usbExclusive = remember(pollTick) { runtime.usbExclusiveActive }
-    val tryptifyPinActive = remember(pollTick) { runtime.tryptifyUsbPinActive }
-    val engine = remember(pollTick) { runtime.activeEngine }
-    val usbRateHz = remember(pollTick) {
+    val usbExclusive = remember(revision, pollTick) { runtime.usbExclusiveActive }
+    val tryptifyPinActive = remember(revision, pollTick) { runtime.tryptifyUsbPinActive }
+    val usbRateHz = remember(revision, pollTick) {
         runtime.lastwaveUsbRateHz.takeIf { it > 0 }
             ?: runtime.tryptifyUsbStream?.sampleRateHz?.takeIf { it > 0 }
     }
-    val usbBits = remember(pollTick) {
+    val usbBits = remember(revision, pollTick) {
         runtime.lastwaveUsbBitsPerSample.takeIf { it > 0 }
             ?: runtime.tryptifyUsbStream?.bitsPerSample?.takeIf { it > 0 }
     }
-    val floatRouteActive = remember(pollTick) { runtime.bitPerfectSinkRouteActive }
-    val sinkDecodedEncoding = remember(pollTick) { runtime.sinkDecodedEncoding }
+    val floatRouteActive = remember(revision, pollTick) { runtime.bitPerfectSinkRouteActive }
+    val sinkDecodedEncoding = remember(revision, pollTick) { runtime.sinkDecodedEncoding }
+
+    val mixerConversionPossible =
+        BitPerfectRuntime.requested &&
+            !status.mixerBitPerfectActive &&
+            !status.usbExclusiveActive &&
+            !status.directPlaybackSupported
 
     val hasSignal = status.sourceSampleRate > 0
     val floatPcmLabel = stringResource(R.string.live_audio_chain_float_pcm)
@@ -120,9 +126,18 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
         }
     val inputRate = if (hasSignal) rateKhz(status.sourceSampleRate) else "—"
 
+    val effectiveEngine =
+        when {
+            engine != AudioEngineRouterProcessor.Engine.NONE -> engine
+            wantedEngine == AudioEngineRouterProcessor.Engine.TRYPTIFY && tryptifyAvailable ->
+                AudioEngineRouterProcessor.Engine.TRYPTIFY
+            wantedEngine == AudioEngineRouterProcessor.Engine.LASTWAVE && lastwaveAvailable ->
+                AudioEngineRouterProcessor.Engine.LASTWAVE
+            else -> AudioEngineRouterProcessor.Engine.NONE
+        }
     val stage = when {
-        engine == AudioEngineRouterProcessor.Engine.TRYPTIFY -> "TRYPTIFY DSP"
-        engine == AudioEngineRouterProcessor.Engine.LASTWAVE -> "LASTWAVE DSP"
+        effectiveEngine == AudioEngineRouterProcessor.Engine.TRYPTIFY -> "TRYPTIFY DSP"
+        effectiveEngine == AudioEngineRouterProcessor.Engine.LASTWAVE -> "LASTWAVE DSP"
         usbExclusive || status.verifiedBitPerfect -> stringResource(R.string.live_audio_chain_direct_hal)
         else -> stringResource(R.string.live_audio_chain_android_mixer)
     }
@@ -146,9 +161,6 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
 
         floatRouteActive && sinkDecodedEncoding == C.ENCODING_PCM_FLOAT -> {
 
-            // The float route writes float32 carrying exactly the source depth;
-            // report the carried depth rather than a bare "Float" so the output
-            // bits always read as a concrete number matching the input.
             outputBits = floatWithDepthLabel
             outputRate = sinkOutputRateLabel ?: inputRate
         }
@@ -156,8 +168,6 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
         hasSignal -> {
             outputBits = "${status.outputBitDepth}-bit"
 
-            // The app-level output runs at the source rate; the shared platform mixer
-            // behind it resamples on its own and is not part of this chain readout.
             outputRate = sinkOutputRateLabel ?: inputRate
         }
 
@@ -185,9 +195,11 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
             mixerBitPerfectActive && sourceSampleRate > 0 ->
                 "Bit-Perfect mixer • ${outputBitDepth}-bit • ${rateKhz(outputSampleRate)}"
             floatRouteActive && sinkDecodedEncoding == C.ENCODING_PCM_FLOAT && sourceBitDepth > 16 ->
-                "Float route • ${sourceBitDepth}-bit depth into the Android mixer"
+                "Float route • ${sourceBitDepth}-bit depth into the Android mixer" +
+                    if (mixerConversionPossible) " (mixer may convert)" else ""
             floatRouteActive && sinkDecodedEncoding == C.ENCODING_PCM_FLOAT ->
-                "Float route • ${floatDepth}-bit depth into the Android mixer"
+                "Float route • ${floatDepth}-bit depth into the Android mixer" +
+                    if (mixerConversionPossible) " (mixer may convert)" else ""
             resamplerActive && sourceSampleRate > 0 && outputSampleRate > 0 ->
                 "Resampling • ${sourceBitDepth}-bit/${rateKhz(sourceSampleRate)} → ${rateKhz(outputSampleRate)}"
             dspActive && sourceBitDepth > 16 && decodedBitDepth <= 16 ->
@@ -278,9 +290,7 @@ fun LiveAudioChainPill(
     val shimmerProgress = remember { Animatable(0f) }
     LaunchedEffect(labels.hasSignal) {
         if (labels.hasSignal) {
-            // Ping-pong sweep: the band travels across and back continuously, so
-            // the loop never snaps back to its start (which read as an abrupt
-            // end/restart each cycle).
+
             while (true) {
                 shimmerProgress.animateTo(1f, tween(2_600, easing = EaseInOutSine))
                 shimmerProgress.animateTo(0f, tween(2_600, easing = EaseInOutSine))

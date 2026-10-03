@@ -3940,3 +3940,331 @@ Stage Summary:
 - Stale MediaStore URIs self-heal with position resume and persisted heals.
 - Artist hero: play button only; radio/shuffle in the overflow; heart subscribes for real (channelId backfill + guards).
 - AM landscape canvas: icons-only bottom bar, static-thumbnail blur backdrop, no portrait-return canvas lag.
+
+---
+Task ID: 54
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 7-item user batch — (1) recent-search brown card + persistent delete icon (swipe-only reveal); (2) search results top space / restore query+category pills header; (3) glass pills invisible after lyrics→minimize + AM blurred-canvas lag from the perf commits; (4) audiophile feature audit vs upstream LastWave-native/Tryptify (every listed feature must be real); (5) live audio chain pill engine + real-time updates; (6) comment/dead-code/optimisation pass; (7) engine EQ dead after bit-perfect episode + engine name only-after-restart + engine-only shows Android.
+
+Work Log:
+- (1) RecentSearchRow: SwipeToDismissBox backgroundContent (18%-alpha error card + delete icon) was fully visible AT REST through the transparent foreground row — that WAS the brown rounded square and the persistent delete icon. The background now composes only while the drag crosses the EndToStart anchor (targetValue/currentValue check), so rows are bare at rest and the delete icon appears exactly while swiping toward delete.
+- (2) Results header restored as LIST CONTENT: SearchResultsTopHeader is item 0 of the results LazyColumn on all three provider screens (YTM/Spotify/Apple) — laid out by the list itself, scrolls away with results, no overlay reserve / onSizeChanged / scroll-away graphicsLayer that could stick invisible while reserving space. Loading/error/empty branches show the header in a Column with the status-bar inset. The in-list back pill is deliberately plain surface (a glass pill inside the recorded list would self-record; the recordingInProgress guard already prevents the crash, this avoids the flicker class). SearchResultsBarState.liquidGlassActive (unread) removed; SearchResultsTopHeader lost its state param.
+- (3a) Glass restore broadcast: ThrottledLayerBackdrop nodes register into a WeakHashMap live-recorder registry (onAttach/onDetach); notifyContentRestore() now bumps EVERY attached backdrop — the previous fix only bumped the global NavHost recorder, so every screen-local header pill ("< Search", playlist/album/history) kept its faded last frame after lyrics→minimize. The load-bearing consumerInvalidationTick READ inside drawBackdrop was accidentally dropped with the dead `tick < 0` check and is reinstated (without it, bumps write a state nobody observes).
+- (3b) AM canvas stutter: the popupBackdrop recorder re-recorded the ENTIRE player (both canvas TextureViews + 64dp blur) into a GraphicsLayer every 100ms and blitted it over the live frame with zero consumers open — the rhythmic stutter of the moving blurred canvas behind the controls since the perf commit. glassSource(popupBackdrop) now attaches only while the anchored lyrics overflow menu (its sole consumer) is open.
+- (4) Audit vs upstream: LastWave cpp port is byte-identical to Clash-Projects/LastWave-native; NativeAudioEngine/NativePcmAudioProcessor differ only in stripped comments; Tryptify tf.monochrome tree matches upstream structure. Verified real: Bit-Perfect (switching sink+gate+mixer attrs), Float DSP (FloatDspProcessor), both engines (router chains), USB pin (setPreferredAudioDevice), system-wide AutoEQ (global DynamicsProcessing+notification), multichannel downmix, DSP block size (DspEngineManager), spectrum analyzer+FFT (tap gated by pref + subscriber count), USB exclusive (UsbExclusiveAudioOutputProvider), audio normalization (volume factor), ReplayGain (modes + lazy tag parse). GIMMICK FOUND AND WIRED: BitPerfectRuntime.nativeSampleRatePreferred was SET but NEVER READ — "Native Sample Rate" did nothing. Now: OFF (+no bit-perfect/USB-exclusive) routes the LastWave engine's output through its libsoxr HQ resampler to the DEVICE rate (upstream Oboe parity); ON keeps source-rate passthrough; a native-rate flip re-prepares when an engine runs.
+- (5)+(7) Engine engagement made deterministic + reactive: seedAudioRoutePreferences() now reads the DataStore route prefs SYNCHRONOUSLY (runBlocking+2s timeout, preferencesDataStore is IO-confined so no deadlock) BEFORE the player is built — the first sink configure previously raced the async collectors, engaging Engine.NONE and answering codec float queries from the 16-bit side, which is exactly "engine-only shows Android, EQ dead, only restart helps, bit-perfect+engine+restart engages". EngineRuntime gained snapshot-state mirrors (activeEngineState/wantedEngineState/availability/outputFloatState/revision) published by the router on every configure/reroute/reset and by the collectors on every preference flip — the live chain pill and the track-info details rows now recompose the SAME FRAME (only the routed-device label keeps the 1s binder poll). Pill stage shows the engaged engine, falling back to the WANTED engine (when its native side is available) until the router latches it. Engagement watchdog: if the wanted engine is not latched 1.5s after the selection-change re-prepare, one more re-prepare fires (single job, replaced not stacked). The engine/bit-perfect collector order now runs reevaluate→applyNativeRateOverride→mixer→floatEngagement.
+- (6) Dead code removed: systemFlattened (never assigned in the port — upstream's SystemEffectsBridge mode), SearchResultsBarState.liquidGlassActive, the results-header reserve machinery (3 screens), the dead tick<0 check, publishRouteFacts (unused helper). Engine descriptions updated from "takes effect from the next track" to "takes effect immediately" (true now: re-prepare applies the flip mid-track).
+- Static review round (independent agent over the full 16-file diff): 1 functional blocker (the dropped load-bearing tick read — fixed), 2 warns (loading-branch status-bar inset; watchdog stacking — both fixed) + 4 nits (private set, seed availability, identity-mapping collapse, 1Hz revision cadence — addressed except the cadence note, same as the old poll).
+
+Stage Summary:
+- dev (this batch): 16 files, +~640/−390. Recent searches are bare rows with swipe-reveal delete; the results pages carry their query+filter-chips header as list content in both themes; every attached glass recorder gets the cover-lift restore broadcast; the AM player no longer re-records itself at 10Hz with no consumer; the Native Sample Rate toggle does something real; engines engage deterministically from the first configure and the live chain pill / track-info engine rows update the moment anything in the route changes; engine equalizers survive bit-perfect on/off cycles (same engagement fix).
+
+---
+Task ID: 55
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 6-item user batch — artist-page glass FAB, swipeless recents, dynamic library colors, Tryptify AutoEQ 'target curve not available' + in-app EQ engagement, exclusive-route local-playback failures + LastWave distortion (log-attached), glass pills invisible-but-clickable after lyrics (all pages)
+
+Work Log:
+- Analyzed the 3 uploaded screenshots (library red accents: category icons +
+  play overlays; Tryptify AutoEQ page 'Target curve not available' banner) and
+  the playback log (local FLAC -> AudioTrack write failed: -9101 x11,
+  recovery budget exhausted x8 with 'attempt 5/4' overruns, initial buffer
+  stalls for content:// media ids).
+- Glass pills: LocalPlayerSheetOverlayFraction now provides State<Float>;
+  LiquidGlassActionPill reads it inside the graphicsLayer block (draw-phase
+  read, immune to broken recomposition chains) and the provider pins the
+  fraction to 0 whenever the sheet rests collapsed. Root cause traced to the
+  b8308e748 cover-driven fade capturing a composition-time Float snapshot.
+- Recent searches: swipe-to-dismiss + initial-letter monogram removed; rows
+  are plain clickable text; Clear in the header is the only removal
+  affordance; SearchHistoryViewModel.delete dropped as dead code.
+- Library: LibraryAccentColor (0xFFFF375F) deleted — category icons now
+  colorScheme.primary, both circular play overlays primary/onPrimary (dynamic
+  in light + dark, follows Material You / seeds / per-song theme).
+- Artist page: HideOnScrollFAB gained an optional backdrop param — the
+  Library/Online switch renders as a liquid-glass action pill when the artist
+  glass header is active; all other call sites unchanged (default null).
+- Tryptify AutoEQ: FrequencyTargets.init() had zero call sites — every
+  bundled target curve parsed empty, so every fit aborted with 'Target curve
+  not available'. Now initialized in EqViewModel (init block before the target
+  property initializers) + MusicService.onCreate for the audio path.
+- Tryptify in-app EQ: ToFloatPcmAudioProcessor refused 16-bit AND float input
+  (only 24/32-bit passed) so the in-render-chain EQ starved on the most
+  common decoded formats while the out-of-chain system-wide EQ worked. Now
+  converts 16-bit->float and passes float through as an inactive stage.
+- Router: rerouteEngineIfChanged re-snapshots activeOutputFloat (stale flag
+  made EnginePcmCodec convert with the wrong output encoding after mid-track
+  engine switches); engagement watchdog retries 3x1.5s instead of one probe.
+- Exclusive failures: fresh-incident window resets the recovery counter;
+  RETURN after budget exhaustion (was falling through into the codec-state +
+  generic handlers, producing the 'attempt 5/4..' spam); session-scoped
+  standard-route fallback so local files actually play (cleared on USB device
+  change or pref re-toggle, never per-track).
+- LastWave distortion: ExclusiveUsbOutput silently negotiates a fallback
+  hardware clock when the DAC lacks the source rate, but the engine was never
+  told — source-rate PCM into a mismatched wire clock. applyNativeRateOverride
+  now pins the engine output to the live wire rate (soxr engages, upstream
+  parity), the 1s wire poll realigns on rate changes, and
+  refreshUsbExclusiveRoute re-runs the rate wiring it previously skipped.
+- Committed bff711604 on dev; CI green (7/7 check-runs: check + all 5 Nightly
+  R8 matrix jobs + universal).
+
+Stage Summary:
+- All 6 user tasks implemented and landed on dev @ bff711604; CI fully green.
+- The glass-invisible class is closed structurally (draw-phase read) rather
+  than by another restore broadcast; the exclusive-route failure class now
+  ends in audible playback instead of a give-up; the Tryptify EQ page has
+  working target curves and a working in-app path for 16-bit/float streams.
+---
+Task ID: 56
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 7-item user batch — (1) scrolling lag everywhere, worst with AM style + canvas + miniplayer compact transition (no noticeable visual changes); (2) history page stuck after search->back (miniplayer compacts, screen does not move); (3) bigger miniplayer transport icons; (4) artist-page active-song pill inspired by the backdrop but not blending + non-dynamic header colors; (5) AM vertical blurred canvas behind controls smooth 1-2s then laggy; (6) live audio pill shows old engine + lower rate until restart after engine switch; (7) dead code/comment pass.
+
+Work Log:
+- Synced the sandbox clone forward 266 commits (the lost sessions had landed batches 48-55 incl. the R8-for-all-builds standing order, bit-perfect/engine machinery, glass fixes) — local exploration re-verified against the new tree before editing.
+- (1)+(5) frame-cost surgery, all draw-phase moves with zero visual change:
+  frosted app-layer recorder gated on an actual frosted consumer being
+  enabled (nav bar/rail frosted or FROSTED mini player — default configs
+  had zero consumers but still paid the 10Hz full-screen re-record on
+  S+); bottomUiCompactFraction -> State object through
+  LocalBottomUiCompactFraction so the compact spring no longer
+  invalidates the whole scaffold scope per frame (compact-row gate is a
+  derived boolean, slide/alpha read in graphicsLayer; SearchResults
+  scaffold reads .value in its draw phase); BottomSheet backgroundColor
+  became a () -> Color lambda — the player sheet bg now reads
+  state.value at draw time instead of recomposing the entire
+  ~3000-line player every frame of the compact/expand transition (dead
+  surfaceContainer-based local deleted); the 10Hz/500ms position poll
+  no longer invalidates the whole BottomSheetPlayer scope
+  (rememberUpdatedState composition read removed, provider reads the
+  State object); TTML lyrics loops (Lyrics/LyricsV2) drop to a 250ms
+  poll while the sheet is collapsed (hidden keepContentAlive lyrics
+  recomposed at refresh rate during scrolling); PlayingIndicator bar
+  values moved into the Canvas draw lambda.
+- (5) root cause: the static 64dp-blurred artwork layer re-executed its
+  RenderEffect on EVERY composite once the canvas twin began pushing
+  video frames (hence smooth during fade-in, laggy after ~1-2s). The
+  backdrop is now rasterized once per track into a software-blurred
+  bitmap on ALL API levels (the pre-S recipe, 64dp radius on S+ for
+  pixel parity); live blur remains only as the loading/error fallback.
+- (2) two structural fixes: showSearchBar = isSearching only (the old
+  '|| query.isNotBlank()' term let a late IME composition update
+  resurrect the full-screen overlay invisibly — the lingering overlay
+  consumed every scroll drag while the visible list never moved;
+  stray-query cleanup LaunchedEffect added), and TopSearch's
+  animationProgress snaps to 0 on close so the overlay's scrollable
+  content is disposed immediately instead of lingering interactive
+  through the 300ms exit tween.
+- (3) miniplayer transport icons: play/pause 34->38dp, prev/next
+  28->31dp (compact 26->28 / 22->24), touch boxes unchanged.
+- (4) ListItem/SongListItem/YouTubeListItem gained opt-in
+  activeContainerBackdrop: translucent secondaryContainer@0.55 +
+  hairline onSurfaceVariant@0.28 border + neutral text — the pill shows
+  the hero/page backdrop through the tint while the border keeps it
+  readable ("inspired by the backdrop, doesn't blend too much"),
+  verified for light + dark. Artist screens pass it at all song-row
+  sites; NavigationTitle gained accentColor (artist pages pass
+  onSurface for Songs/Albums/Top songs/Singles headers + view-all;
+  every other page keeps primary).
+- (6) root cause: a single transient exception inside any audio-route
+  preference collector silently killed that coroutine forever
+  (SupervisorJob keeps siblings alive but the stream stops applying —
+  publishWantedEngine never fires again, the pill freezes on the old
+  engine + stale rates until process restart). All four collectors
+  (float-dsp/usb-exclusive, bit-perfect/native-rate, engine selection,
+  currentFormat) are runCatching-hardened with CancellationException
+  rethrown for collectLatest semantics; the currentFormat collector
+  re-asserts the wanted-engine mirror per track change as a self-heal.
+- (7) dead code: the entire LocalMiniPlayerDocked machinery removed —
+  definition + 4 screen providers + MiniPlayer docked animation were
+  structurally unreachable (providers inside NavHost content, consumer
+  in the bottomBar sibling slot) — plus HistoryScreen's orphaned
+  isListScrolling and Player.kt's dead backgroundColor local. No
+  large commented-out code blocks remain (earlier passes covered them).
+- Independent static review round over the full diff: 1 compile blocker
+  (activeContainerBackdrop passed to the String-subtitle ListItem
+  overload that lacked the param — fixed by threading it through +
+  backdrop-aware subtitle color) + blur-radius parity nit (fixed: S+
+  rasterization now uses the exact AmBackdropBlurRadius) + cosmetic
+  blank-line cleanups. Structural brace verification (Kotlin-aware
+  scanner) run over every touched file.
+
+Stage Summary:
+- dev @ 97e808f06 (25 files, +525/-403): scrolling/frame costs removed
+  at five layers (recorder gating, compact-transition scope, sheet-bg
+  draw phase, position-poll scope, lyrics frame loops), the AM blurred
+  backdrop is a once-per-track bitmap, the history stuck-screen class
+  is closed, artist pages got the backdrop pill + stable header colors,
+  and the live audio pill can no longer freeze on a dead collector.
+
+---
+Task ID: 60
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 10-item user batch — Discord RPC login, AM vertical canvas blur lag, history-search crash + log errors, glass glow intensity slider, artist-page fixed text, track-info YouTube credits, automix clean-room rewrite, general optimizations, context-aware compact search circle, bit-perfect no-resample guarantee
+
+Work Log:
+- Forensics: 6 parallel exploration agents (Discord login diff vs upstream
+  main — login code already byte-identical, failure was structural; crash —
+  ThrottledLayerBackdrop draw-phase detached-coordinate read; canvas twin —
+  second ExoPlayer+TextureView+RenderEffect per-frame pipeline + the
+  exp=0s Apple Music token regex storm; bit-perfect — the LastWave
+  USB-exclusive wire-clock fallback was the only real 44.1→48 leak;
+  automix inventory; UI areas).
+- 60de8b210: crash class closed (drawBackdrop isAttached guards +
+  contained fallback, selective onDetach clear, HistoryScreen recorder on
+  the stable ancestor Box, BitChord dismiss-band guard) + AppleMusicProvider
+  exp/iss regex fix (4-quote raw string leaked a literal quote into the
+  pattern) + unknown-exp backoff + YouLyPlus 429 cooldown (lyrics submodule
+  bump d2a9c53).
+- 56c8a1f81: AM vertical canvas backdrop snapshot pipeline — new
+  CanvasSnapshotSourceNode records the twin into a small GraphicsLayer at
+  ~20Hz and draws NOTHING to screen; a bake loop toImageBitmap() +
+  stackBlur off-main feeds a plain bitmap blit inside the unchanged 7.2x
+  reveal box. Zero per-frame gaussian/interop left; twin decoder keeps
+  real-time pacing (async SurfaceTexture queue drops).
+- 59c6fb07e: Discord login hardening — persisted PKCE session
+  (DataStore, 15-min TTL), callback activity completes the exchange
+  app-side on a process-scoped supervisor, atomic pending-session
+  consumption, DiscordAuthResult events, 90s Waiting timeout hint
+  (covers the cross-build redirect scheme collision), upstream
+  buildDiscordPresenceSnapshot re-validation ported.
+- bb4d33e59: bit-perfect fail-closed — ExclusiveUsbOutput
+  setStrictSourceRateMode refuses both fallback-clock negotiations under
+  bit-perfect; provider declines the exclusive route for
+  known-unsupported rates (LastWave descriptor rates / Tryptify driver
+  ranges); applyNativeRateOverride never pins soxr under bit-perfect;
+  AAudio granted-rate/channel verification; lastwaveEngine.setBitPerfect
+  wired; pill "(mixer may convert)" honesty line.
+- 23442a830: glass glow intensity slider (20-200%, below the toggle,
+  navGlassStrength pipeline), artist page fixed text (grid subtitles
+  secondary→onSurfaceVariant, albums count header, release-card text
+  decision frozen to the static artwork palette + fixed accent), compact
+  search circle context-aware (openSearch savedStateHandle request +
+  ObserveOpenSearchRequest wired into 10 screens).
+- b9b3f2aff: track-info credits — core submodule (4999a57) parses the
+  watch page's videoAttributeViewModel song-credits dialog into
+  MediaInfo.credits; ShowMediaInfo renders the credits card with
+  overview-duplicate filtering + TTML/trailing "Written by" lyric
+  fallback (extractTtmlWriters internal).
+- 80cfbee09: automix clean-room rewrite — deleted the BitChord port in
+  full (playback/smart 13 files, TransitionFilterProcessor, native/
+  analyzer, 3 JNI bridges, cmake target, onnxruntime + both ONNX models,
+  -6434 lines); new pure-Kotlin playback/automix/ (+1673 lines):
+  streaming MediaCodec analyzer (FFT spectral flux → tempo/beats/
+  downbeats, RMS structure/mix points, band-ratio vocal likelihood,
+  JSON persistence LRU 600), tier planner (GAPLESS / DJ_BLEND with
+  ±4% rate alignment + bass handover + clash shrinking / DJ_FILTER /
+  EQUAL_POWER), Chamberlin SVF filter processor with glides + parked
+  fast-path, coroutine-native scheduler in MusicService, BitChord status
+  line on AutoMixUiState.
+- CI repair rounds: 507d9ad28/fa11fb0a0 (duplicate imports), 9384705f2
+  (SearchRequests lifecycle import package + MainActivity glow-key
+  imports), 33886de44 (chunk channel bound, reified decodeFromString
+  import), e03f65417 (review round: USB_SINK_DEVICE_TYPES +
+  HIGH_QUALITY_BITRATE restored — the constants cleanup over-swept them;
+  Discord cancellation rethrow + authResults replay dropped; bake health
+  gating parks the twin and clears the stale bitmap after 5 failures).
+- Static review agent over the full diff: 2 blockers + 2 warns + 7 nits,
+  all addressed.
+
+Stage Summary:
+- dev carries all 10 tasks; changelogs.md gained the 16.0.2 batch section.
+- The 33886de44 nightly failed on exactly the two over-deleted constants —
+  every other line of the batch compiled clean on that run; e03f65417+ fix
+  them.
+
+---
+Task ID: 62
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 7-item batch — crashlog fix (RenderNode re-entrancy), automix overlap
+fade, compact search pill relocation + double-search, AM canvas 5fps/desync,
+artist anchored morph overflow menu, dev->main PR, ArchiveTune 17.0 release
+(changelog research + README credits + Tryptify)
+
+Work Log:
+- Crash forensics (Crashlog (2).txt, build e03f65417): uncaught
+  IllegalStateException from RenderNode.beginRecording during dispatchDraw =
+  re-entrant GraphicsLayer.record on one layer. Audited every record site:
+  the app's 3 (snapshot twin, throttled recorder, artist canvas sampler) are
+  runCatching-guarded; Compose 1.12.0-beta02's own record paths are
+  finally-protected; Kyant backdrop 2.0.0's LayerBackdropNode/DrawBackdropNode
+  recordLayer calls are UNGUARDED (verified from the published -sources.jar),
+  Haze 1.7.2's source node record is likewise unguarded but per-area.
+  Fix = eliminate the unguarded Kyant source path entirely: rememberBackdrop()
+  now returns the guarded throttled recorder, Modifier.layerBackdrop() routes
+  Throttled->guarded node (Kyant node kept only as a dead legacy branch),
+  CommentTogether's rememberLayerBackdrop() swapped the same way,
+  MessageActionsPopup's param widened LayerBackdrop?->Backdrop? so the
+  throttled instance flows through.
+- AM canvas twin (5fps/desync/fullscreen, next-song, healed by recycling the
+  player): the bake loop read layer.toImageBitmap() on Dispatchers.Default -
+  LayerSnapshotV28 replays the display list (and recreates it when trimmed)
+  on the CALLING thread, racing the UI thread's record pass on the same
+  RenderNode. Fix = readback on Main, aligned with withFrameNanos right
+  after the frame's record pass, blur stays on Default; bake state resets on
+  canvas URL change; CanvasSnapshotSourceNode gained an isRecording
+  re-entrancy guard.
+- Automix overlap: the blend was driven by the incoming player's cue clock at
+  its beat-matching rate, so the blend finished early and the promotion cut
+  the outgoing tail; the scheduler also subtracted a 150ms end guard. Fix =
+  outgoing-clock-driven progress, no end guard on the smart path, and a
+  bounded tail-wait after the blend that holds the fully-mixed state until
+  the outgoing song actually reaches its natural end before promoting.
+- Compact search circle: playlist routes dropped from
+  compactRouteHasInPageSearch (pill hidden on playlist pages, kept on
+  history/local songs/Spotify-playlist library); the MainActivity-level
+  "openSearch" savedStateHandle observer deleted - it opened the global
+  search stacked on top of the page's own search.
+- Artist overflow: replaced the bottom-sheet menu with an anchored popup
+  (ArtistOverflowAnchoredMenu) that opens attached to the overflow icon
+  (bounds captured from both the glass header icon and the plain TopAppBar
+  icon, compensated by the screen root position), spring scale+fade morph
+  with the transform origin tracking the icon, liquid-glass surface,
+  HorizontalDividers between shuffle/radio/block.
+- Static review agent over the diff: 4 compile blockers (withDismiss
+  overload for (ArtistAction)->Unit, positionInRoot + surfaceColorAtElevation
+  imports, MessageActionsPopup type) + 1 logic bug (popup nested inside the
+  non-glass header branch - dead in glass mode) - all fixed.
+- ArchiveTune 17.0: changelogs.md gained the full 17.0 section (researched
+  all 174 commits since v16.0 across engines/bit-perfect, automix, players &
+  lyrics, liquid glass & design, Listen Together, sources & accounts,
+  performance & build, misc), README credits updated (Tryptify whole-engine
+  credit, LastWave-native engine credit, BitChord now credited for the
+  automix concept behind the clean-room rewrite), baseVersionName 16.0->
+  17.0, baseVersionCode 1600->1700.
+
+Stage Summary:
+- 6 code/doc tasks in one commit on dev; PR dev->main + v17.0 release to
+  follow after CI is green.
+
+---
+Task ID: 62
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 4-item batch — artist overflow popup never opens, header/compact search dedup, settings compact search, automix dynamic fade trigger
+
+Work Log:
+- Diagnosed the broken ArtistOverflowAnchoredMenu (page darkened, popup never rendered): the hand-rolled in-screen overlay stacked a custom scrim + manual anchor math + manual Animatables + a liquidGlass consumer whose only visible fallback is a 12% tint - fragile combination that rendered nothing. Replaced it with ArtistOverflowDropdown: a material3 DropdownMenu hosted in a Box next to BOTH overflow icons (glass header + plain TopAppBar), popup-window rendering (always on top), 18dp shape, elevated container (light+dark), dividers kept, plus a springy scale+fade morphe out of the icon corner driven by an Animatable. Deleted ~260 lines of custom anchoring (Rect/Offset math, BackHandler exit morph, scrim, glass consumer) and their dead imports.
+- Header search dedup: HistoryScreen glass search pill, LocalSongScreen LargeFrostedTopAppBar search action and LibrarySpotifyPlaylistsScreen search icon now fade out with LocalBottomUiCompactFraction (draw-phase read) and gate their clicks above 0.5 fraction, so the pinned header search and the compact miniplayer search circle never coexist; each page keeps its header affordance while the bottom UI is expanded.
+- Settings compact search: "settings" joined compactRouteHasInPageSearch; SettingsScreen observes ObserveOpenSearchRequest and bumps searchActivationTick; SearchResultsBottomOverlay gained an activationTick param that focuses the field through a new FocusRequester, and the overlay now ignores the compact fade while its field is focused (a focused-but-invisible field would strand the keyboard). The compact circle on settings therefore searches settings content, not the global song search.
+- Automix dynamic trigger (Bitchord behaviour): AutoMixAnalysis gained finalFadeOnsetMs (default 0L keeps the persisted JSON cache loadable); the analyzer detects the onset by scanning the last 45s of the content on a 9-tap (2.25s) moving-average of the energy curve for the last sample still holding 60% of the tail's p90 loudness - the moment right after it is where the song starts getting quiet (drum hits inside a fade don't postpone it, breakdowns followed by a loud return don't fake it; hard cuts return contentEnd). The planner's pickMixOutAnchor now starts the blend at the onset (clamped so at most 12s of tail is blended), dynamicFadeMs rides the natural fade so the blend lands on the song's own end, hard cuts/legacy analyses keep a compact fallbackFadeMs lead, and fallbackAnchor prefers the onset for partially-analysed pairs.
+- changelogs.md 17.0 section updated (dynamic automix trigger entry + amended artist-menu/search entries); repo worklog task-62 entry.
+
+Stage Summary:
+- All 4 user tasks implemented on dev; PR #227 (dev -> main) picks the commits up automatically.
+
+---
+Task ID: 63
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Comment strip across the codebase + ArchiveTune 17.0 release research/prep
+
+Work Log:
+- Applied the repo's lexer-based comment stripper (scripts/cleanup_pass.py, GPL license headers preserved) over the full tree: 112 files, -1549 comment lines (28dae40d6). Verified brace/paren balance across every touched file; the only 2 flagged files carry pre-existing string-template imbalance, byte-identical before/after.
+- CI on the strip + docs commits (e880b40e0): Build Pull Request + Nightly canary both GREEN.
+- Release research: 176 commits since v16.0; cross-checked every batch against the changelogs.md 17.0 document (audio engines/bit-perfect, automix, players/lyrics, liquid glass, Listen Together, sources/accounts, performance/build, other) - coverage confirmed; added the comment-strip line and the dynamic automix trigger entry in this session.
+- release.yml: release notes summary updated from the 16.0 text to the 17.0 audiophile summary, compare link v15.0 -> v16.0; the workflow already titles the release "ArchiveTune <version>" (= 17.0 from baseVersionName) and attaches changelogs.md as a release asset.
+- README.md: the SimpMusic credit line (malformed bracket) was verified already-corrected on remote dev (93e448f45 carried it); Tryptify whole-engine credit already present at line 284.
+- Note: this box's display layer intermittently rewrites the SimpMusic line in tool output; all content decisions were made through hash/boolean internal checks and the GitHub API as external truth.
+
+Stage Summary:
+- dev @ e880b40e0 (+ this docs commit): 4-task batch + comment strip + release notes ready; PR #227 (dev -> main) auto-carries everything.
+- Release sequence pending: merge PR #227 -> dispatch release.yml on main -> "ArchiveTune 17.0" (tag v17.0) with changelogs.md attached.

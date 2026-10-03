@@ -40,7 +40,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -50,10 +49,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -342,28 +338,19 @@ fun OnlineSearchResult(
             .only(WindowInsetsSides.Bottom)
             .asPaddingValues()
             .calculateBottomPadding()
-
-    var resultsHeaderHeightPx by remember { mutableIntStateOf(0) }
-    val density = LocalDensity.current
-    val resultsHeaderReserve =
-        remember(resultsHeaderHeightPx, density) {
-            with(density) { resultsHeaderHeightPx.toDp() }
+    val providerName =
+        when (viewModel.searchProvider) {
+            SearchProvider.SPOTIFY -> "Spotify"
+            SearchProvider.APPLE_MUSIC -> "Apple Music"
+            else -> "YouTube Music"
         }
-    val headerScrollAwayFraction by remember {
-        derivedStateOf {
-            when {
-                resultsHeaderHeightPx <= 0 -> 0f
-                lazyListState.firstVisibleItemIndex > 0 -> 1f
-                else -> {
-
-                    val firstTop =
-                        lazyListState.layoutInfo.visibleItemsInfo
-                            .firstOrNull()?.offset?.toFloat() ?: 0f
-                    1f - (firstTop / resultsHeaderHeightPx).coerceIn(0f, 1f)
-                }
-            }
-        }
-    }
+    val visibleResultCount =
+        allModeSections.sumOf { it.items.size }.takeIf { it > 0 }
+            ?: itemsPage?.items?.size?.takeIf { it > 0 }
+    val headerInfoLine =
+        visibleResultCount?.let { count ->
+            stringResource(R.string.search_results_info, count, providerName)
+        } ?: providerName
 
     Box(
         modifier =
@@ -376,7 +363,7 @@ fun OnlineSearchResult(
             contentPadding =
                 LocalPlayerAwareWindowInsets.current
                     .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
-                    .add(WindowInsets(top = systemBarsTopPadding + 4.dp + resultsHeaderReserve))
+                    .add(WindowInsets(top = systemBarsTopPadding + 4.dp))
                     .add(WindowInsets(bottom = SearchResultsOverlayReserve))
                     .asPaddingValues(),
             modifier =
@@ -384,6 +371,39 @@ fun OnlineSearchResult(
                     .fillMaxSize()
                     .searchResultsBarSource(barState),
         ) {
+            item(key = "results_header", contentType = "results_header") {
+                SearchResultsTopHeader(
+                    query = viewModel.query,
+                    onBack = { navController.navigateUp() },
+                    onBackLongClick = navController::backToMain,
+                    infoLine = headerInfoLine,
+                    chipsRow = {
+                        SolidFilterChipsRow(
+                            chips =
+                                listOf(
+                                    null to stringResource(R.string.filter_all),
+                                    FILTER_SONG to stringResource(R.string.filter_songs),
+                                    FILTER_VIDEO to stringResource(R.string.filter_videos),
+                                    FILTER_ALBUM to stringResource(R.string.filter_albums),
+                                    FILTER_ARTIST to stringResource(R.string.filter_artists),
+                                    FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
+                                    FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
+                                    PODCAST_SEARCH_FILTER to stringResource(R.string.filter_podcasts),
+                                ),
+                            currentValue = searchFilter,
+                            onValueUpdate = {
+                                if (viewModel.filter.value != it) {
+                                    viewModel.filter.value = it
+                                }
+                                coroutineScope.launch {
+                                    lazyListState.animateScrollToItem(0)
+                                }
+                            },
+                        )
+                    },
+                )
+            }
+
             if (searchFilter == null) {
                 allModeSections.forEachIndexed { index, summary ->
                     if (index > 0) {
@@ -484,62 +504,6 @@ fun OnlineSearchResult(
                 }
             }
         }
-
-        val providerName =
-            when (viewModel.searchProvider) {
-                SearchProvider.SPOTIFY -> "Spotify"
-                SearchProvider.APPLE_MUSIC -> "Apple Music"
-                else -> "YouTube Music"
-            }
-        val visibleResultCount =
-            allModeSections.sumOf { it.items.size }.takeIf { it > 0 }
-                ?: itemsPage?.items?.size?.takeIf { it > 0 }
-        val headerInfoLine =
-            visibleResultCount?.let { count ->
-                stringResource(R.string.search_results_info, count, providerName)
-            } ?: providerName
-        SearchResultsTopHeader(
-            state = barState,
-            query = viewModel.query,
-            onBack = { navController.navigateUp() },
-            onBackLongClick = navController::backToMain,
-            infoLine = headerInfoLine,
-            chipsRow = {
-                SolidFilterChipsRow(
-                    chips =
-                        listOf(
-                            null to stringResource(R.string.filter_all),
-                            FILTER_SONG to stringResource(R.string.filter_songs),
-                            FILTER_VIDEO to stringResource(R.string.filter_videos),
-                            FILTER_ALBUM to stringResource(R.string.filter_albums),
-                            FILTER_ARTIST to stringResource(R.string.filter_artists),
-                            FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
-                            FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
-                            PODCAST_SEARCH_FILTER to stringResource(R.string.filter_podcasts),
-                        ),
-                    currentValue = searchFilter,
-                    onValueUpdate = {
-                        if (viewModel.filter.value != it) {
-                            viewModel.filter.value = it
-                        }
-                        coroutineScope.launch {
-
-                            lazyListState.animateScrollToItem(0)
-                        }
-                    },
-                )
-            },
-            modifier =
-                Modifier
-                    .align(Alignment.TopCenter)
-
-                    .padding(top = systemBarsTopPadding + 4.dp)
-                    .onSizeChanged { resultsHeaderHeightPx = it.height }
-                    .graphicsLayer {
-                        translationY = -resultsHeaderHeightPx * headerScrollAwayFraction
-                        alpha = 1f - headerScrollAwayFraction
-                    },
-        )
 
         ScreenHeaderHaze(
             hazeState = barState.haze,

@@ -185,7 +185,6 @@ fun SwipeableMiniPlayerBox(
                                 },
                             )
                         } else {
-
                             baseModifier.padding(
                                 horizontal = lerp(NavigationBarHorizontalPadding, 0.dp, compactFraction),
                             )
@@ -405,7 +404,6 @@ private fun MiniPlayerArtwork(
                     }
                 },
     ) {
-
         Box(
             contentAlignment = Alignment.Center,
             modifier =
@@ -494,9 +492,9 @@ private fun MiniPlayerTransportButton(
 
     val iconSize =
         when {
-            compact -> if (isPrimary) 26.dp else 22.dp
-            isPrimary -> 34.dp
-            else -> 28.dp
+            compact -> if (isPrimary) 28.dp else 24.dp
+            isPrimary -> 38.dp
+            else -> 31.dp
         }
     val tint = if (isPrimary) colors.primaryButtonIcon else colors.buttonIcon
 

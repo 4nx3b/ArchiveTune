@@ -426,7 +426,6 @@ object TidalAccountManager {
                 null
             }
         if (result == null) {
-
             Timber.tag("TidalAccount").w("account track search produced no match >= 40 for \"%s\"", title)
         }
         return result
@@ -451,7 +450,6 @@ object TidalAccountManager {
             )
             if (direct != null) return direct
         } catch (e: TidalPreviewException) {
-
             val fallbackQuality =
                 when (audioQuality) {
                     "HI_RES_LOSSLESS" -> "LOSSLESS"
@@ -509,7 +507,6 @@ object TidalAccountManager {
                 val json = JSONObject(payload)
 
                 if (json.optString("assetPresentation").equals("PREVIEW", ignoreCase = true)) {
-
                     throw TidalPreviewException()
                 }
                 val manifestB64 = json.optString("manifest").takeIf { it.isNotBlank() } ?: return@use null
