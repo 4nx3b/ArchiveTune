@@ -6,6 +6,63 @@ the equalizer grows into a complete Audio Effects console, Home learns to be
 Spotify, and the SpatialFlow player finally collapses as smoothly as the
 original app.
 
+## Fixes & features (16.0.2 batch)
+
+- History search no longer crashes the app: the liquid-glass recorder behind
+  the history list left detached layout coordinates behind when the search
+  list was disposed, and the next glass-pill draw read them - an
+  "LayoutCoordinate operations are only valid when isAttached is true"
+  crash right after tapping search and going back. Recorders now live on a
+  screen-lifetime ancestor, detached coordinates degrade to a plain frame,
+  and the whole draw path is guarded
+- The Apple Music player's blurred canvas backdrop behind the bottom controls
+  no longer stutters a second or two after maximizing the mini player: the
+  second video pipeline re-ran its blur on every single video frame; the
+  backdrop is now snapshotted at ~20 Hz into a pre-blurred bitmap (the same
+  recipe as the static artwork backdrop), with zero per-frame blur work left
+  on the render path - same look, no lag
+- Discord login survives process death: the OAuth session is persisted (PKCE
+  state + verifier) and the token exchange now completes inside the redirect
+  callback itself instead of depending on the settings screen still holding
+  the same in-memory session - "I tap Authorize and nothing happens" was a
+  silently invalidated state check. A 90-second waiting hint now also points
+  at the other-installed-build redirect collision (all ArchiveTune builds
+  share the Discord redirect scheme)
+- Bit-perfect output never resamples through the app again: the LastWave
+  USB-exclusive wire refuses to negotiate a fallback clock when the DAC
+  cannot run the source rate (the old behaviour silently switched to
+  48 kHz and ran soxr - the pill literally read "Resampling 44.1 kHz →
+  48 kHz"), the exclusive route is declined up front for known-unsupported
+  rates, the AAudio exclusive stream verifies the granted rate, and the
+  engine's own DSP now stands down when bit-perfect is on. When the platform
+  mixer still cannot carry the rate natively, the pill says so instead of
+  quietly converting
+- Track information grows YouTube's own song credits: the Information tab now
+  carries Song / Album / Writers / Licensed to YouTube by / Produced by /
+  Released rows straight from YouTube's song-credits dialog, with the writer
+  names embedded at the end of the synced lyrics (TTML songwriter tags or
+  trailing "Written by" lines) filling in the Written-by row when YouTube
+  carries none
+- Automix is now a clean-room engine: the BitChord port (native analyzer,
+  JNI bridges, ONNX beat/vocal models, ~4400 lines) is gone; the new pure
+  Kotlin engine analyses each track in one streaming decode (tempo, beat
+  grid, structure, vocal-likelihood) and plans beat-matched blends, filter
+  rides, bass handovers or plain fades - no native code, no ML models, and
+  the Automix toggle and performance modes keep working as before
+- The compact search circle next to the mini player is context-aware: on the
+  history page, local songs, Spotify playlists and every playlist variant it
+  opens THAT page's own search instead of the global song search
+- Navigation bar settings grow a Glass glow intensity slider directly below
+  the glow toggle (20-200%)
+- Artist pages stop re-tinting their text: grid subtitles (artist names,
+  release years) and the new-release card text no longer follow the playing
+  song's dynamic theme or the live canvas sampling - only the ambient wash
+  behind them stays alive
+- Behind the scenes: the Apple Music canvas token no longer re-scrapes the
+  web player on every request (an exp-parsing bug made every token look
+  expired), YouLyPlus backs off for a minute after a 429, and Discord
+  presence snapshots re-validate before applying (upstream parity)
+
 ## Fixes (16.0.1 follow-up)
 
 - The SpatialFlow lyrics overflow menu's lower rows are tappable again: the
