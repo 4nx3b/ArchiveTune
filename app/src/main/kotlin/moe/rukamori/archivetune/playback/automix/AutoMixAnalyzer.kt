@@ -188,7 +188,9 @@ class AutoMixAnalyzer(
             val energyCurve = ArrayList<Float>(2048)
             val vocalCurve = ArrayList<Float>(2048)
 
-            // linear resampler state (mono, source -> analysis rate)
+            // Nearest/previous-sample resampler (mono, source -> analysis
+            // rate): zero-order hold is ample for envelope analysis and keeps
+            // the inner loop allocation- and branch-free.
             var resamplePos = 0.0
             var lastSample = 0f
 

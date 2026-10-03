@@ -77,9 +77,11 @@ object DiscordAuthCoordinator {
             extraBufferCapacity = 1,
         )
 
+    // No replay: a fresh entry into the settings screen must not re-show a
+    // stale login outcome; live subscribers get the result as it happens and
+    // the token itself arrives through the DataStore preference anyway.
     val authResults =
         MutableSharedFlow<DiscordAuthResult>(
-            replay = 1,
             extraBufferCapacity = 1,
         )
 
@@ -225,9 +227,13 @@ object DiscordOAuthRepository {
                 }
             }
 
+        // Honour structured cancellation: a cancelled completion must
+        // propagate, not be reported as a (null) result.
+        outcome.exceptionOrNull()?.let { throwable ->
+            if (throwable is kotlinx.coroutines.CancellationException) throw throwable
+        }
         return when {
             outcome.isSuccess -> DiscordAuthResult.Success(outcome.getOrNull()?.account)
-            outcome.exceptionOrNull() is kotlinx.coroutines.CancellationException -> null
             else ->
                 DiscordAuthResult.Failure(
                     outcome.exceptionOrNull()?.message ?: "Discord authorization failed",

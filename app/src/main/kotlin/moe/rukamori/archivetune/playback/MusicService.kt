@@ -11885,6 +11885,15 @@ class MusicService :
         const val AUTO_MIX_RESOLVE_TIMEOUT_MS = 45_000L
         const val DEFAULT_AUTO_MIX_FALLBACK_MS = 6_000L
 
+        val USB_SINK_DEVICE_TYPES =
+            intArrayOf(
+                android.media.AudioDeviceInfo.TYPE_USB_DEVICE,
+                android.media.AudioDeviceInfo.TYPE_USB_HEADSET,
+                android.media.AudioDeviceInfo.TYPE_USB_ACCESSORY,
+            )
+
+        const val HIGH_QUALITY_BITRATE = 320_000
+
         // Clean-room automix filter-ride curve constants.
         const val AUTO_MIX_SWEEP_SHAPE = 0.75
         const val AUTO_MIX_SWEEP_ENTRY_HIGH_HZ = 7_000.0

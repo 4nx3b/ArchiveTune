@@ -635,7 +635,6 @@
     <string name="automix_analysis_status">Automix · this song: %1$s · next: %2$s</string>
     <string name="automix_state_analysing">analysing…</string>
     <string name="automix_state_analysed">analysed</string>
-    <string name="automix_state_refining">analysed, refining…</string>
     <string name="automix_state_waiting">waiting</string>
     <string name="automix_state_failed">failed</string>
     <string name="auto_choose_playback_client">Auto choose playback client</string>

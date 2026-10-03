@@ -511,9 +511,6 @@ dependencies {
     implementation(project(":audio:decent-usb-audio-driver"))
     implementation(libs.media3.session)
 
-    // Automix: the Beat This! beat/downbeat and open-unmix vocal models run
-    // through ONNX Runtime. The full android artifact, not -mobile: mobile
-    // only loads .ort sessions.
     implementation(libs.car.app)
     implementation(libs.media3.okhttp)
     implementation("androidx.media3:media3-ui:${libs.versions.media3.get()}")
