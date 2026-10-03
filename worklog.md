@@ -4015,3 +4015,84 @@ Stage Summary:
   than by another restore broadcast; the exclusive-route failure class now
   ends in audible playback instead of a give-up; the Tryptify EQ page has
   working target curves and a working in-app path for 16-bit/float streams.
+---
+Task ID: 56
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 7-item user batch — (1) scrolling lag everywhere, worst with AM style + canvas + miniplayer compact transition (no noticeable visual changes); (2) history page stuck after search->back (miniplayer compacts, screen does not move); (3) bigger miniplayer transport icons; (4) artist-page active-song pill inspired by the backdrop but not blending + non-dynamic header colors; (5) AM vertical blurred canvas behind controls smooth 1-2s then laggy; (6) live audio pill shows old engine + lower rate until restart after engine switch; (7) dead code/comment pass.
+
+Work Log:
+- Synced the sandbox clone forward 266 commits (the lost sessions had landed batches 48-55 incl. the R8-for-all-builds standing order, bit-perfect/engine machinery, glass fixes) — local exploration re-verified against the new tree before editing.
+- (1)+(5) frame-cost surgery, all draw-phase moves with zero visual change:
+  frosted app-layer recorder gated on an actual frosted consumer being
+  enabled (nav bar/rail frosted or FROSTED mini player — default configs
+  had zero consumers but still paid the 10Hz full-screen re-record on
+  S+); bottomUiCompactFraction -> State object through
+  LocalBottomUiCompactFraction so the compact spring no longer
+  invalidates the whole scaffold scope per frame (compact-row gate is a
+  derived boolean, slide/alpha read in graphicsLayer; SearchResults
+  scaffold reads .value in its draw phase); BottomSheet backgroundColor
+  became a () -> Color lambda — the player sheet bg now reads
+  state.value at draw time instead of recomposing the entire
+  ~3000-line player every frame of the compact/expand transition (dead
+  surfaceContainer-based local deleted); the 10Hz/500ms position poll
+  no longer invalidates the whole BottomSheetPlayer scope
+  (rememberUpdatedState composition read removed, provider reads the
+  State object); TTML lyrics loops (Lyrics/LyricsV2) drop to a 250ms
+  poll while the sheet is collapsed (hidden keepContentAlive lyrics
+  recomposed at refresh rate during scrolling); PlayingIndicator bar
+  values moved into the Canvas draw lambda.
+- (5) root cause: the static 64dp-blurred artwork layer re-executed its
+  RenderEffect on EVERY composite once the canvas twin began pushing
+  video frames (hence smooth during fade-in, laggy after ~1-2s). The
+  backdrop is now rasterized once per track into a software-blurred
+  bitmap on ALL API levels (the pre-S recipe, 64dp radius on S+ for
+  pixel parity); live blur remains only as the loading/error fallback.
+- (2) two structural fixes: showSearchBar = isSearching only (the old
+  '|| query.isNotBlank()' term let a late IME composition update
+  resurrect the full-screen overlay invisibly — the lingering overlay
+  consumed every scroll drag while the visible list never moved;
+  stray-query cleanup LaunchedEffect added), and TopSearch's
+  animationProgress snaps to 0 on close so the overlay's scrollable
+  content is disposed immediately instead of lingering interactive
+  through the 300ms exit tween.
+- (3) miniplayer transport icons: play/pause 34->38dp, prev/next
+  28->31dp (compact 26->28 / 22->24), touch boxes unchanged.
+- (4) ListItem/SongListItem/YouTubeListItem gained opt-in
+  activeContainerBackdrop: translucent secondaryContainer@0.55 +
+  hairline onSurfaceVariant@0.28 border + neutral text — the pill shows
+  the hero/page backdrop through the tint while the border keeps it
+  readable ("inspired by the backdrop, doesn't blend too much"),
+  verified for light + dark. Artist screens pass it at all song-row
+  sites; NavigationTitle gained accentColor (artist pages pass
+  onSurface for Songs/Albums/Top songs/Singles headers + view-all;
+  every other page keeps primary).
+- (6) root cause: a single transient exception inside any audio-route
+  preference collector silently killed that coroutine forever
+  (SupervisorJob keeps siblings alive but the stream stops applying —
+  publishWantedEngine never fires again, the pill freezes on the old
+  engine + stale rates until process restart). All four collectors
+  (float-dsp/usb-exclusive, bit-perfect/native-rate, engine selection,
+  currentFormat) are runCatching-hardened with CancellationException
+  rethrown for collectLatest semantics; the currentFormat collector
+  re-asserts the wanted-engine mirror per track change as a self-heal.
+- (7) dead code: the entire LocalMiniPlayerDocked machinery removed —
+  definition + 4 screen providers + MiniPlayer docked animation were
+  structurally unreachable (providers inside NavHost content, consumer
+  in the bottomBar sibling slot) — plus HistoryScreen's orphaned
+  isListScrolling and Player.kt's dead backgroundColor local. No
+  large commented-out code blocks remain (earlier passes covered them).
+- Independent static review round over the full diff: 1 compile blocker
+  (activeContainerBackdrop passed to the String-subtitle ListItem
+  overload that lacked the param — fixed by threading it through +
+  backdrop-aware subtitle color) + blur-radius parity nit (fixed: S+
+  rasterization now uses the exact AmBackdropBlurRadius) + cosmetic
+  blank-line cleanups. Structural brace verification (Kotlin-aware
+  scanner) run over every touched file.
+
+Stage Summary:
+- dev @ 97e808f06 (25 files, +525/-403): scrolling/frame costs removed
+  at five layers (recorder gating, compact-transition scope, sheet-bg
+  draw phase, position-poll scope, lyrics frame loops), the AM blurred
+  backdrop is a once-per-track bitmap, the history stuck-screen class
+  is closed, artist pages got the backdrop pill + stable header colors,
+  and the live audio pill can no longer freeze on a dead collector.
