@@ -65,6 +65,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -153,9 +155,16 @@ fun BoxScope.SearchResultsBottomOverlay(
     lazyListState: LazyListState? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
     chipsRow: (@Composable () -> Unit)? = null,
+    activationTick: Int = 0,
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     var fieldFocused by rememberSaveable { mutableStateOf(false) }
+    val activationFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(activationTick) {
+        if (activationTick > 0) {
+            runCatching { activationFocusRequester.requestFocus() }
+        }
+    }
     var lastObservedItemIndex by remember { mutableIntStateOf(0) }
     var lastObservedScrollOffset by remember { mutableIntStateOf(0) }
 
@@ -190,6 +199,9 @@ fun BoxScope.SearchResultsBottomOverlay(
     // State object (see LocalBottomUiCompactFraction): read inside the
     // graphicsLayer lambda below so the animated fraction only re-draws this
     // element instead of recomposing the whole results scaffold per frame.
+    // While the field is focused the bar must stay put - an activation (the
+    // compact search circle) focuses the field even while compact, and a
+    // focused-but-invisible field would strand the keyboard.
     val compactFractionState = LocalBottomUiCompactFraction.current
 
     Column(
@@ -200,7 +212,8 @@ fun BoxScope.SearchResultsBottomOverlay(
                 .fillMaxWidth()
                 .imePadding()
                 .graphicsLayer {
-                    val compactFraction = compactFractionState.value
+                    val compactFraction =
+                        if (fieldFocused) 0f else compactFractionState.value
                     alpha = 1f - compactFraction
                     translationY = compactFraction * 96.dp.toPx()
                 }
@@ -246,6 +259,7 @@ fun BoxScope.SearchResultsBottomOverlay(
                         },
                         placeholder = placeholder,
                         onFocusChanged = { fieldFocused = it },
+                        focusRequester = activationFocusRequester,
                         trailing = trailing,
                         modifier = Modifier.weight(1f),
                     )
@@ -318,6 +332,7 @@ private fun SearchInputPill(
     placeholder: String,
     onFocusChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val backdrop = state.backdrop
@@ -376,6 +391,9 @@ private fun SearchInputPill(
                 Modifier
                     .weight(1f)
                     .padding(horizontal = 12.dp)
+                    .let { m ->
+                        if (focusRequester != null) m.focusRequester(focusRequester) else m
+                    }
                     .onFocusChanged { onFocusChanged(it.isFocused) },
             decorationBox = { innerTextField ->
                 Box(

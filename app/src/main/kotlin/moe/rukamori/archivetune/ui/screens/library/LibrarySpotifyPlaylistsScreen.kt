@@ -44,6 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
@@ -67,6 +68,7 @@ import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.LocalBottomUiCompactFraction
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SpotifyLikedSongsListItem
 import moe.rukamori.archivetune.ui.component.SpotifyLibraryPlaylistListItem
@@ -448,6 +450,10 @@ fun LibrarySpotifyPlaylistsScreen(
         }
 
         if (glassHeaderActive) {
+            // While the bottom UI is compact the compact search circle beside
+            // the mini player takes over: the header search icon fades out
+            // with the same fraction (the refresh icon stays).
+            val compactFraction = LocalBottomUiCompactFraction.current
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 modifier =
@@ -455,10 +461,18 @@ fun LibrarySpotifyPlaylistsScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
-                Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(48.dp)
+                            .graphicsLayer { alpha = 1f - compactFraction.value },
+                    contentAlignment = Alignment.Center,
+                ) {
                     androidx.compose.material3.IconButton(onClick = {
-                        showSearchField = !showSearchField
-                        if (!showSearchField) searchQuery = ""
+                        if (compactFraction.value < 0.5f) {
+                            showSearchField = !showSearchField
+                            if (!showSearchField) searchQuery = ""
+                        }
                     }) {
                         Icon(
                             painter = painterResource(if (showSearchField) R.drawable.close else R.drawable.search),

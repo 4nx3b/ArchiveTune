@@ -90,6 +90,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -111,6 +112,7 @@ import moe.rukamori.archivetune.localmedia.LocalSongScanConfig
 import moe.rukamori.archivetune.localmedia.SupportedLocalAudio
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.ui.component.LargeFrostedTopAppBar
+import moe.rukamori.archivetune.ui.component.LocalBottomUiCompactFraction
 import moe.rukamori.archivetune.ui.component.AppleMusicPlaylistHero
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
@@ -411,13 +413,22 @@ fun LocalSongScreen(
                                 .padding(top = 8.dp, bottom = 4.dp),
                     ) {}
                 } else {
+                    // While the bottom UI is compact the compact search circle
+                    // beside the mini player is this page's search affordance:
+                    // the header icon fades out with the same fraction.
+                    val compactFraction = LocalBottomUiCompactFraction.current
                     LargeFrostedTopAppBar(
                         titleRes = R.string.local_files,
                         onBack = navController::navigateUp,
                         onBackLongClick = { navController.backToMain() },
                         backdrop = pillBackdrop,
                         actions = {
-                            IconButton(onClick = { isSearchActive = true }) {
+                            IconButton(
+                                onClick = { if (compactFraction.value < 0.5f) isSearchActive = true },
+                                modifier = Modifier.graphicsLayer {
+                                    alpha = 1f - compactFraction.value
+                                },
+                            ) {
                                 Icon(
                                     painter = painterResource(R.drawable.search),
                                     contentDescription = stringResource(R.string.search),

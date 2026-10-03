@@ -43,6 +43,11 @@ page.
   song's clock, the fade-out lands exactly on the track's natural end,
   and the handover waits for that end before promoting the next song -
   the outgoing track is never cut short any more
+- The mix-out trigger is dynamic again (the Bitchord behaviour): each
+  analysis detects where the song's own energy starts its final decline
+  and the blend begins exactly there, riding the natural fade-out to its
+  end instead of a fixed precomputed lead; hard cuts that stay loud to
+  the last sample keep a compact end-of-song blend
 
 ## Players & lyrics
 
@@ -85,12 +90,18 @@ page.
 - The artist page is redesigned: gradient ambience sampled from the
   artwork, hero canvas with lockstep sync, fixed-color text (no dynamic
   re-tinting), glass action pills, and an overflow menu that opens
-  attached to the icon with a spring morph and dividers
+  attached to the overflow icon with a spring morph and dividers between
+  the items (rendered in the platform popup layer, so it always appears
+  attached under the icon it was summoned from)
 - Search is redesigned: bottom glass chrome, swipe-reveal recent searches,
   non-Latin source search and resolution, and the compact search circle
   next to the mini player triggers the page's own search on the history
-  page (playlist pages drop theirs; the global search no longer stacks
-  on top of the page search)
+  page, local songs, the Spotify playlist library and the settings root
+  (where it searches settings content itself); playlist pages drop
+  theirs, the global search no longer stacks on top of the page search,
+  and on pages with the compact circle the pinned header search icon
+  fades out while the bottom UI is compact so the two never appear at
+  once
 - Library grows dynamic color sections and the history page survives
   search-and-back without crashing
 

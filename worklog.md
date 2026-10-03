@@ -4236,3 +4236,18 @@ Work Log:
 Stage Summary:
 - 6 code/doc tasks in one commit on dev; PR dev->main + v17.0 release to
   follow after CI is green.
+
+---
+Task ID: 62
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 4-item batch — artist overflow popup never opens, header/compact search dedup, settings compact search, automix dynamic fade trigger
+
+Work Log:
+- Diagnosed the broken ArtistOverflowAnchoredMenu (page darkened, popup never rendered): the hand-rolled in-screen overlay stacked a custom scrim + manual anchor math + manual Animatables + a liquidGlass consumer whose only visible fallback is a 12% tint - fragile combination that rendered nothing. Replaced it with ArtistOverflowDropdown: a material3 DropdownMenu hosted in a Box next to BOTH overflow icons (glass header + plain TopAppBar), popup-window rendering (always on top), 18dp shape, elevated container (light+dark), dividers kept, plus a springy scale+fade morphe out of the icon corner driven by an Animatable. Deleted ~260 lines of custom anchoring (Rect/Offset math, BackHandler exit morph, scrim, glass consumer) and their dead imports.
+- Header search dedup: HistoryScreen glass search pill, LocalSongScreen LargeFrostedTopAppBar search action and LibrarySpotifyPlaylistsScreen search icon now fade out with LocalBottomUiCompactFraction (draw-phase read) and gate their clicks above 0.5 fraction, so the pinned header search and the compact miniplayer search circle never coexist; each page keeps its header affordance while the bottom UI is expanded.
+- Settings compact search: "settings" joined compactRouteHasInPageSearch; SettingsScreen observes ObserveOpenSearchRequest and bumps searchActivationTick; SearchResultsBottomOverlay gained an activationTick param that focuses the field through a new FocusRequester, and the overlay now ignores the compact fade while its field is focused (a focused-but-invisible field would strand the keyboard). The compact circle on settings therefore searches settings content, not the global song search.
+- Automix dynamic trigger (Bitchord behaviour): AutoMixAnalysis gained finalFadeOnsetMs (default 0L keeps the persisted JSON cache loadable); the analyzer detects the onset by scanning the last 45s of the content on a 9-tap (2.25s) moving-average of the energy curve for the last sample still holding 60% of the tail's p90 loudness - the moment right after it is where the song starts getting quiet (drum hits inside a fade don't postpone it, breakdowns followed by a loud return don't fake it; hard cuts return contentEnd). The planner's pickMixOutAnchor now starts the blend at the onset (clamped so at most 12s of tail is blended), dynamicFadeMs rides the natural fade so the blend lands on the song's own end, hard cuts/legacy analyses keep a compact fallbackFadeMs lead, and fallbackAnchor prefers the onset for partially-analysed pairs.
+- changelogs.md 17.0 section updated (dynamic automix trigger entry + amended artist-menu/search entries); repo worklog task-62 entry.
+
+Stage Summary:
+- All 4 user tasks implemented on dev; PR #227 (dev -> main) picks the commits up automatically.

@@ -21,6 +21,13 @@ import kotlin.math.roundToLong
  *  - otherwise                                    -> EQUAL_POWER at the outgoing
  *    track's own structural anchor (outro start / content end)
  *
+ * The mix-out anchor is DYNAMIC (Bitchord-style): the blend starts where the
+ * outgoing song's own energy begins its final sustained decline - when the
+ * music starts getting quiet - and the fade then rides that natural decline
+ * so it lands exactly on the song's own end. Hard cuts (loud to the last
+ * sample, no natural fade) and analyses without onset data keep a compact
+ * fixed lead instead.
+ *
  * Vocal clash across the overlap shrinks it; a clash too large to shrink
  * degrades the tier to the filter ride.
  */
@@ -65,7 +72,7 @@ object AutoMixPlanner {
         }
 
         if (!currentUsable || !nextUsable) {
-            val anchor = fallbackAnchor(current, currentTrack)
+            val anchor = fallbackAnchor(current, currentTrack, fallbackFadeMs)
             return AutoMixPlan.fallback(
                 fadeMs = fallbackFadeMs,
                 anchorMs = anchor,
@@ -75,7 +82,8 @@ object AutoMixPlanner {
         current!!
         next!!
 
-        val outgoingAnchor = pickMixOutAnchor(current, currentTrack)
+        val outgoingAnchor = pickMixOutAnchor(current, currentTrack, fallbackFadeMs)
+        val outgoingFadeMs = dynamicFadeMs(current, outgoingAnchor, fallbackFadeMs, minFadeMs)
         val incomingCue = pickMixInCue(next, nextTrack)
 
         val tempoRatio =
@@ -99,7 +107,7 @@ object AutoMixPlanner {
                 outgoingAnchor = outgoingAnchor,
                 incomingCue = incomingCue,
                 availableMs = availableMs,
-                fallbackFadeMs = fallbackFadeMs,
+                fallbackFadeMs = outgoingFadeMs,
                 minFadeMs = minFadeMs,
             )
 
@@ -108,12 +116,12 @@ object AutoMixPlanner {
                 outgoingAnchor = outgoingAnchor,
                 incomingCue = incomingCue,
                 availableMs = availableMs,
-                fallbackFadeMs = fallbackFadeMs,
+                fallbackFadeMs = outgoingFadeMs,
                 minFadeMs = minFadeMs,
             )
 
             else -> AutoMixPlan.fallback(
-                fadeMs = fallbackFadeMs,
+                fadeMs = outgoingFadeMs,
                 anchorMs = outgoingAnchor,
                 reason = "low beat confidence",
             )
@@ -240,21 +248,51 @@ object AutoMixPlanner {
 
     // -------------------------------------------------------------------
 
-    /** Outgoing anchor: earliest structural mix-out candidate with room to blend. */
+    /**
+     * Outgoing anchor - the dynamic mix-out trigger. When the analysis
+     * carries a fade onset (the moment the song's own volume starts its
+     * final decline), the blend starts THERE: a natural fade is ridden from
+     * its own beginning, clamped so at most [MAX_OVERLAP_MS] of the tail is
+     * blended. Hard cuts and legacy analyses without onset data fall back
+     * to a compact lead that finishes the blend on the content end.
+     */
     private fun pickMixOutAnchor(
         analysis: AutoMixAnalysis,
         track: AutoMixTrackInfo,
+        fallbackFadeMs: Long,
     ): Long {
         val hardLimit = (track.durationMs - END_GUARD_MS).coerceAtLeast(0L)
-        val fallback = (analysis.outroStartMs)
-            .coerceAtMost(hardLimit)
+        val contentEnd = analysis.contentEndMs.coerceIn(0L, hardLimit)
+
+        val onset = analysis.finalFadeOnsetMs
+        if (onset in 1L until contentEnd) {
+            return onset
+                .coerceAtLeast(contentEnd - MAX_OVERLAP_MS)
+                .coerceAtMost(contentEnd - 1L)
+        }
+
+        return (contentEnd - fallbackFadeMs)
+            .coerceAtLeast(analysis.introEndMs.coerceAtLeast(0L))
             .coerceAtLeast(0L)
-        val candidates = analysis.mixOutCandidatesMs
-            .filter { it in 1L until hardLimit }
-            .ifEmpty { listOf(fallback) }
-        // Prefer the LATEST candidate that still leaves >= 8s of room; the
-        // later anchor keeps more of the outgoing track intact.
-        return candidates.lastOrNull { it <= hardLimit - 8_000L } ?: candidates.first()
+    }
+
+    /**
+     * Fade length for the anchor: with a detected onset the blend spans the
+     * natural fade itself (so the outgoing song's decline and the crossfade
+     * curve land together on its own end); otherwise the configured fallback.
+     */
+    private fun dynamicFadeMs(
+        analysis: AutoMixAnalysis,
+        anchorMs: Long,
+        fallbackFadeMs: Long,
+        minFadeMs: Long,
+    ): Long {
+        val contentEnd = analysis.contentEndMs
+        val onset = analysis.finalFadeOnsetMs
+        if (onset !in 1L until contentEnd) return fallbackFadeMs
+        val natural = (contentEnd - anchorMs).coerceAtLeast(0L)
+        if (natural < minFadeMs) return fallbackFadeMs
+        return natural.coerceAtMost(MAX_OVERLAP_MS)
     }
 
     /** Incoming cue: a mix-in candidate or the intro end, aligned to a downbeat. */
@@ -331,8 +369,17 @@ object AutoMixPlanner {
     private fun fallbackAnchor(
         analysis: AutoMixAnalysis?,
         track: AutoMixTrackInfo,
+        fallbackFadeMs: Long,
     ): Long {
-        val anchor = analysis?.outroStartMs ?: track.durationMs
-        return (anchor - 12_000L).coerceAtLeast(0L)
+        val anchor: Long =
+            if (analysis != null) {
+                val contentEnd = analysis.contentEndMs.takeIf { it > 0L } ?: track.durationMs
+                analysis.finalFadeOnsetMs.takeIf { it > 0L && it < contentEnd }
+                    ?: analysis.outroStartMs
+                    ?: track.durationMs
+            } else {
+                track.durationMs
+            }
+        return (anchor - fallbackFadeMs).coerceAtLeast(0L)
     }
 }
