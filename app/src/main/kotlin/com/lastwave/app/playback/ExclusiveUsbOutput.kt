@@ -65,6 +65,21 @@ class ExclusiveUsbOutput @Inject constructor(
 
     @Volatile var lastFailureReason: String? = null
         private set
+
+    // Set by the audio routing layer when bit-perfect output is requested:
+    // the exclusive wire MUST then run the configured (source) rate. Any
+    // fallback-clock negotiation - the DAC descriptor lacking the rate, or
+    // the DAC reporting a different internal clock - FAILS the configure
+    // instead of silently switching the wire and resampling. The caller's
+    // recoverable-failure path then disengages the exclusive route for the
+    // session and the standard AudioTrack route takes over at the source
+    // rate, so the app itself is NEVER the resampler.
+    @Volatile private var strictSourceRate = false
+
+    fun setStrictSourceRateMode(enabled: Boolean) {
+        strictSourceRate = enabled
+    }
+
     @Volatile private var lastAppliedCombined = Float.NaN
     private var volumeProbed = false
     @Volatile private var lastNonMaxListeningGain = Float.NaN
@@ -425,6 +440,12 @@ class ExclusiveUsbOutput @Inject constructor(
         var autoNegotiatedFallback = rateOverrideHz != null
 
         if (rateOverrideHz == null && hwRates.isNotEmpty() && effectiveRate !in hwRates) {
+            if (strictSourceRate) {
+                return failLocked(
+                    "bit-perfect: DAC lacks ${effectiveRate}Hz (supports $hwRates) - " +
+                        "declining the exclusive route instead of resampling",
+                )
+            }
             val fallback = pickPlayableHardwareRate(effectiveRate, hwRates)
             if (fallback != null && fallback != effectiveRate) {
                 Log.i(
@@ -450,6 +471,12 @@ class ExclusiveUsbOutput @Inject constructor(
         }
 
         if (reported > 0 && reported != effectiveRate) {
+            if (strictSourceRate) {
+                return failLocked(
+                    "bit-perfect: DAC clock reported ${reported}Hz instead of " +
+                        "${effectiveRate}Hz - declining the exclusive route instead of resampling",
+                )
+            }
             val candidates = (hwRates + reported).distinct()
             val candidateRate = pickPlayableHardwareRate(sampleRate, candidates) ?: reported
             Log.w(

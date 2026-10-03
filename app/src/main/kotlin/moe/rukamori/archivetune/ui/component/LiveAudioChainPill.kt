@@ -109,6 +109,17 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
     val floatRouteActive = remember(revision, pollTick) { runtime.bitPerfectSinkRouteActive }
     val sinkDecodedEncoding = remember(revision, pollTick) { runtime.sinkDecodedEncoding }
 
+    // Honest bit-perfect readout: when bit-perfect is REQUESTED but neither
+    // a BIT_PERFECT mixer grant nor an exclusive/direct transport is live,
+    // the shared Android mixer may still convert the stream to the device
+    // rate (platform-level, invisible to the app). Say so on the float-route
+    // line instead of letting a 44.1 kHz source quietly become 48 kHz.
+    val mixerConversionPossible =
+        BitPerfectRuntime.requested &&
+            !status.mixerBitPerfectActive &&
+            !status.usbExclusiveActive &&
+            !status.directPlaybackSupported
+
     val hasSignal = status.sourceSampleRate > 0
     val floatPcmLabel = stringResource(R.string.live_audio_chain_float_pcm)
     val lossyLabel = stringResource(R.string.live_audio_chain_lossy)
@@ -201,9 +212,11 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
             mixerBitPerfectActive && sourceSampleRate > 0 ->
                 "Bit-Perfect mixer • ${outputBitDepth}-bit • ${rateKhz(outputSampleRate)}"
             floatRouteActive && sinkDecodedEncoding == C.ENCODING_PCM_FLOAT && sourceBitDepth > 16 ->
-                "Float route • ${sourceBitDepth}-bit depth into the Android mixer"
+                "Float route • ${sourceBitDepth}-bit depth into the Android mixer" +
+                    if (mixerConversionPossible) " (mixer may convert)" else ""
             floatRouteActive && sinkDecodedEncoding == C.ENCODING_PCM_FLOAT ->
-                "Float route • ${floatDepth}-bit depth into the Android mixer"
+                "Float route • ${floatDepth}-bit depth into the Android mixer" +
+                    if (mixerConversionPossible) " (mixer may convert)" else ""
             resamplerActive && sourceSampleRate > 0 && outputSampleRate > 0 ->
                 "Resampling • ${sourceBitDepth}-bit/${rateKhz(sourceSampleRate)} → ${rateKhz(outputSampleRate)}"
             dspActive && sourceBitDepth > 16 && decodedBitDepth <= 16 ->
