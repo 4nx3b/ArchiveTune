@@ -4096,3 +4096,79 @@ Stage Summary:
   backdrop is a once-per-track bitmap, the history stuck-screen class
   is closed, artist pages got the backdrop pill + stable header colors,
   and the live audio pill can no longer freeze on a dead collector.
+
+---
+Task ID: 60
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 10-item user batch — Discord RPC login, AM vertical canvas blur lag, history-search crash + log errors, glass glow intensity slider, artist-page fixed text, track-info YouTube credits, automix clean-room rewrite, general optimizations, context-aware compact search circle, bit-perfect no-resample guarantee
+
+Work Log:
+- Forensics: 6 parallel exploration agents (Discord login diff vs upstream
+  main — login code already byte-identical, failure was structural; crash —
+  ThrottledLayerBackdrop draw-phase detached-coordinate read; canvas twin —
+  second ExoPlayer+TextureView+RenderEffect per-frame pipeline + the
+  exp=0s Apple Music token regex storm; bit-perfect — the LastWave
+  USB-exclusive wire-clock fallback was the only real 44.1→48 leak;
+  automix inventory; UI areas).
+- 60de8b210: crash class closed (drawBackdrop isAttached guards +
+  contained fallback, selective onDetach clear, HistoryScreen recorder on
+  the stable ancestor Box, BitChord dismiss-band guard) + AppleMusicProvider
+  exp/iss regex fix (4-quote raw string leaked a literal quote into the
+  pattern) + unknown-exp backoff + YouLyPlus 429 cooldown (lyrics submodule
+  bump d2a9c53).
+- 56c8a1f81: AM vertical canvas backdrop snapshot pipeline — new
+  CanvasSnapshotSourceNode records the twin into a small GraphicsLayer at
+  ~20Hz and draws NOTHING to screen; a bake loop toImageBitmap() +
+  stackBlur off-main feeds a plain bitmap blit inside the unchanged 7.2x
+  reveal box. Zero per-frame gaussian/interop left; twin decoder keeps
+  real-time pacing (async SurfaceTexture queue drops).
+- 59c6fb07e: Discord login hardening — persisted PKCE session
+  (DataStore, 15-min TTL), callback activity completes the exchange
+  app-side on a process-scoped supervisor, atomic pending-session
+  consumption, DiscordAuthResult events, 90s Waiting timeout hint
+  (covers the cross-build redirect scheme collision), upstream
+  buildDiscordPresenceSnapshot re-validation ported.
+- bb4d33e59: bit-perfect fail-closed — ExclusiveUsbOutput
+  setStrictSourceRateMode refuses both fallback-clock negotiations under
+  bit-perfect; provider declines the exclusive route for
+  known-unsupported rates (LastWave descriptor rates / Tryptify driver
+  ranges); applyNativeRateOverride never pins soxr under bit-perfect;
+  AAudio granted-rate/channel verification; lastwaveEngine.setBitPerfect
+  wired; pill "(mixer may convert)" honesty line.
+- 23442a830: glass glow intensity slider (20-200%, below the toggle,
+  navGlassStrength pipeline), artist page fixed text (grid subtitles
+  secondary→onSurfaceVariant, albums count header, release-card text
+  decision frozen to the static artwork palette + fixed accent), compact
+  search circle context-aware (openSearch savedStateHandle request +
+  ObserveOpenSearchRequest wired into 10 screens).
+- b9b3f2aff: track-info credits — core submodule (4999a57) parses the
+  watch page's videoAttributeViewModel song-credits dialog into
+  MediaInfo.credits; ShowMediaInfo renders the credits card with
+  overview-duplicate filtering + TTML/trailing "Written by" lyric
+  fallback (extractTtmlWriters internal).
+- 80cfbee09: automix clean-room rewrite — deleted the BitChord port in
+  full (playback/smart 13 files, TransitionFilterProcessor, native/
+  analyzer, 3 JNI bridges, cmake target, onnxruntime + both ONNX models,
+  -6434 lines); new pure-Kotlin playback/automix/ (+1673 lines):
+  streaming MediaCodec analyzer (FFT spectral flux → tempo/beats/
+  downbeats, RMS structure/mix points, band-ratio vocal likelihood,
+  JSON persistence LRU 600), tier planner (GAPLESS / DJ_BLEND with
+  ±4% rate alignment + bass handover + clash shrinking / DJ_FILTER /
+  EQUAL_POWER), Chamberlin SVF filter processor with glides + parked
+  fast-path, coroutine-native scheduler in MusicService, BitChord status
+  line on AutoMixUiState.
+- CI repair rounds: 507d9ad28/fa11fb0a0 (duplicate imports), 9384705f2
+  (SearchRequests lifecycle import package + MainActivity glow-key
+  imports), 33886de44 (chunk channel bound, reified decodeFromString
+  import), e03f65417 (review round: USB_SINK_DEVICE_TYPES +
+  HIGH_QUALITY_BITRATE restored — the constants cleanup over-swept them;
+  Discord cancellation rethrow + authResults replay dropped; bake health
+  gating parks the twin and clears the stale bitmap after 5 failures).
+- Static review agent over the full diff: 2 blockers + 2 warns + 7 nits,
+  all addressed.
+
+Stage Summary:
+- dev carries all 10 tasks; changelogs.md gained the 16.0.2 batch section.
+- The 33886de44 nightly failed on exactly the two over-deleted constants —
+  every other line of the batch compiled clean on that run; e03f65417+ fix
+  them.
