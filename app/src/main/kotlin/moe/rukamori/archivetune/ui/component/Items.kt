@@ -141,9 +141,10 @@ const val ActiveBoxAlpha = 0.6f
 // translucent enough that the hero gradient / page backdrop shows through the
 // tint ("inspired by the backdrop"), opaque enough plus a hairline border
 // that the row still clearly reads as highlighted rather than blending into
-// the page ("shouldn't blend too much").
-private const val ActiveBackdropContainerAlpha = 0.55f
-private const val ActiveBackdropBorderAlpha = 0.28f
+// the page ("shouldn't blend too much"). Public because the inline ListItem
+// references them (public inline functions cannot access private API).
+const val ActiveBackdropContainerAlpha = 0.55f
+const val ActiveBackdropBorderAlpha = 0.28f
 
 @Composable
 inline fun ListItem(
