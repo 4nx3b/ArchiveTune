@@ -66,7 +66,6 @@ import androidx.compose.ui.unit.toIntSize
 import androidx.compose.ui.util.lerp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop as kyantLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -101,17 +100,26 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
-typealias PlatformBackdrop = LayerBackdrop
+typealias PlatformBackdrop = ThrottledLayerBackdrop
 
 @Composable
 fun rememberLayerBackdropSettled(@Suppress("UNUSED_PARAMETER") delayMillis: Long = 0L): Boolean = true
 
 @Composable
 fun rememberBackdrop(color: Color): PlatformBackdrop =
-    rememberLayerBackdrop {
-        drawRect(color)
-        drawContent()
-    }
+    // All glass sources route through the guarded, throttled recorder. The
+    // Kyant `rememberLayerBackdrop`/`layerBackdrop` modifier node records its
+    // shared GraphicsLayer with NO re-entrancy guard and NO exception
+    // handling - whenever the same layer was recorded twice in one draw pass
+    // (double attach during a transition, an ancestor+descendant pair, or a
+    // nested redraw while the record block is still open) RenderNode
+    // .beginRecording threw "Recording currently in progress" straight out
+    // of View.dispatchDraw and crashed the app (the crashlog class attached
+    // to this build). ThrottledLayerBackdrop records the identical content
+    // (color prefix + drawContent) behind a recordingInProgress snapshot
+    // guard + runCatching, and consumers pick it up through the same Backdrop
+    // interface - so this swap is behaviour-preserving for every consumer.
+    rememberThrottledBackdrop(color)
 
 @Composable
 fun rememberThrottledBackdrop(
@@ -132,7 +140,15 @@ fun rememberThrottledBackdrop(
     return backdrop
 }
 
-fun Modifier.layerBackdrop(backdrop: PlatformBackdrop): Modifier = this.kyantLayerBackdrop(backdrop)
+fun Modifier.layerBackdrop(backdrop: Backdrop): Modifier =
+    when (backdrop) {
+        is ThrottledLayerBackdrop -> throttledLayerBackdrop(backdrop)
+        // Kept only for Backdrop instances constructed directly through
+        // Kyant's rememberLayerBackdrop (none remain in the app): the guarded
+        // recorder above is the one every app-created source uses now.
+        is LayerBackdrop -> this.kyantLayerBackdrop(backdrop)
+        else -> this
+    }
 
 fun Modifier.glassSource(backdrop: Backdrop): Modifier =
     when (backdrop) {

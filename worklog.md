@@ -4172,3 +4172,67 @@ Stage Summary:
 - The 33886de44 nightly failed on exactly the two over-deleted constants —
   every other line of the batch compiled clean on that run; e03f65417+ fix
   them.
+
+---
+Task ID: 62
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 7-item batch — crashlog fix (RenderNode re-entrancy), automix overlap
+fade, compact search pill relocation + double-search, AM canvas 5fps/desync,
+artist anchored morph overflow menu, dev->main PR, ArchiveTune 17.0 release
+(changelog research + README credits + Tryptify)
+
+Work Log:
+- Crash forensics (Crashlog (2).txt, build e03f65417): uncaught
+  IllegalStateException from RenderNode.beginRecording during dispatchDraw =
+  re-entrant GraphicsLayer.record on one layer. Audited every record site:
+  the app's 3 (snapshot twin, throttled recorder, artist canvas sampler) are
+  runCatching-guarded; Compose 1.12.0-beta02's own record paths are
+  finally-protected; Kyant backdrop 2.0.0's LayerBackdropNode/DrawBackdropNode
+  recordLayer calls are UNGUARDED (verified from the published -sources.jar),
+  Haze 1.7.2's source node record is likewise unguarded but per-area.
+  Fix = eliminate the unguarded Kyant source path entirely: rememberBackdrop()
+  now returns the guarded throttled recorder, Modifier.layerBackdrop() routes
+  Throttled->guarded node (Kyant node kept only as a dead legacy branch),
+  CommentTogether's rememberLayerBackdrop() swapped the same way,
+  MessageActionsPopup's param widened LayerBackdrop?->Backdrop? so the
+  throttled instance flows through.
+- AM canvas twin (5fps/desync/fullscreen, next-song, healed by recycling the
+  player): the bake loop read layer.toImageBitmap() on Dispatchers.Default -
+  LayerSnapshotV28 replays the display list (and recreates it when trimmed)
+  on the CALLING thread, racing the UI thread's record pass on the same
+  RenderNode. Fix = readback on Main, aligned with withFrameNanos right
+  after the frame's record pass, blur stays on Default; bake state resets on
+  canvas URL change; CanvasSnapshotSourceNode gained an isRecording
+  re-entrancy guard.
+- Automix overlap: the blend was driven by the incoming player's cue clock at
+  its beat-matching rate, so the blend finished early and the promotion cut
+  the outgoing tail; the scheduler also subtracted a 150ms end guard. Fix =
+  outgoing-clock-driven progress, no end guard on the smart path, and a
+  bounded tail-wait after the blend that holds the fully-mixed state until
+  the outgoing song actually reaches its natural end before promoting.
+- Compact search circle: playlist routes dropped from
+  compactRouteHasInPageSearch (pill hidden on playlist pages, kept on
+  history/local songs/Spotify-playlist library); the MainActivity-level
+  "openSearch" savedStateHandle observer deleted - it opened the global
+  search stacked on top of the page's own search.
+- Artist overflow: replaced the bottom-sheet menu with an anchored popup
+  (ArtistOverflowAnchoredMenu) that opens attached to the overflow icon
+  (bounds captured from both the glass header icon and the plain TopAppBar
+  icon, compensated by the screen root position), spring scale+fade morph
+  with the transform origin tracking the icon, liquid-glass surface,
+  HorizontalDividers between shuffle/radio/block.
+- Static review agent over the diff: 4 compile blockers (withDismiss
+  overload for (ArtistAction)->Unit, positionInRoot + surfaceColorAtElevation
+  imports, MessageActionsPopup type) + 1 logic bug (popup nested inside the
+  non-glass header branch - dead in glass mode) - all fixed.
+- ArchiveTune 17.0: changelogs.md gained the full 17.0 section (researched
+  all 174 commits since v16.0 across engines/bit-perfect, automix, players &
+  lyrics, liquid glass & design, Listen Together, sources & accounts,
+  performance & build, misc), README credits updated (Tryptify whole-engine
+  credit, LastWave-native engine credit, BitChord now credited for the
+  automix concept behind the clean-room rewrite), baseVersionName 16.0->
+  17.0, baseVersionCode 1600->1700.
+
+Stage Summary:
+- 6 code/doc tasks in one commit on dev; PR dev->main + v17.0 release to
+  follow after CI is green.

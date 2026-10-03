@@ -65,6 +65,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -76,10 +77,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -176,6 +179,7 @@ import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import moe.rukamori.archivetune.ui.component.glassSource
+import moe.rukamori.archivetune.ui.component.liquidGlass
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
@@ -210,6 +214,18 @@ import moe.rukamori.archivetune.viewmodels.ArtistViewModel
 import java.util.Locale
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import com.kyant.backdrop.Backdrop
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 
@@ -391,72 +407,27 @@ fun ArtistScreen(
     val artistName = artistPage?.artist?.title ?: libraryArtist?.artist?.name
     val unknownArtist = stringResource(R.string.unknown_artist)
 
+    // Anchored overflow popup state: bounds (in root coordinates) of whichever
+    // overflow icon the header last laid out - the glass header icon and the
+    // plain TopAppBar icon both report here, so the popup always opens
+    // attached to the icon that summoned it.
+    var artistOverflowAnchor by remember { mutableStateOf(Rect.Zero) }
+    var artistOverflowMenuOpen by remember { mutableStateOf(false) }
+    // Position of the screen's root container inside the window's compose
+    // root: the popup positions itself relative to the screen container, but
+    // the icons report window coordinates (boundsInRoot) - the delta between
+    // the two is subtracted so the anchor lands exactly under the icon.
+    var artistScreenRootPositionInRoot by remember { mutableStateOf(Offset.Zero) }
+
     val showArtistOverflowMenu: () -> Unit = {
         // Radio + shuffle moved here from the profile-picture area (they used
         // to sit above the play circle) - the hero now shows only the play
         // button, and these two actions live in the overflow menu like every
-        // other secondary action on the page.
-        val canShuffle =
-            if (showLocal) {
-                librarySongs.isNotEmpty()
-            } else {
-                artistPage?.artist?.shuffleEndpoint != null
-            }
-        val canRadio = !showLocal && artistPage?.artist?.radioEndpoint != null
-        val playShuffle: () -> Unit = {
-            if (showLocal) {
-                if (librarySongs.isNotEmpty()) {
-                    playerConnection.playQueue(
-                        ListQueue(
-                            title = artistName ?: unknownArtist,
-                            items = librarySongs.shuffled().map { it.toMediaItem() },
-                        ),
-                    )
-                }
-            } else {
-                artistPage?.artist?.shuffleEndpoint?.let { endpoint ->
-                    playerConnection.playQueue(YouTubeQueue(endpoint))
-                }
-            }
-        }
-        val playRadio: () -> Unit = {
-            artistPage?.artist?.radioEndpoint?.let { endpoint ->
-                playerConnection.playQueue(YouTubeQueue(endpoint))
-            }
-        }
-        menuState.show {
-            ArtistOverflowMenu(
-                isBlocked = isArtistBlocked,
-                blockActionEnabled =
-                    blockState !is ArtistBlockState.Loading &&
-                        (
-                            artistPage
-                                ?.artist
-                                ?.title
-                                .orEmpty()
-                                .isNotBlank() ||
-                                libraryArtist
-                                    ?.artist
-                                    ?.name
-                                    .orEmpty()
-                                    .isNotBlank()
-                        ),
-                showShuffle = canShuffle,
-                showRadio = canRadio,
-                onShuffle = {
-                    playShuffle()
-                    menuState.dismiss()
-                },
-                onRadio = {
-                    playRadio()
-                    menuState.dismiss()
-                },
-                onAction = { action ->
-                    viewModel.onAction(action)
-                    menuState.dismiss()
-                },
-            )
-        }
+        // other secondary action on the page. The menu itself is the anchored
+        // popup below (ArtistOverflowAnchoredMenu) - it opens attached to this
+        // header's overflow icon with a morph animation, replacing the old
+        // bottom-sheet menu.
+        artistOverflowMenuOpen = true
     }
 
     val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
@@ -677,7 +648,8 @@ fun ArtistScreen(
             Modifier
                 .fillMaxSize()
                 .background(surfaceColor)
-                .onSizeChanged { pageContainerHeightPx = it.height },
+                .onSizeChanged { pageContainerHeightPx = it.height }
+                .onGloballyPositioned { artistScreenRootPositionInRoot = it.positionInRoot() },
     ) {
 
         Box(
@@ -1671,7 +1643,10 @@ fun ArtistScreen(
                     backdrop = artworkBackdrop,
                     painter = painterResource(R.drawable.solar_more_circle_linear),
                     contentDescription = stringResource(R.string.more_options),
-                    modifier = Modifier.size(48.dp),
+                    modifier =
+                        Modifier
+                            .size(48.dp)
+                            .onGloballyPositioned { artistOverflowAnchor = it.boundsInRoot() },
                     onClick = showArtistOverflowMenu,
                 )
             }
@@ -1711,6 +1686,10 @@ fun ArtistScreen(
             IconButton(
                 onClick = showArtistOverflowMenu,
                 onLongClick = {},
+                modifier =
+                    Modifier.onGloballyPositioned {
+                        artistOverflowAnchor = it.boundsInRoot()
+                    },
             ) {
                 Icon(
                     painter = painterResource(R.drawable.more_horiz),
@@ -1736,6 +1715,71 @@ fun ArtistScreen(
             },
     )
     }
+
+    // Sibling of (and therefore drawn above) both header variants: the
+    // anchored popup must compose whichever header mode is active.
+    if (artistOverflowMenuOpen) {
+        val canShuffle =
+            if (showLocal) {
+                librarySongs.isNotEmpty()
+            } else {
+                artistPage?.artist?.shuffleEndpoint != null
+            }
+        val canRadio = !showLocal && artistPage?.artist?.radioEndpoint != null
+        val anchorRelativeToScreen =
+            Rect(
+                left = artistOverflowAnchor.left - artistScreenRootPositionInRoot.x,
+                top = artistOverflowAnchor.top - artistScreenRootPositionInRoot.y,
+                right = artistOverflowAnchor.right - artistScreenRootPositionInRoot.x,
+                bottom = artistOverflowAnchor.bottom - artistScreenRootPositionInRoot.y,
+            )
+        ArtistOverflowAnchoredMenu(
+            anchorBoundsInRoot = anchorRelativeToScreen,
+            backdrop = if (liquidGlassHeaderActive) artworkBackdrop else null,
+            isBlocked = isArtistBlocked,
+            blockActionEnabled =
+                blockState !is ArtistBlockState.Loading &&
+                    (
+                        artistPage
+                            ?.artist
+                            ?.title
+                            .orEmpty()
+                            .isNotBlank() ||
+                            libraryArtist
+                                ?.artist
+                                ?.name
+                                .orEmpty()
+                                .isNotBlank()
+                    ),
+            showShuffle = canShuffle,
+            showRadio = canRadio,
+            onShuffle = {
+                if (showLocal) {
+                    if (librarySongs.isNotEmpty()) {
+                        playerConnection.playQueue(
+                            ListQueue(
+                                title = artistName ?: unknownArtist,
+                                items = librarySongs.shuffled().map { it.toMediaItem() },
+                            ),
+                        )
+                    }
+                } else {
+                    artistPage?.artist?.shuffleEndpoint?.let { endpoint ->
+                        playerConnection.playQueue(YouTubeQueue(endpoint))
+                    }
+                }
+            },
+            onRadio = {
+                artistPage?.artist?.radioEndpoint?.let { endpoint ->
+                    playerConnection.playQueue(YouTubeQueue(endpoint))
+                }
+            },
+            onAction = { action ->
+                viewModel.onAction(action)
+            },
+            onDismiss = { artistOverflowMenuOpen = false },
+        )
+    }
 }
 
 @Composable
@@ -1753,7 +1797,7 @@ private fun ArtistOverflowMenu(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(bottom = 12.dp),
+                .padding(vertical = 6.dp),
     ) {
         if (showShuffle) {
             ArtistOverflowMenuItem(
@@ -1762,12 +1806,18 @@ private fun ArtistOverflowMenu(
                 onClick = onShuffle,
             )
         }
+        if (showShuffle && showRadio) {
+            ArtistOverflowMenuDivider()
+        }
         if (showRadio) {
             ArtistOverflowMenuItem(
                 text = stringResource(R.string.start_radio),
                 iconRes = R.drawable.radio,
                 onClick = onRadio,
             )
+        }
+        if ((showShuffle || showRadio)) {
+            ArtistOverflowMenuDivider()
         }
 
         ArtistOverflowMenuItem(
@@ -1778,6 +1828,220 @@ private fun ArtistOverflowMenu(
         )
     }
 }
+
+@Composable
+private fun ArtistOverflowMenuDivider() {
+    HorizontalDivider(
+        modifier =
+            Modifier
+                .padding(horizontal = 20.dp, vertical = 2.dp)
+                .fillMaxWidth(0.72f),
+        thickness = 0.75.dp,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
+    )
+}
+
+/**
+ * Anchored overflow menu for the artist page: opens attached to the header's
+ * overflow icon (both the liquid-glass header icon and the plain TopAppBar
+ * icon report their bounds), morphing out of the icon with a spring scale +
+ * fade whose transform origin tracks the icon. Items are separated by thin
+ * dividers. Dismissal runs the reverse morph before the state clears.
+ */
+@Composable
+private fun ArtistOverflowAnchoredMenu(
+    anchorBoundsInRoot: Rect,
+    backdrop: Backdrop?,
+    isBlocked: Boolean,
+    blockActionEnabled: Boolean,
+    showShuffle: Boolean,
+    showRadio: Boolean,
+    onShuffle: () -> Unit,
+    onRadio: () -> Unit,
+    onAction: (ArtistAction) -> Unit,
+    onDismiss: () -> Unit,
+    scrimColor: Color = Color.Black.copy(alpha = 0.38f),
+) {
+    var dismissed by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = !dismissed) {
+        dismissed = true
+    }
+
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+
+    val scaleAnim = remember { Animatable(0.45f) }
+    val alphaAnim = remember { Animatable(0f) }
+
+    LaunchedEffect(Unit) {
+        if (dismissed) return@LaunchedEffect
+        val scaleJob = scope.launch {
+            scaleAnim.animateTo(
+                targetValue = 1f,
+                animationSpec =
+                    spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+            )
+        }
+        val alphaJob = scope.launch {
+            alphaAnim.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(140),
+            )
+        }
+        scaleJob.join()
+        alphaJob.join()
+    }
+
+    LaunchedEffect(dismissed) {
+        if (!dismissed) return@LaunchedEffect
+        val scaleJob = scope.launch {
+            scaleAnim.animateTo(
+                targetValue = 0.45f,
+                animationSpec =
+                    spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+            )
+        }
+        val alphaJob = scope.launch {
+            alphaAnim.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(140),
+            )
+        }
+        scaleJob.join()
+        alphaJob.join()
+        onDismiss()
+    }
+
+    val scale = scaleAnim.value
+    val alpha = alphaAnim.value
+
+    // Actions dismiss through the exit morph: the click flips `dismissed`
+    // (reverse animation runs), the action itself fires immediately, and the
+    // parent clears the open state from onDismiss once the morph finished.
+    fun withDismiss(action: () -> Unit): () -> Unit = {
+        if (!dismissed) {
+            dismissed = true
+            action()
+        }
+    }
+
+    fun withDismiss(action: (ArtistAction) -> Unit): (ArtistAction) -> Unit = { arg ->
+        if (!dismissed) {
+            dismissed = true
+            action(arg)
+        }
+    }
+
+    var anchorSpaceHeightPx by remember { mutableIntStateOf(0) }
+    var popupHeightPx by remember { mutableIntStateOf(0) }
+    val verticalOffsetPx = with(density) { 4.dp.toPx() }.toInt()
+    val popupMaxWidthPx = with(density) { ArtistOverflowPopupWidth.toPx() }
+    val horizontalMarginPx = with(density) { 12.dp.toPx() }.toInt()
+
+    fun opensAboveAnchor(): Boolean {
+        val neededHeightPx =
+            if (popupHeightPx > 0) popupHeightPx else with(density) { 200.dp.toPx() }.toInt()
+        return anchorSpaceHeightPx > 0 &&
+            anchorBoundsInRoot.bottom + verticalOffsetPx + neededHeightPx > anchorSpaceHeightPx
+    }
+
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .onSizeChanged { anchorSpaceHeightPx = it.height }
+                .background(scrimColor.copy(alpha = scrimColor.alpha * alpha))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) {
+                    if (!dismissed) dismissed = true
+                },
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .offset {
+                        val x =
+                            (anchorBoundsInRoot.right.toInt() - popupMaxWidthPx.toInt())
+                                .coerceAtLeast(horizontalMarginPx)
+                        val y =
+                            if (opensAboveAnchor()) {
+                                (anchorBoundsInRoot.top - verticalOffsetPx -
+                                    (if (popupHeightPx > 0) popupHeightPx else with(density) { 200.dp.toPx() }.toInt()))
+                                    .coerceAtLeast(0f)
+                                    .toInt()
+                            } else {
+                                anchorBoundsInRoot.bottom.toInt() + verticalOffsetPx
+                            }
+                        IntOffset(x = x, y = y)
+                    }
+                    .widthIn(max = ArtistOverflowPopupWidth)
+                    .heightIn(max = 320.dp)
+                    .onSizeChanged { popupHeightPx = it.height }
+                    .graphicsLayer {
+                        this.alpha = alpha
+                        this.scaleX = scale
+                        this.scaleY = scale
+
+                        val popupLeftPx =
+                            (anchorBoundsInRoot.right - popupMaxWidthPx)
+                                .coerceAtLeast(horizontalMarginPx.toFloat())
+                        val iconCenterX =
+                            (anchorBoundsInRoot.left + anchorBoundsInRoot.right) / 2f
+                        val pivotX =
+                            ((iconCenterX - popupLeftPx) / popupMaxWidthPx.coerceAtLeast(1f))
+                                .coerceIn(0.02f, 0.98f)
+                        this.transformOrigin =
+                            TransformOrigin(pivotX, if (opensAboveAnchor()) 1f else 0f)
+
+                        this.shadowElevation = 14.dp.toPx()
+                        this.shape = RoundedCornerShape(18.dp)
+                        this.clip = false
+                    }
+                    .let { m ->
+                        if (backdrop != null) {
+                            m.liquidGlass(
+                                backdrop = backdrop,
+                                shape = RoundedCornerShape(18.dp),
+                                interactive = false,
+                                blurRadius = 22.dp,
+                            )
+                        } else {
+                            m.background(
+                                MaterialTheme.colorScheme.surfaceColorAtElevation(6.dp)
+                                    .copy(alpha = 0.98f),
+                            )
+                        }
+                    }
+                    .clip(RoundedCornerShape(18.dp))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) {
+                    },
+        ) {
+            ArtistOverflowMenu(
+                isBlocked = isBlocked,
+                blockActionEnabled = blockActionEnabled,
+                onAction = withDismiss(onAction),
+                showShuffle = showShuffle,
+                showRadio = showRadio,
+                onShuffle = withDismiss(onShuffle),
+                onRadio = withDismiss(onRadio),
+            )
+        }
+    }
+}
+
+private val ArtistOverflowPopupWidth = 232.dp
 
 @Composable
 private fun ArtistOverflowMenuItem(
