@@ -770,6 +770,15 @@ fun AppleMusicPlayerContent(
             twinBakeFailures = 0
             if (!useCanvasBackdrop) return@LaunchedEffect
             while (isActive) {
+                // Once the bake has failed repeatedly the twin is parked for
+                // this session: drop the stale bitmap too so the static
+                // artwork backdrop shows through instead of a frozen frame,
+                // and stop churning readbacks until the track/route changes.
+                if (twinBakeFailures >= 5) {
+                    blurredTwinBitmap = null
+                    delay(AmCanvasSnapshotIntervalMs)
+                    continue
+                }
                 val layer = twinSnapshotLayer
                 if (layer.size.width >= 8 && layer.size.height >= 8) {
                     val baked =
