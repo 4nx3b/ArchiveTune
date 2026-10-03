@@ -130,8 +130,8 @@ import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
-import moe.rukamori.archivetune.playback.smart.SmartFadeRuntimeState
-import moe.rukamori.archivetune.playback.smart.TrackAnalysisState
+import moe.rukamori.archivetune.playback.automix.AutoMixAnalysisState
+import moe.rukamori.archivetune.playback.automix.AutoMixUiState
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
@@ -357,8 +357,8 @@ fun BitChordPlayerContent(
     val database = LocalDatabase.current
     val player = playerConnection.player
 
-    val automixOn by SmartFadeRuntimeState.enabled.collectAsStateWithLifecycle()
-    val automixAnalysis by SmartFadeRuntimeState.analysis.collectAsStateWithLifecycle()
+    val automixOn by AutoMixUiState.enabled.collectAsStateWithLifecycle()
+    val automixAnalysis by AutoMixUiState.analysis.collectAsStateWithLifecycle()
 
     val reduceAnimations = LocalAnimationsDisabled.current
 
@@ -1634,14 +1634,13 @@ private fun formatTime(ms: Long): String {
 }
 
 @Composable
-private fun localizedAnalysisState(state: TrackAnalysisState): String =
+private fun localizedAnalysisState(state: AutoMixAnalysisState): String =
     stringResource(
         when (state) {
-            TrackAnalysisState.ANALYSED -> R.string.automix_state_analysed
-            TrackAnalysisState.ANALYSING -> R.string.automix_state_analysing
-            TrackAnalysisState.REFINING -> R.string.automix_state_refining
-            TrackAnalysisState.FAILED -> R.string.automix_state_failed
-            TrackAnalysisState.WAITING -> R.string.automix_state_waiting
+            AutoMixAnalysisState.ANALYSED -> R.string.automix_state_analysed
+            AutoMixAnalysisState.ANALYSING -> R.string.automix_state_analysing
+            AutoMixAnalysisState.FAILED -> R.string.automix_state_failed
+            AutoMixAnalysisState.WAITING -> R.string.automix_state_waiting
         },
     )
 

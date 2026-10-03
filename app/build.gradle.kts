@@ -349,8 +349,9 @@ android {
         prefab = true
     }
 
-    // Automix's analysis front end (tempo/key/energy/structure DSP + the mel
-    // and vocal STFT front ends the ONNX models consume).
+    // Native playback DSP (Tryptify/LastWave engines, USB-direct outputs,
+    // crash-reporter helpers). The BitChord-ported automix analyzer is gone -
+    // the clean-room automix is pure Kotlin (playback/automix/).
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
@@ -513,7 +514,6 @@ dependencies {
     // Automix: the Beat This! beat/downbeat and open-unmix vocal models run
     // through ONNX Runtime. The full android artifact, not -mobile: mobile
     // only loads .ort sessions.
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.28.0")
     implementation(libs.car.app)
     implementation(libs.media3.okhttp)
     implementation("androidx.media3:media3-ui:${libs.versions.media3.get()}")

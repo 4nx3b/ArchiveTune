@@ -339,8 +339,7 @@ import moe.rukamori.archivetune.playback.artwork.ArtworkResolver
 import moe.rukamori.archivetune.playback.artwork.ArtworkSettings
 import moe.rukamori.archivetune.playback.artwork.ResolvedArtwork
 import moe.rukamori.archivetune.playback.artwork.isLocalArtworkUri
-import moe.rukamori.archivetune.playback.smart.CrossfadeMode
-import moe.rukamori.archivetune.playback.smart.SmartFadeAnalyzer
+import moe.rukamori.archivetune.playback.automix.AutoMixAnalyzer
 import moe.rukamori.archivetune.playback.dsp.AudioEngineKind
 import moe.rukamori.archivetune.playback.dsp.BitPerfectGateProcessor
 import moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime
@@ -351,15 +350,16 @@ import moe.rukamori.archivetune.playback.dsp.EngineRuntime
 import moe.rukamori.archivetune.playback.dsp.FloatDspProcessor
 import moe.rukamori.archivetune.playback.dsp.TryptifyEngineController
 import moe.rukamori.archivetune.playback.dsp.UsbExclusiveAudioOutputProvider
-import moe.rukamori.archivetune.playback.smart.SmartFadeRuntimeState
-import moe.rukamori.archivetune.playback.smart.SmartFadeSettings
-import moe.rukamori.archivetune.playback.smart.SmartAnalysis
-import moe.rukamori.archivetune.playback.smart.TrackAnalysisState
-import moe.rukamori.archivetune.playback.smart.TransitionPlan
-import moe.rukamori.archivetune.playback.smart.TransitionStyle
-import moe.rukamori.archivetune.playback.smart.TransitionTrackInfo
-import moe.rukamori.archivetune.playback.smart.TransitionWindow
-import moe.rukamori.archivetune.playback.smart.planTransition
+import moe.rukamori.archivetune.playback.automix.AutoMixAnalysisState
+import moe.rukamori.archivetune.playback.automix.AutoMixAnalysisStates
+import moe.rukamori.archivetune.playback.automix.AutoMixFilterProcessor
+import moe.rukamori.archivetune.playback.automix.AutoMixPlan
+import moe.rukamori.archivetune.playback.automix.AutoMixPlanner
+import moe.rukamori.archivetune.playback.automix.AutoMixStyle
+import moe.rukamori.archivetune.playback.automix.AutoMixTrackInfo
+import moe.rukamori.archivetune.playback.automix.AutoMixTransitionWindow
+import moe.rukamori.archivetune.playback.automix.AutoMixUiState
+import moe.rukamori.archivetune.playback.automix.AutoMixPerformanceMode as EngineAutoMixPerformanceMode
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
 import moe.rukamori.archivetune.lastfm.LastFM
 import moe.rukamori.archivetune.lyrics.LyricsHelper
@@ -821,8 +821,8 @@ class MusicService :
     private var crossfadeHandoffProgress = 0f
     private var crossfadePlaybackRequested = false
 
-    private var smartFadeEnabled = false
-    private var smartFadeAnalyzer: SmartFadeAnalyzer? = null
+    private var autoMixEnabled = false
+    private var autoMixAnalyzer: AutoMixAnalyzer? = null
 
     @Volatile
     private var usbExclusiveAudioEnabled = false
@@ -840,7 +840,7 @@ class MusicService :
     private var audioOffloadPrefEnabled = false
 
     private val primaryFloatDspProcessor = FloatDspProcessor()
-    private var primaryTransitionFilter = TransitionFilterProcessor()
+    private var primaryTransitionFilter = AutoMixFilterProcessor()
 
     @Volatile
     private var tryptifyAudioProcessing = false
@@ -992,7 +992,7 @@ class MusicService :
     }
 
     @Volatile
-    private var secondaryTransitionFilter: TransitionFilterProcessor? = null
+    private var secondaryTransitionFilter: AutoMixFilterProcessor? = null
 
     @Volatile
     private var secondaryFloatDspProcessor: FloatDspProcessor? = null
@@ -1804,7 +1804,12 @@ class MusicService :
             }
             .distinctUntilChanged()
             .collectLatest(scope) { mode ->
-                SmartFadeSettings.performanceMode.value = mode
+                autoMixEngine().performanceMode =
+                    when (mode) {
+                        AutomixPerformanceMode.EFFICIENT -> EngineAutoMixPerformanceMode.EFFICIENT
+                        AutomixPerformanceMode.PERFORMANCE -> EngineAutoMixPerformanceMode.PERFORMANCE
+                        else -> EngineAutoMixPerformanceMode.BALANCED
+                    }
             }
 
         combine(
@@ -2103,13 +2108,13 @@ class MusicService :
                         .roundToLong()
                         .coerceAtLeast(0L)
                 crossfadeGapless = config.gapless
-                smartFadeEnabled = config.automixEnabled
-                SmartFadeRuntimeState.enabled.value = smartFadeEnabled
-                if (!smartFadeEnabled) {
-                    SmartFadeRuntimeState.transitionWindow.value = null
-                    SmartFadeRuntimeState.mixing.value = false
+                autoMixEnabled = config.automixEnabled
+                AutoMixUiState.enabled.value = autoMixEnabled
+                if (!autoMixEnabled) {
+                    AutoMixUiState.transitionWindow.value = null
+                    AutoMixUiState.mixing.value = false
                 }
-                if ((crossfadeEnabled && crossfadeDurationMs > 0L) || smartFadeEnabled) {
+                if ((crossfadeEnabled && crossfadeDurationMs > 0L) || autoMixEnabled) {
                     scheduleCrossfade()
                 } else {
                     cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
@@ -3355,8 +3360,8 @@ class MusicService :
             return
         }
 
-        if (smartFadeEnabled) {
-            scheduleSmartFade()
+        if (autoMixEnabled) {
+            scheduleAutoMix()
             return
         }
 
@@ -3412,41 +3417,44 @@ class MusicService :
     }
 
     @UnstableApi
-    private fun analyzer(): SmartFadeAnalyzer {
-        smartFadeAnalyzer?.let { return it }
+    private fun autoMixEngine(): AutoMixAnalyzer {
+        autoMixAnalyzer?.let { return it }
         val created =
-            SmartFadeAnalyzer(this) { mediaId ->
-
-                runBlocking {
-                    runCatching {
-                        withTimeout(SMART_FADE_RESOLVE_TIMEOUT_MS) {
-                            runCatching {
-                                YTPlayerUtils.playerResponseForPlayback(
-                                    mediaId,
-                                    audioQuality = AudioQuality.LOW,
-                                    connectivityManager = connectivityManager,
-                                    preferredStreamClient = preferredStreamClient,
-                                    networkMetered = false,
-                                ).getOrThrow().streamUrl
-                            }.getOrNull()
-                        }
-                    }.getOrNull()
-                }
+            AutoMixAnalyzer(this) { mediaId ->
+                runCatching {
+                    withTimeout(AUTO_MIX_RESOLVE_TIMEOUT_MS) {
+                        runCatching {
+                            YTPlayerUtils.playerResponseForPlayback(
+                                mediaId,
+                                audioQuality = AudioQuality.LOW,
+                                connectivityManager = connectivityManager,
+                                preferredStreamClient = preferredStreamClient,
+                                networkMetered = false,
+                            ).getOrThrow().streamUrl
+                        }.getOrNull()
+                    }
+                }.getOrNull()
             }
-        smartFadeAnalyzer = created
+        autoMixAnalyzer = created
         return created
     }
 
-    private fun scheduleSmartFade() {
-        val target = resolveSmartFadeTarget()
+    /**
+     * Clean-room automix scheduler (replaces the BitChord-ported SmartFade):
+     * analyses both sides through [AutoMixAnalyzer], plans the transition with
+     * [AutoMixPlanner], publishes the UI state, arms the secondary player at
+     * the incoming cue and finally hands over to the shared crossfade blender.
+     */
+    private fun scheduleAutoMix() {
+        val target = resolveAutoMixTarget()
         val duration = player.duration
         if (target == null || duration == C.TIME_UNSET || duration <= 0L) {
             localPlayer.pauseAtEndOfMediaItems = false
             releaseSecondaryCrossfadePlayer()
-            SmartFadeRuntimeState.transitionWindow.value = null
-            SmartFadeRuntimeState.analysis.value = SmartFadeRuntimeState.analysis.value.copy(
-                current = TrackAnalysisState.WAITING,
-                next = TrackAnalysisState.WAITING,
+            AutoMixUiState.transitionWindow.value = null
+            AutoMixUiState.analysis.value = AutoMixUiState.analysis.value.copy(
+                current = AutoMixAnalysisState.WAITING,
+                next = AutoMixAnalysisState.WAITING,
             )
             return
         }
@@ -3459,7 +3467,7 @@ class MusicService :
                 var hasPreparedSecondaryPlayer = false
                 var lastVerdict: String? = null
                 while (isActive) {
-                    if (!smartFadeEnabled || isCrossfading) return@launch
+                    if (!autoMixEnabled || isCrossfading) return@launch
                     if (player.currentMediaItem?.mediaId != currentMediaId || player.currentMediaItemIndex != currentIndex) {
                         return@launch
                     }
@@ -3470,65 +3478,62 @@ class MusicService :
                     val currentItem = player.currentMediaItem ?: return@launch
                     val nextItem = runCatching { player.getMediaItemAt(target.index) }.getOrNull() ?: return@launch
 
-                    val sm = analyzer()
-                    sm.request(
+                    val engine = autoMixEngine()
+                    engine.request(
                         trackId = currentItem.mediaId,
                         uri = currentItem.localConfiguration?.uri ?: android.net.Uri.EMPTY,
-                        durationSeconds = duration / 1000.0,
+                        durationMs = duration,
                     )
                     val nextDurationMs = timelineDurationMsAt(target.index, nextItem)
-                    sm.request(
+                    engine.request(
                         trackId = nextItem.mediaId,
                         uri = nextItem.localConfiguration?.uri ?: android.net.Uri.EMPTY,
-                        durationSeconds = nextDurationMs / 1000.0,
+                        durationMs = nextDurationMs,
                     )
 
-                    val currentAnalysis = sm.analysisFor(currentItem.mediaId)
-                    val nextAnalysis = sm.analysisFor(nextItem.mediaId)
+                    val currentAnalysis = engine.analysisFor(currentItem.mediaId)
+                    val nextAnalysis = engine.analysisFor(nextItem.mediaId)
 
                     val plan =
-                        planTransition(
-                            analysis = currentAnalysis,
-                            nextAnalysis = nextAnalysis,
-                            currentTrack = currentItem.toTransitionInfo(duration),
-                            nextTrack = nextItem.toTransitionInfo(nextDurationMs),
-                            currentTime = player.currentPosition / 1000.0,
-                            duration = duration / 1000.0,
-
-                            fadeSeconds = smartFallbackFadeSeconds(),
-                            minFadeSeconds = MIN_CROSSFADE_DURATION_MS / 1000.0,
-                            mode = CrossfadeMode.SMART,
-                            albumSequential = crossfadeGapless && isGaplessAlbumTransition(currentItem, nextItem),
+                        AutoMixPlanner.plan(
+                            current = currentAnalysis,
+                            next = nextAnalysis,
+                            currentTrack = currentItem.toAutoMixTrackInfo(duration),
+                            nextTrack = nextItem.toAutoMixTrackInfo(nextDurationMs),
+                            positionMs = player.currentPosition,
+                            fallbackFadeMs = autoMixFallbackFadeMs(),
+                            minFadeMs = MIN_CROSSFADE_DURATION_MS,
+                            gaplessAlbum = crossfadeGapless && isGaplessAlbumTransition(currentItem, nextItem),
                         )
 
-                    publishSmartAnalysisState(sm, currentItem.mediaId, nextItem.mediaId)
+                    publishAutoMixAnalysisState(engine, currentItem.mediaId, nextItem.mediaId)
 
-                    val verdict = "${plan.reason}|${plan.transitionStyle}|fade=${plan.fadeMs}"
+                    val verdict = "${plan.reason}|${plan.style}|fade=${plan.fadeMs}"
                     if (verdict != lastVerdict) {
                         lastVerdict = verdict
                         Timber.tag(TAG).d(
-                            "smartplan %s->%s: %s bpm=%.1f/%.1f conf=%.2f/%.2f",
+                            "automix plan %s->%s: %s bpm=%.1f/%.1f conf=%.2f/%.2f",
                             currentItem.mediaId,
                             nextItem.mediaId,
                             verdict,
-                            currentAnalysis.bpm,
-                            nextAnalysis.bpm,
-                            currentAnalysis.beatConfidence,
-                            nextAnalysis.beatConfidence,
+                            currentAnalysis?.bpm ?: 0.0,
+                            nextAnalysis?.bpm ?: 0.0,
+                            currentAnalysis?.beatConfidence ?: 0.0,
+                            nextAnalysis?.beatConfidence ?: 0.0,
                         )
                     }
 
                     val markable =
                         !plan.blocked &&
                             plan.markerVisible &&
-                            sm.isAnalysed(currentItem.mediaId) &&
-                            sm.isAnalysed(nextItem.mediaId)
-                    SmartFadeRuntimeState.transitionWindow.value =
+                            engine.isAnalysed(currentItem.mediaId) &&
+                            engine.isAnalysed(nextItem.mediaId)
+                    AutoMixUiState.transitionWindow.value =
                         if (markable) {
-                            val startFraction = (plan.transitionStart * 1000.0 / duration).toFloat().coerceIn(0f, 1f)
-                            val endFraction = (plan.transitionEnd * 1000.0 / duration).toFloat().coerceIn(0f, 1f)
+                            val startFraction = (plan.transitionStartMs.toFloat() / duration).coerceIn(0f, 1f)
+                            val endFraction = (plan.transitionEndMs.toFloat() / duration).coerceIn(0f, 1f)
                             if (endFraction > startFraction) {
-                                TransitionWindow(startFraction, endFraction)
+                                AutoMixTransitionWindow(startFraction, endFraction)
                             } else {
                                 null
                             }
@@ -3537,24 +3542,21 @@ class MusicService :
                         }
 
                     if (plan.blocked) {
-                        delay(SMART_FADE_POLL_MS)
+                        delay(AUTO_MIX_POLL_MS)
                         continue
                     }
 
-                    val transitionStartMs = (plan.transitionStart * 1000).roundToLong()
-                    val remainingToStart = transitionStartMs - player.currentPosition
+                    val remainingToStart = plan.transitionStartMs - player.currentPosition
                     if (!hasPreparedSecondaryPlayer && remainingToStart <= CROSSFADE_PREPARE_AHEAD_MS) {
-
-                        if (plan.transitionStyle != TransitionStyle.GAPLESS) {
+                        if (plan.style != AutoMixStyle.GAPLESS) {
                             prepareSecondaryCrossfadePlayer(
                                 target,
-                                cueTimeMs = (plan.incomingCueTime * 1000).roundToLong().coerceAtLeast(0L),
+                                cueTimeMs = plan.incomingCueMs.coerceAtLeast(0L),
                             )
                         }
                         hasPreparedSecondaryPlayer = true
                     }
                     if (remainingToStart <= 0L && plan.fadeMs >= MIN_CROSSFADE_DURATION_MS) {
-
                         val positionMs = player.currentPosition
                         val remainingFadeMs =
                             (duration - positionMs - CROSSFADE_END_GUARD_MS)
@@ -3562,15 +3564,14 @@ class MusicService :
                         if (remainingFadeMs >= MIN_CROSSFADE_DURATION_MS) {
                             startCrossfade(target, remainingFadeMs, plan)
                         } else {
-
                             localPlayer.pauseAtEndOfMediaItems = false
                             releaseSecondaryCrossfadePlayer()
-                            SmartFadeRuntimeState.transitionWindow.value = null
-                            SmartFadeRuntimeState.mixing.value = false
-                            SmartFadeRuntimeState.analysis.value =
-                                SmartFadeRuntimeState.analysis.value.copy(
-                                    current = TrackAnalysisState.WAITING,
-                                    next = TrackAnalysisState.WAITING,
+                            AutoMixUiState.transitionWindow.value = null
+                            AutoMixUiState.mixing.value = false
+                            AutoMixUiState.analysis.value =
+                                AutoMixUiState.analysis.value.copy(
+                                    current = AutoMixAnalysisState.WAITING,
+                                    next = AutoMixAnalysisState.WAITING,
                                 )
                         }
                         return@launch
@@ -3582,13 +3583,13 @@ class MusicService :
                             remainingToStart > 2_000L -> 250L
                             else -> 50L
                         }.coerceAtLeast(1L)
-                    delay(sleepMs.coerceAtMost(SMART_FADE_POLL_MS))
+                    delay(sleepMs.coerceAtMost(AUTO_MIX_POLL_MS))
                 }
             }
     }
 
-    private fun resolveSmartFadeTarget(): CrossfadeTarget? {
-        if (!smartFadeEnabled) return null
+    private fun resolveAutoMixTarget(): CrossfadeTarget? {
+        if (!autoMixEnabled) return null
         if (player.mediaItemCount == 0 || player.currentTimeline.isEmpty) return null
         if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) return null
 
@@ -3612,9 +3613,9 @@ class MusicService :
         )
     }
 
-    private fun smartFallbackFadeSeconds(): Double {
-        val configured = crossfadeDurationMs.takeIf { it > 0L } ?: DEFAULT_SMART_FALLBACK_MS
-        return (configured.coerceIn(MIN_CROSSFADE_DURATION_MS, 12_000L)) / 1000.0
+    private fun autoMixFallbackFadeMs(): Long {
+        val configured = crossfadeDurationMs.takeIf { it > 0L } ?: DEFAULT_AUTO_MIX_FALLBACK_MS
+        return configured.coerceIn(MIN_CROSSFADE_DURATION_MS, 12_000L)
     }
 
     private fun timelineDurationMsAt(
@@ -3630,9 +3631,9 @@ class MusicService :
         return windowDuration?.takeIf { it != C.TIME_UNSET } ?: item.mediaMetadata.durationMs ?: 0L
     }
 
-    private fun androidx.media3.common.MediaItem.toTransitionInfo(durationMs: Long): TransitionTrackInfo {
+    private fun androidx.media3.common.MediaItem.toAutoMixTrackInfo(durationMs: Long): AutoMixTrackInfo {
         val metadata = mediaMetadata
-        return TransitionTrackInfo(
+        return AutoMixTrackInfo(
             id = mediaId,
             durationMs = durationMs,
             title = metadata.title?.toString().orEmpty(),
@@ -3641,61 +3642,70 @@ class MusicService :
         )
     }
 
-    private fun publishSmartAnalysisState(
-        analyzer: SmartFadeAnalyzer,
+    private fun publishAutoMixAnalysisState(
+        analyzer: AutoMixAnalyzer,
         currentId: String,
         nextId: String,
     ) {
-        fun stateOf(trackId: String): TrackAnalysisState =
+        fun stateOf(trackId: String): AutoMixAnalysisState =
             when {
                 analyzer.isAnalysed(trackId) -> {
-                    val usable = analyzer.analysisFor(trackId).isUsable
-                    if (usable) TrackAnalysisState.ANALYSED else TrackAnalysisState.FAILED
+                    val usable = analyzer.analysisFor(trackId)?.isUsable == true
+                    if (usable) AutoMixAnalysisState.ANALYSED else AutoMixAnalysisState.FAILED
                 }
-                analyzer.isAnalysing(trackId) -> TrackAnalysisState.ANALYSING
-                else -> TrackAnalysisState.WAITING
+                analyzer.isAnalysing(trackId) -> AutoMixAnalysisState.ANALYSING
+                else -> AutoMixAnalysisState.WAITING
             }
-        val next = SmartFadeRuntimeState.analysis.value
+        val next = AutoMixUiState.analysis.value
         val updated =
-            SmartAnalysis(
+            AutoMixAnalysisStates(
                 current = stateOf(currentId),
                 next = stateOf(nextId),
             )
-        if (updated != next) SmartFadeRuntimeState.analysis.value = updated
+        if (updated != next) AutoMixUiState.analysis.value = updated
     }
 
-    private fun isRealMix(plan: TransitionPlan?): Boolean {
+    private fun hasMixChoreography(plan: AutoMixPlan?): Boolean {
         if (plan == null) return false
-        return plan.transitionStyle == TransitionStyle.DJ_BLEND ||
-            plan.transitionStyle == TransitionStyle.DJ_FILTER ||
-            plan.incomingCueTime > 0.0 ||
+        return plan.style == AutoMixStyle.DJ_BLEND ||
+            plan.style == AutoMixStyle.DJ_FILTER ||
+            plan.incomingCueMs > 0L ||
             abs(plan.incomingPlaybackRate - 1.0) > 0.01
     }
 
-    private fun rideSmartFadeFilters(
-        plan: TransitionPlan,
+    /**
+     * Fresh transition-filter ride curves (clean-room automix): a sweep-out
+     * for DJ_FILTER, a bass handover for DJ_BLEND, and clash-scaled band
+     * narrowing when both sides carry vocals. All cut-offs glide in the
+     * filter processors themselves, so the rides only publish targets.
+     */
+    private fun rideAutoMixFilters(
+        plan: AutoMixPlan,
         progress: Float,
     ) {
         val outgoing = primaryTransitionFilter
         val incoming = secondaryTransitionFilter ?: return
-        when (plan.transitionStyle) {
-            TransitionStyle.DJ_FILTER -> rideFilterSweep(plan, progress, outgoing, incoming)
-            TransitionStyle.DJ_BLEND ->
+        when (plan.style) {
+            AutoMixStyle.DJ_FILTER -> rideSweepOut(plan, progress, outgoing, incoming)
+            AutoMixStyle.DJ_BLEND ->
                 if (plan.bassSwap) {
-                    rideBassSwap(plan, progress, outgoing, incoming)
+                    rideBassHandover(plan, progress, outgoing, incoming)
                 } else {
-                    rideVocalSeparation(plan, progress, outgoing, incoming)
+                    rideClashSeparation(plan, progress, outgoing, incoming)
                 }
 
-            else -> rideVocalSeparation(plan, progress, outgoing, incoming)
+            else -> {
+                outgoing.open()
+                incoming.open()
+            }
         }
     }
 
-    private fun rideFilterSweep(
-        plan: TransitionPlan,
+    private fun rideSweepOut(
+        plan: AutoMixPlan,
         progress: Float,
-        outgoing: TransitionFilterProcessor,
-        incoming: TransitionFilterProcessor,
+        outgoing: AutoMixFilterProcessor,
+        incoming: AutoMixFilterProcessor,
     ) {
         val sweep = plan.filterSweep.coerceIn(0.0, 1.0)
         if (sweep <= 0.0) {
@@ -3703,61 +3713,52 @@ class MusicService :
             incoming.open()
             return
         }
+        val open = AutoMixFilterProcessor.OPEN_HZ.toDouble()
+        val floor = automixGlide(open, AUTO_MIX_SWEEP_FLOOR_HZ, sweep)
+        val shaped = progress.toDouble().pow(AUTO_MIX_SWEEP_SHAPE)
+        outgoing.setCutoffs(automixGlide(open, floor, shaped), AutoMixFilterProcessor.OFF_HZ.toDouble())
 
-        val open = TransitionFilterProcessor.OPEN_HZ.toDouble()
-        val entry = glide(open, FILTER_ENTRY_HZ, sweep)
-        val floor = glide(open, FILTER_FLOOR_HZ, sweep)
-        val cutoff = glide(entry, floor, progress.toDouble().pow(FILTER_SWEEP_SHAPE))
-        outgoing.setCutoffs(cutoff.toFloat(), TransitionFilterProcessor.OFF_HZ)
+        val relax = (1.0 - progress / AUTO_MIX_ENTRY_OPEN_BY).coerceIn(0.0, 1.0)
+        val entryTop = automixGlide(open, AUTO_MIX_SWEEP_ENTRY_HIGH_HZ, sweep)
         incoming.setCutoffs(
-            TransitionFilterProcessor.OPEN_HZ,
-            entryHighPass(progress, sweep, ENTRY_HIGH_PASS_HZ, ENTRY_OPEN_BY),
+            open,
+            automixGlide(AutoMixFilterProcessor.OFF_HZ.toDouble(), entryTop, sweep * relax),
         )
     }
 
-    private fun rideBassSwap(
-        plan: TransitionPlan,
+    private fun rideBassHandover(
+        plan: AutoMixPlan,
         progress: Float,
-        outgoing: TransitionFilterProcessor,
-        incoming: TransitionFilterProcessor,
+        outgoing: AutoMixFilterProcessor,
+        incoming: AutoMixFilterProcessor,
     ) {
         val swapAt = plan.bassSwapFraction.coerceIn(0.05, 0.95)
-
-        val handover = ((progress - swapAt) / BASS_SWAP_WIDTH * 0.5 + 0.5).coerceIn(0.0, 1.0)
-
+        val handover = ((progress - swapAt) / 0.10 * 0.5 + 0.5).coerceIn(0.0, 1.0)
         val clash = plan.vocalOverlap.coerceIn(0.0, 1.0)
-        val entry =
-            maxOf(
-                bassCutoff(1.0 - handover),
-                entryHighPass(
-                    progress,
-                    1.0,
-                    glide(BLEND_ENTRY_HIGH_PASS_HZ, BLEND_ENTRY_CLASH_HIGH_PASS_HZ, clash),
-                    BLEND_ENTRY_OPEN_BY + (BLEND_ENTRY_CLASH_OPEN_BY - BLEND_ENTRY_OPEN_BY) * clash,
-                ),
-            )
-        incoming.setCutoffs(TransitionFilterProcessor.OPEN_HZ, entry)
-        outgoing.setCutoffs(blendExitLowPass(progress, clash), bassCutoff(handover))
+
+        val clashTop = automixGlide(AUTO_MIX_HANDOVER_ENTRY_HZ, AUTO_MIX_HANDOVER_CLASH_HZ, clash)
+        val relax = (1.0 - progress / AUTO_MIX_HANDOVER_OPEN_BY).coerceIn(0.0, 1.0)
+        val highEntry = automixGlide(AutoMixFilterProcessor.OFF_HZ.toDouble(), clashTop, relax)
+        val highFloor = automixGlide(AutoMixFilterProcessor.OFF_HZ.toDouble(), AUTO_MIX_BASS_HANDOVER_HZ, 1.0 - handover)
+        incoming.setCutoffs(
+            AutoMixFilterProcessor.OPEN_HZ.toDouble(),
+            maxOf(highEntry, highFloor),
+        )
+
+        val exitFrom = automixGlide(AUTO_MIX_EXIT_FROM_LATE, AUTO_MIX_EXIT_FROM_EARLY, clash)
+        val exitAmount = ((progress - exitFrom) / (1.0 - exitFrom)).coerceIn(0.0, 1.0)
+        val exitFloor = automixGlide(AUTO_MIX_EXIT_LOW_HZ, AUTO_MIX_EXIT_CLASH_LOW_HZ, clash)
+        outgoing.setCutoffs(
+            automixGlide(AutoMixFilterProcessor.OPEN_HZ.toDouble(), exitFloor, exitAmount),
+            automixGlide(AutoMixFilterProcessor.OFF_HZ.toDouble(), AUTO_MIX_BASS_HANDOVER_HZ, handover),
+        )
     }
 
-    private fun blendExitLowPass(
+    private fun rideClashSeparation(
+        plan: AutoMixPlan,
         progress: Float,
-        clash: Double,
-    ): Float {
-        val from = BLEND_EXIT_FROM + (BLEND_EXIT_CLASH_FROM - BLEND_EXIT_FROM) * clash
-        val amount = ((progress - from) / (1.0 - from)).coerceIn(0.0, 1.0)
-        val floor = glide(BLEND_EXIT_LOW_PASS_HZ, BLEND_EXIT_CLASH_LOW_PASS_HZ, clash)
-        return glide(TransitionFilterProcessor.OPEN_HZ.toDouble(), floor, amount).toFloat()
-    }
-
-    private fun bassCutoff(amount: Double): Float =
-        glide(TransitionFilterProcessor.OFF_HZ.toDouble(), BASS_SWAP_HZ, amount).toFloat()
-
-    private fun rideVocalSeparation(
-        plan: TransitionPlan,
-        progress: Float,
-        outgoing: TransitionFilterProcessor,
-        incoming: TransitionFilterProcessor,
+        outgoing: AutoMixFilterProcessor,
+        incoming: AutoMixFilterProcessor,
     ) {
         val amount = plan.vocalOverlap.coerceIn(0.0, 1.0)
         if (amount <= 0.0) {
@@ -3765,30 +3766,20 @@ class MusicService :
             incoming.open()
             return
         }
-        val open = TransitionFilterProcessor.OPEN_HZ.toDouble()
-        val floor = glide(open, VOCAL_SEPARATION_FLOOR_HZ, amount)
+        val open = AutoMixFilterProcessor.OPEN_HZ.toDouble()
+        val floor = automixGlide(open, AUTO_MIX_CLASH_FLOOR_HZ, amount)
         outgoing.setCutoffs(
-            glide(open, floor, progress.toDouble().pow(FILTER_SWEEP_SHAPE)).toFloat(),
-            TransitionFilterProcessor.OFF_HZ,
+            automixGlide(open, floor, progress.toDouble().pow(AUTO_MIX_SWEEP_SHAPE)),
+            AutoMixFilterProcessor.OFF_HZ.toDouble(),
         )
+        val relax = (1.0 - progress / AUTO_MIX_HANDOVER_OPEN_BY).coerceIn(0.0, 1.0)
         incoming.setCutoffs(
-            TransitionFilterProcessor.OPEN_HZ,
-            entryHighPass(progress, amount, VOCAL_SEPARATION_HIGH_PASS_HZ, ENTRY_OPEN_BY),
+            open,
+            automixGlide(AutoMixFilterProcessor.OFF_HZ.toDouble(), AUTO_MIX_CLASH_HIGH_HZ, amount * relax),
         )
     }
 
-    private fun entryHighPass(
-        progress: Float,
-        amount: Double,
-        topHz: Double,
-        openBy: Double,
-    ): Float {
-        val remaining = (1.0 - progress / openBy).coerceIn(0.0, 1.0)
-        return glide(TransitionFilterProcessor.OFF_HZ.toDouble(), topHz, amount * remaining.pow(ENTRY_SHAPE))
-            .toFloat()
-    }
-
-    private fun glide(
+    private fun automixGlide(
         from: Double,
         to: Double,
         amount: Double,
@@ -3906,7 +3897,7 @@ class MusicService :
         val secondaryStereoPan = StereoPanAudioProcessor()
         applyStereoPanSettingsTo(secondaryStereoPan, desiredEqSettings.value)
         secondaryStereoPanProcessor = secondaryStereoPan
-        val secondaryTransition = TransitionFilterProcessor()
+        val secondaryTransition = AutoMixFilterProcessor()
         secondaryTransitionFilter = secondaryTransition
 
         val secondaryFloatDsp = FloatDspProcessor()
@@ -3941,12 +3932,12 @@ class MusicService :
     private fun startCrossfade(
         target: CrossfadeTarget,
         durationMs: Long,
-        plan: TransitionPlan? = null,
+        plan: AutoMixPlan? = null,
     ) {
-        if (isCrossfading || (!crossfadeEnabled && !smartFadeEnabled)) return
+        if (isCrossfading || (!crossfadeEnabled && !autoMixEnabled)) return
 
         val smart = plan != null
-        val cueTimeMs = if (smart) (plan!!.incomingCueTime * 1000).roundToLong().coerceAtLeast(0L) else 0L
+        val cueTimeMs = if (smart) plan!!.incomingCueMs.coerceAtLeast(0L) else 0L
         val incomingPlayer = prepareSecondaryCrossfadePlayer(target, cueTimeMs) ?: return
 
         crossfadeConsecutiveFailures = 0
@@ -3967,7 +3958,7 @@ class MusicService :
                 localPlayer.pauseAtEndOfMediaItems = true
                 crossfadeUserPlaybackParameters = player.playbackParameters
                 if (smart) {
-                    SmartFadeRuntimeState.mixing.value = isRealMix(plan)
+                    AutoMixUiState.mixing.value = hasMixChoreography(plan)
                 }
 
                 Timber.tag(TAG).d(
@@ -4091,7 +4082,7 @@ class MusicService :
                                 incomingPlayer,
                             )
                             if (smart) {
-                                rideSmartFadeFilters(plan!!, crossfadeProgress)
+                                rideAutoMixFilters(plan!!, crossfadeProgress)
                             }
                         } else {
                             incomingPlayer.pause()
@@ -4225,8 +4216,8 @@ class MusicService :
             runCatching { incomingPlayer.playbackParameters = params }
         }
         crossfadeUserPlaybackParameters = null
-        SmartFadeRuntimeState.mixing.value = false
-        SmartFadeRuntimeState.transitionWindow.value = null
+        AutoMixUiState.mixing.value = false
+        AutoMixUiState.transitionWindow.value = null
 
         isCrossfading = false
         crossfadeHandoffInProgress = false
@@ -4412,8 +4403,8 @@ class MusicService :
 
         primaryTransitionFilter.open()
         crossfadeUserPlaybackParameters = null
-        SmartFadeRuntimeState.mixing.value = false
-        SmartFadeRuntimeState.transitionWindow.value = null
+        AutoMixUiState.mixing.value = false
+        AutoMixUiState.transitionWindow.value = null
         if (resetVolume && ::player.isInitialized) {
             applyEffectiveVolumeImmediately()
         }
@@ -11008,7 +10999,7 @@ class MusicService :
 
     private fun createRenderersFactory(
         stereoPanProcessor: StereoPanAudioProcessor,
-        transitionFilter: TransitionFilterProcessor,
+        transitionFilter: AutoMixFilterProcessor,
         floatDspProcessor: FloatDspProcessor,
         primary: Boolean = true,
     ) =
@@ -11644,8 +11635,8 @@ class MusicService :
             DiscordPresenceManager.stop()
         } catch (_: Exception) {
         }
-        runCatching { smartFadeAnalyzer?.release() }
-        smartFadeAnalyzer = null
+        runCatching { autoMixAnalyzer?.close() }
+        autoMixAnalyzer = null
         scopeJob.cancel()
     }
 
@@ -11890,37 +11881,25 @@ class MusicService :
         const val CROSSFADE_MAX_BUFFER_MS = 45_000
         const val CROSSFADE_FRAME_MS = 32L
 
-        const val SMART_FADE_POLL_MS = 1_000L
+        const val AUTO_MIX_POLL_MS = 1_000L
+        const val AUTO_MIX_RESOLVE_TIMEOUT_MS = 45_000L
+        const val DEFAULT_AUTO_MIX_FALLBACK_MS = 6_000L
 
-        const val SMART_FADE_RESOLVE_TIMEOUT_MS = 45_000L
-
-        val USB_SINK_DEVICE_TYPES =
-            intArrayOf(
-                android.media.AudioDeviceInfo.TYPE_USB_DEVICE,
-                android.media.AudioDeviceInfo.TYPE_USB_HEADSET,
-                android.media.AudioDeviceInfo.TYPE_USB_ACCESSORY,
-            )
-
-        const val HIGH_QUALITY_BITRATE = 320_000
-        const val DEFAULT_SMART_FALLBACK_MS = 6_000L
-        const val FILTER_ENTRY_HZ = 7_000.0
-        const val FILTER_FLOOR_HZ = 300.0
-        const val FILTER_SWEEP_SHAPE = 0.75
-        const val ENTRY_HIGH_PASS_HZ = 1_200.0
-        const val ENTRY_OPEN_BY = 0.6
-        const val ENTRY_SHAPE = 0.35
-        const val BASS_SWAP_HZ = 200.0
-        const val BASS_SWAP_WIDTH = 0.10
-        const val VOCAL_SEPARATION_FLOOR_HZ = 1_600.0
-        const val VOCAL_SEPARATION_HIGH_PASS_HZ = 700.0
-        const val BLEND_ENTRY_HIGH_PASS_HZ = 520.0
-        const val BLEND_ENTRY_CLASH_HIGH_PASS_HZ = 950.0
-        const val BLEND_ENTRY_OPEN_BY = 0.45
-        const val BLEND_ENTRY_CLASH_OPEN_BY = 0.7
-        const val BLEND_EXIT_FROM = 0.3
-        const val BLEND_EXIT_CLASH_FROM = 0.12
-        const val BLEND_EXIT_LOW_PASS_HZ = 2_200.0
-        const val BLEND_EXIT_CLASH_LOW_PASS_HZ = 1_100.0
+        // Clean-room automix filter-ride curve constants.
+        const val AUTO_MIX_SWEEP_SHAPE = 0.75
+        const val AUTO_MIX_SWEEP_ENTRY_HIGH_HZ = 7_000.0
+        const val AUTO_MIX_SWEEP_FLOOR_HZ = 300.0
+        const val AUTO_MIX_ENTRY_OPEN_BY = 0.6
+        const val AUTO_MIX_HANDOVER_ENTRY_HZ = 520.0
+        const val AUTO_MIX_HANDOVER_CLASH_HZ = 950.0
+        const val AUTO_MIX_HANDOVER_OPEN_BY = 0.45
+        const val AUTO_MIX_BASS_HANDOVER_HZ = 200.0
+        const val AUTO_MIX_EXIT_FROM_LATE = 0.30
+        const val AUTO_MIX_EXIT_FROM_EARLY = 0.12
+        const val AUTO_MIX_EXIT_LOW_HZ = 2_200.0
+        const val AUTO_MIX_EXIT_CLASH_LOW_HZ = 1_100.0
+        const val AUTO_MIX_CLASH_FLOOR_HZ = 1_600.0
+        const val AUTO_MIX_CLASH_HIGH_HZ = 700.0
         const val MIN_AUDIBLE_EFFECTIVE_VOLUME = 0.01f
         const val STUCK_MUTED_VOLUME_EPSILON = 0.001f
 
