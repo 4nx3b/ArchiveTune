@@ -449,7 +449,7 @@ private class ThrottledLayerBackdropNode(
         // degrade to their plain base/tint instead of throwing.
         if (backdrop.layerCoordinates?.isAttached == false) {
             backdrop.layerCoordinates = null
-            consumerInvalidationTick++
+            backdrop.consumerInvalidationTick++
         }
     }
 }
