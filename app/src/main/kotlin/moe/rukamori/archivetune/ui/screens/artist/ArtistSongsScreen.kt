@@ -155,7 +155,8 @@ fun ArtistSongsScreen(
                     Text(
                         text = pluralStringResource(R.plurals.n_song, songs.size, songs.size),
                         style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.secondary,
+
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -169,6 +170,7 @@ fun ArtistSongsScreen(
                     showInLibraryIcon = true,
                     isActive = song.id == mediaMetadata?.id,
                     isPlaying = isPlaying,
+                    activeContainerBackdrop = true,
                     trailingContent = {
                         IconButton(
                             onClick = {

@@ -33,12 +33,6 @@ class SearchHistoryViewModel
                     initialValue = emptyList(),
                 )
 
-        fun delete(history: SearchHistory) {
-            viewModelScope.launch {
-                database.query { delete(history) }
-            }
-        }
-
         fun clearAll() {
             viewModelScope.launch {
                 database.query { clearSearchHistory() }

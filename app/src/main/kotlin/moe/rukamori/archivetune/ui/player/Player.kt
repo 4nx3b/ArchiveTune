@@ -90,6 +90,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
@@ -364,7 +365,7 @@ fun BottomSheetPlayer(
     pureBlack: Boolean,
     isMiniPlayerPairedWithNavigation: Boolean = false,
     onLyricsVisibilityChange: (Boolean) -> Unit = {},
-    compactFraction: Float = 0f,
+    compactFractionState: State<Float> = remember { mutableStateOf(0f) },
     compactHorizontalPadding: Dp = 16.dp,
     compactReserveEndControl: Boolean = true,
     navbarHiddenOffset: (() -> Float)? = null,
@@ -488,18 +489,8 @@ fun BottomSheetPlayer(
                 if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
             useDarkTheme && pureBlack
         }
-    val backgroundColor =
-        if (useBlackBackground && state.value > state.collapsedBound) {
-            val progress =
-                ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
-                    .coerceIn(0f, 1f)
-            Color.Black.copy(alpha = progress)
-        } else {
-            val progress =
-                ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
-                    .coerceIn(0f, 1f)
-            MaterialTheme.colorScheme.surfaceContainer.copy(alpha = progress)
-        }
+
+    val sheetSurfaceColor = MaterialTheme.colorScheme.surface
 
     val playbackState by playerConnection.playbackState.collectAsStateWithLifecycle()
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
@@ -542,21 +533,21 @@ fun BottomSheetPlayer(
         CanvasArtworkPlaybackCache.setMaxSize(maxCanvasCacheSize)
     }
 
-    var position by rememberSaveable(mediaMetadata?.id) {
-        val player = playerConnection.player
-        val seededPosition =
-            if (player.playbackState == Player.STATE_READY &&
-                player.currentMediaItem?.mediaId == mediaMetadata?.id
-            ) {
-                player.currentPosition.coerceAtLeast(0L)
-            } else {
-                0L
-            }
-        mutableLongStateOf(seededPosition)
-    }
-
-    val positionUpdatedState = rememberUpdatedState(position)
-    val positionProvider = remember { { positionUpdatedState.value } }
+    val positionState =
+        rememberSaveable(mediaMetadata?.id) {
+            val player = playerConnection.player
+            val seededPosition =
+                if (player.playbackState == Player.STATE_READY &&
+                    player.currentMediaItem?.mediaId == mediaMetadata?.id
+                ) {
+                    player.currentPosition.coerceAtLeast(0L)
+                } else {
+                    0L
+                }
+            mutableLongStateOf(seededPosition)
+        }
+    var position by positionState
+    val positionProvider = remember(positionState) { { positionState.longValue } }
 
     val spatialFlowMiniArtworkRect =
         rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
@@ -1060,11 +1051,6 @@ fun BottomSheetPlayer(
         if (!state.isExpandedOrExpanding) {
             isInlineLyricsOpen = false
 
-            // The Apple Music lyrics flag must reset with the sheet as well: a
-            // stale true here keeps the lyrics-visibility edge detection level-
-            // dependent on this single remaining flag instead of both, which
-            // left pages rendering glass pills from a detached recorder after
-            // the player was minimized.
             isAppleMusicInlineLyricsOpen = false
         }
     }
@@ -1179,11 +1165,7 @@ fun BottomSheetPlayer(
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
     val playerSheetCanvasVisible by remember(state) {
-        // Keep the canvas players alive while the sheet is expanded OR animating
-        // back to the expanded anchor: on rotation the sheet re-anchors through
-        // a short slide whose progress dips below 0.5 - pausing and recreating
-        // both canvas players there left the artwork lagging behind the plain
-        // composable controls until the player was minimized and re-expanded.
+
         derivedStateOf { state.progress > 0.5f || state.isExpandedOrExpanding }
     }
     CompositionLocalProvider(LocalPlayerSheetVisible provides playerSheetCanvasVisible) {
@@ -1301,77 +1283,35 @@ fun BottomSheetPlayer(
                         }
                     }
                 },
-        backgroundColor =
-            if (playerDesignStyle == PlayerDesignStyle.V9) {
-                val progress =
-                    ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
-                        .coerceIn(0f, 1f)
-                val fadeProgress =
-                    if (progress < 0.2f) {
-                        ((0.2f - progress) / 0.2f).coerceIn(0f, 1f)
-                    } else {
-                        0f
-                    }
-                dynamicBgColor.copy(alpha = 1f - fadeProgress)
-            } else if (playerDesignStyle == PlayerDesignStyle.V10) {
-                val progress =
-                    ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
-                        .coerceIn(0f, 1f)
-                val fadeProgress =
-                    if (progress < 0.2f) {
-                        ((0.2f - progress) / 0.2f).coerceIn(0f, 1f)
-                    } else {
-                        0f
-                    }
-                dynamicV10FieldColor.copy(alpha = 1f - fadeProgress)
-            } else if (playerDesignStyle == PlayerDesignStyle.V7) {
-                val progress =
-                    ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
-                        .coerceIn(0f, 1f)
-                val fadeProgress =
-                    if (progress < 0.2f) {
-                        ((0.2f - progress) / 0.2f).coerceIn(0f, 1f)
-                    } else {
-                        0f
-                    }
-                Color.Black.copy(alpha = 1f - fadeProgress)
-            } else {
-                when (playerBackground) {
-                    PlayerBackgroundStyle.BLUR, PlayerBackgroundStyle.GRADIENT -> {
-                        val progress =
-                            ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
-                                .coerceIn(0f, 1f)
 
-                        val fadeProgress =
-                            if (progress < 0.2f) {
-                                ((0.2f - progress) / 0.2f).coerceIn(0f, 1f)
-                            } else {
-                                0f
-                            }
-
-                        MaterialTheme.colorScheme.surface.copy(alpha = 1f - fadeProgress)
-                    }
-
-                    else -> {
-                        val progress =
-                            ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
-                                .coerceIn(0f, 1f)
-
-                        val fadeProgress =
-                            if (progress < 0.2f) {
-                                ((0.2f - progress) / 0.2f).coerceIn(0f, 1f)
-                            } else {
-                                0f
-                            }
-
-                        if (useBlackBackground) {
-                            Color.Black.copy(alpha = 1f - fadeProgress)
-                        } else {
-                            MaterialTheme.colorScheme.surface.copy(alpha = 1f - fadeProgress)
-                        }
-                    }
+        backgroundColor = {
+            val progress =
+                ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
+                    .coerceIn(0f, 1f)
+            val fadeProgress =
+                if (progress < 0.2f) {
+                    ((0.2f - progress) / 0.2f).coerceIn(0f, 1f)
+                } else {
+                    0f
                 }
-            },
+            when (playerDesignStyle) {
+                PlayerDesignStyle.V9 -> dynamicBgColor.copy(alpha = 1f - fadeProgress)
+                PlayerDesignStyle.V10 -> dynamicV10FieldColor.copy(alpha = 1f - fadeProgress)
+                PlayerDesignStyle.V7 -> Color.Black.copy(alpha = 1f - fadeProgress)
+                else ->
+                    when (playerBackground) {
+                        PlayerBackgroundStyle.BLUR, PlayerBackgroundStyle.GRADIENT ->
+                            sheetSurfaceColor.copy(alpha = 1f - fadeProgress)
+
+                        else ->
+                            if (useBlackBackground) {
+                                Color.Black.copy(alpha = 1f - fadeProgress)
+                            } else {
+                                sheetSurfaceColor.copy(alpha = 1f - fadeProgress)
+                            }
+                    }
+            }
+        },
         onDismiss = {
             playerConnection.service.stopAndClearPlayback(clearPersistentState = true)
         },
@@ -1412,7 +1352,7 @@ fun BottomSheetPlayer(
                 durationProvider = durationProvider,
                 pureBlack = pureBlack,
                 isPairedWithNavigation = isMiniPlayerPairedWithNavigation,
-                compactFraction = compactFraction,
+                compactFractionState = compactFractionState,
                 compactHorizontalPadding = compactHorizontalPadding,
                 compactReserveEndControl = compactReserveEndControl,
                 onArtworkSlotPositioned = { rect ->
@@ -1676,14 +1616,6 @@ fun BottomSheetPlayer(
             )
         }
 
-        // Orientation epoch: remembered OUTSIDE the orientation branch so it
-        // survives the landscape<->portrait subtree swap (the activity is not
-        // recreated - configChanges handles orientation). It bumps AFTER every
-        // orientation change and lets the freshly composed blurred-canvas twin
-        // run the same detach -> first-frame -> re-seek settle cycle that a
-        // manual minimise/maximise performs - without it the twin was created
-        // mid-codec-churn and rendered a laggy blurred canvas behind the bottom
-        // controls until the user manually recycled the player.
         val currentOrientation = LocalConfiguration.current.orientation
         var orientationRefreshEpoch by remember { mutableIntStateOf(0) }
         LaunchedEffect(currentOrientation) {

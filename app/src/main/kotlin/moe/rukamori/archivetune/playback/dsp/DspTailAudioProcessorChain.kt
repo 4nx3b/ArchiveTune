@@ -33,7 +33,6 @@ class DspTailAudioProcessorChain(
         val speed = playbackParameters.speed
         val pitch = playbackParameters.pitch
         if (engineTransportActive() && engineVariRate != null && engineStretch != null) {
-
             val ridesTempo = abs(pitch - speed) < TOLERANCE
             if (ridesTempo) {
                 engineVariRate.setRatio(speed)

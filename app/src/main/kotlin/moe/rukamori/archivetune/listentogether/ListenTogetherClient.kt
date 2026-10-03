@@ -381,7 +381,6 @@ class ListenTogetherClient @Inject constructor(
             }
 
             ConnectionState.CONNECTED -> {
-
                 val foregroundReturn = reason == "app foreground"
                 var alive = probeConnection(timeoutMs = if (foregroundReturn) 4000L else 2500L)
                 if (!alive && foregroundReturn) {
@@ -690,7 +689,6 @@ class ListenTogetherClient @Inject constructor(
             .build()
 
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
-
             override fun onOpen(socket: WebSocket, response: Response) {
                 if (socket !== webSocket) return
                 log(LogLevel.INFO, "Connected to server")
@@ -1068,7 +1066,6 @@ class ListenTogetherClient @Inject constructor(
     fun handleChatReplyFromNotification(rawText: CharSequence?) {
         val text = rawText?.toString()?.trim().orEmpty()
         if (text.isEmpty()) {
-
             if (chatNotificationActive) postChatNotification(alert = false)
             return
         }
@@ -1507,7 +1504,6 @@ class ListenTogetherClient @Inject constructor(
 
                     when (payload.code) {
                         "invalid_message" -> {
-
                             maybeRetryRoomActionAfterProtocolUpgrade()
                         }
 
@@ -1845,7 +1841,6 @@ class ListenTogetherClient @Inject constructor(
         var finalMessage = message
         var mentions: List<String> = emptyList()
         if (gifUrl != null) {
-
             mentions = extractMentions(message)
             val envelope =
                 GifEnvelope(

@@ -412,7 +412,6 @@ class LyricsMenuViewModel
             lyrics: String,
             submittedLyrics: String,
         ) {
-
             val current = database.withTransaction { getLyricsById(mediaId) }
             if (current?.lyrics != submittedLyrics) {
                 Log.d(

@@ -45,13 +45,17 @@ class BitPerfectSwitchingAudioSink(
 
         configuredSink = target
 
-        EngineRuntime.bitPerfectSinkRouteActive = target === bitPerfectSink
-        if (inputFormat.sampleMimeType == MimeTypes.AUDIO_RAW &&
-            inputFormat.pcmEncoding != C.ENCODING_INVALID &&
-            inputFormat.pcmEncoding != Format.NO_VALUE
-        ) {
-            EngineRuntime.sinkDecodedEncoding = inputFormat.pcmEncoding
-        }
+        EngineRuntime.publishSinkRoute(
+            floatRoute = target === bitPerfectSink,
+            decodedEncoding = if (inputFormat.sampleMimeType == MimeTypes.AUDIO_RAW &&
+                inputFormat.pcmEncoding != C.ENCODING_INVALID &&
+                inputFormat.pcmEncoding != Format.NO_VALUE
+            ) {
+                inputFormat.pcmEncoding
+            } else {
+                EngineRuntime.sinkDecodedEncoding
+            },
+        )
     }
 
     override fun play() = currentSink().play()

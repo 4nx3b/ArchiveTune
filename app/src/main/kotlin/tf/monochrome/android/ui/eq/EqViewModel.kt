@@ -1,8 +1,10 @@
 package tf.monochrome.android.ui.eq
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -44,10 +46,22 @@ private data class StoredCustomTarget(
 
 @HiltViewModel
 class EqViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val eqRepository: EqRepository,
     private val headphoneRepository: HeadphoneRepository,
     private val preferences: PreferencesManager
 ) : ViewModel() {
+    // MUST run before the _availableTargets/_selectedTarget property
+    // initializers below: FrequencyTargets loads its bundled target curves
+    // lazily from assets, and without an application context every curve
+    // parsed to an empty list - which made every AutoEQ fit abort with
+    // "Target curve not available" and left the whole Tryptify EQ page
+    // without usable bands. Property initializers execute in declaration
+    // order, so this init block (declared first) wins the race.
+    init {
+        FrequencyTargets.init(appContext)
+    }
+
     private val _showTutorial = MutableStateFlow(false)
     val showTutorial: StateFlow<Boolean> = _showTutorial.asStateFlow()
 

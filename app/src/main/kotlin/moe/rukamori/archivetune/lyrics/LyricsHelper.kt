@@ -168,7 +168,6 @@ class LyricsHelper
         private suspend fun tryFetchWordSyncedFromPriorityProviders(
             mediaMetadata: MediaMetadata,
         ): LyricsResult? {
-
             val wordSyncCapable: List<LyricsProvider> =
                 listOf(
                     BetterLyricsProvider,

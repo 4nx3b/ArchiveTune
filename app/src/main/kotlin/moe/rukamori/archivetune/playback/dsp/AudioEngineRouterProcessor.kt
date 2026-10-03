@@ -84,7 +84,6 @@ class AudioEngineRouterProcessor(
     private var engineAvailableLastwave: Boolean = lastwaveProcessor.isAvailable
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
-
         if (moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime.chainBypassActive) {
             return AudioProcessor.AudioFormat.NOT_SET
         }
@@ -96,6 +95,7 @@ class AudioEngineRouterProcessor(
         }
         engineAvailableTryptify = tryptifyNativeAvailable()
         engineAvailableLastwave = lastwaveProcessor.isAvailable
+        EngineRuntime.publishEngineAvailability(engineAvailableTryptify, engineAvailableLastwave)
 
         val selected = when {
             tryptifyEnabled() && engineAvailableTryptify -> Engine.TRYPTIFY
@@ -106,8 +106,8 @@ class AudioEngineRouterProcessor(
         activeEngine = selected
         activeOutputFloat = outputFloat
 
-        EngineRuntime.activeEngine = selected
-        EngineRuntime.outputFloat = outputFloat
+        EngineRuntime.publishActiveEngine(selected)
+        EngineRuntime.publishOutputFloat(outputFloat)
 
         return when (selected) {
             Engine.TRYPTIFY -> {
@@ -135,6 +135,7 @@ class AudioEngineRouterProcessor(
             Engine.LASTWAVE -> {
                 if (inputAudioFormat.channelCount > 2) {
                     activeEngine = Engine.NONE
+                    EngineRuntime.publishActiveEngine(Engine.NONE)
                     return configureStock(inputAudioFormat)
                 }
 
@@ -142,6 +143,7 @@ class AudioEngineRouterProcessor(
                     .getOrElse { AudioProcessor.AudioFormat.NOT_SET }
                 if (lastwaveOut == AudioProcessor.AudioFormat.NOT_SET) {
                     activeEngine = Engine.NONE
+                    EngineRuntime.publishActiveEngine(Engine.NONE)
                     return configureStock(inputAudioFormat)
                 }
 
@@ -187,8 +189,11 @@ class AudioEngineRouterProcessor(
     private fun rerouteEngineIfChanged() {
         val input = inputAudioFormat
         if (input == AudioProcessor.AudioFormat.NOT_SET) return
+
+        activeOutputFloat = outputFloat
         engineAvailableTryptify = tryptifyNativeAvailable()
         engineAvailableLastwave = lastwaveProcessor.isAvailable
+        EngineRuntime.publishEngineAvailability(engineAvailableTryptify, engineAvailableLastwave)
         val desired =
             when {
                 tryptifyEnabled() && engineAvailableTryptify -> Engine.TRYPTIFY
@@ -264,7 +269,7 @@ class AudioEngineRouterProcessor(
         runCatching { stockDsp.flush() }
         activeEngine = desired
         engineDataEncoding = newDataEncoding
-        EngineRuntime.activeEngine = desired
+        EngineRuntime.publishActiveEngine(desired)
         Log.i(
             TAG,
             "engine SWITCHED mid-track $old -> $desired " +
@@ -278,7 +283,6 @@ class AudioEngineRouterProcessor(
     }
 
     private fun queueTryptify(inputBuffer: ByteBuffer) {
-
         tryptifyChain.refreshActive()
         val chainOut = tryptifyChain.process(inputBuffer)
         emitEngineOutput(chainOut)
@@ -321,10 +325,11 @@ class AudioEngineRouterProcessor(
         activeEngine = Engine.NONE
         activeOutputFloat = false
         engineDataEncoding = C.ENCODING_PCM_16BIT
+        EngineRuntime.publishActiveEngine(Engine.NONE)
+        EngineRuntime.publishOutputFloat(false)
     }
 
     override fun onQueueEndOfStream() {
-
         val tryptifyTail = tryptifyChain.queueEndOfStreamAndDrain()
         if (tryptifyTail.hasRemaining()) {
             emitEngineOutput(tryptifyTail)

@@ -106,6 +106,32 @@ class UsbExclusiveAudioOutputProvider(
         }
         if (format.channelCount > MAX_EXCLUSIVE_CHANNELS) return false
         if (currentUsbDevice() == null) return false
+
+        if (BitPerfectRuntime.requested && format.sampleRate > 0) {
+            val sourceRate = format.sampleRate
+            when (engineSelection()) {
+                AudioEngineKind.LASTWAVE -> {
+                    val hwRates = lastwaveExclusiveUsb
+                        ?.supportedHardwareRatesHz()
+                        .orEmpty()
+                        .filter { it > 0 }
+                    if (hwRates.isNotEmpty() && sourceRate !in hwRates) return false
+                }
+
+                AudioEngineKind.TRYPTIFY -> {
+                    val ranges = tryptifyDriver?.supportedRates?.value.orEmpty()
+                    if (ranges.isNotEmpty() &&
+                        ranges.none { range ->
+                            sourceRate >= range.minHz && sourceRate <= range.maxHz
+                        }
+                    ) {
+                        return false
+                    }
+                }
+
+                AudioEngineKind.NONE -> Unit
+            }
+        }
         return when (engineSelection()) {
             AudioEngineKind.TRYPTIFY ->
                 TryptifyLibusbAudioOutput.available() && tryptifyDriver != null &&

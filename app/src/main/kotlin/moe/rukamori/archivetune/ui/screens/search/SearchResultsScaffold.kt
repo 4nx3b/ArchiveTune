@@ -5,7 +5,7 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package moe.rukamori.archivetune.ui.screens.search
 
@@ -25,6 +25,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -64,6 +65,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -90,14 +93,12 @@ import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.component.LocalBottomUiCompactFraction
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
-import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.OnlineSearchSort
 import android.os.Build
 
 @Stable
 class SearchResultsBarState(
-    val liquidGlassActive: Boolean,
     val backdrop: Backdrop?,
     val haze: HazeState,
 )
@@ -105,7 +106,6 @@ class SearchResultsBarState(
 @Composable
 fun rememberSearchResultsBarState(): SearchResultsBarState {
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
-    val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
     val surfaceColor = MaterialTheme.colorScheme.surface
 
     val backdrop = rememberThrottledBackdrop(surfaceColor)
@@ -113,15 +113,8 @@ fun rememberSearchResultsBarState(): SearchResultsBarState {
     val available =
         liquidGlassEnabled &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    // Same invariant as rememberGlassScreenHeader(): the RECORDER stays attached
-    // for as long as liquid glass is available - only the pill visibility flag
-    // is gated on lyrics fullscreen. Detaching the recorder during lyrics and
-    // re-attaching it afterwards relied entirely on the re-attach tick to make
-    // every pill redraw; when that miss fired the pills kept their last (fully
-    // faded) frame and appeared invisible while remaining clickable.
-    val active = available && !lyricsFullScreen
+
     return SearchResultsBarState(
-        liquidGlassActive = active,
         backdrop = if (available) backdrop else null,
         haze = haze,
     )
@@ -139,7 +132,6 @@ fun Modifier.searchResultsBarSource(state: SearchResultsBarState): Modifier =
 
 fun moe.rukamori.archivetune.ui.screens.GlassScreenHeader.toSearchResultsBarState(): SearchResultsBarState =
     SearchResultsBarState(
-        liquidGlassActive = liquidGlassActive,
         backdrop = backdrop,
         haze = haze,
     )
@@ -160,9 +152,16 @@ fun BoxScope.SearchResultsBottomOverlay(
     lazyListState: LazyListState? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
     chipsRow: (@Composable () -> Unit)? = null,
+    activationTick: Int = 0,
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     var fieldFocused by rememberSaveable { mutableStateOf(false) }
+    val activationFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(activationTick) {
+        if (activationTick > 0) {
+            runCatching { activationFocusRequester.requestFocus() }
+        }
+    }
     var lastObservedItemIndex by remember { mutableIntStateOf(0) }
     var lastObservedScrollOffset by remember { mutableIntStateOf(0) }
 
@@ -194,7 +193,7 @@ fun BoxScope.SearchResultsBottomOverlay(
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val effectiveBottomPadding = (if (imeVisible) 0.dp else bottomPadding) + 10.dp
 
-    val compactFraction = LocalBottomUiCompactFraction.current
+    val compactFractionState = LocalBottomUiCompactFraction.current
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -204,6 +203,8 @@ fun BoxScope.SearchResultsBottomOverlay(
                 .fillMaxWidth()
                 .imePadding()
                 .graphicsLayer {
+                    val compactFraction =
+                        if (fieldFocused) 0f else compactFractionState.value
                     alpha = 1f - compactFraction
                     translationY = compactFraction * 96.dp.toPx()
                 }
@@ -249,6 +250,7 @@ fun BoxScope.SearchResultsBottomOverlay(
                         },
                         placeholder = placeholder,
                         onFocusChanged = { fieldFocused = it },
+                        focusRequester = activationFocusRequester,
                         trailing = trailing,
                         modifier = Modifier.weight(1f),
                     )
@@ -321,6 +323,7 @@ private fun SearchInputPill(
     placeholder: String,
     onFocusChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val backdrop = state.backdrop
@@ -379,6 +382,9 @@ private fun SearchInputPill(
                 Modifier
                     .weight(1f)
                     .padding(horizontal = 12.dp)
+                    .let { m ->
+                        if (focusRequester != null) m.focusRequester(focusRequester) else m
+                    }
                     .onFocusChanged { onFocusChanged(it.isFocused) },
             decorationBox = { innerTextField ->
                 Box(
@@ -561,7 +567,6 @@ fun SearchResultsSortMenu(
 
 @Composable
 fun SearchResultsTopHeader(
-    state: SearchResultsBarState,
     query: String,
     onBack: () -> Unit,
     onBackLongClick: () -> Unit = {},
@@ -569,43 +574,34 @@ fun SearchResultsTopHeader(
     chipsRow: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+
     Column(
         modifier =
             modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp),
     ) {
-        val backdrop = state.backdrop
-        val glassColor = if (backdrop != null) liquidGlassContentColor() else MaterialTheme.colorScheme.onSurface
         val pillShape = RoundedCornerShape(22.dp)
         val pillModifier =
-            if (backdrop != null) {
-                Modifier.liquidGlass(
-                    backdrop = backdrop,
-                    shape = pillShape,
-                    interactive = true,
-                )
-            } else {
-                Modifier.background(MaterialTheme.colorScheme.surfaceContainerLow, pillShape)
-            }
+            Modifier.background(MaterialTheme.colorScheme.surfaceContainerLow, pillShape)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
             modifier =
                 pillModifier
-                    .clickable(onClick = onBack)
+                    .combinedClickable(onClick = onBack, onLongClick = onBackLongClick)
                     .padding(start = 8.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
         ) {
             Icon(
                 painter = painterResource(R.drawable.arrow_back),
                 contentDescription = stringResource(R.string.back_button_desc),
-                tint = glassColor,
+                tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.size(20.dp),
             )
             Text(
                 text = stringResource(R.string.search),
                 style = MaterialTheme.typography.titleMedium,
-                color = glassColor,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
 

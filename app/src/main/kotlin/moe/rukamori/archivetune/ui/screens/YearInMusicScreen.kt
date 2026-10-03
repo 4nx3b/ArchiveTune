@@ -1773,7 +1773,6 @@ private suspend fun renderRecapCardAtScale(
 
     val holder =
         ComposeView(context).apply {
-
             setContent {
                 CompositionLocalProvider(
                     LocalDensity provides Density(screenDensity * scale, fontScale),

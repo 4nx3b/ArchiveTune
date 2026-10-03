@@ -349,6 +349,7 @@
     <string name="lyrics_not_found">Lyrics not found</string>
     <string name="lyrics_from_source">Lyrics from %1$s</string>
     <string name="written_by">Written by %1$s</string>
+    <string name="credits_written_by">Written by</string>
     <string name="lyrics_word_sync">Word Sync</string>
     <string name="sleep_timer">Sleep timer</string>
     <string name="end_of_song">End of song</string>
@@ -679,9 +680,9 @@
     <string name="lastwave_eq_tab_hint">Lastwave EQ &amp; Clarity</string>
     <string name="lastwave_eq_tab_hint_desc">The 15-band graphic EQ, Studio Master Clarity, clarity output presets and spatial bypass live in the Lastwave EQ tab of the Equalizer (player menu → Equalizer). Every setting there writes the same keys the native engine collects.</string>
     <string name="tryptify_audio_processing">Enable Tryptify Audio Processing</string>
-    <string name="tryptify_audio_processing_desc">Ported from Tryptify: the C++17 DSP mixing console (Oxford Inflator/Compressor, crossfeed), measurement-driven headphone AutoEQ and parametric EQ — plus its libusb UAC bit-perfect USB-DAC driver whenever USB exclusive output is on. Adds the Tryptify EQ tab to the Equalizer. Mutually exclusive with Lastwave Audio Processing; takes effect from the next track.</string>
+    <string name="tryptify_audio_processing_desc">Ported from Tryptify: the C++17 DSP mixing console (Oxford Inflator/Compressor, crossfeed), measurement-driven headphone AutoEQ and parametric EQ — plus its libusb UAC bit-perfect USB-DAC driver whenever USB exclusive output is on. Adds the Tryptify EQ tab to the Equalizer. Mutually exclusive with Lastwave Audio Processing; takes effect immediately.</string>
     <string name="lastwave_audio_processing">Enable Lastwave Audio Processing</string>
-    <string name="lastwave_audio_processing_desc">Ported from LastWave-native: the native Oboe/soxr DSP engine with its 15-band graphic EQ and Studio Master Clarity chain — plus its usbdevfs exclusive USB-DAC driver and bit-perfect mixer attributes whenever USB exclusive output is on. Mutually exclusive with Tryptify Audio Processing; takes effect from the next track.</string>
+    <string name="lastwave_audio_processing_desc">Ported from LastWave-native: the native Oboe/soxr DSP engine with its 15-band graphic EQ and Studio Master Clarity chain — plus its usbdevfs exclusive USB-DAC driver and bit-perfect mixer attributes whenever USB exclusive output is on. Mutually exclusive with Tryptify Audio Processing; takes effect immediately.</string>
     <string name="pause_on_device_mute">Pause when device volume is 0</string>
     <string name="pause_on_device_mute_desc">Pause at zero volume, explain play attempts, and resume when volume increases</string>
     <string name="device_mute_recovery_volume">Increase volume from 0</string>
@@ -1065,6 +1066,7 @@
     <string name="discord_waiting_for_authorization">Waiting for Discord authorization...</string>
     <string name="discord_authorization_success">Discord account connected</string>
     <string name="discord_authorization_failed">Discord authorization failed</string>
+    <string name="discord_authorization_timeout_hint">No response from Discord. If you tapped Authorize and nothing happened, another installed ArchiveTune build may be receiving the login redirect — uninstall other builds (or clear their defaults for Discord links) and try again.</string>
     <string name="discord_account_ready">ArchiveTune is ready to publish Rich Presence for your listening session.</string>
     <string name="discord_reauthorize_required_title">Discord session expired</string>
     <string name="discord_reauthorize_required_description">Rich Presence cannot be shown until you authorize Discord again.</string>

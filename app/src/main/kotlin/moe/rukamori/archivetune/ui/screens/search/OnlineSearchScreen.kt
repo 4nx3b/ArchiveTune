@@ -488,8 +488,6 @@ fun SuggestionItem(
             MaterialTheme.colorScheme.onSurfaceVariant
         }
 
-    // Plain row - no container pill. Entries are separated by thin line
-    // dividers instead of being wrapped in a background-colored surface.
     Column(
         modifier =
             modifier

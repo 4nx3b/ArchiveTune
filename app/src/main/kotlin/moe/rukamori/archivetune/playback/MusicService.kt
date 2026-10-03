@@ -339,8 +339,7 @@ import moe.rukamori.archivetune.playback.artwork.ArtworkResolver
 import moe.rukamori.archivetune.playback.artwork.ArtworkSettings
 import moe.rukamori.archivetune.playback.artwork.ResolvedArtwork
 import moe.rukamori.archivetune.playback.artwork.isLocalArtworkUri
-import moe.rukamori.archivetune.playback.smart.CrossfadeMode
-import moe.rukamori.archivetune.playback.smart.SmartFadeAnalyzer
+import moe.rukamori.archivetune.playback.automix.AutoMixAnalyzer
 import moe.rukamori.archivetune.playback.dsp.AudioEngineKind
 import moe.rukamori.archivetune.playback.dsp.BitPerfectGateProcessor
 import moe.rukamori.archivetune.playback.dsp.BitPerfectRuntime
@@ -351,15 +350,16 @@ import moe.rukamori.archivetune.playback.dsp.EngineRuntime
 import moe.rukamori.archivetune.playback.dsp.FloatDspProcessor
 import moe.rukamori.archivetune.playback.dsp.TryptifyEngineController
 import moe.rukamori.archivetune.playback.dsp.UsbExclusiveAudioOutputProvider
-import moe.rukamori.archivetune.playback.smart.SmartFadeRuntimeState
-import moe.rukamori.archivetune.playback.smart.SmartFadeSettings
-import moe.rukamori.archivetune.playback.smart.SmartAnalysis
-import moe.rukamori.archivetune.playback.smart.TrackAnalysisState
-import moe.rukamori.archivetune.playback.smart.TransitionPlan
-import moe.rukamori.archivetune.playback.smart.TransitionStyle
-import moe.rukamori.archivetune.playback.smart.TransitionTrackInfo
-import moe.rukamori.archivetune.playback.smart.TransitionWindow
-import moe.rukamori.archivetune.playback.smart.planTransition
+import moe.rukamori.archivetune.playback.automix.AutoMixAnalysisState
+import moe.rukamori.archivetune.playback.automix.AutoMixAnalysisStates
+import moe.rukamori.archivetune.playback.automix.AutoMixFilterProcessor
+import moe.rukamori.archivetune.playback.automix.AutoMixPlan
+import moe.rukamori.archivetune.playback.automix.AutoMixPlanner
+import moe.rukamori.archivetune.playback.automix.AutoMixStyle
+import moe.rukamori.archivetune.playback.automix.AutoMixTrackInfo
+import moe.rukamori.archivetune.playback.automix.AutoMixTransitionWindow
+import moe.rukamori.archivetune.playback.automix.AutoMixUiState
+import moe.rukamori.archivetune.playback.automix.AutoMixPerformanceMode as EngineAutoMixPerformanceMode
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
 import moe.rukamori.archivetune.lastfm.LastFM
 import moe.rukamori.archivetune.lyrics.LyricsHelper
@@ -430,10 +430,6 @@ import kotlin.math.pow
 import kotlin.math.roundToLong
 import kotlin.time.Duration.Companion.seconds
 
-// Unicode-aware: with the old [^a-z0-9] form every non-Latin title normalized
-// to "", so ANY two non-Latin songs compared "equal" and JioSaavn candidate
-// selection ignored the title entirely (duration/artist alone decided - wrong
-// song picks). Keeping all script letters restores real title comparison.
 private val JIO_SAAVN_NORMALIZE_REGEX = Regex("[^\\p{L}\\p{N}]")
 
 private data class EnginePrefTuple(
@@ -521,6 +517,11 @@ class MusicService :
         object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<AudioDeviceInfo>) {
                 if (addedDevices.any { it.isSink }) {
+
+                    if (exclusiveRouteSessionFallback) {
+                        exclusiveRouteSessionFallback = false
+                        Timber.tag(TAG).i("USB audio device added; exclusive session fallback cleared")
+                    }
                     refreshUsbExclusiveRoute()
                     onAudioOutputDeviceChanged()
                 }
@@ -528,6 +529,10 @@ class MusicService :
 
             override fun onAudioDevicesRemoved(removedDevices: Array<AudioDeviceInfo>) {
                 if (removedDevices.any { it.isSink }) {
+                    if (exclusiveRouteSessionFallback) {
+                        exclusiveRouteSessionFallback = false
+                        Timber.tag(TAG).i("USB audio device removed; exclusive session fallback cleared")
+                    }
                     refreshUsbExclusiveRoute()
                     onAudioOutputDeviceChanged()
                 }
@@ -707,6 +712,14 @@ class MusicService :
     private var exclusiveWriteRecoveryAttemptCount: Int = 0
     private val exclusiveWriteRecoveryMaxAttempts = 4
 
+    @Volatile
+    private var lastExclusiveWriteFailureElapsedMs: Long = 0L
+
+    @Volatile
+    private var exclusiveRouteSessionFallback: Boolean = false
+
+    private val exclusiveFailureFreshWindowMs = 15_000L
+
     private var nextHistorySessionToken = 0L
     private var currentHistorySessionToken = 0L
     private var currentHistoryMediaId: String? = null
@@ -789,8 +802,8 @@ class MusicService :
     private var crossfadeHandoffProgress = 0f
     private var crossfadePlaybackRequested = false
 
-    private var smartFadeEnabled = false
-    private var smartFadeAnalyzer: SmartFadeAnalyzer? = null
+    private var autoMixEnabled = false
+    private var autoMixAnalyzer: AutoMixAnalyzer? = null
 
     @Volatile
     private var usbExclusiveAudioEnabled = false
@@ -808,7 +821,7 @@ class MusicService :
     private var audioOffloadPrefEnabled = false
 
     private val primaryFloatDspProcessor = FloatDspProcessor()
-    private var primaryTransitionFilter = TransitionFilterProcessor()
+    private var primaryTransitionFilter = AutoMixFilterProcessor()
 
     @Volatile
     private var tryptifyAudioProcessing = false
@@ -818,6 +831,8 @@ class MusicService :
 
     @Volatile
     private var tryptifyUsbPinEnabled = false
+
+    private var engineEngagementWatchdog: kotlinx.coroutines.Job? = null
 
     private val tryptifyPreferences by lazy {
         tf.monochrome.android.data.preferences.PreferencesManager(this)
@@ -915,9 +930,6 @@ class MusicService :
         )
     }
 
-    // Generalized mixer-attribute bit-perfect controller: unlike the engine's
-    // USB-only instance above, this one applies to ANY routed output device that
-    // advertises BIT_PERFECT mixer modes (USB DACs, wired headsets, HDMI...).
     private val mixerBitPerfectOutput by lazy {
         com.lastwave.app.playback.UsbBitPerfectOutput(
             runCatching { getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager }.getOrNull(),
@@ -958,7 +970,7 @@ class MusicService :
     }
 
     @Volatile
-    private var secondaryTransitionFilter: TransitionFilterProcessor? = null
+    private var secondaryTransitionFilter: AutoMixFilterProcessor? = null
 
     @Volatile
     private var secondaryFloatDspProcessor: FloatDspProcessor? = null
@@ -1005,7 +1017,6 @@ class MusicService :
                     }
                     cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
                     if (crossfadeConsecutiveFailures >= MAX_CONSECUTIVE_CROSSFADE_FAILURES) {
-
                         Timber.tag(TAG).w(
                             "Secondary crossfade player failed %d times in a row; suspending crossfade for %s",
                             crossfadeConsecutiveFailures,
@@ -1319,12 +1330,15 @@ class MusicService :
         equalizerPlaybackController.attach(this)
         ensureScopesActive()
 
-        // Restore persisted MediaStore URI heals before any queue is rebuilt so
-        // local songs whose MediaStore row id changed resume playing instantly
-        // instead of failing once and healing on the error path.
         ioScope.launch { LocalMediaUriHeals.loadBlocking(this@MusicService) }
 
         musicHapticsEngine = SpatialFlowHapticEngine(this)
+
+        seedAudioRoutePreferences()
+
+        runCatching {
+            tf.monochrome.android.audio.eq.FrequencyTargets.init(applicationContext)
+        }
 
         ioScope.launch {
             runCatching { tryptifyEngineController.start() }
@@ -1336,6 +1350,7 @@ class MusicService :
                 tryptifyUsbDriver.diagnostics.collect { diag ->
                     val stream = diag?.takeIf { it.sampleRateHz > 0 }
                     EngineRuntime.tryptifyUsbStream = stream
+                    EngineRuntime.revisionBump()
                     if (usbSinkActiveNow && tryptifyAudioProcessing && stream != null) {
                         BitPerfectRuntime.notifyUsbExclusive(
                             active = true,
@@ -1347,9 +1362,13 @@ class MusicService :
                 }
             }
             ioScope.launch {
+                var lastPolledWireRateHz = -1
                 while (isActive) {
-                    EngineRuntime.lastwaveUsbRateHz = lastwaveExclusiveUsb.currentRateHz()
-                    EngineRuntime.lastwaveUsbBitsPerSample = lastwaveExclusiveUsb.currentBitsPerSample()
+                    val wireRateHz = lastwaveExclusiveUsb.currentRateHz()
+                    EngineRuntime.publishUsbWire(
+                        wireRateHz,
+                        lastwaveExclusiveUsb.currentBitsPerSample(),
+                    )
                     if (usbSinkActiveNow && lastwaveAudioProcessing &&
                         EngineRuntime.lastwaveUsbRateHz > 0 && EngineRuntime.lastwaveUsbBitsPerSample > 0
                     ) {
@@ -1359,6 +1378,13 @@ class MusicService :
                             bits = EngineRuntime.lastwaveUsbBitsPerSample,
                             engineTransport = true,
                         )
+                    }
+
+                    if (wireRateHz != lastPolledWireRateHz) {
+                        lastPolledWireRateHz = wireRateHz
+                        if (wireRateHz > 0 || lastwaveAudioProcessing) {
+                            applyNativeRateOverride()
+                        }
                     }
                     delay(1000)
                 }
@@ -1734,7 +1760,12 @@ class MusicService :
             }
             .distinctUntilChanged()
             .collectLatest(scope) { mode ->
-                SmartFadeSettings.performanceMode.value = mode
+                autoMixEngine().performanceMode =
+                    when (mode) {
+                        AutomixPerformanceMode.EFFICIENT -> EngineAutoMixPerformanceMode.EFFICIENT
+                        AutomixPerformanceMode.PERFORMANCE -> EngineAutoMixPerformanceMode.PERFORMANCE
+                        else -> EngineAutoMixPerformanceMode.BALANCED
+                    }
             }
 
         combine(
@@ -1747,16 +1778,31 @@ class MusicService :
             Penta(dsp, usbExclusive, crossfade, automix, offload)
         }.distinctUntilChanged()
             .collectLatest(scope) { (dsp, usbExclusive, crossfade, automix, offload) ->
-                floatDspEnabled = dsp
 
-                usbExclusiveRequested = usbExclusive && !crossfade && !automix && !offload
-                audioOffloadPrefEnabled = offload
-                refreshUsbExclusiveRoute()
-                Timber.tag(TAG).d(
-                    "Audio engine: floatDsp=%s usbExclusiveRequested=%s",
-                    dsp,
-                    usbExclusiveRequested,
-                )
+                runCatching {
+                    floatDspEnabled = dsp
+
+                    if (lastUsbExclusivePrefValue != null && lastUsbExclusivePrefValue != usbExclusive) {
+                        if (exclusiveRouteSessionFallback) {
+                            exclusiveRouteSessionFallback = false
+                            Timber.tag(TAG).i("USB-exclusive preference re-toggled; session fallback cleared")
+                        }
+                    }
+                    lastUsbExclusivePrefValue = usbExclusive
+
+                    usbExclusiveRequested = usbExclusive && !crossfade && !automix && !offload
+                    audioOffloadPrefEnabled = offload
+                    refreshUsbExclusiveRoute()
+                    Timber.tag(TAG).d(
+                        "Audio engine: floatDsp=%s usbExclusiveRequested=%s",
+                        dsp,
+                        usbExclusiveRequested,
+                    )
+                }.onFailure {
+
+                    if (it is CancellationException) throw it
+                    Timber.tag(TAG).e(it, "Audio route collector (float-dsp/usb-exclusive) emission failed; will retry on next preference change")
+                }
             }
 
         combine(
@@ -1766,25 +1812,41 @@ class MusicService :
             bitPerfect to nativeRate
         }.distinctUntilChanged()
             .collectLatest(scope) { (bitPerfect, nativeRate) ->
-                val previouslyRequested = BitPerfectRuntime.requested
-                if (BitPerfectRuntime.requested != bitPerfect || BitPerfectRuntime.nativeSampleRatePreferred != nativeRate) {
-                    Timber.tag(TAG).i(
-                        "Bit-Perfect request: %s (nativeRate=%s) — re-evaluates on next track",
-                        bitPerfect,
-                        nativeRate,
-                    )
-                }
-                BitPerfectRuntime.requested = bitPerfect
-                BitPerfectRuntime.nativeSampleRatePreferred = nativeRate
-                if (!bitPerfect) {
-                    BitPerfectRuntime.clearTrack()
-                }
-                refreshMixerBitPerfectRoute()
 
-                if (previouslyRequested != bitPerfect && bitPerfectNeedsRouteReprepare()) {
-                    scope.launch(Dispatchers.Main) {
-                        runCatching { repreparePlayerForAudioRouteChange() }
+                runCatching {
+                    val previouslyRequested = BitPerfectRuntime.requested
+                    val previousNativeRate = BitPerfectRuntime.nativeSampleRatePreferred
+                    if (BitPerfectRuntime.requested != bitPerfect || BitPerfectRuntime.nativeSampleRatePreferred != nativeRate) {
+                        Timber.tag(TAG).i(
+                            "Bit-Perfect request: %s (nativeRate=%s) — re-evaluates on next track",
+                            bitPerfect,
+                            nativeRate,
+                        )
                     }
+                    BitPerfectRuntime.requested = bitPerfect
+                    BitPerfectRuntime.nativeSampleRatePreferred = nativeRate
+                    if (!bitPerfect) {
+                        BitPerfectRuntime.clearTrack()
+                    }
+
+                    runCatching { lastwaveEngine.setBitPerfect(bitPerfect) }
+                        .onFailure {
+                            Timber.tag(TAG).w(it, "LastWave native bit-perfect bypass toggle failed")
+                        }
+                    applyNativeRateOverride()
+                    refreshMixerBitPerfectRoute()
+
+                    val routeChange =
+                        previouslyRequested != bitPerfect ||
+                            previousNativeRate != nativeRate && (tryptifyAudioProcessing || lastwaveAudioProcessing)
+                    if (routeChange && bitPerfectNeedsRouteReprepare()) {
+                        scope.launch(Dispatchers.Main) {
+                            runCatching { repreparePlayerForAudioRouteChange() }
+                        }
+                    }
+                }.onFailure {
+                    if (it is CancellationException) throw it
+                    Timber.tag(TAG).e(it, "Audio route collector (bit-perfect/native-rate) emission failed; will retry on next preference change")
                 }
             }
 
@@ -1798,74 +1860,121 @@ class MusicService :
             EnginePrefTuple(tryptify, lastwave, downmixOn, usbPin, usbDevice != null)
         }.distinctUntilChanged()
             .collectLatest(scope) { (tryptify, lastwave, downmixOn, usbPin, usbAttached) ->
-                val lastwaveEffective = lastwave && !tryptify
-                val engineSelectionChanged =
-                    tryptifyAudioProcessing != tryptify || lastwaveAudioProcessing != lastwaveEffective
-                if (engineSelectionChanged) {
-                    Timber.tag(TAG).i(
-                        "Audio engine selection: tryptify=%s lastwave=%s (raw lastwave=%s normalized off — engines are exclusive)",
-                        tryptify,
-                        lastwaveEffective,
-                        lastwave,
-                    )
-                }
-                tryptifyAudioProcessing = tryptify
-                lastwaveAudioProcessing = lastwaveEffective
-                if (lastwave && tryptify) {
-                    dataStore.edit { it[LastwaveAudioProcessingKey] = false }
-                }
 
-                tryptifyEngineController.setEngineActive(tryptify)
-
-                primaryEngineRouter.requestEngineReevaluate()
-
-                tryptifyDownmix.setEnabled(downmixOn)
-                tryptifyUsbPinEnabled = usbPin
-                applyTryptifyUsbPin()
-                if (usbAttached && usbPin && tryptify) {
-                    Timber.tag(TAG).d("Tryptify USB pin: DAC attached, framework routing pinned")
-                }
-
-                if (engineSelectionChanged) {
-                    // The live audio chain pill reads BitPerfectRuntime.status,
-                    // which is only recomputed when the sink re-configures. A
-                    // mid-track engine flip changes the route (float sink,
-                    // chain bypass, mixer re-grant) without any configure - so
-                    // re-evaluate immediately with the latched track values.
-                    // This runs BEFORE the mixer refresh so a subsequent
-                    // BIT_PERFECT grant can layer its wire rate on top of the
-                    // fresh verdict, exactly like the onConfigure path does.
-                    BitPerfectRuntime.reevaluateEngines(
-                        context = this@MusicService,
-                        engineOrDspEngaged = tryptify || lastwaveEffective || primaryFloatDspProcessor.engaged,
-                        enginesEngaged = tryptify || lastwaveEffective,
-                    )
-                }
-
-                lastwaveUsbBitPerfect.setEnabled(false)
-                refreshMixerBitPerfectRoute()
-                applyFloatDspEngagement()
-
-                if (engineSelectionChanged && bitPerfectNeedsRouteReprepare()) {
-                    // Re-prepare while actually playing - the same recovery the
-                    // bit-perfect toggle uses. Without it the router's deferred
-                    // switch can strand the OLD engine alive when the chain was
-                    // bypassed (router inactive -> reevaluate flag never
-                    // consumed), and the switching sink keeps feeding the
-                    // previously-configured side.
-                    scope.launch(Dispatchers.Main) {
-                        runCatching { repreparePlayerForAudioRouteChange() }
+                runCatching {
+                    val lastwaveEffective = lastwave && !tryptify
+                    val engineSelectionChanged =
+                        tryptifyAudioProcessing != tryptify || lastwaveAudioProcessing != lastwaveEffective
+                    if (engineSelectionChanged) {
+                        Timber.tag(TAG).i(
+                            "Audio engine selection: tryptify=%s lastwave=%s (raw lastwave=%s normalized off — engines are exclusive)",
+                            tryptify,
+                            lastwaveEffective,
+                            lastwave,
+                        )
                     }
+                    tryptifyAudioProcessing = tryptify
+                    lastwaveAudioProcessing = lastwaveEffective
+
+                    EngineRuntime.publishWantedEngine(
+                        when {
+                            tryptify -> AudioEngineRouterProcessor.Engine.TRYPTIFY
+                            lastwaveEffective -> AudioEngineRouterProcessor.Engine.LASTWAVE
+                            else -> AudioEngineRouterProcessor.Engine.NONE
+                        },
+                    )
+                    EngineRuntime.publishEngineAvailability(
+                        AudioEngineRouterProcessor.tryptifyNativeAvailable(),
+                        lastwaveProcessor.isAvailable,
+                    )
+
+                    if (lastwave && tryptify) {
+                        dataStore.edit { it[LastwaveAudioProcessingKey] = false }
+                    }
+
+                    tryptifyEngineController.setEngineActive(tryptify)
+
+                    primaryEngineRouter.requestEngineReevaluate()
+
+                    tryptifyDownmix.setEnabled(downmixOn)
+                    tryptifyUsbPinEnabled = usbPin
+                    applyTryptifyUsbPin()
+                    if (usbAttached && usbPin && tryptify) {
+                        Timber.tag(TAG).d("Tryptify USB pin: DAC attached, framework routing pinned")
+                    }
+
+                    if (engineSelectionChanged) {
+
+                        BitPerfectRuntime.reevaluateEngines(
+                            context = this@MusicService,
+                            engineOrDspEngaged = tryptify || lastwaveEffective || primaryFloatDspProcessor.engaged,
+                            enginesEngaged = tryptify || lastwaveEffective,
+                        )
+                    }
+
+                    lastwaveUsbBitPerfect.setEnabled(false)
+                    applyNativeRateOverride()
+                    refreshMixerBitPerfectRoute()
+                    applyFloatDspEngagement()
+
+                    if (engineSelectionChanged && bitPerfectNeedsRouteReprepare()) {
+
+                        scope.launch(Dispatchers.Main) {
+                            runCatching { repreparePlayerForAudioRouteChange() }
+                        }
+
+                        engineEngagementWatchdog?.cancel()
+                        engineEngagementWatchdog = scope.launch {
+                            var watchdogAttempts = 0
+                            while (watchdogAttempts < 3) {
+                                delay(1500L)
+                                val wanted = EngineRuntime.wantedEngineState
+                                if (wanted == AudioEngineRouterProcessor.Engine.NONE) return@launch
+                                if (EngineRuntime.activeEngine == wanted) return@launch
+                                if (!bitPerfectNeedsRouteReprepare()) {
+
+                                    if (player.playbackState == Player.STATE_IDLE) return@launch
+                                    continue
+                                }
+                                watchdogAttempts++
+                                Timber.tag(TAG).w(
+                                    "Engine %s not engaged 1.5s after selection (probe %d/3) — forcing route re-prepare",
+                                    wanted,
+                                    watchdogAttempts,
+                                )
+                                scope.launch(Dispatchers.Main) {
+                                    runCatching { repreparePlayerForAudioRouteChange() }
+                                }
+                            }
+                        }
+                    }
+                }.onFailure {
+                    if (it is CancellationException) throw it
+                    Timber.tag(TAG).e(it, "Audio engine collector emission failed; will retry on next preference change")
                 }
             }
 
         currentFormat
             .collectLatest(scope) { format ->
-                currentFormatEntity = format
-                refreshMixerBitPerfectRoute()
-                maybeSyncFormatEntityWithDecodedStream()
-                maybeParseMissingReplayGain(format)
-                applyFloatDspEngagement()
+
+                runCatching {
+                    currentFormatEntity = format
+
+                    EngineRuntime.publishWantedEngine(
+                        when {
+                            tryptifyAudioProcessing -> AudioEngineRouterProcessor.Engine.TRYPTIFY
+                            lastwaveAudioProcessing -> AudioEngineRouterProcessor.Engine.LASTWAVE
+                            else -> AudioEngineRouterProcessor.Engine.NONE
+                        },
+                    )
+                    refreshMixerBitPerfectRoute()
+                    maybeSyncFormatEntityWithDecodedStream()
+                    maybeParseMissingReplayGain(format)
+                    applyFloatDspEngagement()
+                }.onFailure {
+                    if (it is CancellationException) throw it
+                    Timber.tag(TAG).e(it, "currentFormat collector emission failed")
+                }
             }
 
         dataStore.data
@@ -1898,13 +2007,13 @@ class MusicService :
                         .roundToLong()
                         .coerceAtLeast(0L)
                 crossfadeGapless = config.gapless
-                smartFadeEnabled = config.automixEnabled
-                SmartFadeRuntimeState.enabled.value = smartFadeEnabled
-                if (!smartFadeEnabled) {
-                    SmartFadeRuntimeState.transitionWindow.value = null
-                    SmartFadeRuntimeState.mixing.value = false
+                autoMixEnabled = config.automixEnabled
+                AutoMixUiState.enabled.value = autoMixEnabled
+                if (!autoMixEnabled) {
+                    AutoMixUiState.transitionWindow.value = null
+                    AutoMixUiState.mixing.value = false
                 }
-                if ((crossfadeEnabled && crossfadeDurationMs > 0L) || smartFadeEnabled) {
+                if ((crossfadeEnabled && crossfadeDurationMs > 0L) || autoMixEnabled) {
                     scheduleCrossfade()
                 } else {
                     cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
@@ -2510,7 +2619,15 @@ class MusicService :
             is DiscordPresenceDecision.Visible -> {
                 clearDiscordHoldState()
                 ensureDiscordSyncFresh(request.epoch)
-                val snapshot = buildDiscordPresenceSnapshot(song, decision.isPaused) ?: return false
+                val snapshot =
+                    buildDiscordPresenceSnapshot(song, decision.isPaused) ?: run {
+
+                        requestDiscordSync(
+                            reason = "playback_changed_before_presence_apply",
+                            force = true,
+                        )
+                        return false
+                    }
                 ensureDiscordSyncFresh(request.epoch)
                 val updated =
                     DiscordPresenceManager.updateNow(
@@ -2548,13 +2665,30 @@ class MusicService :
         song: Song?,
         isPaused: Boolean,
     ): DiscordPresenceSnapshot? {
-        val resolvedSong = song ?: return null
-        val positionMs = withContext(Dispatchers.Main.immediate) { player.currentPosition }
-        return DiscordPresenceSnapshot(
-            song = resolvedSong,
-            positionMs = positionMs,
-            isPaused = isPaused,
-        )
+        val expectedSong = song ?: return null
+
+        return withContext(Dispatchers.Main.immediate) {
+            val currentSong = currentPresenceSong() ?: return@withContext null
+            if (currentSong.song.id != expectedSong.song.id) {
+                return@withContext null
+            }
+
+            val actuallyPaused =
+                when {
+                    !player.playWhenReady -> true
+                    player.isPlaying -> false
+                    else -> return@withContext null
+                }
+            if (actuallyPaused != isPaused) {
+                return@withContext null
+            }
+
+            DiscordPresenceSnapshot(
+                song = currentSong,
+                positionMs = player.currentPosition,
+                isPaused = actuallyPaused,
+            )
+        }
     }
 
     private fun cancelRestoredQueueHydration() {
@@ -2919,7 +3053,6 @@ class MusicService :
         normalizeFactor: Float,
         audioFocusVolumeFactor: Float,
     ): Float {
-
         if (BitPerfectRuntime.status.verifiedBitPerfect) {
             BitPerfectRuntime.notifyVolume(1f)
             return 1f
@@ -3117,8 +3250,8 @@ class MusicService :
             return
         }
 
-        if (smartFadeEnabled) {
-            scheduleSmartFade()
+        if (autoMixEnabled) {
+            scheduleAutoMix()
             return
         }
 
@@ -3174,41 +3307,38 @@ class MusicService :
     }
 
     @UnstableApi
-    private fun analyzer(): SmartFadeAnalyzer {
-        smartFadeAnalyzer?.let { return it }
+    private fun autoMixEngine(): AutoMixAnalyzer {
+        autoMixAnalyzer?.let { return it }
         val created =
-            SmartFadeAnalyzer(this) { mediaId ->
-
-                runBlocking {
-                    runCatching {
-                        withTimeout(SMART_FADE_RESOLVE_TIMEOUT_MS) {
-                            runCatching {
-                                YTPlayerUtils.playerResponseForPlayback(
-                                    mediaId,
-                                    audioQuality = AudioQuality.LOW,
-                                    connectivityManager = connectivityManager,
-                                    preferredStreamClient = preferredStreamClient,
-                                    networkMetered = false,
-                                ).getOrThrow().streamUrl
-                            }.getOrNull()
-                        }
-                    }.getOrNull()
-                }
+            AutoMixAnalyzer(this) { mediaId ->
+                runCatching {
+                    withTimeout(AUTO_MIX_RESOLVE_TIMEOUT_MS) {
+                        runCatching {
+                            YTPlayerUtils.playerResponseForPlayback(
+                                mediaId,
+                                audioQuality = AudioQuality.LOW,
+                                connectivityManager = connectivityManager,
+                                preferredStreamClient = preferredStreamClient,
+                                networkMetered = false,
+                            ).getOrThrow().streamUrl
+                        }.getOrNull()
+                    }
+                }.getOrNull()
             }
-        smartFadeAnalyzer = created
+        autoMixAnalyzer = created
         return created
     }
 
-    private fun scheduleSmartFade() {
-        val target = resolveSmartFadeTarget()
+    private fun scheduleAutoMix() {
+        val target = resolveAutoMixTarget()
         val duration = player.duration
         if (target == null || duration == C.TIME_UNSET || duration <= 0L) {
             localPlayer.pauseAtEndOfMediaItems = false
             releaseSecondaryCrossfadePlayer()
-            SmartFadeRuntimeState.transitionWindow.value = null
-            SmartFadeRuntimeState.analysis.value = SmartFadeRuntimeState.analysis.value.copy(
-                current = TrackAnalysisState.WAITING,
-                next = TrackAnalysisState.WAITING,
+            AutoMixUiState.transitionWindow.value = null
+            AutoMixUiState.analysis.value = AutoMixUiState.analysis.value.copy(
+                current = AutoMixAnalysisState.WAITING,
+                next = AutoMixAnalysisState.WAITING,
             )
             return
         }
@@ -3221,7 +3351,7 @@ class MusicService :
                 var hasPreparedSecondaryPlayer = false
                 var lastVerdict: String? = null
                 while (isActive) {
-                    if (!smartFadeEnabled || isCrossfading) return@launch
+                    if (!autoMixEnabled || isCrossfading) return@launch
                     if (player.currentMediaItem?.mediaId != currentMediaId || player.currentMediaItemIndex != currentIndex) {
                         return@launch
                     }
@@ -3232,65 +3362,62 @@ class MusicService :
                     val currentItem = player.currentMediaItem ?: return@launch
                     val nextItem = runCatching { player.getMediaItemAt(target.index) }.getOrNull() ?: return@launch
 
-                    val sm = analyzer()
-                    sm.request(
+                    val engine = autoMixEngine()
+                    engine.request(
                         trackId = currentItem.mediaId,
                         uri = currentItem.localConfiguration?.uri ?: android.net.Uri.EMPTY,
-                        durationSeconds = duration / 1000.0,
+                        durationMs = duration,
                     )
                     val nextDurationMs = timelineDurationMsAt(target.index, nextItem)
-                    sm.request(
+                    engine.request(
                         trackId = nextItem.mediaId,
                         uri = nextItem.localConfiguration?.uri ?: android.net.Uri.EMPTY,
-                        durationSeconds = nextDurationMs / 1000.0,
+                        durationMs = nextDurationMs,
                     )
 
-                    val currentAnalysis = sm.analysisFor(currentItem.mediaId)
-                    val nextAnalysis = sm.analysisFor(nextItem.mediaId)
+                    val currentAnalysis = engine.analysisFor(currentItem.mediaId)
+                    val nextAnalysis = engine.analysisFor(nextItem.mediaId)
 
                     val plan =
-                        planTransition(
-                            analysis = currentAnalysis,
-                            nextAnalysis = nextAnalysis,
-                            currentTrack = currentItem.toTransitionInfo(duration),
-                            nextTrack = nextItem.toTransitionInfo(nextDurationMs),
-                            currentTime = player.currentPosition / 1000.0,
-                            duration = duration / 1000.0,
-
-                            fadeSeconds = smartFallbackFadeSeconds(),
-                            minFadeSeconds = MIN_CROSSFADE_DURATION_MS / 1000.0,
-                            mode = CrossfadeMode.SMART,
-                            albumSequential = crossfadeGapless && isGaplessAlbumTransition(currentItem, nextItem),
+                        AutoMixPlanner.plan(
+                            current = currentAnalysis,
+                            next = nextAnalysis,
+                            currentTrack = currentItem.toAutoMixTrackInfo(duration),
+                            nextTrack = nextItem.toAutoMixTrackInfo(nextDurationMs),
+                            positionMs = player.currentPosition,
+                            fallbackFadeMs = autoMixFallbackFadeMs(),
+                            minFadeMs = MIN_CROSSFADE_DURATION_MS,
+                            gaplessAlbum = crossfadeGapless && isGaplessAlbumTransition(currentItem, nextItem),
                         )
 
-                    publishSmartAnalysisState(sm, currentItem.mediaId, nextItem.mediaId)
+                    publishAutoMixAnalysisState(engine, currentItem.mediaId, nextItem.mediaId)
 
-                    val verdict = "${plan.reason}|${plan.transitionStyle}|fade=${plan.fadeMs}"
+                    val verdict = "${plan.reason}|${plan.style}|fade=${plan.fadeMs}"
                     if (verdict != lastVerdict) {
                         lastVerdict = verdict
                         Timber.tag(TAG).d(
-                            "smartplan %s->%s: %s bpm=%.1f/%.1f conf=%.2f/%.2f",
+                            "automix plan %s->%s: %s bpm=%.1f/%.1f conf=%.2f/%.2f",
                             currentItem.mediaId,
                             nextItem.mediaId,
                             verdict,
-                            currentAnalysis.bpm,
-                            nextAnalysis.bpm,
-                            currentAnalysis.beatConfidence,
-                            nextAnalysis.beatConfidence,
+                            currentAnalysis?.bpm ?: 0.0,
+                            nextAnalysis?.bpm ?: 0.0,
+                            currentAnalysis?.beatConfidence ?: 0.0,
+                            nextAnalysis?.beatConfidence ?: 0.0,
                         )
                     }
 
                     val markable =
                         !plan.blocked &&
                             plan.markerVisible &&
-                            sm.isAnalysed(currentItem.mediaId) &&
-                            sm.isAnalysed(nextItem.mediaId)
-                    SmartFadeRuntimeState.transitionWindow.value =
+                            engine.isAnalysed(currentItem.mediaId) &&
+                            engine.isAnalysed(nextItem.mediaId)
+                    AutoMixUiState.transitionWindow.value =
                         if (markable) {
-                            val startFraction = (plan.transitionStart * 1000.0 / duration).toFloat().coerceIn(0f, 1f)
-                            val endFraction = (plan.transitionEnd * 1000.0 / duration).toFloat().coerceIn(0f, 1f)
+                            val startFraction = (plan.transitionStartMs.toFloat() / duration).coerceIn(0f, 1f)
+                            val endFraction = (plan.transitionEndMs.toFloat() / duration).coerceIn(0f, 1f)
                             if (endFraction > startFraction) {
-                                TransitionWindow(startFraction, endFraction)
+                                AutoMixTransitionWindow(startFraction, endFraction)
                             } else {
                                 null
                             }
@@ -3299,40 +3426,37 @@ class MusicService :
                         }
 
                     if (plan.blocked) {
-                        delay(SMART_FADE_POLL_MS)
+                        delay(AUTO_MIX_POLL_MS)
                         continue
                     }
 
-                    val transitionStartMs = (plan.transitionStart * 1000).roundToLong()
-                    val remainingToStart = transitionStartMs - player.currentPosition
+                    val remainingToStart = plan.transitionStartMs - player.currentPosition
                     if (!hasPreparedSecondaryPlayer && remainingToStart <= CROSSFADE_PREPARE_AHEAD_MS) {
-
-                        if (plan.transitionStyle != TransitionStyle.GAPLESS) {
+                        if (plan.style != AutoMixStyle.GAPLESS) {
                             prepareSecondaryCrossfadePlayer(
                                 target,
-                                cueTimeMs = (plan.incomingCueTime * 1000).roundToLong().coerceAtLeast(0L),
+                                cueTimeMs = plan.incomingCueMs.coerceAtLeast(0L),
                             )
                         }
                         hasPreparedSecondaryPlayer = true
                     }
                     if (remainingToStart <= 0L && plan.fadeMs >= MIN_CROSSFADE_DURATION_MS) {
-
                         val positionMs = player.currentPosition
+
                         val remainingFadeMs =
-                            (duration - positionMs - CROSSFADE_END_GUARD_MS)
+                            (duration - positionMs)
                                 .coerceAtMost(plan.fadeMs)
                         if (remainingFadeMs >= MIN_CROSSFADE_DURATION_MS) {
                             startCrossfade(target, remainingFadeMs, plan)
                         } else {
-
                             localPlayer.pauseAtEndOfMediaItems = false
                             releaseSecondaryCrossfadePlayer()
-                            SmartFadeRuntimeState.transitionWindow.value = null
-                            SmartFadeRuntimeState.mixing.value = false
-                            SmartFadeRuntimeState.analysis.value =
-                                SmartFadeRuntimeState.analysis.value.copy(
-                                    current = TrackAnalysisState.WAITING,
-                                    next = TrackAnalysisState.WAITING,
+                            AutoMixUiState.transitionWindow.value = null
+                            AutoMixUiState.mixing.value = false
+                            AutoMixUiState.analysis.value =
+                                AutoMixUiState.analysis.value.copy(
+                                    current = AutoMixAnalysisState.WAITING,
+                                    next = AutoMixAnalysisState.WAITING,
                                 )
                         }
                         return@launch
@@ -3344,13 +3468,13 @@ class MusicService :
                             remainingToStart > 2_000L -> 250L
                             else -> 50L
                         }.coerceAtLeast(1L)
-                    delay(sleepMs.coerceAtMost(SMART_FADE_POLL_MS))
+                    delay(sleepMs.coerceAtMost(AUTO_MIX_POLL_MS))
                 }
             }
     }
 
-    private fun resolveSmartFadeTarget(): CrossfadeTarget? {
-        if (!smartFadeEnabled) return null
+    private fun resolveAutoMixTarget(): CrossfadeTarget? {
+        if (!autoMixEnabled) return null
         if (player.mediaItemCount == 0 || player.currentTimeline.isEmpty) return null
         if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) return null
 
@@ -3374,9 +3498,9 @@ class MusicService :
         )
     }
 
-    private fun smartFallbackFadeSeconds(): Double {
-        val configured = crossfadeDurationMs.takeIf { it > 0L } ?: DEFAULT_SMART_FALLBACK_MS
-        return (configured.coerceIn(MIN_CROSSFADE_DURATION_MS, 12_000L)) / 1000.0
+    private fun autoMixFallbackFadeMs(): Long {
+        val configured = crossfadeDurationMs.takeIf { it > 0L } ?: DEFAULT_AUTO_MIX_FALLBACK_MS
+        return configured.coerceIn(MIN_CROSSFADE_DURATION_MS, 12_000L)
     }
 
     private fun timelineDurationMsAt(
@@ -3392,9 +3516,9 @@ class MusicService :
         return windowDuration?.takeIf { it != C.TIME_UNSET } ?: item.mediaMetadata.durationMs ?: 0L
     }
 
-    private fun androidx.media3.common.MediaItem.toTransitionInfo(durationMs: Long): TransitionTrackInfo {
+    private fun androidx.media3.common.MediaItem.toAutoMixTrackInfo(durationMs: Long): AutoMixTrackInfo {
         val metadata = mediaMetadata
-        return TransitionTrackInfo(
+        return AutoMixTrackInfo(
             id = mediaId,
             durationMs = durationMs,
             title = metadata.title?.toString().orEmpty(),
@@ -3403,61 +3527,64 @@ class MusicService :
         )
     }
 
-    private fun publishSmartAnalysisState(
-        analyzer: SmartFadeAnalyzer,
+    private fun publishAutoMixAnalysisState(
+        analyzer: AutoMixAnalyzer,
         currentId: String,
         nextId: String,
     ) {
-        fun stateOf(trackId: String): TrackAnalysisState =
+        fun stateOf(trackId: String): AutoMixAnalysisState =
             when {
                 analyzer.isAnalysed(trackId) -> {
-                    val usable = analyzer.analysisFor(trackId).isUsable
-                    if (usable) TrackAnalysisState.ANALYSED else TrackAnalysisState.FAILED
+                    val usable = analyzer.analysisFor(trackId)?.isUsable == true
+                    if (usable) AutoMixAnalysisState.ANALYSED else AutoMixAnalysisState.FAILED
                 }
-                analyzer.isAnalysing(trackId) -> TrackAnalysisState.ANALYSING
-                else -> TrackAnalysisState.WAITING
+                analyzer.isAnalysing(trackId) -> AutoMixAnalysisState.ANALYSING
+                else -> AutoMixAnalysisState.WAITING
             }
-        val next = SmartFadeRuntimeState.analysis.value
+        val next = AutoMixUiState.analysis.value
         val updated =
-            SmartAnalysis(
+            AutoMixAnalysisStates(
                 current = stateOf(currentId),
                 next = stateOf(nextId),
             )
-        if (updated != next) SmartFadeRuntimeState.analysis.value = updated
+        if (updated != next) AutoMixUiState.analysis.value = updated
     }
 
-    private fun isRealMix(plan: TransitionPlan?): Boolean {
+    private fun hasMixChoreography(plan: AutoMixPlan?): Boolean {
         if (plan == null) return false
-        return plan.transitionStyle == TransitionStyle.DJ_BLEND ||
-            plan.transitionStyle == TransitionStyle.DJ_FILTER ||
-            plan.incomingCueTime > 0.0 ||
+        return plan.style == AutoMixStyle.DJ_BLEND ||
+            plan.style == AutoMixStyle.DJ_FILTER ||
+            plan.incomingCueMs > 0L ||
             abs(plan.incomingPlaybackRate - 1.0) > 0.01
     }
 
-    private fun rideSmartFadeFilters(
-        plan: TransitionPlan,
+    private fun rideAutoMixFilters(
+        plan: AutoMixPlan,
         progress: Float,
     ) {
         val outgoing = primaryTransitionFilter
         val incoming = secondaryTransitionFilter ?: return
-        when (plan.transitionStyle) {
-            TransitionStyle.DJ_FILTER -> rideFilterSweep(plan, progress, outgoing, incoming)
-            TransitionStyle.DJ_BLEND ->
+        when (plan.style) {
+            AutoMixStyle.DJ_FILTER -> rideSweepOut(plan, progress, outgoing, incoming)
+            AutoMixStyle.DJ_BLEND ->
                 if (plan.bassSwap) {
-                    rideBassSwap(plan, progress, outgoing, incoming)
+                    rideBassHandover(plan, progress, outgoing, incoming)
                 } else {
-                    rideVocalSeparation(plan, progress, outgoing, incoming)
+                    rideClashSeparation(plan, progress, outgoing, incoming)
                 }
 
-            else -> rideVocalSeparation(plan, progress, outgoing, incoming)
+            else -> {
+                outgoing.open()
+                incoming.open()
+            }
         }
     }
 
-    private fun rideFilterSweep(
-        plan: TransitionPlan,
+    private fun rideSweepOut(
+        plan: AutoMixPlan,
         progress: Float,
-        outgoing: TransitionFilterProcessor,
-        incoming: TransitionFilterProcessor,
+        outgoing: AutoMixFilterProcessor,
+        incoming: AutoMixFilterProcessor,
     ) {
         val sweep = plan.filterSweep.coerceIn(0.0, 1.0)
         if (sweep <= 0.0) {
@@ -3465,61 +3592,52 @@ class MusicService :
             incoming.open()
             return
         }
+        val open = AutoMixFilterProcessor.OPEN_HZ.toDouble()
+        val floor = automixGlide(open, AUTO_MIX_SWEEP_FLOOR_HZ, sweep)
+        val shaped = progress.toDouble().pow(AUTO_MIX_SWEEP_SHAPE)
+        outgoing.setCutoffs(automixGlide(open, floor, shaped), AutoMixFilterProcessor.OFF_HZ.toDouble())
 
-        val open = TransitionFilterProcessor.OPEN_HZ.toDouble()
-        val entry = glide(open, FILTER_ENTRY_HZ, sweep)
-        val floor = glide(open, FILTER_FLOOR_HZ, sweep)
-        val cutoff = glide(entry, floor, progress.toDouble().pow(FILTER_SWEEP_SHAPE))
-        outgoing.setCutoffs(cutoff.toFloat(), TransitionFilterProcessor.OFF_HZ)
+        val relax = (1.0 - progress / AUTO_MIX_ENTRY_OPEN_BY).coerceIn(0.0, 1.0)
+        val entryTop = automixGlide(open, AUTO_MIX_SWEEP_ENTRY_HIGH_HZ, sweep)
         incoming.setCutoffs(
-            TransitionFilterProcessor.OPEN_HZ,
-            entryHighPass(progress, sweep, ENTRY_HIGH_PASS_HZ, ENTRY_OPEN_BY),
+            open,
+            automixGlide(AutoMixFilterProcessor.OFF_HZ.toDouble(), entryTop, sweep * relax),
         )
     }
 
-    private fun rideBassSwap(
-        plan: TransitionPlan,
+    private fun rideBassHandover(
+        plan: AutoMixPlan,
         progress: Float,
-        outgoing: TransitionFilterProcessor,
-        incoming: TransitionFilterProcessor,
+        outgoing: AutoMixFilterProcessor,
+        incoming: AutoMixFilterProcessor,
     ) {
         val swapAt = plan.bassSwapFraction.coerceIn(0.05, 0.95)
-
-        val handover = ((progress - swapAt) / BASS_SWAP_WIDTH * 0.5 + 0.5).coerceIn(0.0, 1.0)
-
+        val handover = ((progress - swapAt) / 0.10 * 0.5 + 0.5).coerceIn(0.0, 1.0)
         val clash = plan.vocalOverlap.coerceIn(0.0, 1.0)
-        val entry =
-            maxOf(
-                bassCutoff(1.0 - handover),
-                entryHighPass(
-                    progress,
-                    1.0,
-                    glide(BLEND_ENTRY_HIGH_PASS_HZ, BLEND_ENTRY_CLASH_HIGH_PASS_HZ, clash),
-                    BLEND_ENTRY_OPEN_BY + (BLEND_ENTRY_CLASH_OPEN_BY - BLEND_ENTRY_OPEN_BY) * clash,
-                ),
-            )
-        incoming.setCutoffs(TransitionFilterProcessor.OPEN_HZ, entry)
-        outgoing.setCutoffs(blendExitLowPass(progress, clash), bassCutoff(handover))
+
+        val clashTop = automixGlide(AUTO_MIX_HANDOVER_ENTRY_HZ, AUTO_MIX_HANDOVER_CLASH_HZ, clash)
+        val relax = (1.0 - progress / AUTO_MIX_HANDOVER_OPEN_BY).coerceIn(0.0, 1.0)
+        val highEntry = automixGlide(AutoMixFilterProcessor.OFF_HZ.toDouble(), clashTop, relax)
+        val highFloor = automixGlide(AutoMixFilterProcessor.OFF_HZ.toDouble(), AUTO_MIX_BASS_HANDOVER_HZ, 1.0 - handover)
+        incoming.setCutoffs(
+            AutoMixFilterProcessor.OPEN_HZ.toDouble(),
+            maxOf(highEntry, highFloor),
+        )
+
+        val exitFrom = automixGlide(AUTO_MIX_EXIT_FROM_LATE, AUTO_MIX_EXIT_FROM_EARLY, clash)
+        val exitAmount = ((progress - exitFrom) / (1.0 - exitFrom)).coerceIn(0.0, 1.0)
+        val exitFloor = automixGlide(AUTO_MIX_EXIT_LOW_HZ, AUTO_MIX_EXIT_CLASH_LOW_HZ, clash)
+        outgoing.setCutoffs(
+            automixGlide(AutoMixFilterProcessor.OPEN_HZ.toDouble(), exitFloor, exitAmount),
+            automixGlide(AutoMixFilterProcessor.OFF_HZ.toDouble(), AUTO_MIX_BASS_HANDOVER_HZ, handover),
+        )
     }
 
-    private fun blendExitLowPass(
+    private fun rideClashSeparation(
+        plan: AutoMixPlan,
         progress: Float,
-        clash: Double,
-    ): Float {
-        val from = BLEND_EXIT_FROM + (BLEND_EXIT_CLASH_FROM - BLEND_EXIT_FROM) * clash
-        val amount = ((progress - from) / (1.0 - from)).coerceIn(0.0, 1.0)
-        val floor = glide(BLEND_EXIT_LOW_PASS_HZ, BLEND_EXIT_CLASH_LOW_PASS_HZ, clash)
-        return glide(TransitionFilterProcessor.OPEN_HZ.toDouble(), floor, amount).toFloat()
-    }
-
-    private fun bassCutoff(amount: Double): Float =
-        glide(TransitionFilterProcessor.OFF_HZ.toDouble(), BASS_SWAP_HZ, amount).toFloat()
-
-    private fun rideVocalSeparation(
-        plan: TransitionPlan,
-        progress: Float,
-        outgoing: TransitionFilterProcessor,
-        incoming: TransitionFilterProcessor,
+        outgoing: AutoMixFilterProcessor,
+        incoming: AutoMixFilterProcessor,
     ) {
         val amount = plan.vocalOverlap.coerceIn(0.0, 1.0)
         if (amount <= 0.0) {
@@ -3527,30 +3645,20 @@ class MusicService :
             incoming.open()
             return
         }
-        val open = TransitionFilterProcessor.OPEN_HZ.toDouble()
-        val floor = glide(open, VOCAL_SEPARATION_FLOOR_HZ, amount)
+        val open = AutoMixFilterProcessor.OPEN_HZ.toDouble()
+        val floor = automixGlide(open, AUTO_MIX_CLASH_FLOOR_HZ, amount)
         outgoing.setCutoffs(
-            glide(open, floor, progress.toDouble().pow(FILTER_SWEEP_SHAPE)).toFloat(),
-            TransitionFilterProcessor.OFF_HZ,
+            automixGlide(open, floor, progress.toDouble().pow(AUTO_MIX_SWEEP_SHAPE)),
+            AutoMixFilterProcessor.OFF_HZ.toDouble(),
         )
+        val relax = (1.0 - progress / AUTO_MIX_HANDOVER_OPEN_BY).coerceIn(0.0, 1.0)
         incoming.setCutoffs(
-            TransitionFilterProcessor.OPEN_HZ,
-            entryHighPass(progress, amount, VOCAL_SEPARATION_HIGH_PASS_HZ, ENTRY_OPEN_BY),
+            open,
+            automixGlide(AutoMixFilterProcessor.OFF_HZ.toDouble(), AUTO_MIX_CLASH_HIGH_HZ, amount * relax),
         )
     }
 
-    private fun entryHighPass(
-        progress: Float,
-        amount: Double,
-        topHz: Double,
-        openBy: Double,
-    ): Float {
-        val remaining = (1.0 - progress / openBy).coerceIn(0.0, 1.0)
-        return glide(TransitionFilterProcessor.OFF_HZ.toDouble(), topHz, amount * remaining.pow(ENTRY_SHAPE))
-            .toFloat()
-    }
-
-    private fun glide(
+    private fun automixGlide(
         from: Double,
         to: Double,
         amount: Double,
@@ -3630,7 +3738,6 @@ class MusicService :
     ): ExoPlayer? {
         val existingPlayer = secondaryCrossfadePlayer
         if (existingPlayer != null && secondaryCrossfadeTarget == target) {
-
             if (cueTimeMs > 0L && existingPlayer.currentPosition != cueTimeMs) {
                 runCatching { existingPlayer.seekTo(cueTimeMs) }
             }
@@ -3668,7 +3775,7 @@ class MusicService :
         val secondaryStereoPan = StereoPanAudioProcessor()
         applyStereoPanSettingsTo(secondaryStereoPan, desiredEqSettings.value)
         secondaryStereoPanProcessor = secondaryStereoPan
-        val secondaryTransition = TransitionFilterProcessor()
+        val secondaryTransition = AutoMixFilterProcessor()
         secondaryTransitionFilter = secondaryTransition
 
         val secondaryFloatDsp = FloatDspProcessor()
@@ -3703,12 +3810,12 @@ class MusicService :
     private fun startCrossfade(
         target: CrossfadeTarget,
         durationMs: Long,
-        plan: TransitionPlan? = null,
+        plan: AutoMixPlan? = null,
     ) {
-        if (isCrossfading || (!crossfadeEnabled && !smartFadeEnabled)) return
+        if (isCrossfading || (!crossfadeEnabled && !autoMixEnabled)) return
 
         val smart = plan != null
-        val cueTimeMs = if (smart) (plan!!.incomingCueTime * 1000).roundToLong().coerceAtLeast(0L) else 0L
+        val cueTimeMs = if (smart) plan!!.incomingCueMs.coerceAtLeast(0L) else 0L
         val incomingPlayer = prepareSecondaryCrossfadePlayer(target, cueTimeMs) ?: return
 
         crossfadeConsecutiveFailures = 0
@@ -3729,7 +3836,7 @@ class MusicService :
                 localPlayer.pauseAtEndOfMediaItems = true
                 crossfadeUserPlaybackParameters = player.playbackParameters
                 if (smart) {
-                    SmartFadeRuntimeState.mixing.value = isRealMix(plan)
+                    AutoMixUiState.mixing.value = hasMixChoreography(plan)
                 }
 
                 Timber.tag(TAG).d(
@@ -3744,7 +3851,6 @@ class MusicService :
                 var fadeMs = durationMs
 
                 try {
-
                     val outgoingLeftMs =
                         player.duration
                             .takeIf { it != C.TIME_UNSET && it > 0L }
@@ -3763,7 +3869,10 @@ class MusicService :
                     player.duration
                         .takeIf { it != C.TIME_UNSET && it > 0L }
                         ?.let { fullDuration ->
-                            val leftAfterWaitMs = fullDuration - player.currentPosition - CROSSFADE_END_GUARD_MS
+
+                            val leftAfterWaitMs =
+                                fullDuration - player.currentPosition -
+                                    if (smart) 0L else CROSSFADE_END_GUARD_MS
                             if (leftAfterWaitMs < fadeMs) {
                                 fadeMs = leftAfterWaitMs.coerceAtLeast(MIN_CROSSFADE_DURATION_MS)
                                 Timber.tag(TAG).d(
@@ -3775,7 +3884,6 @@ class MusicService :
                         }
 
                     if (smart) {
-
                         val userSpeed = player.playbackParameters.speed
                         incomingPlayer.playbackParameters =
                             player.playbackParameters.withSpeed(
@@ -3800,6 +3908,13 @@ class MusicService :
 
                     var elapsedMs = 0L
                     var lastTickMs = android.os.SystemClock.elapsedRealtime()
+
+                    val blendStartOutgoingPositionMs =
+                        if (smart) {
+                            player.currentPosition
+                        } else {
+                            0L
+                        }
                     while (isActive && elapsedMs < fadeMs) {
                         if (player.currentMediaItem?.mediaId != outgoingMediaId) {
                             cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
@@ -3837,9 +3952,8 @@ class MusicService :
                         if (crossfadePlaybackRequested) {
                             incomingPlayer.playWhenReady = true
                             if (smart) {
-
                                 elapsedMs =
-                                    (incomingPlayer.currentPosition - cueTimeMs)
+                                    (player.currentPosition - blendStartOutgoingPositionMs)
                                         .coerceIn(0L, fadeMs)
                             } else {
                                 elapsedMs = (elapsedMs + (nowMs - lastTickMs)).coerceAtMost(fadeMs)
@@ -3853,7 +3967,7 @@ class MusicService :
                                 incomingPlayer,
                             )
                             if (smart) {
-                                rideSmartFadeFilters(plan!!, crossfadeProgress)
+                                rideAutoMixFilters(plan!!, crossfadeProgress)
                             }
                         } else {
                             incomingPlayer.pause()
@@ -3862,11 +3976,43 @@ class MusicService :
                         delay(CROSSFADE_FRAME_MS)
                     }
 
+                    if (smart) {
+
+                        val tailDeadlineMs =
+                            android.os.SystemClock.elapsedRealtime() + AUTO_MIX_TAIL_WAIT_MS
+                        while (isActive && player.currentMediaItem?.mediaId == outgoingMediaId) {
+                            val outgoingDuration = player.duration
+                            if (outgoingDuration == C.TIME_UNSET || outgoingDuration <= 0L) break
+                            if (player.playbackState == Player.STATE_ENDED) break
+                            if (player.currentPosition >= outgoingDuration - AUTO_MIX_TAIL_EPSILON_MS) break
+                            if (!player.playWhenReady &&
+                                player.playbackState == Player.STATE_READY &&
+                                player.currentPosition >= outgoingDuration - 250L
+                            ) {
+                                break
+                            }
+                            if (android.os.SystemClock.elapsedRealtime() >= tailDeadlineMs) {
+                                Timber.tag(TAG).d(
+                                    "crossfade[%d] outgoing end wait timed out; promoting",
+                                    generation,
+                                )
+                                break
+                            }
+                            applyCrossfadeVolumes(
+                                1f,
+                                crossfadeBaseVolume,
+                                crossfadeIncomingBaseVolume,
+                                localPlayer,
+                                incomingPlayer,
+                            )
+                            delay(CROSSFADE_FRAME_MS)
+                        }
+                    }
+
                     finishCrossfade(target, incomingPlayer, generation)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Throwable) {
-
                     runCatching {
                         if (error is Exception) {
                             Timber.tag(TAG).w(error, "Crossfade failed")
@@ -3987,8 +4133,8 @@ class MusicService :
             runCatching { incomingPlayer.playbackParameters = params }
         }
         crossfadeUserPlaybackParameters = null
-        SmartFadeRuntimeState.mixing.value = false
-        SmartFadeRuntimeState.transitionWindow.value = null
+        AutoMixUiState.mixing.value = false
+        AutoMixUiState.transitionWindow.value = null
 
         isCrossfading = false
         crossfadeHandoffInProgress = false
@@ -4174,8 +4320,8 @@ class MusicService :
 
         primaryTransitionFilter.open()
         crossfadeUserPlaybackParameters = null
-        SmartFadeRuntimeState.mixing.value = false
-        SmartFadeRuntimeState.transitionWindow.value = null
+        AutoMixUiState.mixing.value = false
+        AutoMixUiState.transitionWindow.value = null
         if (resetVolume && ::player.isInitialized) {
             applyEffectiveVolumeImmediately()
         }
@@ -6774,7 +6920,6 @@ class MusicService :
                 reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM &&
                 localPlayer.pauseAtEndOfMediaItems
         if (isCrossfading || crossfadeHandoffInProgress) {
-
             if (!isEndOfOutgoingItemPause) {
                 crossfadePlaybackRequested = playWhenReady
             }
@@ -7182,13 +7327,6 @@ class MusicService :
             }
         }
 
-        // Local (MediaStore) playback: the stored content URI no longer resolves -
-        // MediaStore row ids are unstable across re-scans, storage remounts and
-        // backup restores, so ExoPlayer fails with "No item at content://..."
-        // wrapped as a Source error. Re-resolve the song against the CURRENT
-        // MediaStore and swap in the healed URI while keeping the song's
-        // mediaId (and therefore every DB row, playlist entry and play count)
-        // untouched, then resume exactly where playback stopped.
         if (isLocalMedia && isLocalSourceNotFoundError(error)) {
             val resumeIndex = player.currentMediaItemIndex
             val resumePosition = player.currentPosition.coerceAtLeast(0L)
@@ -7350,6 +7488,13 @@ class MusicService :
             val resumePosition = player.currentPosition.coerceAtLeast(0L)
             val mediaItemIndex = player.currentMediaItemIndex
 
+            val nowElapsed = android.os.SystemClock.elapsedRealtime()
+
+            if (nowElapsed - lastExclusiveWriteFailureElapsedMs > exclusiveFailureFreshWindowMs) {
+                exclusiveWriteRecoveryAttemptCount = 0
+            }
+            lastExclusiveWriteFailureElapsedMs = nowElapsed
+
             if (currentMediaId != exclusiveWriteRecoveryMediaId) {
                 exclusiveWriteRecoveryMediaId = currentMediaId
                 exclusiveWriteRecoveryAttemptCount = 0
@@ -7392,10 +7537,29 @@ class MusicService :
                 return
             } else {
                 Timber.tag("MusicService").w(
-                    "Exclusive-route recovery budget exhausted for %s after %d attempts; giving up",
+                    "Exclusive-route recovery budget exhausted for %s after %d attempts; " +
+                        "falling back to the standard audio route for this session",
                     currentMediaId,
                     attemptNumber - 1,
                 )
+
+                exclusiveRouteSessionFallback = true
+                scope.launch(Dispatchers.Main) {
+                    try {
+                        runCatching { lastwaveExclusiveUsb.setWanted(false) }
+                        refreshUsbExclusiveRoute()
+                        repreparePlayerForAudioRouteChange()
+                    } catch (recoveryThrowable: Throwable) {
+                        Timber.tag("MusicService").e(
+                            recoveryThrowable,
+                            "Exclusive-route session fallback failed for %s; falling back to stop-on-error",
+                            currentMediaId,
+                        )
+                        stopOnError()
+                    }
+                }
+
+                return
             }
         }
 
@@ -7485,19 +7649,11 @@ class MusicService :
 
     private fun isLocalSourceNotFoundError(error: PlaybackException): Boolean {
         if (error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND) return true
-        // Some provider failures surface as an unspecified IO error whose cause
-        // chain still carries the FileNotFoundException ("No item at ...") -
-        // match on the cause chain so those heal too.
+
         return generateSequence<Throwable>(error) { it.cause }.take(6)
             .any { it is java.io.FileNotFoundException }
     }
 
-    /**
-     * Recovers a local song whose MediaStore URI went stale. Returns true when
-     * recovery was attempted (success or definitive failure); the caller must
-     * then skip the generic on-error handling because this function owns the
-     * outcome (it resumes playback itself, or performs the skip/stop fallback).
-     */
     private fun healLocalMediaSource(
         mediaId: String,
         resumeIndex: Int,
@@ -8573,7 +8729,6 @@ class MusicService :
         query: SourceQuery,
         trusted: Boolean = false,
     ): DirectStream? {
-
         if (AppleMusicAudioProvider.mediaUserToken() == null) {
             Timber
                 .tag("MusicService")
@@ -8691,7 +8846,6 @@ class MusicService :
 
         val directTrackId = query.directTidalTrackId?.takeIf { it.isNotBlank() }
         if (directTrackId != null) {
-
             TidalAudioProvider.invalidate(query.mediaId)
             val apiQuality =
                 when (quality) {
@@ -8800,7 +8954,6 @@ class MusicService :
                                 TidalAccountManager.isUnauthorized(it) ->
                                     PoolAccountManager.report("tidal", "account", poolAccount.id, "dead")
                                 it is TidalAccountManager.TidalPreviewException -> {
-
                                     Timber.tag("MusicService").w(
                                         "Tidal pool account %s cannot stream FULL assets; cooling down",
                                         poolAccount.id,
@@ -8835,7 +8988,6 @@ class MusicService :
             mergedInstances.size,
         )
         if (mergedInstances.isEmpty()) {
-
             runCatching {
                 ioScope.launch {
                     TidalInstanceHealthManager.refresh(
@@ -9351,13 +9503,7 @@ class MusicService :
                 includePlayerCache = allowPlayerCacheShortCircuit,
             )?.let { cachedHit ->
                 scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                // Cached playback (replays, preloaded songs, restored queue,
-                // offline downloads) previously returned WITHOUT publishing any
-                // stream info, so the track-info sheet showed "Worked provider /
-                // Stream delivery / Protocol: Unknown" for every song that was
-                // not freshly resolved - i.e. most normal listening. The cache
-                // key encodes which source produced the cached bytes, so the
-                // info is derivable right here.
+
                 publishCurrentStreamInfo(
                     mediaId,
                     cachedPlaybackStreamInfo(
@@ -9637,8 +9783,7 @@ class MusicService :
                 )
             }?.let { cached ->
                 scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                // The extractor path previously published nothing, leaving the
-                // track-info playback rows "Unknown" even on a fresh play.
+
                 publishCurrentStreamInfo(
                     mediaId,
                     CurrentStreamInfo(
@@ -9817,20 +9962,11 @@ class MusicService :
         )
     }
 
-    /** Which cache key satisfied a short-circuit hit (also carries the source). */
     private data class CachedDataSpecHit(
         val dataSpec: DataSpec,
         val cacheKey: String,
     )
 
-    /**
-     * Reconstructs the "worked provider / stream delivery / protocol" info for
-     * a playback served from cache. The cache key prefix identifies the source
-     * (tidal: / qobuz: / qobuz_backup: / deezer: / apple: / jiosaavn: / ytm: /
-     * bare mediaId = YouTube), and the in-memory direct-stream cache for the
-     * same key - when still alive - carries the full provider label, wire
-     * protocol, sample rate and bit depth.
-     */
     private fun cachedPlaybackStreamInfo(
         mediaId: String,
         cacheKey: String,
@@ -10176,18 +10312,24 @@ class MusicService :
     }
 
     private fun refreshUsbExclusiveRoute() {
-        val effective = usbExclusiveRequested && isUsbSinkCurrentlyActive()
+        val effective =
+            usbExclusiveRequested && isUsbSinkCurrentlyActive() && !exclusiveRouteSessionFallback
         if (effective != usbExclusiveAudioEnabled) {
             usbExclusiveAudioEnabled = effective
             Timber.tag(TAG).i(
-                "USB-exclusive output %s (requested=%s usbSinkAttached=%s)",
+                "USB-exclusive output %s (requested=%s usbSinkAttached=%s sessionFallback=%s)",
                 if (effective) "ENGAGED" else "disengaged",
                 usbExclusiveRequested,
                 isUsbSinkCurrentlyActive(),
+                exclusiveRouteSessionFallback,
             )
         }
         usbSinkActiveNow = usbExclusiveAudioEnabled
-        EngineRuntime.usbExclusiveActive = usbSinkActiveNow
+        EngineRuntime.publishUsbExclusive(usbSinkActiveNow)
+
+        runCatching {
+            lastwaveExclusiveUsb.setStrictSourceRateMode(BitPerfectRuntime.requested)
+        }
 
         runCatching {
             if (usbSinkActiveNow) {
@@ -10201,29 +10343,16 @@ class MusicService :
                 }
             } else if (BitPerfectRuntime.status.usbExclusiveActive) {
 
-                // Disengaging the USB-exclusive route must clear the latched wire
-                // format immediately, otherwise the pill keeps claiming Bit-Perfect
-                // over the speaker route until the next track re-evaluates.
                 BitPerfectRuntime.notifyUsbExclusive(false, 0, 0)
             }
         }
 
-        // Mixer-attribute bit-perfect (Android 14+) is handled centrally by
-        // refreshMixerBitPerfectRoute(): it covers the engines AND plain
-        // bit-perfect output, for USB DACs as well as any other output that
-        // advertises BIT_PERFECT mixer modes.
         refreshMixerBitPerfectRoute()
+
+        applyNativeRateOverride()
         applyFloatDspEngagement()
     }
 
-    // Attempts the platform's BIT_PERFECT mixer-attribute bypass (Android 14+)
-    // for the CURRENT routed output device whenever bit-perfect output (or an
-    // engine with its bit-perfect option) is active without the USB-exclusive
-    // transport. This is the mixer-level bit-perfect path the ported engines
-    // shipped with: when the DAC advertises a BIT_PERFECT mixer mode whose rate
-    // matches the source and whose depth can carry the source bits, the shared
-    // mixer stops converting the stream. Works for USB, wired and any other
-    // output that advertises bit-perfect mixer modes.
     private fun refreshMixerBitPerfectRoute() {
         if (Build.VERSION.SDK_INT < 34) return
         val requested =
@@ -10231,7 +10360,7 @@ class MusicService :
                 !usbSinkActiveNow
         if (!requested) {
             mixerBitPerfectOutput.setEnabled(false)
-            EngineRuntime.lastwaveMixerBitPerfectActive = false
+            EngineRuntime.publishLastwaveMixerBitPerfect(false)
             if (BitPerfectRuntime.status.mixerBitPerfectActive) {
                 BitPerfectRuntime.notifyMixerBitPerfect(active = false, outputRateHz = 0)
             }
@@ -10255,7 +10384,7 @@ class MusicService :
             )
             mixerBitPerfectOutput.setEnabled(true)
             val verified = mixerBitPerfectOutput.isConfigured()
-            EngineRuntime.lastwaveMixerBitPerfectActive = verified && lastwaveAudioProcessing
+            EngineRuntime.publishLastwaveMixerBitPerfect(verified && lastwaveAudioProcessing)
             if (verified) {
                 val wireRate = mixerBitPerfectOutput.configuredRateHz()
                 val wireBits = mixerBitPerfectOutput.configuredBits()
@@ -10306,17 +10435,11 @@ class MusicService :
                     (format.sampleRate ?: 0) >= 88_200
                 )
 
-        // The engine router declares float output whenever the USB-exclusive
-        // transport is live, bit-perfect output is requested, OR a ported engine
-        // (Tryptify/LastWave) is engaged: engines running on the 16-bit sink had
-        // their float output truncated through floatToPcm16, silently collapsing
-        // 24-bit sources to 16-bit and dulling the sound. With an engine active
-        // the stream rides the bit-perfect float sink at the source rate/depth
-        // instead of the 16-bit mixer truncation.
         val floatRouteToSink =
             usbSinkActiveNow || BitPerfectRuntime.requested ||
                 tryptifyAudioProcessing || lastwaveAudioProcessing
         primaryEngineRouter.outputFloat = floatRouteToSink
+        EngineRuntime.publishOutputFloat(floatRouteToSink)
         primaryFloatDspProcessor.outputFloat = floatRouteToSink
         primaryFloatDspProcessor.setEngaged(engaged)
         secondaryFloatDspProcessor?.let {
@@ -10412,6 +10535,101 @@ class MusicService :
         }
     }
 
+    private fun seedAudioRoutePreferences() {
+        val prefs =
+            runCatching {
+                kotlinx.coroutines.runBlocking {
+                    kotlinx.coroutines.withTimeout(2_000L) {
+                        dataStore.data.first()
+                    }
+                }
+            }.getOrNull() ?: return
+        val bitPerfect = prefs[BitPerfectOutputKey] ?: BIT_PERFECT_OUTPUT_DEFAULT
+        BitPerfectRuntime.requested = bitPerfect
+        BitPerfectRuntime.nativeSampleRatePreferred = prefs[BitPerfectNativeRateKey] ?: BIT_PERFECT_NATIVE_RATE_DEFAULT
+        val tryptify = prefs[TryptifyAudioProcessingKey] ?: false
+        val lastwave = (prefs[LastwaveAudioProcessingKey] ?: false) && !tryptify
+        tryptifyAudioProcessing = tryptify
+        lastwaveAudioProcessing = lastwave
+        floatDspEnabled = prefs[FloatDspEnabledKey] ?: false
+        val crossfade = prefs[CrossfadeEnabledKey] ?: false
+        val automix = prefs[AutomixEnabledKey] ?: false
+        val offload = prefs[AudioOffload] ?: false
+        usbExclusiveRequested =
+            (prefs[UsbExclusiveAudioKey] ?: false) && !crossfade && !automix && !offload
+        audioOffloadPrefEnabled = offload
+        EngineRuntime.publishWantedEngine(
+            when {
+                tryptify -> AudioEngineRouterProcessor.Engine.TRYPTIFY
+                lastwave -> AudioEngineRouterProcessor.Engine.LASTWAVE
+                else -> AudioEngineRouterProcessor.Engine.NONE
+            },
+        )
+        EngineRuntime.publishEngineAvailability(
+            AudioEngineRouterProcessor.tryptifyNativeAvailable(),
+            lastwaveProcessor.isAvailable,
+        )
+        Timber.tag(TAG).i(
+            "Seeded audio route prefs: bitPerfect=%s nativeRate=%s tryptify=%s lastwave=%s",
+            bitPerfect,
+            BitPerfectRuntime.nativeSampleRatePreferred,
+            tryptify,
+            lastwave,
+        )
+    }
+
+    private fun applyNativeRateOverride() {
+        val wireRateHz =
+            if (usbSinkActiveNow && lastwaveAudioProcessing && !BitPerfectRuntime.requested) {
+
+                lastwaveExclusiveUsb.currentRateHz().takeIf { it > 0 }
+            } else {
+                null
+            }
+        val override =
+            wireRateHz
+                ?: if (BitPerfectRuntime.nativeSampleRatePreferred || BitPerfectRuntime.requested || usbSinkActiveNow) {
+                    null
+                } else {
+                    deviceNativeOutputRateHz()
+                }
+        lastwaveProcessor.setOutputSampleRateOverride(override)
+
+        if (override != lastAppliedLastwaveRateOverrideHz) {
+            lastAppliedLastwaveRateOverrideHz = override
+            val engineCurrentOutRate = lastwaveProcessor.nativeOutputSampleRate
+            if (override != null &&
+                lastwaveAudioProcessing &&
+                engineCurrentOutRate > 0 &&
+                engineCurrentOutRate != override &&
+                bitPerfectNeedsRouteReprepare()
+            ) {
+                Timber.tag(TAG).w(
+                    "LastWave engine output realigned %dHz -> %dHz (%s); re-configuring the audio chain",
+                    engineCurrentOutRate,
+                    override,
+                    if (wireRateHz != null) "USB wire clock" else "device native rate",
+                )
+                scope.launch(Dispatchers.Main) {
+                    runCatching { repreparePlayerForAudioRouteChange() }
+                }
+            }
+        }
+    }
+
+    @Volatile
+    private var lastAppliedLastwaveRateOverrideHz: Int? = null
+
+    @Volatile
+    private var lastUsbExclusivePrefValue: Boolean? = null
+
+    private fun deviceNativeOutputRateHz(): Int? =
+        runCatching {
+            audioManager.getProperty(android.media.AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)
+                ?.toIntOrNull()
+                ?.takeIf { it in 8_000..384_000 }
+        }.getOrNull()
+
     private fun pipelineAnalyticsListener(): AnalyticsListener = object : AnalyticsListener {
         override fun onAudioInputFormatChanged(
             eventTime: AnalyticsListener.EventTime,
@@ -10472,11 +10690,6 @@ class MusicService :
         maybeSyncFormatEntityWithDecodedStream()
     }
 
-    // Providers sometimes label a stream with the master's sample rate while the
-    // actually served file decodes at another rate (48 kHz transcodes are the
-    // common case). Reconcile the stored FormatEntity with the live decoder
-    // format so the details page, the format pills and the live audio chain
-    // readout all agree on the REAL wire format instead of mixing claims.
     private fun maybeSyncFormatEntityWithDecodedStream() {
         val entity = currentFormatEntity ?: return
         val decodedRate = BitPerfectRuntime.status.sourceSampleRate.takeIf { it > 0 } ?: return
@@ -10488,9 +10701,7 @@ class MusicService :
                 true
             }.getOrDefault(false)
             if (written) {
-                // Mark synced only after a successful write so a failed update
-                // retries on the next format emission instead of being dropped
-                // for the rest of the session.
+
                 formatSampleRateSynced[entity.id] = decodedRate
                 Timber.tag(TAG).i(
                     "Format entity synced with decoded stream: %dHz (was %s)",
@@ -10501,12 +10712,6 @@ class MusicService :
         }
     }
 
-    // ReplayGain tags are parsed during library scans, so songs scanned before
-    // the parser shipped - or whose tags were unavailable at scan time - carry
-    // no RG data and normalization silently falls back to unity for them.
-    // Parse lazily at playback time and persist the tags so the factor applies
-    // from this play on (the currentFormat flow re-emits after the upsert and
-    // the normalization combine recomputes).
     private fun maybeParseMissingReplayGain(format: FormatEntity?) {
         if (format == null) return
         if (!format.id.isLocalMediaId()) return
@@ -10545,13 +10750,13 @@ class MusicService :
             if (tryptifyAudioProcessing && tryptifyUsbPinEnabled) {
                 tryptifyUsbRouter.usbOutputDevice.value?.let { device ->
                     localPlayer.setPreferredAudioDevice(device)
-                    EngineRuntime.tryptifyUsbPinActive = true
+                    EngineRuntime.publishTryptifyUsbPin(true)
                     Timber.tag(TAG).i("Tryptify USB pin engaged: ${tryptifyUsbRouter.describe(device)}")
                     return@runCatching
                 }
             }
             localPlayer.setPreferredAudioDevice(null)
-            EngineRuntime.tryptifyUsbPinActive = false
+            EngineRuntime.publishTryptifyUsbPin(false)
         }
     }
 
@@ -10579,7 +10784,7 @@ class MusicService :
 
     private fun createRenderersFactory(
         stereoPanProcessor: StereoPanAudioProcessor,
-        transitionFilter: TransitionFilterProcessor,
+        transitionFilter: AutoMixFilterProcessor,
         floatDspProcessor: FloatDspProcessor,
         primary: Boolean = true,
     ) =
@@ -10644,7 +10849,6 @@ class MusicService :
                                     transitionFilter,
                                 ),
                                 tailProcessor = if (floatDspProcessor === primaryFloatDspProcessor) {
-
                                     primaryEngineRouter
                                 } else {
                                     floatDspProcessor
@@ -10669,14 +10873,6 @@ class MusicService :
                             ),
                         ).build()
 
-                // The bit-perfect sink keeps float output enabled so the source
-                // bit depth survives the whole chain. On the primary player it
-                // carries the SAME engine router as the DSP sink: engines that
-                // run while bit-perfect output is requested now process in
-                // float at the source rate instead of being truncated to the
-                // 16-bit shared-mixer path. The shared processor instances are
-                // safe here because BitPerfectSwitchingAudioSink only ever
-                // configures one of the two sinks at a time.
                 val bitPerfectSink =
                     DefaultAudioSink
                         .Builder(context)
@@ -10715,12 +10911,6 @@ class MusicService :
                     routeActive = {
                         if (primary) {
 
-                            // Engines ride the float sink too - with bit-perfect
-                            // output requested OR a ported engine engaged their
-                            // output is declared float at the source rate instead
-                            // of the 16-bit mixer truncation, so the source bit
-                            // depth is never scaled down (24-bit -> 16-bit) no
-                            // matter which combination is enabled.
                             BitPerfectRuntime.requested ||
                                 tryptifyAudioProcessing ||
                                 lastwaveAudioProcessing
@@ -11215,8 +11405,8 @@ class MusicService :
             DiscordPresenceManager.stop()
         } catch (_: Exception) {
         }
-        runCatching { smartFadeAnalyzer?.release() }
-        smartFadeAnalyzer = null
+        runCatching { autoMixAnalyzer?.close() }
+        autoMixAnalyzer = null
         scopeJob.cancel()
     }
 
@@ -11461,9 +11651,12 @@ class MusicService :
         const val CROSSFADE_MAX_BUFFER_MS = 45_000
         const val CROSSFADE_FRAME_MS = 32L
 
-        const val SMART_FADE_POLL_MS = 1_000L
+        const val AUTO_MIX_POLL_MS = 1_000L
+        const val AUTO_MIX_RESOLVE_TIMEOUT_MS = 45_000L
+        const val DEFAULT_AUTO_MIX_FALLBACK_MS = 6_000L
 
-        const val SMART_FADE_RESOLVE_TIMEOUT_MS = 45_000L
+        const val AUTO_MIX_TAIL_WAIT_MS = 2_000L
+        const val AUTO_MIX_TAIL_EPSILON_MS = 8L
 
         val USB_SINK_DEVICE_TYPES =
             intArrayOf(
@@ -11473,25 +11666,21 @@ class MusicService :
             )
 
         const val HIGH_QUALITY_BITRATE = 320_000
-        const val DEFAULT_SMART_FALLBACK_MS = 6_000L
-        const val FILTER_ENTRY_HZ = 7_000.0
-        const val FILTER_FLOOR_HZ = 300.0
-        const val FILTER_SWEEP_SHAPE = 0.75
-        const val ENTRY_HIGH_PASS_HZ = 1_200.0
-        const val ENTRY_OPEN_BY = 0.6
-        const val ENTRY_SHAPE = 0.35
-        const val BASS_SWAP_HZ = 200.0
-        const val BASS_SWAP_WIDTH = 0.10
-        const val VOCAL_SEPARATION_FLOOR_HZ = 1_600.0
-        const val VOCAL_SEPARATION_HIGH_PASS_HZ = 700.0
-        const val BLEND_ENTRY_HIGH_PASS_HZ = 520.0
-        const val BLEND_ENTRY_CLASH_HIGH_PASS_HZ = 950.0
-        const val BLEND_ENTRY_OPEN_BY = 0.45
-        const val BLEND_ENTRY_CLASH_OPEN_BY = 0.7
-        const val BLEND_EXIT_FROM = 0.3
-        const val BLEND_EXIT_CLASH_FROM = 0.12
-        const val BLEND_EXIT_LOW_PASS_HZ = 2_200.0
-        const val BLEND_EXIT_CLASH_LOW_PASS_HZ = 1_100.0
+
+        const val AUTO_MIX_SWEEP_SHAPE = 0.75
+        const val AUTO_MIX_SWEEP_ENTRY_HIGH_HZ = 7_000.0
+        const val AUTO_MIX_SWEEP_FLOOR_HZ = 300.0
+        const val AUTO_MIX_ENTRY_OPEN_BY = 0.6
+        const val AUTO_MIX_HANDOVER_ENTRY_HZ = 520.0
+        const val AUTO_MIX_HANDOVER_CLASH_HZ = 950.0
+        const val AUTO_MIX_HANDOVER_OPEN_BY = 0.45
+        const val AUTO_MIX_BASS_HANDOVER_HZ = 200.0
+        const val AUTO_MIX_EXIT_FROM_LATE = 0.30
+        const val AUTO_MIX_EXIT_FROM_EARLY = 0.12
+        const val AUTO_MIX_EXIT_LOW_HZ = 2_200.0
+        const val AUTO_MIX_EXIT_CLASH_LOW_HZ = 1_100.0
+        const val AUTO_MIX_CLASH_FLOOR_HZ = 1_600.0
+        const val AUTO_MIX_CLASH_HIGH_HZ = 700.0
         const val MIN_AUDIBLE_EFFECTIVE_VOLUME = 0.01f
         const val STUCK_MUTED_VOLUME_EPSILON = 0.001f
 

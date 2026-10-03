@@ -81,6 +81,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,6 +98,16 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.invalidateDraw
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.unit.toIntSize
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Outline
@@ -112,6 +123,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextLayoutResult
@@ -120,7 +132,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player.STATE_ENDED
@@ -135,6 +146,7 @@ import coil3.size.Size as CoilSize
 import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerConnection
@@ -204,7 +216,70 @@ private const val AmCanvasBackdropUpscale = 6f
 
 private val AmCanvasBackdropBlurRadius = 72.dp
 
+private fun Modifier.canvasSnapshotSource(
+    graphicsLayer: GraphicsLayer,
+    minIntervalMillis: Long,
+): Modifier = this then CanvasSnapshotSourceElement(graphicsLayer, minIntervalMillis)
+
+private class CanvasSnapshotSourceElement(
+    val graphicsLayer: GraphicsLayer,
+    val minIntervalMillis: Long,
+) : ModifierNodeElement<CanvasSnapshotSourceNode>() {
+    override fun create() = CanvasSnapshotSourceNode(graphicsLayer, minIntervalMillis)
+
+    override fun update(node: CanvasSnapshotSourceNode) {
+        if (node.graphicsLayer !== graphicsLayer || node.minIntervalMillis != minIntervalMillis) {
+            node.graphicsLayer = graphicsLayer
+            node.minIntervalMillis = minIntervalMillis
+            node.lastRecordUptimeMillis = 0L
+        }
+        node.invalidateDraw()
+    }
+
+    override fun equals(other: Any?): Boolean =
+        other is CanvasSnapshotSourceElement &&
+            other.graphicsLayer === graphicsLayer &&
+            other.minIntervalMillis == minIntervalMillis
+
+    override fun hashCode(): Int =
+        graphicsLayer.hashCode() * 31 + minIntervalMillis.hashCode()
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "canvasSnapshotSource"
+        properties["minIntervalMillis"] = minIntervalMillis
+    }
+}
+
+private class CanvasSnapshotSourceNode(
+    var graphicsLayer: GraphicsLayer,
+    var minIntervalMillis: Long,
+) : DrawModifierNode, Modifier.Node() {
+    var lastRecordUptimeMillis = 0L
+
+    var isRecording = false
+
+    override fun ContentDrawScope.draw() {
+        val now = SystemClock.uptimeMillis()
+        if (!isRecording && now - lastRecordUptimeMillis >= minIntervalMillis) {
+            lastRecordUptimeMillis = now
+            isRecording = true
+            try {
+                runCatching {
+                    graphicsLayer.record(size.toIntSize()) {
+                        this@draw.drawContent()
+                    }
+                }
+            } finally {
+                isRecording = false
+            }
+        }
+
+    }
+}
+
 private const val AmCanvasBackdropMaxVideoEdgePx = 256
+
+private const val AmCanvasSnapshotIntervalMs = 50L
 
 private const val AppleMusicLyricsContentDeferMs = 160L
 
@@ -339,7 +414,6 @@ fun AppleMusicPlayerContent(
     val playerExpanded = state.isExpanded
 
     LaunchedEffect(lyricsOpen, queueOpen, controlsRevealToken, autoHideLyricsPlayerControls, showLyricsPlayerControls, playerExpanded) {
-
         if (landscape && lyricsOpen && controlsRevealToken == 0) {
             playerControlsExpanded = false
             return@LaunchedEffect
@@ -400,14 +474,6 @@ fun AppleMusicPlayerContent(
         onDispose { onLyricsVisibilityChange(false) }
     }
 
-    // The player's internal lyrics/queue state must collapse with the sheet:
-    // keepContentAlive keeps this composable alive after minimize, and a stale
-    // lyricsOpen=true survived the minimize (only the Player-level proxy flag
-    // reset). That left the AM lyrics view resurrected on the next expand and
-    // kept lyrics-visibility reporting level-dependent on this flag - which is
-    // what gated the NavHost glass recorder off after a lyrics session.
-    // Edge-triggered (true -> false) so the landscape default-open lyrics are
-    // not wiped on initial composition while the sheet is still animating.
     var wasPlayerExpandedForMorph by remember { mutableStateOf(false) }
     LaunchedEffect(playerExpanded) {
         if (wasPlayerExpandedForMorph && !playerExpanded) {
@@ -551,7 +617,6 @@ fun AppleMusicPlayerContent(
 
     val popupBackdrop: com.kyant.backdrop.Backdrop? =
         if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-
             rememberThrottledBackdrop(Color.Transparent)
         } else {
             null
@@ -581,7 +646,6 @@ fun AppleMusicPlayerContent(
 
     val castAction = rememberCastPlayerMenuAction()
     val onOutputClick: () -> Unit = castAction?.onClick ?: {
-
         SystemMediaControlResolver.openMediaOutputSwitcher(context)
     }
 
@@ -591,7 +655,8 @@ fun AppleMusicPlayerContent(
                 Modifier
                     .matchParentSize()
                     .let { base ->
-                        if (popupBackdrop != null) {
+
+                        if (popupBackdrop != null && showAnchoredLyricsMenu) {
                             base.glassSource(popupBackdrop)
                         } else {
                             base
@@ -635,17 +700,8 @@ fun AppleMusicPlayerContent(
         val canvasActive =
             !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
 
-        // Canvas is the visible MAIN visual (full-bleed leader video in
-        // landscape, blurred twin backdrop in portrait).
         val canvasVisualActive = canvasActive && !videoShowing && !isPreS
 
-        // The blurred canvas TWIN never runs in landscape. Behind the landscape
-        // controls it produced an extremely abrupt moving blur - canvas videos
-        // cut hard between scenes and the loop-sync follower fires visible
-        // seekTo corrections - while the full-bleed canvas already IS the main
-        // visual on the other half of the screen. The landscape backdrop is the
-        // STATIC thumbnail blur (the drifting 64dp-blurred artwork that already
-        // sits underneath), which is exactly what the design calls for.
         val useCanvasBackdrop = canvasVisualActive && !landscape
 
         val canvasBackdropReveal =
@@ -656,18 +712,66 @@ fun AppleMusicPlayerContent(
                 animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
             )
         }
+
+        val twinSnapshotLayer = rememberGraphicsLayer()
+        var blurredTwinBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+        var twinBakeFailures by remember { mutableStateOf(0) }
+        val twinBackdropHealthy = twinBakeFailures < 5
+        val twinSnapshotBlurRadiusPx =
+            with(LocalDensity.current) { (AmCanvasBackdropBlurRadius / AmCanvasBackdropUpscale).toPx() }
+
+        LaunchedEffect(useCanvasBackdrop, canvasPrimaryUrl, canvasFallbackUrl) {
+            blurredTwinBitmap = null
+            twinBakeFailures = 0
+            if (!useCanvasBackdrop) return@LaunchedEffect
+            while (isActive) {
+
+                if (twinBakeFailures >= 5) {
+                    blurredTwinBitmap = null
+                    delay(AmCanvasSnapshotIntervalMs)
+                    continue
+                }
+                val layer = twinSnapshotLayer
+                if (layer.size.width >= 8 && layer.size.height >= 8) {
+
+                    withFrameNanos { }
+                    val snapshot =
+                        runCatching {
+                            layer.toImageBitmap().asAndroidBitmap()
+                        }.getOrNull()
+                    if (snapshot != null) {
+                        val baked =
+                            withContext(Dispatchers.Default) {
+                                runCatching {
+                                    ImageBlurUtils
+                                        .blur(snapshot, twinSnapshotBlurRadiusPx)
+                                        .asImageBitmap()
+                                }.getOrNull()
+                            }
+                        if (baked != null) {
+                            twinBakeFailures = 0
+                            blurredTwinBitmap = baked
+                        } else {
+                            twinBakeFailures++
+                        }
+                    } else {
+                        twinBakeFailures++
+                    }
+                }
+                delay(AmCanvasSnapshotIntervalMs)
+            }
+        }
         val canvasScrimReveal by animateFloatAsState(
-            // Keyed on canvasVisualActive (not useCanvasBackdrop): the lighter
-            // canvas scrim must stay over the landscape full-bleed canvas video
-            // even though the twin backdrop itself is portrait-only.
+
             targetValue = if (canvasVisualActive) 1f else 0f,
             animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
             label = "am-canvas-scrim-reveal",
         )
         val context = LocalContext.current
         val imageLoader = context.imageLoader
+
         val preBlurredBitmap by produceState<Bitmap?>(null, artworkUrl) {
-            if (!isPreS || artworkUrl.isNullOrBlank() || videoShowing || useCanvasBackdrop) {
+            if (artworkUrl.isNullOrBlank() || videoShowing) {
                 value = null
                 return@produceState
             }
@@ -685,7 +789,14 @@ fun AppleMusicPlayerContent(
                         val bitmap = result.image.toBitmap()
                             .copy(Bitmap.Config.ARGB_8888, true)
                         val density = context.resources.displayMetrics.density
-                        ImageBlurUtils.blur(bitmap, 72f * density)
+
+                        val radiusPx =
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                AmBackdropBlurRadius.value * density
+                            } else {
+                                72f * density
+                            }
+                        ImageBlurUtils.blur(bitmap, radiusPx)
                     } else null
                 } catch (_: Exception) {
                     null
@@ -694,7 +805,6 @@ fun AppleMusicPlayerContent(
         }
 
         if (!videoShowing) {
-
             val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
 
             val wanderActive = lyricsBackdropActive || landscape
@@ -719,7 +829,6 @@ fun AppleMusicPlayerContent(
             val backdropFootprint =
                 remember(maxWidth, maxHeight, landscape) {
                     if (landscape) {
-
                         blurBackdropFootprintLandscape(
                             width = maxWidth,
                             height = maxHeight,
@@ -745,7 +854,8 @@ fun AppleMusicPlayerContent(
                         .clipToBounds(),
                 contentAlignment = Alignment.Center,
             ) {
-                if (isPreS && preBlurredBitmap != null) {
+                if (preBlurredBitmap != null) {
+
                     Image(
                         bitmap = preBlurredBitmap!!.asImageBitmap(),
                         contentDescription = null,
@@ -797,30 +907,40 @@ fun AppleMusicPlayerContent(
                             },
                     contentAlignment = Alignment.Center,
                 ) {
-                    CanvasArtworkPlayer(
-                        primaryUrl = canvasPrimaryUrl,
-                        fallbackUrl = canvasFallbackUrl,
-                        isPlaying = isPlaying && canvasVisibleForLyrics,
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                        visible = canvasVisibleForLyrics,
-                        maxVideoEdgePx = AmCanvasBackdropMaxVideoEdgePx,
-                        loopSyncFollower = canvasLoopSync,
-                        // Rotating the player recreates this twin WITHOUT the
-                        // surface detach cycle a minimise/maximise performs -
-                        // the fresh decoder then rendered a laggy blurred canvas
-                        // behind the bottom controls. The epoch forces the same
-                        // detach -> first-frame -> re-seek settle on every
-                        // orientation change.
-                        refreshEpoch = orientationRefreshEpoch,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth(1f / AmCanvasBackdropUpscale)
-                                .fillMaxHeight(1f / AmCanvasBackdropUpscale)
-                                .blur(AmCanvasBackdropBlurRadius / AmCanvasBackdropUpscale),
-                    )
+
+                    if (twinBackdropHealthy) {
+                        CanvasArtworkPlayer(
+                            primaryUrl = canvasPrimaryUrl,
+                            fallbackUrl = canvasFallbackUrl,
+                            isPlaying = isPlaying && canvasVisibleForLyrics,
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                            visible = canvasVisibleForLyrics,
+                            maxVideoEdgePx = AmCanvasBackdropMaxVideoEdgePx,
+                            loopSyncFollower = canvasLoopSync,
+
+                            refreshEpoch = orientationRefreshEpoch,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth(1f / AmCanvasBackdropUpscale)
+                                    .fillMaxHeight(1f / AmCanvasBackdropUpscale)
+                                    .canvasSnapshotSource(twinSnapshotLayer, AmCanvasSnapshotIntervalMs),
+                        )
+                    }
+                    blurredTwinBitmap?.let { baked ->
+                        Image(
+                            bitmap = baked,
+                            contentDescription = null,
+                            contentScale = ContentScale.FillBounds,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth(1f / AmCanvasBackdropUpscale)
+                                    .fillMaxHeight(1f / AmCanvasBackdropUpscale),
+                        )
+                    }
                 }
             }
-            val preBlurLoading = isPreS && preBlurredBitmap == null && !canvasActive
+
+            val preBlurLoading = preBlurredBitmap == null && !canvasActive
 
             val canvasScrimBrush =
                 remember {
@@ -870,23 +990,19 @@ fun AppleMusicPlayerContent(
         }
 
         if (landscape) {
-
             Row(
                 modifier =
                     Modifier
                         .fillMaxSize(),
             ) {
-
                 BoxWithConstraints(
                     modifier =
                         Modifier
                             .weight(1f)
                             .fillMaxHeight(),
                 ) {
-
                     val landscapeCanvasFullBleed = canvasActive && !videoShowing
                     if (landscapeCanvasFullBleed) {
-
                         Box(
                             modifier =
                                 Modifier
@@ -912,11 +1028,6 @@ fun AppleMusicPlayerContent(
                                 modifier = Modifier.fillMaxSize(),
                             )
 
-                            // The full-bleed canvas already carries the global
-                            // canvasScrimBrush gradient; a second content-wrapping
-                            // gradient here compressed a 0.35-0.6 black band into
-                            // exactly the song-name region and read as a black box
-                            // around the title.
                             Box(
                                 modifier =
                                     Modifier
@@ -932,15 +1043,12 @@ fun AppleMusicPlayerContent(
                                     onMoreClick = onMoreClick,
                                     onMorePositioned = { moreIconBounds = it },
                                     contentWidth = null,
-                                    // Full-bleed canvas: the song name stays hidden -
-                                    // only the favourite + overflow chips remain,
-                                    // tightly spaced, on the blurred backdrop.
+
                                     iconsOnly = true,
                                 )
                             }
                         }
                     } else {
-
                     val landscapeArtworkSize =
                         (maxWidth - 96.dp)
                             .coerceAtMost(maxHeight * 0.68f)
@@ -1001,7 +1109,6 @@ fun AppleMusicPlayerContent(
                             .weight(1f)
                             .fillMaxHeight(),
                 ) {
-
                     androidx.compose.animation.AnimatedVisibility(
                         visible = lyricsOpen,
                         enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
@@ -1482,7 +1589,6 @@ private fun AppleMusicSharpArtwork(
                 }
             }
         } else {
-
             Box(modifier = Modifier.matchParentSize()) {
                 if (staticBaseAlpha > 0.01f) {
                     AsyncImage(
@@ -1837,9 +1943,7 @@ private fun AppleMusicLandscapeTitleBlock(
     iconsOnly: Boolean = false,
 ) {
     if (iconsOnly) {
-        // Full-bleed canvas landscape: no song name - the video IS the visual.
-        // Only the favourite and overflow chips remain, right-aligned with a
-        // tight 6dp gap (the old layout put 16dp between them next to the text).
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1880,7 +1984,6 @@ private fun AppleMusicLandscapeTitleBlock(
             Modifier
                 .let { base ->
                     if (contentWidth != null) {
-
                         base
                             .width(contentWidth)
                     } else {

@@ -1,3 +1,155 @@
+# ArchiveTune 17.0 — Changelog
+
+The audiophile update: the Tryptify and LastWave engine pair arrives in
+full, bit-perfect playback stops resampling for good, automix becomes a
+native clean-room engine, Listen Together is rebuilt from the vivi-music
+reference with a complete chat suite, the settings app turns into
+grouped glass cards, and the liquid-glass system grows its own tuning
+page.
+
+## Audio engines & bit-perfect
+
+- Tryptify and LastWave-native join the app as first-class audio engines:
+  the full Tryptify port (stretch limiter, pipeline stages, USB DAC
+  pinning) and the LastWave-native engine, each with instant switching,
+  per-engine equalizer tabs, and the live audio-chain pill reporting the
+  engaged engine, stream format and rate in real time
+- 32-bit float native DSP with a USB-exclusive AAudio output route, plus
+  an Audio Pipeline diagnostics panel under Developer options that shows
+  the whole chain end to end
+- Bit-perfect output is now fail-closed: the wire refuses to negotiate a
+  fallback clock when the DAC cannot run the source rate, the exclusive
+  route is declined up front for known-unsupported rates, the AAudio
+  exclusive stream verifies the granted rate, and engine DSP stands down
+  while bit-perfect is active - no engine, no combination silently
+  resamples 44.1 kHz to 48 kHz any more; when the platform mixer still
+  cannot carry the rate natively, the pill says so instead of quietly
+  converting
+- Runtime bit-perfect route switching (24-bit output without a restart),
+  -9102 false-death detection and repair, and wire-clock alignment for
+  the exclusive route
+- The AAudio write/release use-after-free behind the silent playback
+  SIGSEGV is fixed, and native crashes now capture a trace with GlobalLog
+  breadcrumbs copied to Download/ArchiveTune
+
+## Automix
+
+- The BitChord port is gone; automix is now a clean-room pure-Kotlin
+  engine: one streaming decode per track yields tempo, beat grid,
+  structure and vocal-likelihood, and the planner produces beat-matched
+  blends, filter rides, bass handovers or plain fades - no native code,
+  no ML models, no JNI
+- Transitions overlap properly: the blend is driven by the outgoing
+  song's clock, the fade-out lands exactly on the track's natural end,
+  and the handover waits for that end before promoting the next song -
+  the outgoing track is never cut short any more
+- The mix-out trigger is dynamic again (the Bitchord behaviour): each
+  analysis detects where the song's own energy starts its final decline
+  and the blend begins exactly there, riding the natural fade-out to its
+  end instead of a fixed precomputed lead; hard cuts that stay loud to
+  the last sample keep a compact end-of-song blend
+
+## Players & lyrics
+
+- The Apple Music player's blurred canvas backdrop behind the bottom
+  controls is snapshot-baked at ~20 Hz with a frame-aligned, main-thread
+  readback - no more 5 fps / out-of-sync canvas after the next track
+  starts, and no RenderNode re-entrancy crashes from the glass recorders
+  (the crashlog class is closed: every glass source now records through
+  the guarded throttled recorder)
+- Apple Music landscape mode gets its full-height canvas, lyrics-first
+  arrangement and fixed controls; the transport set uses the vivi-music
+  5:3 glyph ratio and the new Player_v2 glyphs
+- Track Info gains YouTube's own song credits (Song / Album / Writers /
+  Licensed to YouTube by / Produced by / Released) with writer names
+  pulled from the lyrics' trailing "Written by" credits, plus a Track
+  Info & Specs page in the player menu
+- Word-synced lyrics land across Apple Music, KuGou and YouLyPlus
+  sources, with word merge, true durations and inter-word spacing fixes;
+  the TikTok player's main lyrics are rebuilt on the enhanced lyrics
+  library with single-line karaoke captions and attached translations
+- Lyrics share cards get the liquid-glass engine, reference typography
+  and true full-resolution exports (classic styles, 7-line limit, karaoke
+  year-in-music)
+- SpatialFlow player: smooth collapse, haptics, and tappable overflow
+  menu rows restored
+- The mini player is redesigned with larger transport icons, and global
+  compact bottom controls appear wherever the mini player compacts
+
+## Liquid glass & design
+
+- Settings turns into iOS-style grouped glass cards across every page,
+  with a dedicated liquid-glass tuning page (blur, tint, refraction,
+  chromatic aberration, vibrancy, adaptive luminance) and a navigation
+  bar glass glow with its own intensity slider
+- Glass consistency pass: headers, popups, pills and the artist page FAB
+  share one backdrop pipeline with draw-phase fades, restore broadcasts
+  and consumer gating through sheet transitions - no more invisible
+  pills after the lyrics overlay, and no more glass flicker while
+  scrolling
+- The artist page is redesigned: gradient ambience sampled from the
+  artwork, hero canvas with lockstep sync, fixed-color text (no dynamic
+  re-tinting), glass action pills, and an overflow menu that opens
+  attached to the overflow icon with a spring morph and dividers between
+  the items (rendered in the platform popup layer, so it always appears
+  attached under the icon it was summoned from)
+- Search is redesigned: bottom glass chrome, swipe-reveal recent searches,
+  non-Latin source search and resolution, and the compact search circle
+  next to the mini player triggers the page's own search on the history
+  page, local songs, the Spotify playlist library and the settings root
+  (where it searches settings content itself); playlist pages drop
+  theirs, the global search no longer stacks on top of the page search,
+  and on pages with the compact circle the pinned header search icon
+  fades out while the bottom UI is compact so the two never appear at
+  once
+- Library grows dynamic color sections and the history page survives
+  search-and-back without crashing
+
+## Listen Together
+
+- Listen Together is fully replaced by the vivi-music implementation:
+  complete chat suite with GIF attachments, mentions and notification
+  avatars, host/guest delete actions, a stacked pinned carousel, room
+  queue and suggestions, searchable song picker, custom profile pictures
+  and guest song changes that reach everyone
+- A connectivity resync engine replaces Smart Resync, with scoped chat
+  history restore, in-room keep-alive, stale-socket guards and
+  token-safe error recovery; chat notifications carry direct shade replies
+
+## Sources & accounts
+
+- Amazon Music is fully removed; a partner-gated QQ Music source and a
+  real Amazon Music resolver skeleton arrive (inert until credentials
+  are approved)
+- Tidal tier repairs with the direct-pick fix, Deezer direct-track
+  playback with geo fallback, in-app Spotify albums, Apple Music token
+  capture from the sign-in cookie, lossless endpoint healing, and the
+  community source pool refreshing every five hours
+- Discord RPC login completes app-side with persisted PKCE - the
+  "Authorize does nothing" class is closed - and ListenBrainz gains
+  webauth with an auto-token flow
+
+## Performance & build
+
+- R8 minification and resource shrinking now cover every build, debug
+  included, with keep rules for the JNI engines and reflection surfaces
+- CI build times are cut hard: G1 8 GB heaps instead of the 61-minute
+  GC-bound R8 runs, shared build/configuration/NDK caches, a trimmed
+  nightly matrix and superseded-run cancellation
+- Scroll and frame-cost surgery across Home/Library (the 10 Hz NavHost
+  freeze from fresh glass records is fixed), negative canvas caching,
+  off-main binder probes and shared DataStore startup reads
+
+## Other
+
+- Always-on-display customization suite (ported from upstream) and
+  playlist CSV export; lyrics and canvas become separately-selectable
+  backup categories
+- Pre-save and release-countdown radar, runtime source checks in
+  settings, and another dead-code sweep (orphaned files and components
+  removed); the whole codebase carries no explanatory comments any more -
+  every line and block comment is stripped (GPL license headers preserved)
+
 # ArchiveTune 16.0 — Changelog
 
 The sources update: podcasts join the app, Apple Music and Amazon Music become
@@ -5,6 +157,63 @@ full members of the source chain, Tidal and the community account pools arrive,
 the equalizer grows into a complete Audio Effects console, Home learns to be
 Spotify, and the SpatialFlow player finally collapses as smoothly as the
 original app.
+
+## Fixes & features (16.0.2 batch)
+
+- History search no longer crashes the app: the liquid-glass recorder behind
+  the history list left detached layout coordinates behind when the search
+  list was disposed, and the next glass-pill draw read them - an
+  "LayoutCoordinate operations are only valid when isAttached is true"
+  crash right after tapping search and going back. Recorders now live on a
+  screen-lifetime ancestor, detached coordinates degrade to a plain frame,
+  and the whole draw path is guarded
+- The Apple Music player's blurred canvas backdrop behind the bottom controls
+  no longer stutters a second or two after maximizing the mini player: the
+  second video pipeline re-ran its blur on every single video frame; the
+  backdrop is now snapshotted at ~20 Hz into a pre-blurred bitmap (the same
+  recipe as the static artwork backdrop), with zero per-frame blur work left
+  on the render path - same look, no lag
+- Discord login survives process death: the OAuth session is persisted (PKCE
+  state + verifier) and the token exchange now completes inside the redirect
+  callback itself instead of depending on the settings screen still holding
+  the same in-memory session - "I tap Authorize and nothing happens" was a
+  silently invalidated state check. A 90-second waiting hint now also points
+  at the other-installed-build redirect collision (all ArchiveTune builds
+  share the Discord redirect scheme)
+- Bit-perfect output never resamples through the app again: the LastWave
+  USB-exclusive wire refuses to negotiate a fallback clock when the DAC
+  cannot run the source rate (the old behaviour silently switched to
+  48 kHz and ran soxr - the pill literally read "Resampling 44.1 kHz →
+  48 kHz"), the exclusive route is declined up front for known-unsupported
+  rates, the AAudio exclusive stream verifies the granted rate, and the
+  engine's own DSP now stands down when bit-perfect is on. When the platform
+  mixer still cannot carry the rate natively, the pill says so instead of
+  quietly converting
+- Track information grows YouTube's own song credits: the Information tab now
+  carries Song / Album / Writers / Licensed to YouTube by / Produced by /
+  Released rows straight from YouTube's song-credits dialog, with the writer
+  names embedded at the end of the synced lyrics (TTML songwriter tags or
+  trailing "Written by" lines) filling in the Written-by row when YouTube
+  carries none
+- Automix is now a clean-room engine: the BitChord port (native analyzer,
+  JNI bridges, ONNX beat/vocal models, ~4400 lines) is gone; the new pure
+  Kotlin engine analyses each track in one streaming decode (tempo, beat
+  grid, structure, vocal-likelihood) and plans beat-matched blends, filter
+  rides, bass handovers or plain fades - no native code, no ML models, and
+  the Automix toggle and performance modes keep working as before
+- The compact search circle next to the mini player is context-aware: on the
+  history page, local songs, Spotify playlists and every playlist variant it
+  opens THAT page's own search instead of the global song search
+- Navigation bar settings grow a Glass glow intensity slider directly below
+  the glow toggle (20-200%)
+- Artist pages stop re-tinting their text: grid subtitles (artist names,
+  release years) and the new-release card text no longer follow the playing
+  song's dynamic theme or the live canvas sampling - only the ambient wash
+  behind them stays alive
+- Behind the scenes: the Apple Music canvas token no longer re-scrapes the
+  web player on every request (an exp-parsing bug made every token look
+  expired), YouLyPlus backs off for a minute after a 429, and Discord
+  presence snapshots re-validate before applying (upstream parity)
 
 ## Fixes (16.0.1 follow-up)
 

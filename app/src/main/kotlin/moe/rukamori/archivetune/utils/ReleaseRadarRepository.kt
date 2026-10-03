@@ -198,7 +198,6 @@ object ReleaseRadarRepository {
     }
 
     private fun mergeReleases(all: List<UpcomingRelease>): List<UpcomingRelease> {
-
         val byTitle = LinkedHashMap<String, MutableList<UpcomingRelease>>()
         for (release in all) {
             byTitle.getOrPut(normalizeTitleKey(release.title)) { mutableListOf() }.add(release)

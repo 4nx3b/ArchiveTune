@@ -613,7 +613,6 @@ private fun AudioEffectsContent(
                         items =
                             listOf(
                                 {
-
                                     SwitchSection(
                                         title = stringResource(R.string.eq_8d),
                                         desc = stringResource(R.string.eq_8d_description),
@@ -1068,7 +1067,6 @@ private fun SwitchSection(
     }
 
     if (showDialog && infoTooltip != null) {
-
         UnglassedDialogTheme {
             AlertDialog(
                 onDismissRequest = { showDialog = false },
@@ -1848,7 +1846,6 @@ private fun LastwaveEqHost(onBack: () -> Unit) {
                                 onGainsCsvChange(encodeGains(next))
                             },
                             onValueChangeFinished = {
-
                                 onPresetNameChange(com.lastwave.app.data.local.EqualizerPresets.CUSTOM_NAME)
                             },
                             valueRange = -8f..8f,

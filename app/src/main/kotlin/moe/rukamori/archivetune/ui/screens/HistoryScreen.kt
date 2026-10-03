@@ -85,6 +85,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -105,7 +106,6 @@ import android.os.Build
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
-import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.delay
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -131,6 +131,7 @@ import moe.rukamori.archivetune.ui.component.AppleMusicStyleAccentColor
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.LocalBottomUiCompactFraction
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.TopSearch
@@ -138,6 +139,7 @@ import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
+import moe.rukamori.archivetune.ui.component.ObserveOpenSearchRequest
 import moe.rukamori.archivetune.ui.menu.SelectionMediaMetadataMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
@@ -181,6 +183,9 @@ fun HistoryScreen(
         }
 
     var isSearching by rememberSaveable { mutableStateOf(false) }
+
+    ObserveOpenSearchRequest(navController) { isSearching = true }
+
     var query by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue())
     }
@@ -198,7 +203,8 @@ fun HistoryScreen(
         )
 
     val searchQuery = query.text.trim()
-    val showSearchBar = isSearching || searchQuery.isNotBlank()
+
+    val showSearchBar = isSearching
     val selectedEventIdSet by remember(selectedEventIds) {
         derivedStateOf { selectedEventIds.toSet() }
     }
@@ -271,6 +277,12 @@ fun HistoryScreen(
             }
         }
 
+    LaunchedEffect(showSearchBar, query.text.isNotBlank()) {
+        if (!showSearchBar && query.text.isNotBlank()) {
+            query = TextFieldValue()
+        }
+    }
+
     val dateAgoToString: (DateAgo) -> String =
         remember(context) {
             { dateAgo ->
@@ -299,12 +311,6 @@ fun HistoryScreen(
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
-    // The recorder stays attached whenever glass is available (even while the
-    // fullscreen lyrics player covers the page) so its coordinates and layer
-    // content remain live - glass pills that recompose right after the player
-    // is minimized would otherwise draw from a detached recorder and stay
-    // invisible until the page is scrolled or touched. Only the pills hide
-    // while lyrics are open.
     val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
     val surfaceColor = MaterialTheme.colorScheme.surface
@@ -462,7 +468,6 @@ fun HistoryScreen(
                     RemoteHistoryFeed(
                         listState = activeRemoteState,
                         topPadding = topPadding,
-                        backdrop = backdrop.takeIf { liquidGlassHeaderActive },
                         headerContent = historySourceDock,
                         remoteHistoryState = remoteHistoryState,
                         filteredSections = filteredRemoteSections,
@@ -495,7 +500,6 @@ fun HistoryScreen(
                     LocalHistoryFeed(
                         listState = activeLocalState,
                         topPadding = topPadding,
-                        backdrop = backdrop.takeIf { liquidGlassHeaderActive },
                         headerContent = historySourceDock,
                         filteredEvents = filteredEvents,
                         visibleEvents = localVisibleEvents,
@@ -686,7 +690,15 @@ fun HistoryScreen(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .hazeSource(headerHaze),
+                        .hazeSource(headerHaze)
+
+                        .then(
+                            if (liquidGlassHeaderActive) {
+                                Modifier.glassSource(backdrop)
+                            } else {
+                                Modifier
+                            },
+                        ),
             ) {
                 if (!showSearchBar) {
                     val topPaddingForContent =
@@ -744,19 +756,25 @@ fun HistoryScreen(
                 }
 
                 if (selectionCount == 0) {
+
+                    val compactFraction = LocalBottomUiCompactFraction.current
                     LiquidGlassActionPill(
                         backdrop = backdrop,
                         modifier =
                             Modifier
                                 .align(Alignment.TopEnd)
-                                .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
+                                .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp)
+                                .graphicsLayer {
+                                    alpha = 1f - compactFraction.value
+                                    translationY = -compactFraction.value * 12.dp.toPx()
+                                },
                     ) {
                         Box(
                             modifier = Modifier.size(48.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             AppIconButton(
-                                onClick = { isSearching = true },
+                                onClick = { if (compactFraction.value < 0.5f) isSearching = true },
                                 onLongClick = {},
                             ) {
                                 Icon(
@@ -767,14 +785,6 @@ fun HistoryScreen(
                             }
                         }
                     }
-                }
-            }
-
-            val isListScrolling by remember {
-                derivedStateOf {
-                    val activeState = if (historySource == HistorySource.REMOTE) remoteListState else localListState
-                    activeState.firstVisibleItemIndex > 0 ||
-                        activeState.firstVisibleItemScrollOffset > 0
                 }
             }
 
@@ -871,7 +881,6 @@ fun HistoryScreen(
 private fun LocalHistoryFeed(
     listState: LazyListState,
     topPadding: Dp,
-    backdrop: Backdrop?,
     headerContent: @Composable () -> Unit,
     filteredEvents: Map<DateAgo, List<EventWithSong>>,
     visibleEvents: List<EventWithSong>,
@@ -909,8 +918,6 @@ private fun LocalHistoryFeed(
                 .wrapContentWidth(Alignment.CenterHorizontally)
                 .widthIn(max = 840.dp)
                 .padding(top = topPadding)
-
-                .then(if (backdrop != null) Modifier.glassSource(backdrop) else Modifier)
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
                 ),
@@ -1036,7 +1043,6 @@ private fun LocalHistoryFeed(
 private fun RemoteHistoryFeed(
     listState: LazyListState,
     topPadding: Dp,
-    backdrop: Backdrop?,
     headerContent: @Composable () -> Unit,
     remoteHistoryState: RemoteHistoryUiState,
     filteredSections: List<HistoryPage.HistorySection>,
@@ -1055,8 +1061,6 @@ private fun RemoteHistoryFeed(
                 .wrapContentWidth(Alignment.CenterHorizontally)
                 .widthIn(max = 840.dp)
                 .padding(top = topPadding)
-
-                .then(if (backdrop != null) Modifier.glassSource(backdrop) else Modifier)
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
                 ),

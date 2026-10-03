@@ -259,7 +259,6 @@ class ListenTogetherManager @Inject constructor(
                 val trackId = mediaItem.mediaId
 
                 if (!isHost) {
-
                     suggestLocalTrackChange(trackId, player)
                     return
                 }
@@ -682,7 +681,6 @@ class ListenTogetherManager @Inject constructor(
                         applyHostVolumeIfNeeded(event.state.volume)
 
                         scope.launch {
-
                             if (isInRoom && !isHost) {
                                 Timber.tag(TAG).d("Requesting fresh sync after reconnect")
                                 requestSync()
@@ -775,7 +773,6 @@ class ListenTogetherManager @Inject constructor(
             }
 
             is ListenTogetherEvent.SuggestionRejected -> {
-
                 lastSuggestedTrackId = null
             }
 
@@ -1840,7 +1837,6 @@ class ListenTogetherManager @Inject constructor(
                 if (nextIndex < player.mediaItemCount &&
                     player.getMediaItemAt(nextIndex).mediaId == mediaItem.mediaId
                 ) {
-
                     val wasPlaying = player.playWhenReady
                     runCatching { connection.service.prepareForManualSkip() }
                     player.seekToNext()

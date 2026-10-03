@@ -82,6 +82,7 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.LiveAudioChainPill
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
+import moe.rukamori.archivetune.ui.component.extractTtmlWriters
 import moe.rukamori.archivetune.utils.AudioOutputStats
 import moe.rukamori.archivetune.utils.AudioOutputStatsProvider
 import android.text.format.Formatter
@@ -93,6 +94,7 @@ import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -100,6 +102,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
+import androidx.compose.runtime.snapshotFlow
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.audiosource.CurrentStreamInfo
 import moe.rukamori.archivetune.models.MediaMetadata
@@ -124,6 +127,40 @@ private enum class MediaInfoTab(
     Information(R.string.information, R.drawable.solar_info),
     Details(R.string.details, R.drawable.solar_ruler),
     Numbers(R.string.numbers, R.drawable.solar_hertz),
+}
+
+private fun creditIconFor(label: String): Int =
+    when {
+        label.equals("Song", ignoreCase = true) -> R.drawable.solar_music_note
+        label.contains("artist", true) || label.contains("perform", true) -> R.drawable.solar_users
+        label.contains("album", true) -> R.drawable.solar_album_linear
+        label.contains("writ", true) || label.contains("compos", true) ||
+            label.contains("lyricis", true) -> R.drawable.edit
+        label.contains("licen", true) -> R.drawable.solar_bookmark_linear
+        else -> R.drawable.solar_text
+    }
+
+private fun extractTrailingWrittenBy(lyrics: String?): String {
+    if (lyrics.isNullOrBlank()) return ""
+    val pattern =
+        Regex(
+            pattern =
+                """^\s*(?:\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]\s*)?\[?\s*""" +
+                    """(?:(?:written|song)\s+by|writers?|songwriters?|lyricists?|composers?)""" +
+                    """\s*\]?\s*:?\s*(.+?)\s*$""",
+            options = setOf(RegexOption.IGNORE_CASE),
+        )
+    return lyrics
+        .lineSequence()
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .toList()
+        .takeLast(8)
+        .mapNotNull { line ->
+            pattern.find(line)?.groupValues?.getOrNull(1)?.trim()?.takeIf(String::isNotEmpty)
+        }
+        .distinct()
+        .joinToString(", ")
 }
 
 private data class MediaInfoQuickFact(
@@ -160,6 +197,7 @@ fun ShowMediaInfo(videoId: String) {
     val song by database.song(videoId).collectAsStateWithLifecycle(initialValue = null)
     val currentFormat by database.format(videoId).collectAsStateWithLifecycle(initialValue = null)
     val info = rememberMediaInfo(videoId)
+    val lyricsEntity by database.lyrics(videoId).collectAsStateWithLifecycle(initialValue = null)
     var selectedTab by rememberSaveable(videoId) { mutableStateOf(MediaInfoTab.Information) }
     var outputStats by remember(videoId) { mutableStateOf<AudioOutputStats?>(null) }
 
@@ -290,6 +328,51 @@ fun ShowMediaInfo(videoId: String) {
                     value = videoId,
                 ),
             )
+        }
+
+    val overviewTitleValue = song?.title ?: info?.title
+    val overviewArtistsValue =
+        song?.artists?.takeIf { it.isNotEmpty() }?.joinToString { it.name } ?: info?.author
+    val youtubeCredits =
+        info?.credits.orEmpty().mapNotNull { row ->
+            val value = row.value.trim()
+            if (value.isBlank()) return@mapNotNull null
+            val duplicatesOverview =
+                (row.label.equals("Song", ignoreCase = true) && value == overviewTitleValue) ||
+                    (row.label.equals("Artist", ignoreCase = true) && value == overviewArtistsValue)
+            if (duplicatesOverview) return@mapNotNull null
+            MediaInfoDetail(
+                iconRes = creditIconFor(row.label),
+                label = row.label,
+                value = value,
+                multiline = true,
+            )
+        }
+    val hasWriterRowFromYouTube =
+        youtubeCredits.any { detail ->
+            detail.label.contains(Regex("writ|compos|lyricis", RegexOption.IGNORE_CASE))
+        }
+    val writtenByLabel = stringResource(R.string.credits_written_by)
+    val lyricsWriters =
+        if (hasWriterRowFromYouTube) {
+            ""
+        } else {
+            extractTtmlWriters(lyricsEntity?.lyrics)
+                .ifBlank { extractTrailingWrittenBy(lyricsEntity?.lyrics) }
+        }
+    val creditDetails =
+        buildList {
+            addAll(youtubeCredits)
+            if (lyricsWriters.isNotBlank()) {
+                add(
+                    MediaInfoDetail(
+                        iconRes = R.drawable.edit,
+                        label = writtenByLabel,
+                        value = lyricsWriters,
+                        multiline = true,
+                    ),
+                )
+            }
         }
 
     val technicalDetails =
@@ -507,6 +590,20 @@ fun ShowMediaInfo(videoId: String) {
                                     }
                                 }
 
+                                if (creditDetails.isNotEmpty()) {
+                                    MediaInfoExpressiveCard {
+                                        creditDetails.forEachIndexed { index, item ->
+                                            MediaInfoExpressiveRow(
+                                                iconRes = item.iconRes,
+                                                label = item.label,
+                                                value = item.value,
+                                                showDivider = index != creditDetails.lastIndex,
+                                                onClick = { copyToClipboard(context, item.value) },
+                                            )
+                                        }
+                                    }
+                                }
+
                                 if (info == null) {
                                     MediaInfoExpressivePending(
                                         iconRes = R.drawable.solar_text,
@@ -529,7 +626,6 @@ fun ShowMediaInfo(videoId: String) {
                             }
 
                             MediaInfoTab.Details -> {
-
                                 if (isLiveTrack) {
                                     LiveAudioChainPill(compact = true)
                                 }
@@ -1115,8 +1211,7 @@ private fun MediaInfoExpressiveRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            // Tapping the row still copies the value; the trailing copy glyph is
-            // intentionally omitted from the list rows per the cleaned-up design.
+
         }
         if (showDivider) {
             Box(
@@ -1367,8 +1462,6 @@ class TrackInfoViewModel @Inject constructor(
 ) : ViewModel() {
     data class Polled(
         val halSampleRateHz: Int?,
-        val engineName: String,
-        val outputFloat: Boolean,
         val usbExclusive: Boolean,
         val usbVendorId: Int,
         val usbProductId: Int,
@@ -1382,12 +1475,6 @@ class TrackInfoViewModel @Inject constructor(
             emit(
                 Polled(
                     halSampleRateHz = outputProbe.halSampleRateHz(),
-                    engineName = when (runtime.activeEngine) {
-                        AudioEngineRouterProcessor.Engine.TRYPTIFY -> "Tryptify"
-                        AudioEngineRouterProcessor.Engine.LASTWAVE -> "LastWave"
-                        else -> "None"
-                    },
-                    outputFloat = runtime.outputFloat,
                     usbExclusive = runtime.usbExclusiveActive,
                     usbVendorId = usbDacMonitor.state.value.dac?.vendorId ?: -1,
                     usbProductId = usbDacMonitor.state.value.dac?.productId ?: -1,
@@ -1398,6 +1485,47 @@ class TrackInfoViewModel @Inject constructor(
             delay(POLL_INTERVAL_MS)
         }
     }
+
+    private val engineFacts = snapshotFlow {
+        val active = EngineRuntime.activeEngineState
+        val wanted = EngineRuntime.wantedEngineState
+        val engineName =
+            when {
+                active == AudioEngineRouterProcessor.Engine.TRYPTIFY -> "Tryptify"
+                active == AudioEngineRouterProcessor.Engine.LASTWAVE -> "LastWave"
+                wanted == AudioEngineRouterProcessor.Engine.TRYPTIFY &&
+                    EngineRuntime.tryptifyAvailableState -> "Tryptify"
+                wanted == AudioEngineRouterProcessor.Engine.LASTWAVE &&
+                    EngineRuntime.lastwaveAvailableState -> "LastWave"
+                else -> "None"
+            }
+        engineName to EngineRuntime.outputFloatState
+    }
+
+    private data class RuntimeFacts(
+        val halSampleRateHz: Int?,
+        val engineName: String,
+        val outputFloat: Boolean,
+        val usbExclusive: Boolean,
+        val usbVendorId: Int,
+        val usbProductId: Int,
+        val tryptifyUsbRateHz: Int,
+        val tryptifyUsbBits: Int,
+    )
+
+    private val runtimeFacts: Flow<RuntimeFacts> =
+        combine(polled, engineFacts) { poll, (engineName, outputFloat) ->
+            RuntimeFacts(
+                halSampleRateHz = poll.halSampleRateHz,
+                engineName = engineName,
+                outputFloat = outputFloat,
+                usbExclusive = poll.usbExclusive,
+                usbVendorId = poll.usbVendorId,
+                usbProductId = poll.usbProductId,
+                tryptifyUsbRateHz = poll.tryptifyUsbRateHz,
+                tryptifyUsbBits = poll.tryptifyUsbBits,
+            )
+        }
 
     data class PipelineFacts(
         val decodedBits: Int?,
@@ -1423,8 +1551,8 @@ class TrackInfoViewModel @Inject constructor(
         monitor.decoderName,
         channelDetector.state,
         outputProbe.routed,
-        polled,
-    ) { stream, decoder, chain, routed, poll ->
+        runtimeFacts,
+    ) { stream, decoder, chain, routed, runtime ->
         PipelineFacts(
             decodedBits = stream?.pcmBits,
             decodedFloat = stream?.pcmIsFloat == true,
@@ -1434,14 +1562,14 @@ class TrackInfoViewModel @Inject constructor(
             chainChannels = chain?.channelCount,
             chainLayoutName = chain?.layoutName,
             routedName = routed?.name,
-            halSampleRateHz = poll.halSampleRateHz,
-            engineName = poll.engineName,
-            outputFloat = poll.outputFloat,
-            usbExclusive = poll.usbExclusive,
-            usbVendorId = poll.usbVendorId,
-            usbProductId = poll.usbProductId,
-            tryptifyUsbRateHz = poll.tryptifyUsbRateHz,
-            tryptifyUsbBits = poll.tryptifyUsbBits,
+            halSampleRateHz = runtime.halSampleRateHz,
+            engineName = runtime.engineName,
+            outputFloat = runtime.outputFloat,
+            usbExclusive = runtime.usbExclusive,
+            usbVendorId = runtime.usbVendorId,
+            usbProductId = runtime.usbProductId,
+            tryptifyUsbRateHz = runtime.tryptifyUsbRateHz,
+            tryptifyUsbBits = runtime.tryptifyUsbBits,
         )
     }.flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(POLL_INTERVAL_MS), null)

@@ -25,6 +25,9 @@ class DiscordOAuthCallbackActivity : Activity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        intent?.data?.let(DiscordAuthCoordinator::emit)
+        val uri = intent?.data ?: return
+        DiscordAuthCoordinator.emit(uri)
+
+        DiscordOAuthRepository.completeFromRedirectAsync(applicationContext, uri)
     }
 }

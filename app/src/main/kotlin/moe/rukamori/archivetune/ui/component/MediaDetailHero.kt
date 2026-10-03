@@ -556,7 +556,6 @@ private fun MediaDetailBalancedActionLayout(
                         constraints.copy(minWidth = 0, maxWidth = maxPlayWidth, minHeight = 0),
                     )
                 } else {
-
                     measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
                 }
             }
@@ -609,7 +608,6 @@ private fun MediaDetailBalancedActionLayout(
 
             val playActionX =
                 if (clusterWidth <= layoutWidth) {
-
                     val clusterStart = (layoutWidth - clusterWidth) / 2
                     clusterStart + leftActionsWidth + sideSpacing
                 } else {

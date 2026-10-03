@@ -8,9 +8,6 @@
 package moe.rukamori.archivetune.ui.player
 
 import android.os.Build
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -24,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -43,7 +41,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
@@ -91,57 +88,31 @@ fun MiniPlayer(
     modifier: Modifier = Modifier,
     pureBlack: Boolean,
     isPairedWithNavigation: Boolean = false,
-    compactFraction: Float = 0f,
+    compactFractionState: State<Float> = remember { mutableStateOf(0f) },
     compactHorizontalPadding: Dp = 16.dp,
     compactReserveEndControl: Boolean = true,
     onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
-    val docked = LocalMiniPlayerDocked.current
 
-    val dockedAnim by animateFloatAsState(
-        targetValue = if (docked) 1f else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "MiniPlayerDockedAnim",
-    )
-    val density = LocalDensity.current
-    val translationXPx = with(density) { (-160).dp.toPx() }
-    val translationYPx = with(density) { 10.dp.toPx() }
+    val compactFraction = compactFractionState.value
 
     val compactStartInset = compactHorizontalPadding + CompactControlSize + CompactControlGap
-    // When a right-side floating control is reserved (search circle), the pill
-    // keeps the full start-mirrored inset. When there is NO end control the
-    // pill used to run flush against the screen edge (0dp end padding) - keep
-    // the horizontal screen padding instead so the compact pill has even
-    // spacing from the display border, matching the floating nav bar's rhythm.
+
     val compactEndInset =
         if (compactReserveEndControl) {
             compactHorizontalPadding + CompactControlSize + CompactControlGap
         } else {
             compactHorizontalPadding
         }
-    val dockedModifier =
-        (if (dockedAnim > 0.001f) {
-            val scale = 1f - 0.5f * dockedAnim
-            modifier
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = translationXPx * dockedAnim
-                    translationY = translationYPx * dockedAnim
-                }
-        } else {
-            modifier
-        }).padding(
+    val compactModifier =
+        modifier.padding(
             start = lerp(0.dp, compactStartInset, compactFraction),
             end = lerp(0.dp, compactEndInset, compactFraction),
         )
     NewMiniPlayer(
         positionProvider = positionProvider,
         durationProvider = durationProvider,
-        modifier = dockedModifier,
+        modifier = compactModifier,
         pureBlack = pureBlack,
         isPairedWithNavigation = isPairedWithNavigation,
         compactFraction = compactFraction,

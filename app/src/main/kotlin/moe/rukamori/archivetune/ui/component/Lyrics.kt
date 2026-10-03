@@ -77,6 +77,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.withFrameNanos
@@ -124,6 +125,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalAnimationsDisabled
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetVisible
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.DarkModeKey
@@ -624,6 +626,8 @@ fun Lyrics(
         mutableStateOf(false)
     }
 
+    val playerSheetVisibleState = rememberUpdatedState(LocalPlayerSheetVisible.current)
+
     LaunchedEffect(lyrics, lines, isAppMinimized) {
         if (lyrics.isNullOrEmpty() || (!isLineSyncedLrc(lyrics) && !isTtml(lyrics))) {
             currentLineIndex = -1
@@ -632,8 +636,10 @@ fun Lyrics(
         }
 
         val isTtmlLyrics = isTtml(lyrics!!)
+
+        val sheetVisibleState = playerSheetVisibleState
         while (isActive) {
-            if (isAppMinimized) {
+            if (isAppMinimized || !sheetVisibleState.value) {
                 delay(250L)
                 continue
             }

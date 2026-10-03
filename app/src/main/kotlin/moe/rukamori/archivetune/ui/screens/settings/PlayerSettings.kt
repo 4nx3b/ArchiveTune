@@ -390,7 +390,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
-
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.audiophile_settings_title)) },
                         description = stringResource(R.string.audiophile_settings_subtitle),
@@ -549,9 +548,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 }
 
-                // Audio normalization + ReplayGain moved to the Audiophile
-                // settings page next to the bit-perfect output chain they
-                // interact with.
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.audio_offload)) },

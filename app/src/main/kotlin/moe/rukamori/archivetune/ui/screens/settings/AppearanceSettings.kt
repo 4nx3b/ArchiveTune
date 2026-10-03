@@ -504,7 +504,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 modifier = positions.modifierFor("dynamic_theme", "color_source"),
                 title = stringResource(R.string.theme),
             ) {
-
                 item {
                     Column(modifier = positions.modifierFor("liquid_glass_customisation")) {
                         PreferenceEntry(

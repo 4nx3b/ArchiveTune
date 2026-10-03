@@ -43,31 +43,29 @@ class NativeAudioEngine @Inject constructor(
     val isAvailable: Boolean
         get() = nativeHandle != 0L
 
-    @Volatile var systemFlattened = false
-
     init {
         if (isAvailable) {
             applicationScope.launch(Dispatchers.Default) {
                 settingsPreferences.settings
                     .map { it.isStudioMasterClarityEnabled }
                     .distinctUntilChanged()
-                    .collect { if (!systemFlattened) setStudioMasterClarity(it) }
+                    .collect { setStudioMasterClarity(it) }
             }
             applicationScope.launch(Dispatchers.Default) {
                 settingsPreferences.settings
                     .map { it.clarityPreset }
                     .distinctUntilChanged()
-                    .collect { if (!systemFlattened) setClarityPreset(ClarityPresets.fromIndex(it)) }
+                    .collect { setClarityPreset(ClarityPresets.fromIndex(it)) }
             }
             applicationScope.launch(Dispatchers.Default) {
                 settingsPreferences.settings
                     .map { it.clarityAtmosBypass }
                     .distinctUntilChanged()
-                    .collect { if (!systemFlattened) setClarityAtmosBypass(it) }
+                    .collect { setClarityAtmosBypass(it) }
             }
             applicationScope.launch(Dispatchers.Default) {
                 equalizerPreferences.settings.collect { settings ->
-                    if (!systemFlattened) setEqualizer(settings.enabled, settings.gainsDb.toFloatArray())
+                    setEqualizer(settings.enabled, settings.gainsDb.toFloatArray())
                 }
             }
         }
@@ -96,7 +94,6 @@ class NativeAudioEngine @Inject constructor(
     }
 
     fun setStudioMasterClarity(enabled: Boolean) {
-        if (systemFlattened) return
         withHandle(Unit) { nativeSetStudioMasterClarity(it, enabled) }
     }
 
@@ -108,7 +105,6 @@ class NativeAudioEngine @Inject constructor(
         withHandle(false, ::nativeIsBitPerfect)
 
     fun setEqualizer(enabled: Boolean, gainsDb: FloatArray) {
-        if (systemFlattened) return
         require(gainsDb.size == EQUALIZER_BAND_COUNT) { "Expected 15 equalizer bands" }
         val safeGains = FloatArray(gainsDb.size) { index ->
             val gain = gainsDb[index]
@@ -118,12 +114,10 @@ class NativeAudioEngine @Inject constructor(
     }
 
     fun setClarityWet(wet: Float) {
-        if (systemFlattened) return
         withHandle(Unit) { nativeSetClarityWet(it, wet.coerceIn(0f, 1f)) }
     }
 
     fun setClarityTrims(trimsDb: FloatArray) {
-        if (systemFlattened) return
         require(trimsDb.size == ClarityPresets.TRIM_COUNT) { "Expected 8 clarity trims" }
         val safeTrims = FloatArray(trimsDb.size) { index ->
             val trim = trimsDb[index]
@@ -133,12 +127,10 @@ class NativeAudioEngine @Inject constructor(
     }
 
     fun setClarityPreset(preset: ClarityPreset) {
-        if (systemFlattened) return
         withHandle(Unit) { nativeSetClarityPreset(it, preset.index) }
     }
 
     fun setClarityAtmosBypass(bypass: Boolean) {
-        if (systemFlattened) return
         withHandle(Unit) { nativeSetClarityAtmosBypass(it, bypass) }
     }
 

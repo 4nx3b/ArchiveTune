@@ -70,18 +70,10 @@ object TidalAudioProvider {
     private const val REJECT_SCORE = -1_000_000
     private val AMAZON_DATE = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'", Locale.US)
 
-    // Hoisted so title/artist normalization (run per candidate track during matching) does not
-    // recompile the same patterns on every call.
     private val ISRC_STRIP_REGEX = Regex("[^A-Z0-9]")
     private val ISRC_PATTERN_REGEX = Regex("[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
     private val DIACRITIC_REGEX = Regex("\\p{Mn}+")
 
-    // Unicode-aware: keeps letters and digits from EVERY script. The previous
-    // [^a-z0-9]+ form deleted every non-Latin character, which BLANKED Hindi /
-    // Bengali / Arabic / CJK queries and titles: the matcher then rejected every
-    // candidate ("wanted title blank") and both the play-from popup search and
-    // the automatic lossless source resolution returned nothing for non-English
-    // songs. Matching the MusicService-side TitleMatch.normalize invariant.
     private val NON_ALPHANUMERIC_REGEX = Regex("[^\\p{L}\\p{N}]+")
     private val WHITESPACE_REGEX = Regex("\\s+")
     private val FEATURED_ARTIST_TITLE_SUFFIX_REGEX = Regex("""\b(feat|ft|featuring)\b.*$""")
@@ -165,7 +157,6 @@ object TidalAudioProvider {
     }
 
     enum class InstanceHealth {
-
         HEALTHY,
 
         PREVIEW_ONLY,
@@ -322,7 +313,6 @@ object TidalAudioProvider {
                 val request = builder.get().build()
                 healthClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
-
                         if (response.code == 401) {
                             Timber
                                 .tag("TidalHealth")
@@ -581,7 +571,6 @@ object TidalAudioProvider {
         baseUrl: String,
         hardFailure: Boolean,
     ) {
-
         val cooldownMs = if (hardFailure) INSTANCE_HARD_COOLDOWN_MS else INSTANCE_SOFT_COOLDOWN_MS
         instanceCooldownUntilMs[baseUrl] = System.currentTimeMillis() + cooldownMs
     }
@@ -603,7 +592,6 @@ object TidalAudioProvider {
         preferLiveDash: Boolean = true,
         audioQuality: TidalAudioQuality = TidalAudioQuality.AAC_320,
     ): Resolved {
-
         if (activeEndpoints.isEmpty()) {
             throw TidalAudioResolutionException("TIDAL playback has no configured instance")
         }
@@ -803,7 +791,6 @@ object TidalAudioProvider {
         val score: Int,
         val exactIsrc: Boolean,
     ) {
-
         val confidence: Float
             get() =
                 ((score - MIN_MATCH_SCORE).toFloat() / (ARTWORK_MAX_SCORE - MIN_MATCH_SCORE))
@@ -874,8 +861,7 @@ object TidalAudioProvider {
         query: Query,
         exactIsrcOnly: Boolean = false,
     ): List<ArtworkSearchResult> {
-        // Computed once per search rather than per candidate: these were previously recomputed
-        // (via contentArtworkScore) on every iteration below despite being constant for the call.
+
         val wantedTitle = query.title.titleMatchNormalized()
         val wantedArtists = query.artists.map { it.normalized() }.filter { it.isNotBlank() }
         val wantedAlbum = query.album.normalized()
@@ -1353,7 +1339,6 @@ object TidalAudioProvider {
         preferLiveDash: Boolean,
         audioQuality: TidalAudioQuality,
     ): Resolved {
-
         val url = if (manifestFormats != null) {
             endpoint.baseUrl
                 .toHttpUrl()
@@ -1492,7 +1477,6 @@ object TidalAudioProvider {
             }
 
             val progressiveDashFile = if (preferLiveDash && manifest.isDash && manifestLooksFlac && cacheDir != null) {
-
                 writeDashManifestToTempFile(track.trackId, quality, manifest, cacheDir)
             } else {
                 null
@@ -1657,7 +1641,6 @@ object TidalAudioProvider {
         runCatching {
             val manifest = parseManifest(manifestB64, declaredMimeType, durationMs)
             if (!manifest.isDash) {
-
                 return@runCatching DirectStream(
                     uri = manifest.url,
                     mimeType = manifest.mimeType,
@@ -1672,7 +1655,6 @@ object TidalAudioProvider {
                 manifest.mimeType.contains("flac", ignoreCase = true) ||
                     manifest.codecs.contains("flac", ignoreCase = true)
             if (preferLiveDash && looksFlac) {
-
                 val manifestFile = writeDashManifestToTempFile(trackId, quality, manifest, cacheDir)
                 return@runCatching DirectStream(
                     uri = progressiveDashUri(manifestFile),
@@ -2569,9 +2551,7 @@ object TidalAudioProvider {
         value
             .split(' ')
             .map { it.trim() }
-            // CJK scripts write meaningful single-character words - "愛" or "花"
-            // must survive tokenization or CJK titles can never overlap. Indic /
-            // Latin scripts keep the length >= 2 floor to drop noise.
+
             .filter { (it.length >= 2 || it.any { ch -> ch.code >= 0x2E80 }) && it !in STOP_WORDS }
             .toSet()
 
