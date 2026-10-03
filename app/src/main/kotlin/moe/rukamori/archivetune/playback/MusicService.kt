@@ -1363,6 +1363,7 @@ class MusicService :
             }
             ioScope.launch {
                 var lastPolledWireRateHz = -1
+                var wireMismatchStreak = 0
                 while (isActive) {
                     val wireRateHz = lastwaveExclusiveUsb.currentRateHz()
                     EngineRuntime.publishUsbWire(
@@ -1385,6 +1386,13 @@ class MusicService :
                         if (wireRateHz > 0 || lastwaveAudioProcessing) {
                             applyNativeRateOverride()
                         }
+                    }
+
+                    wireMismatchStreak =
+                        if (bitPerfectWireRateMismatched()) wireMismatchStreak + 1 else 0
+                    if (wireMismatchStreak >= BIT_PERFECT_WIRE_MISMATCH_TRIGGER_POLLS) {
+                        maybeReprepareForBitPerfectWireMismatch()
+                        wireMismatchStreak = 0
                     }
                     delay(1000)
                 }
@@ -6649,6 +6657,7 @@ class MusicService :
 
         crossfadeConsecutiveFailures = 0
         crossfadeFailureMediaId = null
+        lastBitPerfectWireReprepareKey = null
 
         initialBufferRecoveryJob?.cancel()
         initialBufferRecoveryJob = null
@@ -10499,6 +10508,40 @@ class MusicService :
         if (resumePlayback) player.play() else player.pause()
     }
 
+    private fun bitPerfectWireRateMismatched(): Boolean {
+        if (!BitPerfectRuntime.requested) return false
+        val sourceRate = BitPerfectRuntime.status.sourceSampleRate
+        if (sourceRate <= 0) return false
+        val wireRate = BitPerfectRuntime.wireSampleRateHz
+        return wireRate > 0 && wireRate != sourceRate
+    }
+
+    @Volatile
+    private var lastBitPerfectWireReprepareKey: String? = null
+
+    private fun maybeReprepareForBitPerfectWireMismatch() {
+        val sourceRate = BitPerfectRuntime.status.sourceSampleRate
+        val wireRate = BitPerfectRuntime.wireSampleRateHz
+        if (sourceRate <= 0 || wireRate <= 0) return
+        scope.launch(Dispatchers.Main) {
+            if (!bitPerfectWireRateMismatched()) return@launch
+            if (!bitPerfectNeedsRouteReprepare()) return@launch
+            val mediaId =
+                runCatching { player.currentMediaItem?.mediaId }.getOrNull() ?: return@launch
+            val key = "$mediaId|$sourceRate|$wireRate"
+            if (key == lastBitPerfectWireReprepareKey) return@launch
+            lastBitPerfectWireReprepareKey = key
+            Timber.tag(TAG).w(
+                "Bit-perfect wire stuck at %dHz while the source decodes at %dHz (mediaId=%s) — " +
+                    "re-preparing the audio path the same way a bit-perfect toggle would",
+                wireRate,
+                sourceRate,
+                mediaId,
+            )
+            runCatching { repreparePlayerForAudioRouteChange() }
+        }
+    }
+
     private fun updateAudioOffload(enabled: Boolean) {
         val effectiveEnabled = enabled && !crossfadeEnabled
         runCatching {
@@ -11595,6 +11638,7 @@ class MusicService :
         private const val ArchiveTuneExtractorExpirySafetyMs = 30_000L
         private const val AUDIO_EFFECT_INITIALIZATION_MAX_ATTEMPTS = 4
         private const val AUDIO_EFFECT_INITIALIZATION_RETRY_DELAY_MS = 250L
+        private const val BIT_PERFECT_WIRE_MISMATCH_TRIGGER_POLLS = 2
         private const val INFINITE_QUEUE_MAX_BOOTSTRAP_PAGES = 3
         private const val DISCORD_SYNC_TAG = "DiscordSync"
         private const val DISCORD_HOLD_TIMEOUT_MS = 7_000L

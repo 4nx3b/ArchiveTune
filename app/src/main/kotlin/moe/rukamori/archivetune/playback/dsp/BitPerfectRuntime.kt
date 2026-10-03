@@ -60,6 +60,15 @@ object BitPerfectRuntime {
     @Volatile
     private var hasLatchedInput: Boolean = false
 
+    @Volatile
+    private var usbRouteActive: Boolean = false
+
+    @Volatile
+    private var mixerRouteActive: Boolean = false
+
+    @Volatile
+    private var mixerWireRate: Int = 0
+
     var status by mutableStateOf(Status.idle())
         private set
 
@@ -181,7 +190,7 @@ object BitPerfectRuntime {
         status = status.copy(
             sourceEncoding = if (seedSource) inputEncoding else status.sourceEncoding,
             sourceBitDepth = if (seedSource) bits else status.sourceBitDepth,
-            sourceSampleRate = if (seedSource) inputSampleRate else status.sourceSampleRate,
+            sourceSampleRate = if (inputSampleRate > 0) inputSampleRate else status.sourceSampleRate,
             sourceIsLossy = if (seedSource) false else status.sourceIsLossy,
             decodedEncoding = inputEncoding,
             decodedBitDepth = bits,
@@ -253,8 +262,18 @@ object BitPerfectRuntime {
         bypassEngaged.set(false)
         latchedUsbRateHz = 0
         latchedUsbBits = 0
+        usbRouteActive = false
+        mixerRouteActive = false
+        mixerWireRate = 0
         status = Status.idle()
     }
+
+    val wireSampleRateHz: Int
+        get() = when {
+            usbRouteActive -> latchedUsbRateHz
+            mixerRouteActive -> mixerWireRate
+            else -> 0
+        }
 
     fun notifyVolume(effectiveVolume: Float) {
         if (status.verifiedBitPerfect && (effectiveVolume == 1f) != !status.softwareVolumeActive) {
@@ -263,6 +282,8 @@ object BitPerfectRuntime {
     }
 
     fun notifyMixerBitPerfect(active: Boolean, outputRateHz: Int, bits: Int = 0) {
+        mixerRouteActive = active
+        mixerWireRate = if (active && outputRateHz > 0) outputRateHz else 0
         if (!active) {
             val wasMixerRoute = status.mixerBitPerfectActive
             status = status.copy(mixerBitPerfectActive = false)
@@ -300,6 +321,7 @@ object BitPerfectRuntime {
         bits: Int,
         engineTransport: Boolean = false,
     ) {
+        usbRouteActive = active
         status = status.copy(usbExclusiveActive = active)
         if (active) {
             latchedUsbRateHz = rate
