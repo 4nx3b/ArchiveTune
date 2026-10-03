@@ -1065,6 +1065,7 @@
     <string name="discord_waiting_for_authorization">Waiting for Discord authorization...</string>
     <string name="discord_authorization_success">Discord account connected</string>
     <string name="discord_authorization_failed">Discord authorization failed</string>
+    <string name="discord_authorization_timeout_hint">No response from Discord. If you tapped Authorize and nothing happened, another installed ArchiveTune build may be receiving the login redirect — uninstall other builds (or clear their defaults for Discord links) and try again.</string>
     <string name="discord_account_ready">ArchiveTune is ready to publish Rich Presence for your listening session.</string>
     <string name="discord_reauthorize_required_title">Discord session expired</string>
     <string name="discord_reauthorize_required_description">Rich Presence cannot be shown until you authorize Discord again.</string>

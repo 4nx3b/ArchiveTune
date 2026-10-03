@@ -2704,7 +2704,20 @@ class MusicService :
             is DiscordPresenceDecision.Visible -> {
                 clearDiscordHoldState()
                 ensureDiscordSyncFresh(request.epoch)
-                val snapshot = buildDiscordPresenceSnapshot(song, decision.isPaused) ?: return false
+                val snapshot =
+                    buildDiscordPresenceSnapshot(song, decision.isPaused) ?: run {
+                        // Playback moved underneath the decision between
+                        // evaluation and apply (song change or pause flip):
+                        // applying the stale snapshot would show the wrong
+                        // track/state on Discord until the next event. Force
+                        // a fresh decision cycle instead of dropping it
+                        // silently (upstream parity).
+                        requestDiscordSync(
+                            reason = "playback_changed_before_presence_apply",
+                            force = true,
+                        )
+                        return false
+                    }
                 ensureDiscordSyncFresh(request.epoch)
                 val updated =
                     DiscordPresenceManager.updateNow(
@@ -2742,13 +2755,33 @@ class MusicService :
         song: Song?,
         isPaused: Boolean,
     ): DiscordPresenceSnapshot? {
-        val resolvedSong = song ?: return null
-        val positionMs = withContext(Dispatchers.Main.immediate) { player.currentPosition }
-        return DiscordPresenceSnapshot(
-            song = resolvedSong,
-            positionMs = positionMs,
-            isPaused = isPaused,
-        )
+        val expectedSong = song ?: return null
+        // Re-validate on the main thread at apply time: the decision was
+        // built from a snapshot that may already be stale after a fast
+        // skip/pause, and a stale snapshot would push the wrong song or
+        // play state to Discord until the next sync event (upstream parity).
+        return withContext(Dispatchers.Main.immediate) {
+            val currentSong = currentPresenceSong() ?: return@withContext null
+            if (currentSong.song.id != expectedSong.song.id) {
+                return@withContext null
+            }
+
+            val actuallyPaused =
+                when {
+                    !player.playWhenReady -> true
+                    player.isPlaying -> false
+                    else -> return@withContext null
+                }
+            if (actuallyPaused != isPaused) {
+                return@withContext null
+            }
+
+            DiscordPresenceSnapshot(
+                song = currentSong,
+                positionMs = player.currentPosition,
+                isPaused = actuallyPaused,
+            )
+        }
     }
 
     private fun cancelRestoredQueueHydration() {

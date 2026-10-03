@@ -624,6 +624,12 @@ val LastFmPreferYtThumbnailsKey = booleanPreferencesKey("lastfmPreferYtThumbnail
 val DiscordTokenKey = stringPreferencesKey("discordToken")
 val DiscordRefreshTokenKey = stringPreferencesKey("discordRefreshToken")
 val DiscordTokenExpiresAtKey = longPreferencesKey("discordTokenExpiresAt")
+// Pending PKCE login session (state + verifier + started-at) so a returning
+// OAuth redirect can be completed even if the launching screen was destroyed
+// while the browser was open (process death / config change).
+val DiscordPendingAuthStateKey = stringPreferencesKey("discordPendingAuthState")
+val DiscordPendingAuthVerifierKey = stringPreferencesKey("discordPendingAuthVerifier")
+val DiscordPendingAuthStartedAtKey = longPreferencesKey("discordPendingAuthStartedAt")
 val DiscordInfoDismissedKey = booleanPreferencesKey("discordInfoDismissed")
 val DiscordUsernameKey = stringPreferencesKey("discordUsername")
 val DiscordNameKey = stringPreferencesKey("discordName")

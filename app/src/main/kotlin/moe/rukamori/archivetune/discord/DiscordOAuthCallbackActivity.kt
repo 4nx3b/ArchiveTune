@@ -25,6 +25,16 @@ class DiscordOAuthCallbackActivity : Activity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        intent?.data?.let(DiscordAuthCoordinator::emit)
+        val uri = intent?.data ?: return
+        DiscordAuthCoordinator.emit(uri)
+        // Complete the login app-side: the token exchange must not depend on
+        // the settings screen (or any UI) still being alive - the activity can
+        // be recreated by process death while the browser is open, and the old
+        // flow then dropped the redirect as a silent state mismatch ("tap
+        // Authorize, nothing happens"). The exchange runs on the repository's
+        // process-scoped supervisor and stores the session in DataStore; any
+        // live settings screen observes the result flow and the token
+        // preference updates on their own.
+        DiscordOAuthRepository.completeFromRedirectAsync(applicationContext, uri)
     }
 }
