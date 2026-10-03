@@ -92,24 +92,6 @@ internal fun hannWindow(size: Int): FloatArray =
         0.5f * (1f - cos(2.0 * PI * i / size).toFloat())
     }
 
-/** Single one-pole smoothing pass over a curve (attack/release style). */
-internal fun smoothCurve(
-    values: FloatArray,
-    alphaUp: Float,
-    alphaDown: Float,
-): FloatArray {
-    if (values.isEmpty()) return values
-    val out = FloatArray(values.size)
-    var acc = values[0]
-    out[0] = acc
-    for (i in 1 until values.size) {
-        val alpha = if (values[i] > acc) alphaUp else alphaDown
-        acc += alpha * (values[i] - acc)
-        out[i] = acc
-    }
-    return out
-}
-
 /** Mean of the middle 50% of the sorted values - outlier-proof loudness level. */
 internal fun robustMean(values: List<Float>): Float {
     if (values.isEmpty()) return 0f

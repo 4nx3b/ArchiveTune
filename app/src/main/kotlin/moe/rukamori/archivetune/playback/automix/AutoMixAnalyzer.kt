@@ -23,6 +23,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -287,8 +288,8 @@ class AutoMixAnalyzer(
                         idleSpins = 0
                         while (shortOut.remaining() >= sourceChannels) {
                             val readable = min(
-                                (shortOut.remaining() / sourceChannels).coerceAtMost(chunk.size),
-                                chunk.size,
+                                shortOut.remaining() / sourceChannels,
+                                chunk.size / sourceChannels,
                             )
                             shortOut.get(chunk, 0, readable * sourceChannels)
                             var f = 0
