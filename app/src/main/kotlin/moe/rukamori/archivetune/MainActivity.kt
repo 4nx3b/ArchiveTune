@@ -300,6 +300,8 @@ import moe.rukamori.archivetune.ui.component.FloatingNavigationToolbar
 import moe.rukamori.archivetune.ui.component.CompactControlCircle
 import moe.rukamori.archivetune.ui.component.CompactControlSize
 import moe.rukamori.archivetune.ui.component.NavigationBarGlassGlowKey
+import moe.rukamori.archivetune.ui.component.NavigationBarGlassGlowIntensityKey
+import moe.rukamori.archivetune.ui.component.NAVIGATION_BAR_GLASS_GLOW_INTENSITY_DEFAULT
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
