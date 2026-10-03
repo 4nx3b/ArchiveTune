@@ -97,6 +97,17 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.invalidateDraw
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.unit.toIntSize
+import android.os.SystemClock
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Outline
@@ -112,6 +123,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextLayoutResult
@@ -135,6 +147,7 @@ import coil3.size.Size as CoilSize
 import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerConnection
@@ -204,7 +217,77 @@ private const val AmCanvasBackdropUpscale = 6f
 
 private val AmCanvasBackdropBlurRadius = 72.dp
 
+// Snapshot source for the blurred canvas twin: records the twin's content
+// into a small GraphicsLayer at a capped rate and draws NOTHING to the
+// screen - the visible blurred backdrop is the baked bitmap composable that
+// consumes the layer. Recording (which pulls the interop TextureView draw
+// and thereby consumes SurfaceTexture frames - the async buffer queue drops
+// the rest, keeping the twin decoder in real time) is the ONLY render work
+// this path performs, capped at [AmCanvasSnapshotIntervalMs] instead of
+// running at video frame rate.
+private fun Modifier.canvasSnapshotSource(
+    graphicsLayer: GraphicsLayer,
+    minIntervalMillis: Long,
+): Modifier = this then CanvasSnapshotSourceElement(graphicsLayer, minIntervalMillis)
+
+private class CanvasSnapshotSourceElement(
+    val graphicsLayer: GraphicsLayer,
+    val minIntervalMillis: Long,
+) : ModifierNodeElement<CanvasSnapshotSourceNode>() {
+    override fun create() = CanvasSnapshotSourceNode(graphicsLayer, minIntervalMillis)
+
+    override fun update(node: CanvasSnapshotSourceNode) {
+        if (node.graphicsLayer !== graphicsLayer || node.minIntervalMillis != minIntervalMillis) {
+            node.graphicsLayer = graphicsLayer
+            node.minIntervalMillis = minIntervalMillis
+            node.lastRecordUptimeMillis = 0L
+        }
+        node.invalidateDraw()
+    }
+
+    override fun equals(other: Any?): Boolean =
+        other is CanvasSnapshotSourceElement &&
+            other.graphicsLayer === graphicsLayer &&
+            other.minIntervalMillis == minIntervalMillis
+
+    override fun hashCode(): Int =
+        graphicsLayer.hashCode() * 31 + minIntervalMillis.hashCode()
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "canvasSnapshotSource"
+        properties["minIntervalMillis"] = minIntervalMillis
+    }
+}
+
+private class CanvasSnapshotSourceNode(
+    var graphicsLayer: GraphicsLayer,
+    var minIntervalMillis: Long,
+) : DrawModifierNode, Modifier.Node() {
+    var lastRecordUptimeMillis = 0L
+
+    override fun ContentDrawScope.draw() {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastRecordUptimeMillis >= minIntervalMillis) {
+            lastRecordUptimeMillis = now
+            runCatching {
+                graphicsLayer.record(size.toIntSize()) {
+                    this@draw.drawContent()
+                }
+            }
+        }
+        // Intentionally draws nothing to the screen: see the doc above the
+        // canvasSnapshotSource extension.
+    }
+}
+
 private const val AmCanvasBackdropMaxVideoEdgePx = 256
+
+// Snapshot cadence for the blurred canvas twin: the twin's video layer is
+// recorded into a small GraphicsLayer and baked into a software-blurred
+// bitmap at this rate (~20 Hz). Under the 72 dp-equivalent backdrop blur a
+// 20 Hz refresh is visually continuous - the repo's own pre-S frosted navbar
+// runs the identical recipe at 12.5 Hz.
+private const val AmCanvasSnapshotIntervalMs = 50L
 
 private const val AppleMusicLyricsContentDeferMs = 160L
 
@@ -663,6 +746,52 @@ fun AppleMusicPlayerContent(
                 animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
             )
         }
+
+        // Blurred canvas twin - SNAPSHOT pipeline. The old twin rendered a
+        // live `Modifier.blur` RenderEffect layer: once the canvas decoder
+        // started pushing frames, EVERY video frame re-recorded the layer
+        // (interop TextureView draw + 12 dp gaussian at 1/6 res) and
+        // re-composited the 7.2x full-screen upscale - the "smooth for 1-2
+        // seconds after maximizing the mini player, then it starts lagging"
+        // regression behind the bottom controls. Now the twin is recorded
+        // into a small layer at ~20 Hz and baked into a software-blurred
+        // bitmap off the main thread (the exact recipe the pre-blurred
+        // artwork backdrop and the pre-S frosted navbar already use); the
+        // visible backdrop is a plain bitmap blit with zero per-frame
+        // gaussian work. The twin decoder keeps running in real time - the
+        // TextureView's async buffer queue drops unconsumed frames, so the
+        // loop-sync follower stays aligned exactly as before.
+        val twinSnapshotLayer = rememberGraphicsLayer()
+        var blurredTwinBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+        var twinBakeFailures by remember { mutableStateOf(0) }
+        val twinBackdropHealthy = twinBakeFailures < 5
+        val twinSnapshotBlurRadiusPx =
+            with(LocalDensity.current) { (AmCanvasBackdropBlurRadius / AmCanvasBackdropUpscale).toPx() }
+        LaunchedEffect(useCanvasBackdrop) {
+            blurredTwinBitmap = null
+            twinBakeFailures = 0
+            if (!useCanvasBackdrop) return@LaunchedEffect
+            while (isActive) {
+                val layer = twinSnapshotLayer
+                if (layer.size.width >= 8 && layer.size.height >= 8) {
+                    val baked =
+                        withContext(Dispatchers.Default) {
+                            runCatching {
+                                ImageBlurUtils
+                                    .blur(layer.toImageBitmap().asAndroidBitmap(), twinSnapshotBlurRadiusPx)
+                                    .asImageBitmap()
+                            }.getOrNull()
+                        }
+                    if (baked != null) {
+                        twinBakeFailures = 0
+                        blurredTwinBitmap = baked
+                    } else {
+                        twinBakeFailures++
+                    }
+                }
+                delay(AmCanvasSnapshotIntervalMs)
+            }
+        }
         val canvasScrimReveal by animateFloatAsState(
             // Keyed on canvasVisualActive (not useCanvasBackdrop): the lighter
             // canvas scrim must stay over the landscape full-bleed canvas video
@@ -826,27 +955,46 @@ fun AppleMusicPlayerContent(
                             },
                     contentAlignment = Alignment.Center,
                 ) {
-                    CanvasArtworkPlayer(
-                        primaryUrl = canvasPrimaryUrl,
-                        fallbackUrl = canvasFallbackUrl,
-                        isPlaying = isPlaying && canvasVisibleForLyrics,
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                        visible = canvasVisibleForLyrics,
-                        maxVideoEdgePx = AmCanvasBackdropMaxVideoEdgePx,
-                        loopSyncFollower = canvasLoopSync,
-                        // Rotating the player recreates this twin WITHOUT the
-                        // surface detach cycle a minimise/maximise performs -
-                        // the fresh decoder then rendered a laggy blurred canvas
-                        // behind the bottom controls. The epoch forces the same
-                        // detach -> first-frame -> re-seek settle on every
-                        // orientation change.
-                        refreshEpoch = orientationRefreshEpoch,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth(1f / AmCanvasBackdropUpscale)
-                                .fillMaxHeight(1f / AmCanvasBackdropUpscale)
-                                .blur(AmCanvasBackdropBlurRadius / AmCanvasBackdropUpscale),
-                    )
+                    // The twin player renders at 1/6 footprint (identical crop
+                    // and aspect to the previous live twin); its layer feeds
+                    // the ~20 Hz snapshot bake above. Until the first bitmap
+                    // lands - and permanently if the bake keeps failing - the
+                    // static artwork backdrop underneath shows through, never
+                    // a sharp unblurred canvas.
+                    if (twinBackdropHealthy) {
+                        CanvasArtworkPlayer(
+                            primaryUrl = canvasPrimaryUrl,
+                            fallbackUrl = canvasFallbackUrl,
+                            isPlaying = isPlaying && canvasVisibleForLyrics,
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                            visible = canvasVisibleForLyrics,
+                            maxVideoEdgePx = AmCanvasBackdropMaxVideoEdgePx,
+                            loopSyncFollower = canvasLoopSync,
+                            // Rotating the player recreates this twin WITHOUT the
+                            // surface detach cycle a minimise/maximise performs -
+                            // the fresh decoder then rendered a laggy blurred canvas
+                            // behind the bottom controls. The epoch forces the same
+                            // detach -> first-frame -> re-seek settle on every
+                            // orientation change.
+                            refreshEpoch = orientationRefreshEpoch,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth(1f / AmCanvasBackdropUpscale)
+                                    .fillMaxHeight(1f / AmCanvasBackdropUpscale)
+                                    .canvasSnapshotSource(twinSnapshotLayer, AmCanvasSnapshotIntervalMs),
+                        )
+                    }
+                    blurredTwinBitmap?.let { baked ->
+                        Image(
+                            bitmap = baked,
+                            contentDescription = null,
+                            contentScale = ContentScale.FillBounds,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth(1f / AmCanvasBackdropUpscale)
+                                    .fillMaxHeight(1f / AmCanvasBackdropUpscale),
+                        )
+                    }
                 }
             }
             // The heavier scrim applies while the rasterized backdrop bitmap is
