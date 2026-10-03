@@ -763,11 +763,19 @@ fun BitChordPlayerContent(
                     .weight(1f)
                     .fillMaxWidth()
 
-                    .onGloballyPositioned { dismissBandSpace.value = it }
+                    .onGloballyPositioned { coordinates ->
+                        if (coordinates.isAttached) {
+                            dismissBandSpace.value = coordinates
+                        }
+                    }
                     .pointerInput(Unit) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
-                            val space = dismissBandSpace.value
+                            // Stored coordinates can be observed by a gesture
+                            // after the band left composition; detached
+                            // coordinates throw on any position query, so take
+                            // only attached instances.
+                            val space = dismissBandSpace.value?.takeIf { it.isAttached }
                             val y = space
                                 ?.let { it.positionInRoot().y + down.position.y }
                                 ?: down.position.y

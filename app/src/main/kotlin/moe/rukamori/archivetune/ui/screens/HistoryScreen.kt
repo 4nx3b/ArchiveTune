@@ -105,7 +105,6 @@ import android.os.Build
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
-import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.delay
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -482,7 +481,6 @@ fun HistoryScreen(
                     RemoteHistoryFeed(
                         listState = activeRemoteState,
                         topPadding = topPadding,
-                        backdrop = backdrop.takeIf { liquidGlassHeaderActive },
                         headerContent = historySourceDock,
                         remoteHistoryState = remoteHistoryState,
                         filteredSections = filteredRemoteSections,
@@ -515,7 +513,6 @@ fun HistoryScreen(
                     LocalHistoryFeed(
                         listState = activeLocalState,
                         topPadding = topPadding,
-                        backdrop = backdrop.takeIf { liquidGlassHeaderActive },
                         headerContent = historySourceDock,
                         filteredEvents = filteredEvents,
                         visibleEvents = localVisibleEvents,
@@ -706,7 +703,22 @@ fun HistoryScreen(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .hazeSource(headerHaze),
+                        .hazeSource(headerHaze)
+                        // The glass recorder lives on this screen-lifetime
+                        // ancestor, NOT on the individual history lists: the
+                        // normal-mode and search-mode lists swap in and out of
+                        // composition (search open / back), and a recorder
+                        // whose layout node leaves composition leaves stale
+                        // detached coordinates behind - crashing every glass
+                        // consumer's next draw. Recording the stable ancestor
+                        // captures the same content and survives the swap.
+                        .then(
+                            if (liquidGlassHeaderActive) {
+                                Modifier.glassSource(backdrop)
+                            } else {
+                                Modifier
+                            },
+                        ),
             ) {
                 if (!showSearchBar) {
                     val topPaddingForContent =
@@ -883,7 +895,6 @@ fun HistoryScreen(
 private fun LocalHistoryFeed(
     listState: LazyListState,
     topPadding: Dp,
-    backdrop: Backdrop?,
     headerContent: @Composable () -> Unit,
     filteredEvents: Map<DateAgo, List<EventWithSong>>,
     visibleEvents: List<EventWithSong>,
@@ -921,8 +932,6 @@ private fun LocalHistoryFeed(
                 .wrapContentWidth(Alignment.CenterHorizontally)
                 .widthIn(max = 840.dp)
                 .padding(top = topPadding)
-
-                .then(if (backdrop != null) Modifier.glassSource(backdrop) else Modifier)
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
                 ),
@@ -1048,7 +1057,6 @@ private fun LocalHistoryFeed(
 private fun RemoteHistoryFeed(
     listState: LazyListState,
     topPadding: Dp,
-    backdrop: Backdrop?,
     headerContent: @Composable () -> Unit,
     remoteHistoryState: RemoteHistoryUiState,
     filteredSections: List<HistoryPage.HistorySection>,
@@ -1067,8 +1075,6 @@ private fun RemoteHistoryFeed(
                 .wrapContentWidth(Alignment.CenterHorizontally)
                 .widthIn(max = 840.dp)
                 .padding(top = topPadding)
-
-                .then(if (backdrop != null) Modifier.glassSource(backdrop) else Modifier)
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
                 ),

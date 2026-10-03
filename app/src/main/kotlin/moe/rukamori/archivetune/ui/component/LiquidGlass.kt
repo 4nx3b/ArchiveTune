@@ -317,13 +317,29 @@ class ThrottledLayerBackdrop internal constructor(
         if (recordingInProgress) return
         val coordinates = coordinates ?: return
         val layerCoordinates = layerCoordinates ?: return
-        withTransform({
-            val offset =
-                try {
-                    layerCoordinates.localPositionOf(coordinates)
-                } catch (_: Exception) {
+        // Detached coordinates degrade to "no backdrop this frame", exactly
+        // like the null cases above - they must NEVER throw out of the draw
+        // phase. The recorder's stored coordinates can outlive the layout
+        // node that reported them (a recorder-bearing list leaving
+        // composition - e.g. the history search list on back - while a
+        // consumer still redraws in the same frame, typically via the 10Hz
+        // recorder pump); isAttached is a live property, so reading it here
+        // covers detach between layout and draw as well.
+        if (!layerCoordinates.isAttached || !coordinates.isAttached) return
+        val offset =
+            try {
+                layerCoordinates.localPositionOf(coordinates)
+            } catch (_: Exception) {
+                // Severed hierarchies (recorder subtree already removed from
+                // the window) - the window-space fallback itself performs
+                // coordinate math that throws on detached instances, so it
+                // must be contained too: no resolvable offset this frame
+                // means no backdrop draw, never a crash.
+                runCatching {
                     coordinates.positionInWindow() - layerCoordinates.positionInWindow()
-                }
+                }.getOrNull()
+            } ?: return
+        withTransform({
             translate(-offset.x, -offset.y)
         }) {
 
@@ -424,6 +440,17 @@ private class ThrottledLayerBackdropNode(
 
     override fun onDetach() {
         liveRecorderBackdrops.remove(backdrop)
+        // Frozen-layer behaviour is kept ONLY while the stored coordinates
+        // are still attached (modifier re-ordering, sheet transitions: the
+        // layout node survives, the last recorded frame keeps drawing). When
+        // the coordinates are already detached - the recorder's subtree left
+        // composition entirely - the reference is poison: any later consumer
+        // draw would perform detached-coordinate math. Drop it so consumers
+        // degrade to their plain base/tint instead of throwing.
+        if (backdrop.layerCoordinates?.isAttached == false) {
+            backdrop.layerCoordinates = null
+            consumerInvalidationTick++
+        }
     }
 }
 

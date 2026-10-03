@@ -177,12 +177,20 @@ object AppleMusicProvider {
             Log.w("Apple Music user dev token expired (exp=${expSec}s) — falling back to the refreshed web token")
         }
         val nowSec = System.currentTimeMillis() / 1000L
-        val isExpired = appleMusicTokenExpAtSec == 0L || appleMusicTokenExpAtSec <= nowSec
+        // exp == 0 means "unparseable payload", NOT "expired": treat unknown
+        // exp as serve-and-back-off (re-scrape at most once per 10 minutes)
+        // instead of hammering the web player on every request.
+        val expUnknown = appleMusicTokenExpAtSec == 0L
+        val isExpired = !expUnknown && appleMusicTokenExpAtSec <= nowSec
         val needsRefresh =
-            appleMusicTokenExpAtSec == 0L || appleMusicTokenExpAtSec - nowSec < 60L * 60L * 24L
+            expUnknown || appleMusicTokenExpAtSec - nowSec < 60L * 60L * 24L
         if (!needsRefresh) return appleMusicToken
 
         val sinceLast = System.currentTimeMillis() - appleMusicTokenLastRefreshAtMs
+        if (expUnknown) {
+            if (sinceLast in 1..600_000L) return appleMusicToken
+            return refreshToken() ?: appleMusicToken
+        }
         if (!isExpired && sinceLast in 1..60_000L) return appleMusicToken
 
         if (!isExpired) return appleMusicToken
@@ -319,13 +327,20 @@ object AppleMusicProvider {
 
     private fun decodeJwtExpSec(jwt: String): Long {
         val payload = decodeJwtPayload(jwt) ?: return 0L
-        val expMatch = """"exp"\s*:\s*(\d+)"""".toRegex().find(payload) ?: return 0L
+        // NOTE: this used to be a 4-quote raw string whose extra trailing
+        // quote became part of the PATTERN (demanding a quote AFTER the
+        // digits), which a JWT payload never has ("," follows the number) -
+        // so every token parsed to exp=0, was treated as permanently
+        // expired, and the provider re-scraped music.apple.com (multi-MB
+        // HTML + JS bundle) on every single canvas request. Plain escaped
+        // string, no raw-string quote ambiguity.
+        val expMatch = Regex("\"exp\"\\s*:\\s*(\\d+)").find(payload) ?: return 0L
         return expMatch.groupValues[1].toLongOrNull() ?: 0L
     }
 
     private fun decodeJwtIssuer(jwt: String): String? {
         val payload = decodeJwtPayload(jwt) ?: return null
-        return """"iss"\s*:\s*"([^"]+)"""".toRegex().find(payload)?.groupValues?.get(1)
+        return Regex("\"iss\"\\s*:\\s*\"([^\"]+)\"").find(payload)?.groupValues?.get(1)
     }
 
     private fun decodeJwtPayload(jwt: String): String? {
