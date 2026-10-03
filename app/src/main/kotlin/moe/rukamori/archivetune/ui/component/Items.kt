@@ -137,12 +137,6 @@ import androidx.compose.runtime.setValue
 
 const val ActiveBoxAlpha = 0.6f
 
-// Alpha of the backdrop-inspired active-song highlight pill (artist pages):
-// translucent enough that the hero gradient / page backdrop shows through the
-// tint ("inspired by the backdrop"), opaque enough plus a hairline border
-// that the row still clearly reads as highlighted rather than blending into
-// the page ("shouldn't blend too much"). Public because the inline ListItem
-// references them (public inline functions cannot access private API).
 const val ActiveBackdropContainerAlpha = 0.55f
 const val ActiveBackdropBorderAlpha = 0.28f
 
@@ -187,10 +181,7 @@ inline fun ListItem(
                 .then(
                     if (isActive && showActiveContainer) {
                         if (activeContainerBackdrop) {
-                            // Backdrop-inspired highlight: a translucent tonal
-                            // tint over whatever the page draws behind the row
-                            // plus a hairline border, so the pill is clearly
-                            // present without fully covering the backdrop.
+
                             Modifier
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(
@@ -654,9 +645,7 @@ fun AlbumGridItem(
         Text(
             text = album.artists.joinToString { it.name },
             style = MaterialTheme.typography.bodyMedium,
-            // Fixed theme color: grid subtitles (artist names under album
-            // cards) must not re-tint with the per-playing-song dynamic
-            // theme - they read as page furniture, not accents.
+
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -968,10 +957,7 @@ fun YouTubeGridItem(
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodyMedium,
-                    // Fixed theme color: the "artists · year" grid subtitle
-                    // (the release years and artist names on artist pages)
-                    // must not re-tint with the per-playing-song dynamic
-                    // theme.
+
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,

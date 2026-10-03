@@ -742,7 +742,6 @@ fun LyricsEnhanced(
 
     LaunchedEffect(lyricsSessionKey, isSynced, positionResetCounter, karaokeGeneration) {
         if (!isSynced || singleActiveLine) {
-
             awaitingFirstFocus = false
             return@LaunchedEffect
         }
@@ -1895,7 +1894,6 @@ private fun SingleActiveLineCluster(
             }
 
             else -> {
-
                 Text(
                     text = line.lineText(),
                     style = normalTextStyle,

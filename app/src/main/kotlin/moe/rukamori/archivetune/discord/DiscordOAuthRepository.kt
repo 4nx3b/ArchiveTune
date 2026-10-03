@@ -59,7 +59,6 @@ data class DiscordAuthSession(
     val account: DiscordAccount?,
 )
 
-/** Result of an app-side authorization completion attempt. */
 sealed interface DiscordAuthResult {
     data class Success(
         val account: DiscordAccount?,
@@ -77,9 +76,6 @@ object DiscordAuthCoordinator {
             extraBufferCapacity = 1,
         )
 
-    // No replay: a fresh entry into the settings screen must not re-show a
-    // stale login outcome; live subscribers get the result as it happens and
-    // the token itself arrives through the DataStore preference anyway.
     val authResults =
         MutableSharedFlow<DiscordAuthResult>(
             extraBufferCapacity = 1,
@@ -101,15 +97,8 @@ object DiscordOAuthRepository {
     private const val REQUEST_TIMEOUT_MS = 12_000
     private const val EXPIRY_SKEW_MS = 60_000L
 
-    // A pending PKCE session stays claimable for this long (OAuth codes
-    // themselves expire after ~10 minutes, so a much larger window only
-    // invites confusion between login attempts).
     private const val PENDING_SESSION_TTL_MS = 15 * 60_000L
 
-    // Completion runs on a process-scoped supervisor: the callback activity
-    // finishes the moment it has forwarded the redirect, and the token
-    // exchange (up to 12 s) must outlive it. The settings screen does NOT
-    // need to be alive - completion is fully app-side.
     private val completionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -152,15 +141,6 @@ object DiscordOAuthRepository {
         )
     }
 
-    /**
-     * Creates a session AND persists its PKCE material to DataStore so the
-     * returning redirect can be completed even if the launching activity was
-     * destroyed (process death while the browser is open, config change, low
-     * memory kill). The previous completion flow depended on the settings
-     * screen holding the same in-memory session object: any recreation
-     * silently invalidated the state check and the login died as a no-op
-     * ("I tap Authorize and nothing happens").
-     */
     suspend fun beginAuthorization(context: Context): DiscordAuthorizationSession {
         val session = createAuthorizationSession()
         context.dataStore.edit { prefs ->
@@ -171,14 +151,6 @@ object DiscordOAuthRepository {
         return session
     }
 
-    /**
-     * App-side completion of a redirect, independent of any UI. Validates the
-     * redirect against the PERSISTED pending session (falling back to the
-     * in-memory session for same-process logins started by an older call
-     * path), exchanges the code, stores the resulting token and clears the
-     * pending session. Emits a [DiscordAuthResult] either way - a failed or
-     * mismatched login must never be silent again.
-     */
     fun completeFromRedirectAsync(context: Context, redirect: Uri) {
         completionScope.launch {
             val result = completeFromRedirect(context, redirect)
@@ -227,8 +199,6 @@ object DiscordOAuthRepository {
                 }
             }
 
-        // Honour structured cancellation: a cancelled completion must
-        // propagate, not be reported as a (null) result.
         outcome.exceptionOrNull()?.let { throwable ->
             if (throwable is kotlinx.coroutines.CancellationException) throw throwable
         }
@@ -241,12 +211,6 @@ object DiscordOAuthRepository {
         }
     }
 
-    /**
-     * Matches the redirect's state against the persisted pending session and
-     * returns its PKCE verifier, consuming the pending session atomically.
-     * Returns null on mismatch/expiry - which also covers double-completion
-     * (the second attempt finds no pending session and fails harmlessly).
-     */
     private suspend fun resolvePendingVerifier(
         context: Context,
         state: String?,

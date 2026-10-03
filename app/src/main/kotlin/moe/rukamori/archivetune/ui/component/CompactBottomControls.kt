@@ -38,16 +38,10 @@ import com.kyant.backdrop.Backdrop
 
 val NavigationBarGlassGlowKey = booleanPreferencesKey("navigationBarGlassGlow")
 
-// Scales the glass-glow rim light / sheen strength (navigation bar + compact
-// control circles). 1f is the historical look; the slider clamps to 0.2f..2f.
 val NavigationBarGlassGlowIntensityKey = floatPreferencesKey("navigationBarGlassGlowIntensity")
 
 const val NAVIGATION_BAR_GLASS_GLOW_INTENSITY_DEFAULT = 1f
 
-// Holds the animated compact fraction as a State object so providers can hand
-// it to consumers WITHOUT reading (and therefore invalidating) their own
-// composition scope on every animation frame. Consumers read `.value` inside
-// their own scope or in a draw-phase lambda.
 val LocalBottomUiCompactFraction = compositionLocalOf<State<Float>> {
     mutableStateOf(0f)
 }
@@ -126,7 +120,6 @@ fun CompactControlCircle(
 ) {
     val useGlass = backdrop != null
     if (useGlass) {
-
         Box(
             modifier =
                 modifier

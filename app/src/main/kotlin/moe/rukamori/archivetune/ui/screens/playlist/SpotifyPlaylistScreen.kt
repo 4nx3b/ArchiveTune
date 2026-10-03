@@ -248,8 +248,6 @@ fun SpotifyPlaylistScreen(
 
     var isSearching by rememberSaveable { mutableStateOf(false) }
 
-    // The compact search circle next to the mini player opens THIS page's
-    // search (not the global song search).
     ObserveOpenSearchRequest(navController) { isSearching = true }
 
     var resolvingTrackId by remember { mutableStateOf<String?>(null) }

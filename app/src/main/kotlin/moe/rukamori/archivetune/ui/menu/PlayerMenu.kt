@@ -350,7 +350,6 @@ fun PlayerMenu(
     }
     val availableSources =
         remember(mediaMetadata.id, showSourceDialog, sourceRevision) {
-
             playerConnection.service.availableSourcesForSong(mediaMetadata.id)
                 .filter { it != AudioSourceType.APPLE }
         }
@@ -804,7 +803,6 @@ fun PlayerMenu(
                 NewActionGrid(
                     actions =
                         buildList {
-
                             if (playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC) {
                                 castPlayerMenuAction?.let(::add)
                             }
@@ -865,7 +863,6 @@ fun PlayerMenu(
                                                 ),
                                             )
                                             if (!songCanvasDisabledForCurrent) {
-
                                                 onDismiss()
                                             }
                                         },
@@ -1645,7 +1642,6 @@ private suspend fun searchOneSource(
             }
 
             AudioSourceType.QOBUZ_BACKUP -> {
-
                 runCatching {
                     QobuzBackupProvider.configuredEndpoints =
                         context.dataStore.data.first()[QobuzBackupEndpointsKey]

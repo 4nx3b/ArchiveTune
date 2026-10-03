@@ -52,10 +52,7 @@ class AaudioExclusiveAudioOutput(
             opened.release()
             return null
         }
-        // Verify the GRANTED format: a HAL that silently opens a different
-        // rate would pitch-shift the stream (worse than resampling), and one
-        // that opens a different channel count corrupts the layout. Either
-        // mismatch falls back to the standard output at the source rate.
+
         if (opened.sampleRate() != wantedRate || opened.channelCount() != wantedChannels) {
             Log.w(
                 TAG,

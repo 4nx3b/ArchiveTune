@@ -843,7 +843,6 @@ internal fun MovingBlurBackground(
                 .clipToBounds()
                 .background(AppleMusicFallbackGradient.last()),
     ) {
-
         val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
         val blurWander = rememberBlurWanderDrift(active = true, maxDriftDp = wanderMaxDrift)
         val preSDriftScale =
@@ -905,7 +904,6 @@ internal fun MovingBlurBackground(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
-
                                     scaleX = preSDriftScale
                                     scaleY = preSDriftScale
                                     translationX = blurWander.xDp.floatValue.dp.toPx()

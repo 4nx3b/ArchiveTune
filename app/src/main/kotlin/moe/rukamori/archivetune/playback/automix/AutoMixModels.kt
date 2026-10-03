@@ -10,35 +10,29 @@ package moe.rukamori.archivetune.playback.automix
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.Serializable
 
-/** Analysis cadence of the energy/vocal curves (one value per 250 ms). */
 const val AUTO_MIX_CURVE_STEP_MS = 250L
 
 @Serializable
 data class AutoMixAnalysis(
     val durationMs: Long,
-    /** Estimated tempo in beats per minute; 0.0 when the grid is unusable. */
+
     val bpm: Double,
     val beatIntervalMs: Double,
-    /** 0..1 prominence of the autocorrelation tempo peak. */
+
     val beatConfidence: Double,
-    /** Grid origin (ms) of the detected downbeats (4/4 assumed). */
+
     val downbeatPhaseMs: Double,
     val audibleStartMs: Long,
     val introEndMs: Long,
     val outroStartMs: Long,
     val contentEndMs: Long,
-    /**
-     * Dynamic mix-out trigger: the position where the track's own energy
-     * begins its final sustained decline toward silence (the natural
-     * fade-out). Equal to [contentEndMs] for hard cuts (no natural fade) and
-     * 0 for legacy cached analyses written before this field existed.
-     */
+
     val finalFadeOnsetMs: Long = 0L,
     val mixInCandidatesMs: List<Long>,
     val mixOutCandidatesMs: List<Long>,
-    /** Loudness curve, one sample per [AUTO_MIX_CURVE_STEP_MS]. */
+
     val energyCurve: List<Float>,
-    /** Vocal-likelihood curve (0..1), one sample per [AUTO_MIX_CURVE_STEP_MS]. */
+
     val vocalActivity: List<Float>,
 ) {
     val isUsable: Boolean
@@ -92,7 +86,6 @@ data class AutoMixTransitionWindow(
     val endFraction: Float,
 )
 
-/** UI-facing runtime state, consumed by the BitChord status line. */
 object AutoMixUiState {
     val enabled = MutableStateFlow(false)
     val analysis = MutableStateFlow(AutoMixAnalysisStates())
@@ -101,16 +94,12 @@ object AutoMixUiState {
 }
 
 enum class AutoMixStyle {
-    /** Same-album consecutive tracks: let the primary player run through. */
     GAPLESS,
 
-    /** Plain equal-power fade - no beat alignment available. */
     EQUAL_POWER,
 
-    /** Beat-matched overlap with optional tempo alignment and a bass handover. */
     DJ_BLEND,
 
-    /** Filter-ride blend: outgoing low-passes out, incoming high-passes in. */
     DJ_FILTER,
 }
 
@@ -126,20 +115,20 @@ data class AutoMixPlan(
     val blocked: Boolean,
     val reason: String,
     val style: AutoMixStyle,
-    /** Wall-clock millisecond marks of the transition inside the OUTGOING track. */
+
     val transitionStartMs: Long,
     val transitionEndMs: Long,
     val fadeMs: Long,
-    /** Start position of the incoming track when it fades in. */
+
     val incomingCueMs: Long,
-    /** Playback-rate alignment for the incoming player (1.0 = native). */
+
     val incomingPlaybackRate: Double,
     val bassSwap: Boolean,
-    /** 0..1 position inside [transitionStartMs, transitionEndMs] where the bass hands over. */
+
     val bassSwapFraction: Double,
-    /** 0..1 strength of the low/high-pass ride. */
+
     val filterSweep: Double,
-    /** 0..1 estimated vocal clash across the overlap. */
+
     val vocalOverlap: Double,
     val markerVisible: Boolean,
 ) {
@@ -167,7 +156,6 @@ data class AutoMixPlan(
     }
 }
 
-/** Analysis quality/parallelism requested from the settings screen. */
 enum class AutoMixPerformanceMode {
     EFFICIENT,
     BALANCED,

@@ -130,9 +130,6 @@ internal fun AppleMusicOnlineSearchResult(
             .asPaddingValues()
             .calculateBottomPadding()
 
-    // Restored as in-list content: the header is laid out by the list itself
-    // (first item) so it can never end up as reserved-but-invisible space,
-    // and it scrolls away with the results exactly like the results content.
     val header: @Composable () -> Unit = {
         SearchResultsTopHeader(
             query = viewModel.query,
@@ -160,9 +157,7 @@ internal fun AppleMusicOnlineSearchResult(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
     ) {
-        // The recorder tags the scrollable content only; the bottom overlay
-        // stays a SIBLING so the recorder can never contain its own
-        // liquidGlass consumers (a circular record crashes the RenderThread).
+
         Box(
             modifier =
                 Modifier
@@ -299,7 +294,6 @@ internal fun AppleMusicOnlineSearchResult(
             bottomPadding = playerAwareBottomPadding,
             lazyListState = lazyListState,
             trailing = {
-
                 SearchSourcePicker(
                     currentScope = SearchSource.ONLINE,
                     currentProvider = SearchProvider.APPLE_MUSIC,
@@ -402,7 +396,6 @@ internal fun AppleMusicItemRow(
 ) {
     val subtitle =
         when (item) {
-
             is AppleMusicSearchItem.Track -> item.artist
 
             is AppleMusicSearchItem.Album ->

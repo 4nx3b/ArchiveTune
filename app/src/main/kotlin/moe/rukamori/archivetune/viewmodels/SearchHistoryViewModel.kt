@@ -33,10 +33,6 @@ class SearchHistoryViewModel
                     initialValue = emptyList(),
                 )
 
-        // Per-item deletion was removed with the swipe-to-dismiss rows: the
-        // only removal affordance now is the "Clear" action (clearAll) in the
-        // recent-searches header, per the requested single clear-all behavior.
-
         fun clearAll() {
             viewModelScope.launch {
                 database.query { clearSearchHistory() }

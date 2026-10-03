@@ -265,7 +265,6 @@ object PoolAccountManager {
                     lastFeedError = null
                     Timber.tag(TAG).d("No Source Pool URL configured; nothing to refresh")
                 } else {
-
                     val userKey =
                         runCatching { context.dataStore.getAsync(PoolApiKeyKey) }
                             .getOrNull()

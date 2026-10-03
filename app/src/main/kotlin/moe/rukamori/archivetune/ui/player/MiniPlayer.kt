@@ -93,16 +93,11 @@ fun MiniPlayer(
     compactReserveEndControl: Boolean = true,
     onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
-    // Read once in THIS (small) scope: the compact transition recomposes only
-    // the mini player row, never the whole app scaffold that provides it.
+
     val compactFraction = compactFractionState.value
 
     val compactStartInset = compactHorizontalPadding + CompactControlSize + CompactControlGap
-    // When a right-side floating control is reserved (search circle), the pill
-    // keeps the full start-mirrored inset. When there is NO end control the
-    // pill used to run flush against the screen edge (0dp end padding) - keep
-    // the horizontal screen padding instead so the compact pill has even
-    // spacing from the display border, matching the floating nav bar's rhythm.
+
     val compactEndInset =
         if (compactReserveEndControl) {
             compactHorizontalPadding + CompactControlSize + CompactControlGap

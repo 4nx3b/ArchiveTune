@@ -110,9 +110,6 @@ fun DownloadLibraryScreen(
 ) {
     val state by viewModel.screenState.collectAsStateWithLifecycle()
 
-    // The compact search circle next to the mini player opens THIS page's
-    // search (not the global song search). Reached via the
-    // auto_playlist/downloaded route.
     ObserveOpenSearchRequest(navController) { viewModel.activateSearch() }
 
     val playerConnection = LocalPlayerConnection.current

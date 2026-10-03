@@ -60,7 +60,6 @@ object NewReleaseNotificationManager {
                 .Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .apply {
-
                     if (!fast) {
                         setRequiresBatteryNotLow(true)
                     }

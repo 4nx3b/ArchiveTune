@@ -141,12 +141,6 @@ fun SearchScreen(
                 ),
     ) {
 
-        // The glass recorder tags the ATMOSPHERE ONLY. The glass chrome below
-        // must stay a SIBLING of the recorded subtree: a recorder that contains
-        // its own liquidGlass consumers is circular (the consumer would draw the
-        // very layer being recorded into itself) and crashes the RenderThread
-        // with a stack-overflow SIGSEGV the moment the tab opens with glass
-        // enabled - the same invariant OnlineSearchResult and ArtistScreen follow.
         Box(
             modifier =
                 Modifier
@@ -288,7 +282,6 @@ private fun RecentSearchesPanel(
                             .padding(horizontal = SearchHorizontalPadding),
                 )
                 if (index < recentSearches.lastIndex) {
-
                     HorizontalDivider(
                         modifier =
                             Modifier.padding(

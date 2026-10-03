@@ -12,11 +12,6 @@ import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 
-/**
- * In-place iterative radix-2 FFT. Size must be a power of two. Used by the
- * automix onset detector (spectral flux) - small sizes (<=2048) keep the
- * analysis fast enough to run per chunk on a background dispatcher.
- */
 internal class Fft(private val size: Int) {
     private val cosTable = FloatArray(size / 2)
     private val sinTable = FloatArray(size / 2)
@@ -40,10 +35,6 @@ internal class Fft(private val size: Int) {
         }
     }
 
-    /**
-     * Transforms [real]/[imag] in place; magnitudes are written into [mag]
-     * (first size/2 bins) when it is non-null.
-     */
     fun magnitudeSpectrum(
         real: FloatArray,
         imag: FloatArray,
@@ -86,13 +77,11 @@ internal class Fft(private val size: Int) {
     }
 }
 
-/** Hann window coefficients for the given FFT size. */
 internal fun hannWindow(size: Int): FloatArray =
     FloatArray(size) { i ->
         0.5f * (1f - cos(2.0 * PI * i / size).toFloat())
     }
 
-/** Mean of the middle 50% of the sorted values - outlier-proof loudness level. */
 internal fun robustMean(values: List<Float>): Float {
     if (values.isEmpty()) return 0f
     val sorted = values.sorted()

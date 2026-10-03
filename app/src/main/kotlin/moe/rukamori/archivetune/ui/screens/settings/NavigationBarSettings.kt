@@ -258,9 +258,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 }
 
                 item {
-                    // Directly below its toggle, as requested: scales the rim
-                    // light + sheen strength of the nav bar and the compact
-                    // control circles (100% = the historical look).
+
                     SliderPreferenceRow(
                         title = stringResource(R.string.navigation_bar_glass_glow_intensity),
                         description = stringResource(R.string.navigation_bar_glass_glow_intensity_desc),

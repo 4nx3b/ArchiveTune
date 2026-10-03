@@ -964,7 +964,6 @@ object LyricsUtils {
     }
 
     private fun extractYrcWordTimestamps(rawText: String): List<WordTimestamp>? {
-
         if (!YRC_WORD_TIME_REGEX.containsMatchIn(rawText)) return null
         val tokens = YRC_WORD_TOKEN_REGEX.findAll(rawText).toList()
         if (tokens.isEmpty()) return null

@@ -297,7 +297,6 @@ private fun SfProFontRow(
                 strokeWidth = 2.dp,
             )
         } else if (applied) {
-
             Icon(
                 painter = painterResource(R.drawable.check),
                 contentDescription = stringResource(R.string.sf_pro_applied, entry.name),

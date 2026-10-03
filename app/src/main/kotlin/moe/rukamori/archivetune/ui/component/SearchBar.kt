@@ -112,13 +112,7 @@ fun TopSearch(
     leftFocusRequester: FocusRequester? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // Animates on OPEN, snaps on CLOSE. During the close the previous spec
-    // kept `animationProgress > 0` (and therefore the full-screen content,
-    // including its scrollable result lists) composed and INTERACTIVE for the
-    // whole 300ms tween - a lingering invisible layer that consumed scroll
-    // drags after closing search (history page "stuck" glitch). Snapping to 0
-    // disposes the content immediately; the caller's own fade handles the
-    // visual close.
+
     val animationProgress: Float by animateFloatAsState(
         targetValue = if (active) 1f else 0f,
         animationSpec =

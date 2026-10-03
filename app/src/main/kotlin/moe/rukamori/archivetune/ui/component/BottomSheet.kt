@@ -67,11 +67,7 @@ import androidx.compose.runtime.setValue
 fun BottomSheet(
     state: BottomSheetState,
     modifier: Modifier = Modifier,
-    // Provided as a lambda so callers can read animated sheet progress INSIDE
-    // the draw phase. Passing a plain Color computed from `state.value` in
-    // composition invalidates the caller's whole scope on every frame of the
-    // expand/collapse transition (for the player sheet that is the entire
-    // ~3000-line player subtree).
+
     backgroundColor: () -> Color,
     onDismiss: (() -> Unit)? = null,
     keepContentAlive: Boolean = false,
@@ -505,11 +501,6 @@ fun rememberBottomSheetState(
             Animatable(0.dp, Dp.VectorConverter)
         }
 
-    // Tracks the bounds the animatable last settled against so a pure bounds
-    // change (rotation resizing the sheet) can SNAP to the new anchor instead
-    // of visibly re-sliding from the old orientation's height - that slide kept
-    // the kept-alive player content mid-flight and out of sync with the plain
-    // controls after rotating back to portrait.
     var previousBounds by remember {
         mutableStateOf(Triple(dismissedBound, expandedBound, collapsedBound))
     }

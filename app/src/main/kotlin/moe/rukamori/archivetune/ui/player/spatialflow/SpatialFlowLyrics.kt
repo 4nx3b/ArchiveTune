@@ -614,7 +614,6 @@ private fun wordSpansFor(
     val spans = mutableListOf<WordCharSpan>()
     var cursor = 0
     for (word in words) {
-
         val core = word.text.trim()
         if (core.isEmpty()) continue
         val idx = text.indexOf(core, cursor)
@@ -976,7 +975,6 @@ private fun SpatialFlowLyricsMovingBlur(
                 .fillMaxSize()
                 .clipToBounds(),
     ) {
-
         val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
         val blurWander = rememberBlurWanderDrift(active = true, maxDriftDp = wanderMaxDrift)
         val driftFootprint =

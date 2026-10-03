@@ -182,7 +182,6 @@ internal fun ChatAvatar(
                 manager.customAvatarFor(currentUserId)
             }
         } else {
-
             customAvatars[userId] ?: user?.let { customAvatars[it.userId] }
         }
     val bitmap: Bitmap? =
@@ -441,7 +440,6 @@ internal fun MessageActionsPopup(
                     },
                     onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
                     onDrawSurface = {
-
                         drawRect(Color.Black.copy(alpha = 0.30f))
                     },
                     shape = { popupShape },
@@ -588,7 +586,6 @@ internal fun MessageActionsPopup(
                         if (!dismissed) dismissed = true
                     }
                 } else {
-
                     PopupActionChip(icon = R.drawable.delete, label = stringResource(R.string.delete)) {
                         onDeleteForMe()
                         if (!dismissed) dismissed = true
@@ -1033,7 +1030,6 @@ internal fun GifBubble(
         val (width, height) = intrinsic
         val imageModifier =
             if (width > 0 && height > 0) {
-
                 Modifier
                     .heightIn(max = 300.dp)
                     .aspectRatio(width.toFloat() / height.toFloat())
@@ -1300,7 +1296,6 @@ internal fun PinnedMessagesStack(
                     }
                     .clickable {
                         if (ordered.size > 1) {
-
                             slideDirection = 1
                             val next = ordered[(index + 1) % ordered.size]
                             displayedKey = pinnedKeyOf(next)

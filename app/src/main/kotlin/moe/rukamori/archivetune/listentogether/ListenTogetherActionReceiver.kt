@@ -25,7 +25,6 @@ class ListenTogetherActionReceiver : BroadcastReceiver() {
         val notifId = intent.getIntExtra(ListenTogetherClient.EXTRA_NOTIFICATION_ID, 0)
 
         when (intent.action) {
-
             ListenTogetherClient.ACTION_REPLY_CHAT -> {
                 val remoteInput = RemoteInput.getResultsFromIntent(intent)
                 client.handleChatReplyFromNotification(

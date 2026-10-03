@@ -489,10 +489,7 @@ fun BottomSheetPlayer(
                 if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
             useDarkTheme && pureBlack
         }
-    // The sheet background color is handed to BottomSheet as a LAMBDA that
-    // reads `state.value` inside the draw phase: computing it here (in
-    // composition) invalidated this entire ~3000-line player scope on every
-    // frame of the expand/collapse (mini player compact) transition.
+
     val sheetSurfaceColor = MaterialTheme.colorScheme.surface
 
     val playbackState by playerConnection.playbackState.collectAsStateWithLifecycle()
@@ -536,12 +533,6 @@ fun BottomSheetPlayer(
         CanvasArtworkPlaybackCache.setMaxSize(maxCanvasCacheSize)
     }
 
-    // The state OBJECT is kept (not a `by` delegate read): the polling loop
-    // writes it up to 10x/s, and a composition-scope read of the delegated
-    // value (the old rememberUpdatedState(position) below) invalidated this
-    // entire player scope - including the hidden keepContentAlive subtree -
-    // on every tick while the user scrolled the main UI. The provider reads
-    // the state directly in the draw phase instead.
     val positionState =
         rememberSaveable(mediaMetadata?.id) {
             val player = playerConnection.player
@@ -1060,11 +1051,6 @@ fun BottomSheetPlayer(
         if (!state.isExpandedOrExpanding) {
             isInlineLyricsOpen = false
 
-            // The Apple Music lyrics flag must reset with the sheet as well: a
-            // stale true here keeps the lyrics-visibility edge detection level-
-            // dependent on this single remaining flag instead of both, which
-            // left pages rendering glass pills from a detached recorder after
-            // the player was minimized.
             isAppleMusicInlineLyricsOpen = false
         }
     }
@@ -1179,11 +1165,7 @@ fun BottomSheetPlayer(
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
     val playerSheetCanvasVisible by remember(state) {
-        // Keep the canvas players alive while the sheet is expanded OR animating
-        // back to the expanded anchor: on rotation the sheet re-anchors through
-        // a short slide whose progress dips below 0.5 - pausing and recreating
-        // both canvas players there left the artwork lagging behind the plain
-        // composable controls until the player was minimized and re-expanded.
+
         derivedStateOf { state.progress > 0.5f || state.isExpandedOrExpanding }
     }
     CompositionLocalProvider(LocalPlayerSheetVisible provides playerSheetCanvasVisible) {
@@ -1301,9 +1283,7 @@ fun BottomSheetPlayer(
                         }
                     }
                 },
-        // Read inside the lambda (draw phase): `state.value` changes every
-        // frame of the sheet transition - computing this in composition
-        // recomposed the ENTIRE player subtree per frame.
+
         backgroundColor = {
             val progress =
                 ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
@@ -1636,14 +1616,6 @@ fun BottomSheetPlayer(
             )
         }
 
-        // Orientation epoch: remembered OUTSIDE the orientation branch so it
-        // survives the landscape<->portrait subtree swap (the activity is not
-        // recreated - configChanges handles orientation). It bumps AFTER every
-        // orientation change and lets the freshly composed blurred-canvas twin
-        // run the same detach -> first-frame -> re-seek settle cycle that a
-        // manual minimise/maximise performs - without it the twin was created
-        // mid-codec-churn and rendered a laggy blurred canvas behind the bottom
-        // controls until the user manually recycled the player.
         val currentOrientation = LocalConfiguration.current.orientation
         var orientationRefreshEpoch by remember { mutableIntStateOf(0) }
         LaunchedEffect(currentOrientation) {

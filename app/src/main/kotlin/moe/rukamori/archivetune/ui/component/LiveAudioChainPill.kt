@@ -74,9 +74,6 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
     val status = BitPerfectRuntime.status
     val context = LocalContext.current
 
-    // Snapshot-state mirrors: the engine/route facts recompose this readout the
-    // MOMENT they change (engine flip, route engagement, USB attach) - only the
-    // routed-device label still needs the 1s binder poll.
     val runtime = EngineRuntime
     val engine = runtime.activeEngineState
     val wantedEngine = runtime.wantedEngineState
@@ -109,11 +106,6 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
     val floatRouteActive = remember(revision, pollTick) { runtime.bitPerfectSinkRouteActive }
     val sinkDecodedEncoding = remember(revision, pollTick) { runtime.sinkDecodedEncoding }
 
-    // Honest bit-perfect readout: when bit-perfect is REQUESTED but neither
-    // a BIT_PERFECT mixer grant nor an exclusive/direct transport is live,
-    // the shared Android mixer may still convert the stream to the device
-    // rate (platform-level, invisible to the app). Say so on the float-route
-    // line instead of letting a 44.1 kHz source quietly become 48 kHz.
     val mixerConversionPossible =
         BitPerfectRuntime.requested &&
             !status.mixerBitPerfectActive &&
@@ -134,10 +126,6 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
         }
     val inputRate = if (hasSignal) rateKhz(status.sourceSampleRate) else "—"
 
-    // The stage prefers the engine the router ENGAGED; between the preference
-    // flip and the latch (next buffer/configure - normally under a second with
-    // the route re-prepare) the WANTED engine shows as long as its native side
-    // is actually available, so the pill never lags behind the user's toggle.
     val effectiveEngine =
         when {
             engine != AudioEngineRouterProcessor.Engine.NONE -> engine
@@ -173,9 +161,6 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
 
         floatRouteActive && sinkDecodedEncoding == C.ENCODING_PCM_FLOAT -> {
 
-            // The float route writes float32 carrying exactly the source depth;
-            // report the carried depth rather than a bare "Float" so the output
-            // bits always read as a concrete number matching the input.
             outputBits = floatWithDepthLabel
             outputRate = sinkOutputRateLabel ?: inputRate
         }
@@ -183,8 +168,6 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
         hasSignal -> {
             outputBits = "${status.outputBitDepth}-bit"
 
-            // The app-level output runs at the source rate; the shared platform mixer
-            // behind it resamples on its own and is not part of this chain readout.
             outputRate = sinkOutputRateLabel ?: inputRate
         }
 
@@ -307,9 +290,7 @@ fun LiveAudioChainPill(
     val shimmerProgress = remember { Animatable(0f) }
     LaunchedEffect(labels.hasSignal) {
         if (labels.hasSignal) {
-            // Ping-pong sweep: the band travels across and back continuously, so
-            // the loop never snaps back to its start (which read as an abrupt
-            // end/restart each cycle).
+
             while (true) {
                 shimmerProgress.animateTo(1f, tween(2_600, easing = EaseInOutSine))
                 shimmerProgress.animateTo(0f, tween(2_600, easing = EaseInOutSine))

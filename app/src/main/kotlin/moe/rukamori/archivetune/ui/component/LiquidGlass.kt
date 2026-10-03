@@ -107,18 +107,7 @@ fun rememberLayerBackdropSettled(@Suppress("UNUSED_PARAMETER") delayMillis: Long
 
 @Composable
 fun rememberBackdrop(color: Color): PlatformBackdrop =
-    // All glass sources route through the guarded, throttled recorder. The
-    // Kyant `rememberLayerBackdrop`/`layerBackdrop` modifier node records its
-    // shared GraphicsLayer with NO re-entrancy guard and NO exception
-    // handling - whenever the same layer was recorded twice in one draw pass
-    // (double attach during a transition, an ancestor+descendant pair, or a
-    // nested redraw while the record block is still open) RenderNode
-    // .beginRecording threw "Recording currently in progress" straight out
-    // of View.dispatchDraw and crashed the app (the crashlog class attached
-    // to this build). ThrottledLayerBackdrop records the identical content
-    // (color prefix + drawContent) behind a recordingInProgress snapshot
-    // guard + runCatching, and consumers pick it up through the same Backdrop
-    // interface - so this swap is behaviour-preserving for every consumer.
+
     rememberThrottledBackdrop(color)
 
 @Composable
@@ -143,9 +132,7 @@ fun rememberThrottledBackdrop(
 fun Modifier.layerBackdrop(backdrop: Backdrop): Modifier =
     when (backdrop) {
         is ThrottledLayerBackdrop -> throttledLayerBackdrop(backdrop)
-        // Kept only for Backdrop instances constructed directly through
-        // Kyant's rememberLayerBackdrop (none remain in the app): the guarded
-        // recorder above is the one every app-created source uses now.
+
         is LayerBackdrop -> this.kyantLayerBackdrop(backdrop)
         else -> this
     }
@@ -256,10 +243,6 @@ fun rememberLiquidGlassTuning(): LiquidGlassTuning {
 
 internal const val ThrottledLayerBackdropDefaultIntervalMillis = 100L
 
-// Live recorders, weakly held: the cover-lift restore broadcast must reach
-// every ATTACHED backdrop (screen-local ones included), not just the global
-// one - otherwise pills fed by a screen-local recorder keep their last drawn
-// (fully faded) frame after the player sheet / lyrics cover lifts.
 private val liveRecorderBackdrops =
     java.util.Collections.synchronizedMap(
         java.util.WeakHashMap<ThrottledLayerBackdrop, Boolean>(),
@@ -275,37 +258,14 @@ class ThrottledLayerBackdrop internal constructor(
 
     internal var layerCoordinates: LayoutCoordinates? by mutableStateOf(null)
 
-    // Bumped whenever a recorder node (re)attaches - or when a cover lifts - so
-    // every backdrop consumer redraws immediately instead of waiting for the
-    // next content invalidation. Without this, glass pills that recompose while
-    // their page sits still keep their last drawn frame - which was fully faded
-    // out - and appear gone until the user scrolls or touches the page.
     internal var consumerInvalidationTick by mutableStateOf(0)
 
-    // Re-entrancy guard: while the recorder node is capturing its subtree into
-    // graphicsLayer, any liquidGlass consumer nested INSIDE that subtree would
-    // draw the very layer that is still being recorded into itself - an
-    // infinitely recursive display list that overflows the RenderThread stack
-    // (native SIGSEGV). Skipping the backdrop draw in that window renders the
-    // consumer with its plain base/tint instead of crashing the process.
-    // Snapshot state (NOT a plain @Volatile) so that clearing the flag after a
-    // record pass invalidates every consumer that drew inside the window - a
-    // plain volatile left those pills drawn WITHOUT their backdrop until some
-    // unrelated invalidation happened ("invisible glass after lyrics" class).
     internal var recordingInProgress by mutableStateOf(false)
 
     internal fun notifyRecorderAttached() {
         consumerInvalidationTick++
     }
 
-    /**
-     * Forces every consumer of this backdrop - and of every other ATTACHED
-     * recorder - to redraw on the next frame. Called when a cover state
-     * (player sheet / lyrics fullscreen) lifts: some restore paths do not
-     * re-attach the recorder nodes themselves, and a pill whose last drawn
-     * frame predates the cover would otherwise keep showing that stale (often
-     * empty) frame indefinitely.
-     */
     fun notifyContentRestore() {
         consumerInvalidationTick++
         notifyAllContentRestored()
@@ -326,31 +286,18 @@ class ThrottledLayerBackdrop internal constructor(
         coordinates: LayoutCoordinates?,
         layerBlock: (GraphicsLayerScope.() -> Unit)?,
     ) {
-        // Load-bearing state read: this is what makes every consumer's draw
-        // OBSERVE consumerInvalidationTick - bumping the tick (recorder
-        // re-attach, content-restore broadcast) then forces the redraw.
+
         @Suppress("UNUSED_VARIABLE") val tick = consumerInvalidationTick
         if (recordingInProgress) return
         val coordinates = coordinates ?: return
         val layerCoordinates = layerCoordinates ?: return
-        // Detached coordinates degrade to "no backdrop this frame", exactly
-        // like the null cases above - they must NEVER throw out of the draw
-        // phase. The recorder's stored coordinates can outlive the layout
-        // node that reported them (a recorder-bearing list leaving
-        // composition - e.g. the history search list on back - while a
-        // consumer still redraws in the same frame, typically via the 10Hz
-        // recorder pump); isAttached is a live property, so reading it here
-        // covers detach between layout and draw as well.
+
         if (!layerCoordinates.isAttached || !coordinates.isAttached) return
         val offset =
             try {
                 layerCoordinates.localPositionOf(coordinates)
             } catch (_: Exception) {
-                // Severed hierarchies (recorder subtree already removed from
-                // the window) - the window-space fallback itself performs
-                // coordinate math that throws on detached instances, so it
-                // must be contained too: no resolvable offset this frame
-                // means no backdrop draw, never a crash.
+
                 runCatching {
                     coordinates.positionInWindow() - layerCoordinates.positionInWindow()
                 }.getOrNull()
@@ -358,7 +305,6 @@ class ThrottledLayerBackdrop internal constructor(
         withTransform({
             translate(-offset.x, -offset.y)
         }) {
-
             runCatching { drawLayer(graphicsLayer) }
         }
     }
@@ -440,7 +386,6 @@ private class ThrottledLayerBackdropNode(
                     }
                 }.isSuccess
             if (recorded && backdrop.graphicsLayer.size == size.toIntSize()) {
-
                 runCatching { drawLayer(backdrop.graphicsLayer) }
                 return
             }
@@ -456,13 +401,7 @@ private class ThrottledLayerBackdropNode(
 
     override fun onDetach() {
         liveRecorderBackdrops.remove(backdrop)
-        // Frozen-layer behaviour is kept ONLY while the stored coordinates
-        // are still attached (modifier re-ordering, sheet transitions: the
-        // layout node survives, the last recorded frame keeps drawing). When
-        // the coordinates are already detached - the recorder's subtree left
-        // composition entirely - the reference is poison: any later consumer
-        // draw would perform detached-coordinate math. Drop it so consumers
-        // degrade to their plain base/tint instead of throwing.
+
         if (backdrop.layerCoordinates?.isAttached == false) {
             backdrop.layerCoordinates = null
             backdrop.consumerInvalidationTick++
@@ -524,7 +463,6 @@ fun Modifier.liquidGlass(
                 },
             onDrawSurface = {
                 if (scrim != null) {
-
                     drawRect(scrim.copy(alpha = (scrim.alpha * tuning.tintFactor).coerceIn(0f, 1f)))
                 } else {
                     val darken =
@@ -576,17 +514,6 @@ fun LiquidGlassActionPill(
     content: @Composable RowScope.() -> Unit,
 ) {
 
-    // Header pills fade with the player sheet's top edge instead of being
-    // hard-swapped at the mini-player bound: while any part of the pill is
-    // still on screen it stays glass; it dissolves only as the sheet covers
-    // it, and fades back in as the sheet retreats.
-    //
-    // The fraction is read INSIDE the graphicsLayer block (draw phase), never
-    // captured by value at composition time: a draw-phase state read keeps the
-    // alpha correct through any skipped recomposition, and the provider
-    // already forces the value to 0 whenever the sheet rests at/below the
-    // collapsed bound - so a pill can never stay stuck invisible while the
-    // page behind it is visible and interactive.
     val sheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
     Row(
         modifier =

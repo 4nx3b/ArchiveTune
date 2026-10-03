@@ -155,7 +155,7 @@ fun ArtistSongsScreen(
                     Text(
                         text = pluralStringResource(R.plurals.n_song, songs.size, songs.size),
                         style = MaterialTheme.typography.titleSmall,
-                        // Non-dynamic header color (artist-page convention).
+
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

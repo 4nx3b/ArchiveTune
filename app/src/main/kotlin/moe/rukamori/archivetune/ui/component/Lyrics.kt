@@ -626,11 +626,6 @@ fun Lyrics(
         mutableStateOf(false)
     }
 
-    // While the player sheet rests collapsed (mini player on screen, user
-    // scrolling the main UI) the lyrics stay composed but invisible - the
-    // per-frame TTML position loop would re-compose the whole hidden
-    // subtree at display refresh rate for nothing. The loop below falls back
-    // to the cheap 250ms poll until the sheet is visible again.
     val playerSheetVisibleState = rememberUpdatedState(LocalPlayerSheetVisible.current)
 
     LaunchedEffect(lyrics, lines, isAppMinimized) {
@@ -641,11 +636,7 @@ fun Lyrics(
         }
 
         val isTtmlLyrics = isTtml(lyrics!!)
-        // While the player sheet rests collapsed (mini player on screen, user
-        // scrolling the main UI) the lyrics stay composed but invisible - the
-        // per-frame TTML position loop would re-compose the whole hidden
-        // subtree at display refresh rate for nothing. Fall back to the cheap
-        // 250ms poll until the sheet is visible again.
+
         val sheetVisibleState = playerSheetVisibleState
         while (isActive) {
             if (isAppMinimized || !sheetVisibleState.value) {

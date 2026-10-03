@@ -198,7 +198,6 @@ fun SpotifyTrackListItem(
     showSongIconPlaceholder: Boolean = true,
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
-
     val subtitle = track.artists.joinToString { it.name }.takeIf { it.isNotBlank() }
 
     ListItem(

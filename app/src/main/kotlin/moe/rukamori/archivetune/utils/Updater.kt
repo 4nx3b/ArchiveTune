@@ -226,7 +226,6 @@ object Updater {
         latestVersion: String,
         currentVersion: String,
     ): Boolean {
-
         buildNumberOrNull(latestVersion)?.let { return it > BuildConfig.VERSION_CODE }
         val latestSemVer = parseSemVerOrNull(latestVersion)
         val currentSemVer = parseSemVerOrNull(currentVersion)

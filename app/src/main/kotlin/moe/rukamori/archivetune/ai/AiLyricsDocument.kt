@@ -253,7 +253,6 @@ object AiLyricsDocumentParser {
         }
 
     private fun readTtmlLineText(paragraphElement: Element): String {
-
         val builder = StringBuilder()
         val children = paragraphElement.childNodes
         for (i in 0 until children.length) {

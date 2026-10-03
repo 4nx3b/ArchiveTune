@@ -68,13 +68,11 @@ object LyricsExportCoordinator {
     fun onDestinationPicked(context: Context, uri: Uri?) {
         val appContext = context.applicationContext
         if (uri == null) {
-
             clearStaged(appContext)
             return
         }
         val payload = readStaged(appContext)
         if (payload.isNullOrBlank()) {
-
             Timber.tag(TAG).w("Export callback arrived with no staged payload — export was lost to a process restart")
             toast(appContext, R.string.export_lyrics_failed)
             return

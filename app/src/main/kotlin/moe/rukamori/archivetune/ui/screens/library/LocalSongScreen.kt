@@ -158,8 +158,6 @@ fun LocalSongScreen(
     var showScanSheet by rememberSaveable { mutableStateOf(false) }
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
 
-    // The compact search circle next to the mini player opens THIS page's
-    // search (not the global song search).
     ObserveOpenSearchRequest(navController) { isSearchActive = true }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -413,9 +411,7 @@ fun LocalSongScreen(
                                 .padding(top = 8.dp, bottom = 4.dp),
                     ) {}
                 } else {
-                    // While the bottom UI is compact the compact search circle
-                    // beside the mini player is this page's search affordance:
-                    // the header icon fades out with the same fraction.
+
                     val compactFraction = LocalBottomUiCompactFraction.current
                     LargeFrostedTopAppBar(
                         titleRes = R.string.local_files,

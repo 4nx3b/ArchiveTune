@@ -233,7 +233,6 @@ fun AudiophileSettings(
                     .padding(top = topPadding)
                     .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
             ) {
-
                 PreferenceGroup(title = stringResource(R.string.audiophile_engines_group)) {
                     item {
                         Column(modifier = positions.modifierFor("bit_perfect_output")) {
@@ -270,7 +269,6 @@ fun AudiophileSettings(
                     }
 
                     item {
-
                         Column(modifier = positions.modifierFor("tryptify_audio_processing")) {
                             SwitchPreference(
                                 title = { Text(stringResource(R.string.tryptify_audio_processing)) },
@@ -288,7 +286,6 @@ fun AudiophileSettings(
                     }
 
                     item {
-
                         Column(modifier = positions.modifierFor("lastwave_audio_processing")) {
                             SwitchPreference(
                                 title = { Text(stringResource(R.string.lastwave_audio_processing)) },
@@ -307,7 +304,6 @@ fun AudiophileSettings(
                 }
 
                 PreferenceGroup(title = stringResource(R.string.tryptify_engine_features_group)) {
-
                     item(visible = tryptifyAudioProcessing) {
                         Column(modifier = positions.modifierFor("tryptify_usb_pin")) {
                             SwitchPreference(
@@ -405,7 +401,6 @@ fun AudiophileSettings(
                 }
 
                 PreferenceGroup(title = stringResource(R.string.audiophile_output_group)) {
-
                     item(visible = tryptifyAudioProcessing || lastwaveAudioProcessing) {
                         Column(modifier = positions.modifierFor("usb_exclusive_audio")) {
                             SwitchPreference(
@@ -423,7 +418,6 @@ fun AudiophileSettings(
                                 onCheckedChange = { enabled ->
                                     onUsbExclusiveAudioChange(enabled)
                                     if (enabled) {
-
                                         onAudioOffloadChange(false)
                                         onCrossfadeEnabledChange(false)
                                         onAutomixEnabledChange(false)
@@ -434,10 +428,6 @@ fun AudiophileSettings(
                     }
                 }
 
-                // Loudness normalization lives with the audiophile output chain:
-                // the factor is applied as a lossless-preserving volume multiplier
-                // (ReplayGain / R128) and is bypassed automatically whenever a
-                // verified bit-perfect route is active.
                 PreferenceGroup(title = stringResource(R.string.audio_normalization)) {
                     item {
                         Column(modifier = positions.modifierFor("audio_normalization")) {
