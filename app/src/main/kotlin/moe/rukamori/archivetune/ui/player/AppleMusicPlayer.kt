@@ -107,7 +107,6 @@ import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.unit.toIntSize
-import android.os.SystemClock
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Outline
