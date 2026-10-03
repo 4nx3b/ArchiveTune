@@ -1431,13 +1431,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
-                    // Kept as a State object (NOT delegated with `by`): reading
-                    // an animated value directly in this scope would invalidate
-                    // the entire scaffold composition (NavHost + bars + mini
-                    // player slot) on EVERY frame of the compact transition.
-                    // Handing consumers the State object lets each consumer
-                    // read it in its own (much smaller) scope or in the
-                    // draw/layout phase instead.
+
                     val bottomUiCompactFractionState =
                         animateFloatAsState(
                             targetValue = if (isBottomUiCompact) 1f else 0f,
@@ -1453,9 +1447,6 @@ class MainActivity : ComponentActivity() {
                             label = "bottomUiCompactFraction",
                         )
 
-                    // Inside library sub-pages (playlists, history, liked, downloads)
-                    // the left floating circle behaves as a Library shortcut instead
-                    // of Home, matching the section the user navigated from.
                     val compactLeftCircleIsLibrary =
                         remember(navBackStackEntry?.destination?.route) {
                             val route = navBackStackEntry?.destination?.route ?: ""
@@ -1472,16 +1463,6 @@ class MainActivity : ComponentActivity() {
                                 route.startsWith("top_playlist/")
                         }
 
-                    // Routes whose screens own an in-page search affordance:
-                    // on these, the compact search circle next to the mini
-                    // player triggers THE PAGE's search instead of launching
-                    // the global song search. Observed via the shared
-                    // "openSearch" savedStateHandle key (ObserveOpenSearchRequest).
-                    // Playlist pages deliberately do NOT appear here: their
-                    // search pill was removed (two stacked search affordances
-                    // felt wrong next to the playlist's own header); history,
-                    // local songs, the Spotify playlist library and the
-                    // settings root (which searches settings content) keep theirs.
                     val compactRouteHasInPageSearch =
                         navBackStackEntry?.destination?.route?.let { route ->
                             route == "history" ||
@@ -1492,11 +1473,7 @@ class MainActivity : ComponentActivity() {
 
                     val compactSearchCircleVisible =
                         navBackStackEntry?.destination?.route?.startsWith("artist/") != true &&
-                            // Pages WITH an in-page search now show the circle
-                            // (it triggers their own search). Pages with an
-                            // in-header search filter but no text search
-                            // (library playlists/artists) keep hiding it to
-                            // avoid two search affordances at once.
+
                             (compactRouteHasInPageSearch || !compactLeftCircleIsLibrary)
 
                     val navigationBarGlassGlow by rememberPreference(
@@ -1512,9 +1489,7 @@ class MainActivity : ComponentActivity() {
                         animationSpec = tween(420),
                         label = "navGlassStrength",
                     )
-                    // The glow toggle animates in/out; the intensity slider
-                    // (below the toggle in Navigation Bar settings) scales the
-                    // rim light + sheen on top of that animation.
+
                     val navGlassStrength = navGlassStrengthBase * navigationBarGlassGlowIntensity
 
                     val floatingBarsBottomPadding = FloatingNavigationBarBottomPadding
@@ -1536,15 +1511,7 @@ class MainActivity : ComponentActivity() {
                         MiniPlayerBackgroundStyleKey,
                         defaultValue = MiniPlayerBackgroundStyle.THEME,
                     )
-                    // Only allocate (and later record) the app-wide frosted
-                    // layer while a frosted consumer is actually enabled:
-                    // frosted / tint-frosted nav bar (or tablet rail blur) or
-                    // the FROSTED mini player background. With the default
-                    // THEME mini player and a plain nav bar there are zero
-                    // consumers, and the throttled full-screen GraphicsLayer
-                    // re-record during scrolling was pure overhead on every
-                    // API 31+ device. Consumers already handle a null
-                    // backdrop (they fall back to the plain surface color).
+
                     val anyFrostedConsumerActive =
                         navigationBarFrostedBlur ||
                             navigationBarTintFrostedBlur ||
@@ -1599,7 +1566,6 @@ class MainActivity : ComponentActivity() {
 
                     val rootOverlayActive by remember {
                         derivedStateOf {
-
                             menuGlassRecordingActive ||
                                 menuState.isVisible ||
                                 menuState.dialogContent != null ||
@@ -1733,18 +1699,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Deterministic glass restore after the player (or its lyrics)
-                    // closes: re-attaching the NavHost recorder bumps its own
-                    // consumer tick, but some close paths never re-attach (the
-                    // recorder stayed attached behind a sheet that only partially
-                    // rose, or a lyrics flag cleared without a sheet settle).
-                    // notifyContentRestore() broadcasts to EVERY attached
-                    // recorder - the global NavHost one AND every screen-local
-                    // one - so both the global chrome pills (top bar, compact
-                    // circles, nav bar, mini player) and the per-screen header
-                    // pills redraw the frame after the cover instead of keeping a
-                    // stale, faded-out draw forever ("invisible pill that is
-                    // still clickable").
                     var lastCoverActive by remember { mutableStateOf(false) }
                     LaunchedEffect(isPlayerLyricsFullScreen, isPlayerSheetOverlayActive) {
                         val coverActive = isPlayerLyricsFullScreen || isPlayerSheetOverlayActive
@@ -1802,15 +1756,6 @@ class MainActivity : ComponentActivity() {
                         )
                     val effectiveTopInset = effectiveStatusBarTop
 
-                    // Provided as a State object (not the unwrapped Float): the
-                    // liquid-glass pills read it inside their graphicsLayer
-                    // block, so the fade tracks the sheet position at DRAW
-                    // time and can never get stuck at a stale composition-time
-                    // snapshot ("invisible but still clickable" pills after
-                    // lyrics -> minimize). The sheet-rests-collapsed guard
-                    // pins the value to 0 whenever the sheet is at/below its
-                    // collapsed bound, so a covered-zone math glitch can never
-                    // blank the pills while the page is visible.
                     val playerSheetOverlayFractionState =
                         remember(
                             playerBottomSheetState,
@@ -1882,7 +1827,6 @@ class MainActivity : ComponentActivity() {
                         ) {
                             var bottom = bottomInset
                             if (!useRail) {
-
                                 bottom += floatingBarsBottomPadding
                             }
                             if (shouldShowNavigationBar && !useRail) {
@@ -1959,15 +1903,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // "Take me to the tab ROOT" navigation for the compact-mode
-                    // floating circles. The regular tab click restores the tab's
-                    // last screen (multi-back-stack), which is correct for the
-                    // nav bar - but from INSIDE a library sub-page that same
-                    // navigate+restoreState round-trip resurrects the sub-page
-                    // itself (the pop saves the segment keyed by the library
-                    // destination, then restoreState immediately re-instates
-                    // it), so the click visibly does nothing. Popping back to
-                    // the tab root instead goes directly to Library/Home.
                     val navigateToTabRoot: (Screens) -> Unit = { screen ->
                         val popped = runCatching { navController.popBackStack(screen.route, false) }.getOrDefault(false)
                         if (!popped && navController.currentDestination?.route != screen.route) {
@@ -2519,10 +2454,6 @@ class MainActivity : ComponentActivity() {
                                             label = "homeBarTitleAlpha",
                                         )
 
-                                        // The floating home chrome (avatar, "Home" title,
-                                        // settings pill) hides while the feed scrolls DOWN and
-                                        // only comes back when the user scrolls UP - merely
-                                        // pausing a downward scroll must not reveal it again.
                                         var homeLastItemIndex by remember { mutableIntStateOf(0) }
                                         var homeLastScrollOffset by remember { mutableIntStateOf(0) }
                                         var homeChromeHiddenByScroll by remember { mutableStateOf(false) }
@@ -2531,9 +2462,7 @@ class MainActivity : ComponentActivity() {
                                                 homeChromeHiddenByScroll = false
                                                 return@LaunchedEffect
                                             }
-                                            // Seed the direction tracker from the live
-                                            // position so re-entering Home never compares
-                                            // against a stale pre-navigation offset.
+
                                             homeLastItemIndex = homeListState.firstVisibleItemIndex
                                             homeLastScrollOffset = homeListState.firstVisibleItemScrollOffset
                                             snapshotFlow {
@@ -2600,7 +2529,6 @@ class MainActivity : ComponentActivity() {
                                                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                                                     !playerBottomSheetState.isExpandedOrExpanding
                                                 ) {
-
                                                     val topFadeScrolled =
                                                         when {
                                                             isHomeRoute -> homeListState.canScrollBackward
@@ -2731,12 +2659,6 @@ class MainActivity : ComponentActivity() {
                                                         }
                                                     } else if (isSearchRoute) {
 
-                                                        // The search tab carries its own
-                                                        // bottom-anchored glass chrome; no
-                                                        // large header title is rendered so the
-                                                        // recents sit directly beneath the
-                                                        // status-bar area without the extra
-                                                        // app-bar band between them.
                                                         Box(modifier = Modifier.fillMaxWidth())
                                                     } else {
                                                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3165,15 +3087,6 @@ class MainActivity : ComponentActivity() {
                                                                     navVisibleHeight
                                                             )
 
-                                                        // The compact pill must clear the system navigation
-                                                        // hint bar exactly like the flanking circles row does
-                                                        // (which pads by bottomInset): without the inset term
-                                                        // the take-over translation pinned the pill centre
-                                                        // ~bottomInset dp LOWER than the circles, leaving its
-                                                        // bottom edge at ~23dp from the raw screen bottom -
-                                                        // visually attached to the gesture hint / 3-button bar.
-                                                        // Users with the hint hidden (inset == 0) keep the
-                                                        // exact same geometry as before.
                                                         val compactPillCentreLine =
                                                             bottomInset +
                                                                 floatingBarsBottomPadding +
@@ -3255,10 +3168,7 @@ class MainActivity : ComponentActivity() {
                                         }
 
                                         if (shouldShowNavigationBar || !playerBottomSheetState.isDismissed) {
-                                            // The visibility gate is a derived boolean: it only flips
-                                            // when the row actually appears/disappears, not on every
-                                            // animation frame. The per-frame slide itself is computed
-                                            // inside the graphicsLayer block (draw phase).
+
                                             val compactRowVisible by remember {
                                                 derivedStateOf {
                                                     bottomUiCompactFractionState.value *
@@ -3280,7 +3190,6 @@ class MainActivity : ComponentActivity() {
                                                             )
                                                             .height(CompactControlSize)
                                                             .graphicsLayer {
-
                                                                 val slideDistancePx =
                                                                     (bottomInset + floatingBarsBottomPadding + navVisibleHeight + 8.dp).toPx()
                                                                 val compactRowAlpha =
@@ -3306,10 +3215,7 @@ class MainActivity : ComponentActivity() {
                                                                 },
                                                             ),
                                                         onClick = {
-                                                            // The compact circle is a "go to the tab root"
-                                                            // shortcut: from a library sub-page this must
-                                                            // land on the main Library tab, not restore the
-                                                            // sub-page the multi-back-stack saved.
+
                                                             navigateToTabRoot(
                                                                 if (compactLeftCircleIsLibrary) {
                                                                     Screens.Library
@@ -3330,9 +3236,7 @@ class MainActivity : ComponentActivity() {
                                                             contentDescription = stringResource(Screens.Search.titleId),
                                                             onClick = {
                                                                 if (compactRouteHasInPageSearch) {
-                                                                    // This page owns a search affordance:
-                                                                    // open THAT search, not the global
-                                                                    // song search.
+
                                                                     navController.currentBackStackEntry
                                                                         ?.savedStateHandle
                                                                         ?.set("openSearch", true)
@@ -3407,7 +3311,6 @@ class MainActivity : ComponentActivity() {
                                                     initialScale = 0.94f,
                                                 )
                                         } else {
-
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
                                                     animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
@@ -3423,7 +3326,6 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         } else {
-
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
                                     },
@@ -3442,7 +3344,6 @@ class MainActivity : ComponentActivity() {
                                                     initialScale = 0.94f,
                                                 )
                                         } else {
-
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
                                                     animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
@@ -3461,7 +3362,6 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         } else {
-
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
                                     },
@@ -3478,7 +3378,6 @@ class MainActivity : ComponentActivity() {
                                                 },
                                             ).then(
                                                 if (navBarFrostedBackdrop != null && !isPlayerSheetOverlayActive) {
-
                                                     Modifier
                                                         .onGloballyPositioned { coordinates ->
                                                             navBarFrostedBackdrop.contentOffsetInRoot =
@@ -3495,7 +3394,6 @@ class MainActivity : ComponentActivity() {
                                                                         }
                                                                     }.isSuccess
                                                                 if (recorded) {
-
                                                                     runCatching {
                                                                         drawLayer(navBarFrostedBackdrop.layer)
                                                                     }
@@ -3506,7 +3404,6 @@ class MainActivity : ComponentActivity() {
                                                             drawContent()
                                                         }
                                                 } else if (navBarFrostedBackdrop != null) {
-
                                                     Modifier
                                                         .onGloballyPositioned { coordinates ->
                                                             navBarFrostedBackdrop.contentOffsetInRoot =
@@ -3685,13 +3582,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // NOTE: there is deliberately NO MainActivity-level
-                    // observer on the "openSearch" savedStateHandle key here.
-                    // Every route that publishes that key observes it itself
-                    // (ObserveOpenSearchRequest) and opens ITS OWN in-page
-                    // search; a second, activity-level observer that called
-                    // the global openSearch() made the global search bar and
-                    // the page's search open stacked on top of each other.
                 }
             }
         }

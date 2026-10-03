@@ -40,10 +40,7 @@ fun NavigationTitle(
     subtitle: String? = null,
     thumbnail: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
-    // Explicit accent for the title + trailing arrow. When null the title uses
-    // colorScheme.primary - which is DYNAMIC (seeded from the playing song's
-    // artwork) everywhere the app theme is active. Pages that want stable,
-    // non-dynamic header colors (artist page sections) pass onSurface here.
+
     accentColor: Color? = null,
 ) {
     Row(

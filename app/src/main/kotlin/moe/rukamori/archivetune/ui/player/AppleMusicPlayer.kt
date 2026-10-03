@@ -216,14 +216,6 @@ private const val AmCanvasBackdropUpscale = 6f
 
 private val AmCanvasBackdropBlurRadius = 72.dp
 
-// Snapshot source for the blurred canvas twin: records the twin's content
-// into a small GraphicsLayer at a capped rate and draws NOTHING to the
-// screen - the visible blurred backdrop is the baked bitmap composable that
-// consumes the layer. Recording (which pulls the interop TextureView draw
-// and thereby consumes SurfaceTexture frames - the async buffer queue drops
-// the rest, keeping the twin decoder in real time) is the ONLY render work
-// this path performs, capped at [AmCanvasSnapshotIntervalMs] instead of
-// running at video frame rate.
 private fun Modifier.canvasSnapshotSource(
     graphicsLayer: GraphicsLayer,
     minIntervalMillis: Long,
@@ -264,12 +256,6 @@ private class CanvasSnapshotSourceNode(
 ) : DrawModifierNode, Modifier.Node() {
     var lastRecordUptimeMillis = 0L
 
-    // Re-entrancy guard: if this node is somehow re-drawn while one of its
-    // own record passes is still open (a parent layer recording the subtree
-    // twice in one frame, or a double attach during a transition), a nested
-    // graphicsLayer.record would hit RenderNode.beginRecording's
-    // "Recording currently in progress" path. Skipping the nested record
-    // keeps the layer consistent; the outer pass finishes normally.
     var isRecording = false
 
     override fun ContentDrawScope.draw() {
@@ -287,18 +273,12 @@ private class CanvasSnapshotSourceNode(
                 isRecording = false
             }
         }
-        // Intentionally draws nothing to the screen: see the doc above the
-        // canvasSnapshotSource extension.
+
     }
 }
 
 private const val AmCanvasBackdropMaxVideoEdgePx = 256
 
-// Snapshot cadence for the blurred canvas twin: the twin's video layer is
-// recorded into a small GraphicsLayer and baked into a software-blurred
-// bitmap at this rate (~20 Hz). Under the 72 dp-equivalent backdrop blur a
-// 20 Hz refresh is visually continuous - the repo's own pre-S frosted navbar
-// runs the identical recipe at 12.5 Hz.
 private const val AmCanvasSnapshotIntervalMs = 50L
 
 private const val AppleMusicLyricsContentDeferMs = 160L
@@ -434,7 +414,6 @@ fun AppleMusicPlayerContent(
     val playerExpanded = state.isExpanded
 
     LaunchedEffect(lyricsOpen, queueOpen, controlsRevealToken, autoHideLyricsPlayerControls, showLyricsPlayerControls, playerExpanded) {
-
         if (landscape && lyricsOpen && controlsRevealToken == 0) {
             playerControlsExpanded = false
             return@LaunchedEffect
@@ -495,14 +474,6 @@ fun AppleMusicPlayerContent(
         onDispose { onLyricsVisibilityChange(false) }
     }
 
-    // The player's internal lyrics/queue state must collapse with the sheet:
-    // keepContentAlive keeps this composable alive after minimize, and a stale
-    // lyricsOpen=true survived the minimize (only the Player-level proxy flag
-    // reset). That left the AM lyrics view resurrected on the next expand and
-    // kept lyrics-visibility reporting level-dependent on this flag - which is
-    // what gated the NavHost glass recorder off after a lyrics session.
-    // Edge-triggered (true -> false) so the landscape default-open lyrics are
-    // not wiped on initial composition while the sheet is still animating.
     var wasPlayerExpandedForMorph by remember { mutableStateOf(false) }
     LaunchedEffect(playerExpanded) {
         if (wasPlayerExpandedForMorph && !playerExpanded) {
@@ -646,7 +617,6 @@ fun AppleMusicPlayerContent(
 
     val popupBackdrop: com.kyant.backdrop.Backdrop? =
         if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-
             rememberThrottledBackdrop(Color.Transparent)
         } else {
             null
@@ -676,7 +646,6 @@ fun AppleMusicPlayerContent(
 
     val castAction = rememberCastPlayerMenuAction()
     val onOutputClick: () -> Unit = castAction?.onClick ?: {
-
         SystemMediaControlResolver.openMediaOutputSwitcher(context)
     }
 
@@ -686,13 +655,7 @@ fun AppleMusicPlayerContent(
                 Modifier
                     .matchParentSize()
                     .let { base ->
-                        // The popup recorder is attached ONLY while its sole
-                        // consumer (the anchored lyrics overflow menu) is open.
-                        // Recording the whole player subtree at 10Hz with no
-                        // consumer open re-rendered both canvas TextureViews and
-                        // the blurred backdrop into a GraphicsLayer every 100ms
-                        // and blitted it over the live frame - a rhythmic stutter
-                        // of the moving blurred canvas behind the controls.
+
                         if (popupBackdrop != null && showAnchoredLyricsMenu) {
                             base.glassSource(popupBackdrop)
                         } else {
@@ -737,17 +700,8 @@ fun AppleMusicPlayerContent(
         val canvasActive =
             !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
 
-        // Canvas is the visible MAIN visual (full-bleed leader video in
-        // landscape, blurred twin backdrop in portrait).
         val canvasVisualActive = canvasActive && !videoShowing && !isPreS
 
-        // The blurred canvas TWIN never runs in landscape. Behind the landscape
-        // controls it produced an extremely abrupt moving blur - canvas videos
-        // cut hard between scenes and the loop-sync follower fires visible
-        // seekTo corrections - while the full-bleed canvas already IS the main
-        // visual on the other half of the screen. The landscape backdrop is the
-        // STATIC thumbnail blur (the drifting 64dp-blurred artwork that already
-        // sits underneath), which is exactly what the design calls for.
         val useCanvasBackdrop = canvasVisualActive && !landscape
 
         val canvasBackdropReveal =
@@ -759,51 +713,19 @@ fun AppleMusicPlayerContent(
             )
         }
 
-        // Blurred canvas twin - SNAPSHOT pipeline. The old twin rendered a
-        // live `Modifier.blur` RenderEffect layer: once the canvas decoder
-        // started pushing frames, EVERY video frame re-recorded the layer
-        // (interop TextureView draw + 12 dp gaussian at 1/6 res) and
-        // re-composited the 7.2x full-screen upscale - the "smooth for 1-2
-        // seconds after maximizing the mini player, then it starts lagging"
-        // regression behind the bottom controls. Now the twin is recorded
-        // into a small layer at ~20 Hz and baked into a software-blurred
-        // bitmap off the main thread (the exact recipe the pre-blurred
-        // artwork backdrop and the pre-S frosted navbar already use); the
-        // visible backdrop is a plain bitmap blit with zero per-frame
-        // gaussian work. The twin decoder keeps running in real time - the
-        // TextureView's async buffer queue drops unconsumed frames, so the
-        // loop-sync follower stays aligned exactly as before.
-        //
-        // Threading contract (the 5 fps / out-of-sync regression): the layer
-        // readback (`toImageBitmap`) replays the RenderNode display list and
-        // may re-record it if HWUI trimmed it - it MUST run on the main
-        // dispatcher, paced by withFrameNanos so each bake consumes the frame
-        // the record pass just produced. Reading the layer from a background
-        // dispatcher raced the UI thread's record pass on the same RenderNode
-        // (records silently failing one frame in two, GPU readbacks stalling
-        // behind them), which is exactly the "plays at 5 fps and is not in
-        // sync until the player is recycled a few times" behaviour. Only the
-        // gaussian blur stays on Dispatchers.Default.
         val twinSnapshotLayer = rememberGraphicsLayer()
         var blurredTwinBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
         var twinBakeFailures by remember { mutableStateOf(0) }
         val twinBackdropHealthy = twinBakeFailures < 5
         val twinSnapshotBlurRadiusPx =
             with(LocalDensity.current) { (AmCanvasBackdropBlurRadius / AmCanvasBackdropUpscale).toPx() }
-        // Keyed on the canvas URLs as well: when the next track with its own
-        // canvas loads, the twin decoder re-prepares and the first frames are
-        // unavailable for a moment - the stale baked bitmap would otherwise
-        // keep showing the PREVIOUS song's blurred canvas over the new one
-        // until enough new bakes land.
+
         LaunchedEffect(useCanvasBackdrop, canvasPrimaryUrl, canvasFallbackUrl) {
             blurredTwinBitmap = null
             twinBakeFailures = 0
             if (!useCanvasBackdrop) return@LaunchedEffect
             while (isActive) {
-                // Once the bake has failed repeatedly the twin is parked for
-                // this session: drop the stale bitmap too so the static
-                // artwork backdrop shows through instead of a frozen frame,
-                // and stop churning readbacks until the track/route changes.
+
                 if (twinBakeFailures >= 5) {
                     blurredTwinBitmap = null
                     delay(AmCanvasSnapshotIntervalMs)
@@ -811,9 +733,7 @@ fun AppleMusicPlayerContent(
                 }
                 val layer = twinSnapshotLayer
                 if (layer.size.width >= 8 && layer.size.height >= 8) {
-                    // Frame-aligned readback: consume the layer right after a
-                    // display frame (and therefore after that frame's record
-                    // pass) instead of at an arbitrary point mid-frame.
+
                     withFrameNanos { }
                     val snapshot =
                         runCatching {
@@ -842,22 +762,14 @@ fun AppleMusicPlayerContent(
             }
         }
         val canvasScrimReveal by animateFloatAsState(
-            // Keyed on canvasVisualActive (not useCanvasBackdrop): the lighter
-            // canvas scrim must stay over the landscape full-bleed canvas video
-            // even though the twin backdrop itself is portrait-only.
+
             targetValue = if (canvasVisualActive) 1f else 0f,
             animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
             label = "am-canvas-scrim-reveal",
         )
         val context = LocalContext.current
         val imageLoader = context.imageLoader
-        // The static backdrop is rasterized ONCE per artwork into a software
-        // pre-blurred bitmap on EVERY API level (not just pre-S). The live
-        // `Modifier.blur(64.dp)` RenderEffect alternative re-executed the
-        // full-screen gaussian on EVERY composite once the canvas twin above
-        // started pushing video frames - the "smooth for 1-2 seconds, then
-        // laggy" behaviour behind the player controls. The bitmap path costs
-        // one IO blur per track and zero per-frame GPU work.
+
         val preBlurredBitmap by produceState<Bitmap?>(null, artworkUrl) {
             if (artworkUrl.isNullOrBlank() || videoShowing) {
                 value = null
@@ -877,9 +789,7 @@ fun AppleMusicPlayerContent(
                         val bitmap = result.image.toBitmap()
                             .copy(Bitmap.Config.ARGB_8888, true)
                         val density = context.resources.displayMetrics.density
-                        // S+ matches the previous live-blur radius exactly
-                        // (AmBackdropBlurRadius = 64dp); pre-S keeps its
-                        // historical 72dp falloff compensation.
+
                         val radiusPx =
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                                 AmBackdropBlurRadius.value * density
@@ -895,7 +805,6 @@ fun AppleMusicPlayerContent(
         }
 
         if (!videoShowing) {
-
             val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
 
             val wanderActive = lyricsBackdropActive || landscape
@@ -920,7 +829,6 @@ fun AppleMusicPlayerContent(
             val backdropFootprint =
                 remember(maxWidth, maxHeight, landscape) {
                     if (landscape) {
-
                         blurBackdropFootprintLandscape(
                             width = maxWidth,
                             height = maxHeight,
@@ -947,10 +855,7 @@ fun AppleMusicPlayerContent(
                 contentAlignment = Alignment.Center,
             ) {
                 if (preBlurredBitmap != null) {
-                    // Rasterized (software-blurred once per track) backdrop -
-                    // identical look to the live RenderEffect blur but with no
-                    // per-frame gaussian cost while the canvas twin composites
-                    // video frames above this layer.
+
                     Image(
                         bitmap = preBlurredBitmap!!.asImageBitmap(),
                         contentDescription = null,
@@ -962,8 +867,6 @@ fun AppleMusicPlayerContent(
                     )
                 } else {
 
-                    // Fallback while the pre-blurred bitmap loads (or if the
-                    // artwork failed to decode): the live-blurred AsyncImage.
                     val backdropModel = artworkRequest ?: artworkUrl
                     Crossfade(
                         targetState = backdropModel,
@@ -1004,12 +907,7 @@ fun AppleMusicPlayerContent(
                             },
                     contentAlignment = Alignment.Center,
                 ) {
-                    // The twin player renders at 1/6 footprint (identical crop
-                    // and aspect to the previous live twin); its layer feeds
-                    // the ~20 Hz snapshot bake above. Until the first bitmap
-                    // lands - and permanently if the bake keeps failing - the
-                    // static artwork backdrop underneath shows through, never
-                    // a sharp unblurred canvas.
+
                     if (twinBackdropHealthy) {
                         CanvasArtworkPlayer(
                             primaryUrl = canvasPrimaryUrl,
@@ -1019,12 +917,7 @@ fun AppleMusicPlayerContent(
                             visible = canvasVisibleForLyrics,
                             maxVideoEdgePx = AmCanvasBackdropMaxVideoEdgePx,
                             loopSyncFollower = canvasLoopSync,
-                            // Rotating the player recreates this twin WITHOUT the
-                            // surface detach cycle a minimise/maximise performs -
-                            // the fresh decoder then rendered a laggy blurred canvas
-                            // behind the bottom controls. The epoch forces the same
-                            // detach -> first-frame -> re-seek settle on every
-                            // orientation change.
+
                             refreshEpoch = orientationRefreshEpoch,
                             modifier =
                                 Modifier
@@ -1046,8 +939,7 @@ fun AppleMusicPlayerContent(
                     }
                 }
             }
-            // The heavier scrim applies while the rasterized backdrop bitmap is
-            // still decoding (all API levels now, not just pre-S).
+
             val preBlurLoading = preBlurredBitmap == null && !canvasActive
 
             val canvasScrimBrush =
@@ -1098,23 +990,19 @@ fun AppleMusicPlayerContent(
         }
 
         if (landscape) {
-
             Row(
                 modifier =
                     Modifier
                         .fillMaxSize(),
             ) {
-
                 BoxWithConstraints(
                     modifier =
                         Modifier
                             .weight(1f)
                             .fillMaxHeight(),
                 ) {
-
                     val landscapeCanvasFullBleed = canvasActive && !videoShowing
                     if (landscapeCanvasFullBleed) {
-
                         Box(
                             modifier =
                                 Modifier
@@ -1140,11 +1028,6 @@ fun AppleMusicPlayerContent(
                                 modifier = Modifier.fillMaxSize(),
                             )
 
-                            // The full-bleed canvas already carries the global
-                            // canvasScrimBrush gradient; a second content-wrapping
-                            // gradient here compressed a 0.35-0.6 black band into
-                            // exactly the song-name region and read as a black box
-                            // around the title.
                             Box(
                                 modifier =
                                     Modifier
@@ -1160,15 +1043,12 @@ fun AppleMusicPlayerContent(
                                     onMoreClick = onMoreClick,
                                     onMorePositioned = { moreIconBounds = it },
                                     contentWidth = null,
-                                    // Full-bleed canvas: the song name stays hidden -
-                                    // only the favourite + overflow chips remain,
-                                    // tightly spaced, on the blurred backdrop.
+
                                     iconsOnly = true,
                                 )
                             }
                         }
                     } else {
-
                     val landscapeArtworkSize =
                         (maxWidth - 96.dp)
                             .coerceAtMost(maxHeight * 0.68f)
@@ -1229,7 +1109,6 @@ fun AppleMusicPlayerContent(
                             .weight(1f)
                             .fillMaxHeight(),
                 ) {
-
                     androidx.compose.animation.AnimatedVisibility(
                         visible = lyricsOpen,
                         enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
@@ -1710,7 +1589,6 @@ private fun AppleMusicSharpArtwork(
                 }
             }
         } else {
-
             Box(modifier = Modifier.matchParentSize()) {
                 if (staticBaseAlpha > 0.01f) {
                     AsyncImage(
@@ -2065,9 +1943,7 @@ private fun AppleMusicLandscapeTitleBlock(
     iconsOnly: Boolean = false,
 ) {
     if (iconsOnly) {
-        // Full-bleed canvas landscape: no song name - the video IS the visual.
-        // Only the favourite and overflow chips remain, right-aligned with a
-        // tight 6dp gap (the old layout put 16dp between them next to the text).
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -2108,7 +1984,6 @@ private fun AppleMusicLandscapeTitleBlock(
             Modifier
                 .let { base ->
                     if (contentWidth != null) {
-
                         base
                             .width(contentWidth)
                     } else {

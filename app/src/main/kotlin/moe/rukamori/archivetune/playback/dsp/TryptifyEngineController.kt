@@ -94,7 +94,6 @@ class TryptifyEngineController(
     }
 
     fun setEngineActive(active: Boolean) {
-
         runCatching { systemEq.setEngineActive(active) }
             .onFailure { Log.w(TAG, "system-wide AutoEQ gate failed", it) }
         if (active) {

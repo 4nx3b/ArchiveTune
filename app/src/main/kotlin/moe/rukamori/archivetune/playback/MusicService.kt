@@ -430,10 +430,6 @@ import kotlin.math.pow
 import kotlin.math.roundToLong
 import kotlin.time.Duration.Companion.seconds
 
-// Unicode-aware: with the old [^a-z0-9] form every non-Latin title normalized
-// to "", so ANY two non-Latin songs compared "equal" and JioSaavn candidate
-// selection ignored the title entirely (duration/artist alone decided - wrong
-// song picks). Keeping all script letters restores real title comparison.
 private val JIO_SAAVN_NORMALIZE_REGEX = Regex("[^\\p{L}\\p{N}]")
 
 private data class EnginePrefTuple(
@@ -521,8 +517,7 @@ class MusicService :
         object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<AudioDeviceInfo>) {
                 if (addedDevices.any { it.isSink }) {
-                    // A newly attached DAC deserves a fresh exclusive handshake
-                    // even if the previous device exhausted the session budget.
+
                     if (exclusiveRouteSessionFallback) {
                         exclusiveRouteSessionFallback = false
                         Timber.tag(TAG).i("USB audio device added; exclusive session fallback cleared")
@@ -717,23 +712,9 @@ class MusicService :
     private var exclusiveWriteRecoveryAttemptCount: Int = 0
     private val exclusiveWriteRecoveryMaxAttempts = 4
 
-    // Elapsed timestamp of the last exclusive write failure. Failures more
-    // than EXCLUSIVE_FAILURE_FRESH_WINDOW_MS apart start a FRESH incident
-    // (counter reset): the old mediaId-only reset never ran for repeated
-    // failures on the same song, so the counter grew past the budget
-    // ("recovery attempt 5/4" spam) forever.
     @Volatile
     private var lastExclusiveWriteFailureElapsedMs: Long = 0L
 
-    // Session-scoped fallback after the exclusive route repeatedly failed to
-    // engage (LastwaveUsbdevfsAudioOutput -9101 / AAud -896 write failures).
-    // While set, the USB-exclusive output is disengaged for the REST of this
-    // service session and playback continues through the standard framework
-    // route - music keeps playing instead of the old "budget exhausted; giving
-    // up" death spiral where local files simply never played. Cleared when the
-    // USB device set changes, when the user re-toggles the USB-exclusive
-    // preference, or on service restart - never per-track, so a DAC that
-    // negotiates deterministically badly does not re-fail 4x on every song.
     @Volatile
     private var exclusiveRouteSessionFallback: Boolean = false
 
@@ -949,9 +930,6 @@ class MusicService :
         )
     }
 
-    // Generalized mixer-attribute bit-perfect controller: unlike the engine's
-    // USB-only instance above, this one applies to ANY routed output device that
-    // advertises BIT_PERFECT mixer modes (USB DACs, wired headsets, HDMI...).
     private val mixerBitPerfectOutput by lazy {
         com.lastwave.app.playback.UsbBitPerfectOutput(
             runCatching { getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager }.getOrNull(),
@@ -1039,7 +1017,6 @@ class MusicService :
                     }
                     cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
                     if (crossfadeConsecutiveFailures >= MAX_CONSECUTIVE_CROSSFADE_FAILURES) {
-
                         Timber.tag(TAG).w(
                             "Secondary crossfade player failed %d times in a row; suspending crossfade for %s",
                             crossfadeConsecutiveFailures,
@@ -1353,27 +1330,12 @@ class MusicService :
         equalizerPlaybackController.attach(this)
         ensureScopesActive()
 
-        // Restore persisted MediaStore URI heals before any queue is rebuilt so
-        // local songs whose MediaStore row id changed resume playing instantly
-        // instead of failing once and healing on the error path.
         ioScope.launch { LocalMediaUriHeals.loadBlocking(this@MusicService) }
 
         musicHapticsEngine = SpatialFlowHapticEngine(this)
 
-        // Seed the audio-route flags SYNCHRONOUSLY before the player exists:
-        // the first sink configure (queue restore) would otherwise race the
-        // async DataStore collectors. When the collectors had not emitted yet
-        // the router engaged Engine.NONE, the switching sink answered
-        // format-support queries from the 16-bit DSP side, and the engine the
-        // user had enabled only appeared after a restart (or never) - the
-        // "pill shows Android, equalizer dead" class.
         seedAudioRoutePreferences()
 
-        // The Tryptify AutoEQ target curves load lazily from bundled assets
-        // and need an application context; without this every curve parsed
-        // empty and every AutoEQ fit aborted with "Target curve not
-        // available" (EqViewModel initializes it too - this covers the
-        // audio-path side before any playback begins).
         runCatching {
             tf.monochrome.android.audio.eq.FrequencyTargets.init(applicationContext)
         }
@@ -1417,13 +1379,7 @@ class MusicService :
                             engineTransport = true,
                         )
                     }
-                    // The wire clock can be renegotiated AFTER the chain
-                    // already configured (exclusive fallback rate picked
-                    // inside ExclusiveUsbOutput when the DAC descriptor lacks
-                    // the source rate). Re-running the engine-output-rate
-                    // wiring whenever the polled wire rate CHANGES aligns the
-                    // engine's soxr output to the live wire clock instead of
-                    // streaming source-rate PCM into a mismatched clock.
+
                     if (wireRateHz != lastPolledWireRateHz) {
                         lastPolledWireRateHz = wireRateHz
                         if (wireRateHz > 0 || lastwaveAudioProcessing) {
@@ -1822,19 +1778,10 @@ class MusicService :
             Penta(dsp, usbExclusive, crossfade, automix, offload)
         }.distinctUntilChanged()
             .collectLatest(scope) { (dsp, usbExclusive, crossfade, automix, offload) ->
-                // A single transient exception inside a collector body kills
-                // that collector coroutine FOREVER (SupervisorJob: siblings
-                // survive, but this preference stream stops applying until the
-                // process restarts - the "live audio pill stays stale until I
-                // restart the app" class). Native engine / USB route calls can
-                // throw transiently mid-detach, so every audio-route collector
-                // is exception-hardened: log and keep collecting.
+
                 runCatching {
                     floatDspEnabled = dsp
 
-                    // Re-toggling the USB-exclusive preference is an explicit user
-                    // retry: clear the session fallback so a fresh DAC handshake
-                    // gets a full chance on the new intent.
                     if (lastUsbExclusivePrefValue != null && lastUsbExclusivePrefValue != usbExclusive) {
                         if (exclusiveRouteSessionFallback) {
                             exclusiveRouteSessionFallback = false
@@ -1852,8 +1799,7 @@ class MusicService :
                         usbExclusiveRequested,
                     )
                 }.onFailure {
-                    // collectLatest cancels the previous emission when a new value
-                    // arrives; that cancellation MUST propagate, not be logged.
+
                     if (it is CancellationException) throw it
                     Timber.tag(TAG).e(it, "Audio route collector (float-dsp/usb-exclusive) emission failed; will retry on next preference change")
                 }
@@ -1866,9 +1812,7 @@ class MusicService :
             bitPerfect to nativeRate
         }.distinctUntilChanged()
             .collectLatest(scope) { (bitPerfect, nativeRate) ->
-                // Exception-hardened (see the float-dsp collector note): a
-                // transient native/USB failure must not kill this stream and
-                // freeze the live audio chain readout until restart.
+
                 runCatching {
                     val previouslyRequested = BitPerfectRuntime.requested
                     val previousNativeRate = BitPerfectRuntime.nativeSampleRatePreferred
@@ -1884,13 +1828,7 @@ class MusicService :
                     if (!bitPerfect) {
                         BitPerfectRuntime.clearTrack()
                     }
-                    // "Bit-perfect + engine" must mean untouched samples THROUGH
-                    // the engine as well: LastWave's native clarity/EQ/peak
-                    // protection chain has a bit-perfect bypass that was never
-                    // wired, so the engine kept processing the PCM even with
-                    // bit-perfect ON. Route the request through so the engine's
-                    // own DSP stands down exactly when the user asked for
-                    // bit-perfect output (and resumes processing when OFF).
+
                     runCatching { lastwaveEngine.setBitPerfect(bitPerfect) }
                         .onFailure {
                             Timber.tag(TAG).w(it, "LastWave native bit-perfect bypass toggle failed")
@@ -1922,13 +1860,7 @@ class MusicService :
             EnginePrefTuple(tryptify, lastwave, downmixOn, usbPin, usbDevice != null)
         }.distinctUntilChanged()
             .collectLatest(scope) { (tryptify, lastwave, downmixOn, usbPin, usbAttached) ->
-                // Exception-hardened collector: the body bridges native engine
-                // calls (Tryptify controller, LastWave processor, USB pin) that
-                // can throw transiently. If it ever crashed, the coroutine died
-                // silently and publishWantedEngine never fired again - the live
-                // audio chain pill then showed the OLD engine (and stale rates)
-                // until the app was restarted. The critical UI-facing publishes
-                // run FIRST so even a failed tail leaves the pill correct.
+
                 runCatching {
                     val lastwaveEffective = lastwave && !tryptify
                     val engineSelectionChanged =
@@ -1944,9 +1876,6 @@ class MusicService :
                     tryptifyAudioProcessing = tryptify
                     lastwaveAudioProcessing = lastwaveEffective
 
-                    // The pill/UI reacts to the SELECTION the moment the preference
-                    // flips - it does not wait for the router to latch the engine on
-                    // the next configure or buffer.
                     EngineRuntime.publishWantedEngine(
                         when {
                             tryptify -> AudioEngineRouterProcessor.Engine.TRYPTIFY
@@ -1975,14 +1904,7 @@ class MusicService :
                     }
 
                     if (engineSelectionChanged) {
-                        // The live audio chain pill reads BitPerfectRuntime.status,
-                        // which is only recomputed when the sink re-configures. A
-                        // mid-track engine flip changes the route (float sink,
-                        // chain bypass, mixer re-grant) without any configure - so
-                        // re-evaluate immediately with the latched track values.
-                        // This runs BEFORE the mixer refresh so a subsequent
-                        // BIT_PERFECT grant can layer its wire rate on top of the
-                        // fresh verdict, exactly like the onConfigure path does.
+
                         BitPerfectRuntime.reevaluateEngines(
                             context = this@MusicService,
                             engineOrDspEngaged = tryptify || lastwaveEffective || primaryFloatDspProcessor.engaged,
@@ -1996,26 +1918,11 @@ class MusicService :
                     applyFloatDspEngagement()
 
                     if (engineSelectionChanged && bitPerfectNeedsRouteReprepare()) {
-                        // Re-prepare while actually playing - the same recovery the
-                        // bit-perfect toggle uses. Without it the router's deferred
-                        // switch can strand the OLD engine alive when the chain was
-                        // bypassed (router inactive -> reevaluate flag never
-                        // consumed), and the switching sink keeps feeding the
-                        // previously-configured side.
+
                         scope.launch(Dispatchers.Main) {
                             runCatching { repreparePlayerForAudioRouteChange() }
                         }
-                        // Watchdog: if the router still has not latched the wanted
-                        // engine shortly after the re-prepare (a configure race or a
-                        // deferred reroute), re-prepare again instead of leaving
-                        // the equalizer silent until the next track. Retries up to
-                        // 3 times (1.5s apart): a single one-shot probe could land
-                        // while the player was mid-stop of the previous re-prepare
-                        // and give up permanently - "sometimes the EQ works,
-                        // sometimes it doesn't". Only one watchdog may be pending
-                        // at a time - rapid engine toggling replaces it instead of
-                        // stacking re-prepares. Gives up cleanly when nothing is
-                        // playing (the next play() configures fresh anyway).
+
                         engineEngagementWatchdog?.cancel()
                         engineEngagementWatchdog = scope.launch {
                             var watchdogAttempts = 0
@@ -2025,8 +1932,7 @@ class MusicService :
                                 if (wanted == AudioEngineRouterProcessor.Engine.NONE) return@launch
                                 if (EngineRuntime.activeEngine == wanted) return@launch
                                 if (!bitPerfectNeedsRouteReprepare()) {
-                                    // Player idle/empty/casting: the router will
-                                    // latch on the next fresh playback configure.
+
                                     if (player.playbackState == Player.STATE_IDLE) return@launch
                                     continue
                                 }
@@ -2050,17 +1956,10 @@ class MusicService :
 
         currentFormat
             .collectLatest(scope) { format ->
-                // Exception-hardened: refreshMixerBitPerfectRoute and
-                // applyFloatDspEngagement touch the audio session / native
-                // engines and must not kill this per-track stream.
+
                 runCatching {
                     currentFormatEntity = format
-                    // Self-heal: re-assert the wanted-engine mirror from the
-                    // in-memory selection on every track/format change. If an
-                    // earlier engine-collector emission failed midway (native
-                    // call hiccup), the live audio chain pill could otherwise
-                    // keep showing the previous engine until the next manual
-                    // toggle. Writing the same value is a no-op for Compose.
+
                     EngineRuntime.publishWantedEngine(
                         when {
                             tryptifyAudioProcessing -> AudioEngineRouterProcessor.Engine.TRYPTIFY
@@ -2722,12 +2621,7 @@ class MusicService :
                 ensureDiscordSyncFresh(request.epoch)
                 val snapshot =
                     buildDiscordPresenceSnapshot(song, decision.isPaused) ?: run {
-                        // Playback moved underneath the decision between
-                        // evaluation and apply (song change or pause flip):
-                        // applying the stale snapshot would show the wrong
-                        // track/state on Discord until the next event. Force
-                        // a fresh decision cycle instead of dropping it
-                        // silently (upstream parity).
+
                         requestDiscordSync(
                             reason = "playback_changed_before_presence_apply",
                             force = true,
@@ -2772,10 +2666,7 @@ class MusicService :
         isPaused: Boolean,
     ): DiscordPresenceSnapshot? {
         val expectedSong = song ?: return null
-        // Re-validate on the main thread at apply time: the decision was
-        // built from a snapshot that may already be stale after a fast
-        // skip/pause, and a stale snapshot would push the wrong song or
-        // play state to Discord until the next sync event (upstream parity).
+
         return withContext(Dispatchers.Main.immediate) {
             val currentSong = currentPresenceSong() ?: return@withContext null
             if (currentSong.song.id != expectedSong.song.id) {
@@ -3162,7 +3053,6 @@ class MusicService :
         normalizeFactor: Float,
         audioFocusVolumeFactor: Float,
     ): Float {
-
         if (BitPerfectRuntime.status.verifiedBitPerfect) {
             BitPerfectRuntime.notifyVolume(1f)
             return 1f
@@ -3439,12 +3329,6 @@ class MusicService :
         return created
     }
 
-    /**
-     * Clean-room automix scheduler (replaces the BitChord-ported SmartFade):
-     * analyses both sides through [AutoMixAnalyzer], plans the transition with
-     * [AutoMixPlanner], publishes the UI state, arms the secondary player at
-     * the incoming cue and finally hands over to the shared crossfade blender.
-     */
     private fun scheduleAutoMix() {
         val target = resolveAutoMixTarget()
         val duration = player.duration
@@ -3558,10 +3442,7 @@ class MusicService :
                     }
                     if (remainingToStart <= 0L && plan.fadeMs >= MIN_CROSSFADE_DURATION_MS) {
                         val positionMs = player.currentPosition
-                        // Full remaining tail - no end guard on the automix path:
-                        // the blend must land exactly on the outgoing song's
-                        // natural end (the old 150 ms guard plus cue-clock
-                        // drift cut the tail of every automixed track).
+
                         val remainingFadeMs =
                             (duration - positionMs)
                                 .coerceAtMost(plan.fadeMs)
@@ -3677,12 +3558,6 @@ class MusicService :
             abs(plan.incomingPlaybackRate - 1.0) > 0.01
     }
 
-    /**
-     * Fresh transition-filter ride curves (clean-room automix): a sweep-out
-     * for DJ_FILTER, a bass handover for DJ_BLEND, and clash-scaled band
-     * narrowing when both sides carry vocals. All cut-offs glide in the
-     * filter processors themselves, so the rides only publish targets.
-     */
     private fun rideAutoMixFilters(
         plan: AutoMixPlan,
         progress: Float,
@@ -3863,7 +3738,6 @@ class MusicService :
     ): ExoPlayer? {
         val existingPlayer = secondaryCrossfadePlayer
         if (existingPlayer != null && secondaryCrossfadeTarget == target) {
-
             if (cueTimeMs > 0L && existingPlayer.currentPosition != cueTimeMs) {
                 runCatching { existingPlayer.seekTo(cueTimeMs) }
             }
@@ -3977,7 +3851,6 @@ class MusicService :
                 var fadeMs = durationMs
 
                 try {
-
                     val outgoingLeftMs =
                         player.duration
                             .takeIf { it != C.TIME_UNSET && it > 0L }
@@ -3996,10 +3869,7 @@ class MusicService :
                     player.duration
                         .takeIf { it != C.TIME_UNSET && it > 0L }
                         ?.let { fullDuration ->
-                            // Smart (automix) blends end ON the outgoing song's
-                            // natural end; the classic crossfade keeps its end
-                            // guard so the promotion still beats the ExoPlayer
-                            // auto-advance.
+
                             val leftAfterWaitMs =
                                 fullDuration - player.currentPosition -
                                     if (smart) 0L else CROSSFADE_END_GUARD_MS
@@ -4014,7 +3884,6 @@ class MusicService :
                         }
 
                     if (smart) {
-
                         val userSpeed = player.playbackParameters.speed
                         incomingPlayer.playbackParameters =
                             player.playbackParameters.withSpeed(
@@ -4039,14 +3908,7 @@ class MusicService :
 
                     var elapsedMs = 0L
                     var lastTickMs = android.os.SystemClock.elapsedRealtime()
-                    // Smart blends are driven by the OUTGOING song's clock: the
-                    // fade-out reaches silence exactly at the outgoing track's
-                    // natural end regardless of the incoming player's cue or
-                    // beat-matching playback rate. The previous cue-clock
-                    // driver (incomingPlayer.currentPosition - cueTimeMs, at
-                    // incomingPlaybackRate) finished the blend early whenever
-                    // the rates diverged, and the promotion then truncated the
-                    // outgoing song's tail.
+
                     val blendStartOutgoingPositionMs =
                         if (smart) {
                             player.currentPosition
@@ -4115,13 +3977,7 @@ class MusicService :
                     }
 
                     if (smart) {
-                        // Hold the fully-blended state (outgoing silent,
-                        // incoming at full volume) until the outgoing song
-                        // actually reaches its natural end. pauseAtEndOfMedia
-                        // Items keeps the outgoing player from auto-advancing;
-                        // this wait is what guarantees NO part of the outgoing
-                        // track is ever cut off. Bounded so a stalled decoder
-                        // can not hang the handover.
+
                         val tailDeadlineMs =
                             android.os.SystemClock.elapsedRealtime() + AUTO_MIX_TAIL_WAIT_MS
                         while (isActive && player.currentMediaItem?.mediaId == outgoingMediaId) {
@@ -4157,7 +4013,6 @@ class MusicService :
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Throwable) {
-
                     runCatching {
                         if (error is Exception) {
                             Timber.tag(TAG).w(error, "Crossfade failed")
@@ -7065,7 +6920,6 @@ class MusicService :
                 reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM &&
                 localPlayer.pauseAtEndOfMediaItems
         if (isCrossfading || crossfadeHandoffInProgress) {
-
             if (!isEndOfOutgoingItemPause) {
                 crossfadePlaybackRequested = playWhenReady
             }
@@ -7473,13 +7327,6 @@ class MusicService :
             }
         }
 
-        // Local (MediaStore) playback: the stored content URI no longer resolves -
-        // MediaStore row ids are unstable across re-scans, storage remounts and
-        // backup restores, so ExoPlayer fails with "No item at content://..."
-        // wrapped as a Source error. Re-resolve the song against the CURRENT
-        // MediaStore and swap in the healed URI while keeping the song's
-        // mediaId (and therefore every DB row, playlist entry and play count)
-        // untouched, then resume exactly where playback stopped.
         if (isLocalMedia && isLocalSourceNotFoundError(error)) {
             val resumeIndex = player.currentMediaItemIndex
             val resumePosition = player.currentPosition.coerceAtLeast(0L)
@@ -7642,9 +7489,7 @@ class MusicService :
             val mediaItemIndex = player.currentMediaItemIndex
 
             val nowElapsed = android.os.SystemClock.elapsedRealtime()
-            // A failure that arrives long after the previous one is a FRESH
-            // incident (transient USB hiccup recovered in between) - restart
-            // the budget instead of running on a stale, over-budget counter.
+
             if (nowElapsed - lastExclusiveWriteFailureElapsedMs > exclusiveFailureFreshWindowMs) {
                 exclusiveWriteRecoveryAttemptCount = 0
             }
@@ -7698,13 +7543,6 @@ class MusicService :
                     attemptNumber - 1,
                 )
 
-                // Deterministic negotiate failure (unsupported alt setting at
-                // this rate, permission, stream start): retrying the SAME
-                // exclusive route can never recover it. Disengage the
-                // exclusive transport for the rest of the session so the
-                // shared provider hands the sink a plain framework AudioTrack
-                // and the song actually plays. The engine keeps processing -
-                // only the exclusive transport is dropped.
                 exclusiveRouteSessionFallback = true
                 scope.launch(Dispatchers.Main) {
                     try {
@@ -7720,10 +7558,7 @@ class MusicService :
                         stopOnError()
                     }
                 }
-                // RETURN - the old fall-through re-entered the codec-state
-                // and generic handlers on every subsequent failure (the
-                // "attempt 5/4... 6/4... 7/4" log spam) and duplicated
-                // conflicting recovery work.
+
                 return
             }
         }
@@ -7814,19 +7649,11 @@ class MusicService :
 
     private fun isLocalSourceNotFoundError(error: PlaybackException): Boolean {
         if (error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND) return true
-        // Some provider failures surface as an unspecified IO error whose cause
-        // chain still carries the FileNotFoundException ("No item at ...") -
-        // match on the cause chain so those heal too.
+
         return generateSequence<Throwable>(error) { it.cause }.take(6)
             .any { it is java.io.FileNotFoundException }
     }
 
-    /**
-     * Recovers a local song whose MediaStore URI went stale. Returns true when
-     * recovery was attempted (success or definitive failure); the caller must
-     * then skip the generic on-error handling because this function owns the
-     * outcome (it resumes playback itself, or performs the skip/stop fallback).
-     */
     private fun healLocalMediaSource(
         mediaId: String,
         resumeIndex: Int,
@@ -8902,7 +8729,6 @@ class MusicService :
         query: SourceQuery,
         trusted: Boolean = false,
     ): DirectStream? {
-
         if (AppleMusicAudioProvider.mediaUserToken() == null) {
             Timber
                 .tag("MusicService")
@@ -9020,7 +8846,6 @@ class MusicService :
 
         val directTrackId = query.directTidalTrackId?.takeIf { it.isNotBlank() }
         if (directTrackId != null) {
-
             TidalAudioProvider.invalidate(query.mediaId)
             val apiQuality =
                 when (quality) {
@@ -9129,7 +8954,6 @@ class MusicService :
                                 TidalAccountManager.isUnauthorized(it) ->
                                     PoolAccountManager.report("tidal", "account", poolAccount.id, "dead")
                                 it is TidalAccountManager.TidalPreviewException -> {
-
                                     Timber.tag("MusicService").w(
                                         "Tidal pool account %s cannot stream FULL assets; cooling down",
                                         poolAccount.id,
@@ -9164,7 +8988,6 @@ class MusicService :
             mergedInstances.size,
         )
         if (mergedInstances.isEmpty()) {
-
             runCatching {
                 ioScope.launch {
                     TidalInstanceHealthManager.refresh(
@@ -9680,13 +9503,7 @@ class MusicService :
                 includePlayerCache = allowPlayerCacheShortCircuit,
             )?.let { cachedHit ->
                 scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                // Cached playback (replays, preloaded songs, restored queue,
-                // offline downloads) previously returned WITHOUT publishing any
-                // stream info, so the track-info sheet showed "Worked provider /
-                // Stream delivery / Protocol: Unknown" for every song that was
-                // not freshly resolved - i.e. most normal listening. The cache
-                // key encodes which source produced the cached bytes, so the
-                // info is derivable right here.
+
                 publishCurrentStreamInfo(
                     mediaId,
                     cachedPlaybackStreamInfo(
@@ -9966,8 +9783,7 @@ class MusicService :
                 )
             }?.let { cached ->
                 scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                // The extractor path previously published nothing, leaving the
-                // track-info playback rows "Unknown" even on a fresh play.
+
                 publishCurrentStreamInfo(
                     mediaId,
                     CurrentStreamInfo(
@@ -10146,20 +9962,11 @@ class MusicService :
         )
     }
 
-    /** Which cache key satisfied a short-circuit hit (also carries the source). */
     private data class CachedDataSpecHit(
         val dataSpec: DataSpec,
         val cacheKey: String,
     )
 
-    /**
-     * Reconstructs the "worked provider / stream delivery / protocol" info for
-     * a playback served from cache. The cache key prefix identifies the source
-     * (tidal: / qobuz: / qobuz_backup: / deezer: / apple: / jiosaavn: / ytm: /
-     * bare mediaId = YouTube), and the in-memory direct-stream cache for the
-     * same key - when still alive - carries the full provider label, wire
-     * protocol, sample rate and bit depth.
-     */
     private fun cachedPlaybackStreamInfo(
         mediaId: String,
         cacheKey: String,
@@ -10520,13 +10327,6 @@ class MusicService :
         usbSinkActiveNow = usbExclusiveAudioEnabled
         EngineRuntime.publishUsbExclusive(usbSinkActiveNow)
 
-        // Bit-perfect strictness: the LastWave exclusive wire must run the
-        // SOURCE rate. With the flag set, ExclusiveUsbOutput refuses to
-        // renegotiate a fallback clock (which would engage its soxr
-        // resampler) and fails the configure instead, letting the recovery
-        // path disengage the exclusive route - the standard route then plays
-        // the source rate untouched. Without bit-perfect, the fallback
-        // negotiation stays enabled by design (playable audio beats silence).
         runCatching {
             lastwaveExclusiveUsb.setStrictSourceRateMode(BitPerfectRuntime.requested)
         }
@@ -10543,33 +10343,16 @@ class MusicService :
                 }
             } else if (BitPerfectRuntime.status.usbExclusiveActive) {
 
-                // Disengaging the USB-exclusive route must clear the latched wire
-                // format immediately, otherwise the pill keeps claiming Bit-Perfect
-                // over the speaker route until the next track re-evaluates.
                 BitPerfectRuntime.notifyUsbExclusive(false, 0, 0)
             }
         }
 
-        // Mixer-attribute bit-perfect (Android 14+) is handled centrally by
-        // refreshMixerBitPerfectRoute(): it covers the engines AND plain
-        // bit-perfect output, for USB DACs as well as any other output that
-        // advertises BIT_PERFECT mixer modes.
         refreshMixerBitPerfectRoute()
-        // The USB route flip changes which output rate the LastWave engine
-        // must target (wire clock vs device rate); without this call here the
-        // override could go stale between route changes.
+
         applyNativeRateOverride()
         applyFloatDspEngagement()
     }
 
-    // Attempts the platform's BIT_PERFECT mixer-attribute bypass (Android 14+)
-    // for the CURRENT routed output device whenever bit-perfect output (or an
-    // engine with its bit-perfect option) is active without the USB-exclusive
-    // transport. This is the mixer-level bit-perfect path the ported engines
-    // shipped with: when the DAC advertises a BIT_PERFECT mixer mode whose rate
-    // matches the source and whose depth can carry the source bits, the shared
-    // mixer stops converting the stream. Works for USB, wired and any other
-    // output that advertises bit-perfect mixer modes.
     private fun refreshMixerBitPerfectRoute() {
         if (Build.VERSION.SDK_INT < 34) return
         val requested =
@@ -10652,13 +10435,6 @@ class MusicService :
                     (format.sampleRate ?: 0) >= 88_200
                 )
 
-        // The engine router declares float output whenever the USB-exclusive
-        // transport is live, bit-perfect output is requested, OR a ported engine
-        // (Tryptify/LastWave) is engaged: engines running on the 16-bit sink had
-        // their float output truncated through floatToPcm16, silently collapsing
-        // 24-bit sources to 16-bit and dulling the sound. With an engine active
-        // the stream rides the bit-perfect float sink at the source rate/depth
-        // instead of the 16-bit mixer truncation.
         val floatRouteToSink =
             usbSinkActiveNow || BitPerfectRuntime.requested ||
                 tryptifyAudioProcessing || lastwaveAudioProcessing
@@ -10759,15 +10535,6 @@ class MusicService :
         }
     }
 
-    /**
-     * Seeds every audio-route flag from DataStore synchronously, BEFORE the
-     * player is built. Without this the first sink configure raced the async
-     * preference collectors: the router engaged Engine.NONE, the switching
-     * sink answered codec float-support queries from the 16-bit DSP side, and
-     * the engine the user enabled only appeared after a restart (or never).
-     * The collectors still run afterwards and reconcile any change made in
-     * between; this is only the deterministic starting point.
-     */
     private fun seedAudioRoutePreferences() {
         val prefs =
             runCatching {
@@ -10811,36 +10578,10 @@ class MusicService :
         )
     }
 
-    /**
-     * Wires the "Native Sample Rate" audiophile toggle. While it is ON (the
-     * default) the engine float route stays at the SOURCE rate end-to-end.
-     * While it is OFF - and neither bit-perfect output nor the USB-exclusive
-     * transport is active - the LastWave engine instead resamples to the
-     * device's native mixer rate through its libsoxr HQ path, mirroring the
-     * upstream LastWave-native Oboe behaviour (the native output targets the
-     * device rate; the platform fallback preserves the source rate).
-     *
-     * NEW: while the LastWave USB-exclusive transport is live, the engine's
-     * output rate must follow the WIRE clock the DAC actually negotiated.
-     * ExclusiveUsbOutput silently falls back to a playable hardware rate when
-     * the DAC descriptor lacks the source rate ("switching exclusive clock to
-     * XHz for soxr resampling") - but the engine was never told, so it kept
-     * emitting source-rate PCM into a wire running at a different clock:
-     * pitched-up, distorted playback on exactly those songs (the
-     * "some songs are distorted in lastwave" class). When the wire rate
-     * differs from the source rate, the override pins the engine output to
-     * the wire rate so its libsoxr HQ resampler runs, exactly like upstream.
-     */
     private fun applyNativeRateOverride() {
         val wireRateHz =
             if (usbSinkActiveNow && lastwaveAudioProcessing && !BitPerfectRuntime.requested) {
-                // Bit-perfect ON never pins the engine to a non-source wire
-                // rate (that would be the app resampling). The strict
-                // source-rate mode above makes a mismatched wire fail the
-                // configure and fall back to the standard route instead, so
-                // this branch only engages WITHOUT bit-perfect - the
-                // distortion fix for mismatched clocks keeps its soxr path
-                // exactly where it is wanted.
+
                 lastwaveExclusiveUsb.currentRateHz().takeIf { it > 0 }
             } else {
                 null
@@ -10854,11 +10595,6 @@ class MusicService :
                 }
         lastwaveProcessor.setOutputSampleRateOverride(override)
 
-        // A CHANGED override must reach the live engine: the processor only
-        // re-reads it at the next configure, so force one (re-prepare) while
-        // the engine is actually engaged and its CURRENT output rate differs
-        // from the new target - otherwise the chain keeps emitting at the
-        // stale rate for the rest of the track.
         if (override != lastAppliedLastwaveRateOverrideHz) {
             lastAppliedLastwaveRateOverrideHz = override
             val engineCurrentOutRate = lastwaveProcessor.nativeOutputSampleRate
@@ -10954,11 +10690,6 @@ class MusicService :
         maybeSyncFormatEntityWithDecodedStream()
     }
 
-    // Providers sometimes label a stream with the master's sample rate while the
-    // actually served file decodes at another rate (48 kHz transcodes are the
-    // common case). Reconcile the stored FormatEntity with the live decoder
-    // format so the details page, the format pills and the live audio chain
-    // readout all agree on the REAL wire format instead of mixing claims.
     private fun maybeSyncFormatEntityWithDecodedStream() {
         val entity = currentFormatEntity ?: return
         val decodedRate = BitPerfectRuntime.status.sourceSampleRate.takeIf { it > 0 } ?: return
@@ -10970,9 +10701,7 @@ class MusicService :
                 true
             }.getOrDefault(false)
             if (written) {
-                // Mark synced only after a successful write so a failed update
-                // retries on the next format emission instead of being dropped
-                // for the rest of the session.
+
                 formatSampleRateSynced[entity.id] = decodedRate
                 Timber.tag(TAG).i(
                     "Format entity synced with decoded stream: %dHz (was %s)",
@@ -10983,12 +10712,6 @@ class MusicService :
         }
     }
 
-    // ReplayGain tags are parsed during library scans, so songs scanned before
-    // the parser shipped - or whose tags were unavailable at scan time - carry
-    // no RG data and normalization silently falls back to unity for them.
-    // Parse lazily at playback time and persist the tags so the factor applies
-    // from this play on (the currentFormat flow re-emits after the upsert and
-    // the normalization combine recomputes).
     private fun maybeParseMissingReplayGain(format: FormatEntity?) {
         if (format == null) return
         if (!format.id.isLocalMediaId()) return
@@ -11126,7 +10849,6 @@ class MusicService :
                                     transitionFilter,
                                 ),
                                 tailProcessor = if (floatDspProcessor === primaryFloatDspProcessor) {
-
                                     primaryEngineRouter
                                 } else {
                                     floatDspProcessor
@@ -11151,14 +10873,6 @@ class MusicService :
                             ),
                         ).build()
 
-                // The bit-perfect sink keeps float output enabled so the source
-                // bit depth survives the whole chain. On the primary player it
-                // carries the SAME engine router as the DSP sink: engines that
-                // run while bit-perfect output is requested now process in
-                // float at the source rate instead of being truncated to the
-                // 16-bit shared-mixer path. The shared processor instances are
-                // safe here because BitPerfectSwitchingAudioSink only ever
-                // configures one of the two sinks at a time.
                 val bitPerfectSink =
                     DefaultAudioSink
                         .Builder(context)
@@ -11197,12 +10911,6 @@ class MusicService :
                     routeActive = {
                         if (primary) {
 
-                            // Engines ride the float sink too - with bit-perfect
-                            // output requested OR a ported engine engaged their
-                            // output is declared float at the source rate instead
-                            // of the 16-bit mixer truncation, so the source bit
-                            // depth is never scaled down (24-bit -> 16-bit) no
-                            // matter which combination is enabled.
                             BitPerfectRuntime.requested ||
                                 tryptifyAudioProcessing ||
                                 lastwaveAudioProcessing
@@ -11947,11 +11655,6 @@ class MusicService :
         const val AUTO_MIX_RESOLVE_TIMEOUT_MS = 45_000L
         const val DEFAULT_AUTO_MIX_FALLBACK_MS = 6_000L
 
-        // After a smart (automix) blend completes, the handover waits for the
-        // outgoing song's natural end before promoting the incoming player.
-        // The wait is bounded so a stalled/seeking outgoing decoder cannot
-        // freeze the queue; the epsilon covers ExoPlayer's end-of-stream
-        // position granularity.
         const val AUTO_MIX_TAIL_WAIT_MS = 2_000L
         const val AUTO_MIX_TAIL_EPSILON_MS = 8L
 
@@ -11964,7 +11667,6 @@ class MusicService :
 
         const val HIGH_QUALITY_BITRATE = 320_000
 
-        // Clean-room automix filter-ride curve constants.
         const val AUTO_MIX_SWEEP_SHAPE = 0.75
         const val AUTO_MIX_SWEEP_ENTRY_HIGH_HZ = 7_000.0
         const val AUTO_MIX_SWEEP_FLOOR_HZ = 300.0

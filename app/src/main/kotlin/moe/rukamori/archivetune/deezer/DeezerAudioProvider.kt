@@ -683,7 +683,6 @@ object DeezerAudioProvider {
             if (viaPublicApi.isNotEmpty()) {
                 viaPublicApi
             } else {
-
                 searchCandidatesViaGateway(trimmed, limit)
             }
         }
@@ -774,11 +773,7 @@ object DeezerAudioProvider {
     }
 
     private fun normalizedSimilarity(a: String, b: String): Double {
-        // Unicode-aware: keep letters/digits from every script. The previous
-        // [^a-z0-9 ] form stripped every non-Latin character, so a Hindi/Bengali/
-        // Arabic/CJK title on one side collapsed to "" and the similarity (and
-        // with it the whole match) went to 0 - non-English songs could never
-        // auto-resolve or be found from the play-from popup via Deezer.
+
         val normalize: (String) -> String = { s ->
             s.lowercase().trim().replace(Regex("[^\\p{L}\\p{N} ]"), "")
         }

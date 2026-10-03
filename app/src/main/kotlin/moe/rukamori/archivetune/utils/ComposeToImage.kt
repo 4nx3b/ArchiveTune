@@ -198,7 +198,6 @@ object ComposeToImage {
         shareOptions: LyricsShareImageOptions = LyricsShareImageOptions(),
     ): Bitmap =
         withContext(Dispatchers.Default) {
-
             if (shareOptions.style != LyricsShareStyle.LIQUID_GLASS) {
                 return@withContext createClassicLyricsImage(
                     context = context,
@@ -684,7 +683,6 @@ object ComposeToImage {
                 }
 
             if (fittedArt != null) {
-
                 val blurScale = maxOf(canvasWidth, canvasHeight) / 900f
                 val blurPx = (shareOptions.sanitizedBlurRadius * blurScale).roundToInt().coerceIn(1, 256)
                 val blurredBackground = stackBlurScaled(fittedArt, blurPx)

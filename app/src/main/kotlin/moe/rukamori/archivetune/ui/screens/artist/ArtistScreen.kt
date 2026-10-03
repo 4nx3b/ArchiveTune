@@ -391,15 +391,10 @@ fun ArtistScreen(
                 listOf(topSongsSection) + sections.filterNot { it === topSongsSection }
             }
         }
-    // Hoisted so the overflow menu's shuffle/radio actions (and the header
-    // below) share one source of truth for the display name - previously these
-    // were declared inside the header item scope only.
+
     val artistName = artistPage?.artist?.title ?: libraryArtist?.artist?.name
     val unknownArtist = stringResource(R.string.unknown_artist)
 
-    // Anchored overflow menu state: one shared open flag - both header modes
-    // (liquid glass icons and the plain TopAppBar) host the same dropdown,
-    // attached to whichever overflow icon summoned it.
     var artistOverflowMenuOpen by remember { mutableStateOf(false) }
 
     val showArtistOverflowMenu: () -> Unit = {
@@ -483,14 +478,12 @@ fun ArtistScreen(
         if (!canvasSamplingActive) {
             canvasAmbientColors = null
         } else {
-
             delay(280)
             while (true) {
                 val layerSize = canvasSampleLayerSize
                 if (layerSize.width >= 8 && layerSize.height >= 8) {
                     val sampled =
                         try {
-
                             val snapshot =
                                 canvasSampleLayer.toImageBitmap().asAndroidBitmap()
                                     .copy(Bitmap.Config.ARGB_8888, false)
@@ -499,10 +492,6 @@ fun ArtistScreen(
                             } else {
                                 withContext(Dispatchers.Default) {
 
-                                    // The ambience mirrors the BOTTOM band of the
-                                    // canvas so the wash connects to where the artwork
-                                    // hands over into the page gradient. Palette's
-                                    // region API avoids cropping bitmap copies per sample.
                                     val bandTop =
                                         (snapshot.height * CANVAS_AMBIENT_BAND_START).toInt()
                                             .coerceIn(0, (snapshot.height - 2).coerceAtLeast(1))
@@ -573,12 +562,6 @@ fun ArtistScreen(
     val ambientReleaseBase = lerp(animatedAmbientMid, animatedAmbientBottom, 0.45f)
     val releaseCardContainer = ambientReleaseBase.copy(alpha = 0.50f)
 
-    // Release-card TEXT must be page furniture, not a live shader readout: the
-    // light/dark content decision follows the artist's STATIC artwork palette
-    // (changes only with the artist), never the live canvas sampling - the
-    // text used to flip and re-tint while the canvas video played. The accent
-    // is likewise a fixed color, not a palette-derived tint. Only the ambient
-    // WASH behind the card stays live (that is the ambience feature).
     val staticReleasePalette =
         remember(artistArtworkColors, surfaceColor) {
             BackdropTonePalette.fromColorsLight(
@@ -642,12 +625,7 @@ fun ArtistScreen(
         database.transaction {
             val artist = libraryArtist?.artist
             if (artist != null) {
-                // Like on the artist page = SUBSCRIBE. An artist row saved
-                // without a channelId (older inserts, local scans) made the
-                // YouTube-side subscribe inside toggleLike() resolve the id
-                // per click - and silently no-op when that lookup failed.
-                // Backfill the channel id from the loaded remote page so the
-                // subscription (and every future toggle) has a real target.
+
                 val patched =
                     if (artist.channelId.isNullOrBlank() && !artistPage?.artist?.channelId.isNullOrBlank()) {
                         artist.copy(channelId = artistPage?.artist?.channelId)
@@ -677,14 +655,12 @@ fun ArtistScreen(
                 .background(surfaceColor)
                 .onSizeChanged { pageContainerHeightPx = it.height },
     ) {
-
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
                     .let { m -> if (liquidGlassHeaderActive) m.glassSource(artworkBackdrop) else m },
         ) {
-
             Box(
                 modifier =
                     Modifier
@@ -789,18 +765,12 @@ fun ArtistScreen(
                                 .clipToBounds()
                                 .onSizeChanged { heroMeasuredHeightPx = it.height },
                     ) {
-
                         Box(
                             modifier =
                                 Modifier
                                     .matchParentSize()
                                     .graphicsLayer {
 
-                                        // Full-lag parallax keeps the artwork pinned on
-                                        // screen while the list scrolls over it. The
-                                        // previous half-lag opened a growing gap ABOVE
-                                        // the canvas where the page gradient bled over
-                                        // the artwork with extra height.
                                         translationY = heroParallaxOffset
                                     },
                         ) {
@@ -989,9 +959,6 @@ fun ArtistScreen(
                                 horizontalAlignment = Alignment.End,
                                 verticalArrangement = Arrangement.spacedBy(14.dp),
                             ) {
-                                // Shuffle and radio moved to the overflow menu -
-                                // the profile picture area shows ONLY the play
-                                // button now.
 
                                 val playButtonColor =
                                     ambientSource?.let {
@@ -1229,9 +1196,7 @@ fun ArtistScreen(
                                     Text(
                                         text = stringResource(R.string.view_all),
                                         style = MaterialTheme.typography.labelLarge,
-                                        // Non-dynamic (matches the artist-page section
-                                        // headers): was colorScheme.primary, which
-                                        // re-tinted with every playing song.
+
                                         color = MaterialTheme.colorScheme.onSurface,
                                         modifier =
                                             Modifier
@@ -1386,7 +1351,6 @@ fun ArtistScreen(
                                 )
                             }
                         } else if (section.items.isNotEmpty() && section.items.all { it is ArtistItem }) {
-
                             item(
                                 key = "youtube_section_artists_${sectionIndex}_${section.title}",
                                 contentType = CONTENT_TYPE_LIST,
@@ -1821,13 +1785,6 @@ private fun ArtistOverflowMenuDivider() {
     )
 }
 
-/**
- * Anchored overflow dropdown for the artist page, hosted next to whichever
- * overflow icon (glass header or plain TopAppBar) summoned it. The material3
- * dropdown renders in its own popup layer - always attached under the icon and
- * above every in-screen overlay - while the content carries the morphe: a
- * springy scale + fade out of the icon's corner, with dividers between items.
- */
 @Composable
 private fun ArtistOverflowDropdown(
     expanded: Boolean,
@@ -2439,10 +2396,6 @@ private suspend fun extractAmbientArtworkColors(
     if (result !is SuccessResult) return null
     val bitmap = result.image?.toBitmap() ?: return null
 
-    // Sample the BOTTOM band of the artist picture: the ambient wash should carry
-    // the colour the artwork ends on, so the gradient connects to the artwork
-    // instead of its (often much brighter) dominant colour. Palette's region API
-    // avoids cropping bitmap copies.
     val bandPalette =
         withContext(Dispatchers.Default) {
             val bandTop =
@@ -2482,12 +2435,9 @@ private const val CANVAS_SAMPLE_INTERVAL_MILLIS = 350L
 private const val CANVAS_RECORD_INTERVAL_MILLIS = 120L
 private const val CANVAS_SAMPLE_LAYER_MAX_WIDTH_PX = 128
 
-// Bottom band of the canvas / artwork the ambience samples from.
 private const val CANVAS_AMBIENT_BAND_START = 0.62f
 private const val ARTWORK_AMBIENT_BAND_START = 0.62f
 
-// Deliberately unhurried ambient colour transitions; a canvas colour change
-// should ease in gently rather than snap.
 private const val ARTIST_AMBIENT_CROSSFADE_MILLIS = 1200
 
 private const val ArtistHeroArtworkSizePx = 1200

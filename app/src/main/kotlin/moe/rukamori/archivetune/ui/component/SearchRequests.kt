@@ -12,15 +12,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 
-/**
- * Observes the "openSearch" request written by the compact search circle next
- * to the mini player (MainActivity). Screens that own an in-page search
- * affordance register this observer and flip their own search state; every
- * other route keeps the circle's global song-search behaviour.
- *
- * The request is consumed immediately (reset to false) so a returning
- * navigation does not re-trigger the search.
- */
 @Composable
 fun ObserveOpenSearchRequest(
     navController: NavController,

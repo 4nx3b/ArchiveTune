@@ -199,11 +199,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
     val launchAuthorization: () -> Unit = {
         authorizationMessage = null
         authorizationUiModeName = DiscordAuthorizationUiMode.Waiting.name
-        // beginAuthorization PERSISTS the PKCE session: the redirect can now
-        // be completed even if this screen (or the whole process) dies while
-        // the browser is open. The old flow kept the session only in this
-        // composable's memory, so any recreation turned the returning
-        // redirect into a silent state mismatch.
+
         coroutineScope.launch {
             val session = DiscordOAuthRepository.beginAuthorization(context)
             authorizationSession = session
@@ -220,10 +216,6 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
         }
     }
 
-    // The token exchange itself is completed app-side by the OAuth callback
-    // activity (DiscordOAuthRepository.completeFromRedirectAsync) - this
-    // collector only mirrors the outcome into the UI. The logged-in state
-    // itself arrives through the DiscordTokenKey preference emission.
     LaunchedEffect(Unit) {
         DiscordAuthCoordinator.authResults.collect { result ->
             when (result) {
@@ -247,10 +239,6 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
         }
     }
 
-    // A redirect that never arrives (abandoned login, or another installed
-    // ArchiveTune build with the same Discord redirect scheme consuming it)
-    // must not leave the screen in Waiting forever - surface an actionable
-    // hint instead of an eternal spinner.
     LaunchedEffect(authorizationUiModeName) {
         if (authorizationUiModeName != DiscordAuthorizationUiMode.Waiting.name) {
             return@LaunchedEffect

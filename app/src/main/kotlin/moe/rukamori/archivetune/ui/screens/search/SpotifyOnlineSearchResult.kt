@@ -113,7 +113,6 @@ internal fun SpotifyOnlineSearchResult(
                     }
                 }
             if (searchSort == OnlineSearchSort.VIEWS) {
-
                 filtered.sortedByDescending { item ->
                     (item as? SpotifySearchItem.Track)?.value?.popularity ?: -1
                 }
@@ -140,9 +139,6 @@ internal fun SpotifyOnlineSearchResult(
             .asPaddingValues()
             .calculateBottomPadding()
 
-    // Restored as in-list content: the header is laid out by the list itself
-    // (first item) so it can never end up as reserved-but-invisible space,
-    // and it scrolls away with the results exactly like the results content.
     val header: @Composable () -> Unit = {
         SearchResultsTopHeader(
             query = viewModel.query,
@@ -171,9 +167,7 @@ internal fun SpotifyOnlineSearchResult(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
     ) {
-        // The recorder tags the scrollable content only; the bottom overlay
-        // stays a SIBLING so the recorder can never contain its own
-        // liquidGlass consumers (a circular record crashes the RenderThread).
+
         Box(
             modifier =
                 Modifier
@@ -313,7 +307,6 @@ internal fun SpotifyOnlineSearchResult(
             bottomPadding = playerAwareBottomPadding,
             lazyListState = lazyListState,
             trailing = {
-
                 SearchSourcePicker(
                     currentScope = SearchSource.ONLINE,
                     currentProvider = SearchProvider.SPOTIFY,

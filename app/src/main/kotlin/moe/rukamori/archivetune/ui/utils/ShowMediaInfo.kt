@@ -140,12 +140,6 @@ private fun creditIconFor(label: String): Int =
         else -> R.drawable.solar_text
     }
 
-/**
- * Writer names embedded at the END of synced lyrics as plain text credit
- * lines ("[00:52.10] Written by: X", "Writers: X / Y", ...). Only the last
- * few non-blank lines are scanned so song lyrics that merely mention the
- * words never match.
- */
 private fun extractTrailingWrittenBy(lyrics: String?): String {
     if (lyrics.isNullOrBlank()) return ""
     val pattern =
@@ -336,13 +330,6 @@ fun ShowMediaInfo(videoId: String) {
             )
         }
 
-    // YouTube's own song credits (the "Song credits" dialog YouTube shows
-    // on the watch page): Song / Album / Writers / Licensed to YouTube by /
-    // Produced by / Released ... - whatever YouTube itself carries for the
-    // track. Rows duplicating the overview card (Song / Artist) are dropped;
-    // when YouTube carries no writer credits, the writer names embedded at
-    // the end of the synced lyrics (TTML songwriter tags or trailing
-    // "Written by" lines) provide the Written-by row instead.
     val overviewTitleValue = song?.title ?: info?.title
     val overviewArtistsValue =
         song?.artists?.takeIf { it.isNotEmpty() }?.joinToString { it.name } ?: info?.author
@@ -639,7 +626,6 @@ fun ShowMediaInfo(videoId: String) {
                             }
 
                             MediaInfoTab.Details -> {
-
                                 if (isLiveTrack) {
                                     LiveAudioChainPill(compact = true)
                                 }
@@ -1225,8 +1211,7 @@ private fun MediaInfoExpressiveRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            // Tapping the row still copies the value; the trailing copy glyph is
-            // intentionally omitted from the list rows per the cleaned-up design.
+
         }
         if (showDivider) {
             Box(
@@ -1501,9 +1486,6 @@ class TrackInfoViewModel @Inject constructor(
         }
     }
 
-    // Engine facts come from the snapshot-state mirrors, so a flip anywhere in
-    // the audio route (engine selection, engagement, USB attach) reaches the
-    // details tab the same frame instead of the next poll tick.
     private val engineFacts = snapshotFlow {
         val active = EngineRuntime.activeEngineState
         val wanted = EngineRuntime.wantedEngineState

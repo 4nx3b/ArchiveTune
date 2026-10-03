@@ -32,10 +32,6 @@ data class BackdropTonePalette(
             )
         }
 
-        // Artist-page ambience: the source colour comes from the BOTTOM band of the
-        // artist picture / canvas, and the tones stay extremely light - saturation is
-        // crushed and the value floor raised so the wash reads as a faint tint of the
-        // artwork instead of a bright dominant colour.
         fun fromColorsLight(
             colors: List<Color>,
             fallbackColor: Int,

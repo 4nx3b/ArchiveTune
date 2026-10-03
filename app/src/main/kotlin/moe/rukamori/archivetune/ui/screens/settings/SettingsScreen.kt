@@ -270,10 +270,6 @@ fun SettingsScreen(
 
     var searchQuery by remember { mutableStateOf("") }
 
-    // The compact search circle beside the mini player opens THIS page's
-    // settings search: each activation bumps the tick, which focuses the
-    // bottom search bar's field (the bar re-appears while focused even if the
-    // bottom UI is currently compact).
     var searchActivationTick by remember { mutableIntStateOf(0) }
     ObserveOpenSearchRequest(navController) { searchActivationTick++ }
 
@@ -439,7 +435,6 @@ fun SettingsScreen(
                         key = "settings_group_$groupIndex",
                         contentType = "settings_group_card",
                     ) {
-
                         SettingsGroupCard(
                             group = group,
                             modifier = Modifier.animateItem(),

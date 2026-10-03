@@ -396,7 +396,6 @@ fun OnlineSearchResult(
                                     viewModel.filter.value = it
                                 }
                                 coroutineScope.launch {
-
                                     lazyListState.animateScrollToItem(0)
                                 }
                             },

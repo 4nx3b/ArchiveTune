@@ -19,24 +19,7 @@ import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * Heals stale MediaStore content URIs for local songs.
- *
- * MediaStore row ids are NOT stable: a media re-scan, storage remount, backup
- * restore or a system maintenance pass can re-create a row under a new id, and
- * every place the old `content://media/external/audio/media/<id>` is stored
- * (song ids are the content URI string) starts failing with
- * `FileNotFoundException: No item at content://...` (ExoPlayer 2005/2006
- * "Source error").
- *
- * The heal map keeps the ORIGINAL song id stable (so library rows, playlists,
- * history and play counts survive untouched) and only rewrites the PLAYBACK
- * uri: `Song.toMediaItem()` consults [uriFor] when building the MediaItem.
- * The map is persisted as a small JSON file so heals survive restarts until a
- * library re-scan rebuilds the ids natively.
- */
 object LocalMediaUriHeals {
-
     private const val FILE_NAME = "local_uri_heals.json"
     private const val MAX_ENTRIES = 512
 
@@ -48,7 +31,6 @@ object LocalMediaUriHeals {
 
     private val persistenceMutex = Mutex()
 
-    /** URIs that failed to heal this session - don't retry them in a loop. */
     private val failedHealAttempts: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     fun uriFor(mediaId: String): String? {
@@ -61,7 +43,7 @@ object LocalMediaUriHeals {
         if (mediaId == healedUri) return
         if (healed[mediaId] == healedUri) return
         healed = healed + (mediaId to healedUri)
-        // Bound the map: drop the oldest entries if it grows beyond the cap.
+
         if (healed.size > MAX_ENTRIES) {
             healed = healed.entries.toList().takeLast(MAX_ENTRIES).associate { it.key to it.value }
         }
@@ -104,14 +86,6 @@ object LocalMediaUriHeals {
         }
     }
 
-    /**
-     * Resolves a fresh content URI for a song whose stored URI no longer
-     * resolves. Strategy:
-     *  1. Re-query the exact old URI (cheap, covers transient provider issues).
-     *  2. Full audio table scan matching title (case-insensitive) with duration
-     *     within +/-3s and preferring an artist match - covers re-created rows
-     *     under new ids after re-scans/backup restores.
-     */
     fun resolveReplacement(
         context: Context,
         staleMediaId: String,
@@ -122,7 +96,6 @@ object LocalMediaUriHeals {
         if (!staleMediaId.isLocalMediaId()) return null
         val staleUri = Uri.parse(staleMediaId)
 
-        // 1. Direct re-probe of the old row.
         runCatching {
             context.contentResolver.query(
                 staleUri,
@@ -143,7 +116,7 @@ object LocalMediaUriHeals {
             MediaStore.Audio.Media.ARTIST,
             MediaStore.Audio.Media.DURATION,
         )
-        val candidates = mutableListOf<Pair<Long, Int>>() // id to score
+        val candidates = mutableListOf<Pair<Long, Int>>()
         runCatching {
             context.contentResolver.query(
                 MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,

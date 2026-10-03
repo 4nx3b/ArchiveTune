@@ -104,10 +104,7 @@ fun LibrarySpotifyPlaylistsScreen(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showSearchField by rememberSaveable { mutableStateOf(false) }
 
-    // The compact search circle next to the mini player opens THIS page's
-    // search field (not the global song search).
     ObserveOpenSearchRequest(navController) { showSearchField = true }
-
 
     val hiddenPlaylistIds by viewModel.hiddenPlaylistIds.collectAsStateWithLifecycle()
     val visiblePlaylists =
@@ -450,9 +447,7 @@ fun LibrarySpotifyPlaylistsScreen(
         }
 
         if (glassHeaderActive) {
-            // While the bottom UI is compact the compact search circle beside
-            // the mini player takes over: the header search icon fades out
-            // with the same fraction (the refresh icon stays).
+
             val compactFraction = LocalBottomUiCompactFraction.current
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,

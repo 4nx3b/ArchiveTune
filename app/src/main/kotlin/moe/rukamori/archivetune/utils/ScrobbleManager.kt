@@ -99,7 +99,6 @@ class ScrobbleManager(
             }.coerceAtLeast(MIN_SCROBBLE_THRESHOLD_MS)
 
         if (scrobbledForId == metadata.id) {
-
             currentMetadata = metadata
             currentThresholdMillis = 0L
             scrobbleRemainingMillis = 0L

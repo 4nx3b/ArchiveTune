@@ -33,21 +33,6 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
-/**
- * Clean-room automix track analyzer (pure Kotlin, coroutine-native).
- *
- * Each queued track is decoded ONCE with MediaCodec straight into streaming
- * feature extractors - the PCM itself is never retained, so memory stays
- * bounded by a few envelope arrays regardless of track length:
- *
- *  - spectral flux (FFT, Hann window) -> onset envelope
- *  - onset autocorrelation            -> tempo, beat grid, confidence, downbeats
- *  - 250 ms RMS windows               -> energy curve, intro/outro structure, mix points
- *  - 300-3400 Hz band ratio           -> vocal-likelihood curve
- *
- * Results are persisted as JSON under filesDir/automix_analysis (LRU-pruned)
- * so repeat plays skip the decode entirely.
- */
 class AutoMixAnalyzer(
     context: Context,
     private val resolveStreamUrl: suspend (mediaId: String) -> String?,
@@ -65,7 +50,6 @@ class AutoMixAnalyzer(
     @Volatile
     var performanceMode: AutoMixPerformanceMode = AutoMixPerformanceMode.BALANCED
 
-    /** Fire-and-forget analysis request; safe to call on any thread. */
     fun request(
         trackId: String,
         uri: Uri,
@@ -100,7 +84,6 @@ class AutoMixAnalyzer(
 
     fun isAnalysing(trackId: String): Boolean = inFlight.contains(trackId)
 
-    /** Drops a track from the failure cache so a later request can retry it. */
     fun reset(trackId: String) {
         failed.remove(trackId)
     }
@@ -126,14 +109,6 @@ class AutoMixAnalyzer(
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Streaming decode + feature extraction
-    // ---------------------------------------------------------------------
-
-    /**
-     * Owns the MediaCodec/MediaExtractor pair while feeding the feature
-     * pipeline; [release] must be called by the consumer.
-     */
     private class DecodedFeatures(
         val sampleRate: Int,
         val fftHop: Int,
@@ -174,7 +149,6 @@ class AutoMixAnalyzer(
             codec.configure(format, null, null, 0)
             codec.start()
 
-            // --- streaming feature state (all allocation-free per chunk) ---
             val fft = Fft(fftSize)
             val window = hannWindow(fftSize)
             val real = FloatArray(fftSize)
@@ -188,13 +162,9 @@ class AutoMixAnalyzer(
             val energyCurve = ArrayList<Float>(2048)
             val vocalCurve = ArrayList<Float>(2048)
 
-            // Nearest/previous-sample resampler (mono, source -> analysis
-            // rate): zero-order hold is ample for envelope analysis and keeps
-            // the inner loop allocation- and branch-free.
             var resamplePos = 0.0
             var lastSample = 0f
 
-            // 250 ms curve accumulators
             val curveWindowSamples =
                 (analysisRate * AUTO_MIX_CURVE_STEP_MS / 1000L).toInt().coerceAtLeast(1)
             var curveSamples = 0
@@ -211,22 +181,19 @@ class AutoMixAnalyzer(
             var idleSpins = 0
 
             fun pushSample(mono: Float) {
-                // --- resample into the analysis rate ---
                 while (resamplePos <= 0.0) {
                     val out = lastSample
-                    // (first output per input uses the previous input pair)
+
                     if (resamplePos == 0.0 && windowFill == 0 && flux.isEmpty() && curveSamples == 0) {
                         resamplePos += sourceRate.toDouble() / analysisRate
                         break
                     }
-                    // fill the analysis window
+
                     real[windowFill] = out * window[windowFill]
                     imag[windowFill] = 0f
                     windowFill++
                     if (windowFill == fftSize) {
-                        // The in-place transform destroys the windowed input:
-                        // save the overlap tail BEFORE transforming, then seed
-                        // the next frame with it (imag is always zero input).
+
                         System.arraycopy(real, fftSize - fftHop, overlap, 0, fftHop)
                         fft.magnitudeSpectrum(real, imag, mag)
                         var fluxSum = 0f
@@ -248,7 +215,7 @@ class AutoMixAnalyzer(
                         java.util.Arrays.fill(imag, 0, fftSize, 0f)
                         windowFill = fftHop
                     }
-                    // 250 ms RMS accumulation
+
                     squareSum += out.toDouble() * out
                     curveSamples++
                     if (curveSamples >= curveWindowSamples) {
@@ -334,10 +301,6 @@ class AutoMixAnalyzer(
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Tempo / structure / mix points
-    // ---------------------------------------------------------------------
-
     private fun buildAnalysis(
         features: DecodedFeatures,
         durationMs: Long,
@@ -418,18 +381,6 @@ class AutoMixAnalyzer(
         )
     }
 
-    /**
-     * Dynamic mix-out trigger (the Bitchord behaviour): the blend should
-     * start when the song itself starts getting quiet. Scans the tail window
-     * on a 2-second-smoothed energy curve for the LAST moment the track
-     * still holds its full loudness; the sample right after it is the fade
-     * onset, where the final sustained decline begins. Smoothing first is
-     * what makes this robust: individual drum hits inside a fade do not
-     * postpone the onset, and breakdowns followed by a loud return do not
-     * fake one (only the tail after the very last loud moment counts).
-     * Returns [contentEndMs] for hard cuts (loud to the last sample), which
-     * callers treat as "no natural fade".
-     */
     private fun detectFinalFadeOnset(
         energy: FloatArray,
         introEndMs: Long,
@@ -457,7 +408,6 @@ class AutoMixAnalyzer(
         return ((startIdx + lastLoudIdx + 1) * AUTO_MIX_CURVE_STEP_MS).coerceAtMost(contentEndMs)
     }
 
-    /** Centered moving average over a +/- [span] sample window. */
     private fun smoothCurve(
         curve: FloatArray,
         span: Int,
@@ -486,11 +436,6 @@ class AutoMixAnalyzer(
         return out
     }
 
-    /**
-     * The raw band-ratio track is unipolar around a per-track baseline;
-     * subtract the median and stretch to 0..1 so the planner can treat it as
-     * a clash probability.
-     */
     private fun normalizeVocalCurve(raw: FloatArray): FloatArray {
         if (raw.isEmpty()) return raw
         val sorted = raw.sorted()
@@ -507,10 +452,6 @@ class AutoMixAnalyzer(
         val phaseMs: Double,
     )
 
-    /**
-     * Autocorrelation of the onset-flux envelope over the 60-180 BPM lag
-     * range, with comb reinforcement for 4/4 phase picking.
-     */
     private fun estimateTempo(
         flux: FloatArray,
         fluxRate: Double,
@@ -586,10 +527,6 @@ class AutoMixAnalyzer(
         )
     }
 
-    // ---------------------------------------------------------------------
-    // Persistence
-    // ---------------------------------------------------------------------
-
     private fun cacheKey(trackId: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(trackId.toByteArray(Charsets.UTF_8))
@@ -653,10 +590,6 @@ class AutoMixAnalyzer(
         private const val TAG = "AutoMix"
         private const val MAX_PERSISTED_ANALYSES = 600
 
-        // Dynamic fade-onset detection: how far back from the content end to
-        // look for the final decline, how much smoothing washes out single
-        // drum hits, and the loudness fraction that counts as "started
-        // getting quiet" relative to the tail's loud plateau.
         private const val FINAL_FADE_WINDOW_MS = 45_000L
         private const val FINAL_FADE_SMOOTHING_SPAN = 4
         private const val FINAL_FADE_QUIET_RATIO = 0.60f

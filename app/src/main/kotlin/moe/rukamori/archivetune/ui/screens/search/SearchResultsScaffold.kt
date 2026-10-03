@@ -113,10 +113,7 @@ fun rememberSearchResultsBarState(): SearchResultsBarState {
     val available =
         liquidGlassEnabled &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    // The recorder stays attached for as long as liquid glass is available so
-    // the bottom chrome keeps a live layer across lyrics fullscreen and player
-    // sheet transitions; re-attaching it relied on the re-attach tick, which
-    // could leave the pills keeping their last (faded) frame.
+
     return SearchResultsBarState(
         backdrop = if (available) backdrop else null,
         haze = haze,
@@ -196,12 +193,6 @@ fun BoxScope.SearchResultsBottomOverlay(
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val effectiveBottomPadding = (if (imeVisible) 0.dp else bottomPadding) + 10.dp
 
-    // State object (see LocalBottomUiCompactFraction): read inside the
-    // graphicsLayer lambda below so the animated fraction only re-draws this
-    // element instead of recomposing the whole results scaffold per frame.
-    // While the field is focused the bar must stay put - an activation (the
-    // compact search circle) focuses the field even while compact, and a
-    // focused-but-invisible field would strand the keyboard.
     val compactFractionState = LocalBottomUiCompactFraction.current
 
     Column(
@@ -583,11 +574,7 @@ fun SearchResultsTopHeader(
     chipsRow: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    // This header lives INSIDE the results LazyColumn (list item 0): it scrolls
-    // away with the content, is laid out by the list itself and can never end
-    // up as reserved-but-invisible space. The back pill deliberately uses the
-    // plain surface style: a liquid-glass pill consuming the recorder that
-    // records the list it sits in would self-record.
+
     Column(
         modifier =
             modifier

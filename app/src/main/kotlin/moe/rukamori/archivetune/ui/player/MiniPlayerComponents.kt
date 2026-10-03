@@ -185,7 +185,6 @@ fun SwipeableMiniPlayerBox(
                                 },
                             )
                         } else {
-
                             baseModifier.padding(
                                 horizontal = lerp(NavigationBarHorizontalPadding, 0.dp, compactFraction),
                             )
@@ -405,7 +404,6 @@ private fun MiniPlayerArtwork(
                     }
                 },
     ) {
-
         Box(
             contentAlignment = Alignment.Center,
             modifier =

@@ -184,8 +184,6 @@ fun HistoryScreen(
 
     var isSearching by rememberSaveable { mutableStateOf(false) }
 
-    // The compact search circle next to the mini player opens THIS page's
-    // search (not the global song search).
     ObserveOpenSearchRequest(navController) { isSearching = true }
 
     var query by rememberSaveable(stateSaver = TextFieldValue.Saver) {
@@ -205,14 +203,7 @@ fun HistoryScreen(
         )
 
     val searchQuery = query.text.trim()
-    // NOTE: intentionally ONLY `isSearching`. The previous
-    // `|| searchQuery.isNotBlank()` term let a stale/late IME composition
-    // update (delivered after resetSearch cleared the field) resurrect the
-    // full-screen search overlay invisibly on top of the history list - the
-    // overlay then consumed every scroll drag while the visible list never
-    // moved (the "history page gets stuck after going back from search"
-    // glitch). resetSearch() clears both flags atomically, so the extra term
-    // guarded nothing legitimate.
+
     val showSearchBar = isSearching
     val selectedEventIdSet by remember(selectedEventIds) {
         derivedStateOf { selectedEventIds.toSet() }
@@ -286,12 +277,6 @@ fun HistoryScreen(
             }
         }
 
-    // Belt-and-braces: if a late IME composition update re-populates the
-    // query AFTER the overlay closed (the resurrection path the old
-    // showSearchBar term turned into the stuck-screen glitch), clear it so
-    // the next search open starts from an empty field instead of
-    // resurrecting a hidden overlay. Keyed on blankness so the effect
-    // re-runs exactly when a stray non-blank write lands while closed.
     LaunchedEffect(showSearchBar, query.text.isNotBlank()) {
         if (!showSearchBar && query.text.isNotBlank()) {
             query = TextFieldValue()
@@ -326,12 +311,6 @@ fun HistoryScreen(
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
-    // The recorder stays attached whenever glass is available (even while the
-    // fullscreen lyrics player covers the page) so its coordinates and layer
-    // content remain live - glass pills that recompose right after the player
-    // is minimized would otherwise draw from a detached recorder and stay
-    // invisible until the page is scrolled or touched. Only the pills hide
-    // while lyrics are open.
     val glassHeaderActive = liquidGlassHeaderActive && !lyricsFullScreen
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
     val surfaceColor = MaterialTheme.colorScheme.surface
@@ -712,14 +691,7 @@ fun HistoryScreen(
                     Modifier
                         .fillMaxSize()
                         .hazeSource(headerHaze)
-                        // The glass recorder lives on this screen-lifetime
-                        // ancestor, NOT on the individual history lists: the
-                        // normal-mode and search-mode lists swap in and out of
-                        // composition (search open / back), and a recorder
-                        // whose layout node leaves composition leaves stale
-                        // detached coordinates behind - crashing every glass
-                        // consumer's next draw. Recording the stable ancestor
-                        // captures the same content and survives the swap.
+
                         .then(
                             if (liquidGlassHeaderActive) {
                                 Modifier.glassSource(backdrop)
@@ -784,10 +756,7 @@ fun HistoryScreen(
                 }
 
                 if (selectionCount == 0) {
-                    // The compact search circle beside the mini player takes
-                    // over while the bottom UI is compact: the header pill
-                    // fades out with the same fraction so the two search
-                    // affordances never appear stacked.
+
                     val compactFraction = LocalBottomUiCompactFraction.current
                     LiquidGlassActionPill(
                         backdrop = backdrop,

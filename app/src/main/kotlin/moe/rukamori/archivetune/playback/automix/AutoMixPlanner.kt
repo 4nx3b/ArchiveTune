@@ -10,27 +10,6 @@ package moe.rukamori.archivetune.playback.automix
 import kotlin.math.abs
 import kotlin.math.roundToLong
 
-/**
- * Clean-room transition planner. Chooses the transition tier from the two
- * track analyses and computes the concrete anchors:
- *
- *  - same-album consecutive tracks                -> GAPLESS
- *  - both beat grids confident + tempo compatible -> DJ_BLEND (beat-matched
- *    overlap, optional +/-4% incoming-rate alignment, bass handover)
- *  - at least one grid partially usable           -> DJ_FILTER (filter ride)
- *  - otherwise                                    -> EQUAL_POWER at the outgoing
- *    track's own structural anchor (outro start / content end)
- *
- * The mix-out anchor is DYNAMIC (Bitchord-style): the blend starts where the
- * outgoing song's own energy begins its final sustained decline - when the
- * music starts getting quiet - and the fade then rides that natural decline
- * so it lands exactly on the song's own end. Hard cuts (loud to the last
- * sample, no natural fade) and analyses without onset data keep a compact
- * fixed lead instead.
- *
- * Vocal clash across the overlap shrinks it; a clash too large to shrink
- * degrades the tier to the filter ride.
- */
 object AutoMixPlanner {
     private const val MIN_BEATMATCH_CONFIDENCE = 0.55
     private const val MIN_FILTER_CONFIDENCE = 0.20
@@ -128,8 +107,6 @@ object AutoMixPlanner {
         }
     }
 
-    // -------------------------------------------------------------------
-
     private fun planBeatMatched(
         current: AutoMixAnalysis,
         next: AutoMixAnalysis,
@@ -152,8 +129,6 @@ object AutoMixPlanner {
             .coerceAtMost(MAX_OVERLAP_MS)
             .coerceAtLeast(minFadeMs)
 
-        // Vocal clash: shrink the overlap while both sides sing; below the
-        // minimum, degrade to the filter ride instead of butchering vocals.
         var vocalOverlap = vocalClashAcross(current, next, outgoingAnchor, incomingCue, overlapMs)
         if (vocalOverlap > 0.55 && overlapMs > minFadeMs * 1.5) {
             overlapMs = (overlapMs * 0.6).roundToLong().coerceAtLeast(minFadeMs)
@@ -169,8 +144,6 @@ object AutoMixPlanner {
             )
         }
 
-        // Align the transition start to the nearest downbeat at or after the
-        // structural anchor.
         val startMs = alignToDownbeat(current, outgoingAnchor)
         val endMs = startMs + overlapMs
 
@@ -181,7 +154,6 @@ object AutoMixPlanner {
                 1.0
             }
 
-        // Bass handover at the quietest beat inside the overlap.
         val bassSwapFraction = quietestBeatFraction(current, startMs, overlapMs)
 
         return AutoMixPlan(
@@ -246,16 +218,6 @@ object AutoMixPlanner {
             markerVisible = true,
         )
 
-    // -------------------------------------------------------------------
-
-    /**
-     * Outgoing anchor - the dynamic mix-out trigger. When the analysis
-     * carries a fade onset (the moment the song's own volume starts its
-     * final decline), the blend starts THERE: a natural fade is ridden from
-     * its own beginning, clamped so at most [MAX_OVERLAP_MS] of the tail is
-     * blended. Hard cuts and legacy analyses without onset data fall back
-     * to a compact lead that finishes the blend on the content end.
-     */
     private fun pickMixOutAnchor(
         analysis: AutoMixAnalysis,
         track: AutoMixTrackInfo,
@@ -276,11 +238,6 @@ object AutoMixPlanner {
             .coerceAtLeast(0L)
     }
 
-    /**
-     * Fade length for the anchor: with a detected onset the blend spans the
-     * natural fade itself (so the outgoing song's decline and the crossfade
-     * curve land together on its own end); otherwise the configured fallback.
-     */
     private fun dynamicFadeMs(
         analysis: AutoMixAnalysis,
         anchorMs: Long,
@@ -295,7 +252,6 @@ object AutoMixPlanner {
         return natural.coerceAtMost(MAX_OVERLAP_MS)
     }
 
-    /** Incoming cue: a mix-in candidate or the intro end, aligned to a downbeat. */
     private fun pickMixInCue(
         analysis: AutoMixAnalysis,
         track: AutoMixTrackInfo,
@@ -305,7 +261,6 @@ object AutoMixPlanner {
         return alignToDownbeat(analysis, base)
     }
 
-    /** Snaps a millisecond position to the nearest detected downbeat. */
     private fun alignToDownbeat(
         analysis: AutoMixAnalysis,
         ms: Long,
@@ -321,10 +276,6 @@ object AutoMixPlanner {
         return if (abs(up - ms) <= abs(down - ms)) up.coerceAtLeast(0L) else down.coerceAtLeast(0L)
     }
 
-    /**
-     * Fraction of simultaneous vocal activity across the overlap window,
-     * sampled from both tracks' vocal curves.
-     */
     private fun vocalClashAcross(
         current: AutoMixAnalysis,
         next: AutoMixAnalysis,
@@ -344,7 +295,6 @@ object AutoMixPlanner {
         return (clash / steps).coerceIn(0.0, 1.0)
     }
 
-    /** Position (0..1) of the lowest-energy beat inside the overlap window. */
     private fun quietestBeatFraction(
         analysis: AutoMixAnalysis,
         startMs: Long,

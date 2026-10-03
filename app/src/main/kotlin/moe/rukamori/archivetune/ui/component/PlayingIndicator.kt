@@ -50,9 +50,7 @@ fun PlayingIndicator(
 ) {
     val transition = rememberInfiniteTransition(label = "playingIndicator")
     val cycleDurationMs = 1100
-    // Animated values are kept as State objects and read INSIDE the Canvas
-    // draw lambda (draw phase). Reading `.value` in composition recomposed
-    // the whole playing row on every animation frame while lists scrolled.
+
     val barStates: List<State<Float>> =
         (0 until bars.coerceAtLeast(1)).map { index ->
 

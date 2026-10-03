@@ -163,7 +163,6 @@ object CrashReporter {
         try {
             val file = sessionLogFile(dir)
             if (file.length() > SESSION_LOG_MAX_BYTES) {
-
                 val text = file.readText()
                 val keep = text.takeLast(SESSION_LOG_KEEP_ON_ROTATE).substringAfter('\n')
                 file.writeText(keep)

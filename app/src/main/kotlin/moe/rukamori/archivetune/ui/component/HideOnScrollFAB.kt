@@ -165,11 +165,6 @@ private fun HideOnScrollFabButton(
     val view = LocalView.current
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
 
-    // Liquid-glass variant: pages that already own a glass backdrop (artist
-    // hero) pass it here so the switch pill matches the header glass instead
-    // of a solid container. Falls back to the classic ExtendedFAB whenever no
-    // backdrop is supplied, so every other call site is unchanged. Content
-    // color adapts to surface luminance (dark/light) via liquidGlassContentColor.
     if (backdrop != null) {
         LiquidGlassActionPill(
             backdrop = backdrop,

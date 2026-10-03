@@ -407,10 +407,6 @@ fun LyricsV2(
 
     val latestSliderPositionProvider = rememberUpdatedState(sliderPositionProvider)
 
-    // While the player sheet rests collapsed the lyrics stay composed but
-    // invisible (keepContentAlive); the per-frame TTML loop falls back to the
-    // cheap 250ms poll so the hidden subtree does not re-compose at display
-    // refresh rate while the user scrolls the main UI.
     val playerSheetVisibleState = rememberUpdatedState(LocalPlayerSheetVisible.current)
 
     var lastRawPositionMs by remember(lyrics) { mutableLongStateOf(0L) }
@@ -427,7 +423,6 @@ fun LyricsV2(
         val useFrameClock = !v2AnimationsDisabled && isTtmlFormat
         while (isActive) {
             if (useFrameClock && !playerSheetVisibleState.value) {
-                // Sheet collapsed: poll coarsely instead of riding the frame clock.
                 delay(250L)
                 continue
             }

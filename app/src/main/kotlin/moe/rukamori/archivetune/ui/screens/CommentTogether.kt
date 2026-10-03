@@ -202,9 +202,6 @@ fun CommentTogetherScreen(navController: NavController) {
     val coroutineScope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
 
-    // Guarded throttled recorder (replaces Kyant's rememberLayerBackdrop,
-    // whose unguarded GraphicsLayer.record is the RenderNode re-entrancy
-    // crash class - see LiquidGlass.rememberBackdrop for the full note).
     val chatGlassSource = rememberThrottledBackdrop(Color.Transparent)
     val globalGlassEnabled = LocalLiquidGlassBackdrop.current != null
     val chatGlassBackdrop = if (globalGlassEnabled) chatGlassSource else null
@@ -288,7 +285,6 @@ fun CommentTogetherScreen(navController: NavController) {
     }
 
     fun shareCurrentTrack() {
-
         val track = roomState?.currentTrack ?: manager.currentLocalTrack()
         if (track == null || track.id.isBlank() || track.id == "unknown") {
             Toast.makeText(context, R.string.listen_together_chat_nothing_playing, Toast.LENGTH_SHORT).show()
@@ -309,7 +305,6 @@ fun CommentTogetherScreen(navController: NavController) {
     fun jumpToMessage(forwardIndex: Int, key: String) {
         jumpTargetKey = key
         coroutineScope.launch {
-
             val reversedIndex = reversedRows.indexOfFirst { row ->
                 row is ChatRow.Message &&
                     "${row.payload.userId}:${row.payload.timestamp}" == key
@@ -375,7 +370,6 @@ fun CommentTogetherScreen(navController: NavController) {
                     .hazeSource(chatHazeState)
                     .layerBackdrop(chatGlassSource)
         ) {
-
             if (chatWallpaper.isNotBlank()) {
                 AsyncImage(
                     model = chatWallpaper,
@@ -467,10 +461,8 @@ fun CommentTogetherScreen(navController: NavController) {
                     headerOverlayHeightPx = coordinates.size.height
                 },
         ) {
-
             Box(modifier = Modifier.fillMaxWidth()) {
                 if (globalGlassEnabled) {
-
                     val chatHazeIntensity by animateFloatAsState(
                         targetValue = if (lazyListState.canScrollBackward) 1f else 0f,
                         animationSpec = tween(durationMillis = 220),
@@ -624,7 +616,6 @@ fun CommentTogetherScreen(navController: NavController) {
                     .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             if (chatSupported) {
-
                 if (mentionQueue.isNotEmpty()) {
                     val mention = mentionQueue.first()
                     Row(
@@ -815,7 +806,6 @@ fun CommentTogetherScreen(navController: NavController) {
                 showSongPicker = true
             },
             onPickGif = {
-
                 coroutineScope.launch {
                     delay(260)
                     showGifPicker = true
@@ -883,7 +873,6 @@ private fun MentionAlertChip(
             .clickable(onClick = onJump)
             .padding(start = 10.dp, end = 2.dp, top = 5.dp, bottom = 5.dp),
     ) {
-
         BadgedBox(
             badge = {
                 if (count > 1) {
@@ -1090,7 +1079,6 @@ private fun ChatOverflowMenuPopup(
                 label = stringResource(R.string.listen_together_chat_mute_notifications),
                 description = stringResource(R.string.listen_together_chat_mute_notifications_desc),
                 trailing = {
-
                     Switch(
                         checked = muted,
                         onCheckedChange = { onToggleMute() },
@@ -1225,7 +1213,6 @@ private fun TelegramGlassComposer(
                 .then(capsuleModifier)
                 .padding(horizontal = 6.dp, vertical = 4.dp),
     ) {
-
         AnimatedVisibility(
             visible = replying,
             enter = expandVertically() + fadeIn(),
@@ -1302,7 +1289,6 @@ private fun TelegramGlassComposer(
                     .weight(1f)
                     .padding(end = 0.dp),
                 colors = if (contentColor != null) {
-
                     OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color.Transparent,
                         unfocusedBorderColor = Color.Transparent,

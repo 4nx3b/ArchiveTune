@@ -771,10 +771,7 @@ fun BitChordPlayerContent(
                     .pointerInput(Unit) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
-                            // Stored coordinates can be observed by a gesture
-                            // after the band left composition; detached
-                            // coordinates throw on any position query, so take
-                            // only attached instances.
+
                             val space = dismissBandSpace.value?.takeIf { it.isAttached }
                             val y = space
                                 ?.let { it.positionInRoot().y + down.position.y }
@@ -1304,7 +1301,6 @@ fun BitChordPlayerContent(
             Spacer(Modifier.height(6.dp))
 
             BoxWithConstraints(Modifier.fillMaxWidth()) {
-
                 val widestRow = BOTTOM_ACTION_SIZE * 2 + pillWidth(2)
                 val edgeInset = ((maxWidth - widestRow) / 4).coerceAtLeast(0.dp)
                 Row(

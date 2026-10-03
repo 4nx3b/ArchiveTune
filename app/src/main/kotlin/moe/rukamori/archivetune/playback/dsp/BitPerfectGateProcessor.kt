@@ -50,14 +50,9 @@ class BitPerfectGateProcessor(
                 effectiveVolume = effectiveVolume(),
                 enginesEngaged = enginesEngaged(),
             )
-            // The sink is configuring RIGHT NOW with this exact rate/depth - the
-            // mixer-attribute bit-perfect request must be (re)applied with the
-            // fresh values before the AudioTrack opens, otherwise a stale rate
-            // from the previous track can lock the platform mixer at e.g. 48kHz
-            // for a 96kHz stream (silent down-resample on some devices).
+
             onRouteEvaluated?.invoke()
             if (bypass) {
-
                 silenceSkippingAudioProcessor?.setEnabled(false)
                 sonicAudioProcessor?.setSpeed(1f)
                 sonicAudioProcessor?.setPitch(1f)
@@ -69,9 +64,6 @@ class BitPerfectGateProcessor(
                 )
             } else if (BitPerfectRuntime.requested) {
 
-                // Silence skipping edits the stream (drops spans of quiet), which
-                // breaks the untouched-chain guarantee the bit-perfect float route
-                // provides; Sonic is already a no-op at 1x speed/pitch.
                 silenceSkippingAudioProcessor?.setEnabled(false)
                 sonicAudioProcessor?.setSpeed(1f)
                 sonicAudioProcessor?.setPitch(1f)

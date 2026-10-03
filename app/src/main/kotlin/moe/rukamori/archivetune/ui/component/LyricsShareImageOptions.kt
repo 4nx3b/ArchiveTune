@@ -16,7 +16,6 @@ enum class LyricsShareAspectRatio(
     val exportWidth: Int,
     val exportHeight: Int,
 ) {
-
     Square(
         labelRes = R.string.lyrics_share_layout_square,
         exportWidth = 3072,

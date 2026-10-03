@@ -229,8 +229,6 @@ fun CachePlaylistScreen(
     var selection by remember { mutableStateOf(false) }
     var isSearching by remember { mutableStateOf(false) }
 
-    // The compact search circle next to the mini player opens THIS page's
-    // search (not the global song search).
     ObserveOpenSearchRequest(navController) { isSearching = true }
 
     var query by remember { mutableStateOf(TextFieldValue()) }

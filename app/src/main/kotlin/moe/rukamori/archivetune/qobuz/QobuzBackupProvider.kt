@@ -25,7 +25,6 @@ object QobuzBackupProvider {
     var configuredEndpoints: List<String> = emptyList()
 
     private fun normalizeEndpoint(raw: String): String {
-
         val https = if (raw.startsWith("http://")) "https://" + raw.removePrefix("http://") else raw
 
         return https.replace("mlc-ytify.kouzu.in", "mls.kouzu.in")
@@ -167,7 +166,6 @@ object QobuzBackupProvider {
             when (val candidates = fetchSearchFrom(base, query, limit)) {
                 null -> recordFailure(base)
                 else -> {
-
                     recordSuccess(base)
                     if (candidates.isNotEmpty()) return candidates
                 }

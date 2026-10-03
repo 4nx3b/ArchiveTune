@@ -694,10 +694,8 @@ fun rememberVideoArtworkState(
         } else if (state.isResyncing) {
             exoPlayer.pause()
         } else if (!updatedMainAudioReady) {
-
             exoPlayer.pause()
         } else if (state.isResolvingUrl) {
-
             exoPlayer.pause()
         } else if (!state.isVideoReady) {
             exoPlayer.pause()
@@ -723,7 +721,6 @@ fun rememberVideoArtworkState(
         if (state.streamUrl == null) return@LaunchedEffect
         delay(VideoReadyHoldTimeoutMs)
         if (awaitingVideoReady && !state.isVideoReady) {
-
             Timber
                 .tag(VideoPlaybackLogTag)
                 .w("Video first frame still pending after ${VideoReadyHoldTimeoutMs}ms — audio stays held until it arrives")
@@ -1019,11 +1016,9 @@ fun rememberVideoArtworkState(
                     state.isVideoReady &&
                     updatedMainAudioReady
                 ) {
-
                     exoPlayer.setVideoPlayback(shouldPlay)
                 }
                 if (event == Lifecycle.Event.ON_STOP) {
-
                     runCatching { exoPlayer.setVideoSurface(null) }
                     runCatching { exoPlayer.stop() }
                 }

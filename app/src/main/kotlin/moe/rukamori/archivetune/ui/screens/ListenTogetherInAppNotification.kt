@@ -151,7 +151,6 @@ fun InAppChatNotificationPopup(
     val cardModifier =
         (
             if (glassActive) {
-
                 Modifier.drawBackdrop(
                     backdrop = backdrop!!,
                     effects = {

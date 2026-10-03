@@ -16,17 +16,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.sin
 
-/**
- * Automix transition filter (clean-room implementation).
- *
- * Two independent Chamberlin state-variable sections per channel: a low-pass
- * riding the OUTGOING track (highs roll off as the blend progresses) and a
- * high-pass riding the INCOMING one (lows enter late so the bass handover
- * stays clean). Cut-offs glide toward their targets in short blocks, so
- * sweeping reads as a continuous ride and never zipper-noises; while both
- * cut-offs rest at their open/off endpoints the processor parks itself into
- * a pure copy path with zero per-sample cost.
- */
 @UnstableApi
 class AutoMixFilterProcessor : BaseAudioProcessor() {
     @Volatile
@@ -42,7 +31,6 @@ class AutoMixFilterProcessor : BaseAudioProcessor() {
     private var currentLowPassHz = OPEN_HZ
     private var currentHighPassHz = OFF_HZ
 
-    // SVF integrator state (low + band), one pair per section per channel.
     private var lowLow = FloatArray(0)
     private var lowBand = FloatArray(0)
     private var highLow = FloatArray(0)
@@ -159,9 +147,6 @@ class AutoMixFilterProcessor : BaseAudioProcessor() {
         outputBuffer.flip()
     }
 
-    // ---------------------------------------------------------------------
-
-    /** Canonical Chamberlin update; returns the low-pass output. */
     private fun lowPassSample(
         channel: Int,
         input: Float,
@@ -175,7 +160,6 @@ class AutoMixFilterProcessor : BaseAudioProcessor() {
         return newLow
     }
 
-    /** Canonical Chamberlin update; returns the high-pass output. */
     private fun highPassSample(
         channel: Int,
         input: Float,
@@ -200,10 +184,8 @@ class AutoMixFilterProcessor : BaseAudioProcessor() {
     companion object {
         private const val TAG = "AutoMixFilter"
 
-        /** Above this the low-pass is acoustically transparent. */
         const val OPEN_HZ = 20_000f
 
-        /** Below this the high-pass is acoustically transparent. */
         const val OFF_HZ = 10f
 
         const val MIN_HZ = 20f
