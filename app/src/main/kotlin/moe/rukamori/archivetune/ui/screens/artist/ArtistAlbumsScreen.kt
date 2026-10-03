@@ -149,7 +149,9 @@ fun ArtistAlbumsScreen(
                     Text(
                         text = pluralStringResource(R.plurals.n_album, albums.size, albums.size),
                         style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.secondary,
+                        // Fixed theme color, consistent with ArtistSongsScreen's
+                        // onSurfaceVariant count header (was: dynamic secondary).
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

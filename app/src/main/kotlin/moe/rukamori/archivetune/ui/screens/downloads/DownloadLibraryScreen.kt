@@ -92,6 +92,7 @@ import moe.rukamori.archivetune.downloads.DownloadSectionUiModel
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
+import moe.rukamori.archivetune.ui.component.ObserveOpenSearchRequest
 import moe.rukamori.archivetune.ui.lottie.ArchiveTuneLottie
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.formatFileSize
@@ -108,6 +109,12 @@ fun DownloadLibraryScreen(
     viewModel: DownloadLibraryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.screenState.collectAsStateWithLifecycle()
+
+    // The compact search circle next to the mini player opens THIS page's
+    // search (not the global song search). Reached via the
+    // auto_playlist/downloaded route.
+    ObserveOpenSearchRequest(navController) { viewModel.activateSearch() }
+
     val playerConnection = LocalPlayerConnection.current
     val snackbarHostState = remember { SnackbarHostState() }
 

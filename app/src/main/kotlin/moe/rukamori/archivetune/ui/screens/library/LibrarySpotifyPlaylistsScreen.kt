@@ -74,6 +74,7 @@ import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
+import moe.rukamori.archivetune.ui.component.ObserveOpenSearchRequest
 import moe.rukamori.archivetune.ui.menu.SpotifyPlaylistMenu
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.utils.backToMain
@@ -100,6 +101,11 @@ fun LibrarySpotifyPlaylistsScreen(
 
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showSearchField by rememberSaveable { mutableStateOf(false) }
+
+    // The compact search circle next to the mini player opens THIS page's
+    // search field (not the global song search).
+    ObserveOpenSearchRequest(navController) { showSearchField = true }
+
 
     val hiddenPlaylistIds by viewModel.hiddenPlaylistIds.collectAsStateWithLifecycle()
     val visiblePlaylists =

@@ -137,6 +137,7 @@ import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
+import moe.rukamori.archivetune.ui.component.ObserveOpenSearchRequest
 import moe.rukamori.archivetune.ui.menu.SelectionMediaMetadataMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
@@ -180,6 +181,11 @@ fun HistoryScreen(
         }
 
     var isSearching by rememberSaveable { mutableStateOf(false) }
+
+    // The compact search circle next to the mini player opens THIS page's
+    // search (not the global song search).
+    ObserveOpenSearchRequest(navController) { isSearching = true }
+
     var query by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue())
     }

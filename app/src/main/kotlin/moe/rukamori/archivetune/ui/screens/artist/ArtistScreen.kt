@@ -574,18 +574,33 @@ fun ArtistScreen(
 
     val ambientReleaseBase = lerp(animatedAmbientMid, animatedAmbientBottom, 0.45f)
     val releaseCardContainer = ambientReleaseBase.copy(alpha = 0.50f)
+
+    // Release-card TEXT must be page furniture, not a live shader readout: the
+    // light/dark content decision follows the artist's STATIC artwork palette
+    // (changes only with the artist), never the live canvas sampling - the
+    // text used to flip and re-tint while the canvas video played. The accent
+    // is likewise a fixed color, not a palette-derived tint. Only the ambient
+    // WASH behind the card stays live (that is the ambience feature).
+    val staticReleasePalette =
+        remember(artistArtworkColors, surfaceColor) {
+            BackdropTonePalette.fromColorsLight(
+                colors = artistArtworkColors.orEmpty(),
+                fallbackColor = surfaceColor.toArgb(),
+            )
+        }
+    val staticReleaseBase = lerp(staticReleasePalette.mid, staticReleasePalette.bottom, 0.45f)
     val releaseCardContent =
-        if (ambientReleaseBase.luminance() > 0.5f) {
+        if (staticReleaseBase.luminance() > 0.5f) {
             MaterialTheme.colorScheme.onSurface
         } else {
             Color.White
         }
     val releaseCardMutedContent = releaseCardContent.copy(alpha = 0.72f)
     val releaseCardAccent =
-        if (ambientReleaseBase.luminance() > 0.5f) {
-            MaterialTheme.colorScheme.primary
+        if (staticReleaseBase.luminance() > 0.5f) {
+            MaterialTheme.colorScheme.onSurface
         } else {
-            lerp(ambientReleaseBase, Color.White, 0.35f)
+            Color.White.copy(alpha = 0.88f)
         }
 
     var pageContainerHeightPx by remember { mutableStateOf(0) }

@@ -2,4 +2,6 @@
 <resources>
     <string name="navigation_bar_glass_glow" translatable="false">Glass glow</string>
     <string name="navigation_bar_glass_glow_desc" translatable="false">Nuvio-style rim light and soft sheen on the navigation bar and compact controls</string>
+    <string name="navigation_bar_glass_glow_intensity" translatable="false">Glass glow intensity</string>
+    <string name="navigation_bar_glass_glow_intensity_desc" translatable="false">Scales the rim light and sheen strength of the navigation bar and compact controls. 100% is the default look.</string>
 </resources>
