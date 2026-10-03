@@ -654,7 +654,10 @@ fun AlbumGridItem(
         Text(
             text = album.artists.joinToString { it.name },
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
+            // Fixed theme color: grid subtitles (artist names under album
+            // cards) must not re-tint with the per-playing-song dynamic
+            // theme - they read as page furniture, not accents.
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
@@ -965,7 +968,11 @@ fun YouTubeGridItem(
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.secondary,
+                    // Fixed theme color: the "artists · year" grid subtitle
+                    // (the release years and artist names on artist pages)
+                    // must not re-tint with the per-playing-song dynamic
+                    // theme.
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )

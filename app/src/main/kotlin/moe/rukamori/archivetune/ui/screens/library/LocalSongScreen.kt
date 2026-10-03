@@ -129,6 +129,7 @@ import java.time.LocalDateTime
 import java.util.Locale
 import kotlin.math.roundToInt
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import moe.rukamori.archivetune.ui.component.ObserveOpenSearchRequest
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -154,6 +155,11 @@ fun LocalSongScreen(
     val scanSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showScanSheet by rememberSaveable { mutableStateOf(false) }
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
+
+    // The compact search circle next to the mini player opens THIS page's
+    // search (not the global song search).
+    ObserveOpenSearchRequest(navController) { isSearchActive = true }
+
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var query by rememberSaveable { mutableStateOf("") }
 

@@ -102,6 +102,7 @@ import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
+import moe.rukamori.archivetune.ui.component.ObserveOpenSearchRequest
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.menu.SelectionSongMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
@@ -227,6 +228,11 @@ fun CachePlaylistScreen(
 
     var selection by remember { mutableStateOf(false) }
     var isSearching by remember { mutableStateOf(false) }
+
+    // The compact search circle next to the mini player opens THIS page's
+    // search (not the global song search).
+    ObserveOpenSearchRequest(navController) { isSearching = true }
+
     var query by remember { mutableStateOf(TextFieldValue()) }
     val focusRequester = remember { FocusRequester() }
     val lazyListState = rememberLazyListState()

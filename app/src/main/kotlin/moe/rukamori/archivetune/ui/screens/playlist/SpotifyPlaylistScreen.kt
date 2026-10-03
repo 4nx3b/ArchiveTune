@@ -108,6 +108,7 @@ import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
+import moe.rukamori.archivetune.ui.component.ObserveOpenSearchRequest
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadProgressIndicator
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
@@ -246,6 +247,11 @@ fun SpotifyPlaylistScreen(
     }
 
     var isSearching by rememberSaveable { mutableStateOf(false) }
+
+    // The compact search circle next to the mini player opens THIS page's
+    // search (not the global song search).
+    ObserveOpenSearchRequest(navController) { isSearching = true }
+
     var resolvingTrackId by remember { mutableStateOf<String?>(null) }
     var query by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue()) }
     val focusRequester = remember { FocusRequester() }

@@ -33,9 +33,16 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.floatPreferencesKey
 import com.kyant.backdrop.Backdrop
 
 val NavigationBarGlassGlowKey = booleanPreferencesKey("navigationBarGlassGlow")
+
+// Scales the glass-glow rim light / sheen strength (navigation bar + compact
+// control circles). 1f is the historical look; the slider clamps to 0.2f..2f.
+val NavigationBarGlassGlowIntensityKey = floatPreferencesKey("navigationBarGlassGlowIntensity")
+
+const val NAVIGATION_BAR_GLASS_GLOW_INTENSITY_DEFAULT = 1f
 
 // Holds the animated compact fraction as a State object so providers can hand
 // it to consumers WITHOUT reading (and therefore invalidating) their own

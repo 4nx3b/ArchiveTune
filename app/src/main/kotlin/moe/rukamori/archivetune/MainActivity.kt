@@ -1471,25 +1471,50 @@ class MainActivity : ComponentActivity() {
                                 route.startsWith("top_playlist/")
                         }
 
+                    // Routes whose screens own an in-page search affordance:
+                    // on these, the compact search circle next to the mini
+                    // player triggers THE PAGE's search instead of launching
+                    // the global song search. Observed via the shared
+                    // "openSearch" savedStateHandle key (ObserveOpenSearchRequest).
+                    val compactRouteHasInPageSearch =
+                        navBackStackEntry?.destination?.route?.let { route ->
+                            route == "history" ||
+                                route == "local_songs" ||
+                                route == "library_spotify_playlists" ||
+                                route.startsWith("local_playlist/") ||
+                                route.startsWith("online_playlist/") ||
+                                route.startsWith("spotify_playlist/") ||
+                                route.startsWith("cache_playlist/") ||
+                                route.startsWith("top_playlist/") ||
+                                route.startsWith("auto_playlist/")
+                        } == true
+
                     val compactSearchCircleVisible =
                         navBackStackEntry?.destination?.route?.startsWith("artist/") != true &&
-                            // Library sub-pages carry their own in-header search
-                            // affordance (History, playlists, liked, Spotify,
-                            // local songs, artists...). Rendering the compact
-                            // search circle next to the mini player there showed
-                            // TWO search pills at once - keep it only on screens
-                            // whose header has no search of its own.
-                            !compactLeftCircleIsLibrary
+                            // Pages WITH an in-page search now show the circle
+                            // (it triggers their own search). Pages with an
+                            // in-header search filter but no text search
+                            // (library playlists/artists) keep hiding it to
+                            // avoid two search affordances at once.
+                            (compactRouteHasInPageSearch || !compactLeftCircleIsLibrary)
 
                     val navigationBarGlassGlow by rememberPreference(
                         NavigationBarGlassGlowKey,
                         defaultValue = true,
                     )
-                    val navGlassStrength by animateFloatAsState(
+                    val navigationBarGlassGlowIntensity by rememberPreference(
+                        NavigationBarGlassGlowIntensityKey,
+                        defaultValue = NAVIGATION_BAR_GLASS_GLOW_INTENSITY_DEFAULT,
+                    )
+                    val navGlassStrengthBase by animateFloatAsState(
                         targetValue = if (navigationBarGlassGlow) 1f else 0f,
                         animationSpec = tween(420),
                         label = "navGlassStrength",
                     )
+                    // The glow toggle animates in/out; the intensity slider
+                    // (below the toggle in Navigation Bar settings) scales the
+                    // rim light + sheen on top of that animation.
+                    val navGlassStrength = navGlassStrengthBase * navigationBarGlassGlowIntensity
 
                     val floatingBarsBottomPadding = FloatingNavigationBarBottomPadding
                     val (navBarHeightMultiplier) = rememberPreference(
@@ -3303,11 +3328,20 @@ class MainActivity : ComponentActivity() {
                                                             iconRes = Screens.Search.iconIdInactive,
                                                             contentDescription = stringResource(Screens.Search.titleId),
                                                             onClick = {
-                                                                handlePrimaryNavigationClick(
-                                                                    Screens.Search,
-                                                                    navBackStackEntry?.destination?.hierarchy
-                                                                        ?.any { it.route == Screens.Search.route } == true,
-                                                                )
+                                                                if (compactRouteHasInPageSearch) {
+                                                                    // This page owns a search affordance:
+                                                                    // open THAT search, not the global
+                                                                    // song search.
+                                                                    navController.currentBackStackEntry
+                                                                        ?.savedStateHandle
+                                                                        ?.set("openSearch", true)
+                                                                } else {
+                                                                    handlePrimaryNavigationClick(
+                                                                        Screens.Search,
+                                                                        navBackStackEntry?.destination?.hierarchy
+                                                                            ?.any { it.route == Screens.Search.route } == true,
+                                                                    )
+                                                                }
                                                             },
                                                             backdrop = liquidGlassBackdrop,
                                                             glowStrength = navGlassStrength,
