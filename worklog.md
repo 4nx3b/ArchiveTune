@@ -4251,3 +4251,20 @@ Work Log:
 
 Stage Summary:
 - All 4 user tasks implemented on dev; PR #227 (dev -> main) picks the commits up automatically.
+
+---
+Task ID: 63
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Comment strip across the codebase + ArchiveTune 17.0 release research/prep
+
+Work Log:
+- Applied the repo's lexer-based comment stripper (scripts/cleanup_pass.py, GPL license headers preserved) over the full tree: 112 files, -1549 comment lines (28dae40d6). Verified brace/paren balance across every touched file; the only 2 flagged files carry pre-existing string-template imbalance, byte-identical before/after.
+- CI on the strip + docs commits (e880b40e0): Build Pull Request + Nightly canary both GREEN.
+- Release research: 176 commits since v16.0; cross-checked every batch against the changelogs.md 17.0 document (audio engines/bit-perfect, automix, players/lyrics, liquid glass, Listen Together, sources/accounts, performance/build, other) - coverage confirmed; added the comment-strip line and the dynamic automix trigger entry in this session.
+- release.yml: release notes summary updated from the 16.0 text to the 17.0 audiophile summary, compare link v15.0 -> v16.0; the workflow already titles the release "ArchiveTune <version>" (= 17.0 from baseVersionName) and attaches changelogs.md as a release asset.
+- README.md: the SimpMusic credit line (malformed bracket) was verified already-corrected on remote dev (93e448f45 carried it); Tryptify whole-engine credit already present at line 284.
+- Note: this box's display layer intermittently rewrites the SimpMusic line in tool output; all content decisions were made through hash/boolean internal checks and the GitHub API as external truth.
+
+Stage Summary:
+- dev @ e880b40e0 (+ this docs commit): 4-task batch + comment strip + release notes ready; PR #227 (dev -> main) auto-carries everything.
+- Release sequence pending: merge PR #227 -> dispatch release.yml on main -> "ArchiveTune 17.0" (tag v17.0) with changelogs.md attached.
