@@ -85,6 +85,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -130,6 +131,7 @@ import moe.rukamori.archivetune.ui.component.AppleMusicStyleAccentColor
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.LocalBottomUiCompactFraction
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.TopSearch
@@ -782,19 +784,28 @@ fun HistoryScreen(
                 }
 
                 if (selectionCount == 0) {
+                    // The compact search circle beside the mini player takes
+                    // over while the bottom UI is compact: the header pill
+                    // fades out with the same fraction so the two search
+                    // affordances never appear stacked.
+                    val compactFraction = LocalBottomUiCompactFraction.current
                     LiquidGlassActionPill(
                         backdrop = backdrop,
                         modifier =
                             Modifier
                                 .align(Alignment.TopEnd)
-                                .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
+                                .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp)
+                                .graphicsLayer {
+                                    alpha = 1f - compactFraction.value
+                                    translationY = -compactFraction.value * 12.dp.toPx()
+                                },
                     ) {
                         Box(
                             modifier = Modifier.size(48.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             AppIconButton(
-                                onClick = { isSearching = true },
+                                onClick = { if (compactFraction.value < 0.5f) isSearching = true },
                                 onLongClick = {},
                             ) {
                                 Icon(

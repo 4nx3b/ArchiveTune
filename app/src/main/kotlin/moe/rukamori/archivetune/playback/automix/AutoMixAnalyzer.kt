@@ -384,6 +384,8 @@ class AutoMixAnalyzer(
         mixOut.add((contentEnd - 12_000L).coerceAtLeast(introEnd))
         mixOut.add(outroStart)
 
+        val finalFadeOnset = detectFinalFadeOnset(energy, introEnd, contentEnd)
+
         val mixIn = ArrayList<Long>(6)
         var j = (audibleStart / AUTO_MIX_CURVE_STEP_MS).toInt()
         val headTo = min(introEnd + 24_000L, contentEnd)
@@ -408,11 +410,80 @@ class AutoMixAnalyzer(
             introEndMs = introEnd,
             outroStartMs = outroStart,
             contentEndMs = contentEnd,
+            finalFadeOnsetMs = finalFadeOnset,
             mixInCandidatesMs = mixIn.distinct().sorted(),
             mixOutCandidatesMs = mixOut.distinct().sorted(),
             energyCurve = energy.toList(),
             vocalActivity = vocal.toList(),
         )
+    }
+
+    /**
+     * Dynamic mix-out trigger (the Bitchord behaviour): the blend should
+     * start when the song itself starts getting quiet. Scans the tail window
+     * on a 2-second-smoothed energy curve for the LAST moment the track
+     * still holds its full loudness; the sample right after it is the fade
+     * onset, where the final sustained decline begins. Smoothing first is
+     * what makes this robust: individual drum hits inside a fade do not
+     * postpone the onset, and breakdowns followed by a loud return do not
+     * fake one (only the tail after the very last loud moment counts).
+     * Returns [contentEndMs] for hard cuts (loud to the last sample), which
+     * callers treat as "no natural fade".
+     */
+    private fun detectFinalFadeOnset(
+        energy: FloatArray,
+        introEndMs: Long,
+        contentEndMs: Long,
+    ): Long {
+        if (energy.isEmpty() || contentEndMs <= introEndMs) return contentEndMs
+        val endIdx = (contentEndMs / AUTO_MIX_CURVE_STEP_MS).toInt().coerceAtMost(energy.size - 1)
+        val startIdx =
+            (maxOf(introEndMs, contentEndMs - FINAL_FADE_WINDOW_MS) / AUTO_MIX_CURVE_STEP_MS)
+                .toInt().coerceIn(0, endIdx)
+        if (endIdx <= startIdx) return contentEndMs
+        val window = energy.sliceArray(startIdx..endIdx)
+        if (window.size < 4) return contentEndMs
+
+        val smooth = smoothCurve(window, FINAL_FADE_SMOOTHING_SPAN)
+        val sorted = smooth.sorted()
+        val loud = sorted[sorted.size * 9 / 10].coerceAtLeast(1e-6f)
+        val quiet = loud * FINAL_FADE_QUIET_RATIO
+
+        var lastLoudIdx = -1
+        for (idx in smooth.indices) {
+            if (smooth[idx] >= quiet) lastLoudIdx = idx
+        }
+        if (lastLoudIdx < 0 || lastLoudIdx >= smooth.size - 1) return contentEndMs
+        return ((startIdx + lastLoudIdx + 1) * AUTO_MIX_CURVE_STEP_MS).coerceAtMost(contentEndMs)
+    }
+
+    /** Centered moving average over a +/- [span] sample window. */
+    private fun smoothCurve(
+        curve: FloatArray,
+        span: Int,
+    ): FloatArray {
+        if (curve.isEmpty() || span <= 0) return curve.copyOf()
+        val out = FloatArray(curve.size)
+        var acc = 0f
+        var count = 0
+        for (j in 0..span.coerceAtMost(curve.size - 1)) {
+            acc += curve[j]
+            count++
+        }
+        for (idx in curve.indices) {
+            out[idx] = acc / count
+            val add = idx + span + 1
+            val remove = idx - span
+            if (add < curve.size) {
+                acc += curve[add]
+                count++
+            }
+            if (remove >= 0) {
+                acc -= curve[remove]
+                count--
+            }
+        }
+        return out
     }
 
     /**
@@ -581,5 +652,13 @@ class AutoMixAnalyzer(
     private companion object {
         private const val TAG = "AutoMix"
         private const val MAX_PERSISTED_ANALYSES = 600
+
+        // Dynamic fade-onset detection: how far back from the content end to
+        // look for the final decline, how much smoothing washes out single
+        // drum hits, and the loudness fraction that counts as "started
+        // getting quiet" relative to the tail's loud plateau.
+        private const val FINAL_FADE_WINDOW_MS = 45_000L
+        private const val FINAL_FADE_SMOOTHING_SPAN = 4
+        private const val FINAL_FADE_QUIET_RATIO = 0.60f
     }
 }

@@ -1480,12 +1480,14 @@ class MainActivity : ComponentActivity() {
                     // Playlist pages deliberately do NOT appear here: their
                     // search pill was removed (two stacked search affordances
                     // felt wrong next to the playlist's own header); history,
-                    // local songs and the Spotify playlist library keep theirs.
+                    // local songs, the Spotify playlist library and the
+                    // settings root (which searches settings content) keep theirs.
                     val compactRouteHasInPageSearch =
                         navBackStackEntry?.destination?.route?.let { route ->
                             route == "history" ||
                                 route == "local_songs" ||
-                                route == "library_spotify_playlists"
+                                route == "library_spotify_playlists" ||
+                                route == "settings"
                         } == true
 
                     val compactSearchCircleVisible =

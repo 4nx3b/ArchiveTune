@@ -27,6 +27,13 @@ data class AutoMixAnalysis(
     val introEndMs: Long,
     val outroStartMs: Long,
     val contentEndMs: Long,
+    /**
+     * Dynamic mix-out trigger: the position where the track's own energy
+     * begins its final sustained decline toward silence (the natural
+     * fade-out). Equal to [contentEndMs] for hard cuts (no natural fade) and
+     * 0 for legacy cached analyses written before this field existed.
+     */
+    val finalFadeOnsetMs: Long = 0L,
     val mixInCandidatesMs: List<Long>,
     val mixOutCandidatesMs: List<Long>,
     /** Loudness curve, one sample per [AUTO_MIX_CURVE_STEP_MS]. */
@@ -59,6 +66,7 @@ data class AutoMixAnalysis(
                 introEndMs = 0L,
                 outroStartMs = durationMs,
                 contentEndMs = durationMs,
+                finalFadeOnsetMs = durationMs,
                 mixInCandidatesMs = emptyList(),
                 mixOutCandidatesMs = emptyList(),
                 energyCurve = emptyList(),
