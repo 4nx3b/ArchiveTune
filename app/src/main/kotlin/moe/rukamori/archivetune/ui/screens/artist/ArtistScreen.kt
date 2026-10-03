@@ -30,6 +30,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,10 +49,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -63,7 +67,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
@@ -78,7 +81,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
-import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -90,8 +92,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import com.kyant.backdrop.effects.blur
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -218,6 +220,15 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.IntOffset
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.effects.lens
+import moe.rukamori.archivetune.ui.component.LocalLiquidGlassTuning
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -396,6 +407,7 @@ fun ArtistScreen(
     val unknownArtist = stringResource(R.string.unknown_artist)
 
     var artistOverflowMenuOpen by remember { mutableStateOf(false) }
+    var artistOverflowIconBounds by remember { mutableStateOf(Rect.Zero) }
 
     val showArtistOverflowMenu: () -> Unit = {
         artistOverflowMenuOpen = true
@@ -1629,28 +1641,32 @@ fun ArtistScreen(
                     modifier = Modifier.size(48.dp),
                     onClick = toggleArtistSubscription,
                 )
-                Box {
-                    LiquidGlassIconButton(
-                        backdrop = artworkBackdrop,
-                        painter = painterResource(R.drawable.solar_more_circle_linear),
-                        contentDescription = stringResource(R.string.more_options),
-                        modifier = Modifier.size(48.dp),
-                        onClick = showArtistOverflowMenu,
-                    )
-                    ArtistOverflowDropdown(
-                        expanded = artistOverflowMenuOpen,
-                        onDismissRequest = { artistOverflowMenuOpen = false },
-                        isBlocked = isArtistBlocked,
-                        blockActionEnabled = artistOverflowBlockActionEnabled(),
-                        showShuffle = artistOverflowCanShuffle(),
-                        showRadio = artistOverflowCanRadio(),
-                        onShuffle = artistOverflowShuffleAction(),
-                        onRadio = artistOverflowRadioAction(),
-                        onAction = viewModel::onAction,
-                    )
-                }
+                LiquidGlassIconButton(
+                    backdrop = artworkBackdrop,
+                    painter = painterResource(R.drawable.solar_more_circle_linear),
+                    contentDescription = stringResource(R.string.more_options),
+                    modifier =
+                        Modifier
+                            .size(48.dp)
+                            .onGloballyPositioned { artistOverflowIconBounds = it.boundsInRoot() },
+                    onClick = showArtistOverflowMenu,
+                )
             }
         }
+
+        ArtistOverflowDropdown(
+            expanded = artistOverflowMenuOpen,
+            onDismissRequest = { artistOverflowMenuOpen = false },
+            anchorBounds = artistOverflowIconBounds,
+            backdrop = if (liquidGlassHeaderActive) artworkBackdrop else null,
+            isBlocked = isArtistBlocked,
+            blockActionEnabled = artistOverflowBlockActionEnabled(),
+            showShuffle = artistOverflowCanShuffle(),
+            showRadio = artistOverflowCanRadio(),
+            onShuffle = artistOverflowShuffleAction(),
+            onRadio = artistOverflowRadioAction(),
+            onAction = viewModel::onAction,
+        )
     }
 
     if (!liquidGlassHeaderActive) {
@@ -1683,26 +1699,15 @@ fun ArtistScreen(
             }
         },
         actions = {
-            Box {
-                IconButton(
-                    onClick = showArtistOverflowMenu,
-                    onLongClick = {},
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.more_horiz),
-                        contentDescription = stringResource(R.string.more_options),
-                    )
-                }
-                ArtistOverflowDropdown(
-                    expanded = artistOverflowMenuOpen,
-                    onDismissRequest = { artistOverflowMenuOpen = false },
-                    isBlocked = isArtistBlocked,
-                    blockActionEnabled = artistOverflowBlockActionEnabled(),
-                    showShuffle = artistOverflowCanShuffle(),
-                    showRadio = artistOverflowCanRadio(),
-                    onShuffle = artistOverflowShuffleAction(),
-                    onRadio = artistOverflowRadioAction(),
-                    onAction = viewModel::onAction,
+            IconButton(
+                onClick = showArtistOverflowMenu,
+                onLongClick = {},
+                modifier =
+                    Modifier.onGloballyPositioned { artistOverflowIconBounds = it.boundsInRoot() },
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.more_horiz),
+                    contentDescription = stringResource(R.string.more_options),
                 )
             }
         },
@@ -1776,12 +1781,9 @@ private fun ArtistOverflowMenu(
 @Composable
 private fun ArtistOverflowMenuDivider() {
     HorizontalDivider(
-        modifier =
-            Modifier
-                .padding(horizontal = 20.dp, vertical = 2.dp)
-                .fillMaxWidth(0.72f),
-        thickness = 0.75.dp,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
+        modifier = Modifier.padding(horizontal = 16.dp),
+        thickness = 0.5.dp,
+        color = MaterialTheme.colorScheme.outlineVariant,
     )
 }
 
@@ -1789,6 +1791,8 @@ private fun ArtistOverflowMenuDivider() {
 private fun ArtistOverflowDropdown(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
+    anchorBounds: Rect,
+    backdrop: Backdrop?,
     isBlocked: Boolean,
     blockActionEnabled: Boolean,
     showShuffle: Boolean,
@@ -1797,9 +1801,15 @@ private fun ArtistOverflowDropdown(
     onRadio: () -> Unit,
     onAction: (ArtistAction) -> Unit,
 ) {
+    var renderState by remember { mutableStateOf(false) }
+    var anchorSpaceWidthPx by remember { mutableStateOf(0) }
     val morph = remember { Animatable(0f) }
+
+    BackHandler(enabled = renderState && expanded) { onDismissRequest() }
+
     LaunchedEffect(expanded) {
         if (expanded) {
+            renderState = true
             morph.snapTo(0f)
             morph.animateTo(
                 targetValue = 1f,
@@ -1809,49 +1819,167 @@ private fun ArtistOverflowDropdown(
                         stiffness = Spring.StiffnessMedium,
                     ),
             )
+        } else if (renderState) {
+            morph.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = 160),
+            )
+            renderState = false
         }
     }
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = onDismissRequest,
-        modifier = Modifier.widthIn(min = ArtistOverflowPopupWidth),
-        shape = RoundedCornerShape(18.dp),
-        containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(6.dp),
-        shadowElevation = 14.dp,
+
+    if (!renderState) return
+
+    val alpha = morph.value
+    val glassTuning = LocalLiquidGlassTuning.current
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val menuShape = RoundedCornerShape(18.dp)
+
+    val frostedBlurModifier =
+        remember(backdrop, glassTuning) {
+            if (backdrop != null) {
+                Modifier.drawBackdrop(
+                    backdrop = backdrop,
+                    effects = {
+                        colorControls(saturation = glassTuning.saturation)
+                        blur((20f * glassTuning.blurFactor).dp.toPx())
+                        lens(
+                            refractionHeight = (16f * glassTuning.refractionHeightFactor).dp.toPx(),
+                            refractionAmount = (40f * glassTuning.refractionAmountFactor).dp.toPx(),
+                            depthEffect = glassTuning.depth3D,
+                            chromaticAberration = glassTuning.chromaticAberration,
+                        )
+                    },
+                    onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
+                    shape = { menuShape },
+                )
+            } else {
+                null
+            }
+        }
+
+    val glassTint =
+        if (dark) {
+            Color(0x8C1C1C1E).copy(alpha = (0.55f * glassTuning.tintFactor).coerceIn(0f, 1f))
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh.copy(
+                alpha = (0.42f * glassTuning.tintFactor).coerceIn(0f, 1f),
+            )
+        }
+    val fallbackColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val fallbackBorder = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    val contentInk = if (dark) Color.White else Color(0xFF1C1B1F)
+    val menuColorScheme =
+        if (backdrop != null) {
+            MaterialTheme.colorScheme.copy(
+                onSurface = contentInk,
+                onSurfaceVariant = contentInk.copy(alpha = 0.72f),
+                outlineVariant = contentInk.copy(alpha = 0.12f),
+            )
+        } else {
+            MaterialTheme.colorScheme
+        }
+
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .onSizeChanged { anchorSpaceWidthPx = it.width }
+                .background(Color.Black.copy(alpha = ArtistOverflowScrimAlpha * alpha))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { onDismissRequest() },
     ) {
         Box(
             modifier =
-                Modifier.graphicsLayer {
-                    val t = morph.value
-                    scaleX = 0.55f + 0.45f * t
-                    scaleY = 0.55f + 0.45f * t
-                    alpha = t
-                    transformOrigin = TransformOrigin(0.94f, 0.06f)
-                }
+                Modifier
+                    .offset {
+                        val popupWidthPx = ArtistOverflowPopupWidth.roundToPx()
+                        val marginPx = 12.dp.roundToPx()
+                        val anchorRight =
+                            if (anchorBounds != Rect.Zero) {
+                                anchorBounds.right.toInt()
+                            } else {
+                                anchorSpaceWidthPx - marginPx
+                            }
+                        val anchorBottom =
+                            if (anchorBounds != Rect.Zero) {
+                                anchorBounds.bottom.toInt()
+                            } else {
+                                72.dp.roundToPx()
+                            }
+                        val x = (anchorRight - popupWidthPx).coerceAtLeast(marginPx)
+                        val y = anchorBottom + 4.dp.roundToPx()
+                        IntOffset(x = x, y = y)
+                    }
+                    .width(ArtistOverflowPopupWidth)
+                    .graphicsLayer {
+                        val t = morph.value
+                        this.alpha = t
+                        this.scaleX = 0.55f + 0.45f * t
+                        this.scaleY = 0.55f + 0.45f * t
+                        val popupWidthPx = ArtistOverflowPopupWidth.toPx()
+                        val marginPx = 12.dp.toPx()
+                        val popupLeftPx =
+                            (anchorBounds.right - popupWidthPx).coerceAtLeast(marginPx)
+                        val iconCenterX = (anchorBounds.left + anchorBounds.right) / 2f
+                        val pivotX =
+                            ((iconCenterX - popupLeftPx) / popupWidthPx.coerceAtLeast(1f))
+                                .coerceIn(0.02f, 0.98f)
+                        this.transformOrigin = TransformOrigin(pivotX, 0.06f)
+                        this.shadowElevation = 16.dp.toPx()
+                        this.shape = menuShape
+                        this.clip = false
+                    }
+                    .then(
+                        frostedBlurModifier
+                            ?: Modifier.background(fallbackColor),
+                    )
+                    .background(if (backdrop != null) glassTint else Color.Transparent)
+                    .clip(menuShape)
+                    .border(
+                        width = 0.75.dp,
+                        color =
+                            if (backdrop != null) {
+                                contentInk.copy(alpha = 0.10f)
+                            } else {
+                                fallbackBorder
+                            },
+                        shape = menuShape,
+                    )
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { },
         ) {
-            ArtistOverflowMenu(
-                isBlocked = isBlocked,
-                blockActionEnabled = blockActionEnabled,
-                onAction = { action ->
-                    onDismissRequest()
-                    onAction(action)
-                },
-                showShuffle = showShuffle,
-                showRadio = showRadio,
-                onShuffle = {
-                    onDismissRequest()
-                    onShuffle()
-                },
-                onRadio = {
-                    onDismissRequest()
-                    onRadio()
-                },
-            )
+            MaterialTheme(colorScheme = menuColorScheme) {
+                ArtistOverflowMenu(
+                    isBlocked = isBlocked,
+                    blockActionEnabled = blockActionEnabled,
+                    onAction = { action ->
+                        onDismissRequest()
+                        onAction(action)
+                    },
+                    showShuffle = showShuffle,
+                    showRadio = showRadio,
+                    onShuffle = {
+                        onDismissRequest()
+                        onShuffle()
+                    },
+                    onRadio = {
+                        onDismissRequest()
+                        onRadio()
+                    },
+                )
+            }
         }
     }
 }
 
 private val ArtistOverflowPopupWidth = 232.dp
+
+private const val ArtistOverflowScrimAlpha = 0.38f
 
 @Composable
 private fun ArtistOverflowMenuItem(
@@ -1878,6 +2006,7 @@ private fun ArtistOverflowMenuItem(
         },
         modifier = modifier
             .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 4.dp),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         tonalElevation = 0.dp,
