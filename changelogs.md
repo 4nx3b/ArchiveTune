@@ -147,7 +147,8 @@ page.
   backup categories
 - Pre-save and release-countdown radar, runtime source checks in
   settings, and another dead-code sweep (orphaned files and components
-  removed)
+  removed); the whole codebase carries no explanatory comments any more -
+  every line and block comment is stripped (GPL license headers preserved)
 
 # ArchiveTune 16.0 — Changelog
 
