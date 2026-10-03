@@ -82,6 +82,7 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.LiveAudioChainPill
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
+import moe.rukamori.archivetune.ui.component.extractTtmlWriters
 import moe.rukamori.archivetune.utils.AudioOutputStats
 import moe.rukamori.archivetune.utils.AudioOutputStatsProvider
 import android.text.format.Formatter
@@ -128,6 +129,46 @@ private enum class MediaInfoTab(
     Numbers(R.string.numbers, R.drawable.solar_hertz),
 }
 
+private fun creditIconFor(label: String): Int =
+    when {
+        label.equals("Song", ignoreCase = true) -> R.drawable.solar_music_note
+        label.contains("artist", true) || label.contains("perform", true) -> R.drawable.solar_users
+        label.contains("album", true) -> R.drawable.solar_album_linear
+        label.contains("writ", true) || label.contains("compos", true) ||
+            label.contains("lyricis", true) -> R.drawable.edit
+        label.contains("licen", true) -> R.drawable.solar_bookmark_linear
+        else -> R.drawable.solar_text
+    }
+
+/**
+ * Writer names embedded at the END of synced lyrics as plain text credit
+ * lines ("[00:52.10] Written by: X", "Writers: X / Y", ...). Only the last
+ * few non-blank lines are scanned so song lyrics that merely mention the
+ * words never match.
+ */
+private fun extractTrailingWrittenBy(lyrics: String?): String {
+    if (lyrics.isNullOrBlank()) return ""
+    val pattern =
+        Regex(
+            pattern =
+                """^\s*(?:\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]\s*)?\[?\s*""" +
+                    """(?:(?:written|song)\s+by|writers?|songwriters?|lyricists?|composers?)""" +
+                    """\s*\]?\s*:?\s*(.+?)\s*$""",
+            options = setOf(RegexOption.IGNORE_CASE),
+        )
+    return lyrics
+        .lineSequence()
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .toList()
+        .takeLast(8)
+        .mapNotNull { line ->
+            pattern.find(line)?.groupValues?.getOrNull(1)?.trim()?.takeIf(String::isNotEmpty)
+        }
+        .distinct()
+        .joinToString(", ")
+}
+
 private data class MediaInfoQuickFact(
     val iconRes: Int,
     val text: String,
@@ -162,6 +203,7 @@ fun ShowMediaInfo(videoId: String) {
     val song by database.song(videoId).collectAsStateWithLifecycle(initialValue = null)
     val currentFormat by database.format(videoId).collectAsStateWithLifecycle(initialValue = null)
     val info = rememberMediaInfo(videoId)
+    val lyricsEntity by database.lyrics(videoId).collectAsStateWithLifecycle(initialValue = null)
     var selectedTab by rememberSaveable(videoId) { mutableStateOf(MediaInfoTab.Information) }
     var outputStats by remember(videoId) { mutableStateOf<AudioOutputStats?>(null) }
 
@@ -292,6 +334,58 @@ fun ShowMediaInfo(videoId: String) {
                     value = videoId,
                 ),
             )
+        }
+
+    // YouTube's own song credits (the "Song credits" dialog YouTube shows
+    // on the watch page): Song / Album / Writers / Licensed to YouTube by /
+    // Produced by / Released ... - whatever YouTube itself carries for the
+    // track. Rows duplicating the overview card (Song / Artist) are dropped;
+    // when YouTube carries no writer credits, the writer names embedded at
+    // the end of the synced lyrics (TTML songwriter tags or trailing
+    // "Written by" lines) provide the Written-by row instead.
+    val overviewTitleValue = song?.title ?: info?.title
+    val overviewArtistsValue =
+        song?.artists?.takeIf { it.isNotEmpty() }?.joinToString { it.name } ?: info?.author
+    val youtubeCredits =
+        info?.credits.orEmpty().mapNotNull { row ->
+            val value = row.value.trim()
+            if (value.isBlank()) return@mapNotNull null
+            val duplicatesOverview =
+                (row.label.equals("Song", ignoreCase = true) && value == overviewTitleValue) ||
+                    (row.label.equals("Artist", ignoreCase = true) && value == overviewArtistsValue)
+            if (duplicatesOverview) return@mapNotNull null
+            MediaInfoDetail(
+                iconRes = creditIconFor(row.label),
+                label = row.label,
+                value = value,
+                multiline = true,
+            )
+        }
+    val hasWriterRowFromYouTube =
+        youtubeCredits.any { detail ->
+            detail.label.contains(Regex("writ|compos|lyricis", RegexOption.IGNORE_CASE))
+        }
+    val writtenByLabel = stringResource(R.string.credits_written_by)
+    val lyricsWriters =
+        if (hasWriterRowFromYouTube) {
+            ""
+        } else {
+            extractTtmlWriters(lyricsEntity?.lyrics)
+                .ifBlank { extractTrailingWrittenBy(lyricsEntity?.lyrics) }
+        }
+    val creditDetails =
+        buildList {
+            addAll(youtubeCredits)
+            if (lyricsWriters.isNotBlank()) {
+                add(
+                    MediaInfoDetail(
+                        iconRes = R.drawable.edit,
+                        label = writtenByLabel,
+                        value = lyricsWriters,
+                        multiline = true,
+                    ),
+                )
+            }
         }
 
     val technicalDetails =
@@ -506,6 +600,20 @@ fun ShowMediaInfo(videoId: String) {
                                             showDivider = index != overviewDetails.lastIndex,
                                             onClick = { copyToClipboard(context, item.value) },
                                         )
+                                    }
+                                }
+
+                                if (creditDetails.isNotEmpty()) {
+                                    MediaInfoExpressiveCard {
+                                        creditDetails.forEachIndexed { index, item ->
+                                            MediaInfoExpressiveRow(
+                                                iconRes = item.iconRes,
+                                                label = item.label,
+                                                value = item.value,
+                                                showDivider = index != creditDetails.lastIndex,
+                                                onClick = { copyToClipboard(context, item.value) },
+                                            )
+                                        }
                                     }
                                 }
 

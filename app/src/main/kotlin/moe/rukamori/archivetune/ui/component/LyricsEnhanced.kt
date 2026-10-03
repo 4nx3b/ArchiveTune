@@ -209,7 +209,7 @@ private data class KaraokeBuild(
 private fun Map<Int, List<String?>>.renderedRomanization(): Map<Int, List<String?>> =
     filterValues { values -> values.any { !it.isNullOrBlank() } }
 
-private fun extractTtmlWriters(lyrics: String?): String {
+internal fun extractTtmlWriters(lyrics: String?): String {
     if (lyrics.isNullOrBlank()) return ""
     val writerTagPattern =
         Regex(
