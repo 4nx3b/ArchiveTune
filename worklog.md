@@ -4285,3 +4285,76 @@ Work Log:
 
 Stage Summary:
 - All 5 user tasks complete: artist overflow opens (anchored morph dropdown), header/compact search dedup, settings compact search, dynamic automix fade trigger, comment strip, and the stable "ArchiveTune 17.0" release shipped with updated changelogs.md attached.
+
+---
+Task ID: 65
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 3-item user feedback batch — per-song bit-perfect distortion, artist overflow menu glass/dividers, audiophile haze
+
+Work Log:
+- Bit-perfect distortion (specific song distorted, next song clean, toggling
+  bit-perfect off/on fixes it): root-caused to two gaps. (a) BitPerfectRuntime
+  .evaluateTrack() one-shot-seeded status.sourceSampleRate — on a track
+  transition the gate's configure-time route evaluation (onRouteEvaluated ->
+  refreshMixerBitPerfectRoute) re-pinned the BIT_PERFECT mixer at the PREVIOUS
+  song's rate while the new track's output opened (the "mis-routed PCM
+  (buzzing)" class UsbBitPerfectOutput warns about). sourceSampleRate now
+  re-latches from every incoming input rate at configure time. (b) A 1s wire
+  watchdog in the existing USB wire poll: under strict bit-perfect, if the
+  engaged wire rate (USB exclusive latched rate, else mixer configured rate —
+  exposed via new BitPerfectRuntime.wireSampleRateHz) differs from the decoded
+  source rate for 2 consecutive polls, maybeReprepareForBitPerfectWireMismatch()
+  runs the toggle-equivalent repreparePlayerForAudioRouteChange()
+  (stop/seek/prepare/play) on Dispatchers.Main — deduped per
+  mediaId|source|wire key, reset on onMediaItemTransition, gated by
+  bitPerfectNeedsRouteReprepare(). This automates the user's manual workaround
+  for any remaining stale latch (engine transports, frozen OutputConfigs).
+- Artist page overflow menu ("no liquid glass blur, opaque background,
+  unevenly aligned dividers attached to the left"): the M3 DropdownMenu hosts
+  content in a separate popup window the kyant backdrop cannot sample, so glass
+  is structurally impossible there; converted ArtistOverflowDropdown into an
+  in-screen anchored overlay modeled on the proven AnchoredLyricsOverflowMenu /
+  BottomSheetMenu recipes: single overlay composed as the last child of the
+  screen root Box (same layout tree as the artworkBackdrop glassSource),
+  drawBackdrop blur+lens via the shared tuning (LocalLiquidGlassTuning),
+  theme-aware tint (dark Color(0x8C1C1C1E)@0.55*tintFactor, light
+  surfaceContainerHigh@0.42*tintFactor), content ink override via a wrapped
+  MaterialTheme colorScheme, hairline border, 0.38 scrim with click-dismiss,
+  BackHandler dismiss, bouncy spring morphe with icon-tracking transformOrigin,
+  opaque surfaceContainerHigh fallback when glass is off (API<S or toggle).
+  Anchor bounds captured via onGloballyPositioned/boundsInRoot on BOTH header
+  variants (glass LiquidGlassIconButton and plain TopAppBar IconButton).
+  Dividers switched to the app-wide recipe: HorizontalDivider 0.5dp,
+  outlineVariant, symmetric 16dp inset (was padding-then-fillMaxWidth(0.72f)
+  which pinned the hairline 20dp from the left edge). Also fixed the dead
+  ArtistOverflowMenuItem onClick (never wired in the dropdown conversion —
+  ListItem had no clickable modifier; now Modifier.clickable(enabled)).
+- Audiophile settings haze ("add haze effect like home screen"): the page
+  already had rememberScreenHeaderHaze() + .hazeSource(headerHaze) but never
+  rendered the consumer — added ScreenHeaderHaze(hazeState, systemBarsTopPadding,
+  scrolled = scrollState.value > 0) inside the content Box after the Column,
+  mirroring the LiquidGlassSettings precedent exactly (LocalStableSystemBarsTopPadding
+  + ScreenHeaderHaze imports added).
+- Verified brace/paren balance on all 4 touched files; no test references to
+  the changed APIs. Committed 95a7c55b4 on dev, pushed, monitoring CI.
+
+Stage Summary:
+- dev @ 95a7c55b4: bit-perfect stale-rate race closed at configure time + an
+  automated toggle-equivalent re-prepare watchdog; artist overflow is a real
+  liquid-glass anchored overlay with symmetric dividers and clickable items
+  (light+dark tints from the BottomSheetMenu recipe); audiophile page gets the
+  home-screen header haze with scroll gating.
+
+---
+Task ID: 65 (CI addendum)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: CI monitoring for 95a7c55b4
+
+Work Log:
+- Nightly (canary) run 37160913225 on 95a7c55b4: all 7 jobs GREEN — check,
+  mobile armeabi/x86_64/arm64/universal, tv universal, create-nightly.
+- Build Pull Request did not trigger (PR #227 was merged for the 17.0 release;
+  no open dev->main PR for this batch — batch rides the dev/nightly channel).
+
+Stage Summary:
+- CI fully green on 95a7c55b4; the 3-item feedback batch is delivered on dev.
