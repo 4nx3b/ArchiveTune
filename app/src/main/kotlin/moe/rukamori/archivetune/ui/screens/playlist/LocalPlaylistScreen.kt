@@ -54,7 +54,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -150,7 +149,6 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LocalPlaylistViewModel
 import moe.rukamori.archivetune.viewmodels.PlaylistCoverEvent
 import moe.rukamori.archivetune.viewmodels.PlaylistCoverState
-import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -560,13 +558,6 @@ fun LocalPlaylistScreen(
         }
     }
 
-    val isListScrolling by remember {
-        derivedStateOf {
-            lazyListState.firstVisibleItemIndex > 0 ||
-                lazyListState.firstVisibleItemScrollOffset > 0
-        }
-    }
-
     val surfaceColor = MaterialTheme.colorScheme.surface
 
     val transparentAppBar by remember {
@@ -577,9 +568,6 @@ fun LocalPlaylistScreen(
 
     val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
 
-    CompositionLocalProvider(
-        LocalMiniPlayerDocked provides isListScrolling,
-    ) {
     val headerHaze = rememberScreenHeaderHaze()
     ExpressivePullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -1445,7 +1433,6 @@ fun LocalPlaylistScreen(
                     .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime))
                     .align(Alignment.BottomCenter),
         )
-    }
     }
 }
 

@@ -15,7 +15,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,7 +37,13 @@ import com.kyant.backdrop.Backdrop
 
 val NavigationBarGlassGlowKey = booleanPreferencesKey("navigationBarGlassGlow")
 
-val LocalBottomUiCompactFraction = compositionLocalOf { 0f }
+// Holds the animated compact fraction as a State object so providers can hand
+// it to consumers WITHOUT reading (and therefore invalidating) their own
+// composition scope on every animation frame. Consumers read `.value` inside
+// their own scope or in a draw-phase lambda.
+val LocalBottomUiCompactFraction = compositionLocalOf<State<Float>> {
+    mutableStateOf(0f)
+}
 
 val CompactControlSize = 56.dp
 

@@ -114,6 +114,7 @@ import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.player.LocalLyricsScrollListener
+import moe.rukamori.archivetune.ui.player.LocalPlayerSheetVisible
 import moe.rukamori.archivetune.constants.LyricsClickKey
 import moe.rukamori.archivetune.constants.LyricsLineBlurKey
 import moe.rukamori.archivetune.constants.LyricsLineSpacingKey
@@ -406,6 +407,12 @@ fun LyricsV2(
 
     val latestSliderPositionProvider = rememberUpdatedState(sliderPositionProvider)
 
+    // While the player sheet rests collapsed the lyrics stay composed but
+    // invisible (keepContentAlive); the per-frame TTML loop falls back to the
+    // cheap 250ms poll so the hidden subtree does not re-compose at display
+    // refresh rate while the user scrolls the main UI.
+    val playerSheetVisibleState = rememberUpdatedState(LocalPlayerSheetVisible.current)
+
     var lastRawPositionMs by remember(lyrics) { mutableLongStateOf(0L) }
     var playbackResetTick by remember(lyrics) { mutableIntStateOf(0) }
 
@@ -419,6 +426,11 @@ fun LyricsV2(
             }
         val useFrameClock = !v2AnimationsDisabled && isTtmlFormat
         while (isActive) {
+            if (useFrameClock && !playerSheetVisibleState.value) {
+                // Sheet collapsed: poll coarsely instead of riding the frame clock.
+                delay(250L)
+                continue
+            }
             val sliderPos = latestSliderPositionProvider.value()
             val pos = sliderPos ?: player.currentPosition
 

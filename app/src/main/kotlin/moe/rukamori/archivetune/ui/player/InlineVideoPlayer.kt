@@ -164,8 +164,6 @@ val LocalPlayerSheetOverlayFraction =
         androidx.compose.runtime.mutableStateOf(0f)
     }
 
-val LocalMiniPlayerDocked = compositionLocalOf { false }
-
 @Composable
 fun ProvideVideoFullscreenState(content: @Composable () -> Unit) {
     val holder = remember { VideoFullscreenStateHolder() }

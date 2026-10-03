@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadius
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 
 @Composable
@@ -49,7 +50,10 @@ fun PlayingIndicator(
 ) {
     val transition = rememberInfiniteTransition(label = "playingIndicator")
     val cycleDurationMs = 1100
-    val barValues: List<Float> =
+    // Animated values are kept as State objects and read INSIDE the Canvas
+    // draw lambda (draw phase). Reading `.value` in composition recomposed
+    // the whole playing row on every animation frame while lists scrolled.
+    val barStates: List<State<Float>> =
         (0 until bars.coerceAtLeast(1)).map { index ->
 
             val phaseStep = cycleDurationMs / (bars.coerceAtLeast(1) + 1)
@@ -70,7 +74,7 @@ fun PlayingIndicator(
                     initialStartOffset = StartOffset(delayMs),
                 ),
                 label = "bar$index",
-            ).value
+            )
         }
 
     Row(
@@ -78,13 +82,14 @@ fun PlayingIndicator(
         verticalAlignment = Alignment.Bottom,
         modifier = modifier,
     ) {
-        barValues.forEachIndexed { index, value ->
+        barStates.forEachIndexed { index, barState ->
             Canvas(
                 modifier =
                     Modifier
                         .fillMaxHeight()
                         .width(barWidth),
             ) {
+                val value = barState.value
                 drawRoundRect(
                     color = color,
                     topLeft = Offset(x = 0f, y = size.height * (1 - value)),

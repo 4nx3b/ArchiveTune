@@ -45,7 +45,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -106,7 +105,6 @@ import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.SelectionSongMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
-import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked
 import moe.rukamori.archivetune.ui.screens.downloads.DownloadLibraryScreen
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadProgressIndicator
@@ -332,13 +330,6 @@ fun AutoPlaylistScreen(
         }
     }
 
-    val isListScrolling by remember {
-        derivedStateOf {
-            lazyListState.firstVisibleItemIndex > 0 ||
-                lazyListState.firstVisibleItemScrollOffset > 0
-        }
-    }
-
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -364,9 +355,6 @@ fun AutoPlaylistScreen(
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
-    CompositionLocalProvider(
-        LocalMiniPlayerDocked provides isListScrolling,
-    ) {
     val headerHaze = rememberScreenHeaderHaze()
     Box(
         modifier =
@@ -980,7 +968,6 @@ fun AutoPlaylistScreen(
         )
         }
 
-    }
     }
 }
 

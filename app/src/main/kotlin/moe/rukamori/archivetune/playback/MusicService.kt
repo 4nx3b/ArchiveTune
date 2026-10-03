@@ -1817,27 +1817,41 @@ class MusicService :
             Penta(dsp, usbExclusive, crossfade, automix, offload)
         }.distinctUntilChanged()
             .collectLatest(scope) { (dsp, usbExclusive, crossfade, automix, offload) ->
-                floatDspEnabled = dsp
+                // A single transient exception inside a collector body kills
+                // that collector coroutine FOREVER (SupervisorJob: siblings
+                // survive, but this preference stream stops applying until the
+                // process restarts - the "live audio pill stays stale until I
+                // restart the app" class). Native engine / USB route calls can
+                // throw transiently mid-detach, so every audio-route collector
+                // is exception-hardened: log and keep collecting.
+                runCatching {
+                    floatDspEnabled = dsp
 
-                // Re-toggling the USB-exclusive preference is an explicit user
-                // retry: clear the session fallback so a fresh DAC handshake
-                // gets a full chance on the new intent.
-                if (lastUsbExclusivePrefValue != null && lastUsbExclusivePrefValue != usbExclusive) {
-                    if (exclusiveRouteSessionFallback) {
-                        exclusiveRouteSessionFallback = false
-                        Timber.tag(TAG).i("USB-exclusive preference re-toggled; session fallback cleared")
+                    // Re-toggling the USB-exclusive preference is an explicit user
+                    // retry: clear the session fallback so a fresh DAC handshake
+                    // gets a full chance on the new intent.
+                    if (lastUsbExclusivePrefValue != null && lastUsbExclusivePrefValue != usbExclusive) {
+                        if (exclusiveRouteSessionFallback) {
+                            exclusiveRouteSessionFallback = false
+                            Timber.tag(TAG).i("USB-exclusive preference re-toggled; session fallback cleared")
+                        }
                     }
-                }
-                lastUsbExclusivePrefValue = usbExclusive
+                    lastUsbExclusivePrefValue = usbExclusive
 
-                usbExclusiveRequested = usbExclusive && !crossfade && !automix && !offload
-                audioOffloadPrefEnabled = offload
-                refreshUsbExclusiveRoute()
-                Timber.tag(TAG).d(
-                    "Audio engine: floatDsp=%s usbExclusiveRequested=%s",
-                    dsp,
-                    usbExclusiveRequested,
-                )
+                    usbExclusiveRequested = usbExclusive && !crossfade && !automix && !offload
+                    audioOffloadPrefEnabled = offload
+                    refreshUsbExclusiveRoute()
+                    Timber.tag(TAG).d(
+                        "Audio engine: floatDsp=%s usbExclusiveRequested=%s",
+                        dsp,
+                        usbExclusiveRequested,
+                    )
+                }.onFailure {
+                    // collectLatest cancels the previous emission when a new value
+                    // arrives; that cancellation MUST propagate, not be logged.
+                    if (it is CancellationException) throw it
+                    Timber.tag(TAG).e(it, "Audio route collector (float-dsp/usb-exclusive) emission failed; will retry on next preference change")
+                }
             }
 
         combine(
@@ -1847,30 +1861,38 @@ class MusicService :
             bitPerfect to nativeRate
         }.distinctUntilChanged()
             .collectLatest(scope) { (bitPerfect, nativeRate) ->
-                val previouslyRequested = BitPerfectRuntime.requested
-                val previousNativeRate = BitPerfectRuntime.nativeSampleRatePreferred
-                if (BitPerfectRuntime.requested != bitPerfect || BitPerfectRuntime.nativeSampleRatePreferred != nativeRate) {
-                    Timber.tag(TAG).i(
-                        "Bit-Perfect request: %s (nativeRate=%s) — re-evaluates on next track",
-                        bitPerfect,
-                        nativeRate,
-                    )
-                }
-                BitPerfectRuntime.requested = bitPerfect
-                BitPerfectRuntime.nativeSampleRatePreferred = nativeRate
-                if (!bitPerfect) {
-                    BitPerfectRuntime.clearTrack()
-                }
-                applyNativeRateOverride()
-                refreshMixerBitPerfectRoute()
-
-                val routeChange =
-                    previouslyRequested != bitPerfect ||
-                        previousNativeRate != nativeRate && (tryptifyAudioProcessing || lastwaveAudioProcessing)
-                if (routeChange && bitPerfectNeedsRouteReprepare()) {
-                    scope.launch(Dispatchers.Main) {
-                        runCatching { repreparePlayerForAudioRouteChange() }
+                // Exception-hardened (see the float-dsp collector note): a
+                // transient native/USB failure must not kill this stream and
+                // freeze the live audio chain readout until restart.
+                runCatching {
+                    val previouslyRequested = BitPerfectRuntime.requested
+                    val previousNativeRate = BitPerfectRuntime.nativeSampleRatePreferred
+                    if (BitPerfectRuntime.requested != bitPerfect || BitPerfectRuntime.nativeSampleRatePreferred != nativeRate) {
+                        Timber.tag(TAG).i(
+                            "Bit-Perfect request: %s (nativeRate=%s) — re-evaluates on next track",
+                            bitPerfect,
+                            nativeRate,
+                        )
                     }
+                    BitPerfectRuntime.requested = bitPerfect
+                    BitPerfectRuntime.nativeSampleRatePreferred = nativeRate
+                    if (!bitPerfect) {
+                        BitPerfectRuntime.clearTrack()
+                    }
+                    applyNativeRateOverride()
+                    refreshMixerBitPerfectRoute()
+
+                    val routeChange =
+                        previouslyRequested != bitPerfect ||
+                            previousNativeRate != nativeRate && (tryptifyAudioProcessing || lastwaveAudioProcessing)
+                    if (routeChange && bitPerfectNeedsRouteReprepare()) {
+                        scope.launch(Dispatchers.Main) {
+                            runCatching { repreparePlayerForAudioRouteChange() }
+                        }
+                    }
+                }.onFailure {
+                    if (it is CancellationException) throw it
+                    Timber.tag(TAG).e(it, "Audio route collector (bit-perfect/native-rate) emission failed; will retry on next preference change")
                 }
             }
 
@@ -1884,127 +1906,160 @@ class MusicService :
             EnginePrefTuple(tryptify, lastwave, downmixOn, usbPin, usbDevice != null)
         }.distinctUntilChanged()
             .collectLatest(scope) { (tryptify, lastwave, downmixOn, usbPin, usbAttached) ->
-                val lastwaveEffective = lastwave && !tryptify
-                val engineSelectionChanged =
-                    tryptifyAudioProcessing != tryptify || lastwaveAudioProcessing != lastwaveEffective
-                if (engineSelectionChanged) {
-                    Timber.tag(TAG).i(
-                        "Audio engine selection: tryptify=%s lastwave=%s (raw lastwave=%s normalized off — engines are exclusive)",
-                        tryptify,
-                        lastwaveEffective,
-                        lastwave,
-                    )
-                }
-                tryptifyAudioProcessing = tryptify
-                lastwaveAudioProcessing = lastwaveEffective
-
-                // The pill/UI reacts to the SELECTION the moment the preference
-                // flips - it does not wait for the router to latch the engine on
-                // the next configure or buffer.
-                EngineRuntime.publishWantedEngine(
-                    when {
-                        tryptify -> AudioEngineRouterProcessor.Engine.TRYPTIFY
-                        lastwaveEffective -> AudioEngineRouterProcessor.Engine.LASTWAVE
-                        else -> AudioEngineRouterProcessor.Engine.NONE
-                    },
-                )
-                EngineRuntime.publishEngineAvailability(
-                    AudioEngineRouterProcessor.tryptifyNativeAvailable(),
-                    lastwaveProcessor.isAvailable,
-                )
-
-                if (lastwave && tryptify) {
-                    dataStore.edit { it[LastwaveAudioProcessingKey] = false }
-                }
-
-                tryptifyEngineController.setEngineActive(tryptify)
-
-                primaryEngineRouter.requestEngineReevaluate()
-
-                tryptifyDownmix.setEnabled(downmixOn)
-                tryptifyUsbPinEnabled = usbPin
-                applyTryptifyUsbPin()
-                if (usbAttached && usbPin && tryptify) {
-                    Timber.tag(TAG).d("Tryptify USB pin: DAC attached, framework routing pinned")
-                }
-
-                if (engineSelectionChanged) {
-                    // The live audio chain pill reads BitPerfectRuntime.status,
-                    // which is only recomputed when the sink re-configures. A
-                    // mid-track engine flip changes the route (float sink,
-                    // chain bypass, mixer re-grant) without any configure - so
-                    // re-evaluate immediately with the latched track values.
-                    // This runs BEFORE the mixer refresh so a subsequent
-                    // BIT_PERFECT grant can layer its wire rate on top of the
-                    // fresh verdict, exactly like the onConfigure path does.
-                    BitPerfectRuntime.reevaluateEngines(
-                        context = this@MusicService,
-                        engineOrDspEngaged = tryptify || lastwaveEffective || primaryFloatDspProcessor.engaged,
-                        enginesEngaged = tryptify || lastwaveEffective,
-                    )
-                }
-
-                lastwaveUsbBitPerfect.setEnabled(false)
-                applyNativeRateOverride()
-                refreshMixerBitPerfectRoute()
-                applyFloatDspEngagement()
-
-                if (engineSelectionChanged && bitPerfectNeedsRouteReprepare()) {
-                    // Re-prepare while actually playing - the same recovery the
-                    // bit-perfect toggle uses. Without it the router's deferred
-                    // switch can strand the OLD engine alive when the chain was
-                    // bypassed (router inactive -> reevaluate flag never
-                    // consumed), and the switching sink keeps feeding the
-                    // previously-configured side.
-                    scope.launch(Dispatchers.Main) {
-                        runCatching { repreparePlayerForAudioRouteChange() }
+                // Exception-hardened collector: the body bridges native engine
+                // calls (Tryptify controller, LastWave processor, USB pin) that
+                // can throw transiently. If it ever crashed, the coroutine died
+                // silently and publishWantedEngine never fired again - the live
+                // audio chain pill then showed the OLD engine (and stale rates)
+                // until the app was restarted. The critical UI-facing publishes
+                // run FIRST so even a failed tail leaves the pill correct.
+                runCatching {
+                    val lastwaveEffective = lastwave && !tryptify
+                    val engineSelectionChanged =
+                        tryptifyAudioProcessing != tryptify || lastwaveAudioProcessing != lastwaveEffective
+                    if (engineSelectionChanged) {
+                        Timber.tag(TAG).i(
+                            "Audio engine selection: tryptify=%s lastwave=%s (raw lastwave=%s normalized off — engines are exclusive)",
+                            tryptify,
+                            lastwaveEffective,
+                            lastwave,
+                        )
                     }
-                    // Watchdog: if the router still has not latched the wanted
-                    // engine shortly after the re-prepare (a configure race or a
-                    // deferred reroute), re-prepare again instead of leaving
-                    // the equalizer silent until the next track. Retries up to
-                    // 3 times (1.5s apart): a single one-shot probe could land
-                    // while the player was mid-stop of the previous re-prepare
-                    // and give up permanently - "sometimes the EQ works,
-                    // sometimes it doesn't". Only one watchdog may be pending
-                    // at a time - rapid engine toggling replaces it instead of
-                    // stacking re-prepares. Gives up cleanly when nothing is
-                    // playing (the next play() configures fresh anyway).
-                    engineEngagementWatchdog?.cancel()
-                    engineEngagementWatchdog = scope.launch {
-                        var watchdogAttempts = 0
-                        while (watchdogAttempts < 3) {
-                            delay(1500L)
-                            val wanted = EngineRuntime.wantedEngineState
-                            if (wanted == AudioEngineRouterProcessor.Engine.NONE) return@launch
-                            if (EngineRuntime.activeEngine == wanted) return@launch
-                            if (!bitPerfectNeedsRouteReprepare()) {
-                                // Player idle/empty/casting: the router will
-                                // latch on the next fresh playback configure.
-                                if (player.playbackState == Player.STATE_IDLE) return@launch
-                                continue
-                            }
-                            watchdogAttempts++
-                            Timber.tag(TAG).w(
-                                "Engine %s not engaged 1.5s after selection (probe %d/3) — forcing route re-prepare",
-                                wanted,
-                                watchdogAttempts,
-                            )
-                            scope.launch(Dispatchers.Main) {
-                                runCatching { repreparePlayerForAudioRouteChange() }
+                    tryptifyAudioProcessing = tryptify
+                    lastwaveAudioProcessing = lastwaveEffective
+
+                    // The pill/UI reacts to the SELECTION the moment the preference
+                    // flips - it does not wait for the router to latch the engine on
+                    // the next configure or buffer.
+                    EngineRuntime.publishWantedEngine(
+                        when {
+                            tryptify -> AudioEngineRouterProcessor.Engine.TRYPTIFY
+                            lastwaveEffective -> AudioEngineRouterProcessor.Engine.LASTWAVE
+                            else -> AudioEngineRouterProcessor.Engine.NONE
+                        },
+                    )
+                    EngineRuntime.publishEngineAvailability(
+                        AudioEngineRouterProcessor.tryptifyNativeAvailable(),
+                        lastwaveProcessor.isAvailable,
+                    )
+
+                    if (lastwave && tryptify) {
+                        dataStore.edit { it[LastwaveAudioProcessingKey] = false }
+                    }
+
+                    tryptifyEngineController.setEngineActive(tryptify)
+
+                    primaryEngineRouter.requestEngineReevaluate()
+
+                    tryptifyDownmix.setEnabled(downmixOn)
+                    tryptifyUsbPinEnabled = usbPin
+                    applyTryptifyUsbPin()
+                    if (usbAttached && usbPin && tryptify) {
+                        Timber.tag(TAG).d("Tryptify USB pin: DAC attached, framework routing pinned")
+                    }
+
+                    if (engineSelectionChanged) {
+                        // The live audio chain pill reads BitPerfectRuntime.status,
+                        // which is only recomputed when the sink re-configures. A
+                        // mid-track engine flip changes the route (float sink,
+                        // chain bypass, mixer re-grant) without any configure - so
+                        // re-evaluate immediately with the latched track values.
+                        // This runs BEFORE the mixer refresh so a subsequent
+                        // BIT_PERFECT grant can layer its wire rate on top of the
+                        // fresh verdict, exactly like the onConfigure path does.
+                        BitPerfectRuntime.reevaluateEngines(
+                            context = this@MusicService,
+                            engineOrDspEngaged = tryptify || lastwaveEffective || primaryFloatDspProcessor.engaged,
+                            enginesEngaged = tryptify || lastwaveEffective,
+                        )
+                    }
+
+                    lastwaveUsbBitPerfect.setEnabled(false)
+                    applyNativeRateOverride()
+                    refreshMixerBitPerfectRoute()
+                    applyFloatDspEngagement()
+
+                    if (engineSelectionChanged && bitPerfectNeedsRouteReprepare()) {
+                        // Re-prepare while actually playing - the same recovery the
+                        // bit-perfect toggle uses. Without it the router's deferred
+                        // switch can strand the OLD engine alive when the chain was
+                        // bypassed (router inactive -> reevaluate flag never
+                        // consumed), and the switching sink keeps feeding the
+                        // previously-configured side.
+                        scope.launch(Dispatchers.Main) {
+                            runCatching { repreparePlayerForAudioRouteChange() }
+                        }
+                        // Watchdog: if the router still has not latched the wanted
+                        // engine shortly after the re-prepare (a configure race or a
+                        // deferred reroute), re-prepare again instead of leaving
+                        // the equalizer silent until the next track. Retries up to
+                        // 3 times (1.5s apart): a single one-shot probe could land
+                        // while the player was mid-stop of the previous re-prepare
+                        // and give up permanently - "sometimes the EQ works,
+                        // sometimes it doesn't". Only one watchdog may be pending
+                        // at a time - rapid engine toggling replaces it instead of
+                        // stacking re-prepares. Gives up cleanly when nothing is
+                        // playing (the next play() configures fresh anyway).
+                        engineEngagementWatchdog?.cancel()
+                        engineEngagementWatchdog = scope.launch {
+                            var watchdogAttempts = 0
+                            while (watchdogAttempts < 3) {
+                                delay(1500L)
+                                val wanted = EngineRuntime.wantedEngineState
+                                if (wanted == AudioEngineRouterProcessor.Engine.NONE) return@launch
+                                if (EngineRuntime.activeEngine == wanted) return@launch
+                                if (!bitPerfectNeedsRouteReprepare()) {
+                                    // Player idle/empty/casting: the router will
+                                    // latch on the next fresh playback configure.
+                                    if (player.playbackState == Player.STATE_IDLE) return@launch
+                                    continue
+                                }
+                                watchdogAttempts++
+                                Timber.tag(TAG).w(
+                                    "Engine %s not engaged 1.5s after selection (probe %d/3) — forcing route re-prepare",
+                                    wanted,
+                                    watchdogAttempts,
+                                )
+                                scope.launch(Dispatchers.Main) {
+                                    runCatching { repreparePlayerForAudioRouteChange() }
+                                }
                             }
                         }
                     }
+                }.onFailure {
+                    if (it is CancellationException) throw it
+                    Timber.tag(TAG).e(it, "Audio engine collector emission failed; will retry on next preference change")
                 }
             }
 
         currentFormat
             .collectLatest(scope) { format ->
-                currentFormatEntity = format
-                refreshMixerBitPerfectRoute()
-                maybeSyncFormatEntityWithDecodedStream()
-                maybeParseMissingReplayGain(format)
-                applyFloatDspEngagement()
+                // Exception-hardened: refreshMixerBitPerfectRoute and
+                // applyFloatDspEngagement touch the audio session / native
+                // engines and must not kill this per-track stream.
+                runCatching {
+                    currentFormatEntity = format
+                    // Self-heal: re-assert the wanted-engine mirror from the
+                    // in-memory selection on every track/format change. If an
+                    // earlier engine-collector emission failed midway (native
+                    // call hiccup), the live audio chain pill could otherwise
+                    // keep showing the previous engine until the next manual
+                    // toggle. Writing the same value is a no-op for Compose.
+                    EngineRuntime.publishWantedEngine(
+                        when {
+                            tryptifyAudioProcessing -> AudioEngineRouterProcessor.Engine.TRYPTIFY
+                            lastwaveAudioProcessing -> AudioEngineRouterProcessor.Engine.LASTWAVE
+                            else -> AudioEngineRouterProcessor.Engine.NONE
+                        },
+                    )
+                    refreshMixerBitPerfectRoute()
+                    maybeSyncFormatEntityWithDecodedStream()
+                    maybeParseMissingReplayGain(format)
+                    applyFloatDspEngagement()
+                }.onFailure {
+                    if (it is CancellationException) throw it
+                    Timber.tag(TAG).e(it, "currentFormat collector emission failed")
+                }
             }
 
         dataStore.data

@@ -71,7 +71,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -120,7 +119,6 @@ import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.rememberThrottledBackdrop
 import moe.rukamori.archivetune.ui.menu.SongMenu
-import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -158,13 +156,6 @@ fun LocalSongScreen(
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var query by rememberSaveable { mutableStateOf("") }
-
-    val isListScrolling by remember {
-        derivedStateOf {
-            listState.firstVisibleItemIndex > 0 ||
-                listState.firstVisibleItemScrollOffset > 0
-        }
-    }
 
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = true)
     val liquidGlassHeaderActive =
@@ -344,9 +335,6 @@ fun LocalSongScreen(
         )
     }
 
-    CompositionLocalProvider(
-        LocalMiniPlayerDocked provides isListScrolling,
-    ) {
     Box(
         modifier =
             Modifier
@@ -636,7 +624,6 @@ fun LocalSongScreen(
         }
         }
 
-    }
     }
 }
 

@@ -9,6 +9,7 @@ package moe.rukamori.archivetune.ui.component
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -111,9 +112,21 @@ fun TopSearch(
     leftFocusRequester: FocusRequester? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // Animates on OPEN, snaps on CLOSE. During the close the previous spec
+    // kept `animationProgress > 0` (and therefore the full-screen content,
+    // including its scrollable result lists) composed and INTERACTIVE for the
+    // whole 300ms tween - a lingering invisible layer that consumed scroll
+    // drags after closing search (history page "stuck" glitch). Snapping to 0
+    // disposes the content immediately; the caller's own fade handles the
+    // visual close.
     val animationProgress: Float by animateFloatAsState(
         targetValue = if (active) 1f else 0f,
-        animationSpec = tween(durationMillis = AnimationDurationMillis),
+        animationSpec =
+            if (active) {
+                tween(durationMillis = AnimationDurationMillis)
+            } else {
+                snap()
+            },
         label = "SearchBarAnimation",
     )
 

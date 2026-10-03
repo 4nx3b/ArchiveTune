@@ -1430,19 +1430,27 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
-                    val bottomUiCompactFraction by animateFloatAsState(
-                        targetValue = if (isBottomUiCompact) 1f else 0f,
-                        animationSpec =
-                            if (disableAnimations) {
-                                snap()
-                            } else {
-                                spring(
-                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                    stiffness = 400f,
-                                )
-                            },
-                        label = "bottomUiCompactFraction",
-                    )
+                    // Kept as a State object (NOT delegated with `by`): reading
+                    // an animated value directly in this scope would invalidate
+                    // the entire scaffold composition (NavHost + bars + mini
+                    // player slot) on EVERY frame of the compact transition.
+                    // Handing consumers the State object lets each consumer
+                    // read it in its own (much smaller) scope or in the
+                    // draw/layout phase instead.
+                    val bottomUiCompactFractionState =
+                        animateFloatAsState(
+                            targetValue = if (isBottomUiCompact) 1f else 0f,
+                            animationSpec =
+                                if (disableAnimations) {
+                                    snap()
+                                } else {
+                                    spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = 400f,
+                                    )
+                                },
+                            label = "bottomUiCompactFraction",
+                        )
 
                     // Inside library sub-pages (playlists, history, liked, downloads)
                     // the left floating circle behaves as a Library shortcut instead
@@ -1502,8 +1510,21 @@ class MainActivity : ComponentActivity() {
                         MiniPlayerBackgroundStyleKey,
                         defaultValue = MiniPlayerBackgroundStyle.THEME,
                     )
+                    // Only allocate (and later record) the app-wide frosted
+                    // layer while a frosted consumer is actually enabled:
+                    // frosted / tint-frosted nav bar (or tablet rail blur) or
+                    // the FROSTED mini player background. With the default
+                    // THEME mini player and a plain nav bar there are zero
+                    // consumers, and the throttled full-screen GraphicsLayer
+                    // re-record during scrolling was pure overhead on every
+                    // API 31+ device. Consumers already handle a null
+                    // backdrop (they fall back to the plain surface color).
+                    val anyFrostedConsumerActive =
+                        navigationBarFrostedBlur ||
+                            navigationBarTintFrostedBlur ||
+                            miniPlayerBgStyle == MiniPlayerBackgroundStyle.FROSTED
                     val navBarFrostedBackdrop =
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && anyFrostedConsumerActive) {
                             val frostedLayer = rememberGraphicsLayer()
                             remember(frostedLayer) { NavigationBarBackdrop(frostedLayer) }
                         } else {
@@ -2241,7 +2262,7 @@ class MainActivity : ComponentActivity() {
                         LocalLiquidGlassBackdrop provides liquidGlassBackdrop,
                         moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop provides menuGlassBackdrop,
                         moe.rukamori.archivetune.ui.component.LocalLiquidGlassTuning provides liquidGlassTuning,
-                        moe.rukamori.archivetune.ui.component.LocalBottomUiCompactFraction provides bottomUiCompactFraction,
+                        moe.rukamori.archivetune.ui.component.LocalBottomUiCompactFraction provides bottomUiCompactFractionState,
                         moe.rukamori.archivetune.ui.player.LocalRootOverlayActive provides rootOverlayActive,
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
@@ -3107,7 +3128,7 @@ class MainActivity : ComponentActivity() {
                                                 pureBlack = pureBlack,
                                                 isMiniPlayerPairedWithNavigation = areBottomBarsPaired,
                                                 onLyricsVisibilityChange = { isPlayerLyricsFullScreen = it },
-                                                compactFraction = bottomUiCompactFraction,
+                                                compactFractionState = bottomUiCompactFractionState,
                                                 compactHorizontalPadding = navBarHorizontalPadding,
                                                 compactReserveEndControl = compactSearchCircleVisible,
                                                 navbarHiddenOffset = {
@@ -3171,7 +3192,7 @@ class MainActivity : ComponentActivity() {
                                                                 slideOffset + hideOffset
                                                             }
 
-                                                        alpha = 1f - bottomUiCompactFraction * 0.9f
+                                                        alpha = 1f - bottomUiCompactFractionState.value * 0.9f
                                                     },
                                         ) {
                                             FloatingNavigationToolbar(
@@ -3208,10 +3229,17 @@ class MainActivity : ComponentActivity() {
                                         }
 
                                         if (shouldShowNavigationBar || !playerBottomSheetState.isDismissed) {
-                                            val compactRowAlpha =
-                                                bottomUiCompactFraction *
-                                                    (1f - playerBottomSheetState.progress.coerceIn(0f, 1f))
-                                            if (compactRowAlpha > 0.01f) {
+                                            // The visibility gate is a derived boolean: it only flips
+                                            // when the row actually appears/disappears, not on every
+                                            // animation frame. The per-frame slide itself is computed
+                                            // inside the graphicsLayer block (draw phase).
+                                            val compactRowVisible by remember {
+                                                derivedStateOf {
+                                                    bottomUiCompactFractionState.value *
+                                                        (1f - playerBottomSheetState.progress.coerceIn(0f, 1f)) > 0.01f
+                                                }
+                                            }
+                                            if (compactRowVisible) {
                                                 Box(
                                                     modifier =
                                                         Modifier
@@ -3229,6 +3257,9 @@ class MainActivity : ComponentActivity() {
 
                                                                 val slideDistancePx =
                                                                     (bottomInset + floatingBarsBottomPadding + navVisibleHeight + 8.dp).toPx()
+                                                                val compactRowAlpha =
+                                                                    bottomUiCompactFractionState.value *
+                                                                        (1f - playerBottomSheetState.progress.coerceIn(0f, 1f))
                                                                 translationY =
                                                                     (1f - compactRowAlpha) * slideDistancePx
                                                             },
