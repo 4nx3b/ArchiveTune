@@ -4268,3 +4268,20 @@ Work Log:
 Stage Summary:
 - dev @ e880b40e0 (+ this docs commit): 4-task batch + comment strip + release notes ready; PR #227 (dev -> main) auto-carries everything.
 - Release sequence pending: merge PR #227 -> dispatch release.yml on main -> "ArchiveTune 17.0" (tag v17.0) with changelogs.md attached.
+
+---
+Task ID: 63 (completion addendum)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: ArchiveTune 17.0 release — outcome record
+
+Work Log:
+- CI green chain on dev: 8b07ec284 (4-task batch), e880b40e0 (comment strip + release notes), 99d19dfa5 (changelog/worklog docs) — Build Pull Request + Nightly canary all success.
+- PR #227 (dev -> main, 26 commits) merged with merge commit aa825502d.
+- release.yml dispatched on main (run 37152261677): check-version -> v17.0 (baseVersionName 17.0), all 7 release APK variants + reproducibility built and signed, create-release published.
+- Release LIVE: "ArchiveTune 17.0" (exact name), tag v17.0, stable (not draft/prerelease), https://github.com/4nx3b/ArchiveTune/releases/tag/v17.0
+  - Notes: 17.0 audiophile summary + Full changelog link (blob/v17.0/changelogs.md) + v16.0...v17.0 compare link
+  - Assets: foss+gms mobile (arm64/armeabi/universal/x86/x86_64), gms tv universal, and changelogs.md itself (verified via asset download: carries the dynamic automix trigger, artist dropdown, settings compact search and comment-strip entries)
+- README credits on the release tree: Tryptify whole-engine credit present (line 284, since 93e448f45), SimpMusic link corrected, LastWave-native/BitChord/vivi/etc. all intact.
+
+Stage Summary:
+- All 5 user tasks complete: artist overflow opens (anchored morph dropdown), header/compact search dedup, settings compact search, dynamic automix fade trigger, comment strip, and the stable "ArchiveTune 17.0" release shipped with updated changelogs.md attached.
