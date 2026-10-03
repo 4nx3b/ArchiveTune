@@ -1123,6 +1123,7 @@ fun ArtistScreen(
                         item {
                             NavigationTitle(
                                 title = stringResource(R.string.songs),
+                                accentColor = MaterialTheme.colorScheme.onSurface,
                                 onClick = {
                                     navController.navigate("artist/${viewModel.artistId}/songs")
                                 },
@@ -1146,6 +1147,7 @@ fun ArtistScreen(
                                 showInLibraryIcon = true,
                                 isActive = song.id == mediaMetadata?.id,
                                 isPlaying = isPlaying,
+                                activeContainerBackdrop = true,
 
                                 swipeContentBackgroundColor = Color.Transparent,
                                 trailingContent = {
@@ -1214,7 +1216,10 @@ fun ArtistScreen(
                                     Text(
                                         text = stringResource(R.string.view_all),
                                         style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.primary,
+                                        // Non-dynamic (matches the artist-page section
+                                        // headers): was colorScheme.primary, which
+                                        // re-tinted with every playing song.
+                                        color = MaterialTheme.colorScheme.onSurface,
                                         modifier =
                                             Modifier
                                                 .fillMaxWidth()
@@ -1230,6 +1235,7 @@ fun ArtistScreen(
                         item {
                             NavigationTitle(
                                 title = stringResource(R.string.albums),
+                                accentColor = MaterialTheme.colorScheme.onSurface,
                                 onClick = {
                                     navController.navigate("artist/${viewModel.artistId}/albums")
                                 },
@@ -1289,6 +1295,7 @@ fun ArtistScreen(
                             ) {
                                 NavigationTitle(
                                     title = section.title,
+                                    accentColor = MaterialTheme.colorScheme.onSurface,
                                     onClick =
                                         section.moreEndpoint?.let {
                                             {
@@ -1315,6 +1322,7 @@ fun ArtistScreen(
                                     item = song as SongItem,
                                     isActive = mediaMetadata?.id == song.id,
                                     isPlaying = isPlaying,
+                                    activeContainerBackdrop = true,
 
                                     swipeContentBackgroundColor = Color.Transparent,
                                     trailingContent = {

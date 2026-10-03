@@ -673,8 +673,15 @@ fun AppleMusicPlayerContent(
         )
         val context = LocalContext.current
         val imageLoader = context.imageLoader
+        // The static backdrop is rasterized ONCE per artwork into a software
+        // pre-blurred bitmap on EVERY API level (not just pre-S). The live
+        // `Modifier.blur(64.dp)` RenderEffect alternative re-executed the
+        // full-screen gaussian on EVERY composite once the canvas twin above
+        // started pushing video frames - the "smooth for 1-2 seconds, then
+        // laggy" behaviour behind the player controls. The bitmap path costs
+        // one IO blur per track and zero per-frame GPU work.
         val preBlurredBitmap by produceState<Bitmap?>(null, artworkUrl) {
-            if (!isPreS || artworkUrl.isNullOrBlank() || videoShowing || useCanvasBackdrop) {
+            if (artworkUrl.isNullOrBlank() || videoShowing) {
                 value = null
                 return@produceState
             }
@@ -692,7 +699,16 @@ fun AppleMusicPlayerContent(
                         val bitmap = result.image.toBitmap()
                             .copy(Bitmap.Config.ARGB_8888, true)
                         val density = context.resources.displayMetrics.density
-                        ImageBlurUtils.blur(bitmap, 72f * density)
+                        // S+ matches the previous live-blur radius exactly
+                        // (AmBackdropBlurRadius = 64dp); pre-S keeps its
+                        // historical 72dp falloff compensation.
+                        val radiusPx =
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                AmBackdropBlurRadius.value * density
+                            } else {
+                                72f * density
+                            }
+                        ImageBlurUtils.blur(bitmap, radiusPx)
                     } else null
                 } catch (_: Exception) {
                     null
@@ -752,7 +768,11 @@ fun AppleMusicPlayerContent(
                         .clipToBounds(),
                 contentAlignment = Alignment.Center,
             ) {
-                if (isPreS && preBlurredBitmap != null) {
+                if (preBlurredBitmap != null) {
+                    // Rasterized (software-blurred once per track) backdrop -
+                    // identical look to the live RenderEffect blur but with no
+                    // per-frame gaussian cost while the canvas twin composites
+                    // video frames above this layer.
                     Image(
                         bitmap = preBlurredBitmap!!.asImageBitmap(),
                         contentDescription = null,
@@ -764,6 +784,8 @@ fun AppleMusicPlayerContent(
                     )
                 } else {
 
+                    // Fallback while the pre-blurred bitmap loads (or if the
+                    // artwork failed to decode): the live-blurred AsyncImage.
                     val backdropModel = artworkRequest ?: artworkUrl
                     Crossfade(
                         targetState = backdropModel,
@@ -827,7 +849,9 @@ fun AppleMusicPlayerContent(
                     )
                 }
             }
-            val preBlurLoading = isPreS && preBlurredBitmap == null && !canvasActive
+            // The heavier scrim applies while the rasterized backdrop bitmap is
+            // still decoding (all API levels now, not just pre-S).
+            val preBlurLoading = preBlurredBitmap == null && !canvasActive
 
             val canvasScrimBrush =
                 remember {

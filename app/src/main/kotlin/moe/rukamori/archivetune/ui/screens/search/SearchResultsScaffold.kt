@@ -187,7 +187,10 @@ fun BoxScope.SearchResultsBottomOverlay(
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val effectiveBottomPadding = (if (imeVisible) 0.dp else bottomPadding) + 10.dp
 
-    val compactFraction = LocalBottomUiCompactFraction.current
+    // State object (see LocalBottomUiCompactFraction): read inside the
+    // graphicsLayer lambda below so the animated fraction only re-draws this
+    // element instead of recomposing the whole results scaffold per frame.
+    val compactFractionState = LocalBottomUiCompactFraction.current
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -197,6 +200,7 @@ fun BoxScope.SearchResultsBottomOverlay(
                 .fillMaxWidth()
                 .imePadding()
                 .graphicsLayer {
+                    val compactFraction = compactFractionState.value
                     alpha = 1f - compactFraction
                     translationY = compactFraction * 96.dp.toPx()
                 }

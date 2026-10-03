@@ -198,7 +198,15 @@ fun HistoryScreen(
         )
 
     val searchQuery = query.text.trim()
-    val showSearchBar = isSearching || searchQuery.isNotBlank()
+    // NOTE: intentionally ONLY `isSearching`. The previous
+    // `|| searchQuery.isNotBlank()` term let a stale/late IME composition
+    // update (delivered after resetSearch cleared the field) resurrect the
+    // full-screen search overlay invisibly on top of the history list - the
+    // overlay then consumed every scroll drag while the visible list never
+    // moved (the "history page gets stuck after going back from search"
+    // glitch). resetSearch() clears both flags atomically, so the extra term
+    // guarded nothing legitimate.
+    val showSearchBar = isSearching
     val selectedEventIdSet by remember(selectedEventIds) {
         derivedStateOf { selectedEventIds.toSet() }
     }
@@ -270,6 +278,18 @@ fun HistoryScreen(
                 focusManager.clearFocus()
             }
         }
+
+    // Belt-and-braces: if a late IME composition update re-populates the
+    // query AFTER the overlay closed (the resurrection path the old
+    // showSearchBar term turned into the stuck-screen glitch), clear it so
+    // the next search open starts from an empty field instead of
+    // resurrecting a hidden overlay. Keyed on blankness so the effect
+    // re-runs exactly when a stray non-blank write lands while closed.
+    LaunchedEffect(showSearchBar, query.text.isNotBlank()) {
+        if (!showSearchBar && query.text.isNotBlank()) {
+            query = TextFieldValue()
+        }
+    }
 
     val dateAgoToString: (DateAgo) -> String =
         remember(context) {
@@ -767,14 +787,6 @@ fun HistoryScreen(
                             }
                         }
                     }
-                }
-            }
-
-            val isListScrolling by remember {
-                derivedStateOf {
-                    val activeState = if (historySource == HistorySource.REMOTE) remoteListState else localListState
-                    activeState.firstVisibleItemIndex > 0 ||
-                        activeState.firstVisibleItemScrollOffset > 0
                 }
             }
 

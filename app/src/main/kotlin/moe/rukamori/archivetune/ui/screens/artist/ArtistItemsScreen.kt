@@ -181,6 +181,7 @@ fun ArtistItemsScreen(
                             else -> false
                         },
                     isPlaying = isPlaying,
+                    activeContainerBackdrop = true,
                     trailingContent = {
                         IconButton(
                             onClick = {

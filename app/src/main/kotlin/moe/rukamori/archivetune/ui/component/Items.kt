@@ -20,6 +20,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.Orientation
@@ -136,6 +137,14 @@ import androidx.compose.runtime.setValue
 
 const val ActiveBoxAlpha = 0.6f
 
+// Alpha of the backdrop-inspired active-song highlight pill (artist pages):
+// translucent enough that the hero gradient / page backdrop shows through the
+// tint ("inspired by the backdrop"), opaque enough plus a hairline border
+// that the row still clearly reads as highlighted rather than blending into
+// the page ("shouldn't blend too much").
+private const val ActiveBackdropContainerAlpha = 0.55f
+private const val ActiveBackdropBorderAlpha = 0.28f
+
 @Composable
 inline fun ListItem(
     modifier: Modifier = Modifier,
@@ -146,24 +155,25 @@ inline fun ListItem(
     isActive: Boolean = false,
     showActiveContainer: Boolean = true,
     textColorOverride: Color? = null,
+    activeContainerBackdrop: Boolean = false,
 ) {
     val titleColor =
-        textColorOverride ?: if (isActive) {
-            MaterialTheme.colorScheme.onSecondaryContainer
-        } else {
-            MaterialTheme.colorScheme.onSurface
+        textColorOverride ?: when {
+            isActive && activeContainerBackdrop -> MaterialTheme.colorScheme.onSurface
+            isActive -> MaterialTheme.colorScheme.onSecondaryContainer
+            else -> MaterialTheme.colorScheme.onSurface
         }
     val subtitleContentColor =
-        textColorOverride?.copy(alpha = 0.7f) ?: if (isActive) {
-            MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
+        textColorOverride?.copy(alpha = 0.7f) ?: when {
+            isActive && activeContainerBackdrop -> MaterialTheme.colorScheme.onSurfaceVariant
+            isActive -> MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
         }
     val trailingContentColor =
-        textColorOverride ?: if (isActive) {
-            MaterialTheme.colorScheme.onSecondaryContainer
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
+        textColorOverride ?: when {
+            isActive && activeContainerBackdrop -> MaterialTheme.colorScheme.onSurfaceVariant
+            isActive -> MaterialTheme.colorScheme.onSecondaryContainer
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
         }
 
     Row(
@@ -175,9 +185,29 @@ inline fun ListItem(
                 .padding(horizontal = 8.dp)
                 .then(
                     if (isActive && showActiveContainer) {
-                        Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.secondaryContainer)
+                        if (activeContainerBackdrop) {
+                            // Backdrop-inspired highlight: a translucent tonal
+                            // tint over whatever the page draws behind the row
+                            // plus a hairline border, so the pill is clearly
+                            // present without fully covering the backdrop.
+                            Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    MaterialTheme.colorScheme.secondaryContainer.copy(
+                                        alpha = ActiveBackdropContainerAlpha,
+                                    ),
+                                ).border(
+                                    width = Dp.Hairline,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                        alpha = ActiveBackdropBorderAlpha,
+                                    ),
+                                    shape = RoundedCornerShape(12.dp),
+                                )
+                        } else {
+                            Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.secondaryContainer)
+                        }
                     } else {
                         Modifier
                     },
@@ -224,23 +254,25 @@ fun ListItem(
     trailingContent: @Composable RowScope.() -> Unit = {},
     isActive: Boolean = false,
     showActiveContainer: Boolean = true,
+    activeContainerBackdrop: Boolean = false,
 ) = ListItem(
     title = title,
     modifier = modifier,
     isActive = isActive,
     showActiveContainer = showActiveContainer,
+    activeContainerBackdrop = activeContainerBackdrop,
     subtitle = {
         badges()
         if (!subtitle.isNullOrEmpty()) {
             Text(
                 text = subtitle,
                 color =
-                    if (isActive) {
-                        MaterialTheme.colorScheme.onSecondaryContainer.copy(
+                    when {
+                        isActive && activeContainerBackdrop -> MaterialTheme.colorScheme.onSurfaceVariant
+                        isActive -> MaterialTheme.colorScheme.onSecondaryContainer.copy(
                             alpha = 0.7f,
                         )
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
@@ -369,6 +401,7 @@ fun SongListItem(
     isSwipeable: Boolean = true,
     swipeContentBackgroundColor: Color? = null,
     showActiveContainer: Boolean = true,
+    activeContainerBackdrop: Boolean = false,
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
     val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = true)
@@ -397,6 +430,7 @@ fun SongListItem(
             modifier = modifier,
             isActive = isActive,
             showActiveContainer = showActiveContainer,
+            activeContainerBackdrop = activeContainerBackdrop,
         )
     }
 
@@ -716,6 +750,7 @@ fun MediaMetadataListItem(
     shouldLoadImage: Boolean = true,
 
     showActiveContainer: Boolean = true,
+    activeContainerBackdrop: Boolean = false,
     trailingContent: @Composable RowScope.() -> Unit = {},
     textColorOverride: Color? = null,
 ) {
@@ -745,6 +780,7 @@ fun MediaMetadataListItem(
         modifier = modifier,
         isActive = isActive,
         showActiveContainer = showActiveContainer,
+        activeContainerBackdrop = activeContainerBackdrop,
         textColorOverride = textColorOverride,
     )
 }
@@ -762,6 +798,7 @@ fun YouTubeListItem(
     isSwipeable: Boolean = true,
     swipeContentBackgroundColor: Color? = null,
     showActiveContainer: Boolean = true,
+    activeContainerBackdrop: Boolean = false,
     trailingContent: @Composable RowScope.() -> Unit = {},
     badges: @Composable RowScope.() -> Unit = {
         val database = LocalDatabase.current
@@ -839,6 +876,7 @@ fun YouTubeListItem(
             modifier = modifier,
             isActive = isActive,
             showActiveContainer = showActiveContainer,
+            activeContainerBackdrop = activeContainerBackdrop,
         )
     }
 
