@@ -501,7 +501,6 @@ fun ArtistScreen(
                                 null
                             } else {
                                 withContext(Dispatchers.Default) {
-
                                     val bandTop =
                                         (snapshot.height * CANVAS_AMBIENT_BAND_START).toInt()
                                             .coerceIn(0, (snapshot.height - 2).coerceAtLeast(1))
@@ -635,7 +634,6 @@ fun ArtistScreen(
         database.transaction {
             val artist = libraryArtist?.artist
             if (artist != null) {
-
                 val patched =
                     if (artist.channelId.isNullOrBlank() && !artistPage?.artist?.channelId.isNullOrBlank()) {
                         artist.copy(channelId = artistPage?.artist?.channelId)
@@ -780,7 +778,6 @@ fun ArtistScreen(
                                 Modifier
                                     .matchParentSize()
                                     .graphicsLayer {
-
                                         translationY = heroParallaxOffset
                                     },
                         ) {
@@ -969,7 +966,6 @@ fun ArtistScreen(
                                 horizontalAlignment = Alignment.End,
                                 verticalArrangement = Arrangement.spacedBy(14.dp),
                             ) {
-
                                 val playButtonColor =
                                     ambientSource?.let {
                                         animatedAmbientTop

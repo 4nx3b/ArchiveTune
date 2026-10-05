@@ -140,7 +140,6 @@ fun SearchScreen(
                     },
                 ),
     ) {
-
         Box(
             modifier =
                 Modifier

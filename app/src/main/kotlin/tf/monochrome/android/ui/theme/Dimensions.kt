@@ -12,7 +12,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 
 object MonoDimens {
-
     val spacingXs = 4.dp
 
     val spacingSm = 8.dp

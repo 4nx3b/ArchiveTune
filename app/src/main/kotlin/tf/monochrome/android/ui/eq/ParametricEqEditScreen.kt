@@ -325,9 +325,7 @@ fun ParametricEqEditScreen(
     }
 
     if (showSaveDialog) {
-        // Unglassed: this dialog renders inside the glass menu's color scheme,
-        // whose container colors are near-transparent — re-applying the
-        // unglassed scheme gives the dialog a standard opaque container.
+
         UnglassedDialogTheme {
             AlertDialog(
                 onDismissRequest = { showSaveDialog = false },
@@ -353,7 +351,6 @@ fun ParametricEqEditScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = {
-
                         val trimmedName = saveName.trim()
                         if (trimmedName.isNotEmpty()) {
                             viewModel.saveAsPreset(trimmedName, saveDescription.trim())

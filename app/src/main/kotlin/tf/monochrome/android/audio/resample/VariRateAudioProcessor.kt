@@ -54,7 +54,6 @@ class VariRateAudioProcessor @Inject constructor() : AudioProcessor {
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
         if (inputAudioFormat.channelCount != 1 && inputAudioFormat.channelCount != 2) {
-
             pendingFormat = AudioFormat.NOT_SET
             inputFormat = AudioFormat.NOT_SET
             return AudioFormat.NOT_SET
@@ -80,7 +79,6 @@ class VariRateAudioProcessor @Inject constructor() : AudioProcessor {
 
         val table = tableRef.get()
         if (table !== active) {
-
             active = table
         }
         val halfWidth = active.kernel.halfWidth
@@ -128,7 +126,6 @@ class VariRateAudioProcessor @Inject constructor() : AudioProcessor {
         inputEnded && outputBuffer === AudioProcessor.EMPTY_BUFFER
 
     override fun queueEndOfStream() {
-
         if (!inputEnded && inputFormat != AudioFormat.NOT_SET && isActive) {
             val halfWidth = active.kernel.halfWidth
             val channels = inputFormat.channelCount

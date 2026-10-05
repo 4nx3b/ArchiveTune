@@ -117,6 +117,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToUp
+import androidx.compose.animation.core.EaseOutCubic
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeProgressive
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
+import dev.chrisbanes.haze.materials.HazeMaterials
 import kotlin.math.abs
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
@@ -215,6 +222,10 @@ private val AmBackdropBlurRadius = 64.dp
 private const val AmCanvasBackdropUpscale = 6f
 
 private val AmCanvasBackdropBlurRadius = 72.dp
+
+private val AmBottomControlsBlurHeight = 320.dp
+
+private const val AmBottomControlsBlurPeak = 0.90f
 
 private fun Modifier.canvasSnapshotSource(
     graphicsLayer: GraphicsLayer,
@@ -330,7 +341,7 @@ private class AdaptiveCornerShape(
 
 private enum class AppleMusicPlayerState { COVER, QUEUE, LYRICS }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalSharedTransitionApi::class, ExperimentalHazeMaterialsApi::class)
 @Composable
 fun AppleMusicPlayerContent(
     mediaMetadata: MediaMetadata,
@@ -663,10 +674,16 @@ fun AppleMusicPlayerContent(
                         }
                     },
         ) {
-        val sharpArtworkHeight = if (landscape) maxHeight else maxHeight * 0.55f
-
         val fullPlayerHeightForArtwork: Dp? = if (landscape) null else maxHeight
 
+        val bottomControlsHaze = remember { HazeState() }
+
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .hazeSource(bottomControlsHaze),
+        ) {
         Box(
             modifier =
                 Modifier
@@ -725,7 +742,6 @@ fun AppleMusicPlayerContent(
             twinBakeFailures = 0
             if (!useCanvasBackdrop) return@LaunchedEffect
             while (isActive) {
-
                 if (twinBakeFailures >= 5) {
                     blurredTwinBitmap = null
                     delay(AmCanvasSnapshotIntervalMs)
@@ -733,7 +749,6 @@ fun AppleMusicPlayerContent(
                 }
                 val layer = twinSnapshotLayer
                 if (layer.size.width >= 8 && layer.size.height >= 8) {
-
                     withFrameNanos { }
                     val snapshot =
                         runCatching {
@@ -855,7 +870,6 @@ fun AppleMusicPlayerContent(
                 contentAlignment = Alignment.Center,
             ) {
                 if (preBlurredBitmap != null) {
-
                     Image(
                         bitmap = preBlurredBitmap!!.asImageBitmap(),
                         contentDescription = null,
@@ -866,7 +880,6 @@ fun AppleMusicPlayerContent(
                                 .graphicsLayer(driftGraphicsLayer),
                     )
                 } else {
-
                     val backdropModel = artworkRequest ?: artworkUrl
                     Crossfade(
                         targetState = backdropModel,
@@ -907,7 +920,6 @@ fun AppleMusicPlayerContent(
                             },
                     contentAlignment = Alignment.Center,
                 ) {
-
                     if (twinBackdropHealthy) {
                         CanvasArtworkPlayer(
                             primaryUrl = canvasPrimaryUrl,
@@ -988,6 +1000,29 @@ fun AppleMusicPlayerContent(
                 )
             }
         }
+        }
+
+        if (!landscape) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(AmBottomControlsBlurHeight)
+                        .hazeEffect(
+                            state = bottomControlsHaze,
+                            style = HazeMaterials.ultraThin(Color.Black),
+                        ) {
+                            progressive =
+                                HazeProgressive.verticalGradient(
+                                    easing = EaseOutCubic,
+                                    startIntensity = 0f,
+                                    endIntensity = AmBottomControlsBlurPeak,
+                                )
+                            noiseFactor = 0f
+                        },
+            )
+        }
 
         if (landscape) {
             Row(
@@ -1016,7 +1051,6 @@ fun AppleMusicPlayerContent(
                                 canvasPrimaryUrl = canvasPrimaryUrl,
                                 canvasFallbackUrl = canvasFallbackUrl,
                                 isPlaying = isPlaying,
-                                fadeBottom = false,
                                 videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
                                 isMusicVideo = mediaMetadata.isMusicVideo,
                                 landscape = true,
@@ -1077,7 +1111,6 @@ fun AppleMusicPlayerContent(
                                 canvasPrimaryUrl = canvasPrimaryUrl,
                                 canvasFallbackUrl = canvasFallbackUrl,
                                 isPlaying = isPlaying,
-                                fadeBottom = false,
                                 videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
                                 isMusicVideo = mediaMetadata.isMusicVideo,
                                 landscape = true,
@@ -1202,7 +1235,7 @@ fun AppleMusicPlayerContent(
                         .onGloballyPositioned { tapAreaRootOrigin = it.boundsInRoot().topLeft }
 
                         .pointerInput(lyricsOpen, queueOpen) {
-                            if (!lyricsOpen && !queueOpen) return@pointerInput
+                            if (!lyricsOpen || queueOpen) return@pointerInput
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
 
@@ -1237,7 +1270,6 @@ fun AppleMusicPlayerContent(
                                     canvasPrimaryUrl = canvasPrimaryUrl,
                                     canvasFallbackUrl = canvasFallbackUrl,
                                     isPlaying = isPlaying,
-                                    fadeBottom = !videoShowing,
                                     videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
                                     isMusicVideo = mediaMetadata.isMusicVideo,
                                     landscape = false,
@@ -1450,7 +1482,6 @@ private fun AppleMusicSharpArtwork(
     canvasPrimaryUrl: String?,
     canvasFallbackUrl: String?,
     isPlaying: Boolean,
-    fadeBottom: Boolean,
     videoId: String? = null,
     isMusicVideo: Boolean = false,
     landscape: Boolean = false,
@@ -1480,13 +1511,6 @@ private fun AppleMusicSharpArtwork(
         label = "am-canvas-static-base",
     )
 
-    val artworkFadeBrush = remember {
-        Brush.verticalGradient(
-            0.62f to Color.Black,
-            1f to Color.Transparent,
-        )
-    }
-
     val canvasRightFadeBrush = remember {
         Brush.horizontalGradient(
             0f to Color.Black,
@@ -1494,24 +1518,7 @@ private fun AppleMusicSharpArtwork(
             1f to Color.Transparent,
         )
     }
-    Box(
-        modifier =
-            modifier.then(
-                if (fadeBottom) {
-                    Modifier
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .drawWithContent {
-                            drawContent()
-                            drawRect(
-                                brush = artworkFadeBrush,
-                                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
-                            )
-                        }
-                } else {
-                    Modifier
-                },
-            ),
-    ) {
+    Box(modifier = modifier) {
         val videoArtworkState = LocalVideoArtworkState.current
         val showVideo =
             videoArtworkState != null &&
@@ -1943,7 +1950,6 @@ private fun AppleMusicLandscapeTitleBlock(
     iconsOnly: Boolean = false,
 ) {
     if (iconsOnly) {
-
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),

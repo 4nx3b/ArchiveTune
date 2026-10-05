@@ -167,7 +167,6 @@ internal fun SpotifyOnlineSearchResult(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
     ) {
-
         Box(
             modifier =
                 Modifier

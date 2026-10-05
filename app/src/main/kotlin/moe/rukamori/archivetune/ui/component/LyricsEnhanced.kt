@@ -287,7 +287,7 @@ fun LyricsEnhanced(
     var showMaxSelectionToast by remember { mutableStateOf(false) }
     val maxSelectionLimit = 7
     var showShareDialog by remember { mutableStateOf(false) }
-    var shareDialogData by remember { mutableStateOf<Triple<String, String, String>?>(null) }
+    var shareDialogData by remember { mutableStateOf<LyricsSharePayload?>(null) }
     var showShareImageDialog by remember { mutableStateOf(false) }
 
     val currentLyrics by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
@@ -892,10 +892,13 @@ fun LyricsEnhanced(
                             null
                         } else {
                             val selectionId = line.selectionKey(text)
+                            val (translation, romanisation) = line.shareTranslationParts()
                             LyricSelectionLine(
                                 itemId = "$selectionId#$index",
                                 selectionId = selectionId,
                                 text = text,
+                                translation = translation,
+                                romanisation = romanisation,
                             )
                         }
                     }
@@ -934,16 +937,23 @@ fun LyricsEnhanced(
     val shareSelectedLyrics: () -> Unit = {
         val metadata = mediaMetadata
         if (metadata != null) {
+            val selectedEntries =
+                selectionLines.filter { line -> line.selectionId in selectedLineKeySet }
             val selectedLyricsText =
-                selectionLines
-                    .filter { line -> line.selectionId in selectedLineKeySet }
-                    .joinToString("\n") { line -> line.text }
+                selectedEntries.joinToString("\n") { line -> line.text }
             if (selectedLyricsText.isNotBlank()) {
                 shareDialogData =
-                    Triple(
-                        selectedLyricsText,
-                        metadata.title,
-                        metadata.artists.joinToString { it.name },
+                    LyricsSharePayload(
+                        lyricsText = selectedLyricsText,
+                        songTitle = metadata.title,
+                        artists = metadata.artists.joinToString { it.name },
+                        lines = selectedEntries.map { line ->
+                            LyricsShareLine(
+                                text = line.text,
+                                translation = line.translation,
+                                romanisation = line.romanisation,
+                            )
+                        },
                     )
                 showShareDialog = true
             }
@@ -1127,7 +1137,7 @@ fun LyricsEnhanced(
     }
 
     if (showShareDialog && shareDialogData != null) {
-        val (lyricsText, songTitle, artists) = shareDialogData!!
+        val sharePayload = shareDialogData!!
         BasicAlertDialog(onDismissRequest = { showShareDialog = false }) {
             Card(
                 shape = RoundedCornerShape(28.dp),
@@ -1153,7 +1163,7 @@ fun LyricsEnhanced(
                                 .clickable {
                                     shareLyricsAsText(
                                         context = context,
-                                        payload = LyricsSharePayload(lyricsText, songTitle, artists),
+                                        payload = sharePayload,
                                         songId = mediaMetadata?.id,
                                     )
                                     showShareDialog = false
@@ -1177,7 +1187,6 @@ fun LyricsEnhanced(
                             Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    shareDialogData = Triple(lyricsText, songTitle, artists)
                                     showShareImageDialog = true
                                     showShareDialog = false
                                 }.padding(vertical = 12.dp),
@@ -1219,10 +1228,10 @@ fun LyricsEnhanced(
     }
 
     if (showShareImageDialog && shareDialogData != null) {
-        val (lyricsText, songTitle, artists) = shareDialogData!!
+        val sharePayload = shareDialogData!!
         LyricsShareImageDialog(
             mediaMetadata = mediaMetadata,
-            payload = LyricsSharePayload(lyricsText, songTitle, artists),
+            payload = sharePayload,
             onDismissRequest = { showShareImageDialog = false },
         )
     }
@@ -1246,7 +1255,22 @@ private data class LyricSelectionLine(
     val itemId: String,
     val selectionId: String,
     val text: String,
+    val translation: String? = null,
+    val romanisation: String? = null,
 )
+
+private fun ISyncedLine.shareTranslationParts(): Pair<String?, String?> {
+    val raw = translation?.trim()?.takeIf { it.isNotEmpty() } ?: return null to null
+    val parts = raw.split("\n\n")
+    if (parts.size >= 2) {
+        return parts.first().trim() to parts.last().trim()
+    }
+    val compactParts = raw.split('\n')
+    if (compactParts.size >= 2) {
+        return compactParts.first().trim() to compactParts.last().trim()
+    }
+    return null to raw
+}
 
 @Composable
 private fun PlainLyricsView(

@@ -69,6 +69,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ripple
@@ -180,27 +181,6 @@ fun LyricsMenu(
     val isRefetching by viewModel.isRefetching.collectAsStateWithLifecycle()
     val coroutineScope = rememberCoroutineScope()
 
-    val exportLyricsText = lyricsProvider()?.lyrics.orEmpty()
-    val exportFormat = remember(exportLyricsText) { detectLyricsExportFormat(exportLyricsText) }
-    val exportFileBase = remember(exportFormat) {
-        val metadata = mediaMetadataProvider()
-        sanitizeExportFileBase("${metadata.artists.joinToString(", ") { it.name }} - ${metadata.title}")
-    }
-
-    fun launchExportLyrics() {
-        val payload = lyricsProvider()?.lyrics.orEmpty()
-        if (payload.isBlank()) {
-            Toast.makeText(context, R.string.export_lyrics_failed, Toast.LENGTH_SHORT).show()
-            return
-        }
-        val fileName = "${exportFileBase}.${exportFormat.extension}"
-        val mime = when (exportFormat) {
-            LyricsExportFormat.TTML -> moe.rukamori.archivetune.utils.LyricsExportCoordinator.MIME_XML
-            LyricsExportFormat.LRC, LyricsExportFormat.PLAIN -> moe.rukamori.archivetune.utils.LyricsExportCoordinator.MIME_TEXT
-        }
-        moe.rukamori.archivetune.utils.LyricsExportCoordinator.request(context, payload, fileName, mime)
-    }
-
     LaunchedEffect(viewModel) {
         viewModel.refetchCompletionEvents.collect {
             onDismiss()
@@ -226,6 +206,10 @@ fun LyricsMenu(
     var showSearchResultDialog by rememberSaveable {
         mutableStateOf(false)
     }
+    var showExportDialog by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var searchOriginatedFromExport by remember { mutableStateOf(false) }
 
     val searchMediaMetadata =
         remember(showSearchDialog) {
@@ -367,7 +351,14 @@ fun LyricsMenu(
                 )
             },
             onResultSelected = { result ->
-                onDismiss()
+                if (!searchOriginatedFromExport) {
+                    onDismiss()
+                } else {
+                    showSearchDialog = false
+                    showSearchResultDialog = false
+                    showExportDialog = true
+                }
+                searchOriginatedFromExport = false
                 viewModel.cancelSearch()
                 viewModel.updateLyrics(
                     mediaMetadata = searchMediaMetadata,
@@ -381,6 +372,18 @@ fun LyricsMenu(
                 showSearchResultDialog = false
                 viewModel.resetSearchState()
             },
+        )
+    }
+
+    if (showExportDialog) {
+        ExportLyricsDialog(
+            lyricsEntity = lyricsProvider(),
+            mediaMetadata = mediaMetadataProvider(),
+            onOpenSearch = {
+                searchOriginatedFromExport = true
+                showSearchDialog = true
+            },
+            onDismiss = { showExportDialog = false },
         )
     }
 
@@ -875,7 +878,7 @@ fun LyricsMenu(
                         iconRes = R.drawable.download,
                         isDestructive = false,
                         enabled = lyricsText.isNotBlank(),
-                        onClick = { launchExportLyrics() },
+                        onClick = { showExportDialog = true },
                     ),
                 )
 
@@ -2033,6 +2036,227 @@ private enum class LyricsExportFormat(val extension: String) {
     TTML("ttml"),
     LRC("lrc"),
     PLAIN("txt"),
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExportLyricsDialog(
+    lyricsEntity: LyricsEntity?,
+    mediaMetadata: MediaMetadata,
+    onOpenSearch: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val rawLyrics = lyricsEntity?.lyrics.orEmpty()
+    val format = remember(rawLyrics) { detectLyricsExportFormat(rawLyrics) }
+    val isSynced = format != LyricsExportFormat.PLAIN
+    var prettyPrint by rememberSaveable { mutableStateOf(false) }
+    var showPreview by rememberSaveable { mutableStateOf(false) }
+
+    val exportedText =
+        remember(rawLyrics, prettyPrint) {
+            if (prettyPrint && isSynced) prettyPrintLyricsForExport(rawLyrics) else rawLyrics
+        }
+    val fileBase =
+        remember(mediaMetadata.id) {
+            sanitizeExportFileBase("${mediaMetadata.artists.joinToString(", ") { it.name }} - ${mediaMetadata.title}")
+        }
+    val extension = if (prettyPrint && isSynced) "txt" else format.extension
+    val fileName = "$fileBase.$extension"
+    val mime =
+        when {
+            prettyPrint && isSynced -> moe.rukamori.archivetune.utils.LyricsExportCoordinator.MIME_TEXT
+            format == LyricsExportFormat.TTML -> moe.rukamori.archivetune.utils.LyricsExportCoordinator.MIME_XML
+            else -> moe.rukamori.archivetune.utils.LyricsExportCoordinator.MIME_TEXT
+        }
+    val sourceLabel =
+        lyricsEntity?.providerName?.takeIf { it.isNotBlank() }
+            ?: lyricsEntity?.source?.replace('_', ' ')?.lowercase()?.replaceFirstChar { it.uppercase() }
+
+    DefaultDialog(
+        onDismiss = onDismiss,
+        icon = { Icon(painterResource(R.drawable.download), contentDescription = null) },
+        title = { Text(stringResource(R.string.export_lyrics)) },
+        buttons = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(android.R.string.cancel))
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            FilledTonalButton(
+                shape = RoundedCornerShape(18.dp),
+                enabled = rawLyrics.isNotBlank(),
+                onClick = {
+                    if (exportedText.isBlank()) {
+                        Toast.makeText(context, R.string.export_lyrics_failed, Toast.LENGTH_SHORT).show()
+                        return@FilledTonalButton
+                    }
+                    moe.rukamori.archivetune.utils.LyricsExportCoordinator.request(
+                        context,
+                        exportedText,
+                        fileName,
+                        mime,
+                    )
+                    onDismiss()
+                },
+            ) {
+                Text(stringResource(R.string.export))
+            }
+        },
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.solar_server_linear),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Column(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .padding(start = 16.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.export_lyrics_source),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = sourceLabel ?: stringResource(R.string.export_lyrics_source_none),
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                IconButton(onClick = onOpenSearch) {
+                    Icon(
+                        painter = painterResource(R.drawable.search),
+                        contentDescription = stringResource(R.string.search),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+            ) {
+                Column(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.export_lyrics_pretty_print),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        text =
+                            if (isSynced) {
+                                stringResource(R.string.export_lyrics_pretty_print_desc)
+                            } else {
+                                stringResource(R.string.export_lyrics_pretty_print_unavailable)
+                            },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = prettyPrint && isSynced,
+                    enabled = isSynced && rawLyrics.isNotBlank(),
+                    onCheckedChange = { prettyPrint = it },
+                )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { showPreview = !showPreview }
+                        .padding(vertical = 8.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.export_lyrics_preview),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    painter =
+                        painterResource(
+                            if (showPreview) R.drawable.expand_less else R.drawable.expand_more,
+                        ),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (showPreview) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 220.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                            .verticalScroll(rememberScrollState())
+                            .padding(12.dp),
+                ) {
+                    Text(
+                        text = exportedText.ifBlank { stringResource(R.string.export_lyrics_source_none) },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+
+            Text(
+                text = "${stringResource(R.string.export_lyrics_file)}: $fileName",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+        }
+    }
+}
+
+private val GenericVoiceAgentRegex = Regex("""(?i)^v\d+$""")
+
+private val LrcTokenRegex =
+    Regex("""\[[0-9]{1,3}:[0-9]{2}(?:[.:][0-9]{1,3})?\]|\[[a-zA-Z]+:[^]]*]""")
+
+internal fun prettyPrintLyricsForExport(raw: String): String {
+    if (raw.isBlank()) return raw
+    val entries = moe.rukamori.archivetune.lyrics.LyricsUtils.parseLyrics(raw)
+    if (entries.isEmpty()) {
+        return raw.lineSequence()
+            .map { line -> LrcTokenRegex.replace(line, "").trim() }
+            .filterIndexed { index, line -> line.isNotEmpty() || (index > 0) }
+            .joinToString("\n")
+            .trim()
+    }
+    return entries.joinToString("\n") { entry ->
+        val singer =
+            entry.agent
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() && !GenericVoiceAgentRegex.matches(it) }
+        if (singer == null) entry.text else "${entry.text} ($singer)"
+    }.trim()
 }
 
 private fun detectLyricsExportFormat(lyrics: String): LyricsExportFormat {

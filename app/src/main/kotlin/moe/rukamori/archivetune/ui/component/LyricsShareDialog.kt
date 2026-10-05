@@ -76,6 +76,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -160,16 +161,22 @@ fun LyricsShareImageDialog(
                                 height = options.aspectRatio.exportHeight,
                             )
                         } else {
+                            val (displayText, romanisedLineIndices) =
+                                payload.shareDisplayText(
+                                    showTranslation = options.showTranslation,
+                                    showRomanisation = options.showRomanisation,
+                                )
                             ComposeToImage.createLyricsImage(
                                 context = context,
                                 coverArtUrl = mediaMetadata?.thumbnailUrl,
                                 songTitle = payload.songTitle,
                                 artistName = payload.artists,
-                                lyrics = payload.lyricsText,
+                                lyrics = displayText,
                                 width = options.aspectRatio.exportWidth,
                                 height = options.aspectRatio.exportHeight,
                                 textColor = customTextColor?.toArgb(),
                                 shareOptions = options,
+                                romanisedLineIndices = romanisedLineIndices,
                             )
                         }
                     val fileName = "lyrics_${System.currentTimeMillis()}"
@@ -376,6 +383,7 @@ private fun LyricsShareStudioScaffold(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 ControlsSection(
+                    payload = payload,
                     options = options,
                     onOptionsChange = onOptionsChange,
                     customTextColor = customTextColor,
@@ -408,6 +416,7 @@ private fun LyricsShareStudioScaffold(
                             modifier = Modifier.fillMaxWidth(),
                         )
                         ControlsSection(
+                            payload = payload,
                             options = options,
                             onOptionsChange = onOptionsChange,
                             customTextColor = customTextColor,
@@ -524,6 +533,11 @@ private fun PreviewContainer(
         val exportW = options.aspectRatio.exportWidth
         val exportH = options.aspectRatio.exportHeight
         val scale = minOf(1f, 900f / maxOf(exportW, exportH))
+        val (displayText, romanisedLineIndices) =
+            payload.shareDisplayText(
+                showTranslation = options.showTranslation,
+                showRomanisation = options.showRomanisation,
+            )
         previewBitmap =
             runCatching {
                 ComposeToImage.createLyricsImage(
@@ -531,11 +545,12 @@ private fun PreviewContainer(
                     coverArtUrl = mediaMetadata?.thumbnailUrl,
                     songTitle = payload.songTitle,
                     artistName = payload.artists,
-                    lyrics = payload.lyricsText,
+                    lyrics = displayText,
                     width = (exportW * scale).toInt().coerceAtLeast(320),
                     height = (exportH * scale).toInt().coerceAtLeast(320),
                     textColor = customTextColor?.toArgb(),
                     shareOptions = options,
+                    romanisedLineIndices = romanisedLineIndices,
                 )
             }.getOrNull()
     }
@@ -593,6 +608,7 @@ private fun PreviewContainer(
 
 @Composable
 private fun ControlsSection(
+    payload: LyricsSharePayload,
     options: LyricsShareImageOptions,
     onOptionsChange: (LyricsShareImageOptions) -> Unit,
     customTextColor: Color?,
@@ -684,6 +700,87 @@ private fun ControlsSection(
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            if (payload.hasTranslation || payload.hasRomanisation) {
+                LyricsShareControlGroup(title = stringResource(R.string.lyrics_share_lyrics_content)) {
+                    if (payload.hasTranslation) {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 56.dp)
+                                    .clip(MaterialTheme.shapes.large)
+                                    .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                                    .clickable {
+                                        onOptionsChange(options.copy(showTranslation = !options.showTranslation))
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.lyrics_share_translation),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = stringResource(R.string.lyrics_share_translation_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 4.dp),
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Switch(
+                                checked = options.showTranslation,
+                                onCheckedChange = {
+                                    onOptionsChange(options.copy(showTranslation = it))
+                                },
+                            )
+                        }
+                    }
+                    if (payload.hasRomanisation) {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 56.dp)
+                                    .clip(MaterialTheme.shapes.large)
+                                    .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                                    .clickable {
+                                        onOptionsChange(options.copy(showRomanisation = !options.showRomanisation))
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.lyrics_share_romanisation),
+                                    style = MaterialTheme.typography.titleSmall.copy(fontStyle = FontStyle.Italic),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = stringResource(R.string.lyrics_share_romanisation_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 4.dp),
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Switch(
+                                checked = options.showRomanisation,
+                                onCheckedChange = {
+                                    onOptionsChange(options.copy(showRomanisation = it))
+                                },
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
 
             LyricsShareControlGroup(title = stringResource(R.string.lyrics_share_text_color)) {
                 FlowRow(

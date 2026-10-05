@@ -139,7 +139,6 @@ fun ParametricEqScreen(
             item {
               tf.monochrome.android.devedit.DevEditable("peq_preview_graph", Modifier.fillMaxWidth()) {
                 Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-
                     FrequencyResponseGraph(
                         originalCurve = emptyList(),
                         targetCurve = emptyList(),
@@ -382,9 +381,7 @@ fun ParametricEqScreen(
     }
 
     if (showSaveDialog) {
-        // Unglassed: this dialog renders inside the glass menu's color scheme,
-        // whose container colors are near-transparent — re-applying the
-        // unglassed scheme gives the dialog a standard opaque container.
+
         UnglassedDialogTheme {
             AlertDialog(
                 onDismissRequest = { showSaveDialog = false },

@@ -21,6 +21,9 @@ import android.provider.MediaStore
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.StyleSpan
 import android.view.PixelCopy
 import android.view.View
 import androidx.annotation.RequiresApi
@@ -196,6 +199,7 @@ object ComposeToImage {
         height: Int,
         textColor: Int? = null,
         shareOptions: LyricsShareImageOptions = LyricsShareImageOptions(),
+        romanisedLineIndices: Set<Int> = emptySet(),
     ): Bitmap =
         withContext(Dispatchers.Default) {
             if (shareOptions.style != LyricsShareStyle.LIQUID_GLASS) {
@@ -209,6 +213,7 @@ object ComposeToImage {
                     height = height,
                     textColor = textColor,
                     shareOptions = shareOptions,
+                    romanisedLineIndices = romanisedLineIndices,
                 )
             }
             val canvasWidth = width.coerceAtLeast(1)
@@ -510,12 +515,18 @@ object ComposeToImage {
                 fun buildRows(scale: Float): List<Pair<StaticLayout, Boolean>> =
                     lyricLines.mapIndexed { index, line ->
                         val emphasized = index == emphasizedIndex
+                        val italic = index in romanisedLineIndices
                         val paint =
                             TextPaint().apply {
                                 color = if (emphasized) emphasizedColor else normalColor
 
                                 textSize = baseSize * 0.050f * scale * (if (emphasized) 1.36f else 1f)
-                                typeface = if (emphasized) figtreeBold else figtreeRegular
+                                typeface =
+                                    when {
+                                        emphasized -> figtreeBold
+                                        italic -> Typeface.create(figtreeRegular, Typeface.ITALIC)
+                                        else -> figtreeRegular
+                                    }
                                 isAntiAlias = true
                                 letterSpacing = -0.012f
                             }
@@ -632,6 +643,7 @@ object ComposeToImage {
         height: Int,
         textColor: Int?,
         shareOptions: LyricsShareImageOptions,
+        romanisedLineIndices: Set<Int> = emptySet(),
     ): Bitmap =
         withContext(Dispatchers.Default) {
             val style = classicStyleFor(shareOptions.style) ?: return@withContext createLyricsImage(
@@ -644,6 +656,7 @@ object ComposeToImage {
                 height = height,
                 textColor = textColor,
                 shareOptions = shareOptions,
+                romanisedLineIndices = romanisedLineIndices,
             )
             val canvasWidth = width.coerceAtLeast(1)
             val canvasHeight = height.coerceAtLeast(1)
@@ -847,14 +860,33 @@ object ComposeToImage {
 
             var lyricsTextSize = baseSize * 0.055f
             var lyricsLayout: StaticLayout
+            val lyricsCharSequence: CharSequence =
+                if (romanisedLineIndices.isEmpty()) {
+                    lyrics
+                } else {
+                    val spannable = SpannableStringBuilder(lyrics)
+                    var offset = 0
+                    lyrics.lineSequence().forEachIndexed { index, line ->
+                        if (index in romanisedLineIndices) {
+                            spannable.setSpan(
+                                StyleSpan(Typeface.ITALIC),
+                                offset,
+                                offset + line.length,
+                                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                            )
+                        }
+                        offset += line.length + 1
+                    }
+                    spannable
+                }
             do {
                 lyricsPaint.textSize = lyricsTextSize
                 lyricsLayout =
                     StaticLayout.Builder
                         .obtain(
-                            lyrics,
+                            lyricsCharSequence,
                             0,
-                            lyrics.length,
+                            lyricsCharSequence.length,
                             lyricsPaint,
                             lyricsMaxWidth,
                         ).setAlignment(Layout.Alignment.ALIGN_CENTER)

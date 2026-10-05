@@ -517,7 +517,6 @@ class MusicService :
         object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<AudioDeviceInfo>) {
                 if (addedDevices.any { it.isSink }) {
-
                     if (exclusiveRouteSessionFallback) {
                         exclusiveRouteSessionFallback = false
                         Timber.tag(TAG).i("USB audio device added; exclusive session fallback cleared")
@@ -1807,7 +1806,6 @@ class MusicService :
                         usbExclusiveRequested,
                     )
                 }.onFailure {
-
                     if (it is CancellationException) throw it
                     Timber.tag(TAG).e(it, "Audio route collector (float-dsp/usb-exclusive) emission failed; will retry on next preference change")
                 }
@@ -1912,7 +1910,6 @@ class MusicService :
                     }
 
                     if (engineSelectionChanged) {
-
                         BitPerfectRuntime.reevaluateEngines(
                             context = this@MusicService,
                             engineOrDspEngaged = tryptify || lastwaveEffective || primaryFloatDspProcessor.engaged,
@@ -1926,7 +1923,6 @@ class MusicService :
                     applyFloatDspEngagement()
 
                     if (engineSelectionChanged && bitPerfectNeedsRouteReprepare()) {
-
                         scope.launch(Dispatchers.Main) {
                             runCatching { repreparePlayerForAudioRouteChange() }
                         }
@@ -1940,7 +1936,6 @@ class MusicService :
                                 if (wanted == AudioEngineRouterProcessor.Engine.NONE) return@launch
                                 if (EngineRuntime.activeEngine == wanted) return@launch
                                 if (!bitPerfectNeedsRouteReprepare()) {
-
                                     if (player.playbackState == Player.STATE_IDLE) return@launch
                                     continue
                                 }
@@ -2629,7 +2624,6 @@ class MusicService :
                 ensureDiscordSyncFresh(request.epoch)
                 val snapshot =
                     buildDiscordPresenceSnapshot(song, decision.isPaused) ?: run {
-
                         requestDiscordSync(
                             reason = "playback_changed_before_presence_apply",
                             force = true,
@@ -3394,7 +3388,7 @@ class MusicService :
                             nextTrack = nextItem.toAutoMixTrackInfo(nextDurationMs),
                             positionMs = player.currentPosition,
                             fallbackFadeMs = autoMixFallbackFadeMs(),
-                            minFadeMs = MIN_CROSSFADE_DURATION_MS,
+                            minFadeMs = MIN_AUTO_MIX_FADE_MS,
                             gaplessAlbum = crossfadeGapless && isGaplessAlbumTransition(currentItem, nextItem),
                         )
 
@@ -3506,10 +3500,7 @@ class MusicService :
         )
     }
 
-    private fun autoMixFallbackFadeMs(): Long {
-        val configured = crossfadeDurationMs.takeIf { it > 0L } ?: DEFAULT_AUTO_MIX_FALLBACK_MS
-        return configured.coerceIn(MIN_CROSSFADE_DURATION_MS, 12_000L)
-    }
+    private fun autoMixFallbackFadeMs(): Long = DEFAULT_AUTO_MIX_FALLBACK_MS
 
     private fun timelineDurationMsAt(
         index: Int,
@@ -3985,7 +3976,6 @@ class MusicService :
                     }
 
                     if (smart) {
-
                         val tailDeadlineMs =
                             android.os.SystemClock.elapsedRealtime() + AUTO_MIX_TAIL_WAIT_MS
                         while (isActive && player.currentMediaItem?.mediaId == outgoingMediaId) {
@@ -10351,7 +10341,6 @@ class MusicService :
                     BitPerfectRuntime.notifyUsbExclusive(true, rate, bits, engineTransport)
                 }
             } else if (BitPerfectRuntime.status.usbExclusiveActive) {
-
                 BitPerfectRuntime.notifyUsbExclusive(false, 0, 0)
             }
         }
@@ -10624,7 +10613,6 @@ class MusicService :
     private fun applyNativeRateOverride() {
         val wireRateHz =
             if (usbSinkActiveNow && lastwaveAudioProcessing && !BitPerfectRuntime.requested) {
-
                 lastwaveExclusiveUsb.currentRateHz().takeIf { it > 0 }
             } else {
                 null
@@ -10754,7 +10742,6 @@ class MusicService :
                 true
             }.getOrDefault(false)
             if (written) {
-
                 formatSampleRateSynced[entity.id] = decodedRate
                 Timber.tag(TAG).i(
                     "Format entity synced with decoded stream: %dHz (was %s)",
@@ -10963,7 +10950,6 @@ class MusicService :
                     bitPerfectSink = bitPerfectSink,
                     routeActive = {
                         if (primary) {
-
                             BitPerfectRuntime.requested ||
                                 tryptifyAudioProcessing ||
                                 lastwaveAudioProcessing
@@ -11687,6 +11673,7 @@ class MusicService :
         const val EFFECTIVE_VOLUME_RAMP_DOWN_MS = 180L
         const val EFFECTIVE_VOLUME_RAMP_MIN_DELTA = 0.015f
         const val MIN_CROSSFADE_DURATION_MS = 500L
+        const val MIN_AUTO_MIX_FADE_MS = 2_500L
         const val CROSSFADE_END_GUARD_MS = 150L
         const val CROSSFADE_PREPARE_AHEAD_MS = 30_000L
         const val CROSSFADE_READY_TIMEOUT_MS = 5_000L

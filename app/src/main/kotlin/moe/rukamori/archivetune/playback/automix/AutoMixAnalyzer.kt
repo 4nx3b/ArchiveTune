@@ -193,7 +193,6 @@ class AutoMixAnalyzer(
                     imag[windowFill] = 0f
                     windowFill++
                     if (windowFill == fftSize) {
-
                         System.arraycopy(real, fftSize - fftHop, overlap, 0, fftHop)
                         fft.magnitudeSpectrum(real, imag, mag)
                         var fluxSum = 0f
@@ -313,6 +312,7 @@ class AutoMixAnalyzer(
         val level = robustMean(energy.toList()).coerceAtLeast(1e-6f)
         val floor = level * 0.10f
         val active = level * 0.35f
+        val contentFloor = level * 0.15f
 
         var audibleStart = 0L
         var introEnd = 0L
@@ -324,7 +324,7 @@ class AutoMixAnalyzer(
         }
         var contentEnd = durationMs
         for (i in energy.indices.reversed()) {
-            if (energy[i] > floor) { contentEnd = (i + 1) * AUTO_MIX_CURVE_STEP_MS; break }
+            if (energy[i] > contentFloor) { contentEnd = (i + 1) * AUTO_MIX_CURVE_STEP_MS; break }
         }
         var outroStart = introEnd
         for (i in energy.indices.reversed()) {
@@ -590,7 +590,7 @@ class AutoMixAnalyzer(
         private const val TAG = "AutoMix"
         private const val MAX_PERSISTED_ANALYSES = 600
 
-        private const val FINAL_FADE_WINDOW_MS = 45_000L
+        private const val FINAL_FADE_WINDOW_MS = 15_000L
         private const val FINAL_FADE_SMOOTHING_SPAN = 4
         private const val FINAL_FADE_QUIET_RATIO = 0.60f
     }

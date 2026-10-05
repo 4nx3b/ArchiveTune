@@ -286,7 +286,6 @@ class ThrottledLayerBackdrop internal constructor(
         coordinates: LayoutCoordinates?,
         layerBlock: (GraphicsLayerScope.() -> Unit)?,
     ) {
-
         @Suppress("UNUSED_VARIABLE") val tick = consumerInvalidationTick
         if (recordingInProgress) return
         val coordinates = coordinates ?: return
@@ -297,7 +296,6 @@ class ThrottledLayerBackdrop internal constructor(
             try {
                 layerCoordinates.localPositionOf(coordinates)
             } catch (_: Exception) {
-
                 runCatching {
                     coordinates.positionInWindow() - layerCoordinates.positionInWindow()
                 }.getOrNull()
@@ -513,7 +511,6 @@ fun LiquidGlassActionPill(
     scrim: Color? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
-
     val sheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
     Row(
         modifier =

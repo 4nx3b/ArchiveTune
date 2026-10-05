@@ -50,7 +50,6 @@ import org.json.JSONObject
 import timber.log.Timber
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 import androidx.compose.runtime.getValue
 
 object AiLyricsRomanization {
@@ -104,7 +103,6 @@ object AiLyricsRomanization {
     class Result(
         val sessionKey: String,
         val byLine: Map<String, String>,
-        private val nonce: Long = nextNonce(),
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -114,9 +112,6 @@ object AiLyricsRomanization {
     private val cache = LinkedHashMap<String, Map<String, String>>(64, 0.75f, true)
 
     private val _results = MutableStateFlow<Result?>(null)
-    private val nonceCounter = AtomicLong(0L)
-    private fun nextNonce(): Long = nonceCounter.incrementAndGet()
-
     val results: StateFlow<Result?> = _results.asStateFlow()
 
     private val _requestOutcomes = MutableSharedFlow<RequestStatus>(

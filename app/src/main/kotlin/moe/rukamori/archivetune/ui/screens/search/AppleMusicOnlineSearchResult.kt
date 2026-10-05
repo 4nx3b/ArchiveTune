@@ -157,7 +157,6 @@ internal fun AppleMusicOnlineSearchResult(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
     ) {
-
         Box(
             modifier =
                 Modifier
