@@ -4471,3 +4471,42 @@ Work Log:
 Stage Summary:
 - dev @ 0d38cd153 with all 8 items; 'check' green; Nightly APK matrix in
   flight at write time.
+
+---
+Task ID: 68
+Agent: Super Z (main agent)
+Task: Fix the compilation failure in Nightly run 37376220799 (07654212b) — the
+task-67 batch's second build round.
+
+Work Log:
+- Pulled the failed job logs (all 5 APK matrix jobs died at Build Release APK,
+  identical error set in the main source set; 'check' had passed, nightly-only
+  exposure).
+- AppleMusicPlayer.kt: the task-67 hazeSource Box wrapper pushed the content
+  one lambda-scope deeper, so (a) maxWidth/maxHeight stopped resolving from
+  inside the Box lambda (implicit-receiver restriction, 6 sites) — hoisted
+  playerMaxWidth/playerMaxHeight locals at the inner BoxWithConstraints scope,
+  right beside the already-working fullPlayerHeightForArtwork line; (b)
+  landscapeSwipeModifier/videoShowing/canvasActive were declared inside the Box
+  lambda but referenced by the landscape branch that sits after the Box closes
+  (1039/1046/1105) — moved the six vals (swipe modifier, videoShowing, isPreS,
+  canvasActive, canvasVisualActive, useCanvasBackdrop) above the Box opening;
+  the Box still wraps the same backdrop content, semantics unchanged.
+- LyricsEnhanced.kt:1263: ISyncedLine (interface) has no translation property
+  (the concrete SyncedLine does — the 1928 site proves it) — safe cast
+  (this as? SyncedLine)?.translation inside shareTranslationParts.
+- Preference.kt:148: segmentedPreferenceItemShape was @Composable but only
+  reads static dp constants; its caller preferenceItemShapeForPosition is
+  non-composable — dropped the annotation (RoundedCornerShape is a plain
+  constructor, no composable calls inside).
+- PlayerMenu.kt:1870: YouTube.searchContinuation already returns Result, the
+  runCatching wrapper double-wrapped it so more.continuation/items resolved
+  against Result — added .getOrNull() inside the block (same pattern as
+  searchOneSource's YouTube path).
+- Balance-checked all four files, committed d18b5b35c, pushed to dev; the
+  Nightly workflow fired automatically on the push.
+
+Stage Summary:
+- dev @ d18b5b35c; CI 7/7 green (check + 5x Nightly APK matrix +
+  create-nightly published the canary). The 8-item task-67 batch now compiles
+  and ships.
