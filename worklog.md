@@ -4358,3 +4358,49 @@ Work Log:
 
 Stage Summary:
 - CI fully green on 95a7c55b4; the 3-item feedback batch is delivered on dev.
+
+---
+Task ID: 66
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 2-item feedback batch — some OPUS songs start pitched-up/distorted
+(skip + replay fixed them); artist overflow popup too large.
+
+Work Log:
+- Root-caused the OPUS distortion: the live container-truth reporting
+  (46a4912f9) let the extractor-declared rate overwrite
+  BitPerfectRuntime.sourceSampleRate and re-pin the bit-perfect mixer wire
+  (refreshMixerBitPerfectRoute). Opus is the one common codec where the
+  declared rate diverges from the decode rate (MediaCodec always decodes
+  opus at 48kHz; OpusHead declares the original input rate — 44.1/96k/etc.),
+  so only "some" OPUS files were affected. On codec-reuse transitions that
+  don't reconfigure the sink, the container report was the ONLY rate writer:
+  the no-conversion mixer wire got pinned at the declared rate while the
+  AudioTrack kept pumping 48kHz PCM — pitched/distorted playback for the
+  whole song, invisible to the wire watchdog (source==wire==poisoned). Skip +
+  replay forced a full configure; the 95a7c55b4 gate re-latch then restored
+  48kHz — hence "plays fine" after replay.
+- Fix (f04422b84): decodedRateLatched flag in BitPerfectRuntime — evaluateTrack
+  marks the decoded rate authoritative for the active stream;
+  reportContainerFormat may seed the rate only while nothing decoded is
+  latched (container encoding/bit-depth/lossy truth still flows unconditionally
+  for the honest pill); clearTrack drops the latch. MusicService logs the
+  declared-vs-decoded divergence at the onAudioInputFormatChanged call site
+  for future log-reading.
+- Artist overflow popup compacted: width 232dp -> 200dp, corner radius
+  18 -> 16dp, shadow 16 -> 12dp, M3 ListItem rows (~64dp, 24dp icons) replaced
+  with 44dp compact rows (18dp icons, bodyMedium single-line labels, 14dp side
+  padding), menu column padding 6 -> 4dp, divider inset 16 -> 12dp (symmetric).
+  Liquid-glass blur, morphe animation, anchored placement, scrim, BackHandler
+  and the theme-aware tint/ink recipe are untouched — light + dark parity kept.
+- Removed the now-unused material3 ListItem/ListItemDefaults imports; avoided
+  a material3.IconButton import conflict with the custom component IconButton.
+- Pushed f04422b84 to dev; monitored CI: check + all 5 Nightly APK matrix jobs
+  + create-nightly GREEN (7/7 check-runs). Build PR workflow not triggered
+  (no open dev->main PR; batch rides the dev/nightly channel, as with task 65).
+
+Stage Summary:
+- OPUS per-song pitch/distortion class closed at the root: the decoded rate
+  is now authoritative for the bit-perfect wire; container reports can seed
+  but never displace it. Artist overflow popup is compact (~200dp wide,
+  ~140dp tall for 3 items) with the liquid-glass look intact in both themes.
+- dev green at f04422b84.
