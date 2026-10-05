@@ -4404,3 +4404,70 @@ Stage Summary:
   but never displace it. Artist overflow popup is compact (~200dp wide,
   ~140dp tall for 3 items) with the liquid-glass look intact in both themes.
 - dev green at f04422b84.
+
+---
+Task ID: 67
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 8-item feedback batch — automix too-early/too-fast, nav-bar compact
+behavior setting, AM controls blur (BitChord-style) + blend removal, export
+lyrics popup, play-from search upgrades, lyrics share translation/romanisation,
+AM queue controls/haze, comment sweep + dead code.
+
+Work Log:
+- Automix: AutoMixPlanner gains MAX_TRANSITION_LEAD_MS=14s clamped onto every
+  anchor path (the fallback path previously had no clamp, so a quiet outro
+  could trigger minutes early); detectFinalFadeOnset window 45s -> 15s so a
+  quiet bridge 40s out no longer reads as the fade onset; contentEnd scan
+  floor raised to 15% of the IQ mean; autoMixFallbackFadeMs() no longer reads
+  the plain crossfade slider (fixed DEFAULT_AUTO_MIX_FALLBACK_MS=6s); automix
+  minFade raised to MIN_AUTO_MIX_FADE_MS=2.5s.
+- Navigation bar settings: new enum NavigationBarCompactBehavior
+  (ADAPTIVE/ALWAYS_EXPANDED/ALWAYS_COMPACT, no default option) + key +
+  strings; new 'Mini player and bar behavior' PreferenceGroup with an
+  interactive CompactBehaviorPreview (tap-to-try morphing mini player +
+  pill bar + compact circles, mode-aware) above an EnumListPreference.
+  MainActivity consumes it: scroll connection only mutates compact state in
+  ADAPTIVE, per-tab reset seeds ALWAYS_COMPACT, nav-bar height + mini player
+  compact fraction follow as before.
+- Apple Music player: the 0.62->1 DstIn artwork blend (fadeBottom machinery)
+  removed entirely; the backdrop stack (black base + blurred artwork/canvas
+  + scrims) is wrapped in a hazeSource Box and a 320dp BitChord-style
+  progressive haze strip (HomeTopFadeBlur recipe, peak 0.9, EaseOutCubic,
+  noise 0) sits behind the controls for canvas and non-canvas songs alike.
+- Queue behavior: the root tap poke no longer fires while queueOpen (lyrics
+  keeps it), so touches inside the open queue can't re-reveal the controls
+  after the 5s auto-hide; AppleMusicQueueSheet's list is now a haze source
+  with top/bottom progressive haze strips that fade in when the list is
+  scrolled or the first item is clipped (canScrollForward for the bottom).
+- Export lyrics: menu item opens ExportLyricsDialog — source row (provider
+  name + search button feeding the existing lyrics search flow and returning
+  to the export dialog via searchOriginatedFromExport), pretty print toggle
+  (synced-only, strips timestamps/metadata via LyricsUtils.parseLyrics,
+  keeps singer agents, generic v1/v2 voice ids filtered), expandable
+  preview, format+file-name row; the old direct-to-picker export block and
+  its dead vals removed.
+- Play-from search (SongSourceDialog): prefill = artists + title; provider
+  limits grow 8 -> 48 via loadMore (auto near list end + manual Load more
+  row) with a query-scoped token so YouTube continuation pages append
+  beyond the first page; per-source quality detail line (16-bit/44.1kHz,
+  up to 24-bit/192kHz, estimated MB from duration x nominal bitrate);
+  title/artist/quality lines autoscroll with basicMarquee.
+- Lyrics share: LyricsSharePayload carries structured LyricsShareLine
+  (text/translation/romanisation) from all three renderers (Enhanced splits
+  its combined ISyncedLine.translation); the studio gains Translation +
+  Romanisation switches (independent, both can be on); romanisation lines
+  render italic — synthetic italic typeface per line in the glass renderer,
+  StyleSpan(ITALIC) in the classic renderer, italic toggle label.
+- Cleanup: cleanup_pass.py gained CLEANUP_BASE env override; strip re-run
+  over the whole kotlin tree (63 files — com/lastwave + tf/monochrome kept
+  their comments after the moe.rukamori-only first pass); dead members
+  removed (rememberPreferenceIconShape + MaterialShapes/toShape imports,
+  AiLyricsRomanization.Result.nonce + counter/nextNonce). TidalAudioProvider
+  trips the balance checker's raw-string lexer limitation identically before
+  and after (pre-existing, compiles green in CI).
+- Committed 0d38cd153 (79 files, +1174/-334) and pushed to dev; the check
+  job (compile+lint+tests) passed on the first poll.
+
+Stage Summary:
+- dev @ 0d38cd153 with all 8 items; 'check' green; Nightly APK matrix in
+  flight at write time.
