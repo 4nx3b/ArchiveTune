@@ -86,9 +86,7 @@ private fun autoEqHelpSections(): List<HelpSection> = listOf(
 @Composable
 fun AutoEqHelpSheet(onDismiss: () -> Unit) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    // Unglassed: the sheet's default container resolves from the glass menu's
-    // color scheme (transparent surfaceContainerLow) — pin it to the real
-    // scheme so the sheet draws a standard opaque container.
+
     val unglassedScheme = LocalUnglassColorScheme.current ?: MaterialTheme.colorScheme
     ModalBottomSheet(
         onDismissRequest = onDismiss,

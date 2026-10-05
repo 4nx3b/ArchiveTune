@@ -18,6 +18,7 @@ object AutoMixPlanner {
     private const val MAX_OVERLAP_BEATS = 16.0
     private const val MAX_OVERLAP_MS = 12_000L
     private const val END_GUARD_MS = 1_500L
+    private const val MAX_TRANSITION_LEAD_MS = 14_000L
 
     fun plan(
         current: AutoMixAnalysis?,
@@ -231,12 +232,17 @@ object AutoMixPlanner {
             return onset
                 .coerceAtLeast(contentEnd - MAX_OVERLAP_MS)
                 .coerceAtMost(contentEnd - 1L)
+                .coerceAtLeast(earliestTransitionStart(track))
         }
 
         return (contentEnd - fallbackFadeMs)
             .coerceAtLeast(analysis.introEndMs.coerceAtLeast(0L))
+            .coerceAtLeast(earliestTransitionStart(track))
             .coerceAtLeast(0L)
     }
+
+    private fun earliestTransitionStart(track: AutoMixTrackInfo): Long =
+        (track.durationMs - MAX_TRANSITION_LEAD_MS).coerceAtLeast(0L)
 
     private fun dynamicFadeMs(
         analysis: AutoMixAnalysis,
@@ -330,6 +336,8 @@ object AutoMixPlanner {
             } else {
                 track.durationMs
             }
-        return (anchor - fallbackFadeMs).coerceAtLeast(0L)
+        return (anchor - fallbackFadeMs)
+            .coerceAtLeast(earliestTransitionStart(track))
+            .coerceAtLeast(0L)
     }
 }

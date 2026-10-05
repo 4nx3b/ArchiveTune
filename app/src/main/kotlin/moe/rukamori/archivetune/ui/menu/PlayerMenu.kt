@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,11 +55,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,6 +86,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -358,7 +362,11 @@ fun PlayerMenu(
         SongSourceDialog(
             sources = availableSources,
             selected = currentSongSource,
-            initialQuery = mediaMetadata.title,
+            initialQuery =
+                listOf(
+                    mediaMetadata.artists.joinToString(" ") { it.name }.trim(),
+                    mediaMetadata.title.trim(),
+                ).filter { it.isNotEmpty() }.joinToString(" "),
             onDismiss = { showSourceDialog = false },
             onSelect = { source ->
                 onSongSourceChange(SongSourceOverride.withOverride(songSourceRaw, mediaMetadata.id, source))
@@ -1512,8 +1520,74 @@ private data class SourceSearchResult(
     val thumbnailUrl: String?,
     val durationMs: Long?,
     val qualityLabel: String?,
+    val qualityDetail: String? = null,
     val songItem: SongItem?,
 )
+
+private const val SOURCE_SEARCH_INITIAL_LIMIT = 8
+private const val SOURCE_SEARCH_PAGE_STEP = 16
+private const val SOURCE_SEARCH_MAX_LIMIT = 48
+
+private fun SongItem.toSourceSearchResult(aacLabel: String): SourceSearchResult =
+    SourceSearchResult(
+        source = AudioSourceType.YOUTUBE,
+        trackId = id,
+        title = title,
+        artist = artists.joinToString(", ") { it.name },
+        thumbnailUrl = thumbnail,
+        durationMs = duration?.toLong()?.times(1000L),
+        qualityLabel = aacLabel,
+        songItem = this,
+    )
+
+private fun sourceQualityDetail(
+    source: AudioSourceType,
+    durationMs: Long?,
+    deezerLossless: Boolean,
+): String? {
+    val khz: String?
+    val depth: String?
+    val nominalKbps: Int?
+    val upTo: Boolean
+    when (source) {
+        AudioSourceType.YOUTUBE -> {
+            khz = null; depth = null; nominalKbps = 256; upTo = false
+        }
+        AudioSourceType.TIDAL -> {
+            khz = "44.1 kHz"; depth = "16-bit"; nominalKbps = 1000; upTo = false
+        }
+        AudioSourceType.QOBUZ -> {
+            khz = "192 kHz"; depth = "24-bit"; nominalKbps = 2500; upTo = true
+        }
+        AudioSourceType.QOBUZ_BACKUP -> {
+            khz = "44.1 kHz"; depth = "16-bit"; nominalKbps = 1000; upTo = false
+        }
+        AudioSourceType.DEEZER ->
+            if (deezerLossless) {
+                khz = "44.1 kHz"; depth = "16-bit"; nominalKbps = 1000; upTo = false
+            } else {
+                khz = null; depth = null; nominalKbps = 320; upTo = false
+            }
+        AudioSourceType.APPLE -> {
+            khz = null; depth = null; nominalKbps = 256; upTo = false
+        }
+        AudioSourceType.JIOSAAVN -> {
+            khz = null; depth = null; nominalKbps = 320; upTo = false
+        }
+        else -> return null
+    }
+    val parts = mutableListOf<String>()
+    if (depth != null && khz != null) {
+        parts.add(if (upTo) "up to $depth · $khz" else "$depth · $khz")
+    }
+    if (durationMs != null && durationMs > 0 && nominalKbps != null) {
+        val sizeMb = durationMs / 1000.0 * nominalKbps / 8.0 / 1024.0
+        if (sizeMb >= 0.1) {
+            parts.add("≈ %.1f MB".format(sizeMb))
+        }
+    }
+    return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+}
 
 @Composable
 private fun SourceSearchPill(
@@ -1554,11 +1628,13 @@ private fun SourceSearchPill(
 private suspend fun searchOneSource(
     source: AudioSourceType,
     query: String,
+    limit: Int = SOURCE_SEARCH_INITIAL_LIMIT,
     aacLabel: String,
     saavnLabel: String,
     losslessLabel: String,
     deezerLabel: String,
     context: android.content.Context,
+    onContinuation: ((String?) -> Unit)? = null,
 ): List<SourceSearchResult> =
     withContext(Dispatchers.IO) {
         when (source) {
@@ -1567,22 +1643,12 @@ private suspend fun searchOneSource(
                     runCatching {
                         YouTube.search(query, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false).getOrNull()
                     }.getOrNull()
+                onContinuation?.invoke(ytResult?.continuation)
                 val songs =
                     ytResult?.items
                         ?.filterIsInstance<SongItem>()
                         .orEmpty()
-                songs.map { song ->
-                    SourceSearchResult(
-                        source = AudioSourceType.YOUTUBE,
-                        trackId = song.id,
-                        title = song.title,
-                        artist = song.artists.joinToString(", ") { it.name },
-                        thumbnailUrl = song.thumbnail,
-                        durationMs = song.duration?.toLong()?.times(1000L),
-                        qualityLabel = aacLabel,
-                        songItem = song,
-                    )
-                }
+                songs.map { song -> song.toSourceSearchResult(aacLabel) }
             }
 
             AudioSourceType.TIDAL -> {
@@ -1595,7 +1661,7 @@ private suspend fun searchOneSource(
                         isrc = null,
                         durationMs = null,
                     )
-                runCatching { TidalAudioProvider.searchCandidates(tidalQuery, limit = 8) }
+                runCatching { TidalAudioProvider.searchCandidates(tidalQuery, limit = limit) }
                     .getOrDefault(emptyList())
                     .map { candidate ->
                         SourceSearchResult(
@@ -1612,7 +1678,7 @@ private suspend fun searchOneSource(
             }
 
             AudioSourceType.QOBUZ -> {
-                runCatching { QobuzAudioProvider.searchCandidates(query, limit = 8) }
+                runCatching { QobuzAudioProvider.searchCandidates(query, limit = limit) }
                     .getOrDefault(emptyList())
                     .map { candidate ->
                         val thumb = candidate.thumbnailUrl ?: run {
@@ -1650,7 +1716,7 @@ private suspend fun searchOneSource(
                             .map { it.trim() }
                             .filter { it.isNotEmpty() }
                 }
-                runCatching { QobuzBackupProvider.searchCandidates(query, limit = 8) }
+                runCatching { QobuzBackupProvider.searchCandidates(query, limit = limit) }
                     .getOrDefault(emptyList())
                     .map { candidate ->
                         SourceSearchResult(
@@ -1667,7 +1733,7 @@ private suspend fun searchOneSource(
             }
 
             AudioSourceType.DEEZER -> {
-                runCatching { DeezerAudioProvider.searchCandidates(query, limit = 8) }
+                runCatching { DeezerAudioProvider.searchCandidates(query, limit = limit) }
                     .getOrDefault(emptyList())
                     .map { candidate ->
                         SourceSearchResult(
@@ -1725,6 +1791,10 @@ private fun SongSourceDialog(
     var searchMode by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var sourceFilter by rememberSaveable { mutableStateOf<AudioSourceType?>(null) }
+    var providerLimit by remember { mutableStateOf(SOURCE_SEARCH_INITIAL_LIMIT) }
+    var loadMoreToken by remember { mutableIntStateOf(0) }
+    var ytContinuation by remember { mutableStateOf<String?>(null) }
+    var loadingMore by remember { mutableStateOf(false) }
 
     var resultsBySource by remember {
         mutableStateOf<Map<AudioSourceType, List<SourceSearchResult>>>(emptyMap())
@@ -1768,38 +1838,74 @@ private fun SongSourceDialog(
             ordered + sources.filterNot { it in ordered }
         }
 
-    LaunchedEffect(searchMode, searchQuery) {
+    LaunchedEffect(searchQuery) {
+        providerLimit = SOURCE_SEARCH_INITIAL_LIMIT
+        loadMoreToken = 0
+        ytContinuation = null
+    }
+
+    LaunchedEffect(searchMode, searchQuery, loadMoreToken) {
         if (!searchMode || searchQuery.length < 2) {
             resultsBySource = emptyMap()
             loadingSources = emptySet()
+            loadingMore = false
             return@LaunchedEffect
         }
         delay(350L)
         val query = searchQuery
+        val firstPage = loadMoreToken == 0
         loadingSources = searchableSources.toSet()
-        resultsBySource = emptyMap()
+        if (firstPage) {
+            resultsBySource = emptyMap()
+        }
         coroutineScope {
             searchableSources
                 .map { source ->
                     async {
-                        val results =
-                            runCatching {
-                                searchOneSource(
-                                    source = source,
-                                    query = query,
-                                    aacLabel = aacLabel,
-                                    saavnLabel = saavnLabel,
-                                    losslessLabel = losslessLabel,
-                                    deezerLabel = deezerLabel,
-                                    context = context,
-                                )
-                            }.getOrDefault(emptyList())
-                        resultsBySource = resultsBySource + (source to results)
+                        if (source == AudioSourceType.YOUTUBE && !firstPage) {
+                            val continuation = ytContinuation
+                            if (continuation != null) {
+                                val more =
+                                    runCatching {
+                                        YouTube.searchContinuation(continuation)
+                                    }.getOrNull()
+                                if (more != null) {
+                                    ytContinuation = more.continuation
+                                    val added =
+                                        more.items
+                                            .filterIsInstance<SongItem>()
+                                            .map { song -> song.toSourceSearchResult(aacLabel) }
+                                    resultsBySource =
+                                        resultsBySource + (
+                                            source to
+                                                (resultsBySource[source].orEmpty() + added)
+                                                    .distinctBy { it.trackId }
+                                        )
+                                }
+                            }
+                        } else {
+                            val results =
+                                runCatching {
+                                    searchOneSource(
+                                        source = source,
+                                        query = query,
+                                        limit = providerLimit,
+                                        aacLabel = aacLabel,
+                                        saavnLabel = saavnLabel,
+                                        losslessLabel = losslessLabel,
+                                        deezerLabel = deezerLabel,
+                                        context = context,
+                                        onContinuation = { c -> ytContinuation = c },
+                                    )
+                                }.getOrDefault(emptyList())
+                            resultsBySource = resultsBySource + (source to results)
+                        }
                         loadingSources = loadingSources - source
                     }
                 }
                 .awaitAll()
         }
+        loadingMore = false
     }
 
     val results =
@@ -1807,9 +1913,39 @@ private fun SongSourceDialog(
             searchableSources
                 .flatMap { source -> resultsBySource[source].orEmpty() }
                 .filter { sourceFilter == null || it.source == sourceFilter }
+                .map { result ->
+                    result.copy(
+                        qualityDetail = sourceQualityDetail(
+                            source = result.source,
+                            durationMs = result.durationMs,
+                            deezerLossless = deezerLabel == losslessLabel,
+                        ),
+                    )
+                }
+                .distinctBy { "${it.source.name}:${it.trackId}" }
         }
     val filterLoading =
         sourceFilter?.let { it in loadingSources } ?: loadingSources.isNotEmpty()
+
+    val resultListState = rememberLazyListState()
+    val canLoadMore = providerLimit < SOURCE_SEARCH_MAX_LIMIT || ytContinuation != null
+
+    fun loadMore() {
+        if (loadingMore) return
+        if (providerLimit >= SOURCE_SEARCH_MAX_LIMIT && ytContinuation == null) return
+        loadingMore = true
+        providerLimit = (providerLimit + SOURCE_SEARCH_PAGE_STEP).coerceAtMost(SOURCE_SEARCH_MAX_LIMIT)
+        loadMoreToken++
+    }
+
+    LaunchedEffect(resultListState, results.size) {
+        snapshotFlow {
+            val last = resultListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            results.isNotEmpty() && last >= results.size - 4
+        }.distinctUntilChanged().collect { nearEnd ->
+            if (nearEnd) loadMore()
+        }
+    }
 
     DefaultDialog(
         onDismiss = onDismiss,
@@ -1925,6 +2061,7 @@ private fun SongSourceDialog(
                     }
                     else -> {
                         LazyColumn(
+                            state = resultListState,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(max = 360.dp),
@@ -1939,6 +2076,32 @@ private fun SongSourceDialog(
                                     onDismiss()
                                 }
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                            }
+                            if (canLoadMore) {
+                                item(key = "source-search-load-more") {
+                                    Row(
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier =
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .clickable(enabled = !loadingMore) { loadMore() }
+                                                .padding(vertical = 10.dp),
+                                    ) {
+                                        if (loadingMore) {
+                                            CircularProgressIndicator(
+                                                strokeWidth = 2.dp,
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                        }
+                                        Text(
+                                            text = stringResource(R.string.load_more),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -2006,8 +2169,8 @@ private fun SourceSearchResultRow(
                 text = result.title,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
             )
             val subtitle =
                 buildString {
@@ -2025,7 +2188,16 @@ private fun SourceSearchResultRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
+                )
+            }
+            if (!result.qualityDetail.isNullOrBlank()) {
+                Text(
+                    text = result.qualityDetail,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                 )
             }
         }

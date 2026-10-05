@@ -574,7 +574,6 @@ fun SearchResultsTopHeader(
     chipsRow: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-
     Column(
         modifier =
             modifier

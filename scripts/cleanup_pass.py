@@ -24,7 +24,7 @@ import os
 import re
 import sys
 
-BASE = "/home/z/my-project/ArchiveTune/app/src/main/kotlin/moe/rukamori/archivetune"
+BASE = os.environ.get("CLEANUP_BASE", "/home/z/my-project/ArchiveTune/app/src/main/kotlin/moe/rukamori/archivetune")
 
 LICENSE_MARKERS = ("GPL", "License", "©", "Copyright")
 

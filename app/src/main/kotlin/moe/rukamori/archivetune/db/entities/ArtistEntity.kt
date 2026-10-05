@@ -47,7 +47,6 @@ data class ArtistEntity(
         localToggleLike().also {
             if (isLocal) return@also
             CoroutineScope(Dispatchers.IO).launch {
-
                 val targetChannelId =
                     channelId ?: run {
                         val resolved = YouTube.getChannelId(id)

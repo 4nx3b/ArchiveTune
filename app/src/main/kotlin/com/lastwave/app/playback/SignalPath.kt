@@ -432,7 +432,6 @@ class StreamHealthTracker {
         lastWallMs = wallMs
         if (wallDelta < 400L || wallDelta > 3_000L) return driftPpm
         if (kotlin.math.abs(posDelta - wallDelta) > 1_500L) {
-
             if (posDelta < -250L) glitchCount++
             return driftPpm
         }

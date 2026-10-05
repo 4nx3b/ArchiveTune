@@ -1011,6 +1011,14 @@ val NavigationBarFrostedBlurKey = booleanPreferencesKey("navigationBarFrostedBlu
 val NavigationBarTintFrostedBlurKey = booleanPreferencesKey("navigationBarTintFrostedBlur")
 val HideNavigationBarLabelsKey = booleanPreferencesKey("hideNavigationBarLabels")
 
+enum class NavigationBarCompactBehavior {
+    ADAPTIVE,
+    ALWAYS_EXPANDED,
+    ALWAYS_COMPACT,
+}
+
+val NavigationBarCompactBehaviorKey = stringPreferencesKey("navigationBarCompactBehavior")
+
 val NavigationBarWidthKey = floatPreferencesKey("navigationBarWidth")
 const val NAVIGATION_BAR_WIDTH_DEFAULT = 0.8f
 

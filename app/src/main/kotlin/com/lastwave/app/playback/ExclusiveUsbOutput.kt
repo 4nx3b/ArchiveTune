@@ -66,14 +66,6 @@ class ExclusiveUsbOutput @Inject constructor(
     @Volatile var lastFailureReason: String? = null
         private set
 
-    // Set by the audio routing layer when bit-perfect output is requested:
-    // the exclusive wire MUST then run the configured (source) rate. Any
-    // fallback-clock negotiation - the DAC descriptor lacking the rate, or
-    // the DAC reporting a different internal clock - FAILS the configure
-    // instead of silently switching the wire and resampling. The caller's
-    // recoverable-failure path then disengages the exclusive route for the
-    // session and the standard AudioTrack route takes over at the source
-    // rate, so the app itself is NEVER the resampler.
     @Volatile private var strictSourceRate = false
 
     fun setStrictSourceRateMode(enabled: Boolean) {
@@ -254,7 +246,6 @@ class ExclusiveUsbOutput @Inject constructor(
         synchronized(lock) {
             if (!wanted) return false
             return runCatching {
-
                 configureLocked(
                     targetRate,
                     format.channelCount,
@@ -339,11 +330,7 @@ class ExclusiveUsbOutput @Inject constructor(
 
     fun restartIfStopped(): Boolean {
         val running = stream ?: return false
-        // An ALIVE stream needs no restart — "nothing to do" is success, not
-        // failure. The old `return false` here made LastwaveUsbdevfsAudioOutput
-        // treat a merely idle (but healthy) stream as "restart failed" and
-        // surface the spurious WriteException(-9102, recoverable) that
-        // MediaCodecAudioRenderer reported as "AudioTrack write failed: -9102".
+
         if (running.isAlive) return true
         if (!running.start()) return false
         synchronized(lock) {
@@ -355,7 +342,6 @@ class ExclusiveUsbOutput @Inject constructor(
     }
 
     fun handleDiscontinuity() {
-
     }
 
     fun prepareForNextItem() {

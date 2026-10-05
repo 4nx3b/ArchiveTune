@@ -284,6 +284,11 @@
     <string name="lyrics_share_style_vivid_glow">Vivid Glow</string>
     <string name="lyrics_share_vinyl_mode">Vinyl mode</string>
     <string name="lyrics_share_vinyl_mode_desc">Render as a vinyl record with the album cover instead of the lyrics card</string>
+    <string name="lyrics_share_lyrics_content">Lyrics content</string>
+    <string name="lyrics_share_translation">Translation</string>
+    <string name="lyrics_share_translation_desc">Include the translated line under each lyric line</string>
+    <string name="lyrics_share_romanisation">Romanisation</string>
+    <string name="lyrics_share_romanisation_desc">Include the romanised line in italics — combine with translation if you like</string>
     <string name="lyrics_share_resolution_value">%1$d x %2$d</string>
     <string name="lyrics_share_background_blur">Background blur</string>
     <string name="lyrics_share_background_blur_value">%1$d px</string>

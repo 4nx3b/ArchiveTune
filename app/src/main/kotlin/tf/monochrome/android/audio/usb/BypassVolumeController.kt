@@ -5,7 +5,6 @@ import javax.inject.Singleton
 
 @Singleton
 class BypassVolumeController @Inject constructor() {
-
     @Volatile
     private var volume: Float = 1.0f
 

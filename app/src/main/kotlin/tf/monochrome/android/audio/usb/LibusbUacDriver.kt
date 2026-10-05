@@ -138,7 +138,6 @@ class LibusbUacDriver @Inject constructor(
             _diagnostics.value = BypassDiagnostics.fromLongArray(nativeActiveStream())
             _lastStartError.value = null
         } else {
-
             _diagnostics.value = null
             val code = StartError.fromCode(nativeLastErrorCode())
             val detail = nativeLastErrorDetail().orEmpty()

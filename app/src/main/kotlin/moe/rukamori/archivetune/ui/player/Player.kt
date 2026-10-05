@@ -1165,7 +1165,6 @@ fun BottomSheetPlayer(
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
     val playerSheetCanvasVisible by remember(state) {
-
         derivedStateOf { state.progress > 0.5f || state.isExpandedOrExpanding }
     }
     CompositionLocalProvider(LocalPlayerSheetVisible provides playerSheetCanvasVisible) {

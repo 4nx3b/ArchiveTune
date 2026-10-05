@@ -159,6 +159,13 @@
     <string name="export_lyrics">Export lyrics</string>
     <string name="export_lyrics_saved">Lyrics exported</string>
     <string name="export_lyrics_failed">Couldn\'t export lyrics</string>
+    <string name="export_lyrics_source">Source</string>
+    <string name="export_lyrics_source_none">No lyrics loaded</string>
+    <string name="export_lyrics_pretty_print">Pretty print</string>
+    <string name="export_lyrics_pretty_print_desc">Remove timestamps and metadata, keeping singer details</string>
+    <string name="export_lyrics_pretty_print_unavailable">Only available for synced lyrics</string>
+    <string name="export_lyrics_preview">Preview</string>
+    <string name="export_lyrics_file">File</string>
     <string name="start_radio">Start radio</string>
     <string name="start_mix">Start mix</string>
     <string name="play">Play</string>
@@ -923,6 +930,7 @@
     <string name="source_apple_music">Apple Music</string>
     <string name="source_youtube">YouTube</string>
     <string name="play_from">Play from</string>
+    <string name="load_more">Load more</string>
     <string name="play_from_automatic">Automatic (preferred order)</string>
     <string name="playback_sources">Sources</string>
     <string name="download_source_requires_pool">Requires Source Pool — configure in Integrations to enable</string>
@@ -1671,6 +1679,15 @@
     <string name="navigation_bar_tint_frosted_blur_desc">Navigation bar tinted with the accent color — light pastel in light mode, deep tinted dark in dark mode — with always-readable labels (turns off the neutral frosted option)</string>
     <string name="navigation_bar_settings_title">Navigation bar</string>
     <string name="navigation_bar_settings_subtitle">Style, frosted blur, labels, dimensions</string>
+    <string name="navigation_bar_compact_behavior">Mini player and bar behavior</string>
+    <string name="navigation_bar_compact_behavior_desc">When the mini player and navigation bar collapse into the compact layout</string>
+    <string name="navigation_bar_compact_adaptive">Adaptive</string>
+    <string name="navigation_bar_compact_adaptive_desc">Compact only while you scroll; expands again when you scroll back</string>
+    <string name="navigation_bar_compact_always_expanded">Always expanded</string>
+    <string name="navigation_bar_compact_always_expanded_desc">The full navigation bar and mini player never collapse</string>
+    <string name="navigation_bar_compact_always_compact">Always compact</string>
+    <string name="navigation_bar_compact_always_compact_desc">The compact circles and slim mini player are always shown</string>
+    <string name="navigation_bar_tap_to_try">Tap the bar to try it</string>
     <string name="navigation_bar_dimensions">Dimensions</string>
     <string name="navigation_bar_width">Width</string>
     <string name="navigation_bar_width_desc">Fraction of screen width used by the floating bar</string>

@@ -567,7 +567,7 @@ fun Lyrics(
     }
 
     var showShareDialog by remember { mutableStateOf(false) }
-    var shareDialogData by remember { mutableStateOf<Triple<String, String, String>?>(null) }
+    var shareDialogData by remember { mutableStateOf<LyricsSharePayload?>(null) }
     var showShareImageDialog by remember { mutableStateOf(false) }
 
     var isSelectionModeActive by rememberSaveable { mutableStateOf(false) }
@@ -2564,17 +2564,18 @@ fun Lyrics(
                                         ).clickable(enabled = selectedIndices.isNotEmpty()) {
                                             if (selectedIndices.isNotEmpty()) {
                                                 val sortedIndices = selectedIndices.sorted()
+                                                val selectedEntries =
+                                                    sortedIndices.mapNotNull { lines.getOrNull(it) }
                                                 val selectedLyricsText =
-                                                    sortedIndices
-                                                        .mapNotNull { lines.getOrNull(it)?.text }
-                                                        .joinToString("\n")
+                                                    selectedEntries.joinToString("\n") { it.text }
 
                                                 if (selectedLyricsText.isNotBlank()) {
                                                     shareDialogData =
-                                                        Triple(
-                                                            selectedLyricsText,
-                                                            metadata.title,
-                                                            metadata.artists.joinToString { it.name },
+                                                        LyricsSharePayload(
+                                                            lyricsText = selectedLyricsText,
+                                                            songTitle = metadata.title,
+                                                            artists = metadata.artists.joinToString { it.name },
+                                                            lines = selectedEntries.map { it.toLyricsShareLine() },
                                                         )
                                                     showShareDialog = true
                                                 }
@@ -2605,7 +2606,7 @@ fun Lyrics(
         }
 
         if (showShareDialog && shareDialogData != null) {
-            val (lyricsText, songTitle, artists) = shareDialogData!!
+            val sharePayload = shareDialogData!!
             BasicAlertDialog(onDismissRequest = { showShareDialog = false }) {
                 Card(
                     shape = MaterialTheme.shapes.medium,
@@ -2635,7 +2636,7 @@ fun Lyrics(
                                     .clickable {
                                         shareLyricsAsText(
                                             context = context,
-                                            payload = LyricsSharePayload(lyricsText, songTitle, artists),
+                                            payload = sharePayload,
                                             songId = mediaMetadata?.id,
                                         )
                                         showShareDialog = false
@@ -2660,7 +2661,6 @@ fun Lyrics(
                                 Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        shareDialogData = Triple(lyricsText, songTitle, artists)
                                         showShareImageDialog = true
                                         showShareDialog = false
                                     }.padding(vertical = 12.dp),
@@ -2703,10 +2703,10 @@ fun Lyrics(
         }
 
         if (showShareImageDialog && shareDialogData != null) {
-            val (lyricsText, songTitle, artists) = shareDialogData!!
+            val sharePayload = shareDialogData!!
             LyricsShareImageDialog(
                 mediaMetadata = mediaMetadata,
-                payload = LyricsSharePayload(lyricsText, songTitle, artists),
+                payload = sharePayload,
                 onDismissRequest = { showShareImageDialog = false },
             )
         }

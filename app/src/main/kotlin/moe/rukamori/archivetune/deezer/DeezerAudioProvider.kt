@@ -773,7 +773,6 @@ object DeezerAudioProvider {
     }
 
     private fun normalizedSimilarity(a: String, b: String): Double {
-
         val normalize: (String) -> String = { s ->
             s.lowercase().trim().replace(Regex("[^\\p{L}\\p{N} ]"), "")
         }

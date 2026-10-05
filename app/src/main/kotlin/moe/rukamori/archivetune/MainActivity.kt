@@ -219,6 +219,8 @@ import moe.rukamori.archivetune.aod.ACTION_AOD_MODE
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.PlayerHeaderGlassFadeRamp
 import moe.rukamori.archivetune.constants.SheetOverlayEpsilon
+import moe.rukamori.archivetune.constants.NavigationBarCompactBehavior
+import moe.rukamori.archivetune.constants.NavigationBarCompactBehaviorKey
 import moe.rukamori.archivetune.constants.AppFontPreference
 import moe.rukamori.archivetune.constants.AppLanguageKey
 import moe.rukamori.archivetune.constants.AodAutoStartScreenOffKey
@@ -1406,9 +1408,18 @@ class MainActivity : ComponentActivity() {
                                 !active
                         }
 
+                    val navigationBarCompactBehavior by rememberEnumPreference(
+                        key = NavigationBarCompactBehaviorKey,
+                        defaultValue = NavigationBarCompactBehavior.ADAPTIVE,
+                    )
+
                     var isBottomUiCompact by remember { mutableStateOf(false) }
-                    LaunchedEffect(navBackStackEntry?.destination?.route) {
-                        isBottomUiCompact = false
+                    LaunchedEffect(
+                        navBackStackEntry?.destination?.route,
+                        navigationBarCompactBehavior,
+                    ) {
+                        isBottomUiCompact =
+                            navigationBarCompactBehavior == NavigationBarCompactBehavior.ALWAYS_COMPACT
                     }
                     val navBarScrollDensity = LocalDensity.current
                     val navBarHideScrollThresholdPx = with(navBarScrollDensity) { 14.dp.toPx() }
@@ -1420,7 +1431,9 @@ class MainActivity : ComponentActivity() {
                                     available: Offset,
                                     source: NestedScrollSource,
                                 ): Offset {
-                                    if (source == NestedScrollSource.UserInput) {
+                                    if (source == NestedScrollSource.UserInput &&
+                                        navigationBarCompactBehavior == NavigationBarCompactBehavior.ADAPTIVE
+                                    ) {
                                         if (consumed.y < -navBarHideScrollThresholdPx) {
                                             isBottomUiCompact = true
                                         } else if (consumed.y > navBarHideScrollThresholdPx) {
@@ -2658,7 +2671,6 @@ class MainActivity : ComponentActivity() {
                                                             )
                                                         }
                                                     } else if (isSearchRoute) {
-
                                                         Box(modifier = Modifier.fillMaxWidth())
                                                     } else {
                                                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3168,7 +3180,6 @@ class MainActivity : ComponentActivity() {
                                         }
 
                                         if (shouldShowNavigationBar || !playerBottomSheetState.isDismissed) {
-
                                             val compactRowVisible by remember {
                                                 derivedStateOf {
                                                     bottomUiCompactFractionState.value *
@@ -3215,7 +3226,6 @@ class MainActivity : ComponentActivity() {
                                                                 },
                                                             ),
                                                         onClick = {
-
                                                             navigateToTabRoot(
                                                                 if (compactLeftCircleIsLibrary) {
                                                                     Screens.Library
@@ -3236,7 +3246,6 @@ class MainActivity : ComponentActivity() {
                                                             contentDescription = stringResource(Screens.Search.titleId),
                                                             onClick = {
                                                                 if (compactRouteHasInPageSearch) {
-
                                                                     navController.currentBackStackEntry
                                                                         ?.savedStateHandle
                                                                         ?.set("openSearch", true)

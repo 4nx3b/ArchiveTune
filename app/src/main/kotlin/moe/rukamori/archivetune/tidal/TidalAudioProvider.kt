@@ -861,7 +861,6 @@ object TidalAudioProvider {
         query: Query,
         exactIsrcOnly: Boolean = false,
     ): List<ArtworkSearchResult> {
-
         val wantedTitle = query.title.titleMatchNormalized()
         val wantedArtists = query.artists.map { it.normalized() }.filter { it.isNotBlank() }
         val wantedAlbum = query.album.normalized()

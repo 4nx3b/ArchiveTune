@@ -22,7 +22,6 @@ import androidx.media3.common.Format
 import java.util.concurrent.atomic.AtomicBoolean
 
 object BitPerfectRuntime {
-
     private const val DIRECT_PLAYBACK_SUPPORTED_BIT = 1 shl 0
 
     @Volatile
@@ -138,7 +137,6 @@ object BitPerfectRuntime {
         if (!requested) {
             failure = null
         } else if (usbExclusive) {
-
             direct = true
             usbRouteVerified = latchedUsbRateHz > 0 &&
                 latchedUsbRateHz == inputSampleRate &&
@@ -175,7 +173,6 @@ object BitPerfectRuntime {
 
             nativeRateMatched = true
         } else {
-
             nativeRateMatched = true
         }
 
@@ -307,7 +304,6 @@ object BitPerfectRuntime {
             outputBitDepth = if (bits > 0) bits else status.outputBitDepth,
         )
         if (requested || lastEnginesEngaged) {
-
             val canClaim = !status.usbExclusiveActive && !status.directPlaybackSupported
             val rateMatches = outputRateHz <= 0 || status.sourceSampleRate <= 0 ||
                 outputRateHz == status.sourceSampleRate

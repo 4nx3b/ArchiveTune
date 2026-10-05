@@ -63,7 +63,6 @@ class BitPerfectGateProcessor(
                         "passes the chain untouched",
                 )
             } else if (BitPerfectRuntime.requested) {
-
                 silenceSkippingAudioProcessor?.setEnabled(false)
                 sonicAudioProcessor?.setSpeed(1f)
                 sonicAudioProcessor?.setPitch(1f)
