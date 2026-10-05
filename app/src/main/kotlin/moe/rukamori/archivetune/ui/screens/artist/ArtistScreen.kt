@@ -71,8 +71,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -1746,7 +1744,7 @@ private fun ArtistOverflowMenu(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(vertical = 6.dp),
+                .padding(vertical = 4.dp),
     ) {
         if (showShuffle) {
             ArtistOverflowMenuItem(
@@ -1781,7 +1779,7 @@ private fun ArtistOverflowMenu(
 @Composable
 private fun ArtistOverflowMenuDivider() {
     HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 16.dp),
+        modifier = Modifier.padding(horizontal = 12.dp),
         thickness = 0.5.dp,
         color = MaterialTheme.colorScheme.outlineVariant,
     )
@@ -1833,7 +1831,7 @@ private fun ArtistOverflowDropdown(
     val alpha = morph.value
     val glassTuning = LocalLiquidGlassTuning.current
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val menuShape = RoundedCornerShape(18.dp)
+    val menuShape = RoundedCornerShape(16.dp)
 
     val frostedBlurModifier =
         remember(backdrop, glassTuning) {
@@ -1928,7 +1926,7 @@ private fun ArtistOverflowDropdown(
                             ((iconCenterX - popupLeftPx) / popupWidthPx.coerceAtLeast(1f))
                                 .coerceIn(0.02f, 0.98f)
                         this.transformOrigin = TransformOrigin(pivotX, 0.06f)
-                        this.shadowElevation = 16.dp.toPx()
+                        this.shadowElevation = 12.dp.toPx()
                         this.shape = menuShape
                         this.clip = false
                     }
@@ -1977,7 +1975,7 @@ private fun ArtistOverflowDropdown(
     }
 }
 
-private val ArtistOverflowPopupWidth = 232.dp
+private val ArtistOverflowPopupWidth = 200.dp
 
 private const val ArtistOverflowScrimAlpha = 0.38f
 
@@ -1990,27 +1988,30 @@ private fun ArtistOverflowMenuItem(
     enabled: Boolean = true,
 ) {
     val contentAlpha = if (enabled) 1f else 0.5f
-    ListItem(
-        headlineContent = {
-            Text(
-                text = text,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
-            )
-        },
-        leadingContent = {
-            Icon(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
-            )
-        },
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 4.dp),
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        tonalElevation = 0.dp,
-    )
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = 44.dp)
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 12.dp),
+        )
+    }
 }
 
 @Composable

@@ -10722,6 +10722,16 @@ class MusicService :
         val sampleRate = format.sampleRate.takeIf { it > 0 } ?: return
         val channels = format.channelCount.takeIf { it in 1..2 } ?: 2
         val encoding = format.pcmEncoding
+        if (BitPerfectRuntime.decodedRateIsAuthoritative &&
+            BitPerfectRuntime.status.sourceSampleRate != sampleRate
+        ) {
+            Timber.tag(TAG).i(
+                "Container declares %dHz but the decoded stream runs at %dHz — the decoded rate " +
+                    "stays authoritative for the wire (lossy codecs decode at their own rate)",
+                sampleRate,
+                BitPerfectRuntime.status.sourceSampleRate,
+            )
+        }
         runCatching {
             BitPerfectRuntime.reportContainerFormat(
                 inputEncoding = encoding,

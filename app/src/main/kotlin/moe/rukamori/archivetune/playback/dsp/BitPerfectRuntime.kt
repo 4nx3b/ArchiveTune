@@ -61,6 +61,9 @@ object BitPerfectRuntime {
     private var hasLatchedInput: Boolean = false
 
     @Volatile
+    private var decodedRateLatched: Boolean = false
+
+    @Volatile
     private var usbRouteActive: Boolean = false
 
     @Volatile
@@ -123,6 +126,7 @@ object BitPerfectRuntime {
         lastUsbExclusive = usbExclusive
         lastEffectiveVolume = effectiveVolume
         hasLatchedInput = true
+        if (inputSampleRate > 0) decodedRateLatched = true
 
         var direct = false
         var nativeRateMatched = false
@@ -242,6 +246,9 @@ object BitPerfectRuntime {
         }
     }
 
+    val decodedRateIsAuthoritative: Boolean
+        get() = decodedRateLatched && status.sourceSampleRate > 0
+
     fun reportContainerFormat(
         inputEncoding: Int,
         inputSampleRate: Int,
@@ -252,7 +259,7 @@ object BitPerfectRuntime {
         status = status.copy(
             sourceEncoding = if (hasPcmDepth) inputEncoding else C.ENCODING_INVALID,
             sourceBitDepth = if (hasPcmDepth) bitDepthOf(inputEncoding) else 0,
-            sourceSampleRate = inputSampleRate,
+            sourceSampleRate = if (decodedRateLatched) status.sourceSampleRate else inputSampleRate,
             sourceIsLossy = !hasPcmDepth,
             channels = inputChannels.coerceIn(1, 2),
         )
@@ -265,6 +272,7 @@ object BitPerfectRuntime {
         usbRouteActive = false
         mixerRouteActive = false
         mixerWireRate = 0
+        decodedRateLatched = false
         status = Status.idle()
     }
 
