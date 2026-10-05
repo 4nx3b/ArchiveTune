@@ -58,7 +58,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 import androidx.compose.runtime.Composable
@@ -112,6 +111,7 @@ private val QueuePillCornerRadius = 16.dp
 fun AppleMusicQueueSheet(
     navController: NavController,
     playerBottomSheetState: BottomSheetState,
+    backdropHaze: HazeState? = null,
     modifier: Modifier = Modifier,
     onClose: (() -> Unit)? = null,
 ) {
@@ -261,7 +261,6 @@ fun AppleMusicQueueSheet(
         }
     }
 
-    val queueTopHaze = remember { HazeState() }
     val queueHazeTopVisible by remember {
         derivedStateOf {
             lazyListState.firstVisibleItemIndex > 0 ||
@@ -410,7 +409,7 @@ fun AppleMusicQueueSheet(
         LazyColumn(
             state = lazyListState,
             contentPadding = PaddingValues(bottom = 16.dp, top = 4.dp),
-            modifier = Modifier.fillMaxSize().hazeSource(queueTopHaze),
+            modifier = Modifier.fillMaxSize(),
         ) {
             itemsIndexed(
                 items = mutableQueueWindows,
@@ -567,7 +566,7 @@ fun AppleMusicQueueSheet(
             }
         }
 
-            if (queueHazeTopAlpha > 0.01f) {
+            if (backdropHaze != null && queueHazeTopAlpha > 0.01f) {
                 Box(
                     modifier =
                         Modifier
@@ -576,7 +575,7 @@ fun AppleMusicQueueSheet(
                             .height(56.dp)
                             .graphicsLayer { alpha = queueHazeTopAlpha }
                             .hazeEffect(
-                                state = queueTopHaze,
+                                state = backdropHaze,
                                 style = HazeMaterials.ultraThin(Color.Black),
                             ) {
                                 progressive =
@@ -589,7 +588,7 @@ fun AppleMusicQueueSheet(
                             },
                 )
             }
-            if (queueHazeBottomAlpha > 0.01f) {
+            if (backdropHaze != null && queueHazeBottomAlpha > 0.01f) {
                 Box(
                     modifier =
                         Modifier
@@ -598,7 +597,7 @@ fun AppleMusicQueueSheet(
                             .height(48.dp)
                             .graphicsLayer { alpha = queueHazeBottomAlpha }
                             .hazeEffect(
-                                state = queueTopHaze,
+                                state = backdropHaze,
                                 style = HazeMaterials.ultraThin(Color.Black),
                             ) {
                                 progressive =
