@@ -109,7 +109,6 @@ private val PreferenceGroupCardCorner = 20.dp
 
 private val PreferenceEntryIconSize = 22.dp
 
-@Composable
 private fun segmentedPreferenceItemShape(
     index: Int,
     count: Int,

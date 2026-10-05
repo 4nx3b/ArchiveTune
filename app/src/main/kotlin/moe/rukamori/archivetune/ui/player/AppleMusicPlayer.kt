@@ -676,20 +676,10 @@ fun AppleMusicPlayerContent(
         ) {
         val fullPlayerHeightForArtwork: Dp? = if (landscape) null else maxHeight
 
-        val bottomControlsHaze = remember { HazeState() }
+        val playerMaxWidth = maxWidth
+        val playerMaxHeight = maxHeight
 
-        Box(
-            modifier =
-                Modifier
-                    .matchParentSize()
-                    .hazeSource(bottomControlsHaze),
-        ) {
-        Box(
-            modifier =
-                Modifier
-                    .matchParentSize()
-                    .background(Color.Black),
-        )
+        val bottomControlsHaze = remember { HazeState() }
 
         val landscapeSwipeModifier =
             Modifier.pointerInput(playerConnection) {
@@ -720,6 +710,19 @@ fun AppleMusicPlayerContent(
         val canvasVisualActive = canvasActive && !videoShowing && !isPreS
 
         val useCanvasBackdrop = canvasVisualActive && !landscape
+
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .hazeSource(bottomControlsHaze),
+        ) {
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .background(Color.Black),
+        )
 
         val canvasBackdropReveal =
             remember { androidx.compose.animation.core.Animatable(0f) }
@@ -820,7 +823,7 @@ fun AppleMusicPlayerContent(
         }
 
         if (!videoShowing) {
-            val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
+            val wanderMaxDrift = movingBlurWanderMaxDriftDp(playerMaxWidth, playerMaxHeight)
 
             val wanderActive = lyricsBackdropActive || landscape
             val blurWander = rememberBlurWanderDrift(active = wanderActive, maxDriftDp = wanderMaxDrift)
@@ -842,11 +845,11 @@ fun AppleMusicPlayerContent(
             }
 
             val backdropFootprint =
-                remember(maxWidth, maxHeight, landscape) {
+                remember(playerMaxWidth, playerMaxHeight, landscape) {
                     if (landscape) {
                         blurBackdropFootprintLandscape(
-                            width = maxWidth,
-                            height = maxHeight,
+                            width = playerMaxWidth,
+                            height = playerMaxHeight,
                             restScale = AmCoverBlurScale,
                             maxDriftDp = wanderMaxDrift,
                             driftFactor = AmLandscapeDriftFactor,
@@ -854,8 +857,8 @@ fun AppleMusicPlayerContent(
                         )
                     } else {
                         blurBackdropFootprint(
-                            width = maxWidth,
-                            height = maxHeight,
+                            width = playerMaxWidth,
+                            height = playerMaxHeight,
                             restScale = AmCoverBlurScale,
                             driftScale = AmLyricsBlurDriftScale,
                             maxDriftDp = wanderMaxDrift,

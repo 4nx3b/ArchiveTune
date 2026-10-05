@@ -1260,7 +1260,7 @@ private data class LyricSelectionLine(
 )
 
 private fun ISyncedLine.shareTranslationParts(): Pair<String?, String?> {
-    val raw = translation?.trim()?.takeIf { it.isNotEmpty() } ?: return null to null
+    val raw = (this as? SyncedLine)?.translation?.trim()?.takeIf { it.isNotEmpty() } ?: return null to null
     val parts = raw.split("\n\n")
     if (parts.size >= 2) {
         return parts.first().trim() to parts.last().trim()

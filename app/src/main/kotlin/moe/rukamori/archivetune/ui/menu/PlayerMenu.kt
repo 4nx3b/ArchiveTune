@@ -1867,7 +1867,7 @@ private fun SongSourceDialog(
                             if (continuation != null) {
                                 val more =
                                     runCatching {
-                                        YouTube.searchContinuation(continuation)
+                                        YouTube.searchContinuation(continuation).getOrNull()
                                     }.getOrNull()
                                 if (more != null) {
                                     ytContinuation = more.continuation
