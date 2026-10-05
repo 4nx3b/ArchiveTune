@@ -60,7 +60,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -81,7 +80,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.withFrameNanos
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -96,19 +94,8 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.layer.GraphicsLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
-import androidx.compose.ui.node.DrawModifierNode
-import androidx.compose.ui.node.ModifierNodeElement
-import androidx.compose.ui.node.invalidateDraw
-import androidx.compose.ui.graphics.drawscope.ContentDrawScope
-import androidx.compose.ui.platform.InspectorInfo
-import androidx.compose.ui.unit.toIntSize
-import androidx.compose.ui.graphics.GraphicsLayerScope
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
@@ -117,20 +104,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToUp
-import androidx.compose.animation.core.EaseOutCubic
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeProgressive
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import kotlin.math.abs
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextLayoutResult
@@ -153,7 +134,6 @@ import coil3.size.Size as CoilSize
 import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerConnection
@@ -209,88 +189,31 @@ private val AppleMusicBottomIconSize = 26.dp
 private val AppleMusicBottomButtonSize = 48.dp
 private val AppleMusicMiniArtworkSize = 56.dp
 
-private const val AmLyricsBlurDriftScale = 2.4f
-
-private const val AmCoverBlurScale = 1.2f
-
-private const val AmLandscapeDriftFactor = 0.55f
-
 private const val AmLyricsBackdropMorphMs = 650
 
-private val AmBackdropBlurRadius = 64.dp
+private val AmBackdropBlurRadius = 72.dp
 
 private const val AmCanvasBackdropUpscale = 6f
 
-private val AmCanvasBackdropBlurRadius = 72.dp
+private const val AmCanvasBackdropOverscan = 1.10f
 
-private val AmBottomControlsBlurHeight = 320.dp
+private val AmCanvasBackdropBlurRadius = 96.dp
 
-private const val AmBottomControlsBlurPeak = 0.90f
+private const val AmCanvasBackdropMaxVideoEdgePx = 480
 
-private fun Modifier.canvasSnapshotSource(
-    graphicsLayer: GraphicsLayer,
-    minIntervalMillis: Long,
-): Modifier = this then CanvasSnapshotSourceElement(graphicsLayer, minIntervalMillis)
+private val AmBackdropScrimBrush =
+    Brush.verticalGradient(
+        0f to Color.Black.copy(alpha = 0.18f),
+        0.55f to Color.Black.copy(alpha = 0.32f),
+        1f to Color.Black.copy(alpha = 0.60f),
+    )
 
-private class CanvasSnapshotSourceElement(
-    val graphicsLayer: GraphicsLayer,
-    val minIntervalMillis: Long,
-) : ModifierNodeElement<CanvasSnapshotSourceNode>() {
-    override fun create() = CanvasSnapshotSourceNode(graphicsLayer, minIntervalMillis)
-
-    override fun update(node: CanvasSnapshotSourceNode) {
-        if (node.graphicsLayer !== graphicsLayer || node.minIntervalMillis != minIntervalMillis) {
-            node.graphicsLayer = graphicsLayer
-            node.minIntervalMillis = minIntervalMillis
-            node.lastRecordUptimeMillis = 0L
-        }
-        node.invalidateDraw()
-    }
-
-    override fun equals(other: Any?): Boolean =
-        other is CanvasSnapshotSourceElement &&
-            other.graphicsLayer === graphicsLayer &&
-            other.minIntervalMillis == minIntervalMillis
-
-    override fun hashCode(): Int =
-        graphicsLayer.hashCode() * 31 + minIntervalMillis.hashCode()
-
-    override fun InspectorInfo.inspectableProperties() {
-        name = "canvasSnapshotSource"
-        properties["minIntervalMillis"] = minIntervalMillis
-    }
-}
-
-private class CanvasSnapshotSourceNode(
-    var graphicsLayer: GraphicsLayer,
-    var minIntervalMillis: Long,
-) : DrawModifierNode, Modifier.Node() {
-    var lastRecordUptimeMillis = 0L
-
-    var isRecording = false
-
-    override fun ContentDrawScope.draw() {
-        val now = SystemClock.uptimeMillis()
-        if (!isRecording && now - lastRecordUptimeMillis >= minIntervalMillis) {
-            lastRecordUptimeMillis = now
-            isRecording = true
-            try {
-                runCatching {
-                    graphicsLayer.record(size.toIntSize()) {
-                        this@draw.drawContent()
-                    }
-                }
-            } finally {
-                isRecording = false
-            }
-        }
-
-    }
-}
-
-private const val AmCanvasBackdropMaxVideoEdgePx = 256
-
-private const val AmCanvasSnapshotIntervalMs = 50L
+private val AmCanvasScrimBrush =
+    Brush.verticalGradient(
+        0f to Color.Black.copy(alpha = 0.25f),
+        0.5f to Color.Black.copy(alpha = 0.40f),
+        1f to Color.Black.copy(alpha = 0.65f),
+    )
 
 private const val AppleMusicLyricsContentDeferMs = 160L
 
@@ -341,7 +264,7 @@ private class AdaptiveCornerShape(
 
 private enum class AppleMusicPlayerState { COVER, QUEUE, LYRICS }
 
-@OptIn(ExperimentalSharedTransitionApi::class, ExperimentalHazeMaterialsApi::class)
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun AppleMusicPlayerContent(
     mediaMetadata: MediaMetadata,
@@ -505,15 +428,6 @@ fun AppleMusicPlayerContent(
         }
     }
 
-    var lyricsBackdropActive by remember { mutableStateOf(false) }
-    LaunchedEffect(lyricsOpen) {
-        if (lyricsOpen) {
-            lyricsBackdropActive = true
-        } else {
-            delay(AmLyricsBackdropMorphMs.toLong())
-            lyricsBackdropActive = false
-        }
-    }
     var lyricsContentReady by remember { mutableStateOf(false) }
     LaunchedEffect(lyricsOpen) {
         if (!lyricsOpen) {
@@ -530,8 +444,6 @@ fun AppleMusicPlayerContent(
     val lyricsPosProvider = remember {
         { sliderPositionState.value }
     }
-
-    val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
 
     val lyricsBackdropProgress =
         animateFloatAsState(
@@ -676,10 +588,7 @@ fun AppleMusicPlayerContent(
         ) {
         val fullPlayerHeightForArtwork: Dp? = if (landscape) null else maxHeight
 
-        val playerMaxWidth = maxWidth
-        val playerMaxHeight = maxHeight
-
-        val bottomControlsHaze = remember { HazeState() }
+        val queueBackdropHaze = remember { HazeState() }
 
         val landscapeSwipeModifier =
             Modifier.pointerInput(playerConnection) {
@@ -715,7 +624,7 @@ fun AppleMusicPlayerContent(
             modifier =
                 Modifier
                     .matchParentSize()
-                    .hazeSource(bottomControlsHaze),
+                    .hazeSource(queueBackdropHaze),
         ) {
         Box(
             modifier =
@@ -733,52 +642,6 @@ fun AppleMusicPlayerContent(
             )
         }
 
-        val twinSnapshotLayer = rememberGraphicsLayer()
-        var blurredTwinBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
-        var twinBakeFailures by remember { mutableStateOf(0) }
-        val twinBackdropHealthy = twinBakeFailures < 5
-        val twinSnapshotBlurRadiusPx =
-            with(LocalDensity.current) { (AmCanvasBackdropBlurRadius / AmCanvasBackdropUpscale).toPx() }
-
-        LaunchedEffect(useCanvasBackdrop, canvasPrimaryUrl, canvasFallbackUrl) {
-            blurredTwinBitmap = null
-            twinBakeFailures = 0
-            if (!useCanvasBackdrop) return@LaunchedEffect
-            while (isActive) {
-                if (twinBakeFailures >= 5) {
-                    blurredTwinBitmap = null
-                    delay(AmCanvasSnapshotIntervalMs)
-                    continue
-                }
-                val layer = twinSnapshotLayer
-                if (layer.size.width >= 8 && layer.size.height >= 8) {
-                    withFrameNanos { }
-                    val snapshot =
-                        runCatching {
-                            layer.toImageBitmap().asAndroidBitmap()
-                        }.getOrNull()
-                    if (snapshot != null) {
-                        val baked =
-                            withContext(Dispatchers.Default) {
-                                runCatching {
-                                    ImageBlurUtils
-                                        .blur(snapshot, twinSnapshotBlurRadiusPx)
-                                        .asImageBitmap()
-                                }.getOrNull()
-                            }
-                        if (baked != null) {
-                            twinBakeFailures = 0
-                            blurredTwinBitmap = baked
-                        } else {
-                            twinBakeFailures++
-                        }
-                    } else {
-                        twinBakeFailures++
-                    }
-                }
-                delay(AmCanvasSnapshotIntervalMs)
-            }
-        }
         val canvasScrimReveal by animateFloatAsState(
 
             targetValue = if (canvasVisualActive) 1f else 0f,
@@ -788,125 +651,62 @@ fun AppleMusicPlayerContent(
         val context = LocalContext.current
         val imageLoader = context.imageLoader
 
-        val preBlurredBitmap by produceState<Bitmap?>(null, artworkUrl) {
-            if (artworkUrl.isNullOrBlank() || videoShowing) {
+        val preBlurredBitmap by produceState<Bitmap?>(null, artworkUrl, videoShowing, isPreS) {
+            if (!isPreS || artworkUrl.isNullOrBlank() || videoShowing) {
                 value = null
                 return@produceState
             }
-            value = withContext(Dispatchers.IO) {
-                try {
-                    val request = ImageRequest.Builder(context)
-                        .data(artworkUrl)
-                        .allowHardware(false)
-                        .memoryCacheKey("$artworkUrl#amplayer")
-                        .diskCacheKey("$artworkUrl#amplayer")
-                        .size(CoilSize(720, 720))
-                        .build()
-                    val result = imageLoader.execute(request)
-                    if (result is SuccessResult) {
-                        val bitmap = result.image.toBitmap()
-                            .copy(Bitmap.Config.ARGB_8888, true)
-                        val density = context.resources.displayMetrics.density
-
-                        val radiusPx =
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                AmBackdropBlurRadius.value * density
-                            } else {
-                                72f * density
-                            }
-                        ImageBlurUtils.blur(bitmap, radiusPx)
-                    } else null
-                } catch (_: Exception) {
-                    null
+            value =
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        val request =
+                            ImageRequest.Builder(context)
+                                .data(artworkUrl)
+                                .allowHardware(false)
+                                .memoryCacheKey("$artworkUrl#ambackdrop-pres")
+                                .diskCacheKey("$artworkUrl#ambackdrop-pres")
+                                .size(CoilSize(320, 320))
+                                .build()
+                        val result = imageLoader.execute(request)
+                        if (result is SuccessResult) {
+                            val bitmap =
+                                result.image.toBitmap()
+                                    .copy(Bitmap.Config.ARGB_8888, true)
+                            val density = context.resources.displayMetrics.density
+                            ImageBlurUtils.blur(bitmap, 36f * density)
+                        } else {
+                            null
+                        }
+                    }.getOrNull()
                 }
-            }
         }
 
         if (!videoShowing) {
-            val wanderMaxDrift = movingBlurWanderMaxDriftDp(playerMaxWidth, playerMaxHeight)
-
-            val wanderActive = lyricsBackdropActive || landscape
-            val blurWander = rememberBlurWanderDrift(active = wanderActive, maxDriftDp = wanderMaxDrift)
-            val driftGraphicsLayer: GraphicsLayerScope.() -> Unit = {
-                val progress = lyricsBackdropProgress.value
-
-                val scale = AmCoverBlurScale + (AmLyricsBlurDriftScale - AmCoverBlurScale) * progress
-                scaleX = scale
-                scaleY = scale
-
-                val driftFactor = if (landscape) AmLandscapeDriftFactor else progress
-                if (driftFactor > 0f) {
-                    translationX = blurWander.xDp.floatValue * driftDpToPx * driftFactor
-                    translationY = blurWander.yDp.floatValue * driftDpToPx * driftFactor
-
-                }
-
-                compositingStrategy = CompositingStrategy.Offscreen
-            }
-
-            val backdropFootprint =
-                remember(playerMaxWidth, playerMaxHeight, landscape) {
-                    if (landscape) {
-                        blurBackdropFootprintLandscape(
-                            width = playerMaxWidth,
-                            height = playerMaxHeight,
-                            restScale = AmCoverBlurScale,
-                            maxDriftDp = wanderMaxDrift,
-                            driftFactor = AmLandscapeDriftFactor,
-                            blurEdgeMarginDp = AmBackdropBlurRadius,
-                        )
-                    } else {
-                        blurBackdropFootprint(
-                            width = playerMaxWidth,
-                            height = playerMaxHeight,
-                            restScale = AmCoverBlurScale,
-                            driftScale = AmLyricsBlurDriftScale,
-                            maxDriftDp = wanderMaxDrift,
-                        )
-                    }
-                }
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .clipToBounds(),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (preBlurredBitmap != null) {
+            if (isPreS) {
+                preBlurredBitmap?.let { bmp ->
                     Image(
-                        bitmap = preBlurredBitmap!!.asImageBitmap(),
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            } else {
+                val backdropModel = artworkRequest ?: artworkUrl
+                Crossfade(
+                    targetState = backdropModel,
+                    animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+                    label = "am-backdrop-artwork",
+                ) { model ->
+                    AsyncImage(
+                        model = model,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier =
                             Modifier
-                                .requiredSize(backdropFootprint)
-                                .graphicsLayer(driftGraphicsLayer),
+                                .fillMaxSize()
+                                .blur(AmBackdropBlurRadius),
                     )
-                } else {
-                    val backdropModel = artworkRequest ?: artworkUrl
-                    Crossfade(
-                        targetState = backdropModel,
-                        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-                        label = "am-backdrop-artwork",
-                    ) { model ->
-                        AsyncImage(
-                            model = model,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier =
-                                Modifier
-                                    .requiredSize(backdropFootprint)
-
-                                    .graphicsLayer(driftGraphicsLayer)
-                                    .then(
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                            Modifier.blur(AmBackdropBlurRadius)
-                                        } else {
-                                            Modifier
-                                        },
-                                    ),
-                        )
-                    }
                 }
             }
 
@@ -916,75 +716,37 @@ fun AppleMusicPlayerContent(
                         Modifier
                             .matchParentSize()
                             .graphicsLayer {
-                                val scale = AmCoverBlurScale * AmCanvasBackdropUpscale
+                                val scale = AmCanvasBackdropOverscan * AmCanvasBackdropUpscale
                                 scaleX = scale
                                 scaleY = scale
                                 alpha = canvasBackdropReveal.value * (1f - lyricsBackdropProgress.value)
                             },
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (twinBackdropHealthy) {
-                        CanvasArtworkPlayer(
-                            primaryUrl = canvasPrimaryUrl,
-                            fallbackUrl = canvasFallbackUrl,
-                            isPlaying = isPlaying && canvasVisibleForLyrics,
-                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                            visible = canvasVisibleForLyrics,
-                            maxVideoEdgePx = AmCanvasBackdropMaxVideoEdgePx,
-                            loopSyncFollower = canvasLoopSync,
-
-                            refreshEpoch = orientationRefreshEpoch,
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth(1f / AmCanvasBackdropUpscale)
-                                    .fillMaxHeight(1f / AmCanvasBackdropUpscale)
-                                    .canvasSnapshotSource(twinSnapshotLayer, AmCanvasSnapshotIntervalMs),
-                        )
-                    }
-                    blurredTwinBitmap?.let { baked ->
-                        Image(
-                            bitmap = baked,
-                            contentDescription = null,
-                            contentScale = ContentScale.FillBounds,
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth(1f / AmCanvasBackdropUpscale)
-                                    .fillMaxHeight(1f / AmCanvasBackdropUpscale),
-                        )
-                    }
+                    CanvasArtworkPlayer(
+                        primaryUrl = canvasPrimaryUrl,
+                        fallbackUrl = canvasFallbackUrl,
+                        isPlaying = isPlaying && canvasVisibleForLyrics,
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                        visible = canvasVisibleForLyrics,
+                        maxVideoEdgePx = AmCanvasBackdropMaxVideoEdgePx,
+                        loopSyncFollower = canvasLoopSync,
+                        refreshEpoch = orientationRefreshEpoch,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth(1f / AmCanvasBackdropUpscale)
+                                .fillMaxHeight(1f / AmCanvasBackdropUpscale)
+                                .blur(AmCanvasBackdropBlurRadius / AmCanvasBackdropUpscale),
+                    )
                 }
             }
 
-            val preBlurLoading = preBlurredBitmap == null && !canvasActive
-
-            val canvasScrimBrush =
-                remember {
-                    Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.15f),
-                        0.5f to Color.Black.copy(alpha = 0.28f),
-                        1f to Color.Black.copy(alpha = 0.50f),
-                    )
-                }
-            val staticScrimBrush =
-                remember(preBlurLoading, Build.VERSION.SDK_INT) {
-                    val (a1, a2, a3) =
-                        if (preBlurLoading) {
-                            Triple(0.55f, 0.65f, 0.85f)
-                        } else {
-                            Triple(0.28f, 0.42f, 0.60f)
-                        }
-                    Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = a1),
-                        0.5f to Color.Black.copy(alpha = a2),
-                        1f to Color.Black.copy(alpha = a3),
-                    )
-                }
             if (isPreS) {
                 Box(
                     modifier =
                         Modifier
                             .matchParentSize()
-                            .background(staticScrimBrush),
+                            .background(AmBackdropScrimBrush),
                 )
             } else {
                 Box(
@@ -992,39 +754,17 @@ fun AppleMusicPlayerContent(
                         Modifier
                             .matchParentSize()
                             .graphicsLayer { alpha = 1f - canvasScrimReveal }
-                            .background(staticScrimBrush),
+                            .background(AmBackdropScrimBrush),
                 )
                 Box(
                     modifier =
                         Modifier
                             .matchParentSize()
                             .graphicsLayer { alpha = canvasScrimReveal }
-                            .background(canvasScrimBrush),
+                            .background(AmCanvasScrimBrush),
                 )
             }
         }
-        }
-
-        if (!landscape) {
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(AmBottomControlsBlurHeight)
-                        .hazeEffect(
-                            state = bottomControlsHaze,
-                            style = HazeMaterials.ultraThin(Color.Black),
-                        ) {
-                            progressive =
-                                HazeProgressive.verticalGradient(
-                                    easing = EaseOutCubic,
-                                    startIntensity = 0f,
-                                    endIntensity = AmBottomControlsBlurPeak,
-                                )
-                            noiseFactor = 0f
-                        },
-            )
         }
 
         if (landscape) {
@@ -1336,6 +1076,7 @@ fun AppleMusicPlayerContent(
                                         AppleMusicQueueSheet(
                                             navController = navController,
                                             playerBottomSheetState = state,
+                                            backdropHaze = queueBackdropHaze,
                                             modifier =
                                                 Modifier
                                                     .fillMaxSize()
