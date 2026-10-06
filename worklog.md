@@ -4599,3 +4599,25 @@ Work Log:
 
 Stage Summary:
 - dev green at c0e171e02 with the Flamingo player port; canary published by create-nightly.
+
+---
+Task ID: 74 (session web-e130fa90)
+Task: 7-item Flamingo style fix batch — canvas blend restoration, lag, translation panel, overflow menu, landscape title, quality pill
+
+Work Log:
+- Screenshot forensics (3 uploads via VLM) + main-branch diffing isolated root causes for every reported symptom.
+- FlamingoPlayer.kt / FlamingoBackground.kt fixes (commit 69290b256, +315/-335):
+  1. Canvas stage: static artwork permanently under the video; canvasFrameReady/staticBaseAlpha crossfade removed (it emptied the stage during primary->fallback canvas transitions — the "completely blurred everywhere" bug); plain CanvasArtworkPlayer call; sharedBounds-outside-fade modifier order.
+  2. Backdrop: 72dp blur / 1.2 cover scale / 0.25-0.40-0.65 scrim (pre-redesign values).
+  3. CanvasLoopSync leader/follower removed (20Hz main-thread ExoPlayer polls + rate-lock churn).
+  4. Portrait lyrics layer mounts/unmounts via AnimatedVisibility (was always composed at alpha 0 — the main lag source).
+  5. Offscreen compositing dropped from 3 floating-light backdrop images.
+  6. Poke overlay gated to the lyrics page (was swallowing like/overflow taps on the album title row).
+  7. Translation panel: translucent container consuming taps + outside-tap dismiss scrim + reset on page/control change.
+  8. Landscape title block moved into the right pane above the controls (main-branch two-pane layout).
+  9. Quality pill shows for all formats (codecLabel + player_graphic_eq for non-lossless).
+- Static review agent pass: compile-safe, all signatures/resources verified.
+- CI monitored to green: Build Pull Request SUCCESS, Nightly canary SUCCESS.
+
+Stage Summary:
+- dev green at 69290b256; PR #216 includes the batch. Canary APK published for device testing.
