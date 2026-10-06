@@ -4586,3 +4586,16 @@ Work Log:
 
 Stage Summary:
 - APPLE_MUSIC player style is now the Flamingo design end-to-end: icons, typography (19.5/18.5/16.5/30.5sp), dimensions (0.595/0.437 height fractions, 61/58.5dp transport, 43dp spacing), colors (floating-light blurred-saturated artwork background + Plus/Overlay/DstIn blend modes), and lyrics/queue page behavior with their original transition animations.
+---
+Task ID: 71 (CI addendum)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Flamingo player port — CI repair rounds
+
+Work Log:
+- Rebased the port onto origin/dev (task 63-70 had evolved AppleMusicPlayer.kt + Player.kt); kept deletion of AppleMusicPlayer.kt/AppleMusicSlider.kt (modify/delete conflicts), re-applied call-site swaps onto the new integration signature (orientationRefreshEpoch added; onQueueClick/onLyricsClick now optional), merged strings/keys/settings, deduped a double rememberEnumPreference import.
+- Round 1 (97e4ca604): 14 errors — androidx.compose.runtime.snapshots.Snapshot import path; geometry.Rect (not graphics.Rect) for the saveLayer bounds; liveTimeLambda rememberUpdatedState trailing-lambda created () -> () -> Int (rewritten as typed remember with a stable offset-state capture); this@Crossfade "Unresolved label" — Crossfade's content lambda has no usable label receiver in this Compose, so the page machine now uses AnimatedContent with the fork-proven this@AnimatedContent pattern (identical fade transition); coil3 ImageRequest.Builder has no error/placeholder/fallback(Int) overloads — moved those to AsyncImage painter params and null-url renders the placeholder Image directly.
+- Round 2 (368e74df5): 1 error — missing androidx.compose.runtime.remember import in FlamingoSupport.
+- Round 3 (c0e171e02): Nightly 7/7 GREEN — check + all 5 release/R8 matrix jobs (mobile arm64/x86_64/armeabi/universal + tv universal) + create-nightly.
+
+Stage Summary:
+- dev green at c0e171e02 with the Flamingo player port; canary published by create-nightly.
