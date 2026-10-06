@@ -37,7 +37,6 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -144,22 +143,14 @@ fun FlamingoFloatingLight(
                 FlamingoMovingBlurImage(
                     bitmap = bitmap,
                     isPlaying = isPlaying,
-                    modifier = modifier
-                        .graphicsLayer {
-                            compositingStrategy = CompositingStrategy.Offscreen
-                        }
-                        .then(baseBlackBackground),
+                    modifier = modifier.then(baseBlackBackground),
                 )
             } else {
                 Image(
                     bitmap = bitmap.asImageBitmap(),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = modifier
-                        .graphicsLayer {
-                            compositingStrategy = CompositingStrategy.Offscreen
-                        }
-                        .then(baseBlackBackground),
+                    modifier = modifier.then(baseBlackBackground),
                 )
             }
         } else {
@@ -189,7 +180,6 @@ fun FlamingoFloatingLight(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            compositingStrategy = CompositingStrategy.Offscreen
                             this.alpha = alpha.value
                         },
                 )
@@ -253,7 +243,6 @@ private fun FlamingoMovingBlurImage(
                         translationX = blurWander.xDp.floatValue.dp.toPx()
                         translationY = blurWander.yDp.floatValue.dp.toPx()
                         rotationZ = blurWander.rotationDeg.floatValue
-                        compositingStrategy = CompositingStrategy.Offscreen
                     },
             )
         }
