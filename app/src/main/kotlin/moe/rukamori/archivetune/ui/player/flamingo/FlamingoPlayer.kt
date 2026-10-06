@@ -188,6 +188,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.media3.ui.AspectRatioFrameLayout
 import coil3.compose.AsyncImage
@@ -774,7 +775,7 @@ fun FlamingoPlayerContent(
                         ) {
                             // In-pane lyrics (enhanced lyrics animation library with
                             // AI translation / romanisation).
-                            AnimatedVisibility(
+                            androidx.compose.animation.AnimatedVisibility(
                                 visible = nowPage == FlamingoPage.Lyric,
                                 enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
                                 exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
@@ -811,7 +812,7 @@ fun FlamingoPlayerContent(
                             }
 
                             // Controls: hidden while the lyrics pane is up until poked.
-                            AnimatedVisibility(
+                            androidx.compose.animation.AnimatedVisibility(
                                 visible = nowPage != FlamingoPage.Lyric || showControl.value,
                                 enter = fadeIn(tween(120)),
                                 exit = fadeOut(tween(100)),
@@ -1380,9 +1381,9 @@ private fun Modifier.flamingoLyricsEdgeFade(
         blendMode = BlendMode.Plus
     }
     val rect = androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height)
-    val canvas = this.drawContext.canvas
 
     onDrawWithContent {
+        val canvas = this.drawContext.canvas
         canvas.saveLayer(rect, overlayPaint)
 
         val colors = if (weightLambda()) {
