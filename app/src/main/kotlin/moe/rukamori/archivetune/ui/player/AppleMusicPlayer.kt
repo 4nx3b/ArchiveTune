@@ -621,6 +621,17 @@ fun AppleMusicPlayerContent(
 
         val useCanvasBackdrop = canvasVisualActive && !landscape
 
+        // Hoisted above the backdrop Box so both the backdrop layers and the
+        // portrait cover stage (sharp-canvas dissolve fade) can read it.
+        val canvasBackdropReveal =
+            remember { androidx.compose.animation.core.Animatable(0f) }
+        LaunchedEffect(useCanvasBackdrop) {
+            canvasBackdropReveal.animateTo(
+                targetValue = if (useCanvasBackdrop) 1f else 0f,
+                animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+            )
+        }
+
         Box(
             modifier =
                 Modifier
@@ -632,15 +643,6 @@ fun AppleMusicPlayerContent(
                     .matchParentSize()
                     .background(Color.Black),
         )
-
-        val canvasBackdropReveal =
-            remember { androidx.compose.animation.core.Animatable(0f) }
-        LaunchedEffect(useCanvasBackdrop) {
-            canvasBackdropReveal.animateTo(
-                targetValue = if (useCanvasBackdrop) 1f else 0f,
-                animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
-            )
-        }
 
         val canvasScrimReveal by animateFloatAsState(
 
