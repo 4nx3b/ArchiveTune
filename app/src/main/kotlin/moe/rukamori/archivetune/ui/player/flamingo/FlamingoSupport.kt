@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.key
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.aspectRatio
@@ -48,6 +49,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -55,6 +57,7 @@ import androidx.core.graphics.applyCanvas
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
+import coil3.request.crossfade
 import moe.rukamori.archivetune.R
 import kotlin.math.sqrt
 
@@ -310,22 +313,23 @@ private fun getSizeFromQuality(quality: ImageQuality): Int {
 private fun flamingoImageRequest(
     url: Any?,
     imageQuality: ImageQuality,
-): ImageRequest {
+): ImageRequest? {
+    if (url == null) return null
     val context = LocalContext.current
-    return ImageRequest
-        .Builder(context)
-        .data(url)
-        .allowHardware(true)
-        .error(R.drawable.ic_music_placeholder)
-        .placeholder(R.drawable.ic_music_placeholder)
-        .fallback(R.drawable.ic_music_placeholder)
-        .apply {
-            if (imageQuality != ImageQuality.RAW) {
-                val px = getSizeFromQuality(imageQuality)
-                size(px, px)
+    return remember(url, imageQuality) {
+        ImageRequest
+            .Builder(context)
+            .data(url)
+            .crossfade(true)
+            .allowHardware(true)
+            .apply {
+                if (imageQuality != ImageQuality.RAW) {
+                    val px = getSizeFromQuality(imageQuality)
+                    size(px, px)
+                }
             }
-        }
-        .build()
+            .build()
+    }
 }
 
 /** Ported from Flamingo's ShadowImageWithCache — squircle-clipped artwork with drop shadow. */
@@ -355,12 +359,25 @@ fun ShadowImageWithCache(
                 this.shape = shape
             },
     ) {
-        AsyncImage(
-            model = flamingoImageRequest(url, imageQuality),
-            contentDescription = contentDescription.toString(),
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
+        val request = flamingoImageRequest(url, imageQuality)
+        if (request != null) {
+            AsyncImage(
+                model = request,
+                contentDescription = contentDescription.toString(),
+                contentScale = ContentScale.Crop,
+                placeholder = painterResource(R.drawable.ic_music_placeholder),
+                error = painterResource(R.drawable.ic_music_placeholder),
+                fallback = painterResource(R.drawable.ic_music_placeholder),
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Image(
+                painter = painterResource(R.drawable.ic_music_placeholder),
+                contentDescription = contentDescription,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
         overlayContent?.invoke(this)
     }
