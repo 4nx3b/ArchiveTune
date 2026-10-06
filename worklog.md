@@ -4569,3 +4569,20 @@ Stage Summary:
 - AM portrait canvas now cross-dissolves into the frosted backdrop behind the
   controls (SF-style), the queue haze is gone, and pretty print exports clean
   text for TTML/word-synced and BetterLyrics songs.
+
+---
+Task ID: 71
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Replace the Apple Music player style with a complete port of Flamingo's player design (https://github.com/shouryadixitisverycool/Flamingo, GPLv3)
+
+Work Log:
+- Ported Flamingo's entire NowPlaying UI into ui/player/flamingo/ (4,899 lines): FlamingoPlayer.kt (album/lyrics/queue in-page state machine, shared-element artwork morph into PlayingBar, crossfade page transitions 300ms, queue overlay at 114dp, PlayerControl with custom canvas Track sliders, VolumeSlider, AirPlay with bluetooth device name, quality badge, 2500ms controls auto-hide), FlamingoLyricView.kt (per-character karaoke gradient wipe via TextMeasurer, distance-based line blur up to 8dp, countdown dots, golden-ratio scroll anchor, 550ms yosEasing spacing), FlamingoBackground.kt (artwork -> center-crop, downscale, saturation x3, darkening overlays, stack blur 25 -> background with optional Ken Burns + 0.618 dim layer off-lyrics), FlamingoSupport.kt (squircle shape, dropShadow, overlayEffect BlendMode.Plus, ShadowImageWithCache, stack-blur bitmap resolver, haptics), FlamingoLyricsData.kt (LyricsEntry -> Flamingo lyric entries adapter: word timings, translations, romanization, duet agents, instrumental countdowns).
+- Copied 26 Flamingo vector icons (flamingo_np_*, swipe, queue, earphone, quality) into res/drawable.
+- Deleted AppleMusicPlayer.kt + AppleMusicSlider.kt (2,144 lines) — AppleMusicQueueSheet.kt kept (TikTok style uses it); Player.kt APPLE_MUSIC branches now render FlamingoPlayerContent with the same integration signature.
+- Added 6 Flamingo preference keys (translation, volume bar, background effect, lyric blur, font weight, line balance — Flamingo defaults) + settings section in PlayerSettings gated on APPLE_MUSIC style with font-weight picker dialog.
+- Lyrics pipeline: currentLyrics -> isTtml/isLineSyncedLrc -> parseTtml/parseLyrics -> FlamingoLyricAdapter (non-TTML current-line advancement ported from Flamingo's MediaController runnable; TTML 10ms live-time poll preserved).
+- Queue behavior: reorder via fork's uid-anchor bookkeeping (shuffle-aware setShuffleOrder), swipe-right = play next (primary reveal + toast), swipe-left = remove (red reveal + height collapse, 110/170ms EaseOutQuart), 64dp rows, 48dp LOW-quality artwork, reorder grip.
+- Review agent pass fixed 3 compile blockers (conflicting Paint imports, missing animateFloat/ColumnScope/RowScope imports); brace-balance verified on all touched files.
+
+Stage Summary:
+- APPLE_MUSIC player style is now the Flamingo design end-to-end: icons, typography (19.5/18.5/16.5/30.5sp), dimensions (0.595/0.437 height fractions, 61/58.5dp transport, 43dp spacing), colors (floating-light blurred-saturated artwork background + Plus/Overlay/DstIn blend modes), and lyrics/queue page behavior with their original transition animations.
