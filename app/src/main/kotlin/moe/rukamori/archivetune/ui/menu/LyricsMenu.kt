@@ -2240,12 +2240,25 @@ private val GenericVoiceAgentRegex = Regex("""(?i)^v\d+$""")
 private val LrcTokenRegex =
     Regex("""\[[0-9]{1,3}:[0-9]{2}(?:[.:][0-9]{1,3})?\]|\[[a-zA-Z]+:[^]]*]""")
 
+private val TtmlTagRegex = Regex("""<[^>]+>""")
+
 internal fun prettyPrintLyricsForExport(raw: String): String {
     if (raw.isBlank()) return raw
-    val entries = moe.rukamori.archivetune.lyrics.LyricsUtils.parseLyrics(raw)
+    // Word-synced TTML (Apple Music / BetterLyrics / Portato providers) needs the
+    // TTML parser; LyricsUtils.parseLyrics only understands QRC + LRC dialects and
+    // would otherwise fall through and emit the raw XML markup.
+    val entries =
+        runCatching {
+            if (moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml(raw)) {
+                moe.rukamori.archivetune.lyrics.LyricsUtils.parseTtml(raw)
+            } else {
+                moe.rukamori.archivetune.lyrics.LyricsUtils.parseLyrics(raw)
+            }
+        }.getOrElse { emptyList() }
     if (entries.isEmpty()) {
         return raw.lineSequence()
             .map { line -> LrcTokenRegex.replace(line, "").trim() }
+            .map { line -> TtmlTagRegex.replace(line, "").trim() }
             .filterIndexed { index, line -> line.isNotEmpty() || (index > 0) }
             .joinToString("\n")
             .trim()
