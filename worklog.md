@@ -4510,3 +4510,62 @@ Stage Summary:
 - dev @ d18b5b35c; CI 7/7 green (check + 5x Nightly APK matrix +
   create-nightly published the canary). The 8-item task-67 batch now compiles
   and ships.
+
+---
+
+Task ID: 70
+Agent: Super Z (main agent, session web-e130fa90)
+Task: User feedback round on the task-69 AM blur port — "no blending of canvas
+and bottom controls", remove the haze effect from the queue, and fix pretty
+print export for word-synced / BetterLyrics songs.
+
+Work Log:
+- Screenshot forensics (Screenshot_20261006-063424): canvas video ends at a
+  hard horizontal edge right above the title row; the controls area measured
+  mean 13-40 brightness vs the video's 73 with zero canvas texture visible —
+  the task-69 frost rendered but the 0.65-alpha bottom scrim crushed it into a
+  flat dark surface. Compared against the user's SpatialFlow reference shot
+  (backdrop stays clearly visible behind controls).
+- AppleMusicPlayer.kt — canvas/controls blend, ported the missing half of the
+  SF architecture: (a) sharp-stage dissolve — the portrait cover canvas now
+  fades out via an offscreen DstIn vertical gradient starting at 62% of the
+  cover stage (AmSharpStageFadeStart, mirrors SF's SfSharpStageFadeBrush),
+  animated together with canvasBackdropReveal so the fade rides the same 650ms
+  reveal; steady-state brush is remembered, the animated path rebuilds the
+  gradient only while reveal < 0.999; (b) AmCanvasScrimBrush lightened
+  0.25/0.40/0.65 -> 0.20/0.34/0.52 so the frosted canvas reads clearly behind
+  the bottom controls (SF-reference visibility level).
+- AppleMusicQueueSheet.kt — removed the haze effect entirely: both scroll-edge
+  hazeEffect strips (top 56dp / bottom 48dp, HazeMaterials.ultraThin +
+  progressive gradients) deleted along with the queueHaze* visible/alpha
+  states, the backdropHaze parameter, and the HazeState/HazeProgressive/
+  hazeEffect/HazeMaterials imports + file OptIn. The transparent queue now
+  sits directly on the player backdrop (frosted canvas / blurred artwork);
+  TikTok call site needed no change (it never passed backdropHaze).
+- AppleMusicPlayer.kt — dropped the queueBackdropHaze HazeState, the
+  hazeSource modifier on the backdrop Box, and the two haze imports.
+- LyricsMenu.kt — prettyPrintLyricsForExport now routes TTML through
+  LyricsUtils.parseTtml (parseLyrics only understands QRC/LRC dialects, so
+  word-synced TTML from Apple Music / BetterLyrics / Portato fell through and
+  exported raw XML markup; same routing pattern as SpatialFlowPlayer's
+  syncedLyrics). Fallback path also strips TTML tags (TtmlTagRegex) so even a
+  parser failure yields clean text. QRC text was already clean (word texts are
+  joined into line.text by QRCParser).
+- Compile round 1 (94be53aff): 5/5 nightly matrix red — canvasBackdropReveal
+  was declared inside the backdrop Box lambda but the portrait cover stage is
+  a SIBLING of that Box, so the dissolve fade's drawWithContent couldn't
+  resolve it (Unresolved reference + cascading `to` inference errors at
+  1037/1050). Learned: the Nightly "check" job is only a version/tag gate —
+  compile signal comes exclusively from the 5 APK matrix jobs.
+- Compile round 2 (61dd225f8): hoisted canvasBackdropReveal + its
+  LaunchedEffect above the backdrop Box into the shared scope (verified with a
+  brace-depth scope analysis: decl at depth 3, all usages nested at 5-11).
+- Monitored CI: 7/7 green on 61dd225f8 (check + 5x Nightly APK matrix +
+  create-nightly); canary N202610060140 (17.0.6643-61dd225f8) published with
+  5 assets.
+
+Stage Summary:
+- dev @ 61dd225f8, CI 7/7 green, canary published.
+- AM portrait canvas now cross-dissolves into the frosted backdrop behind the
+  controls (SF-style), the queue haze is gone, and pretty print exports clean
+  text for TTML/word-synced and BetterLyrics songs.
