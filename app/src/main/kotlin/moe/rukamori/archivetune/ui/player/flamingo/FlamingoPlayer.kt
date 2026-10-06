@@ -102,18 +102,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshot.Snapshot
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.graphics.Rect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
@@ -335,9 +335,10 @@ fun FlamingoPlayerContent(
             }
         }
 
-        val liveTimeLambda by rememberUpdatedState {
+        val lyricsSyncOffsetState = rememberUpdatedState(lyricsSyncOffset)
+        val liveTimeLambda: () -> Int = remember(player) {
             {
-                (player.currentPosition.coerceAtLeast(0) + lyricsSyncOffset).toInt()
+                (player.currentPosition.coerceAtLeast(0) + lyricsSyncOffsetState.value).toInt()
             }
         }
 
@@ -458,11 +459,15 @@ fun FlamingoPlayerContent(
             // shared-element artwork morph between them.
             FlamingoWrapper {
                 SharedTransitionLayout {
-                    Crossfade(
+                    AnimatedContent(
                         targetState = nowPage,
+                        transitionSpec = {
+                            fadeIn() togetherWith fadeOut()
+                        },
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(top = topInset + 22.dp),
+                        label = "FlamingoPageCrossfade",
                     ) { page ->
                         when (page) {
                             FlamingoPage.Album ->
@@ -478,7 +483,7 @@ fun FlamingoPlayerContent(
                                                     sharedContentState = rememberSharedContentState(
                                                         key = ShareAlbumKey,
                                                     ),
-                                                    animatedVisibilityScope = this@Crossfade,
+                                                    animatedVisibilityScope = this@AnimatedContent,
                                                     boundsTransform = BoundsTransform { _, _ ->
                                                         spring(
                                                             dampingRatio = Spring.DampingRatioNoBouncy,
@@ -548,7 +553,7 @@ fun FlamingoPlayerContent(
                                                 sharedContentState = rememberSharedContentState(
                                                     key = ShareAlbumKey,
                                                 ),
-                                                animatedVisibilityScope = this@Crossfade,
+                                                animatedVisibilityScope = this@AnimatedContent,
                                                 boundsTransform = BoundsTransform { _, _ ->
                                                     spring(
                                                         dampingRatio = Spring.DampingRatioNoBouncy,
@@ -580,7 +585,7 @@ fun FlamingoPlayerContent(
                                                 sharedContentState = rememberSharedContentState(
                                                     key = ShareAlbumKey,
                                                 ),
-                                                animatedVisibilityScope = this@Crossfade,
+                                                animatedVisibilityScope = this@AnimatedContent,
                                                 boundsTransform = BoundsTransform { _, _ ->
                                                     spring(
                                                         dampingRatio = Spring.DampingRatioNoBouncy,
