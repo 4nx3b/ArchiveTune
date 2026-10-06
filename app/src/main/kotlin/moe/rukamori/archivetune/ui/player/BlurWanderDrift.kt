@@ -28,6 +28,9 @@ import kotlin.random.Random
 internal class BlurWanderDrift(
     private val random: Random = Random.Default,
     private val maxDriftDp: Float = DefaultWanderRadiusDp,
+    private val speedDpPerSecond: Float = WanderSpeedDpPerSecond,
+    private val minLegDurationMs: Float = MinLegDurationMs,
+    private val maxLegDurationMs: Float = MaxLegDurationMs,
 ) {
     private val xState = mutableFloatStateOf(0f)
     private val yState = mutableFloatStateOf(0f)
@@ -84,18 +87,18 @@ internal class BlurWanderDrift(
 
         val distance = hypot(toX - fromX, toY - fromY)
         legDurationMs =
-            (distance / WanderSpeedDpPerSecond * 1000f)
-                .coerceIn(MinLegDurationMs, MaxLegDurationMs)
+            (distance / speedDpPerSecond * 1000f)
+                .coerceIn(minLegDurationMs, maxLegDurationMs)
     }
 
     internal companion object {
         const val DefaultWanderRadiusDp = 120f
 
-        private const val WanderSpeedDpPerSecond = 26f
+        const val WanderSpeedDpPerSecond = 26f
 
-        private const val MinLegDurationMs = 6_000f
+        const val MinLegDurationMs = 6_000f
 
-        private const val MaxLegDurationMs = 26_000f
+        const val MaxLegDurationMs = 26_000f
 
         private const val MinLegRotationDegrees = 18f
 
@@ -159,10 +162,21 @@ internal fun blurBackdropFootprintLandscape(
 internal fun rememberBlurWanderDrift(
     active: Boolean,
     maxDriftDp: Float = BlurWanderDrift.DefaultWanderRadiusDp,
+    speedDpPerSecond: Float = BlurWanderDrift.WanderSpeedDpPerSecond,
+    minLegDurationMs: Float = BlurWanderDrift.MinLegDurationMs,
+    maxLegDurationMs: Float = BlurWanderDrift.MaxLegDurationMs,
 ): BlurWanderDrift {
-    val drift = remember(maxDriftDp) { BlurWanderDrift(maxDriftDp = maxDriftDp) }
+    val drift =
+        remember(maxDriftDp, speedDpPerSecond, minLegDurationMs, maxLegDurationMs) {
+            BlurWanderDrift(
+                maxDriftDp = maxDriftDp,
+                speedDpPerSecond = speedDpPerSecond,
+                minLegDurationMs = minLegDurationMs,
+                maxLegDurationMs = maxLegDurationMs,
+            )
+        }
 
-    LaunchedEffect(active, maxDriftDp) {
+    LaunchedEffect(active, maxDriftDp, speedDpPerSecond) {
         if (!active) return@LaunchedEffect
         var lastFrameNanos = 0L
         var unappliedMs = 0f

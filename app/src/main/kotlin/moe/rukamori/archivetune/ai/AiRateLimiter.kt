@@ -26,13 +26,13 @@ object AiRateLimiter {
         val maxPerHour: Int,
         val smoothingWaitMs: Long,
     ) {
-        LYRICS_TRANSLATION(label = "lyrics translation", minIntervalMs = 150L, maxPerHour = 240, smoothingWaitMs = 1_000L),
+        LYRICS_TRANSLATION(label = "lyrics translation", minIntervalMs = 50L, maxPerHour = 600, smoothingWaitMs = 150L),
 
         LYRICS_ROMANIZATION(
             label = "lyrics romanisation",
-            minIntervalMs = 150L,
-            maxPerHour = 240,
-            smoothingWaitMs = 1_000L,
+            minIntervalMs = 50L,
+            maxPerHour = 600,
+            smoothingWaitMs = 150L,
         ),
 
         AI_MIX(label = "AI Mix", minIntervalMs = 10L * 60_000L, maxPerHour = 6, smoothingWaitMs = 0L),

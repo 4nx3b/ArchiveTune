@@ -14,11 +14,18 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
+import androidx.datastore.preferences.core.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.LocalScanExtractionVersionKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.AlbumArtistMap
 import moe.rukamori.archivetune.db.entities.AlbumEntity
@@ -31,6 +38,8 @@ import moe.rukamori.archivetune.db.entities.SongArtistMap
 import moe.rukamori.archivetune.db.entities.SongEntity
 import moe.rukamori.archivetune.audiosource.ReplayGainTagParser
 import moe.rukamori.archivetune.lyrics.LyricsUtils
+import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.getAsync
 import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
@@ -40,6 +49,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 data class LocalSongScanConfig(
@@ -92,8 +102,18 @@ class LocalSongScanner
     ) {
         suspend fun scanDevice(scanConfig: LocalSongScanConfig = LocalSongScanConfig()): LocalSongScanSummary =
             withContext(Dispatchers.IO) {
-                val snapshot = queryTracks(scanConfig)
-                database.withTransaction {
+                // A library last read by an older extractor is re-read in full once. After that, a
+                // file whose MediaStore size and modification time match its stored row skips the
+                // three per-file reads (artwork retriever, lyrics tag parse, replay-gain parse)
+                // that made every rescan cost as much as the first. This snapshot only drives
+                // that skip: the merge below reloads inside the transaction, so a like or play
+                // count written mid-scan is not overwritten.
+                val fullRescan =
+                    (context.dataStore.getAsync(LocalScanExtractionVersionKey) ?: 0) < ExtractionVersion
+                val previousScan = if (fullRescan) emptyMap() else loadSongs(database.localSongIds())
+                val snapshot = queryTracks(scanConfig, previousScan)
+                val summary =
+                    database.withTransaction {
                     val existingLocalIds = localSongIds()
                     val scannedIds = snapshot.tracks.map(LocalTrackRecord::id)
                     val scannedIdSet = scannedIds.toSet()
@@ -106,7 +126,9 @@ class LocalSongScanner
                     }
 
                     val existingSongs = loadSongs(scannedIds)
-                    val existingLyrics = loadLyrics(scannedIds)
+                    // Only files re-read this scan can change their embedded lyrics.
+                    val existingLyrics =
+                        loadLyrics(snapshot.tracks.filterNot(LocalTrackRecord::unchanged).map(LocalTrackRecord::id))
                     val existingArtists = loadArtists(snapshot.artists.map(LocalArtistRecord::id))
                     val existingAlbums = loadAlbums(snapshot.albums.map(LocalAlbumRecord::id))
 
@@ -235,7 +257,11 @@ class LocalSongScanner
                                 ),
                             )
                         }
-                        updateEmbeddedLyrics(track, existingLyrics[track.id])
+                        // An unchanged file was not re-read, so its stored lyrics stand: passing its
+                        // unread (null) lyrics on would delete an EMBEDDED row it still carries.
+                        if (!track.unchanged) {
+                            updateEmbeddedLyrics(track, existingLyrics[track.id])
+                        }
                     }
 
                     pruneLocalAlbums()
@@ -248,6 +274,10 @@ class LocalSongScanner
                         removedSongs = removedIds.size,
                     )
                 }
+                if (fullRescan) {
+                    context.dataStore.edit { it[LocalScanExtractionVersionKey] = ExtractionVersion }
+                }
+                summary
             }
 
         private suspend fun loadSongs(ids: List<String>): Map<String, Song> =
@@ -277,7 +307,10 @@ class LocalSongScanner
                 .associateBy { item -> item.id }
 
         @Suppress("DEPRECATION")
-        private fun queryTracks(scanConfig: LocalSongScanConfig): LocalScanSnapshot {
+        private suspend fun queryTracks(
+            scanConfig: LocalSongScanConfig,
+            previousScan: Map<String, Song>,
+        ): LocalScanSnapshot {
             val sanitizedMinimumDurationMs = scanConfig.sanitizedMinimumDurationSeconds.toLong() * 1000L
             val sanitizedIncludedFolders =
                 scanConfig.sanitizedIncludedFolders
@@ -326,7 +359,9 @@ class LocalSongScanner
             val unknownArtist = context.getString(R.string.unknown_artist)
             val unknownTitle = context.getString(R.string.unknown)
             val tracks = mutableListOf<LocalTrackRecord>()
-            val retainedArtworkFileNames = linkedSetOf<String>()
+            val pending = mutableListOf<PendingExtraction>()
+            // Concurrent: the extraction pass below adds to it from several coroutines at once.
+            val retainedArtworkFileNames: MutableSet<String> = ConcurrentHashMap.newKeySet<String>()
             val embeddedLyricsExtractor = EmbeddedLyricsExtractor(context.contentResolver)
             context.contentResolver
                 .query(
@@ -390,35 +425,38 @@ class LocalSongScanner
                             )
                         val dateModifiedSeconds = cursor.getLong(dateModifiedIndex)
                         val sizeBytes = cursor.getLong(sizeIndex).coerceAtLeast(0L)
-                        val thumbnailUrl =
-                            resolveTrackThumbnail(
-                                contentUri = contentUri,
-                                albumName = albumName,
-                                mediaStoreAlbumId = mediaStoreAlbumId,
-                                dateModifiedSeconds = dateModifiedSeconds,
-                                sizeBytes = sizeBytes,
-                                retainedArtworkFileNames = retainedArtworkFileNames,
-                            )
-                        val embeddedLyrics =
-                            embeddedLyricsExtractor
-                                .extract(
+                        val trackId = contentUri.toString()
+                        val dateModified =
+                            dateModifiedSeconds
+                                .takeIf { it > 0L }
+                                ?.let { LocalDateTime.ofInstant(Instant.ofEpochSecond(it), ZoneId.systemDefault()) }
+                        val kept =
+                            previousScan[trackId]?.let { previous ->
+                                keptArtwork(
+                                    previous = previous,
+                                    dateModified = dateModified,
+                                    sizeBytes = sizeBytes,
+                                    albumName = albumName,
+                                    mediaStoreAlbumId = mediaStoreAlbumId,
+                                    retainedArtworkFileNames = retainedArtworkFileNames,
+                                )
+                            }
+                        if (kept == null) {
+                            pending +=
+                                PendingExtraction(
+                                    index = tracks.size,
                                     contentUri = contentUri,
                                     displayName = displayName,
                                     mimeType = mimeType,
-                                )?.let(LyricsUtils::lyricsOrNotFound)
-                                ?.takeIf { lyrics -> lyrics != LyricsEntity.LYRICS_NOT_FOUND }
-
-                        val replayGain =
-                            runCatching {
-                                ReplayGainTagParser.parse(
-                                    resolver = context.contentResolver,
-                                    uri = contentUri,
-                                    displayName = displayName,
+                                    albumName = albumName,
+                                    mediaStoreAlbumId = mediaStoreAlbumId,
+                                    dateModifiedSeconds = dateModifiedSeconds,
+                                    sizeBytes = sizeBytes,
                                 )
-                            }.getOrNull()
+                        }
                         tracks +=
                             LocalTrackRecord(
-                                id = contentUri.toString(),
+                                id = trackId,
                                 title = title,
                                 artists = artists,
                                 albumId =
@@ -435,18 +473,69 @@ class LocalSongScanner
                                         .coerceAtMost(Int.MAX_VALUE.toLong())
                                         .toInt(),
                                 year = cursor.getIntOrNull(yearIndex)?.takeIf { it > 0 },
-                                dateModified =
-                                    dateModifiedSeconds
-                                        .takeIf { it > 0L }
-                                        ?.let { LocalDateTime.ofInstant(Instant.ofEpochSecond(it), ZoneId.systemDefault()) },
+                                dateModified = dateModified,
                                 sizeBytes = sizeBytes,
                                 mimeType = mimeType,
-                                thumbnailUrl = thumbnailUrl,
-                                embeddedLyrics = embeddedLyrics,
-                                replayGain = replayGain,
+                                // Set by the extraction pass below for every file that needs one.
+                                thumbnailUrl = kept?.thumbnailUrl,
+                                embeddedLyrics = null,
+                                replayGain = null,
+                                unchanged = kept != null,
                             )
                     }
                 }
+            // Only new or changed files reach here. Their reads run a few at a time: each holds a
+            // file open plus a retriever, so the bound keeps descriptors and memory flat however
+            // large the library, while one file's waits overlap the next file's reads.
+            if (pending.isNotEmpty()) {
+                val permits = Semaphore(ExtractionParallelism)
+                val extractions =
+                    coroutineScope {
+                        pending
+                            .map { item ->
+                                async {
+                                    permits.withPermit {
+                                        Extraction(
+                                            index = item.index,
+                                            thumbnailUrl =
+                                                resolveTrackThumbnail(
+                                                    contentUri = item.contentUri,
+                                                    albumName = item.albumName,
+                                                    mediaStoreAlbumId = item.mediaStoreAlbumId,
+                                                    dateModifiedSeconds = item.dateModifiedSeconds,
+                                                    sizeBytes = item.sizeBytes,
+                                                    retainedArtworkFileNames = retainedArtworkFileNames,
+                                                ),
+                                            embeddedLyrics =
+                                                embeddedLyricsExtractor
+                                                    .extract(
+                                                        contentUri = item.contentUri,
+                                                        displayName = item.displayName,
+                                                        mimeType = item.mimeType,
+                                                    )?.let(LyricsUtils::lyricsOrNotFound)
+                                                    ?.takeIf { lyrics -> lyrics != LyricsEntity.LYRICS_NOT_FOUND },
+                                            replayGain =
+                                                runCatching {
+                                                    ReplayGainTagParser.parse(
+                                                        resolver = context.contentResolver,
+                                                        uri = item.contentUri,
+                                                        displayName = item.displayName,
+                                                    )
+                                                }.getOrNull(),
+                                        )
+                                    }
+                                }
+                            }.awaitAll()
+                    }
+                extractions.forEach { extraction ->
+                    tracks[extraction.index] =
+                        tracks[extraction.index].copy(
+                            thumbnailUrl = extraction.thumbnailUrl,
+                            embeddedLyrics = extraction.embeddedLyrics,
+                            replayGain = extraction.replayGain,
+                        )
+                }
+            }
             pruneUnusedArtworkFiles(retainedArtworkFileNames)
 
             val albums =
@@ -494,10 +583,55 @@ class LocalSongScanner
                 dateModifiedSeconds = dateModifiedSeconds,
                 sizeBytes = sizeBytes,
                 retainedArtworkFileNames = retainedArtworkFileNames,
-            ) ?: mediaStoreAlbumId
+            ) ?: albumArtUri(albumName, mediaStoreAlbumId)
+
+        private fun albumArtUri(
+            albumName: String?,
+            mediaStoreAlbumId: Long?,
+        ): String? =
+            mediaStoreAlbumId
                 ?.takeIf { !albumName.isNullOrBlank() }
                 ?.takeIf { it > 0L }
                 ?.let { ContentUris.withAppendedId(AlbumArtUri, it).toString() }
+
+        /**
+         * What a file unchanged since its last scan keeps, or null when it must be read again: it
+         * is new, its MediaStore size or modification time moved (a missing time never counts as
+         * unchanged), the embedded picture cached for it has gone from disk, or its stored
+         * thumbnail is not one this scanner wrote (another build's provider, a restored backup).
+         */
+        private fun keptArtwork(
+            previous: Song,
+            dateModified: LocalDateTime?,
+            sizeBytes: Long,
+            albumName: String?,
+            mediaStoreAlbumId: Long?,
+            retainedArtworkFileNames: MutableSet<String>,
+        ): KeptArtwork? {
+            if (dateModified == null || previous.song.dateModified != dateModified) return null
+            if (previous.format?.contentLength != sizeBytes) return null
+            val previousThumbnail = previous.song.thumbnailUrl
+            val cachedFileName = cachedArtworkFileName(previousThumbnail)
+            if (cachedFileName != null) {
+                if (!File(localArtworkDirectory(), cachedFileName).isFile) return null
+                retainedArtworkFileNames += cachedFileName
+                return KeptArtwork(previousThumbnail)
+            }
+            // No embedded picture was found last time: the row holds MediaStore album art or
+            // nothing, so there is nothing on disk to keep, and the fallback is recomputed as it
+            // costs no file read.
+            if (previousThumbnail != null && !previousThumbnail.startsWith("$AlbumArtUri/")) return null
+            return KeptArtwork(albumArtUri(albumName, mediaStoreAlbumId))
+        }
+
+        /** The file in the local artwork directory that [thumbnailUrl] serves, or null if none. */
+        private fun cachedArtworkFileName(thumbnailUrl: String?): String? {
+            val uri = thumbnailUrl?.let(Uri::parse) ?: return null
+            if (uri.authority != artworkAuthority) return null
+            val segments = uri.pathSegments
+            if (segments.size < 2 || segments[segments.size - 2] != LocalArtworkDirectoryName) return null
+            return segments.last()
+        }
 
         private fun extractEmbeddedArtwork(
             contentUri: Uri,
@@ -523,7 +657,7 @@ class LocalSongScanner
                 FileProvider
                     .getUriForFile(
                         context,
-                        "${context.packageName}.FileProvider",
+                        artworkAuthority,
                         artworkFile,
                     ).toString()
             } catch (error: Throwable) {
@@ -573,6 +707,8 @@ class LocalSongScanner
         }
 
         private fun localArtworkDirectory(): File = File(context.filesDir, LocalArtworkDirectoryName)
+
+        private val artworkAuthority: String get() = "${context.packageName}.FileProvider"
 
         private fun ByteArray.imageExtension(): String? =
             when {
@@ -733,6 +869,32 @@ class LocalSongScanner
             val thumbnailUrl: String?,
             val embeddedLyrics: String?,
             val replayGain: ReplayGainTagParser.ReplayGain?,
+            /** Carried over from the last scan: artwork, lyrics and replay gain were not read this time. */
+            val unchanged: Boolean,
+        )
+
+        /** A new or changed file waiting for its artwork, lyrics and replay-gain reads; [index] is its track slot. */
+        private data class PendingExtraction(
+            val index: Int,
+            val contentUri: Uri,
+            val displayName: String?,
+            val mimeType: String,
+            val albumName: String?,
+            val mediaStoreAlbumId: Long?,
+            val dateModifiedSeconds: Long,
+            val sizeBytes: Long,
+        )
+
+        private data class Extraction(
+            val index: Int,
+            val thumbnailUrl: String?,
+            val embeddedLyrics: String?,
+            val replayGain: ReplayGainTagParser.ReplayGain?,
+        )
+
+        /** An unchanged file's artwork, which may legitimately be none. */
+        private data class KeptArtwork(
+            val thumbnailUrl: String?,
         )
 
         private data class LocalArtistRecord(
@@ -756,5 +918,14 @@ class LocalSongScanner
             const val LocalArtworkDirectoryName = "local_music_artwork"
             const val LogTag = "LocalSongScanner"
             const val SqlBatchSize = 900
+
+            /** Files read at once during a scan; each read holds a descriptor and a retriever. */
+            const val ExtractionParallelism = 4
+
+            /**
+             * Bump when the scan starts reading something new from files: the next scan then re-reads
+             * every file once rather than skipping unchanged ones (see LocalScanExtractionVersionKey).
+             */
+            const val ExtractionVersion = 1
         }
     }

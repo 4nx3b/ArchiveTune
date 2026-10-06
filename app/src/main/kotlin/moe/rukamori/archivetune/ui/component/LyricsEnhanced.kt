@@ -231,9 +231,10 @@ fun LyricsEnhanced(
     modifier: Modifier = Modifier,
     textColorOverride: Color? = null,
     lyricsLineBlurOverride: Boolean? = null,
-
     textSizeOverride: Float? = null,
     singleActiveLine: Boolean = false,
+    translationVisibleOverride: Boolean? = null,
+    phoneticVisibleOverride: Boolean? = null,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val player = playerConnection.player
@@ -298,10 +299,12 @@ fun LyricsEnhanced(
                 ?.lyrics
         }
     val showTranslations =
-        remember(currentLyrics?.source, romanizationPreferences.showsRomanization) {
-            currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value ||
+        remember(currentLyrics?.source, romanizationPreferences.showsRomanization, translationVisibleOverride) {
+            val base = currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value ||
                 romanizationPreferences.showsRomanization
+            base && (translationVisibleOverride ?: true)
         }
+    val showPhoneticLines = phoneticVisibleOverride ?: true
 
     val playbackState by playerConnection.playbackState.collectAsState()
     var restartTick by remember { mutableIntStateOf(0) }
@@ -1112,7 +1115,7 @@ fun LyricsEnhanced(
                                 useBlurEffect = lyricsLineBlur && !animationsDisabled,
                                 showTranslation = showTranslations,
 
-                                showPhonetic = true,
+                                showPhonetic = showPhoneticLines,
                                 offset = lyricsViewportOffset,
 
                                 keepAliveZone = 8.dp,

@@ -147,40 +147,88 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AiRomanizeLyricsKey
+import moe.rukamori.archivetune.constants.AutoAiRomanizeLyricsKey
+import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
+import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.FlamingoBackgroundEffectKey
-import moe.rukamori.archivetune.constants.FlamingoLyricBlurKey
-import moe.rukamori.archivetune.constants.FlamingoLyricFontWeightKey
-import moe.rukamori.archivetune.constants.FlamingoLyricLineBalanceKey
 import moe.rukamori.archivetune.constants.FlamingoShowVolumeBarKey
-import moe.rukamori.archivetune.constants.FlamingoTranslationKey
+import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.isLossless
 import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.extensions.move
-import moe.rukamori.archivetune.lyrics.LyricsUtils.isLineSyncedLrc
-import moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml
-import moe.rukamori.archivetune.lyrics.LyricsUtils.parseLyrics
-import moe.rukamori.archivetune.lyrics.LyricsUtils.parseTtml
+import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
+import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.PlatformBackdrop
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.component.rememberLiquidGlassEnabled
+import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
+import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
+import moe.rukamori.archivetune.ui.player.CanvasLoopSync
+import moe.rukamori.archivetune.ui.player.LocalVideoArtworkState
 import moe.rukamori.archivetune.ui.player.rememberThumbnailSwapState
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.media3.ui.AspectRatioFrameLayout
+import coil3.compose.AsyncImage
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.pointerInput
+import moe.rukamori.archivetune.utils.isLocalMediaId
 
 private const val AnimDurationMillis = 300
 private const val ShareAlbumKey = "flamingoAlbum"
 private val QueueRowHeight = 64.dp
 private val QueueDraggingItemShape = RoundedCornerShape(0.dp)
+
+// ---- Canvas/controls blend (restored from the pre-redesign Apple Music player) ----
+// The sharp canvas stage fills the area above the title row; the same canvas,
+// blurred and upscaled, runs behind the bottom controls for the full player
+// height so the stage and the controls read as one continuous surface.
+private const val FlamingoCanvasBackdropUpscale = 6f
+private const val FlamingoCanvasBackdropOverscan = 1.10f
+private val FlamingoCanvasBackdropBlurRadius = 96.dp
+private const val FlamingoCanvasBackdropMaxVideoEdgePx = 480
+private const val FlamingoLyricsBackdropMorphMs = 650
+private const val FlamingoSharpStageFadeStart = 0.62f
+
+private val FlamingoCanvasScrimBrush =
+    Brush.verticalGradient(
+        0f to Color.Black.copy(alpha = 0.20f),
+        0.5f to Color.Black.copy(alpha = 0.34f),
+        1f to Color.Black.copy(alpha = 0.52f),
+    )
+
+private val FlamingoCanvasRightFadeBrush =
+    Brush.horizontalGradient(
+        0f to Color.Black,
+        0.55f to Color.Black,
+        1f to Color.Transparent,
+    )
 
 private data class QueueReorderTarget(
     val nextInQueue: Boolean,
@@ -242,19 +290,8 @@ fun FlamingoPlayerContent(
         val player = playerConnection.player
 
         // ---- Flamingo settings (ported defaults) ----
-        val (translationPref) = rememberPreference(FlamingoTranslationKey, defaultValue = true)
         val (showVolumeBar) = rememberPreference(FlamingoShowVolumeBarKey, defaultValue = true)
         val (backgroundEffect) = rememberPreference(FlamingoBackgroundEffectKey, defaultValue = false)
-        val (lyricBlur) = rememberPreference(FlamingoLyricBlurKey, defaultValue = false)
-        val (lyricFontWeightName) = rememberPreference(FlamingoLyricFontWeightKey, defaultValue = "ExtraBold")
-        val (lyricLineBalance) = rememberPreference(FlamingoLyricLineBalanceKey, defaultValue = false)
-
-        val mainTextStyle = remember(lyricFontWeightName, lyricLineBalance) {
-            flamingoMainTextStyle(
-                fontWeight = flamingoFontWeightFromName(lyricFontWeightName),
-                lineBalance = lyricLineBalance,
-            )
-        }
 
         // ---- Playback state ----
         val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsStateWithLifecycle()
@@ -266,35 +303,39 @@ fun FlamingoPlayerContent(
 
         val isPlayingStatusLambda = rememberUpdatedState(isPlaying)
 
-        var translationChangedByUser by rememberSaveable { mutableStateOf(false) }
-        val translation = rememberSaveable(key = "FlamingoNowPlaying_translation") {
-            mutableStateOf(translationPref)
-        }
-        LaunchedEffect(translationPref) {
-            if (translation.value != translationPref && !translationChangedByUser) {
-                translation.value = translationPref
-            }
-        }
+        // ---- Canvas state (restored pre-redesign Apple Music behaviour) ----
+        val videoShowing =
+            LocalVideoArtworkState.current != null &&
+                mediaMetadata.isMusicVideo &&
+                !mediaMetadata.id.isLocalMediaId()
+        val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+        val canvasActive =
+            !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
+        val canvasVisualActive = canvasActive && !videoShowing && !isPreS
+        val useCanvasBackdrop = canvasVisualActive && !landscape
+
+        val canvasLoopSync = remember { CanvasLoopSync() }
 
         val lastClickTime = rememberSaveable(key = "FlamingoNowPlaying_lastClickTime") {
             mutableLongStateOf(0L)
         }
 
         val showControl = rememberSaveable(key = "FlamingoNowPlaying_showControl") {
-            mutableStateOf(true)
+            mutableStateOf(!landscape)
         }
 
         var nowPage by rememberSaveable(key = "FlamingoNowPlaying_nowPage") {
-            mutableStateOf(FlamingoPage.Album)
+            mutableStateOf(if (landscape) FlamingoPage.Lyric else FlamingoPage.Album)
         }
 
-        LaunchedEffect(mediaMetadata.id) {
-            nowPage = FlamingoPage.Album
-            showControl.value = true
+        LaunchedEffect(mediaMetadata.id, landscape) {
+            nowPage = if (landscape) FlamingoPage.Lyric else FlamingoPage.Album
+            showControl.value = !landscape
         }
 
         val nowPageLambda = rememberUpdatedState(nowPage)
         val showControlLambda = rememberUpdatedState(showControl.value)
+        val lyricsOpen = nowPage == FlamingoPage.Lyric
 
         // In-page lyrics/queue take priority over the sheet-level back handling.
         BackHandler(enabled = nowPage != FlamingoPage.Album) {
@@ -307,6 +348,48 @@ fun FlamingoPlayerContent(
             onLyricsVisibilityChange(nowPage != FlamingoPage.Album && state.isExpandedOrExpanding)
         }
 
+        // ---- Canvas visibility over the lyrics morph (pre-redesign behaviour) ----
+        var canvasVisibleForLyrics by remember { mutableStateOf(true) }
+        LaunchedEffect(lyricsOpen, landscape) {
+            if (lyricsOpen && !landscape) {
+                canvasVisibleForLyrics = true
+                delay(FlamingoLyricsBackdropMorphMs.toLong())
+                canvasVisibleForLyrics = false
+            } else {
+                canvasVisibleForLyrics = true
+            }
+        }
+
+        val lyricsBackdropProgress =
+            animateFloatAsState(
+                targetValue = if (lyricsOpen && !landscape) 1f else 0f,
+                animationSpec = tween(
+                    durationMillis = FlamingoLyricsBackdropMorphMs,
+                    easing = FastOutSlowInEasing,
+                ),
+                label = "flamingo-lyrics-backdrop-progress",
+            )
+
+        // Hoisted above the backdrop layers so both the blurred canvas backdrop
+        // and the portrait sharp-stage dissolve can read it.
+        val canvasBackdropReveal = remember { Animatable(0f) }
+        LaunchedEffect(useCanvasBackdrop) {
+            canvasBackdropReveal.animateTo(
+                targetValue = if (useCanvasBackdrop) 1f else 0f,
+                animationSpec = tween(
+                    durationMillis = 650,
+                    easing = FastOutSlowInEasing,
+                ),
+            )
+        }
+        val canvasBackdropRevealState = rememberUpdatedState(canvasBackdropReveal)
+
+        val canvasScrimReveal by animateFloatAsState(
+            targetValue = if (canvasVisualActive) 1f else 0f,
+            animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+            label = "flamingo-canvas-scrim-reveal",
+        )
+
         // ---- Artwork ----
         val baseArtworkUrl = mediaMetadata.thumbnailUrl?.highRes()
         val thumbnailSwapState = rememberThumbnailSwapState(
@@ -317,39 +400,121 @@ fun FlamingoPlayerContent(
         )
         val artworkUrl = thumbnailSwapState.displayUrl
 
-        // ---- Lyrics pipeline ----
-        val lyricsText = currentLyrics?.lyrics
-        var lyricData by remember(mediaMetadata.id) { mutableStateOf<FlamingoLyricsData?>(null) }
-        LaunchedEffect(lyricsText) {
-            lyricData = withContext(Dispatchers.Default) {
-                val text = lyricsText
-                if (text.isNullOrBlank() || text == LyricsEntity.LYRICS_NOT_FOUND) {
-                    return@withContext null
+        // ---- Translation / romanisation (AI only, no popups, no toasts) ----
+        val (autoTranslateLyrics, onAutoTranslateLyricsChange) =
+            rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
+        val (translatorTargetLang) = rememberPreference(TranslatorTargetLangKey, defaultValue = "")
+        val (autoTranslateExcludedLanguages) =
+            rememberPreference(AutoTranslateExcludedLanguagesKey, defaultValue = emptySet())
+        val (aiRomanizeLyricsPref, onAiRomanizeLyricsChange) =
+            rememberPreference(AiRomanizeLyricsKey, defaultValue = false)
+        val (autoAiRomanizeLyrics, onAutoAiRomanizeLyricsChange) =
+            rememberPreference(AutoAiRomanizeLyricsKey, defaultValue = false)
+        val romanizationOn = aiRomanizeLyricsPref && autoAiRomanizeLyrics
+
+        val lyricsMenuViewModel: LyricsMenuViewModel = hiltViewModel()
+        val translationDismissedMediaIds by lyricsMenuViewModel.translationDismissedMediaIds
+            .collectAsStateWithLifecycle()
+
+        // Automatic AI translation: when the feature is enabled every song's
+        // lyrics are translated in the background, no manual interaction needed.
+        LaunchedEffect(
+            mediaMetadata.id,
+            currentLyrics?.lyrics,
+            currentLyrics?.source,
+            autoTranslateLyrics,
+            translatorTargetLang,
+            autoTranslateExcludedLanguages,
+            translationDismissedMediaIds,
+        ) {
+            if (!autoTranslateLyrics) return@LaunchedEffect
+            val snapshot = currentLyrics ?: return@LaunchedEffect
+            val text = snapshot.lyrics ?: return@LaunchedEffect
+            if (text.isBlank() || text == LyricsEntity.LYRICS_NOT_FOUND) return@LaunchedEffect
+
+            if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value &&
+                LyricsUtils.hasTranslation(text)
+            ) return@LaunchedEffect
+
+            if (mediaMetadata.id in translationDismissedMediaIds) return@LaunchedEffect
+
+            if (!LyricsUtils.shouldAutoTranslate(
+                    lyrics = text,
+                    targetLanguage = translatorTargetLang,
+                    excludedLanguageCodes = autoTranslateExcludedLanguages,
+                )
+            ) {
+                return@LaunchedEffect
+            }
+
+            lyricsMenuViewModel.translateLyricsWithAi(
+                mediaMetadata = mediaMetadata,
+                lyrics = text,
+                targetLanguage = translatorTargetLang,
+            )
+        }
+
+        val currentLyricsState = rememberUpdatedState(currentLyrics)
+        val targetLangState = rememberUpdatedState(translatorTargetLang)
+
+        fun setTranslationEnabled(enabled: Boolean) {
+            onAutoTranslateLyricsChange(enabled)
+            if (enabled) {
+                val snapshot = currentLyricsState.value
+                val text = snapshot?.lyrics
+                if (snapshot != null && !text.isNullOrBlank() &&
+                    text != LyricsEntity.LYRICS_NOT_FOUND &&
+                    snapshot.source != LyricsEntity.Source.AI_TRANSLATION.value
+                ) {
+                    // Silent AI translation — the automatic path emits no toasts.
+                    scope.launch {
+                        lyricsMenuViewModel.translateLyricsWithAi(
+                            mediaMetadata = mediaMetadata,
+                            lyrics = text,
+                            targetLanguage = targetLangState.value,
+                        )
+                    }
                 }
-                val entries = when {
-                    isTtml(text) -> parseTtml(text)
-                    isLineSyncedLrc(text) -> parseLyrics(text)
-                    else -> null
-                }
-                FlamingoLyricAdapter.fromEntries(entries.orEmpty())
             }
         }
 
-        val lyricsSyncOffsetState = rememberUpdatedState(lyricsSyncOffset)
-        val liveTimeLambda: () -> Int = remember(player) {
-            {
-                (player.currentPosition.coerceAtLeast(0) + lyricsSyncOffsetState.value).toInt()
-            }
+        fun setRomanizationEnabled(enabled: Boolean) {
+            onAiRomanizeLyricsChange(enabled)
+            onAutoAiRomanizeLyricsChange(enabled)
         }
 
-        val lyricSecondaryTextAvailable = remember(lyricData) {
-            derivedStateOf {
-                val data = lyricData ?: return@derivedStateOf false
-                if (data.isTtmlLyrics) {
-                    data.lineTransliterations.any { !it.isNullOrBlank() } ||
-                        data.lineSubtitles.any { !it.isNullOrBlank() }
-                } else {
-                    data.lrcEntries.any { it.lastOrNull()?.second?.isNotBlank() == true }
+        var translationPanelOpen by remember { mutableStateOf(false) }
+
+        // ---- Overflow menu / anchored lyrics overflow (pre-redesign behaviour) ----
+        val menuState = LocalMenuState.current
+        var showAnchoredLyricsMenu by remember { mutableStateOf(false) }
+        var moreIconBounds by remember { mutableStateOf(Rect.Zero) }
+
+        val popupBackdrop: PlatformBackdrop? =
+            if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                rememberBackdrop(Color.Transparent)
+            } else {
+                null
+            }
+
+        val onMoreClick = {
+            if (nowPageLambda.value == FlamingoPage.Lyric) {
+                showAnchoredLyricsMenu = true
+            } else {
+                menuState.show {
+                    PlayerMenu(
+                        mediaMetadata = mediaMetadata,
+                        navController = navController,
+                        playerBottomSheetState = state,
+                        onShowDetailsDialog = {
+                            mediaMetadata.id.let {
+                                bottomSheetPageState.show {
+                                    ShowMediaInfo(it)
+                                }
+                            }
+                        },
+                        onDismiss = menuState::dismiss,
+                    )
                 }
             }
         }
@@ -374,372 +539,294 @@ fun FlamingoPlayerContent(
             }
         }
 
-        // ---- Background (color behind the artwork) ----
-        FlamingoWrapper {
-            FlamingoFloatingLight(
-                albumUrl = { artworkUrl },
-                isPlaying = { isPlayingStatusLambda.value },
-                modifier = Modifier.fillMaxSize(),
-                nowPage = { nowPageLambda.value },
-                backgroundEffect = backgroundEffect,
-            )
-        }
+        // ---- Lyrics position provider ----
+        val sliderPositionState = rememberUpdatedState(sliderPosition)
+        val lyricsPosProvider = remember { { sliderPositionState.value } }
 
-        // ---- Content ----
-        FlamingoWrapper {
-            val alphaAnim = remember { Animatable(0f) }
-
+        // Everything the glass popup samples while the anchored lyrics menu is open.
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .let { base ->
+                        if (popupBackdrop != null && showAnchoredLyricsMenu) {
+                            base.layerBackdrop(popupBackdrop)
+                        } else {
+                            base
+                        }
+                    },
+        ) {
+            // ---- Background (color behind the artwork) ----
             FlamingoWrapper {
-                LaunchedEffect(nowPageLambda.value) {
-                    val targetAlpha = if (nowPageLambda.value == FlamingoPage.Lyric) 1f else 0f
-                    scope.launch {
-                        alphaAnim.animateTo(targetAlpha)
-                    }
-                }
-            }
-
-            val translationButtonEnabled = remember("FlamingoNowPlaying_translationButtonEnabled") {
-                derivedStateOf {
-                    showControlLambda.value && alphaAnim.value != 0f && lyricSecondaryTextAvailable.value
-                }
-            }
-
-            // Lyrics page
-            FlamingoWrapper {
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            compositingStrategy = CompositingStrategy.ModulateAlpha
-                            this.alpha = alphaAnim.value
-                        },
+                Box(
+                    modifier = Modifier.fillMaxSize(),
                 ) {
-                    FlamingoLyric(
-                        lyricData = lyricData,
-                        liveTimeLambda = { liveTimeLambda() },
-                        onSeek = { position ->
-                            player.seekTo(position.toLong())
-                        },
-                        translationLambda = { translation.value },
-                        blurLambda = { lyricBlur },
-                        weightLambda = { showControlLambda.value },
-                        mainTextStyle = mainTextStyle,
-                        topInset = topInset,
-                        onBackClick = {
-                            showControl.value = true
-                            lastClickTime.longValue = System.currentTimeMillis()
-                        },
+                    FlamingoFloatingLight(
+                        albumUrl = { artworkUrl },
+                        isPlaying = { isPlayingStatusLambda.value },
+                        modifier = Modifier.fillMaxSize(),
+                        nowPage = { nowPageLambda.value },
+                        backgroundEffect = backgroundEffect,
                     )
-                }
-            }
 
-            // Drag handle (小把手)
-            FlamingoWrapper {
-                Column(Modifier.fillMaxWidth()) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(top = topInset + 20.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
+                    // Full-height blurred canvas backdrop + scrim crossfade: the same
+                    // canvas as the sharp stage keeps moving behind the bottom
+                    // controls; the stage's bottom dissolve fades into it.
+                    if (useCanvasBackdrop || canvasBackdropReveal.value > 0.01f) {
                         Box(
-                            Modifier
-                                .overlayEffect()
-                                .size(
-                                    width = 32.dp,
-                                    height = 4.5.dp,
-                                )
-                                .background(Color(0x4DFFFFFF), RoundedCornerShape(2.25.dp)),
+                            modifier = Modifier
+                                .matchParentSize()
+                                .graphicsLayer {
+                                    val scale = FlamingoCanvasBackdropOverscan * FlamingoCanvasBackdropUpscale
+                                    scaleX = scale
+                                    scaleY = scale
+                                    alpha =
+                                        canvasBackdropReveal.value * (1f - lyricsBackdropProgress.value)
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CanvasArtworkPlayer(
+                                primaryUrl = canvasPrimaryUrl,
+                                fallbackUrl = canvasFallbackUrl,
+                                isPlaying = isPlaying && canvasVisibleForLyrics,
+                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                                visible = canvasVisibleForLyrics,
+                                maxVideoEdgePx = FlamingoCanvasBackdropMaxVideoEdgePx,
+                                loopSyncFollower = canvasLoopSync,
+                                refreshEpoch = orientationRefreshEpoch,
+                                modifier = Modifier
+                                    .fillMaxWidth(1f / FlamingoCanvasBackdropUpscale)
+                                    .fillMaxHeight(1f / FlamingoCanvasBackdropUpscale)
+                                    .blur(FlamingoCanvasBackdropBlurRadius / FlamingoCanvasBackdropUpscale),
+                            )
+                        }
+                    }
+
+                    if (!videoShowing && canvasVisualActive) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .graphicsLayer { alpha = canvasScrimReveal }
+                                .background(FlamingoCanvasScrimBrush),
                         )
                     }
                 }
             }
 
-            // Main view: artwork page / playing bar pages, cross-faded with a
-            // shared-element artwork morph between them.
+            // ---- Content ----
             FlamingoWrapper {
-                SharedTransitionLayout {
-                    AnimatedContent(
-                        targetState = nowPage,
-                        transitionSpec = {
-                            fadeIn() togetherWith fadeOut()
-                        },
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(top = topInset + 22.dp),
-                        label = "FlamingoPageCrossfade",
-                    ) { page ->
-                        when (page) {
-                            FlamingoPage.Album ->
-                                Column(
-                                    Modifier
-                                        .fillMaxSize()
-                                        .clickable(enabled = false, onClick = {}),
-                                ) {
-                                    FlamingoWrapper {
-                                        Column(Modifier.fillMaxHeight(0.595f)) {
-                                            FlamingoAlbum(
-                                                modifier = Modifier.sharedBounds(
-                                                    sharedContentState = rememberSharedContentState(
-                                                        key = ShareAlbumKey,
-                                                    ),
-                                                    animatedVisibilityScope = this@AnimatedContent,
-                                                    boundsTransform = BoundsTransform { _, _ ->
-                                                        spring(
-                                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                                            stiffness = Spring.StiffnessMediumLow,
-                                                        )
-                                                    },
-                                                ),
-                                                artworkUrl = artworkUrl,
-                                                isPlaying = { isPlayingStatusLambda.value },
-                                            )
-                                            AnimatedContent(
-                                                targetState = mediaMetadata,
-                                                transitionSpec = {
-                                                    fadeIn() togetherWith fadeOut()
-                                                },
-                                                modifier = Modifier.padding(horizontal = 32.dp),
-                                            ) { metadata ->
-                                                Row(
-                                                    Modifier
-                                                        .fillMaxWidth(),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                ) {
-                                                    Column(
-                                                        Modifier
-                                                            .fillMaxWidth()
-                                                            .weight(1f)
-                                                            .padding(end = 15.dp),
-                                                    ) {
-                                                        Text(
-                                                            text = metadata.title,
-                                                            fontSize = 19.5.sp,
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis,
-                                                            fontWeight = FontWeight.Medium,
-                                                        )
-                                                        Text(
-                                                            text = metadata.artistNames(),
-                                                            fontSize = 18.5.sp,
-                                                            modifier = Modifier.overlayEffect(),
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis,
-                                                            color = Color.White.copy(alpha = 0.35f),
-                                                        )
-                                                    }
+                val alphaAnim = remember { Animatable(0f) }
 
-                                                    FlamingoWrapper {
-                                                        FlamingoActionButtonsRow(
-                                                            mediaMetadata = metadata,
-                                                            playerConnection = playerConnection,
-                                                            navController = navController,
-                                                            state = state,
-                                                            bottomSheetPageState = bottomSheetPageState,
-                                                            currentSongLiked = currentSongLiked,
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                            FlamingoPage.Lyric ->
-                                Column(Modifier.fillMaxSize()) {
-                                    FlamingoWrapper {
-                                        FlamingoPlayingBar(
-                                            modifier = Modifier.sharedBounds(
-                                                sharedContentState = rememberSharedContentState(
-                                                    key = ShareAlbumKey,
-                                                ),
-                                                animatedVisibilityScope = this@AnimatedContent,
-                                                boundsTransform = BoundsTransform { _, _ ->
-                                                    spring(
-                                                        dampingRatio = Spring.DampingRatioNoBouncy,
-                                                        stiffness = Spring.StiffnessMediumLow,
-                                                    )
-                                                },
-                                            ),
-                                            artworkUrl = artworkUrl,
-                                            mediaMetadata = mediaMetadata,
-                                            playerConnection = playerConnection,
-                                            navController = navController,
-                                            state = state,
-                                            bottomSheetPageState = bottomSheetPageState,
-                                            currentSongLiked = currentSongLiked,
-                                            onAlbumClick = { nowPage = FlamingoPage.Album },
-                                        )
-                                    }
-                                }
-
-                            FlamingoPage.PlayingList ->
-                                FlamingoWrapper {
-                                    Column(
-                                        Modifier
-                                            .fillMaxSize()
-                                            .clickable(enabled = false, onClick = {}),
-                                    ) {
-                                        FlamingoPlayingBar(
-                                            modifier = Modifier.sharedBounds(
-                                                sharedContentState = rememberSharedContentState(
-                                                    key = ShareAlbumKey,
-                                                ),
-                                                animatedVisibilityScope = this@AnimatedContent,
-                                                boundsTransform = BoundsTransform { _, _ ->
-                                                    spring(
-                                                        dampingRatio = Spring.DampingRatioNoBouncy,
-                                                        stiffness = Spring.StiffnessMediumLow,
-                                                    )
-                                                },
-                                            ),
-                                            artworkUrl = artworkUrl,
-                                            mediaMetadata = mediaMetadata,
-                                            playerConnection = playerConnection,
-                                            navController = navController,
-                                            state = state,
-                                            bottomSheetPageState = bottomSheetPageState,
-                                            currentSongLiked = currentSongLiked,
-                                            onAlbumClick = { nowPage = FlamingoPage.Album },
-                                        )
-                                    }
-                                }
+                FlamingoWrapper {
+                    LaunchedEffect(nowPageLambda.value) {
+                        val targetAlpha = if (nowPageLambda.value == FlamingoPage.Lyric) 1f else 0f
+                        scope.launch {
+                            alphaAnim.animateTo(targetAlpha)
                         }
                     }
                 }
-            }
 
-            // Queue page overlay
-            FlamingoWrapper {
-                AnimatedVisibility(
-                    visible = nowPage == FlamingoPage.PlayingList,
-                    enter = fadeIn(tween(AnimDurationMillis)),
-                    exit = fadeOut(tween(AnimDurationMillis)),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = topInset + 114.dp),
-                ) {
-                    Column(
-                        Modifier
-                            .fillMaxSize()
-                            .clickable(enabled = false, onClick = {}),
-                    ) {
-                        FlamingoPlayingList(
-                            playerConnection = playerConnection,
-                            queueWindows = queueWindows,
-                            currentWindowIndex = currentWindowIndex,
-                            shuffleModeEnabled = shuffleModeEnabled,
-                            repeatMode = repeatMode,
-                        )
+                val translationButtonEnabled = remember("FlamingoNowPlaying_translationButtonEnabled") {
+                    derivedStateOf {
+                        showControlLambda.value && alphaAnim.value != 0f
                     }
                 }
-            }
 
-            // Player controls
-            FlamingoWrapper {
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(top = topInset),
-                    verticalArrangement = Arrangement.Bottom,
-                ) {
-                    Box(
-                        Modifier
-                            .fillMaxHeight(0.437f)
-                            .fillMaxWidth(),
-                    ) {
-                        FlamingoWrapper {
-                            if (showControl.value) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(top = 40.dp)
-                                        .clickable(
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            indication = null,
-                                            onClick = {},
-                                        ),
-                                )
+                if (landscape) {
+                    // ---- Landscape (pre-redesign two-pane layout restored) ----
+                    val landscapeSwipeModifier =
+                        Modifier.pointerInput(playerConnection) {
+                            val swipeThresholdPx = 72.dp.toPx()
+                            var accumulatedDrag = 0f
+                            detectHorizontalDragGestures(
+                                onDragEnd = {
+                                    when {
+                                        accumulatedDrag <= -swipeThresholdPx -> playerConnection.seekToNext()
+                                        accumulatedDrag >= swipeThresholdPx -> playerConnection.seekToPrevious()
+                                    }
+                                    accumulatedDrag = 0f
+                                },
+                            ) { change, dragAmount ->
+                                change.consume()
+                                accumulatedDrag += dragAmount
                             }
                         }
 
-                        FlamingoWrapper {
-                            Column(
-                                Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.Bottom,
-                            ) {
-                                AnimatedVisibility(
-                                    visible = showControl.value,
-                                    enter = fadeIn() + expandVertically(
-                                        expandFrom = Alignment.Top,
-                                        initialHeight = { (it / 1.4).toInt() },
-                                    ),
-                                    exit = fadeOut() + shrinkVertically(
-                                        shrinkTowards = Alignment.Top,
-                                        targetHeight = { (it / 1.4).toInt() },
-                                    ),
+                    val pokeControls = {
+                        if (!showControlLambda.value) {
+                            showControl.value = true
+                        }
+                        lastClickTime.longValue = System.currentTimeMillis()
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        BoxWithConstraints(
+                            modifier =
+                                Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight(),
+                        ) {
+                            val landscapeCanvasFullBleed = canvasActive && !videoShowing
+                            if (landscapeCanvasFullBleed) {
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxSize()
+                                            .then(landscapeSwipeModifier),
                                 ) {
-                                    FlamingoWrapper {
-                                        Row(
+                                    FlamingoLandscapeStage(
+                                        artworkUrl = artworkUrl,
+                                        canvasPrimaryUrl = canvasPrimaryUrl,
+                                        canvasFallbackUrl = canvasFallbackUrl,
+                                        isPlaying = isPlaying,
+                                        canvasLoopSync = canvasLoopSync,
+                                        fullBleed = true,
+                                        artworkSize = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomCenter)
+                                            .fillMaxWidth()
+                                            .padding(bottom = contentBottomPadding),
+                                    ) {
+                                        FlamingoLandscapeTitleBlock(
+                                            mediaMetadata = mediaMetadata,
+                                            currentSongLiked = currentSongLiked,
+                                            playerConnection = playerConnection,
+                                            navController = navController,
+                                            state = state,
+                                            bottomSheetPageState = bottomSheetPageState,
+                                            onMoreClick = onMoreClick,
+                                            onMorePositioned = { moreIconBounds = it },
+                                            contentWidth = null,
+                                            iconsOnly = true,
+                                        )
+                                    }
+                                }
+                            } else {
+                                val landscapeArtworkSize =
+                                    (maxWidth - 96.dp)
+                                        .coerceAtMost(maxHeight * 0.68f)
+                                        .coerceAtLeast(220.dp)
+
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier =
+                                        Modifier
+                                            .fillMaxSize()
+                                            .padding(bottom = contentBottomPadding),
+                                ) {
+                                    Box(
+                                        modifier =
                                             Modifier
+                                                .weight(1f)
                                                 .fillMaxWidth()
-                                                .padding(horizontal = 32.dp)
-                                                .graphicsLayer {
-                                                    compositingStrategy =
-                                                        CompositingStrategy.ModulateAlpha
-                                                    this.alpha = alphaAnim.value
-                                                },
-                                            horizontalArrangement = Arrangement.End,
-                                        ) {
-                                            FlamingoWrapper {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .overlayEffect()
-                                                        .alpha(0.4f)
-                                                        .clickable(
-                                                            enabled = translationButtonEnabled.value,
-                                                            onClick = {
-                                                                FlamingoHaptics.click(context)
-                                                                translation.value = !translation.value
-                                                                translationChangedByUser = true
-                                                                showControl.value = true
-                                                                lastClickTime.longValue =
-                                                                    System.currentTimeMillis()
-                                                            },
-                                                            indication = null,
-                                                            interactionSource = remember { MutableInteractionSource() },
-                                                        ),
-                                                    contentAlignment = Alignment.Center,
-                                                ) {
-                                                    AnimatedContent(
-                                                        targetState = translation.value,
-                                                        transitionSpec = {
-                                                            fadeIn() togetherWith fadeOut()
-                                                        },
-                                                    ) { translationOn ->
-                                                        if (translationOn) {
-                                                            Icon(
-                                                                painterResource(id = R.drawable.flamingo_np_translateon),
-                                                                contentDescription = null,
-                                                                tint = Color.Unspecified,
-                                                                modifier = Modifier
-                                                                    .size(30.dp),
-                                                            )
-                                                        } else {
-                                                            Icon(
-                                                                painterResource(id = R.drawable.flamingo_np_translate),
-                                                                contentDescription = null,
-                                                                tint = Color.Unspecified,
-                                                                modifier = Modifier
-                                                                    .size(30.dp),
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
+                                                .padding(top = 32.dp)
+                                                .padding(horizontal = 16.dp)
+                                                .then(landscapeSwipeModifier),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        FlamingoLandscapeStage(
+                                            artworkUrl = artworkUrl,
+                                            canvasPrimaryUrl = canvasPrimaryUrl,
+                                            canvasFallbackUrl = canvasFallbackUrl,
+                                            isPlaying = isPlaying,
+                                            canvasLoopSync = canvasLoopSync,
+                                            fullBleed = false,
+                                            artworkSize = landscapeArtworkSize,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
                                     }
 
+                                    FlamingoLandscapeTitleBlock(
+                                        mediaMetadata = mediaMetadata,
+                                        currentSongLiked = currentSongLiked,
+                                        playerConnection = playerConnection,
+                                        navController = navController,
+                                        state = state,
+                                        bottomSheetPageState = bottomSheetPageState,
+                                        onMoreClick = onMoreClick,
+                                        onMorePositioned = { moreIconBounds = it },
+                                        contentWidth = landscapeArtworkSize,
+                                        iconsOnly = false,
+                                    )
+                                }
+                            }
+                        }
+
+                        Box(
+                            modifier =
+                                Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .pointerInput(Unit) {
+                                        // Any tap on the right pane pokes the hidden
+                                        // controls back into view (pre-redesign behaviour).
+                                        awaitEachGesture {
+                                            awaitFirstDown(requireUnconsumed = false)
+                                            pokeControls()
+                                        }
+                                    },
+                        ) {
+                            // In-pane lyrics (enhanced lyrics animation library with
+                            // AI translation / romanisation).
+                            AnimatedVisibility(
+                                visible = nowPage == FlamingoPage.Lyric,
+                                enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
+                                exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
+                                modifier = Modifier.matchParentSize(),
+                            ) {
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 16.dp),
+                                ) {
+                                    val isAiTranslated =
+                                        currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value
+                                    AnimatedContent(
+                                        targetState = Triple(autoTranslateLyrics, romanizationOn, isAiTranslated),
+                                        transitionSpec = {
+                                            fadeIn(tween(360, easing = FastOutSlowInEasing)) togetherWith
+                                                fadeOut(tween(280, easing = FastOutSlowInEasing))
+                                        },
+                                        modifier = Modifier.fillMaxSize(),
+                                        label = "FlamingoLandscapeLyricsRender",
+                                    ) { renderKey ->
+                                        val (showTranslationLines, showRomanization, _) = renderKey
+                                        LyricsEnhanced(
+                                            sliderPositionProvider = lyricsPosProvider,
+                                            lyricsSyncOffset = lyricsSyncOffset,
+                                            translationVisibleOverride = showTranslationLines,
+                                            phoneticVisibleOverride = if (showRomanization) null else false,
+                                            textColorOverride = Color.White,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Controls: hidden while the lyrics pane is up until poked.
+                            AnimatedVisibility(
+                                visible = nowPage != FlamingoPage.Lyric || showControl.value,
+                                enter = fadeIn(tween(120)),
+                                exit = fadeOut(tween(100)),
+                                modifier = Modifier.matchParentSize(),
+                            ) {
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxSize()
+                                            .clickable(
+                                                interactionSource = remember { MutableInteractionSource() },
+                                                indication = null,
+                                                onClick = pokeControls,
+                                            ),
+                                ) {
                                     FlamingoPlayerControl(
                                         isPlayingLambda = { isPlayingStatusLambda.value },
                                         playbackState = playbackState,
@@ -772,15 +859,629 @@ fun FlamingoPlayerContent(
                                         onSliderValueChange = onSliderValueChange,
                                         onSliderValueChangeFinished = onSliderValueChangeFinished,
                                         modifier = Modifier
-                                            .padding(top = 52.dp),
+                                            .padding(top = 8.dp)
+                                            .padding(bottom = contentBottomPadding),
                                     )
+                                }
+                            }
+                        }
+                    }
+
+                    // Queue page overlay (full screen in landscape)
+                    FlamingoWrapper {
+                        AnimatedVisibility(
+                            visible = nowPage == FlamingoPage.PlayingList,
+                            enter = fadeIn(tween(AnimDurationMillis)),
+                            exit = fadeOut(tween(AnimDurationMillis)),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(top = topInset + 20.dp),
+                        ) {
+                            Column(
+                                Modifier
+                                    .fillMaxSize()
+                                    .clickable(enabled = false, onClick = {}),
+                            ) {
+                                FlamingoPlayingList(
+                                    playerConnection = playerConnection,
+                                    queueWindows = queueWindows,
+                                    currentWindowIndex = currentWindowIndex,
+                                    shuffleModeEnabled = shuffleModeEnabled,
+                                    repeatMode = repeatMode,
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // ---- Portrait ----
+
+                    // Lyrics page
+                    FlamingoWrapper {
+                        Column(
+                            Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    compositingStrategy = CompositingStrategy.ModulateAlpha
+                                    this.alpha = alphaAnim.value
+                                },
+                        ) {
+                            Spacer(modifier = Modifier.height(topInset + 104.dp))
+
+                            val isAiTranslated =
+                                currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value
+                            AnimatedContent(
+                                targetState = Triple(autoTranslateLyrics, romanizationOn, isAiTranslated),
+                                transitionSpec = {
+                                    fadeIn(tween(360, easing = FastOutSlowInEasing)) togetherWith
+                                        fadeOut(tween(280, easing = FastOutSlowInEasing))
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                label = "FlamingoLyricsRender",
+                            ) { renderKey ->
+                                val (showTranslationLines, showRomanization, _) = renderKey
+                                LyricsEnhanced(
+                                    sliderPositionProvider = lyricsPosProvider,
+                                    lyricsSyncOffset = lyricsSyncOffset,
+                                    translationVisibleOverride = showTranslationLines,
+                                    phoneticVisibleOverride = if (showRomanization) null else false,
+                                    textColorOverride = Color.White,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .flamingoLyricsEdgeFade(
+                                            weightLambda = { showControlLambda.value },
+                                        ),
+                                )
+                            }
+                        }
+                    }
+
+                    // Drag handle (小把手)
+                    FlamingoWrapper {
+                        Column(Modifier.fillMaxWidth()) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = topInset + 20.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Box(
+                                    Modifier
+                                        .overlayEffect()
+                                        .size(
+                                            width = 32.dp,
+                                            height = 4.5.dp,
+                                        )
+                                        .background(Color(0x4DFFFFFF), RoundedCornerShape(2.25.dp)),
+                                )
+                            }
+                        }
+                    }
+
+                    // Main view: artwork page / playing bar pages, cross-faded with a
+                    // shared-element artwork morph between them.
+                    FlamingoWrapper {
+                        SharedTransitionLayout {
+                            AnimatedContent(
+                                targetState = nowPage,
+                                transitionSpec = {
+                                    fadeIn() togetherWith fadeOut()
+                                },
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = topInset + 22.dp),
+                                label = "FlamingoPageCrossfade",
+                            ) { page ->
+                                when (page) {
+                                    FlamingoPage.Album ->
+                                        Column(
+                                            Modifier
+                                                .fillMaxSize()
+                                                .clickable(enabled = false, onClick = {}),
+                                        ) {
+                                            FlamingoWrapper {
+                                                Column(Modifier.fillMaxHeight(0.595f)) {
+                                                    FlamingoAlbum(
+                                                        modifier = Modifier.sharedBounds(
+                                                            sharedContentState = rememberSharedContentState(
+                                                                key = ShareAlbumKey,
+                                                            ),
+                                                            animatedVisibilityScope = this@AnimatedContent,
+                                                            boundsTransform = BoundsTransform { _, _ ->
+                                                                spring(
+                                                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                                                    stiffness = Spring.StiffnessMediumLow,
+                                                                )
+                                                            },
+                                                        ),
+                                                        artworkUrl = artworkUrl,
+                                                        isPlaying = { isPlayingStatusLambda.value },
+                                                        canvasPrimaryUrl = canvasPrimaryUrl,
+                                                        canvasFallbackUrl = canvasFallbackUrl,
+                                                        canvasLoopSync = canvasLoopSync,
+                                                        canvasBackdropReveal = {
+                                                            canvasBackdropRevealState.value.value
+                                                        },
+                                                        orientationRefreshEpoch = orientationRefreshEpoch,
+                                                    )
+                                                    AnimatedContent(
+                                                        targetState = mediaMetadata,
+                                                        transitionSpec = {
+                                                            fadeIn() togetherWith fadeOut()
+                                                        },
+                                                        modifier = Modifier.padding(horizontal = 32.dp),
+                                                    ) { metadata ->
+                                                        Row(
+                                                            Modifier
+                                                                .fillMaxWidth(),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                        ) {
+                                                            Column(
+                                                                Modifier
+                                                                    .fillMaxWidth()
+                                                                    .weight(1f)
+                                                                    .padding(end = 15.dp),
+                                                            ) {
+                                                                Text(
+                                                                    text = metadata.title,
+                                                                    fontSize = 19.5.sp,
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis,
+                                                                    fontWeight = FontWeight.Medium,
+                                                                )
+                                                                Text(
+                                                                    text = metadata.artistNames(),
+                                                                    fontSize = 18.5.sp,
+                                                                    modifier = Modifier.overlayEffect(),
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis,
+                                                                    color = Color.White.copy(alpha = 0.35f),
+                                                                )
+                                                            }
+
+                                                            FlamingoWrapper {
+                                                                FlamingoActionButtonsRow(
+                                                                    mediaMetadata = metadata,
+                                                                    playerConnection = playerConnection,
+                                                                    navController = navController,
+                                                                    state = state,
+                                                                    bottomSheetPageState = bottomSheetPageState,
+                                                                    currentSongLiked = currentSongLiked,
+                                                                    onMoreClick = onMoreClick,
+                                                                    onMorePositioned = { moreIconBounds = it },
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                    FlamingoPage.Lyric ->
+                                        Column(Modifier.fillMaxSize()) {
+                                            FlamingoWrapper {
+                                                FlamingoPlayingBar(
+                                                    modifier = Modifier.sharedBounds(
+                                                        sharedContentState = rememberSharedContentState(
+                                                            key = ShareAlbumKey,
+                                                        ),
+                                                        animatedVisibilityScope = this@AnimatedContent,
+                                                        boundsTransform = BoundsTransform { _, _ ->
+                                                            spring(
+                                                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                                                stiffness = Spring.StiffnessMediumLow,
+                                                            )
+                                                        },
+                                                    ),
+                                                    artworkUrl = artworkUrl,
+                                                    mediaMetadata = mediaMetadata,
+                                                    playerConnection = playerConnection,
+                                                    navController = navController,
+                                                    state = state,
+                                                    bottomSheetPageState = bottomSheetPageState,
+                                                    currentSongLiked = currentSongLiked,
+                                                    onAlbumClick = { nowPage = FlamingoPage.Album },
+                                                    onMoreClick = onMoreClick,
+                                                    onMorePositioned = { moreIconBounds = it },
+                                                )
+                                            }
+                                        }
+
+                                    FlamingoPage.PlayingList ->
+                                        FlamingoWrapper {
+                                            Column(
+                                                Modifier
+                                                    .fillMaxSize()
+                                                    .clickable(enabled = false, onClick = {}),
+                                            ) {
+                                                FlamingoPlayingBar(
+                                                    modifier = Modifier.sharedBounds(
+                                                        sharedContentState = rememberSharedContentState(
+                                                            key = ShareAlbumKey,
+                                                        ),
+                                                        animatedVisibilityScope = this@AnimatedContent,
+                                                        boundsTransform = BoundsTransform { _, _ ->
+                                                            spring(
+                                                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                                                stiffness = Spring.StiffnessMediumLow,
+                                                            )
+                                                        },
+                                                    ),
+                                                    artworkUrl = artworkUrl,
+                                                    mediaMetadata = mediaMetadata,
+                                                    playerConnection = playerConnection,
+                                                    navController = navController,
+                                                    state = state,
+                                                    bottomSheetPageState = bottomSheetPageState,
+                                                    currentSongLiked = currentSongLiked,
+                                                    onAlbumClick = { nowPage = FlamingoPage.Album },
+                                                    onMoreClick = onMoreClick,
+                                                    onMorePositioned = { moreIconBounds = it },
+                                                )
+                                            }
+                                        }
+                                }
+                            }
+                        }
+                    }
+
+                    // Queue page overlay
+                    FlamingoWrapper {
+                        AnimatedVisibility(
+                            visible = nowPage == FlamingoPage.PlayingList,
+                            enter = fadeIn(tween(AnimDurationMillis)),
+                            exit = fadeOut(tween(AnimDurationMillis)),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(top = topInset + 114.dp),
+                        ) {
+                            Column(
+                                Modifier
+                                    .fillMaxSize()
+                                    .clickable(enabled = false, onClick = {}),
+                            ) {
+                                FlamingoPlayingList(
+                                    playerConnection = playerConnection,
+                                    queueWindows = queueWindows,
+                                    currentWindowIndex = currentWindowIndex,
+                                    shuffleModeEnabled = shuffleModeEnabled,
+                                    repeatMode = repeatMode,
+                                )
+                            }
+                        }
+                    }
+
+                    // Player controls
+                    FlamingoWrapper {
+                        Column(
+                            Modifier
+                                .fillMaxSize()
+                                .padding(top = topInset),
+                            verticalArrangement = Arrangement.Bottom,
+                        ) {
+                            Box(
+                                Modifier
+                                    .fillMaxHeight(0.437f)
+                                    .fillMaxWidth(),
+                            ) {
+                                FlamingoWrapper {
+                                    if (showControl.value) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(top = 40.dp)
+                                                .clickable(
+                                                    interactionSource = remember { MutableInteractionSource() },
+                                                    indication = null,
+                                                    onClick = {
+                                                        // Poke the controls back on tap.
+                                                        showControl.value = true
+                                                        lastClickTime.longValue =
+                                                            System.currentTimeMillis()
+                                                    },
+                                                ),
+                                        )
+                                    }
+                                }
+
+                                FlamingoWrapper {
+                                    Column(
+                                        Modifier.fillMaxSize(),
+                                        verticalArrangement = Arrangement.Bottom,
+                                    ) {
+                                        AnimatedVisibility(
+                                            visible = showControl.value,
+                                            enter = fadeIn() + expandVertically(
+                                                expandFrom = Alignment.Top,
+                                                initialHeight = { (it / 1.4).toInt() },
+                                            ),
+                                            exit = fadeOut() + shrinkVertically(
+                                                shrinkTowards = Alignment.Top,
+                                                targetHeight = { (it / 1.4).toInt() },
+                                            ),
+                                        ) {
+                                            FlamingoWrapper {
+                                                // Translation options panel: expands above the
+                                                // bottom controls with two toggles — translation
+                                                // and romanisation (both AI, silent).
+                                                AnimatedVisibility(
+                                                    visible = translationPanelOpen,
+                                                    enter = fadeIn(tween(220)) + expandVertically(
+                                                        expandFrom = Alignment.Bottom,
+                                                    ) + scaleIn(
+                                                        initialScale = 0.85f,
+                                                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 1f),
+                                                    ),
+                                                    exit = fadeOut(tween(160)) + shrinkVertically(
+                                                        shrinkTowards = Alignment.Bottom,
+                                                    ) + scaleOut(
+                                                        targetScale = 0.85f,
+                                                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 1f),
+                                                    ),
+                                                ) {
+                                                    Column(
+                                                        horizontalAlignment = Alignment.End,
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(horizontal = 32.dp)
+                                                            .padding(bottom = 6.dp),
+                                                    ) {
+                                                        FlamingoTranslationOptionRow(
+                                                            label = stringResource(R.string.flamingo_translation_option),
+                                                            active = autoTranslateLyrics,
+                                                            onClick = {
+                                                                FlamingoHaptics.click(context)
+                                                                setTranslationEnabled(!autoTranslateLyrics)
+                                                            },
+                                                        )
+                                                        Spacer(modifier = Modifier.height(6.dp))
+                                                        FlamingoTranslationOptionRow(
+                                                            label = stringResource(R.string.flamingo_romanisation_option),
+                                                            active = romanizationOn,
+                                                            onClick = {
+                                                                FlamingoHaptics.click(context)
+                                                                setRomanizationEnabled(!romanizationOn)
+                                                            },
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            FlamingoWrapper {
+                                                Row(
+                                                    Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 32.dp)
+                                                        .graphicsLayer {
+                                                            compositingStrategy =
+                                                                CompositingStrategy.ModulateAlpha
+                                                            this.alpha = alphaAnim.value
+                                                        },
+                                                    horizontalArrangement = Arrangement.End,
+                                                ) {
+                                                    FlamingoWrapper {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .overlayEffect()
+                                                                .alpha(0.4f)
+                                                                .clickable(
+                                                                    enabled = translationButtonEnabled.value,
+                                                                    onClick = {
+                                                                        FlamingoHaptics.click(context)
+                                                                        translationPanelOpen = !translationPanelOpen
+                                                                        showControl.value = true
+                                                                        lastClickTime.longValue =
+                                                                            System.currentTimeMillis()
+                                                                    },
+                                                                    indication = null,
+                                                                    interactionSource = remember { MutableInteractionSource() },
+                                                                ),
+                                                            contentAlignment = Alignment.Center,
+                                                        ) {
+                                                            AnimatedContent(
+                                                                targetState = autoTranslateLyrics || romanizationOn,
+                                                                transitionSpec = {
+                                                                    fadeIn() togetherWith fadeOut()
+                                                                },
+                                                            ) { translationOn ->
+                                                                if (translationOn) {
+                                                                    Icon(
+                                                                        painterResource(id = R.drawable.flamingo_np_translateon),
+                                                                        contentDescription = null,
+                                                                        tint = Color.Unspecified,
+                                                                        modifier = Modifier
+                                                                            .size(30.dp),
+                                                                    )
+                                                                } else {
+                                                                    Icon(
+                                                                        painterResource(id = R.drawable.flamingo_np_translate),
+                                                                        contentDescription = null,
+                                                                        tint = Color.Unspecified,
+                                                                        modifier = Modifier
+                                                                            .size(30.dp),
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            FlamingoPlayerControl(
+                                                isPlayingLambda = { isPlayingStatusLambda.value },
+                                                playbackState = playbackState,
+                                                positionProvider = positionProvider,
+                                                durationProvider = { duration },
+                                                playerConnection = playerConnection,
+                                                currentFormat = currentFormat,
+                                                showVolumeBar = showVolumeBar,
+                                                volume = volume,
+                                                onVolumeChange = onVolumeChange,
+                                                nowPage = { nowPageLambda.value },
+                                                onLyrics = {
+                                                    translationPanelOpen = false
+                                                    nowPage = if (nowPageLambda.value == FlamingoPage.Lyric) {
+                                                        FlamingoPage.Album
+                                                    } else {
+                                                        FlamingoPage.Lyric
+                                                    }
+                                                },
+                                                onPlaylist = {
+                                                    translationPanelOpen = false
+                                                    nowPage = if (nowPageLambda.value == FlamingoPage.PlayingList) {
+                                                        FlamingoPage.Album
+                                                    } else {
+                                                        FlamingoPage.PlayingList
+                                                    }
+                                                },
+                                                onSlider = {
+                                                    showControl.value = true
+                                                    lastClickTime.longValue = System.currentTimeMillis()
+                                                },
+                                                onSliderValueChange = onSliderValueChange,
+                                                onSliderValueChangeFinished = onSliderValueChangeFinished,
+                                                modifier = Modifier
+                                                    .padding(top = 52.dp),
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+
+            // Anchored lyrics overflow popup (pre-redesign animation/design/behaviour;
+            // translate/undo/romanise rows are intentionally absent in this style).
         }
+
+        if (showAnchoredLyricsMenu) {
+            AnchoredLyricsOverflowMenu(
+                iconBoundsInRoot = moreIconBounds,
+                lyricsProvider = { currentLyrics },
+                mediaMetadataProvider = { mediaMetadata },
+                lyricsSyncOffset = lyricsSyncOffset,
+                onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                onDismiss = { showAnchoredLyricsMenu = false },
+                backdrop = popupBackdrop,
+                showTranslationActions = false,
+            )
+        }
+    }
+}
+
+/** Edge fade mask for the lyrics list (ported from the Flamingo lyric view). */
+private fun Modifier.flamingoLyricsEdgeFade(
+    weightLambda: () -> Boolean,
+): Modifier = drawWithCache {
+    val overlayPaint = Paint().apply {
+        blendMode = BlendMode.Plus
+    }
+    val rect = androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height)
+    val canvas = this.drawContext.canvas
+
+    onDrawWithContent {
+        canvas.saveLayer(rect, overlayPaint)
+
+        val colors = if (weightLambda()) {
+            listOf(
+                Color.Transparent,
+                Color(0x59000000),
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color(0x59000000),
+                Color(0x21000000),
+                Color.Transparent,
+                Color.Transparent,
+                Color.Transparent,
+                Color.Transparent,
+                Color.Transparent,
+                Color.Transparent,
+                Color.Transparent,
+                Color.Transparent,
+            )
+        } else {
+            listOf(
+                Color.Transparent,
+                Color(0x59000000),
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+            )
+        }
+
+        drawContent()
+
+        drawRect(
+            brush = Brush.verticalGradient(colors),
+            blendMode = BlendMode.DstIn,
+        )
+
+        canvas.restore()
+    }
+}
+
+@Composable
+private fun FlamingoTranslationOptionRow(
+    label: String,
+    active: Boolean,
+    onClick: () -> Unit,
+) {
+    val backgroundAlpha by animateFloatAsState(
+        targetValue = if (active) 0.30f else 0.14f,
+        label = "FlamingoTranslationOptionBackground",
+    )
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .width(186.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.White.copy(alpha = backgroundAlpha))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+    ) {
+        Text(
+            text = label,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            color = Color.White.copy(alpha = if (active) 1f else 0.62f),
+            modifier = Modifier.weight(1f),
+        )
+        val indicatorAlpha by animateFloatAsState(
+            targetValue = if (active) 1f else 0.28f,
+            label = "FlamingoTranslationOptionIndicator",
+        )
+        Box(
+            modifier = Modifier
+                .size(16.dp)
+                .background(
+                    Color.White.copy(alpha = indicatorAlpha),
+                    RoundedCornerShape(50),
+                ),
+        )
     }
 }
 
@@ -789,42 +1490,299 @@ private fun ColumnScope.FlamingoAlbum(
     modifier: Modifier,
     artworkUrl: String?,
     isPlaying: () -> Boolean,
-) = Box(
-    Modifier
-        .weight(1f)
-        .padding(top = 20.dp)
-        .padding(horizontal = 15.dp)
-        .padding(bottom = 33.dp),
-    contentAlignment = Alignment.BottomCenter,
+    canvasPrimaryUrl: String?,
+    canvasFallbackUrl: String?,
+    canvasLoopSync: CanvasLoopSync?,
+    canvasBackdropReveal: () -> Float,
+    orientationRefreshEpoch: Int,
 ) {
-    val springSpec: AnimationSpec<Float> = remember("FlamingoAlbum_springSpec") {
-        SpringSpec(stiffness = 300f, dampingRatio = 1f, visibilityThreshold = 0.001f)
-    }
+    val hasCanvas = !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
 
-    val tweenSpec: AnimationSpec<Float> = remember("FlamingoAlbum_tweenSpec") {
-        TweenSpec(durationMillis = 350, easing = EaseOutQuart)
-    }
+    Box(
+        Modifier
+            .weight(1f)
+            .then(
+                if (hasCanvas) {
+                    // The canvas stage fills the whole area up to the title row.
+                    Modifier
+                } else {
+                    Modifier
+                        .padding(top = 20.dp)
+                        .padding(horizontal = 15.dp)
+                        .padding(bottom = 33.dp)
+                },
+            ),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        if (hasCanvas) {
+            // ---- Sharp canvas stage (pre-redesign Apple Music blend) ----
+            var canvasFrameReady by remember(canvasPrimaryUrl, canvasFallbackUrl) {
+                mutableStateOf(false)
+            }
+            val staticBaseAlpha by animateFloatAsState(
+                targetValue = if (canvasFrameReady) 0f else 1f,
+                animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing),
+                label = "flamingo-canvas-static-base",
+            )
+            val steadyStageFadeBrush = remember {
+                Brush.verticalGradient(
+                    FlamingoSharpStageFadeStart to Color.Black,
+                    1f to Color.Transparent,
+                )
+            }
 
-    val scale = animateFloatAsState(
-        targetValue = if (isPlaying()) 0f else 1f,
-        animationSpec = if (isPlaying()) springSpec else tweenSpec,
-        visibilityThreshold = 0.001f,
-    )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        val reveal = canvasBackdropReveal()
+                        when {
+                            reveal >= 0.999f -> drawRect(
+                                brush = steadyStageFadeBrush,
+                                blendMode = BlendMode.DstIn,
+                            )
 
-    FlamingoWrapper {
-        val dp = (7 + (27 * scale.value)).dp
-        ShadowImageWithCache(
-            dataLambda = { artworkUrl },
-            contentDescription = null,
-            modifier = Modifier
-                .fillMaxWidth()
-                .graphicsLayer {
-                    compositingStrategy = CompositingStrategy.ModulateAlpha
+                            reveal > 0.01f -> {
+                                val fadeStart =
+                                    1f - (1f - FlamingoSharpStageFadeStart) * reveal
+                                drawRect(
+                                    brush = Brush.verticalGradient(
+                                        fadeStart to Color.Black,
+                                        1f to Color.Transparent,
+                                    ),
+                                    blendMode = BlendMode.DstIn,
+                                )
+                            }
+                        }
+                    }
+                    .then(modifier),
+            ) {
+                if (staticBaseAlpha > 0.01f) {
+                    AsyncImage(
+                        model = artworkUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .matchParentSize()
+                            .graphicsLayer { alpha = staticBaseAlpha },
+                    )
                 }
-                .padding(start = dp, end = dp, bottom = dp)
-                .then(modifier),
-            imageQuality = ImageQuality.RAW,
-            shadowOverlay = true,
+
+                CanvasArtworkPlayer(
+                    primaryUrl = canvasPrimaryUrl,
+                    fallbackUrl = canvasFallbackUrl,
+                    isPlaying = isPlaying(),
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                    loopSyncLeader = canvasLoopSync,
+                    refreshEpoch = orientationRefreshEpoch,
+                    onFirstFrameRendered = { canvasFrameReady = true },
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
+        } else {
+            val springSpec: AnimationSpec<Float> = remember("FlamingoAlbum_springSpec") {
+                SpringSpec(stiffness = 300f, dampingRatio = 1f, visibilityThreshold = 0.001f)
+            }
+
+            val tweenSpec: AnimationSpec<Float> = remember("FlamingoAlbum_tweenSpec") {
+                TweenSpec(durationMillis = 350, easing = EaseOutQuart)
+            }
+
+            val scale = animateFloatAsState(
+                targetValue = if (isPlaying()) 0f else 1f,
+                animationSpec = if (isPlaying()) springSpec else tweenSpec,
+                visibilityThreshold = 0.001f,
+            )
+
+            FlamingoWrapper {
+                val dp = (7 + (27 * scale.value)).dp
+                ShadowImageWithCache(
+                    dataLambda = { artworkUrl },
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            compositingStrategy = CompositingStrategy.ModulateAlpha
+                        }
+                        .padding(start = dp, end = dp, bottom = dp)
+                        .then(modifier),
+                    imageQuality = ImageQuality.RAW,
+                    shadowOverlay = true,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Landscape artwork pane: full-bleed canvas (RESIZE_MODE_FIT + right-edge fade,
+ * pre-redesign behaviour) or the centred squircle artwork.
+ */
+@Composable
+private fun FlamingoLandscapeStage(
+    artworkUrl: String?,
+    canvasPrimaryUrl: String?,
+    canvasFallbackUrl: String?,
+    isPlaying: Boolean,
+    canvasLoopSync: CanvasLoopSync?,
+    fullBleed: Boolean,
+    artworkSize: Dp?,
+    modifier: Modifier = Modifier,
+) {
+    val hasCanvas = !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
+
+    Box(modifier = modifier) {
+        if (fullBleed && hasCanvas) {
+            var canvasFrameReady by remember(canvasPrimaryUrl, canvasFallbackUrl) {
+                mutableStateOf(false)
+            }
+            val staticBaseAlpha by animateFloatAsState(
+                targetValue = if (canvasFrameReady) 0f else 1f,
+                animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing),
+                label = "flamingo-landscape-canvas-static-base",
+            )
+
+            if (staticBaseAlpha > 0.01f) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .graphicsLayer { alpha = staticBaseAlpha },
+                ) {
+                    AsyncImage(
+                        model = artworkUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.matchParentSize(),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .graphicsLayer { alpha = staticBaseAlpha }
+                            .background(Color.Black.copy(alpha = 0.55f)),
+                    )
+                }
+            }
+
+            CanvasArtworkPlayer(
+                primaryUrl = canvasPrimaryUrl,
+                fallbackUrl = canvasFallbackUrl,
+                isPlaying = isPlaying,
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT,
+                loopSyncLeader = canvasLoopSync,
+                onFirstFrameRendered = { canvasFrameReady = true },
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        drawRect(
+                            brush = FlamingoCanvasRightFadeBrush,
+                            blendMode = BlendMode.DstIn,
+                        )
+                    },
+            )
+        } else {
+            val springSpec: AnimationSpec<Float> = remember("FlamingoLandscapeStage_springSpec") {
+                SpringSpec(stiffness = 300f, dampingRatio = 1f, visibilityThreshold = 0.001f)
+            }
+            val tweenSpec: AnimationSpec<Float> = remember("FlamingoLandscapeStage_tweenSpec") {
+                TweenSpec(durationMillis = 350, easing = EaseOutQuart)
+            }
+            val scale = animateFloatAsState(
+                targetValue = if (isPlaying) 0f else 1f,
+                animationSpec = if (isPlaying) springSpec else tweenSpec,
+                visibilityThreshold = 0.001f,
+            )
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                FlamingoWrapper {
+                    val dp = (7 + (27 * scale.value)).dp
+                    ShadowImageWithCache(
+                        dataLambda = { artworkUrl },
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(artworkSize ?: 220.dp)
+                            .graphicsLayer {
+                                compositingStrategy = CompositingStrategy.ModulateAlpha
+                            }
+                            .padding(start = dp, end = dp, bottom = dp),
+                        imageQuality = ImageQuality.RAW,
+                        shadowOverlay = true,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Landscape title block: the Flamingo title typography plus the like/overflow
+ * chips, pinned to the bottom of the artwork pane. With [iconsOnly] only the
+ * chips render over the full-bleed canvas (pre-redesign behaviour).
+ */
+@Composable
+private fun FlamingoLandscapeTitleBlock(
+    mediaMetadata: MediaMetadata,
+    currentSongLiked: Boolean,
+    playerConnection: PlayerConnection,
+    navController: NavController,
+    state: BottomSheetState,
+    bottomSheetPageState: BottomSheetPageState,
+    onMoreClick: () -> Unit,
+    onMorePositioned: (Rect) -> Unit,
+    contentWidth: Dp?,
+    iconsOnly: Boolean,
+) {
+    val topInset = LocalStableSystemBarsTopPadding.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .padding(top = topInset + 8.dp, bottom = 8.dp)
+            .let { base ->
+                if (contentWidth != null) base.width(contentWidth) else base
+            },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (!iconsOnly) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .padding(end = 12.dp),
+            ) {
+                Text(
+                    text = mediaMetadata.title,
+                    fontSize = 19.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    text = mediaMetadata.artistNames(),
+                    fontSize = 18.5.sp,
+                    modifier = Modifier.overlayEffect(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = Color.White.copy(alpha = 0.35f),
+                )
+            }
+        } else {
+            Spacer(modifier = Modifier.weight(1f))
+        }
+
+        FlamingoActionButtonsRow(
+            mediaMetadata = mediaMetadata,
+            playerConnection = playerConnection,
+            navController = navController,
+            state = state,
+            bottomSheetPageState = bottomSheetPageState,
+            currentSongLiked = currentSongLiked,
+            onMoreClick = onMoreClick,
+            onMorePositioned = onMorePositioned,
         )
     }
 }
@@ -1582,107 +2540,6 @@ private fun FlamingoSmallMusicListItem(
 }
 
 @Composable
-private fun FlamingoLyric(
-    lyricData: FlamingoLyricsData?,
-    liveTimeLambda: () -> Int,
-    onSeek: (Int) -> Unit,
-    translationLambda: () -> Boolean,
-    blurLambda: () -> Boolean,
-    weightLambda: () -> Boolean,
-    mainTextStyle: androidx.compose.ui.text.TextStyle,
-    topInset: Dp,
-    onBackClick: () -> Unit,
-) = FlamingoWrapper {
-
-    val noLrcText = stringResource(id = R.string.flamingo_no_lyrics)
-
-    Column(
-        Modifier
-            .fillMaxSize(),
-    ) {
-        FlamingoWrapper {
-            Spacer(modifier = Modifier.height(topInset + 110.dp))
-
-            FlamingoLyricView(
-                lyricsData = lyricData,
-                liveTimeLambda = liveTimeLambda,
-                onSeek = onSeek,
-                translationLambda = translationLambda,
-                blurLambda = blurLambda,
-                noLrcText = noLrcText,
-                weightLambda = weightLambda,
-                mainTextStyle = mainTextStyle,
-                modifier = Modifier.drawWithCache {
-                    onDrawWithContent {
-                        val overlayPaint = Paint().apply {
-                            blendMode = BlendMode.Plus
-                        }
-                        val rect = Rect(0f, 0f, size.width, size.height)
-                        val canvas = this.drawContext.canvas
-
-                        canvas.saveLayer(rect, overlayPaint)
-
-                        val colors = if (weightLambda()) {
-                            listOf(
-                                Color.Transparent,
-                                Color(0x59000000),
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color(0x59000000),
-                                Color(0x21000000),
-                                Color.Transparent,
-                                Color.Transparent,
-                                Color.Transparent,
-                                Color.Transparent,
-                                Color.Transparent,
-                                Color.Transparent,
-                                Color.Transparent,
-                                Color.Transparent,
-                            )
-                        } else {
-                            listOf(
-                                Color.Transparent,
-                                Color(0x59000000),
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                                Color.Black,
-                            )
-                        }
-
-                        drawContent()
-
-                        drawRect(
-                            brush = Brush.verticalGradient(colors),
-                            blendMode = BlendMode.DstIn,
-                        )
-
-                        canvas.restore()
-                    }
-                },
-                onBackClick = onBackClick,
-            )
-        }
-    }
-}
-
-@Composable
 private fun FlamingoActionButtonsRow(
     mediaMetadata: MediaMetadata,
     playerConnection: PlayerConnection,
@@ -1690,6 +2547,8 @@ private fun FlamingoActionButtonsRow(
     state: BottomSheetState,
     bottomSheetPageState: BottomSheetPageState,
     currentSongLiked: Boolean,
+    onMoreClick: () -> Unit,
+    onMorePositioned: (Rect) -> Unit = {},
 ) {
     Row(
         modifier = Modifier
@@ -1744,26 +2603,19 @@ private fun FlamingoActionButtonsRow(
         Box(
             modifier = Modifier
                 .clickable(
-                    onClick = {
-                        menuState.show {
-                            PlayerMenu(
-                                mediaMetadata = mediaMetadata,
-                                navController = navController,
-                                playerBottomSheetState = state,
-                                onShowDetailsDialog = {
-                                    mediaMetadata.id.let {
-                                        bottomSheetPageState.show {
-                                            ShowMediaInfo(it)
-                                        }
-                                    }
-                                },
-                                onDismiss = menuState::dismiss,
-                            )
-                        }
-                    },
+                    onClick = onMoreClick,
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
                 )
+                .let { base ->
+                    if (onMorePositioned != null) {
+                        base.onGloballyPositioned { coords ->
+                            onMorePositioned(coords.boundsInRoot())
+                        }
+                    } else {
+                        base
+                    }
+                }
                 .size(dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -1806,6 +2658,8 @@ private fun FlamingoPlayingBar(
     bottomSheetPageState: BottomSheetPageState,
     currentSongLiked: Boolean,
     onAlbumClick: () -> Unit,
+    onMoreClick: () -> Unit,
+    onMorePositioned: (Rect) -> Unit,
 ) = FlamingoWrapper {
     Row(
         Modifier
@@ -1864,6 +2718,8 @@ private fun FlamingoPlayingBar(
                 state = state,
                 bottomSheetPageState = bottomSheetPageState,
                 currentSongLiked = currentSongLiked,
+                onMoreClick = onMoreClick,
+                onMorePositioned = onMorePositioned,
             )
         }
     }
