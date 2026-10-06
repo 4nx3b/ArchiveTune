@@ -234,6 +234,7 @@ import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.ui.player.bitchord.BitChordPlayerContent
+import moe.rukamori.archivetune.ui.player.flamingo.FlamingoPlayerContent
 import moe.rukamori.archivetune.ui.player.tiktok.TikTokPlayerContent
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -2074,7 +2075,7 @@ fun BottomSheetPlayer(
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
                     enrichedMetadata?.let { metadata ->
-                        AppleMusicPlayerContent(
+                        FlamingoPlayerContent(
                             mediaMetadata = metadata,
                             playbackState = playbackState,
                             isPlaying = isPlaying,
@@ -2620,7 +2621,7 @@ fun BottomSheetPlayer(
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
                     enrichedMetadata?.let { metadata ->
-                        AppleMusicPlayerContent(
+                        FlamingoPlayerContent(
                             mediaMetadata = metadata,
                             playbackState = playbackState,
                             isPlaying = isPlaying,

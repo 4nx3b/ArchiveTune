@@ -2011,4 +2011,25 @@
     <string name="liquid_glass_percent_value">%1$d%%</string>
     <string name="search_no_recent">No recent searches yet</string>
     <string name="liquid_glass_customisation_subtitle">Fine-tune refraction, blur, tint and optical quality</string>
+    <!-- Flamingo player design (ported from Flamingo, yos.music.player) -->
+    <string name="flamingo_queue_header_title">Playlists</string>
+    <string name="flamingo_queue_header_count">%d Songs</string>
+    <string name="flamingo_queue_up_next">Continue Playing</string>
+    <string name="flamingo_queue_added_toast">Added to queue</string>
+    <string name="flamingo_queue_empty_title">Unable to Display Playlist</string>
+    <string name="flamingo_queue_empty_desc">No items to play.</string>
+    <string name="flamingo_no_lyrics">Lyrics not ready</string>
+    <string name="flamingo_quality_lossless">Lossless</string>
+    <string name="flamingo_settings_section_title">Flamingo player</string>
+    <string name="flamingo_settings_background_effect">Dynamic background</string>
+    <string name="flamingo_settings_background_effect_desc">Slowly pan and zoom the blurred artwork behind the player</string>
+    <string name="flamingo_settings_volume_bar">Show volume bar</string>
+    <string name="flamingo_settings_volume_bar_desc">Display the hardware volume slider in the player</string>
+    <string name="flamingo_settings_lyric_blur">Lyric blur effect</string>
+    <string name="flamingo_settings_lyric_blur_desc">Blur inactive lyric lines by distance from the active line</string>
+    <string name="flamingo_settings_lyric_translation">Secondary lyric text</string>
+    <string name="flamingo_settings_lyric_translation_desc">Show translation (or romanization) under lyric lines when available</string>
+    <string name="flamingo_settings_lyric_font_weight">Lyric font weight</string>
+    <string name="flamingo_settings_lyric_line_balance">Balanced lyric lines</string>
+    <string name="flamingo_settings_lyric_line_balance_desc">Balance line breaks across lyric lines</string>
 </resources>
