@@ -118,6 +118,9 @@ object PreferenceStore {
 
     @Volatile private var started = false
 
+    /** False in a process that never called [start]: the `:crash` process returns before it. */
+    val isStarted: Boolean get() = started
+
     fun start(context: Context) {
         if (started) return
         synchronized(this) {
@@ -161,9 +164,19 @@ operator fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>): T? {
     val snapshot = PreferenceStore.snapshot
     if (snapshot != null) return snapshot[key]
 
+    // Wait on the single shared initial load instead of enqueuing another independent
+    // DataStore read per call. A process that never started [PreferenceStore] reads the
+    // store directly, because its snapshot is never coming. Bounded, so a blocking get
+    // never hangs.
     val loaded =
         runBlocking(Dispatchers.IO) {
-            withTimeoutOrNull(1500) { PreferenceStore.awaitSnapshot() }
+            withTimeoutOrNull(1500) {
+                if (PreferenceStore.isStarted) {
+                    PreferenceStore.awaitSnapshot()
+                } else {
+                    data.first()
+                }
+            }
         }
     return loaded?.get(key)
 }

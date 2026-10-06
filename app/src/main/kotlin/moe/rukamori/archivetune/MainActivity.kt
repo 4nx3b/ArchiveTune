@@ -1463,7 +1463,11 @@ class MainActivity : ComponentActivity() {
                     val compactLeftCircleIsLibrary =
                         remember(navBackStackEntry?.destination?.route) {
                             val route = navBackStackEntry?.destination?.route ?: ""
-                            route == "history" ||
+                            // On Home the left pill is a Library shortcut (the compact
+                            // bar hides the expanded 3-tab bar, so Library would
+                            // otherwise be unreachable).
+                            route == "home" ||
+                                route == "history" ||
                                 route == "local_songs" ||
                                 route == "library_playlists" ||
                                 route == "library_spotify_playlists" ||
@@ -1486,8 +1490,7 @@ class MainActivity : ComponentActivity() {
 
                     val compactSearchCircleVisible =
                         navBackStackEntry?.destination?.route?.startsWith("artist/") != true &&
-
-                            (compactRouteHasInPageSearch || !compactLeftCircleIsLibrary)
+                            (compactRouteHasInPageSearch || !compactLeftCircleIsLibrary || navBackStackEntry?.destination?.route == "home")
 
                     val navigationBarGlassGlow by rememberPreference(
                         NavigationBarGlassGlowKey,

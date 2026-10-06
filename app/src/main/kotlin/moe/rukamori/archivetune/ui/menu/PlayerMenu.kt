@@ -85,7 +85,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -1875,6 +1877,10 @@ private fun SongSourceDialog(
                                         more.items
                                             .filterIsInstance<SongItem>()
                                             .map { song -> song.toSourceSearchResult(aacLabel) }
+                                    // Guard against a cancelled restart of this effect
+                                    // wiping the list mid-tap (caused the wrong song to
+                                    // be played when rows shifted under the finger).
+                                    currentCoroutineContext().ensureActive()
                                     resultsBySource =
                                         resultsBySource + (
                                             source to
@@ -1898,8 +1904,10 @@ private fun SongSourceDialog(
                                         onContinuation = { c -> ytContinuation = c },
                                     )
                                 }.getOrDefault(emptyList())
+                            currentCoroutineContext().ensureActive()
                             resultsBySource = resultsBySource + (source to results)
                         }
+                        currentCoroutineContext().ensureActive()
                         loadingSources = loadingSources - source
                     }
                 }
@@ -2067,7 +2075,10 @@ private fun SongSourceDialog(
                                 .heightIn(max = 360.dp),
                         ) {
                             items(results, key = { result -> "${result.source.name}:${result.trackId}" }) { result ->
-                                SourceSearchResultRow(result = result) {
+                                SourceSearchResultRow(
+                                    result = result,
+                                    showSourceIcon = sourceFilter == null,
+                                ) {
                                     if (result.songItem != null) {
                                         onPlaySong(result.songItem)
                                     } else {
@@ -2129,6 +2140,7 @@ private fun SongSourceDialog(
 @Composable
 private fun SourceSearchResultRow(
     result: SourceSearchResult,
+    showSourceIcon: Boolean,
     onClick: () -> Unit,
 ) {
     Row(
@@ -2215,12 +2227,14 @@ private fun SourceSearchResultRow(
             }
             Spacer(Modifier.width(8.dp))
         }
-        Icon(
-            painter = painterResource(result.source.sourceIconRes()),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(16.dp),
-        )
+        if (showSourceIcon) {
+            Icon(
+                painter = painterResource(result.source.sourceIconRes()),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+        }
     }
 }
 

@@ -77,6 +77,8 @@ import moe.rukamori.archivetune.constants.CropThumbnailToSquareKey
 import moe.rukamori.archivetune.constants.CustomFontNameKey
 import moe.rukamori.archivetune.constants.CustomFontUriKey
 import moe.rukamori.archivetune.constants.DarkModeKey
+import moe.rukamori.archivetune.constants.FlamingoBackgroundEffectKey
+import moe.rukamori.archivetune.constants.FlamingoShowVolumeBarKey
 import moe.rukamori.archivetune.constants.DefaultOpenTabKey
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
@@ -172,6 +174,10 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             TikTokMainLyricsEnabledKey,
             defaultValue = false,
         )
+    val (flamingoBackgroundEffect, onFlamingoBackgroundEffectChange) =
+        rememberPreference(FlamingoBackgroundEffectKey, defaultValue = false)
+    val (flamingoShowVolumeBar, onFlamingoShowVolumeBarChange) =
+        rememberPreference(FlamingoShowVolumeBarKey, defaultValue = true)
     val (_, onAppleMusicExperienceChange) =
         rememberPreference(
             AppleMusicExperienceKey,
@@ -827,6 +833,28 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                 icon = { Icon(painterResource(R.drawable.lyrics), null) },
                                 checked = tikTokMainLyrics,
                                 onCheckedChange = onTikTokMainLyricsChange,
+                            )
+                        }
+                    }
+                }
+
+                if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
+                    item {
+                        Column(modifier = positions.modifierFor("flamingo_player")) {
+                            SwitchPreference(
+                                title = { Text(stringResource(R.string.flamingo_settings_background_effect)) },
+                                description = stringResource(R.string.flamingo_settings_background_effect_desc),
+                                icon = { Icon(painterResource(R.drawable.flamingo_np_airplay), null) },
+                                checked = flamingoBackgroundEffect,
+                                onCheckedChange = onFlamingoBackgroundEffectChange,
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            SwitchPreference(
+                                title = { Text(stringResource(R.string.flamingo_settings_volume_bar)) },
+                                description = stringResource(R.string.flamingo_settings_volume_bar_desc),
+                                icon = { Icon(painterResource(R.drawable.flamingo_np_volume), null) },
+                                checked = flamingoShowVolumeBar,
+                                onCheckedChange = onFlamingoShowVolumeBarChange,
                             )
                         }
                     }

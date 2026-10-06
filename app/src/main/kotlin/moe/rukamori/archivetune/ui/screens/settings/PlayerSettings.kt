@@ -94,12 +94,6 @@ import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
 import moe.rukamori.archivetune.constants.SwipeToSongKey
 import moe.rukamori.archivetune.constants.SwipeSensitivityKey
 import moe.rukamori.archivetune.constants.SwipeThumbnailKey
-import moe.rukamori.archivetune.constants.FlamingoBackgroundEffectKey
-import moe.rukamori.archivetune.constants.FlamingoLyricBlurKey
-import moe.rukamori.archivetune.constants.FlamingoLyricFontWeightKey
-import moe.rukamori.archivetune.constants.FlamingoLyricLineBalanceKey
-import moe.rukamori.archivetune.constants.FlamingoShowVolumeBarKey
-import moe.rukamori.archivetune.constants.FlamingoTranslationKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.deserializeArtworkProviderOrder
@@ -147,20 +141,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         key = PlayerDesignStyleKey,
         defaultValue = PlayerDesignStyle.V4,
     )
-
-    val (flamingoBackgroundEffect, onFlamingoBackgroundEffectChange) =
-        rememberPreference(FlamingoBackgroundEffectKey, defaultValue = false)
-    val (flamingoShowVolumeBar, onFlamingoShowVolumeBarChange) =
-        rememberPreference(FlamingoShowVolumeBarKey, defaultValue = true)
-    val (flamingoLyricBlur, onFlamingoLyricBlurChange) =
-        rememberPreference(FlamingoLyricBlurKey, defaultValue = false)
-    val (flamingoTranslation, onFlamingoTranslationChange) =
-        rememberPreference(FlamingoTranslationKey, defaultValue = true)
-    val (flamingoLyricLineBalance, onFlamingoLyricLineBalanceChange) =
-        rememberPreference(FlamingoLyricLineBalanceKey, defaultValue = false)
-    val (flamingoLyricFontWeight, onFlamingoLyricFontWeightChange) =
-        rememberPreference(FlamingoLyricFontWeightKey, defaultValue = "ExtraBold")
-    var showFlamingoFontWeightDialog by remember { mutableStateOf(false) }
 
     val (persistentQueue, onPersistentQueueChange) =
         rememberPreference(
@@ -361,46 +341,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         )
     }
 
-    if (showFlamingoFontWeightDialog) {
-        val fontWeights = listOf(
-            "Thin", "ExtraLight", "Light", "Regular", "Medium",
-            "SemiBold", "Bold", "ExtraBold", "Black",
-        )
-        DefaultDialog(
-            onDismiss = { showFlamingoFontWeightDialog = false },
-            buttons = {
-                TextButton(
-                    onClick = { showFlamingoFontWeightDialog = false },
-                    shapes = ButtonDefaults.shapes(),
-                ) {
-                    Text(stringResource(android.R.string.cancel))
-                }
-            },
-        ) {
-            Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                fontWeights.forEach { weightName ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(
-                            selected = weightName == flamingoLyricFontWeight,
-                            onClick = {
-                                onFlamingoLyricFontWeightChange(weightName)
-                                showFlamingoFontWeightDialog = false
-                            },
-                        )
-                        Text(
-                            text = weightName,
-                            modifier = Modifier.padding(start = 8.dp),
-                        )
-                    }
-                }
-            }
-        }
-    }
 
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
@@ -468,70 +408,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
-                PreferenceGroup(
-                    title = stringResource(R.string.flamingo_settings_section_title),
-                ) {
-                    item {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.flamingo_settings_background_effect)) },
-                            description = stringResource(R.string.flamingo_settings_background_effect_desc),
-                            icon = { Icon(painterResource(R.drawable.flamingo_np_airplay), null) },
-                            checked = flamingoBackgroundEffect,
-                            onCheckedChange = onFlamingoBackgroundEffectChange,
-                        )
-                    }
 
-                    item {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.flamingo_settings_volume_bar)) },
-                            description = stringResource(R.string.flamingo_settings_volume_bar_desc),
-                            icon = { Icon(painterResource(R.drawable.flamingo_np_volume), null) },
-                            checked = flamingoShowVolumeBar,
-                            onCheckedChange = onFlamingoShowVolumeBarChange,
-                        )
-                    }
-
-                    item {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.flamingo_settings_lyric_blur)) },
-                            description = stringResource(R.string.flamingo_settings_lyric_blur_desc),
-                            icon = { Icon(painterResource(R.drawable.flamingo_np_lyrics), null) },
-                            checked = flamingoLyricBlur,
-                            onCheckedChange = onFlamingoLyricBlurChange,
-                        )
-                    }
-
-                    item {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.flamingo_settings_lyric_translation)) },
-                            description = stringResource(R.string.flamingo_settings_lyric_translation_desc),
-                            icon = { Icon(painterResource(R.drawable.flamingo_np_translate), null) },
-                            checked = flamingoTranslation,
-                            onCheckedChange = onFlamingoTranslationChange,
-                        )
-                    }
-
-                    item {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.flamingo_settings_lyric_line_balance)) },
-                            description = stringResource(R.string.flamingo_settings_lyric_line_balance_desc),
-                            icon = { Icon(painterResource(R.drawable.flamingo_queue_reorder), null) },
-                            checked = flamingoLyricLineBalance,
-                            onCheckedChange = onFlamingoLyricLineBalanceChange,
-                        )
-                    }
-
-                    item {
-                        PreferenceEntry(
-                            title = { Text(stringResource(R.string.flamingo_settings_lyric_font_weight)) },
-                            description = flamingoLyricFontWeight,
-                            icon = { Icon(painterResource(R.drawable.flamingo_np_favorite), null) },
-                            onClick = { showFlamingoFontWeightDialog = true },
-                        )
-                    }
-                }
-            }
 
             PreferenceGroup(
                 modifier = positions.modifierFor("enable_video_playback"),

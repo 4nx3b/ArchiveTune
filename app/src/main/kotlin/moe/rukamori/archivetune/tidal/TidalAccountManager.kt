@@ -4,7 +4,11 @@ package moe.rukamori.archivetune.tidal
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.audiosource.AudioSourceAttemptScope
+import moe.rukamori.archivetune.audiosource.AudioSourceAttemptTimeouts
 import moe.rukamori.archivetune.audiosource.DirectStream
+import moe.rukamori.archivetune.audiosource.rethrowIfAudioSourceCancelled
+import moe.rukamori.archivetune.audiosource.withAudioSourceAttemptDeadline
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -26,8 +30,11 @@ object TidalAccountManager {
         val durationMs: Long?,
     )
 
-    private const val CLIENT_ID = "zU4XHVVkc2tDPo4t"
-    private const val CLIENT_SECRET = "VJKhDFqJPqvsPVNBV6ukXTJmwlvbttP7wlMlrc72se4="
+    // The legacy device client (cid 3235) was retired by Tidal: it still mints tokens, but the
+    // refresh grant now rejects them. The registered Android TV client below is accepted for both
+    // the initial grant and refreshes.
+    private const val CLIENT_ID = "fX2JxdmntZWK0ixT"
+    private const val CLIENT_SECRET = "1Nn9AfDAjxrgJFJbKNWLeAyKGVGmINuXPPLHVXAvxAg="
 
     private const val PKCE_CLIENT_ID = "6BDSRdpK9hqEBTgU"
     private const val PKCE_CLIENT_SECRET = "xeuPmY7nbpZ9IIbLAcQ93shka1VNheUAqN6IcszjTG8="
@@ -79,52 +86,54 @@ object TidalAccountManager {
         refreshToken: String,
         flow: String = FLOW_OAUTH,
     ): TokenResult? =
-        withContext(Dispatchers.IO) {
-            if (flow == FLOW_WEBCAPTURE) {
-                Timber.tag("TidalAccount").w("web-capture session has no refresh token; re-login required")
-                return@withContext null
-            }
-            val clientId = if (flow == FLOW_PKCE) PKCE_CLIENT_ID else CLIENT_ID
-            val clientSecret = if (flow == FLOW_PKCE) PKCE_CLIENT_SECRET else CLIENT_SECRET
-            val body =
-                FormBody
-                    .Builder()
-                    .add("client_id", clientId)
-                    .add("client_secret", clientSecret)
-                    .add("refresh_token", refreshToken)
-                    .add("grant_type", "refresh_token")
-                    .add("scope", SCOPE)
-                    .build()
-            val request =
-                Request
-                    .Builder()
-                    .url(TOKEN_ENDPOINT)
-                    .post(body)
-                    .build()
-            runCatching {
-                client.newCall(request).execute().use { response ->
-                    val payload = response.body?.string().orEmpty()
-                    if (!response.isSuccessful || payload.isBlank()) {
-                        Timber.tag("TidalAccount").w("token refresh failed: %d", response.code)
-                        return@use null
-                    }
-                    val json = JSONObject(payload)
-                    val user = json.optJSONObject("user")
-                    TokenResult(
-                        accessToken = json.getString("access_token"),
-                        refreshToken = json.optString("refresh_token").ifBlank { null },
-                        expiresAtMillis =
-                            System.currentTimeMillis() + (json.optLong("expires_in", 3600L) * 1000L),
-                        userId = user?.optLong("userId")?.takeIf { it > 0 },
-                        username = user?.optString("username")?.ifBlank { null },
-                        countryCode = user?.optString("countryCode")?.ifBlank { null },
-                    )
+        AudioSourceAttemptScope.withinSuspending(AudioSourceAttemptTimeouts.PROVIDER_ATTEMPT_MS) {
+            withContext(Dispatchers.IO) {
+                if (flow == FLOW_WEBCAPTURE) {
+                    Timber.tag("TidalAccount").w("web-capture session has no refresh token; re-login required")
+                    return@withContext null
                 }
-            }.getOrElse {
-                Timber.tag("TidalAccount").w(it, "token refresh error")
-                null
+                val clientId = if (flow == FLOW_PKCE) PKCE_CLIENT_ID else CLIENT_ID
+                val clientSecret = if (flow == FLOW_PKCE) PKCE_CLIENT_SECRET else CLIENT_SECRET
+                val body =
+                    FormBody
+                        .Builder()
+                        .add("client_id", clientId)
+                        .add("client_secret", clientSecret)
+                        .add("refresh_token", refreshToken)
+                        .add("grant_type", "refresh_token")
+                        .add("scope", SCOPE)
+                        .build()
+                val request =
+                    Request
+                        .Builder()
+                        .url(TOKEN_ENDPOINT)
+                        .post(body)
+                        .build()
+                runCatching {
+                    client.newCall(request).withAudioSourceAttemptDeadline().execute().use { response ->
+                        val payload = response.body?.string().orEmpty()
+                        if (!response.isSuccessful || payload.isBlank()) {
+                            Timber.tag("TidalAccount").w("token refresh failed: %d", response.code)
+                            return@use null
+                        }
+                        val json = JSONObject(payload)
+                        val user = json.optJSONObject("user")
+                        TokenResult(
+                            accessToken = json.getString("access_token"),
+                            refreshToken = json.optString("refresh_token").ifBlank { null },
+                            expiresAtMillis =
+                                System.currentTimeMillis() + (json.optLong("expires_in", 3600L) * 1000L),
+                            userId = user?.optLong("userId")?.takeIf { it > 0 },
+                            username = user?.optString("username")?.ifBlank { null },
+                            countryCode = user?.optString("countryCode")?.ifBlank { null },
+                        )
+                    }
+                }.onFailure { it.rethrowIfAudioSourceCancelled() }.getOrElse {
+                    Timber.tag("TidalAccount").w(it, "token refresh error")
+                    null
+                }
             }
-        }
+        } ?: null
 
     data class PkceChallenge(
         val verifier: String,
@@ -187,7 +196,7 @@ object TidalAccountManager {
                     .post(body)
                     .build()
             runCatching {
-                client.newCall(request).execute().use { response ->
+                client.newCall(request).withAudioSourceAttemptDeadline().execute().use { response ->
                     val payload = response.body?.string().orEmpty()
                     if (!response.isSuccessful || payload.isBlank()) {
                         Timber.tag("TidalAccount").w("PKCE code exchange failed: %d %s", response.code, payload.take(200))
@@ -205,7 +214,7 @@ object TidalAccountManager {
                         countryCode = user?.optString("countryCode")?.ifBlank { null },
                     )
                 }
-            }.getOrElse {
+            }.onFailure { it.rethrowIfAudioSourceCancelled() }.getOrElse {
                 Timber.tag("TidalAccount").w(it, "PKCE code exchange error")
                 null
             }
@@ -221,7 +230,7 @@ object TidalAccountManager {
                     .get()
                     .build()
             runCatching {
-                client.newCall(request).execute().use { response ->
+                client.newCall(request).withAudioSourceAttemptDeadline().execute().use { response ->
                     val payload = response.body?.string().orEmpty()
                     if (!response.isSuccessful || payload.isBlank()) {
                         Timber.tag("TidalAccount").w("bearer session validation failed: %d", response.code)
@@ -238,7 +247,7 @@ object TidalAccountManager {
                         countryCode = json.optString("countryCode").ifBlank { null },
                     )
                 }
-            }.getOrElse {
+            }.onFailure { it.rethrowIfAudioSourceCancelled() }.getOrElse {
                 Timber.tag("TidalAccount").w(it, "bearer session validation error")
                 null
             }
@@ -257,7 +266,7 @@ object TidalAccountManager {
                     .get()
                     .build()
             runCatching {
-                client.newCall(request).execute().use { response ->
+                client.newCall(request).withAudioSourceAttemptDeadline().execute().use { response ->
                     val payload = response.body?.string().orEmpty()
                     if (!response.isSuccessful) {
                         Timber.tag("TidalAccount").w("subscription lookup failed: %d", response.code)
@@ -291,7 +300,7 @@ object TidalAccountManager {
                         else -> Subscription.UNKNOWN
                     }
                 }
-            }.getOrElse {
+            }.onFailure { it.rethrowIfAudioSourceCancelled() }.getOrElse {
                 Timber.tag("TidalAccount").w(it, "subscription lookup error")
                 Subscription.UNKNOWN
             }
@@ -311,23 +320,25 @@ object TidalAccountManager {
         preferLiveDash: Boolean = false,
         countryCode: String = COUNTRY_CODE,
     ): DirectStream? =
-        withContext(Dispatchers.IO) {
-            val country = countryCode.ifBlank { COUNTRY_CODE }
-            val match = searchTrack(accessToken, title, artists, durationMs, country) ?: return@withContext null
-            resolvePlaybackInfo(
-                accessToken = accessToken,
-                trackId = match.id,
-                audioQuality = audioQuality,
-                durationMs = durationMs,
-                cacheDir = cacheDir,
-                preferLiveDash = preferLiveDash,
-            )?.copy(
-                matchedTitle = match.title,
-                matchedArtist = match.artist,
-                matchedAlbum = match.album,
-                matchedDurationMs = match.durationMs,
-            )
-        }
+        AudioSourceAttemptScope.withinSuspending(AudioSourceAttemptTimeouts.PROVIDER_ATTEMPT_MS) {
+            withContext(Dispatchers.IO) {
+                val country = countryCode.ifBlank { COUNTRY_CODE }
+                val match = searchTrack(accessToken, title, artists, durationMs, country) ?: return@withContext null
+                resolvePlaybackInfo(
+                    accessToken = accessToken,
+                    trackId = match.id,
+                    audioQuality = audioQuality,
+                    durationMs = durationMs,
+                    cacheDir = cacheDir,
+                    preferLiveDash = preferLiveDash,
+                )?.copy(
+                    matchedTitle = match.title,
+                    matchedArtist = match.artist,
+                    matchedAlbum = match.album,
+                    matchedDurationMs = match.durationMs,
+                )
+            }
+        } ?: null
 
     suspend fun resolveDirectStreamByTrackId(
         accessToken: String,
@@ -337,16 +348,18 @@ object TidalAccountManager {
         cacheDir: File,
         preferLiveDash: Boolean = false,
     ): DirectStream? =
-        withContext(Dispatchers.IO) {
-            resolvePlaybackInfo(
-                accessToken = accessToken,
-                trackId = trackId,
-                audioQuality = audioQuality,
-                durationMs = durationMs,
-                cacheDir = cacheDir,
-                preferLiveDash = preferLiveDash,
-            )?.copy(trustedDirectId = true)
-        }
+        AudioSourceAttemptScope.withinSuspending(AudioSourceAttemptTimeouts.PROVIDER_ATTEMPT_MS) {
+            withContext(Dispatchers.IO) {
+                resolvePlaybackInfo(
+                    accessToken = accessToken,
+                    trackId = trackId,
+                    audioQuality = audioQuality,
+                    durationMs = durationMs,
+                    cacheDir = cacheDir,
+                    preferLiveDash = preferLiveDash,
+                )?.copy(trustedDirectId = true)
+            }
+        } ?: null
 
     private fun searchTrack(
         accessToken: String,
@@ -366,7 +379,7 @@ object TidalAccountManager {
                 .build()
         val result =
             runCatching {
-                resolveClient.newCall(request).execute().use { response ->
+                resolveClient.newCall(request).withAudioSourceAttemptDeadline().execute().use { response ->
                     if (response.code == 401) throw TidalUnauthorizedException()
                     val payload = response.body?.string().orEmpty()
                     if (!response.isSuccessful) {
@@ -420,7 +433,7 @@ object TidalAccountManager {
 
                     if (bestScore >= 40) bestMatch else null
                 }
-            }.getOrElse {
+            }.onFailure { it.rethrowIfAudioSourceCancelled() }.getOrElse {
                 if (it is TidalUnauthorizedException) throw it
                 Timber.tag("TidalAccount").w(it, "account track search error")
                 null
@@ -497,7 +510,7 @@ object TidalAccountManager {
                 .get()
                 .build()
         return runCatching {
-            resolveClient.newCall(request).execute().use { response ->
+            resolveClient.newCall(request).withAudioSourceAttemptDeadline().execute().use { response ->
                 if (response.code == 401) throw TidalUnauthorizedException()
                 val payload = response.body?.string() ?: return@use null
                 if (!response.isSuccessful || payload.isBlank()) {
@@ -521,7 +534,7 @@ object TidalAccountManager {
                     preferLiveDash = preferLiveDash,
                 )
             }
-        }.getOrElse {
+        }.onFailure { it.rethrowIfAudioSourceCancelled() }.getOrElse {
             if (it is TidalUnauthorizedException || it is TidalPreviewException) throw it
             Timber.tag("TidalAccount").w(it, "playbackinfo error")
             null
@@ -548,7 +561,7 @@ object TidalAccountManager {
                         .header("Authorization", "Bearer $accessToken")
                         .get()
                         .build()
-                client.newCall(request).execute().use { response ->
+                client.newCall(request).withAudioSourceAttemptDeadline().execute().use { response ->
                     if (response.code == 401) throw TidalUnauthorizedException()
                     if (!response.isSuccessful) throw java.io.IOException("Tidal lyrics HTTP ${response.code}")
                     val root = runCatching { JSONObject(response.body?.string().orEmpty()) }.getOrNull()
@@ -556,7 +569,7 @@ object TidalAccountManager {
                     root.optString("lyrics").takeIf { it.isNotBlank() }
                         ?: throw java.io.IOException("empty Tidal lyrics")
                 }
-            }
+            }.onFailure { it.rethrowIfAudioSourceCancelled() }
         }
 
     fun isUnauthorized(root: Throwable?): Boolean {
@@ -571,5 +584,35 @@ object TidalAccountManager {
             t.suppressed.forEach { stack.addLast(it) }
         }
         return false
+    }
+
+    /**
+     * True when a Tidal access JWT is expired, or expires within [marginSecs].
+     *
+     * Tidal access tokens live about an hour while the app's Source Pool cache is held for hours,
+     * so a cached pooled token is usually stale before it is ever used. Reading `exp` lets the
+     * resolver notice that and re-lease a fresh one, instead of firing the token, taking a 401,
+     * and reporting a perfectly healthy account dead.
+     *
+     * Non-JWT or unparseable tokens are reported as not expired: an unparseable token is not
+     * proof of expiry, so the request itself decides. The signature is deliberately not verified
+     * — it only decides whether to re-fetch.
+     */
+    fun isAccessTokenExpired(token: String, marginSecs: Long = 300L): Boolean {
+        val payload = token.split('.').getOrNull(1) ?: return false
+        return try {
+            val json =
+                JSONObject(
+                    android.util.Base64.decode(
+                        payload.replace('-', '+').replace('_', '/'),
+                        android.util.Base64.DEFAULT,
+                    ).toString(Charsets.UTF_8),
+                )
+            val exp = json.optLong("exp", 0L)
+            exp > 0 && exp - marginSecs <= System.currentTimeMillis() / 1000L
+        } catch (e: Exception) {
+            // An unparseable token is not proof of expiry; let the request itself decide.
+            false
+        }
     }
 }
