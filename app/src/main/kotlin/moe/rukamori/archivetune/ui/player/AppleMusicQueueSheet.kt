@@ -17,7 +17,7 @@
  * in place, ViviMusic-style).
  */
 
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalHazeMaterialsApi::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 
 package moe.rukamori.archivetune.ui.player
 
@@ -52,14 +52,6 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
-import androidx.compose.animation.core.EaseOutCubic
-import androidx.compose.animation.core.tween
-import androidx.compose.ui.graphics.graphicsLayer
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeProgressive
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -101,7 +93,6 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.setValue
 
 private val QueuePillHeight = 48.dp
@@ -111,7 +102,6 @@ private val QueuePillCornerRadius = 16.dp
 fun AppleMusicQueueSheet(
     navController: NavController,
     playerBottomSheetState: BottomSheetState,
-    backdropHaze: HazeState? = null,
     modifier: Modifier = Modifier,
     onClose: (() -> Unit)? = null,
 ) {
@@ -260,26 +250,6 @@ fun AppleMusicQueueSheet(
             mutableQueueWindows.addAll(queueWindows)
         }
     }
-
-    val queueHazeTopVisible by remember {
-        derivedStateOf {
-            lazyListState.firstVisibleItemIndex > 0 ||
-                lazyListState.firstVisibleItemScrollOffset > 0
-        }
-    }
-    val queueHazeBottomVisible by remember {
-        derivedStateOf { lazyListState.canScrollForward }
-    }
-    val queueHazeTopAlpha by animateFloatAsState(
-        targetValue = if (queueHazeTopVisible) 1f else 0f,
-        animationSpec = tween(durationMillis = 220),
-        label = "queueHazeTopAlpha",
-    )
-    val queueHazeBottomAlpha by animateFloatAsState(
-        targetValue = if (queueHazeBottomVisible) 1f else 0f,
-        animationSpec = tween(durationMillis = 220),
-        label = "queueHazeBottomAlpha",
-    )
 
     Column(
         modifier =
@@ -565,52 +535,8 @@ fun AppleMusicQueueSheet(
                 }
             }
         }
-
-            if (backdropHaze != null && queueHazeTopAlpha > 0.01f) {
-                Box(
-                    modifier =
-                        Modifier
-                            .align(Alignment.TopCenter)
-                            .fillMaxWidth()
-                            .height(56.dp)
-                            .graphicsLayer { alpha = queueHazeTopAlpha }
-                            .hazeEffect(
-                                state = backdropHaze,
-                                style = HazeMaterials.ultraThin(Color.Black),
-                            ) {
-                                progressive =
-                                    HazeProgressive.verticalGradient(
-                                        easing = EaseOutCubic,
-                                        startIntensity = 0.85f,
-                                        endIntensity = 0f,
-                                    )
-                                noiseFactor = 0f
-                            },
-                )
-            }
-            if (backdropHaze != null && queueHazeBottomAlpha > 0.01f) {
-                Box(
-                    modifier =
-                        Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .graphicsLayer { alpha = queueHazeBottomAlpha }
-                            .hazeEffect(
-                                state = backdropHaze,
-                                style = HazeMaterials.ultraThin(Color.Black),
-                            ) {
-                                progressive =
-                                    HazeProgressive.verticalGradient(
-                                        easing = EaseOutCubic,
-                                        startIntensity = 0f,
-                                        endIntensity = 0.6f,
-                                    )
-                                noiseFactor = 0f
-                            },
-                )
-            }
         }
+
     }
 
     if (showSleepTimerDialog) {

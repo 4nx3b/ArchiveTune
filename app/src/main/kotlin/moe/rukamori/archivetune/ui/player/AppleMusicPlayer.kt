@@ -104,8 +104,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToUp
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
 import kotlin.math.abs
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
@@ -210,10 +208,15 @@ private val AmBackdropScrimBrush =
 
 private val AmCanvasScrimBrush =
     Brush.verticalGradient(
-        0f to Color.Black.copy(alpha = 0.25f),
-        0.5f to Color.Black.copy(alpha = 0.40f),
-        1f to Color.Black.copy(alpha = 0.65f),
+        0f to Color.Black.copy(alpha = 0.20f),
+        0.5f to Color.Black.copy(alpha = 0.34f),
+        1f to Color.Black.copy(alpha = 0.52f),
     )
+
+// SpatialFlow-style dissolve: the sharp canvas stage fades out over its bottom
+// stretch so the frosted canvas backdrop (and the controls over it) read as one
+// continuous surface instead of a hard cutoff at the cover/controls boundary.
+private const val AmSharpStageFadeStart = 0.62f
 
 private const val AppleMusicLyricsContentDeferMs = 160L
 
@@ -588,8 +591,6 @@ fun AppleMusicPlayerContent(
         ) {
         val fullPlayerHeightForArtwork: Dp? = if (landscape) null else maxHeight
 
-        val queueBackdropHaze = remember { HazeState() }
-
         val landscapeSwipeModifier =
             Modifier.pointerInput(playerConnection) {
                 val swipeThresholdPx = 72.dp.toPx()
@@ -623,8 +624,7 @@ fun AppleMusicPlayerContent(
         Box(
             modifier =
                 Modifier
-                    .matchParentSize()
-                    .hazeSource(queueBackdropHaze),
+                    .matchParentSize(),
         ) {
         Box(
             modifier =
@@ -1007,6 +1007,13 @@ fun AppleMusicPlayerContent(
                     ) { targetState ->
                         if (targetState == AppleMusicPlayerState.COVER) {
                             Box(modifier = Modifier.fillMaxSize()) {
+                                val steadyStageFadeBrush =
+                                    remember {
+                                        Brush.verticalGradient(
+                                            AmSharpStageFadeStart to Color.Black,
+                                            1f to Color.Transparent,
+                                        )
+                                    }
                                 AppleMusicSharpArtwork(
                                     artworkRequest = artworkRequest,
                                     artworkUrl = artworkUrl,
@@ -1024,6 +1031,30 @@ fun AppleMusicPlayerContent(
                                     modifier =
                                         Modifier
                                             .fillMaxSize()
+                                            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                                            .drawWithContent {
+                                                drawContent()
+                                                val reveal = canvasBackdropReveal.value
+                                                when {
+                                                    reveal >= 0.999f -> drawRect(
+                                                        brush = steadyStageFadeBrush,
+                                                        blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                                                    )
+
+                                                    reveal > 0.01f -> {
+                                                        val fadeStart =
+                                                            1f - (1f - AmSharpStageFadeStart) * reveal
+                                                        drawRect(
+                                                            brush =
+                                                                Brush.verticalGradient(
+                                                                    fadeStart to Color.Black,
+                                                                    1f to Color.Transparent,
+                                                                ),
+                                                            blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                                                        )
+                                                    }
+                                                }
+                                            }
                                             .sharedBounds(
                                                 sharedContentState =
                                                     rememberSharedContentState(key = "amCoverArt"),
@@ -1076,7 +1107,6 @@ fun AppleMusicPlayerContent(
                                         AppleMusicQueueSheet(
                                             navController = navController,
                                             playerBottomSheetState = state,
-                                            backdropHaze = queueBackdropHaze,
                                             modifier =
                                                 Modifier
                                                     .fillMaxSize()
