@@ -4621,3 +4621,63 @@ Work Log:
 
 Stage Summary:
 - dev green at 69290b256; PR #216 includes the batch. Canary APK published for device testing.
+
+---
+Task ID: 75 (session web-e130fa90)
+Task: Follow-up to the 2026-10-07 Flamingo reports — the task-74 canvas blend
+restoration did not fix the underlying interop bug: canvas still renders in
+the background above the controls (fully blurred) instead of inside the
+artwork stage, the album-page overflow chip is still dead (queue page works),
+the artwork→lyrics morph is still janky with word-synced lyrics, the
+translation panel needs liquid glass + a single divider + pinned controls,
+landscape needs tap-anywhere reveal and loses the static thumbnail behind
+the canvas.
+
+Work Log:
+- Root cause (both symptom families): the task-74 code kept BOTH
+  CanvasArtworkPlayers inside Compose layers hostile to interop views — the
+  blurred backdrop inside Modifier.blur (RenderEffect) + a 7.2x
+  graphicsLayer scale, and the sharp stages inside
+  CompositingStrategy.Offscreen + DstIn fades. A TextureView (media3
+  ContentFrame) cannot composite into Compose offscreen/RenderEffect layers,
+  so the video escaped: the backdrop drew ABOVE the player controls (upscaled
+  480px decode = "completely blurred"), the sharp canvas never rendered
+  inside the artwork stage, a second full video decoder ran constantly (the
+  lag), and the backdrop's layout box swallowed taps in the title-row band —
+  exactly where the album page's like/overflow chips sit (the queue page's
+  chip, near the top, kept working).
+- FlamingoPlayer.kt, canvas: removed the full-height blurred canvas backdrop
+  (+ FlamingoCanvasBackdrop* constants, canvasBackdropReveal,
+  canvasVisibleForLyrics, lyricsBackdropProgress). The static floating-light
+  background + canvas scrim is the sole backdrop again; one video decoder.
+- FlamingoPlayer.kt, sharp stages: FlamingoAlbum no longer wraps the canvas
+  in Offscreen+DstIn — plain Box, static artwork base, ZOOM canvas, and the
+  bottom dissolve is a plain gradient scrim drawn ON TOP of the video.
+  FlamingoLandscapeStage: ZOOM fill (the whole canvas fits the pane — no
+  letterbox), Offscreen+DstIn right-edge fade replaced by an overlay
+  gradient, and the static artwork + dim crossfade out via
+  onPlaybackAvailabilityChange once the video renders (no static thumbnail
+  behind the landscape canvas; it returns as the buffering fallback).
+- FlamingoPlayer.kt, overflow chip: the tap-swallowing interop box is gone;
+  the album page's more chip calls the unchanged onMoreClick path.
+- FlamingoPlayer.kt, translation panel: liquid-glass background — samples the
+  player's popupBackdrop layer (layerBackdrop now attached while the panel
+  is open too) with vibrancy + 28dp blur, translucent charcoal fallback when
+  glass is off/pre-S; the spacer between the two rows is now a single 1dp
+  divider line; and the 2500ms controls auto-hide is suppressed (keyed +
+  early return) while the panel is open — the controls stay until it is
+  manually closed.
+- FlamingoPlayer.kt, lyrics morph: LyricsEnhanced composition deferred 600ms
+  after nowPage becomes Lyric (portrait AND landscape in-pane) — the
+  word-synced karaoke machinery no longer composes mid-crossfade/mid-morph.
+- FlamingoPlayer.kt, landscape: the artwork pane's swipe modifier now also
+  detects plain taps — touching anywhere (artwork or controls pane) pokes
+  the hidden bottom controls back into view and restarts the timer.
+
+Stage Summary:
+- One file changed (FlamingoPlayer.kt, +275/-213).
+- Canvas: sharp video confined to the artwork stage (the red-annotated
+  area) under the controls; no blurred full-screen video; single decoder.
+- Album-page overflow chip unblocked; lyrics morph smooth; panel per spec;
+  landscape tap-to-reveal + no static thumbnail behind the canvas.
+- Commit follows; CI monitored to green.
