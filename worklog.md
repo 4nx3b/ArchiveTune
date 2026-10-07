@@ -4905,3 +4905,5 @@ Stage Summary:
   song-details sheet; landscape artwork/lyrics taps never summon controls
   and the controls are always reachable; no album-cover flash on skips or
   page transitions.
+- CI final: 8/8 check-runs SUCCESS on 506d6b6bb (build, check, all 5 Nightly
+  APK matrix jobs, create-nightly release published with APK assets).

@@ -334,9 +334,16 @@ fun CanvasArtworkPlayer(
                 }
 
             if (stalledForMs >= CanvasPlaybackStallTimeoutMs) {
+                // A stall on the primary canvas swaps to the fallback URL
+                // WITHOUT un-reporting availability: resetting availability
+                // here fades the whole canvas stack (sharp stage + frost +
+                // scrim) out to the plain background and back in once the
+                // fallback renders — the random mid-song "glitch/lag" blink
+                // (2026-10-08 report). The frozen last frame is the far less
+                // visible intermediate while the fallback buffers; a dead
+                // fallback still surfaces through onPlayerError.
                 currentUrl = fallback
                 isVideoReady = false
-                reportAvailability?.invoke(false)
                 return@LaunchedEffect
             }
 
@@ -439,8 +446,14 @@ fun CanvasArtworkPlayer(
                                 target != Long.MIN_VALUE &&
                                 loopSyncFollower.leaderSource == currentUrl &&
                                 kotlin.math.abs(newPosition.positionMs - target) >
-                                    CanvasSyncRateLockThresholdMs
+                                    CanvasSyncSeekThresholdMs
                             ) {
+                                // Loop-boundary resync only on LARGE drift: the
+                                // follower is the heavily-blurred frost twin,
+                                // where up to 1.5s of drift is invisible — the
+                                // tight 80ms resync re-seeked at every loop
+                                // boundary and froze the frost frame (the
+                                // "random lag" of the 2026-10-08 report).
                                 exoPlayer.seekTo(target.coerceAtLeast(0L))
                             }
                         }
