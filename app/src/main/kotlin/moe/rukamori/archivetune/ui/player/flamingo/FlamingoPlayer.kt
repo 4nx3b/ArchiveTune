@@ -196,6 +196,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
 import moe.rukamori.archivetune.ui.player.CanvasLoopSync
+import moe.rukamori.archivetune.ui.player.dockArtworkAnchor
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.positionInRoot
@@ -2237,10 +2238,13 @@ private fun ColumnScope.FlamingoAlbum(
         // and nothing morphs when switching pages (user report 2026-10-07
         // evening: "remove that album cover? It always shows up when I skip
         // to the next song or in some other cases too and while transition
-        // from main player ui to queue or lyrics").
+        // from main player ui to queue or lyrics"). The stage box still
+        // reports its bounds as the docking-flight origin for the
+        // player-to-miniplayer thumbnail flight (2026-10-08 BitChord port).
         Box(
             Modifier
-                .weight(1f),
+                .weight(1f)
+                .dockArtworkAnchor(),
         )
         return
     }
@@ -2278,7 +2282,10 @@ private fun ColumnScope.FlamingoAlbum(
                         compositingStrategy = CompositingStrategy.ModulateAlpha
                     }
                     .padding(start = dp, end = dp, bottom = dp)
-                    .then(modifier),
+                    .then(modifier)
+                    // Reports the artwork bounds for the player-to-miniplayer
+                    // thumbnail flight (2026-10-08 BitChord port).
+                    .dockArtworkAnchor(),
                 imageQuality = ImageQuality.RAW,
                 shadowOverlay = true,
             )
