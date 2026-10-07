@@ -562,6 +562,8 @@
     <string name="music_haptics_strength_value">%1$d%%</string>
     <string name="default_open_tab">Default open tab</string>
     <string name="navigation_bar_frosted_blur">Frosted navigation bar</string>
+    <string name="navigation_bar_bitchord">Enable BitChord Navigation bar</string>
+    <string name="navigation_bar_bitchord_desc">The BitChord frosted-pill navigation bar: travelling stretch-squash selection pill, icon bounce and drag-to-switch. Turns the other navigation bar styles off.</string>
     <string name="navigation_bar_frosted_blur_desc">Apply a frosted blur behind the navigation bar</string>
     <string name="navigation_bar_frosted_blur_unsupported">Frosted navigation bar is not supported on Android versions below 12</string>
     <string name="hide_navigation_bar_labels">Hide labels in navigation bar</string>
