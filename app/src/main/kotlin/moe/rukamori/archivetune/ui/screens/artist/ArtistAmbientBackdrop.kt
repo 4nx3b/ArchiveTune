@@ -30,13 +30,14 @@ import coil3.imageLoader
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.request.allowHardware
 import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCache
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
 import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.ui.theme.BackdropTonePalette
+import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 
 /**
  * Ambient backdrop for the artist SUB-pages (all albums / songs / items —

@@ -35,6 +35,8 @@ import java.util.Locale
  * there and the client follows it).
  */
 object BiniLyricsProvider : LyricsProvider {
+    private const val BASE_URL = "https://lyrics-api.binimum.org/"
+
     override val name = "BiniLyrics"
 
     override fun isEnabled(context: Context): Boolean = context.dataStore[EnableBiniLyricsKey] ?: true
