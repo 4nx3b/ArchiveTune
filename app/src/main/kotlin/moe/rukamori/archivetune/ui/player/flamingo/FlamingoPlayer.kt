@@ -51,6 +51,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -61,6 +62,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -205,6 +207,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.ui.platform.LocalConfiguration
 import moe.rukamori.archivetune.ui.player.LocalVideoArtworkState
+import moe.rukamori.archivetune.ui.player.InlineVideoPlayer
+import moe.rukamori.archivetune.ui.player.LocalVideoPlaybackFailed
 import moe.rukamori.archivetune.ui.player.rememberThumbnailSwapState
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.layout.ContentScale
@@ -362,7 +366,8 @@ fun FlamingoPlayerContent(
         val videoShowing =
             LocalVideoArtworkState.current != null &&
                 mediaMetadata.isMusicVideo &&
-                !mediaMetadata.id.isLocalMediaId()
+                !mediaMetadata.id.isLocalMediaId() &&
+                !LocalVideoPlaybackFailed.current
         val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
         val canvasActive =
             !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
@@ -976,7 +981,26 @@ fun FlamingoPlayerContent(
                                     .fillMaxHeight(),
                         ) {
                             val landscapeCanvasFullBleed = canvasActive && !videoShowing
-                            if (landscapeCanvasFullBleed) {
+                            if (videoShowing) {
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxSize()
+                                            .then(landscapeSwipeModifier),
+                                ) {
+                                    InlineVideoPlayer(
+                                        controlsOnTap = true,
+                                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                    Box(
+                                        modifier =
+                                            Modifier
+                                                .matchParentSize()
+                                                .background(FlamingoLandscapeRightScrim),
+                                    )
+                                }
+                            } else if (landscapeCanvasFullBleed) {
                                 Box(
                                     modifier =
                                         Modifier
@@ -1262,6 +1286,7 @@ fun FlamingoPlayerContent(
                                                         artworkUrl = artworkUrl,
                                                         isPlaying = { isPlayingStatusLambda.value },
                                                         canvasActive = canvasVisualActive,
+                                                        videoShowing = videoShowing,
                                                     )
                                                     AnimatedContent(
                                                         targetState = mediaMetadata,
@@ -1289,8 +1314,8 @@ fun FlamingoPlayerContent(
                                                                     text = metadata.title,
                                                                     fontSize = 19.5.sp,
                                                                     maxLines = 1,
-                                                                    overflow = TextOverflow.Ellipsis,
                                                                     fontWeight = FontWeight.Medium,
+                                                                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
                                                                 )
                                                                 Text(
                                                                     text = metadata.artistNames(),
@@ -2229,7 +2254,29 @@ private fun ColumnScope.FlamingoAlbum(
     artworkUrl: String?,
     isPlaying: () -> Boolean,
     canvasActive: Boolean,
+    videoShowing: Boolean,
 ) {
+    if (videoShowing) {
+        Box(
+            Modifier
+                .weight(1f)
+                .padding(top = 20.dp)
+                .padding(horizontal = 15.dp)
+                .padding(bottom = 33.dp),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            InlineVideoPlayer(
+                controlsOnTap = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .dockArtworkAnchor(),
+            )
+        }
+        return
+    }
+
     if (canvasActive) {
         // The canvas plays in the full-bleed background layer (frost + sharp
         // stage): the album stage renders NOTHING of its own. There is no
@@ -2436,8 +2483,8 @@ private fun FlamingoLandscapeTitleBlock(
                 text = mediaMetadata.title,
                 fontSize = 19.5.sp,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 fontWeight = FontWeight.Medium,
+                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
             )
             Text(
                 text = mediaMetadata.artistNames(),
@@ -3503,9 +3550,9 @@ private fun FlamingoPlayingBar(
                 text = mediaMetadata.title,
                 fontSize = 16.5.sp,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 fontWeight = FontWeight.Medium,
                 lineHeight = 16.5.sp,
+                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
             )
             Text(
                 text = mediaMetadata.artistNames(),
