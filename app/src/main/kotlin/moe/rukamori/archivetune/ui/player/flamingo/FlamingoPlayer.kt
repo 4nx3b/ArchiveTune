@@ -68,6 +68,9 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -76,8 +79,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -87,6 +92,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -96,6 +102,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -141,6 +148,11 @@ import androidx.media3.common.Player.REPEAT_MODE_ONE
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.navigation.NavController
+import moe.rukamori.archivetune.LocalDatabase
+import moe.rukamori.archivetune.db.entities.ArtistEntity
+import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.ui.player.LocalLyricsScrollListener
+import java.time.LocalDateTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -149,6 +161,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AiRomanizeLyricsKey
+import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.AutoAiRomanizeLyricsKey
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
@@ -187,6 +200,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.ui.platform.LocalConfiguration
 import moe.rukamori.archivetune.ui.player.LocalVideoArtworkState
@@ -221,23 +235,31 @@ private val QueueDraggingItemShape = RoundedCornerShape(0.dp)
 // notch") down to the title row, dissolving via a DstIn fade into a blurred
 // canvas "frost" that runs behind the bottom controls ("look at how
 // spatialflow blends it with the bottom controls"), under a full-screen
-// scrim. The previous stage-bound canvas had a sharp bottom edge, wrong
-// positioning, and its interop node competed with the title row.
-// The frost twin decodes at a 1/6 footprint (maxVideoEdgePx capped), blurred
-// 12dp and upscaled 6x — the exact recipe the pre-port Apple Music player
-// and the SpatialFlow style have run on this device for weeks.
-private const val FlamingoSharpStageFadeStart = 0.62f
+// scrim. The frost twin decodes at a 1/6 footprint (maxVideoEdgePx capped),
+// heavily blurred and upscaled 6x.
+// Canvas layer geometry. The dissolve was widened (fade start 0.62 -> 0.50)
+// and the scrim deepened together with the frost blur quadroupled
+// (12dp -> 48dp effective) per the 2026-10-08 report: "increase its blur
+// intensity a lot, make sure the blend doesn't glitches out with bottom
+// controls and the canvas" — the heavier frost hides the follower's loop
+// resyncs (the "random lag at start/middle/end") and the wider dissolve
+// removes the visible seam between the sharp stage and the controls band.
+private const val FlamingoSharpStageFadeStart = 0.50f
 private const val FlamingoCanvasBackdropUpscale = 6f
 private const val FlamingoCanvasBackdropOverscan = 1.10f
-private val FlamingoCanvasBackdropBlurRadius = 72.dp
+private val FlamingoCanvasBackdropBlurRadius = 288.dp
 private const val FlamingoCanvasBackdropMaxVideoEdgePx = 480
-private const val FlamingoCanvasPageFadeMs = 650
+// Matches AnimDurationMillis so canvas songs page-switch with the same
+// cadence as non-canvas songs (2026-10-08: "I want the usual animation/
+// transition used for the songs with no canvas") — the 650ms linger was
+// what made lyrics/queue feel like a plain slow fade for canvas songs.
+private const val FlamingoCanvasPageFadeMs = 300
 
 private val FlamingoCanvasScrimBrush =
     Brush.verticalGradient(
-        0f to Color.Black.copy(alpha = 0.25f),
-        0.5f to Color.Black.copy(alpha = 0.40f),
-        1f to Color.Black.copy(alpha = 0.65f),
+        0f to Color.Black.copy(alpha = 0.35f),
+        0.5f to Color.Black.copy(alpha = 0.50f),
+        1f to Color.Black.copy(alpha = 0.75f),
     )
 
 // Alpha fade for the sharp stage's bottom edge: the video dissolves into
@@ -256,8 +278,11 @@ private val FlamingoLandscapeRightScrim =
 
 // Lyrics content is composed only after the page crossfade + artwork morph
 // settle: mid-morph composition of the word-synced karaoke machinery is what
-// made the artwork transition janky (user report 2026-10-07).
+// made the artwork transition janky (user report 2026-10-07). Canvas songs
+// run no shared-element morph, so their defer is the plain crossfade length
+// — otherwise their lyrics page change feels slower than non-canvas songs.
 private const val FlamingoLyricsContentDeferMs = 600L
+private const val FlamingoLyricsContentDeferCanvasMs = 300L
 
 private data class QueueReorderTarget(
     val nextInQueue: Boolean,
@@ -385,12 +410,12 @@ fun FlamingoPlayerContent(
         }
         // Controls visibility resets only on ORIENTATION change — a song
         // change must never re-hide controls the user has already poked back
-        // into view. In LANDSCAPE the controls are always shown: every poke
-        // path (artwork-pane tap, lyrics tap) was removed at the user's
-        // request (2026-10-07: "clicking on the thumbnail of the song or
-        // canvas in horizontal mode triggers bottom controls again"), so a
-        // hidden state would only be recoverable through the back gesture.
-        // Portrait keeps the 2500ms auto-hide on the lyrics page.
+        // into view. Both orientations now run the SAME policy: controls are
+        // visible while poking around and auto-hide on the lyrics/queue
+        // pages (2026-10-08: "Player controls show up from the starting in
+        // horizontal mode now over the lyrics and never disappear. Fix it.").
+        // Landscape keeps its reveal paths: scrolling the lyrics (the
+        // LocalLyricsScrollListener below) and touching the controls strip.
         LaunchedEffect(landscape) {
             showControl.value = true
         }
@@ -444,7 +469,16 @@ fun FlamingoPlayerContent(
         LaunchedEffect(nowPage) {
             if (nowPage == FlamingoPage.Lyric) {
                 lyricsContentReady = false
-                delay(FlamingoLyricsContentDeferMs)
+                // Canvas songs run no shared-element morph — only the plain
+                // 300ms page crossfade — so they defer lyrics by the same
+                // 300ms instead of the 600ms morph-settle wait.
+                delay(
+                    if (canvasVisualActive) {
+                        FlamingoLyricsContentDeferCanvasMs
+                    } else {
+                        FlamingoLyricsContentDeferMs
+                    },
+                )
                 lyricsContentReady = true
             } else {
                 lyricsContentReady = false
@@ -555,9 +589,14 @@ fun FlamingoPlayerContent(
         var translationPopupOpen by remember { mutableStateOf(false) }
         var translationIconBounds by remember { mutableStateOf(Rect.Zero) }
 
-        // The translation popup is a lyrics-page affordance: it must never
-        // survive a page switch (otherwise it floats over the album page
-        // with no way to dismiss it).
+        // ---- Artist picker (2026-10-08: "Clicking on the artist name below
+        // the songs name should open a floating bottomsheet with all the
+        // artist names and their profile pictures with dividers in between
+        // and liquid glass blur ( compact )") ----
+        var artistPickerOpen by remember { mutableStateOf(false) }
+
+        // The translation popup must never survive a page switch (otherwise
+        // it floats over the album page with no way to dismiss it).
         LaunchedEffect(nowPage) {
             if (nowPage != FlamingoPage.Lyric) {
                 translationPopupOpen = false
@@ -614,7 +653,13 @@ fun FlamingoPlayerContent(
             }
         }
 
-        // ---- Controls auto-hide (2500ms on the lyrics page) ----
+        // ---- Controls auto-hide (2500ms on the lyrics AND queue pages) ----
+        // 2026-10-08: "The bottom controls in queue page should disappear
+        // after showing itself for a few seconds like it does and only
+        // appear if i scroll up" — the queue page now runs the same
+        // auto-hide as the lyrics page, in BOTH orientations, and is
+        // re-summoned by scrolling the queue list upward (the nestedScroll
+        // poke inside FlamingoPlayingList) or swiping through the lyrics.
         FlamingoWrapper {
             LaunchedEffect(
                 showControlLambda.value,
@@ -622,7 +667,7 @@ fun FlamingoPlayerContent(
                 lastClickTime.longValue,
                 translationPopupOpen,
             ) {
-                if (nowPageLambda.value != FlamingoPage.Lyric && !showControlLambda.value) {
+                if (nowPageLambda.value == FlamingoPage.Album && !showControlLambda.value) {
                     showControl.value = true
                 }
                 // The translation popup is open: the controls stay put until
@@ -635,8 +680,7 @@ fun FlamingoPlayerContent(
                     delay(time)
                     withContext(Dispatchers.Main) {
                         if (System.currentTimeMillis() - lastClickTime.longValue >= time &&
-                            nowPageLambda.value == FlamingoPage.Lyric &&
-                            !landscape
+                            nowPageLambda.value != FlamingoPage.Album
                         ) {
                             showControl.value = false
                         }
@@ -649,9 +693,26 @@ fun FlamingoPlayerContent(
         val sliderPositionState = rememberUpdatedState(sliderPosition)
         val lyricsPosProvider = remember { { sliderPositionState.value } }
 
+        // ---- Lyrics swipe re-summons the controls (2026-10-08: "The bottom
+        // controls should show again if I swipe through the lyrics in apple
+        // music player style") ----
+        // LyricsEnhanced already publishes its manual-scroll state through
+        // LocalLyricsScrollListener; providing it here covers BOTH the
+        // portrait lyrics list and the landscape lyrics pane, and gives the
+        // landscape lyrics page its controls-reveal path back.
+        val lyricsControlsPoke: (Boolean) -> Unit =
+            remember(showControl) {
+                { scrolling ->
+                    if (scrolling) {
+                        if (!showControl.value) showControl.value = true
+                        lastClickTime.longValue = System.currentTimeMillis()
+                    }
+                }
+            }
+
         // The outer Box records ONLY while one of the anchored popups (all of
         // them rendered outside this Box) is open.
-        val glassLayerActive = showAnchoredLyricsMenu || translationPopupOpen
+        val glassLayerActive = showAnchoredLyricsMenu || translationPopupOpen || artistPickerOpen
         Box(
             modifier =
                 Modifier
@@ -834,18 +895,22 @@ fun FlamingoPlayerContent(
                                             label = "FlamingoLyricsRender",
                                         ) { renderKey ->
                                             val (showTranslationLines, showRomanization, _) = renderKey
-                                            LyricsEnhanced(
-                                                sliderPositionProvider = lyricsPosProvider,
-                                                lyricsSyncOffset = lyricsSyncOffset,
-                                                translationVisibleOverride = showTranslationLines,
-                                                phoneticVisibleOverride = if (showRomanization) null else false,
-                                                textColorOverride = Color.White,
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .flamingoLyricsEdgeFade(
-                                                        weightLambda = { showControlLambda.value },
-                                                    ),
-                                            )
+                                            CompositionLocalProvider(
+                                                LocalLyricsScrollListener provides lyricsControlsPoke,
+                                            ) {
+                                                LyricsEnhanced(
+                                                    sliderPositionProvider = lyricsPosProvider,
+                                                    lyricsSyncOffset = lyricsSyncOffset,
+                                                    translationVisibleOverride = showTranslationLines,
+                                                    phoneticVisibleOverride = if (showRomanization) null else false,
+                                                    textColorOverride = Color.White,
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .flamingoLyricsEdgeFade(
+                                                            weightLambda = { showControlLambda.value },
+                                                        ),
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -990,14 +1055,18 @@ fun FlamingoPlayerContent(
                                             label = "FlamingoLandscapeLyricsRender",
                                         ) { renderKey ->
                                             val (showTranslationLines, showRomanization, _) = renderKey
-                                            LyricsEnhanced(
-                                                sliderPositionProvider = lyricsPosProvider,
-                                                lyricsSyncOffset = lyricsSyncOffset,
-                                                translationVisibleOverride = showTranslationLines,
-                                                phoneticVisibleOverride = if (showRomanization) null else false,
-                                                textColorOverride = Color.White,
-                                                modifier = Modifier.fillMaxSize(),
-                                            )
+                                            CompositionLocalProvider(
+                                                LocalLyricsScrollListener provides lyricsControlsPoke,
+                                            ) {
+                                                LyricsEnhanced(
+                                                    sliderPositionProvider = lyricsPosProvider,
+                                                    lyricsSyncOffset = lyricsSyncOffset,
+                                                    translationVisibleOverride = showTranslationLines,
+                                                    phoneticVisibleOverride = if (showRomanization) null else false,
+                                                    textColorOverride = Color.White,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -1044,6 +1113,7 @@ fun FlamingoPlayerContent(
                                             bottomSheetPageState = bottomSheetPageState,
                                             onMoreClick = onMoreClick,
                                             onMorePositioned = { moreIconBounds = it },
+                                            onArtistClick = { artistPickerOpen = true },
                                             playerMenuOpen = showAnchoredLyricsMenu,
                                         )
 
@@ -1113,6 +1183,10 @@ fun FlamingoPlayerContent(
                                     currentWindowIndex = currentWindowIndex,
                                     shuffleModeEnabled = shuffleModeEnabled,
                                     repeatMode = repeatMode,
+                                    onControlsPoke = {
+                                        if (!showControlLambda.value) showControl.value = true
+                                        lastClickTime.longValue = System.currentTimeMillis()
+                                    },
                                 )
                             }
                         }
@@ -1220,7 +1294,18 @@ fun FlamingoPlayerContent(
                                                                 Text(
                                                                     text = metadata.artistNames(),
                                                                     fontSize = 18.5.sp,
-                                                                    modifier = Modifier.overlayEffect(),
+                                                                    modifier = Modifier
+                                                                        .overlayEffect()
+                                                                        // Tapping the artist line opens the compact
+                                                                        // liquid-glass artist picker (2026-10-08).
+                                                                        .clickable(
+                                                                            interactionSource = remember { MutableInteractionSource() },
+                                                                            indication = null,
+                                                                            onClick = {
+                                                                                FlamingoHaptics.click(context)
+                                                                                artistPickerOpen = true
+                                                                            },
+                                                                        ),
                                                                     maxLines = 1,
                                                                     overflow = TextOverflow.Ellipsis,
                                                                     color = Color.White.copy(alpha = 0.35f),
@@ -1266,6 +1351,7 @@ fun FlamingoPlayerContent(
                                                     onAlbumClick = { nowPage = FlamingoPage.Album },
                                                     onMoreClick = onMoreClick,
                                                     onMorePositioned = { moreIconBounds = it },
+                                                    onArtistClick = { artistPickerOpen = true },
                                                     playerMenuOpen = showAnchoredLyricsMenu,
                                                 )
                                             }
@@ -1295,6 +1381,7 @@ fun FlamingoPlayerContent(
                                                     onAlbumClick = { nowPage = FlamingoPage.Album },
                                                     onMoreClick = onMoreClick,
                                                     onMorePositioned = { moreIconBounds = it },
+                                                    onArtistClick = { artistPickerOpen = true },
                                                     playerMenuOpen = showAnchoredLyricsMenu,
                                                 )
                                             }
@@ -1325,6 +1412,10 @@ fun FlamingoPlayerContent(
                                     currentWindowIndex = currentWindowIndex,
                                     shuffleModeEnabled = shuffleModeEnabled,
                                     repeatMode = repeatMode,
+                                    onControlsPoke = {
+                                        if (!showControlLambda.value) showControl.value = true
+                                        lastClickTime.longValue = System.currentTimeMillis()
+                                    },
                                 )
                             }
                         }
@@ -1544,6 +1635,16 @@ fun FlamingoPlayerContent(
                     setRomanizationEnabled(!romanizationOn)
                 },
                 onDismiss = { translationPopupOpen = false },
+                backdrop = popupBackdrop,
+            )
+        }
+
+        if (artistPickerOpen) {
+            FlamingoArtistPickerSheet(
+                mediaMetadata = mediaMetadata,
+                navController = navController,
+                playerSheetState = state,
+                onDismiss = { artistPickerOpen = false },
                 backdrop = popupBackdrop,
             )
         }
@@ -1879,6 +1980,248 @@ private fun FlamingoTranslationPopupRow(
     }
 }
 
+/**
+ * The compact artist picker (2026-10-08: "Clicking on the artist name below
+ * the songs name should open a floating bottomsheet with all the artist
+ * names and their profile pictures with dividers in between and liquid glass
+ * blur ( compact )").
+ *
+ * A floating bottom-anchored liquid-glass sheet listing every artist on the
+ * song (split with the user's artist separators, same as the PlayerMenu
+ * picker) with their profile pictures, single divider lines between the rows,
+ * and a slide-up + fade entrance. Tapping a row navigates to that artist and
+ * collapses the player sheet — the exact PlayerMenu navigation idiom.
+ */
+@Composable
+private fun FlamingoArtistPickerSheet(
+    mediaMetadata: MediaMetadata,
+    navController: NavController,
+    playerSheetState: BottomSheetState,
+    onDismiss: () -> Unit,
+    backdrop: PlatformBackdrop?,
+) {
+    val context = LocalContext.current
+    val database = LocalDatabase.current
+    val scope = rememberCoroutineScope()
+
+    var dismissed by remember { mutableStateOf(false) }
+    BackHandler(enabled = !dismissed) {
+        dismissed = true
+    }
+
+    val slideAnim = remember { Animatable(60f) }
+    val alphaAnim = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        if (dismissed) return@LaunchedEffect
+        scope.launch {
+            slideAnim.animateTo(
+                targetValue = 0f,
+                animationSpec =
+                    spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+            )
+        }
+        scope.launch {
+            alphaAnim.animateTo(targetValue = 1f, animationSpec = tween(200))
+        }
+    }
+    LaunchedEffect(dismissed) {
+        if (!dismissed) return@LaunchedEffect
+        scope.launch { alphaAnim.animateTo(targetValue = 0f, animationSpec = tween(180)) }.join()
+        onDismiss()
+    }
+
+    // ---- Artist split (PlayerMenu's exact recipe, incl. separators pref) ----
+    val (artistSeparators) = rememberPreference(ArtistSeparatorsKey, defaultValue = "")
+
+    data class SplitArtist(
+        val name: String,
+        val originalArtist: MediaMetadata.Artist?,
+    )
+
+    val splitArtists =
+        remember(mediaMetadata.artists, artistSeparators) {
+            if (artistSeparators.isEmpty()) {
+                mediaMetadata.artists.map { SplitArtist(it.name, it) }
+            } else {
+                val separatorRegex = "[${Regex.escape(artistSeparators)}]".toRegex()
+                mediaMetadata.artists.flatMap { artist ->
+                    val parts =
+                        artist.name
+                            .split(separatorRegex)
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                    if (parts.size > 1) {
+                        parts.map { name -> SplitArtist(name, artist) }
+                    } else {
+                        listOf(SplitArtist(artist.name, artist))
+                    }
+                }
+            }
+        }
+
+    // ---- Profile-picture prefetch (db cache first, then innertube) ----
+    val artistIdsKey =
+        remember(splitArtists) {
+            splitArtists.mapNotNull { it.originalArtist?.id }.distinct().sorted()
+        }
+    val artistThumbnailsById: Map<String, String?> by produceState(
+        initialValue = emptyMap(),
+        artistIdsKey,
+    ) {
+        withContext(Dispatchers.IO) {
+            val result = mutableMapOf<String, String?>()
+            val nameById =
+                splitArtists
+                    .mapNotNull { sa ->
+                        sa.originalArtist?.id?.let { id -> id to sa.originalArtist.name }
+                    }.toMap()
+
+            splitArtists.mapNotNull { it.originalArtist?.id }.distinct().forEach { artistId ->
+                val dbEntity = database.getArtistById(artistId)
+                val cached = dbEntity?.thumbnailUrl
+                if (!cached.isNullOrBlank()) {
+                    result[artistId] = cached
+                    value = result.toMap()
+                } else {
+                    val fetched =
+                        runCatching { YouTube.artist(artistId) }
+                            .getOrNull()
+                            ?.getOrNull()
+                            ?.artist
+                            ?.thumbnail
+                    if (!fetched.isNullOrBlank()) {
+                        result[artistId] = fetched
+                        value = result.toMap()
+                        runCatching {
+                            database.query {
+                                upsert(
+                                    ArtistEntity(
+                                        id = artistId,
+                                        name = dbEntity?.name ?: nameById[artistId].orEmpty(),
+                                        thumbnailUrl = fetched,
+                                        channelId = dbEntity?.channelId,
+                                        lastUpdateTime = dbEntity?.lastUpdateTime ?: LocalDateTime.now(),
+                                        bookmarkedAt = dbEntity?.bookmarkedAt,
+                                        blockedAt = dbEntity?.blockedAt,
+                                        isLocal = dbEntity?.isLocal ?: false,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun openArtist(artistId: String) {
+        dismissed = true
+        playerSheetState.snapTo(playerSheetState.collapsedBound)
+        navController.navigate("artist/$artistId")
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        FlamingoPopupDismissScrim(onDismiss = { if (!dismissed) dismissed = true })
+
+        val density = LocalDensity.current
+        FlamingoPopupPanel(
+            alpha = alphaAnim.value,
+            scale = 1f,
+            transformOrigin = TransformOrigin(0.5f, 1f),
+            backdrop = backdrop,
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 30.dp)
+                    .graphicsLayer {
+                        translationY = with(density) { slideAnim.value.dp.toPx() }
+                    }
+                    .fillMaxWidth()
+                    .widthIn(max = 360.dp),
+        ) {
+            Column(Modifier.padding(vertical = 8.dp)) {
+                splitArtists.forEachIndexed { index, splitArtist ->
+                    if (index > 0) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .padding(horizontal = 14.dp)
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(Color.White.copy(alpha = 0.16f)),
+                        )
+                    }
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 52.dp)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = {
+                                        FlamingoHaptics.click(context)
+                                        splitArtist.originalArtist?.id?.let(::openArtist)
+                                    },
+                                )
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier.size(36.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            val thumb =
+                                splitArtist.originalArtist?.id
+                                    ?.let { artistThumbnailsById[it] }
+                            if (thumb != null) {
+                                AsyncImage(
+                                    model = thumb,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier =
+                                        Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape),
+                                )
+                            } else {
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White.copy(alpha = 0.14f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.artist),
+                                        contentDescription = null,
+                                        tint = Color.White.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = splitArtist.name,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun ColumnScope.FlamingoAlbum(
     modifier: Modifier,
@@ -2066,6 +2409,7 @@ private fun FlamingoLandscapeTitleBlock(
     bottomSheetPageState: BottomSheetPageState,
     onMoreClick: () -> Unit,
     onMorePositioned: (Rect) -> Unit,
+    onArtistClick: () -> Unit = {},
     playerMenuOpen: Boolean = false,
 ) {
     Row(
@@ -2090,7 +2434,18 @@ private fun FlamingoLandscapeTitleBlock(
             Text(
                 text = mediaMetadata.artistNames(),
                 fontSize = 18.5.sp,
-                modifier = Modifier.overlayEffect(),
+                modifier = Modifier
+                    .overlayEffect()
+                    // Tapping the artist line opens the compact liquid-glass
+                    // artist picker (2026-10-08).
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            FlamingoHaptics.click(LocalContext.current)
+                            onArtistClick()
+                        },
+                    ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 color = Color.White.copy(alpha = 0.35f),
@@ -2123,6 +2478,7 @@ private fun FlamingoPlayingList(
     currentWindowIndex: Int,
     shuffleModeEnabled: Boolean,
     repeatMode: Int,
+    onControlsPoke: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -2265,7 +2621,7 @@ private fun FlamingoPlayingList(
             }
         }
 
-        if (upNextCount == 0) {
+        if (queueWindows.isEmpty()) {
             Column(
                 Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.Center,
@@ -2298,10 +2654,31 @@ private fun FlamingoPlayingList(
                 }
             }
         } else {
+            // ---- Queue ordering with history (2026-10-08: "if I'm playing a
+            // song and open queue the currently playing song should be at the
+            // top but if i still scroll upwards i should see the songs I played
+            // previously") ----
+            // Layout: [blank] [history (most recent first, dimmed)] [current]
+            // ["Playing next" header] [up next rows] [blank]. The list opens
+            // scrolled to the current song; scrolling upward reveals what
+            // played before. The reorder/swipe machinery still operates on
+            // the up-next mirror only — history rows are read-only.
+            val historyWindows =
+                remember(currentWindowIndex, queueWindows) {
+                    if (currentWindowIndex in 1..queueWindows.lastIndex) {
+                        queueWindows.subList(0, currentWindowIndex).asReversed()
+                    } else {
+                        emptyList()
+                    }
+                }
+            val currentWindow = queueWindows.getOrNull(currentWindowIndex)
+            val currentDisplayIndex = 1 + historyWindows.size
+
             val state = rememberLazyListState(
-                initialFirstVisibleItemIndex = 0,
-                initialFirstVisibleItemScrollOffset = -15,
+                initialFirstVisibleItemIndex = currentDisplayIndex,
+                initialFirstVisibleItemScrollOffset = 0,
             )
+
             val mutableQueueWindows = remember { mutableStateListOf<Timeline.Window>() }
 
             val currentPlayingUid =
@@ -2316,13 +2693,19 @@ private fun FlamingoPlayingList(
             var dragInfo by remember { mutableStateOf<FlamingoQueueDragInfo?>(null) }
             var justCommittedDragUid by remember { mutableStateOf<Any?>(null) }
 
+            // LazyColumn layout: 0 = blank_before, 1..H = history rows,
+            // H+1 = current row, H+2 = section header, up-next mirror at H+3..
+            // (H = history size, read through rememberUpdatedState so the
+            // remembered onMove lambda never sees a stale layout).
+            val historySizeState = rememberUpdatedState(historyWindows.size)
+
             val reorderableState =
                 rememberReorderableLazyListState(
                     lazyListState = state,
                 ) onMove@{ from, to ->
-                    // LazyColumn layout: 0 = blank_before, 1 = section header, items at 2..
-                    val fromMirror = from.index - 2
-                    val toMirror = to.index - 2
+                    val upNextBase = 3 + historySizeState.value
+                    val fromMirror = from.index - upNextBase
+                    val toMirror = to.index - upNextBase
                     if (fromMirror !in mutableQueueWindows.indices ||
                         toMirror !in mutableQueueWindows.indices
                     ) {
@@ -2357,6 +2740,14 @@ private fun FlamingoPlayingList(
                             FlamingoHaptics.click(context)
                         }
                     }
+            }
+
+            // When the song advances while the queue page is open, follow the
+            // new current row (unless the user is mid-scroll/mid-drag).
+            LaunchedEffect(currentWindowIndex, queueWindows) {
+                if (!state.isScrollInProgress && !reorderableState.isAnyItemDragging) {
+                    runCatching { state.animateScrollToItem(currentDisplayIndex) }
+                }
             }
 
             LaunchedEffect(queueWindows, currentWindowIndex, reorderableState.isAnyItemDragging) {
@@ -2413,11 +2804,30 @@ private fun FlamingoPlayingList(
                 }
             }
 
+            // Scrolling upward (finger down, negative dy) re-summons the
+            // auto-hidden bottom controls (2026-10-08: "only appear if I
+            // scroll up").
+            val controlsPokeConnection =
+                remember(onControlsPoke) {
+                    object : NestedScrollConnection {
+                        override fun onPreScroll(
+                            available: Offset,
+                            source: NestedScrollSource,
+                        ): Offset {
+                            if (source == NestedScrollSource.UserInput && available.y < -4f) {
+                                onControlsPoke()
+                            }
+                            return Offset.Zero
+                        }
+                    }
+                }
+
             FlamingoWrapper {
                 LazyColumn(
                     state = state,
                     modifier = Modifier
                         .fillMaxSize()
+                        .nestedScroll(controlsPokeConnection)
                         .graphicsLayer {
                             compositingStrategy = CompositingStrategy.Offscreen
                         }
@@ -2454,6 +2864,54 @@ private fun FlamingoPlayingList(
                     item("blank_before") {
                         Spacer(modifier = Modifier.height(12.dp))
                     }
+
+                    // Previously played songs, most recent directly above the
+                    // current row, dimmed to separate them from the live queue.
+                    items(
+                        items = historyWindows,
+                        key = { window -> "history_" + window.uid.hashCode() },
+                    ) { window ->
+                        Box(Modifier.graphicsLayer { alpha = 0.55f }) {
+                            FlamingoQueueMusicListItem(
+                                window = window,
+                                queueWindows = queueWindows,
+                                currentWindowIndex = currentWindowIndex,
+                                reorderEnabled = false,
+                                isDragging = false,
+                                reorderHandleModifier = Modifier,
+                                onMoveToNextQueue = null,
+                                onRemove = null,
+                            ) {
+                                val absIndex =
+                                    queueWindows.indexOfFirst { it.uid == window.uid }
+                                if (absIndex != -1) {
+                                    playerConnection.player.seekToDefaultPosition(absIndex)
+                                    playerConnection.player.playWhenReady = true
+                                }
+                            }
+                        }
+                    }
+
+                    // The currently playing song, pinned at the top of the
+                    // visible list when the queue opens.
+                    if (currentWindow != null) {
+                        item(key = "current_" + currentWindow.uid.hashCode()) {
+                            FlamingoQueueMusicListItem(
+                                window = currentWindow,
+                                queueWindows = queueWindows,
+                                currentWindowIndex = currentWindowIndex,
+                                reorderEnabled = false,
+                                isDragging = false,
+                                reorderHandleModifier = Modifier,
+                                onMoveToNextQueue = null,
+                                onRemove = null,
+                            ) {
+                                playerConnection.player.seekToDefaultPosition(currentWindowIndex)
+                                playerConnection.player.playWhenReady = true
+                            }
+                        }
+                    }
+
                     item("up_next_header") {
                         QueueSectionHeader(title = stringResource(id = R.string.flamingo_queue_up_next))
                     }
@@ -2886,15 +3344,16 @@ private fun FlamingoActionButtonsRow(
         val menuState = LocalMenuState.current
         val overflowOpen = menuState.isVisible || playerMenuOpen
 
-        // Both chips reserve a 48dp minimum touch target with the 28dp icon
-        // centered inside (no visual change) — the tight 28dp box made the
-        // chip unreliable to hit wherever a neighbouring layer overlapped
-        // part of it (user report 2026-10-07 evening: "it also only opens
-        // when I click almost on the upper edge of the overflow menu icon").
+        // Both chips keep the 28dp icons at their ORIGINAL adjacent spacing
+        // (2026-10-08: "The favourite button has shifted to the left, restore
+        // it to its original position near the overflow menu icon") — the
+        // 48dp sizeIn boxes were what pushed the glyphs apart. Touch targets
+        // stay ≥48dp via material3's minimumInteractiveComponentSize, which
+        // expands the touch bounds WITHOUT changing the visual layout, so
+        // the chips remain as reliable to hit as the 2026-10-07 fix made them.
         Box(
             modifier = Modifier
                 .minimumInteractiveComponentSize()
-                .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                 .clickable(
                     onClick = {
                         FlamingoHaptics.click(context)
@@ -2935,7 +3394,6 @@ private fun FlamingoActionButtonsRow(
         Box(
             modifier = Modifier
                 .minimumInteractiveComponentSize()
-                .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                 .clickable(
                     onClick = onMoreClick,
                     indication = null,
@@ -2993,6 +3451,7 @@ private fun FlamingoPlayingBar(
     onAlbumClick: () -> Unit,
     onMoreClick: () -> Unit,
     onMorePositioned: (Rect) -> Unit,
+    onArtistClick: () -> Unit = {},
     playerMenuOpen: Boolean = false,
 ) = FlamingoWrapper {
     Row(
@@ -3042,7 +3501,18 @@ private fun FlamingoPlayingBar(
             Text(
                 text = mediaMetadata.artistNames(),
                 fontSize = 15.sp,
-                modifier = Modifier.overlayEffect(),
+                modifier = Modifier
+                    .overlayEffect()
+                    // Tapping the artist line opens the compact liquid-glass
+                    // artist picker (2026-10-08).
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            FlamingoHaptics.click(LocalContext.current)
+                            onArtistClick()
+                        },
+                    ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 color = Color.White.copy(alpha = 0.35f),
