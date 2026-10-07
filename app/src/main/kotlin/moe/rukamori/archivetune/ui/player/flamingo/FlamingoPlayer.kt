@@ -233,31 +233,12 @@ private const val ShareAlbumKey = "flamingoAlbum"
 private val QueueRowHeight = 64.dp
 private val QueueDraggingItemShape = RoundedCornerShape(0.dp)
 
-// ---- Canvas layers (SpatialFlow recipe, 2026-10-07 evening report) ----
-// The canvas is a full-bleed BACKGROUND layer behind the whole player, not a
-// stage element: a sharp stage runs from the very top of the player (behind
-// the status bar / notch — "the height of the canvas should collide with
-// notch") down to the title row, dissolving via a DstIn fade into a blurred
-// canvas "frost" that runs behind the bottom controls ("look at how
-// spatialflow blends it with the bottom controls"), under a full-screen
-// scrim. The frost twin decodes at a 1/6 footprint (maxVideoEdgePx capped),
-// heavily blurred and upscaled 6x.
-// Canvas layer geometry. The dissolve was widened (fade start 0.62 -> 0.50)
-// and the scrim deepened together with the frost blur quadroupled
-// (12dp -> 48dp effective) per the 2026-10-08 report: "increase its blur
-// intensity a lot, make sure the blend doesn't glitches out with bottom
-// controls and the canvas" — the heavier frost hides the follower's loop
-// resyncs (the "random lag at start/middle/end") and the wider dissolve
-// removes the visible seam between the sharp stage and the controls band.
 private const val FlamingoSharpStageFadeStart = 0.50f
 private const val FlamingoCanvasBackdropUpscale = 6f
 private const val FlamingoCanvasBackdropOverscan = 1.10f
 private val FlamingoCanvasBackdropBlurRadius = 288.dp
 private const val FlamingoCanvasBackdropMaxVideoEdgePx = 480
-// Matches AnimDurationMillis so canvas songs page-switch with the same
-// cadence as non-canvas songs (2026-10-08: "I want the usual animation/
-// transition used for the songs with no canvas") — the 650ms linger was
-// what made lyrics/queue feel like a plain slow fade for canvas songs.
+
 private const val FlamingoCanvasPageFadeMs = 300
 
 private val FlamingoCanvasScrimBrush =
@@ -267,8 +248,6 @@ private val FlamingoCanvasScrimBrush =
         1f to Color.Black.copy(alpha = 0.75f),
     )
 
-// Alpha fade for the sharp stage's bottom edge: the video dissolves into
-// the frost layer behind the controls instead of ending in a sharp line.
 private val FlamingoSharpStageFadeBrush =
     Brush.verticalGradient(
         FlamingoSharpStageFadeStart to Color.Black,
@@ -281,11 +260,6 @@ private val FlamingoLandscapeRightScrim =
         1f to Color.Black.copy(alpha = 0.45f),
     )
 
-// Lyrics content is composed only after the page crossfade + artwork morph
-// settle: mid-morph composition of the word-synced karaoke machinery is what
-// made the artwork transition janky (user report 2026-10-07). Canvas songs
-// run no shared-element morph, so their defer is the plain crossfade length
-// — otherwise their lyrics page change feels slower than non-canvas songs.
 private const val FlamingoLyricsContentDeferMs = 600L
 private const val FlamingoLyricsContentDeferCanvasMs = 300L
 
@@ -348,11 +322,9 @@ fun FlamingoPlayerContent(
 
         val player = playerConnection.player
 
-        // ---- Flamingo settings (ported defaults) ----
         val (showVolumeBar) = rememberPreference(FlamingoShowVolumeBarKey, defaultValue = true)
         val (backgroundEffect) = rememberPreference(FlamingoBackgroundEffectKey, defaultValue = false)
 
-        // ---- Playback state ----
         val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsStateWithLifecycle()
         val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
         val queueWindows by playerConnection.queueWindows.collectAsStateWithLifecycle()
@@ -362,7 +334,6 @@ fun FlamingoPlayerContent(
 
         val isPlayingStatusLambda = rememberUpdatedState(isPlaying)
 
-        // ---- Canvas state ----
         val videoShowing =
             LocalVideoArtworkState.current != null &&
                 mediaMetadata.isMusicVideo &&
@@ -373,24 +344,15 @@ fun FlamingoPlayerContent(
             !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
         val canvasVisualActive = canvasActive && !videoShowing && !isPreS
 
-        // ---- Canvas surface bookkeeping (SpatialFlow recipe) ----
-        // canvasRendering: the sharp canvas actually decoded and rendered a
-        // frame — the frost + scrim fade in on it, so a canvas that is still
-        // buffering (song skip) or permanently failed leaves the plain
-        // floating-light background instead of a darkened void.
         var canvasRendering by remember { mutableStateOf(false) }
         val canvasLoopSync = remember { CanvasLoopSync() }
 
-        // Frost + scrim reveal only once the video truly renders.
         val canvasBackdropReveal by animateFloatAsState(
             targetValue = if (canvasVisualActive && canvasRendering) 1f else 0f,
             animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
             label = "flamingo-canvas-backdrop-reveal",
         )
 
-        // The sharp stage runs from the player root's very top (behind the
-        // notch) down to the title row — measured, exactly like SpatialFlow's
-        // sharpStageHeight, so the video never relies on magic fractions.
         val canvasDensity = LocalDensity.current
         var titleTopInRootY by remember { mutableStateOf<Float?>(null) }
         var backgroundTopY by remember { mutableStateOf(0f) }
@@ -414,14 +376,7 @@ fun FlamingoPlayerContent(
         LaunchedEffect(mediaMetadata.id, landscape) {
             nowPage = if (landscape) FlamingoPage.Lyric else FlamingoPage.Album
         }
-        // Controls visibility resets only on ORIENTATION change — a song
-        // change must never re-hide controls the user has already poked back
-        // into view. Both orientations now run the SAME policy: controls are
-        // visible while poking around and auto-hide on the lyrics/queue
-        // pages (2026-10-08: "Player controls show up from the starting in
-        // horizontal mode now over the lyrics and never disappear. Fix it.").
-        // Landscape keeps its reveal paths: scrolling the lyrics (the
-        // LocalLyricsScrollListener below) and touching the controls strip.
+
         LaunchedEffect(landscape) {
             showControl.value = true
         }
@@ -429,10 +384,6 @@ fun FlamingoPlayerContent(
         val nowPageLambda = rememberUpdatedState(nowPage)
         val showControlLambda = rememberUpdatedState(showControl.value)
 
-        // The canvas surfaces belong to the album page: leaving it pauses the
-        // decode, lingers 650ms for the page crossfade, then unmounts; coming
-        // back restores both immediately (SpatialFlow's canvasPlayingForLyrics
-        // / canvasSurfacesForLyrics recipe).
         val canvasOnAlbum = nowPage == FlamingoPage.Album
         var canvasSurfacesPlaying by remember { mutableStateOf(true) }
         var canvasSurfacesVisible by remember { mutableStateOf(true) }
@@ -455,29 +406,19 @@ fun FlamingoPlayerContent(
             label = "flamingo-canvas-surfaces-fade",
         )
 
-        // In-page lyrics/queue take priority over the sheet-level back handling.
         BackHandler(enabled = nowPage != FlamingoPage.Album) {
             nowPage = FlamingoPage.Album
         }
 
-        // Report immersive lyrics state to the host (mirrors the old Apple Music
-        // player's inline-lyrics visibility reporting).
         LaunchedEffect(nowPage, state.isExpandedOrExpanding) {
             onLyricsVisibilityChange(nowPage != FlamingoPage.Album && state.isExpandedOrExpanding)
         }
 
-        // ---- Lyrics content defer ----
-        // The lyrics page's LyricsEnhanced (word-synced karaoke especially)
-        // composes only AFTER the page crossfade + shared-element artwork
-        // morph settle — composing it mid-morph is what made the artwork
-        // transition janky.
         var lyricsContentReady by remember { mutableStateOf(false) }
         LaunchedEffect(nowPage) {
             if (nowPage == FlamingoPage.Lyric) {
                 lyricsContentReady = false
-                // Canvas songs run no shared-element morph — only the plain
-                // 300ms page crossfade — so they defer lyrics by the same
-                // 300ms instead of the 600ms morph-settle wait.
+
                 delay(
                     if (canvasVisualActive) {
                         FlamingoLyricsContentDeferCanvasMs
@@ -499,7 +440,6 @@ fun FlamingoPlayerContent(
             }
         }
 
-        // ---- Artwork ----
         val baseArtworkUrl = mediaMetadata.thumbnailUrl?.highRes()
         val thumbnailSwapState = rememberThumbnailSwapState(
             videoId = mediaMetadata.id,
@@ -509,7 +449,6 @@ fun FlamingoPlayerContent(
         )
         val artworkUrl = thumbnailSwapState.displayUrl
 
-        // ---- Translation / romanisation (AI only, no popups, no toasts) ----
         val (autoTranslateLyrics, onAutoTranslateLyricsChange) =
             rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
         val (translatorTargetLang) = rememberPreference(TranslatorTargetLangKey, defaultValue = "")
@@ -525,8 +464,6 @@ fun FlamingoPlayerContent(
         val translationDismissedMediaIds by lyricsMenuViewModel.translationDismissedMediaIds
             .collectAsStateWithLifecycle()
 
-        // Automatic AI translation: when the feature is enabled every song's
-        // lyrics are translated in the background, no manual interaction needed.
         LaunchedEffect(
             mediaMetadata.id,
             currentLyrics?.lyrics,
@@ -575,7 +512,6 @@ fun FlamingoPlayerContent(
                     text != LyricsEntity.LYRICS_NOT_FOUND &&
                     snapshot.source != LyricsEntity.Source.AI_TRANSLATION.value
                 ) {
-                    // Silent AI translation — the automatic path emits no toasts.
                     scope.launch {
                         lyricsMenuViewModel.translateLyricsWithAi(
                             mediaMetadata = mediaMetadata,
@@ -595,40 +531,17 @@ fun FlamingoPlayerContent(
         var translationPopupOpen by remember { mutableStateOf(false) }
         var translationIconBounds by remember { mutableStateOf(Rect.Zero) }
 
-        // ---- Artist picker (2026-10-08: "Clicking on the artist name below
-        // the songs name should open a floating bottomsheet with all the
-        // artist names and their profile pictures with dividers in between
-        // and liquid glass blur ( compact )") ----
         var artistPickerOpen by remember { mutableStateOf(false) }
 
-        // The translation popup must never survive a page switch (otherwise
-        // it floats over the album page with no way to dismiss it).
         LaunchedEffect(nowPage) {
             if (nowPage != FlamingoPage.Lyric) {
                 translationPopupOpen = false
             }
         }
 
-        // ---- Overflow menu / anchored lyrics overflow ----
-        // The more chip on the album/queue/landscape pages routes through the
-        // host's BottomSheetMenu exactly like every other player style
-        // (SpatialFlow et al.) — the user's 2026-10-07 evening report: "the
-        // overflow popup should open just like it does in other player styles
-        // like spatialflow. right now it opens attached to the overflow menu
-        // icon, i didn't wanted that". The earlier in-player anchored panel
-        // is gone entirely. Only the lyrics page keeps its own anchored
-        // overflow — it carries the lyrics-sync actions the sheet menu lacks.
         var showAnchoredLyricsMenu by remember { mutableStateOf(false) }
         var moreIconBounds by remember { mutableStateOf(Rect.Zero) }
 
-        // ---- Glass backdrop sources ----
-        // ONE source: popupBackdrop records the WHOLE player Box, and every
-        // glass consumer (anchored lyrics menu, anchored player overflow menu,
-        // translation popup) renders OUTSIDE the Box as a later sibling — a
-        // consumer can never be recorded into its own source, so the mutual
-        // GraphicsLayer reference cycle that crashed the RenderThread
-        // (native_crash_1791340922.txt, stack exhaustion) is structurally
-        // impossible.
         val glassAvailable = rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
         val popupBackdrop: PlatformBackdrop? =
             if (glassAvailable) {
@@ -642,7 +555,6 @@ fun FlamingoPlayerContent(
             if (nowPageLambda.value == FlamingoPage.Lyric) {
                 showAnchoredLyricsMenu = true
             } else {
-                // SpatialFlow's exact route: the standard player menu sheet.
                 menuState.show {
                     PlayerMenu(
                         mediaMetadata = mediaMetadata,
@@ -659,13 +571,6 @@ fun FlamingoPlayerContent(
             }
         }
 
-        // ---- Controls auto-hide (2500ms on the lyrics AND queue pages) ----
-        // 2026-10-08: "The bottom controls in queue page should disappear
-        // after showing itself for a few seconds like it does and only
-        // appear if i scroll up" — the queue page now runs the same
-        // auto-hide as the lyrics page, in BOTH orientations, and is
-        // re-summoned by scrolling the queue list upward (the nestedScroll
-        // poke inside FlamingoPlayingList) or swiping through the lyrics.
         FlamingoWrapper {
             LaunchedEffect(
                 showControlLambda.value,
@@ -676,10 +581,7 @@ fun FlamingoPlayerContent(
                 if (nowPageLambda.value == FlamingoPage.Album && !showControlLambda.value) {
                     showControl.value = true
                 }
-                // The translation popup is open: the controls stay put until
-                // the user manually closes it — no auto-hide beneath it (user
-                // report 2026-10-07: "when I've opened it the player controls
-                // shouldn't hide unless i manually close it").
+
                 if (translationPopupOpen) return@LaunchedEffect
                 if (showControlLambda.value) {
                     val time = 2500L
@@ -695,17 +597,9 @@ fun FlamingoPlayerContent(
             }
         }
 
-        // ---- Lyrics position provider ----
         val sliderPositionState = rememberUpdatedState(sliderPosition)
         val lyricsPosProvider = remember { { sliderPositionState.value } }
 
-        // ---- Lyrics swipe re-summons the controls (2026-10-08: "The bottom
-        // controls should show again if I swipe through the lyrics in apple
-        // music player style") ----
-        // LyricsEnhanced already publishes its manual-scroll state through
-        // LocalLyricsScrollListener; providing it here covers BOTH the
-        // portrait lyrics list and the landscape lyrics pane, and gives the
-        // landscape lyrics page its controls-reveal path back.
         val lyricsControlsPoke: (Boolean) -> Unit =
             remember(showControl) {
                 { scrolling ->
@@ -716,8 +610,6 @@ fun FlamingoPlayerContent(
                 }
             }
 
-        // The outer Box records ONLY while one of the anchored popups (all of
-        // them rendered outside this Box) is open.
         val glassLayerActive = showAnchoredLyricsMenu || translationPopupOpen || artistPickerOpen
         Box(
             modifier =
@@ -731,12 +623,10 @@ fun FlamingoPlayerContent(
                         }
                     },
         ) {
-            // ---- Background + portrait lyrics ----
             FlamingoWrapper {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    // ---- Background (color behind the artwork) ----
                     FlamingoWrapper {
                         Box(
                             modifier = Modifier
@@ -751,16 +641,6 @@ fun FlamingoPlayerContent(
                                 backgroundEffect = backgroundEffect,
                             )
 
-                            // ---- Canvas background layers (SpatialFlow recipe) ----
-                            // Layering (bottom → top): blurred frost behind the
-                            // controls, full-screen scrim, sharp stage fading into
-                            // the frost. Full-bleed from the player root's top edge
-                            // (behind the notch) down to the title row. Portrait only
-                            // — landscape renders its canvas in the artwork pane
-                            // (FlamingoLandscapeStage). The players stay composed
-                            // whenever a canvas exists (SpatialFlow's exact pattern);
-                            // leaving the album page only flips `visible` (surface
-                            // detached, decode paused) and fades the layers out.
                             if (!landscape && !videoShowing && canvasVisualActive) {
                                 val configuration = LocalConfiguration.current
                                 val stageFraction =
@@ -770,8 +650,6 @@ fun FlamingoPlayerContent(
                                 val frostFraction =
                                     (1f - FlamingoSharpStageFadeStart * stageFraction).coerceIn(0.2f, 1f)
 
-                                // Frost: the blurred canvas twin running behind the
-                                // bottom controls (1/6 footprint, 12dp blur, 6x upscale).
                                 Box(
                                     modifier =
                                         Modifier
@@ -811,7 +689,6 @@ fun FlamingoPlayerContent(
                                     }
                                 }
 
-                                // Full-screen scrim over the canvas stack.
                                 Box(
                                     modifier =
                                         Modifier
@@ -822,8 +699,6 @@ fun FlamingoPlayerContent(
                                             .background(FlamingoCanvasScrimBrush),
                                 )
 
-                                // Sharp stage: full width, from the root's very top
-                                // down to the title row, dissolving into the frost.
                                 Box(
                                     modifier =
                                         Modifier
@@ -863,12 +738,6 @@ fun FlamingoPlayerContent(
                         }
                     }
 
-                    // ---- Portrait lyrics (mounted/unmounted with the page) ----
-                    // Lyrics page: fully removed from composition while the album
-                    // page is showing. The enhanced-lyrics list runs per-frame
-                    // scroll tracking; keeping it composed (even at alpha 0) made
-                    // the whole player style feel laggy, so it mounts/unmounts
-                    // with the page like the pre-redesign player did.
                     if (!landscape) {
                         FlamingoWrapper {
                             AnimatedVisibility(
@@ -926,7 +795,6 @@ fun FlamingoPlayerContent(
                 }
             }
 
-            // ---- Content ----
             FlamingoWrapper {
                 val translationButtonEnabled = remember("FlamingoNowPlaying_translationButtonEnabled") {
                     derivedStateOf {
@@ -935,7 +803,6 @@ fun FlamingoPlayerContent(
                 }
 
                 if (landscape) {
-                    // ---- Landscape (pre-redesign two-pane layout restored) ----
                     val pokeControls = {
                         if (!showControlLambda.value) {
                             showControl.value = true
@@ -945,13 +812,7 @@ fun FlamingoPlayerContent(
 
                     val landscapeSwipeModifier =
                         Modifier
-                            // Horizontal swipe on the artwork pane skips tracks.
-                            // A plain TAP deliberately does nothing here (user
-                            // report 2026-10-07 evening: "clicking on the
-                            // thumbnail of the song or canvas in horizontal mode
-                            // triggers bottom controls again") — the controls
-                            // are revealed only by touching the controls pane
-                            // itself.
+
                             .pointerInput(playerConnection) {
                                 val swipeThresholdPx = 72.dp.toPx()
                                 var accumulatedDrag = 0f
@@ -972,8 +833,7 @@ fun FlamingoPlayerContent(
                     Row(
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        // Left pane: pure artwork/canvas stage (pre-redesign layout —
-                        // the title lives in the right pane with the controls).
+
                         BoxWithConstraints(
                             modifier =
                                 Modifier
@@ -1048,13 +908,7 @@ fun FlamingoPlayerContent(
                                     .weight(1f)
                                     .fillMaxHeight(),
                         ) {
-                            // In-pane lyrics (enhanced lyrics animation library with
-                            // AI translation / romanisation). Lyrics interactions
-                            // (scrolling, tapping lines, seeking) must NEVER poke the
-                            // hidden controls into view (user report 2026-10-07:
-                            // "the controls still appear in horizontal layout if I
-                            // swipe or click on the lyrics"). The controls are
-                            // revealed only by tapping the artwork pane.
+
                             androidx.compose.animation.AnimatedVisibility(
                                 visible = nowPage == FlamingoPage.Lyric,
                                 enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
@@ -1097,18 +951,13 @@ fun FlamingoPlayerContent(
                                 }
                             }
 
-                            // Controls: hidden while the lyrics pane is up until poked
-                            // (the poke comes from the artwork pane tap only).
                             androidx.compose.animation.AnimatedVisibility(
                                 visible = nowPage != FlamingoPage.Lyric || showControl.value,
                                 enter = fadeIn(tween(120)),
                                 exit = fadeOut(tween(100)),
                                 modifier = Modifier.matchParentSize(),
                             ) {
-                                // Only the controls strip itself consumes taps
-                                // (touching the controls keeps them alive). The
-                                // lyrics above the controls stay fully interactive:
-                                // no full-pane clickable anywhere.
+
                                 Column(
                                     modifier =
                                         Modifier
@@ -1126,9 +975,7 @@ fun FlamingoPlayerContent(
                                                     onClick = pokeControls,
                                                 ),
                                     ) {
-                                        // Title block (pre-redesign layout: the title
-                                        // lives above the controls in the right pane,
-                                        // never pinned to the left screen edge).
+
                                         FlamingoLandscapeTitleBlock(
                                             mediaMetadata = mediaMetadata,
                                             currentSongLiked = currentSongLiked,
@@ -1187,7 +1034,6 @@ fun FlamingoPlayerContent(
                         }
                     }
 
-                    // Queue page overlay (full screen in landscape)
                     FlamingoWrapper {
                         AnimatedVisibility(
                             visible = nowPage == FlamingoPage.PlayingList,
@@ -1217,10 +1063,7 @@ fun FlamingoPlayerContent(
                         }
                     }
                 } else {
-                    // ---- Portrait ----
-                    // (The portrait lyrics list lives in the background Box above
-                    // together with the floating-light backdrop.)
-                    // Drag handle (小把手)
+
                     FlamingoWrapper {
                         Column(Modifier.fillMaxWidth()) {
                             Box(
@@ -1242,8 +1085,6 @@ fun FlamingoPlayerContent(
                         }
                     }
 
-                    // Main view: artwork page / playing bar pages, cross-faded with a
-                    // shared-element artwork morph between them.
                     FlamingoWrapper {
                         SharedTransitionLayout {
                             AnimatedContent(
@@ -1265,17 +1106,7 @@ fun FlamingoPlayerContent(
                                         ) {
                                             FlamingoWrapper {
                                                 Column(Modifier.fillMaxHeight(0.595f)) {
-                                                    // Upstream Flamingo's exact shared-element
-                                                    // pattern: caller-managed visibility, no
-                                                    // animatedVisibilityScope coupling. The stage
-                                                    // box itself is NOT transformed (the canvas
-                                                    // TextureView must never sit under a
-                                                    // shared-element/graphicsLayer transform —
-                                                    // that is the interop escape class); only the
-                                                    // static artwork layer inside morphs. With a
-                                                    // canvas active there IS no static artwork —
-                                                    // the video plays in the background layer and
-                                                    // no morph runs at all.
+
                                                     FlamingoAlbum(
                                                         modifier = Modifier.sharedElementWithCallerManagedVisibility(
                                                             sharedContentState = rememberSharedContentState(
@@ -1322,8 +1153,7 @@ fun FlamingoPlayerContent(
                                                                     fontSize = 18.5.sp,
                                                                     modifier = Modifier
                                                                         .overlayEffect()
-                                                                        // Tapping the artist line opens the compact
-                                                                        // liquid-glass artist picker (2026-10-08).
+
                                                                         .clickable(
                                                                             interactionSource = remember { MutableInteractionSource() },
                                                                             indication = null,
@@ -1417,7 +1247,6 @@ fun FlamingoPlayerContent(
                         }
                     }
 
-                    // Queue page overlay
                     FlamingoWrapper {
                         AnimatedVisibility(
                             visible = nowPage == FlamingoPage.PlayingList,
@@ -1447,7 +1276,6 @@ fun FlamingoPlayerContent(
                         }
                     }
 
-                    // Player controls
                     FlamingoWrapper {
                         Column(
                             Modifier
@@ -1461,11 +1289,7 @@ fun FlamingoPlayerContent(
                                     .fillMaxWidth(),
                             ) {
                                 FlamingoWrapper {
-                                    // Lyrics-page tap catcher: restores the hidden
-                                    // controls on tap. Never present on the album
-                                    // page — the previous always-on variant sat on
-                                    // top of the album title row and swallowed the
-                                    // like/overflow button taps.
+
                                     if (nowPage == FlamingoPage.Lyric) {
                                         Box(
                                             modifier = Modifier
@@ -1501,15 +1325,7 @@ fun FlamingoPlayerContent(
                                             ),
                                         ) {
                                             FlamingoWrapper {
-                                                // The translation toggle is a lyrics-page-only
-                                                // affordance: the Row (and its invisible
-                                                // alpha-0 icon on the album page) used to stay
-                                                // composed over the album title band and
-                                                // competed with the like/overflow chips' touch
-                                                // targets (user report 2026-10-07 evening: "it
-                                                // only opens when I click almost on the upper
-                                                // edge of the overflow menu icon"). It now
-                                                // mounts only on the lyrics page.
+
                                                 if (nowPage == FlamingoPage.Lyric) {
                                                 Row(
                                                     Modifier
@@ -1523,12 +1339,7 @@ fun FlamingoPlayerContent(
                                                     horizontalArrangement = Arrangement.End,
                                                 ) {
                                                     FlamingoWrapper {
-                                                        // Translation toggle: opens the compact
-                                                        // anchored popup ABOVE the icon (never
-                                                        // overlapping it), rendered outside the
-                                                        // recorded Box with the other popups —
-                                                        // crash-safe by construction. The icon's
-                                                        // appearance/animation is unchanged.
+
                                                         Box(
                                                             modifier = Modifier
                                                                 .overlayEffect()
@@ -1630,8 +1441,6 @@ fun FlamingoPlayerContent(
                 }
             }
 
-            // Anchored lyrics overflow popup (pre-redesign animation/design/behaviour;
-            // translate/undo/romanise rows are intentionally absent in this style).
         }
 
         if (showAnchoredLyricsMenu) {
@@ -1677,7 +1486,6 @@ fun FlamingoPlayerContent(
     }
 }
 
-/** Edge fade mask for the lyrics list (ported from the Flamingo lyric view). */
 private fun Modifier.flamingoLyricsEdgeFade(
     weightLambda: () -> Boolean,
 ): Modifier = drawWithCache {
@@ -1745,13 +1553,6 @@ private fun Modifier.flamingoLyricsEdgeFade(
     }
 }
 
-// ---- Anchored popup scaffolding ----
-// Shared plumbing for the player's in-screen anchored popups (the lyrics
-// overflow menu and the translation popup). Both follow the
-// AnchoredLyricsOverflowMenu recipe: a full-size dismiss catcher + a compact
-// glass panel anchored to the trigger icon, with the same scale/alpha spring
-// entrance.
-
 private val FlamingoPopupVerticalGap = 4.dp
 private val FlamingoPopupHorizontalMargin = 16.dp
 
@@ -1759,10 +1560,7 @@ private val FlamingoPopupHorizontalMargin = 16.dp
 private fun FlamingoPopupDismissScrim(
     onDismiss: () -> Unit,
 ) {
-    // A transparent tap-catcher — NO dimming of the background (user report
-    // 2026-10-07 evening: "the background shouldn't get dim when I expand the
-    // translation icon box in lyrics page"). It only swallows the outside tap
-    // that closes the popup.
+
     Box(
         modifier =
             Modifier
@@ -1831,13 +1629,6 @@ private fun FlamingoPopupPanel(
     )
 }
 
-/**
- * The compact translation popup: two rows — Show/Hide Translation and
- * Show/Hide Romanization — separated by a single divider line. The rows call
- * straight into the existing translation/romanisation preference state
- * (no duplicate state), and the labels flip reactively as the layers are
- * enabled/disabled.
- */
 @Composable
 private fun FlamingoTranslationPopup(
     iconBoundsInRoot: Rect,
@@ -1915,10 +1706,7 @@ private fun FlamingoTranslationPopup(
                             with(density) { FlamingoPopupHorizontalMargin.toPx() }.toInt()
                         val gapPx = with(density) { FlamingoPopupVerticalGap.toPx() }.toInt()
                         val iconRight = iconBoundsInRoot.right.toInt()
-                        // Attached to the icon's right edge; the panel opens
-                        // strictly ABOVE the icon (the icon sits above the
-                        // seekbar — opening below would cover the controls),
-                        // never overlapping the icon itself.
+
                         val x = (iconRight - popupWidthPx)
                             .coerceAtLeast(horizontalMarginPx)
                         val neededHeightPx =
@@ -1947,7 +1735,7 @@ private fun FlamingoTranslationPopup(
                 iconRes = R.drawable.solar_eye,
                 onClick = onToggleTranslation,
             )
-            // The single divider line between the two options.
+
             Box(
                 modifier =
                     Modifier
@@ -2006,18 +1794,6 @@ private fun FlamingoTranslationPopupRow(
     }
 }
 
-/**
- * The compact artist picker (2026-10-08: "Clicking on the artist name below
- * the songs name should open a floating bottomsheet with all the artist
- * names and their profile pictures with dividers in between and liquid glass
- * blur ( compact )").
- *
- * A floating bottom-anchored liquid-glass sheet listing every artist on the
- * song (split with the user's artist separators, same as the PlayerMenu
- * picker) with their profile pictures, single divider lines between the rows,
- * and a slide-up + fade entrance. Tapping a row navigates to that artist and
- * collapses the player sheet — the exact PlayerMenu navigation idiom.
- */
 @Composable
 private fun FlamingoArtistPickerSheet(
     mediaMetadata: MediaMetadata,
@@ -2059,7 +1835,6 @@ private fun FlamingoArtistPickerSheet(
         onDismiss()
     }
 
-    // ---- Artist split (PlayerMenu's exact recipe, incl. separators pref) ----
     val (artistSeparators) = rememberPreference(ArtistSeparatorsKey, defaultValue = "")
 
     data class SplitArtist(
@@ -2088,7 +1863,6 @@ private fun FlamingoArtistPickerSheet(
             }
         }
 
-    // ---- Profile-picture prefetch (db cache first, then innertube) ----
     val artistIdsKey =
         remember(splitArtists) {
             splitArtists.mapNotNull { it.originalArtist?.id }.distinct().sorted()
@@ -2278,16 +2052,7 @@ private fun ColumnScope.FlamingoAlbum(
     }
 
     if (canvasActive) {
-        // The canvas plays in the full-bleed background layer (frost + sharp
-        // stage): the album stage renders NOTHING of its own. There is no
-        // static artwork under the video, so nothing flashes when skipping
-        // songs (the canvas re-buffers behind the floating-light background)
-        // and nothing morphs when switching pages (user report 2026-10-07
-        // evening: "remove that album cover? It always shows up when I skip
-        // to the next song or in some other cases too and while transition
-        // from main player ui to queue or lyrics"). The stage box still
-        // reports its bounds as the docking-flight origin for the
-        // player-to-miniplayer thumbnail flight (2026-10-08 BitChord port).
+
         Box(
             Modifier
                 .weight(1f)
@@ -2330,8 +2095,7 @@ private fun ColumnScope.FlamingoAlbum(
                     }
                     .padding(start = dp, end = dp, bottom = dp)
                     .then(modifier)
-                    // Reports the artwork bounds for the player-to-miniplayer
-                    // thumbnail flight (2026-10-08 BitChord port).
+
                     .dockArtworkAnchor(),
                 imageQuality = ImageQuality.RAW,
                 shadowOverlay = true,
@@ -2340,10 +2104,6 @@ private fun ColumnScope.FlamingoAlbum(
     }
 }
 
-/**
- * Landscape artwork pane: full-bleed canvas (RESIZE_MODE_FIT + right-edge fade,
- * pre-redesign behaviour) or the centred squircle artwork.
- */
 @Composable
 private fun FlamingoLandscapeStage(
     artworkUrl: String?,
@@ -2358,15 +2118,7 @@ private fun FlamingoLandscapeStage(
 
     Box(modifier = modifier) {
         if (fullBleed && hasCanvas) {
-            // The canvas fills the whole pane (ZOOM-cropped, edge to edge) so
-            // nothing of the static artwork shows behind it (user report
-            // 2026-10-07: "the canvas plays in horizontal mode but there's a
-            // static thumbnail of that song behind that song too"). The static
-            // artwork + dim stay underneath ONLY as the buffering/failure
-            // placeholder and crossfade away once the video renders its first
-            // frame. No offscreen compositing around the TextureView (same
-            // interop rule as the portrait stage); the right-edge blend is a
-            // plain gradient scrim drawn on top.
+
             var canvasRendering by remember(canvasPrimaryUrl, canvasFallbackUrl) {
                 mutableStateOf(false)
             }
@@ -2406,7 +2158,6 @@ private fun FlamingoLandscapeStage(
                     modifier = Modifier.matchParentSize(),
                 )
 
-                // Right-edge blend toward the controls pane (overlay scrim).
                 Box(
                     modifier = Modifier
                         .matchParentSize()
@@ -2449,10 +2200,6 @@ private fun FlamingoLandscapeStage(
     }
 }
 
-/**
- * Landscape title block: the Flamingo title typography plus the like/overflow
- * chips, rendered above the controls in the right pane (pre-redesign layout).
- */
 @Composable
 private fun FlamingoLandscapeTitleBlock(
     mediaMetadata: MediaMetadata,
@@ -2491,8 +2238,7 @@ private fun FlamingoLandscapeTitleBlock(
                 fontSize = 18.5.sp,
                 modifier = Modifier
                     .overlayEffect()
-                    // Tapping the artist line opens the compact liquid-glass
-                    // artist picker (2026-10-08).
+
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -2709,15 +2455,7 @@ private fun FlamingoPlayingList(
                 }
             }
         } else {
-            // ---- Queue ordering with history (2026-10-08: "if I'm playing a
-            // song and open queue the currently playing song should be at the
-            // top but if i still scroll upwards i should see the songs I played
-            // previously") ----
-            // Layout: [blank] [history (most recent first, dimmed)] [current]
-            // ["Playing next" header] [up next rows] [blank]. The list opens
-            // scrolled to the current song; scrolling upward reveals what
-            // played before. The reorder/swipe machinery still operates on
-            // the up-next mirror only — history rows are read-only.
+
             val historyWindows =
                 remember(currentWindowIndex, queueWindows) {
                     if (currentWindowIndex in 1..queueWindows.lastIndex) {
@@ -2748,10 +2486,6 @@ private fun FlamingoPlayingList(
             var dragInfo by remember { mutableStateOf<FlamingoQueueDragInfo?>(null) }
             var justCommittedDragUid by remember { mutableStateOf<Any?>(null) }
 
-            // LazyColumn layout: 0 = blank_before, 1..H = history rows,
-            // H+1 = current row, H+2 = section header, up-next mirror at H+3..
-            // (H = history size, read through rememberUpdatedState so the
-            // remembered onMove lambda never sees a stale layout).
             val historySizeState = rememberUpdatedState(historyWindows.size)
 
             val reorderableState =
@@ -2784,8 +2518,6 @@ private fun FlamingoPlayingList(
                     dragInfo = FlamingoQueueDragInfo(draggedItemUid, destinationUid)
                 }
 
-            // Drag haptics (port of Flamingo's draggableHandle callbacks, which
-            // the newer reorderable library no longer exposes).
             LaunchedEffect(reorderableState) {
                 androidx.compose.runtime.snapshotFlow { reorderableState.isAnyItemDragging }
                     .collect { dragging ->
@@ -2797,8 +2529,6 @@ private fun FlamingoPlayingList(
                     }
             }
 
-            // When the song advances while the queue page is open, follow the
-            // new current row (unless the user is mid-scroll/mid-drag).
             LaunchedEffect(currentWindowIndex, queueWindows) {
                 if (!state.isScrollInProgress && !reorderableState.isAnyItemDragging) {
                     runCatching { state.animateScrollToItem(currentDisplayIndex) }
@@ -2859,9 +2589,6 @@ private fun FlamingoPlayingList(
                 }
             }
 
-            // Scrolling upward (finger down, negative dy) re-summons the
-            // auto-hidden bottom controls (2026-10-08: "only appear if I
-            // scroll up").
             val controlsPokeConnection =
                 remember(onControlsPoke) {
                     object : NestedScrollConnection {
@@ -2920,8 +2647,6 @@ private fun FlamingoPlayingList(
                         Spacer(modifier = Modifier.height(12.dp))
                     }
 
-                    // Previously played songs, most recent directly above the
-                    // current row, dimmed to separate them from the live queue.
                     items(
                         items = historyWindows,
                         key = { window -> "history_" + window.uid.hashCode() },
@@ -2947,8 +2672,6 @@ private fun FlamingoPlayingList(
                         }
                     }
 
-                    // The currently playing song, pinned at the top of the
-                    // visible list when the queue opens.
                     if (currentWindow != null) {
                         item(key = "current_" + currentWindow.uid.hashCode()) {
                             FlamingoQueueMusicListItem(
@@ -3399,13 +3122,6 @@ private fun FlamingoActionButtonsRow(
         val menuState = LocalMenuState.current
         val overflowOpen = menuState.isVisible || playerMenuOpen
 
-        // Both chips keep the 28dp icons at their ORIGINAL adjacent spacing
-        // (2026-10-08: "The favourite button has shifted to the left, restore
-        // it to its original position near the overflow menu icon") — the
-        // 48dp sizeIn boxes were what pushed the glyphs apart. Touch targets
-        // stay ≥48dp via material3's minimumInteractiveComponentSize, which
-        // expands the touch bounds WITHOUT changing the visual layout, so
-        // the chips remain as reliable to hit as the 2026-10-07 fix made them.
         Box(
             modifier = Modifier
                 .minimumInteractiveComponentSize()
@@ -3513,11 +3229,7 @@ private fun FlamingoPlayingBar(
     Row(
         Modifier
             .fillMaxWidth()
-            // Aligned with the karaoke lyric lines' own 16dp horizontal
-            // padding (KaraokeLineText) so the thumbnail's left edge lines
-            // up exactly with the lyrics text below it (user report
-            // 2026-10-07: "the songs thumbnail is a bit shifted to the
-            // right. align it correctly with the lyrics").
+
             .padding(horizontal = 16.dp)
             .padding(top = 22.dp)
             .height(70.dp),
@@ -3559,8 +3271,7 @@ private fun FlamingoPlayingBar(
                 fontSize = 15.sp,
                 modifier = Modifier
                     .overlayEffect()
-                    // Tapping the artist line opens the compact liquid-glass
-                    // artist picker (2026-10-08).
+
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -3837,7 +3548,6 @@ private fun FlamingoPlayerControl(
                     }
                 }
 
-                // Progress slider
                 FlamingoWrapper {
                     Slider(
                         value = sliderPosition.floatValue,
@@ -3886,7 +3596,6 @@ private fun FlamingoPlayerControl(
                     )
                 }
 
-                // Time labels & transport buttons
                 FlamingoWrapper {
                     Box(
                         modifier = Modifier
@@ -4031,7 +3740,6 @@ private fun FlamingoPlayerControl(
                 }
             }
 
-            // Volume
             FlamingoWrapper {
                 if (showVolumeBar) {
                     FlamingoVolumeSlider(
@@ -4042,7 +3750,6 @@ private fun FlamingoPlayerControl(
                 }
             }
 
-            // Bottom lyrics & queue bar
             FlamingoWrapper {
                 Row(
                     modifier = Modifier
@@ -4282,13 +3989,11 @@ private fun FlamingoQualityIndicator(
         (musicBitrateKbps >= 700 && musicSamplingRate >= 44100)
     val isHiRes = musicBitrateKbps >= 2000 && musicSamplingRate >= 96000
 
-    // The pill shows for every quality (pre-redesign behaviour): lossless and
-    // hi-res badges, and the codec label (OPUS / AAC / VORBIS / …) otherwise.
     val qualityLabel =
         remember(currentFormat) {
             when {
                 isHiRes -> "Hi-Res"
-                isLossless -> null // resolved via stringResource below
+                isLossless -> null
                 else -> currentFormat.codecLabel()
             }
         }
@@ -4305,10 +4010,7 @@ private fun FlamingoQualityIndicator(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        // Tapping the pill opens the song details bottom sheet (user report
-        // 2026-10-07 evening: "clicking on the quality pill should open the
-        // details of song bottom sheet") — the exact sheet every other
-        // player style opens from its quality chip.
+
         Box(
             modifier = Modifier
                 .overlayEffect()

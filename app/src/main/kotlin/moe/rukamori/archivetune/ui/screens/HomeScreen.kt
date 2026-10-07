@@ -361,15 +361,9 @@ private fun HomeContent(
                         )
                     }
 
-                    // ---- BitChord feed (2026-10-08): SF Pro typography, 16dp
-                    // gutter, 150dp shelf cards, hero cards, recents shelf with
-                    // the list/grid toggle. The category chips and catalogue
-                    // switcher are gone ("remove the current ui elements");
-                    // the greeting header + top haze/pills stay untouched.
                     val availableWidth = maxWidth
                     val minimalMode = uiState.minimalHomeMode
 
-                    // ---- Recents: BitChord's RecentShelf (list/grid toggle) ----
                     if (uiState.recentlyPlayed.size > 1) {
                         item(
                             key = "home_recently_played",
@@ -408,7 +402,6 @@ private fun HomeContent(
                         }
                     }
 
-                    // ---- Jump back in: hero treatment (BitChord HeroShelf) ----
                     if (uiState.heroPicks.isNotEmpty()) {
                         item(
                             key = "home_jump_back_in",
@@ -458,7 +451,6 @@ private fun HomeContent(
                         }
                     }
 
-                    // ---- Quick picks ----
                     if (remoteQuickPicks?.items?.isNotEmpty() == true) {
                         item(
                             key = "home_remote_quick_picks",
@@ -477,7 +469,6 @@ private fun HomeContent(
                         }
                     }
 
-                    // ---- Keep listening ----
                     if (uiState.keepListening.isNotEmpty()) {
                         item(
                             key = "home_keep_listening",
@@ -497,7 +488,6 @@ private fun HomeContent(
                         }
                     }
 
-                    // ---- Speed dial ----
                     if (uiState.speedDialItems.isNotEmpty()) {
                         item(
                             key = "home_speed_dial",
@@ -517,7 +507,6 @@ private fun HomeContent(
                         }
                     }
 
-                    // ---- Live performance shelves ----
                     livePerformanceSections.forEachIndexed { index, section ->
                         val sectionKey = "${section.endpoint?.browseId ?: section.title}_$index"
                         item(
@@ -537,7 +526,6 @@ private fun HomeContent(
                         }
                     }
 
-                    // ---- Account playlists ----
                     if (!minimalMode && uiState.accountPlaylists.isNotEmpty()) {
                         item(
                             key = "home_account_playlists",
@@ -572,7 +560,6 @@ private fun HomeContent(
                         }
                     }
 
-                    // ---- Forgotten favorites ----
                     if (!minimalMode && uiState.forgottenFavorites.isNotEmpty()) {
                         item(
                             key = "home_forgotten_favorites",
@@ -591,7 +578,6 @@ private fun HomeContent(
                         }
                     }
 
-                    // ---- Similar recommendations ----
                     if (!minimalMode) {
                         uiState.similarRecommendations.forEach { recommendation ->
                             item(
@@ -612,7 +598,6 @@ private fun HomeContent(
                         }
                     }
 
-                    // ---- Remaining remote sections ----
                     if (!minimalMode) {
                         otherRemoteSections.forEachIndexed { index, section ->
                             val sectionKey = "${section.endpoint?.browseId ?: section.title}_$index"
@@ -687,9 +672,6 @@ internal fun HomeSkeletonFeed(
         homeFeedSkeleton()
     }
 }
-
-
-// ---- BitChord-style shelf wrappers over ArchiveTune's item types ----
 
 @Composable
 private fun BitChordSongShelf(

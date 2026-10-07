@@ -341,7 +341,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         )
     }
 
-
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -407,8 +406,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                     )
                 }
             }
-
-
 
             PreferenceGroup(
                 modifier = positions.modifierFor("enable_video_playback"),

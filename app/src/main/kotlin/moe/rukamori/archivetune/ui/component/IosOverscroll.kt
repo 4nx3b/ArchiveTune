@@ -41,18 +41,12 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.sign
 
-// UIKit's rubber-band constant and the settle springs.
 private const val RubberBandConstant = 0.55f
 private const val FallbackContainerPx = 2000f
 private const val NormalBounceStiffness = 247f
 private const val FastBounceStiffness = 130f
 private const val FastBounceVelocityThreshold = 5000f
 
-/**
- * UIKit's self-limiting rubber band: the further you pull, the less each
- * pixel of finger travel moves the content. [containerPx] is the viewport
- * dimension the falloff is tuned against.
- */
 private fun rubberBand(rawDistance: Float, containerPx: Float): Float {
     val dimension = if (containerPx > 0f) containerPx else FallbackContainerPx
     val distance = abs(rawDistance)
@@ -60,7 +54,6 @@ private fun rubberBand(rawDistance: Float, containerPx: Float): Float {
     return banded * sign(rawDistance)
 }
 
-/** The inverse of [rubberBand]: the raw stretch that maps to [banded]. */
 private fun inverseRubberBand(banded: Float, containerPx: Float): Float {
     val dimension = if (containerPx > 0f) containerPx else FallbackContainerPx
     if (abs(banded) >= dimension / RubberBandConstant) return banded
@@ -69,14 +62,6 @@ private fun inverseRubberBand(banded: Float, containerPx: Float): Float {
     return dimension / RubberBandConstant * (1f / (1f - abs(k)) - 1f) * sign(banded)
 }
 
-/**
- * iOS overscroll for a content tree: attach to a container that hosts
- * scrollable content. While a descendant list is dragged past its edge the
- * content follows the finger with the rubber-band falloff; scrolling back
- * into the band pays it down before the list moves; on release it springs
- * back critically damped (softer for fast flings). The leftover overscroll
- * is consumed, so the platform stretch/glow never fires alongside it.
- */
 @Composable
 fun Modifier.iosOverscroll(): Modifier {
     val scope = rememberCoroutineScope()
@@ -87,9 +72,6 @@ fun Modifier.iosOverscroll(): Modifier {
             configuration.screenHeightDp.dp.toPx().coerceAtLeast(1f)
         }
 
-    // offset = the DRAWN translation (rubber-banded); raw = the unconsumed
-    // finger travel it derives from. Both live in one remembered holder so
-    // the connection and the recomposed modifiers always share them.
     val offset = remember { Animatable(0f) }
     val band =
         remember {
@@ -113,17 +95,11 @@ fun Modifier.iosOverscroll(): Modifier {
                     val dy = available.y
                     if (dy == 0f) return Offset.Zero
 
-                    // If a settle animation is running, the user grabbed the
-                    // content mid-bounce: resync the raw stretch to what is
-                    // currently drawn before applying the new delta.
                     if (band.settleJob?.isActive == true) {
                         band.settleJob?.cancel()
                         band.rawStretch = inverseRubberBand(offset.value, containerPx)
                     }
 
-                    // Scrolling back INTO the band pays it down first — the
-                    // list only moves once the band is fully paid (same sign
-                    // of travel as the band means paying it down).
                     if (band.rawStretch != 0f && dy * band.rawStretch > 0f) {
                         val consumedRaw =
                             if (abs(dy) >= abs(band.rawStretch)) {
@@ -146,9 +122,7 @@ fun Modifier.iosOverscroll(): Modifier {
                     val dy = available.y
                     if (dy == 0f) return Offset.Zero
                     band.settleJob?.cancel()
-                    // The list could not consume this travel: bend instead.
-                    // Finger past the TOP (dy < 0) -> content travels DOWN
-                    // (positive); past the BOTTOM (dy > 0) -> content UP.
+
                     stretchTo(band.rawStretch - dy)
                     return available
                 }

@@ -334,14 +334,7 @@ fun CanvasArtworkPlayer(
                 }
 
             if (stalledForMs >= CanvasPlaybackStallTimeoutMs) {
-                // A stall on the primary canvas swaps to the fallback URL
-                // WITHOUT un-reporting availability: resetting availability
-                // here fades the whole canvas stack (sharp stage + frost +
-                // scrim) out to the plain background and back in once the
-                // fallback renders — the random mid-song "glitch/lag" blink
-                // (2026-10-08 report). The frozen last frame is the far less
-                // visible intermediate while the fallback buffers; a dead
-                // fallback still surfaces through onPlayerError.
+
                 currentUrl = fallback
                 isVideoReady = false
                 return@LaunchedEffect
@@ -448,12 +441,7 @@ fun CanvasArtworkPlayer(
                                 kotlin.math.abs(newPosition.positionMs - target) >
                                     CanvasSyncSeekThresholdMs
                             ) {
-                                // Loop-boundary resync only on LARGE drift: the
-                                // follower is the heavily-blurred frost twin,
-                                // where up to 1.5s of drift is invisible — the
-                                // tight 80ms resync re-seeked at every loop
-                                // boundary and froze the frost frame (the
-                                // "random lag" of the 2026-10-08 report).
+
                                 exoPlayer.seekTo(target.coerceAtLeast(0L))
                             }
                         }
@@ -523,17 +511,7 @@ fun CanvasArtworkPlayer(
 
     val aspect = videoDisplayAspectRatio
     if (effectiveContentVisible) {
-        // The cover path (RESIZE_MODE_ZOOM) uses the pre-2026-10-07 form that
-        // rendered correctly positioned canvas on this device for weeks in
-        // every style: the surface is measured at the EXACT cover size for the
-        // real video aspect ratio (from onVideoSizeChanged — no media3 dp
-        // conversion involved), placed at explicit centered negative offsets,
-        // and clipped to the container bounds. media3 1.10.1's plain
-        // ContentFrame instead relies on resizeWithContentScale(), whose
-        // videoSizeDp is the raw pixel size mislabelled as Dp and whose
-        // wrapContentSize alignment produced a fit-sized, top-start-anchored
-        // video on the affected device (2026-10-07 report: "the canvas is
-        // completely shifted to the left side").
+
         if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM && aspect != null && aspect > 0f) {
             Box(modifier = modifier.clipToBounds()) {
                 ContentFrame(
@@ -562,12 +540,6 @@ fun CanvasArtworkPlayer(
     }
 }
 
-/**
- * Measures the video surface at the exact cover size for [videoAspect] and
- * centers the overflow, so the video fills the container while the layout
- * (and the interop node) stays deterministic. Paired with a clipToBounds
- * parent this is the long-proven ArchiveTune cover rendering.
- */
 private fun Modifier.canvasCoverLayout(videoAspect: Float): Modifier =
     layout { measurable, constraints ->
         val containerWidth = constraints.maxWidth

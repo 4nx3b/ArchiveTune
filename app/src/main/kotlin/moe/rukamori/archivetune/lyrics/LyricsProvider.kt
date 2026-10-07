@@ -22,12 +22,6 @@ interface LyricsProvider {
         duration: Int,
     ): Result<String>
 
-    /**
-     * [getLyrics] with the recording's ISRC, when the playing track's
-     * metadata carries one. Providers that can address a recording directly
-     * (rather than match a name) override this; every other provider inherits
-     * the name-based behaviour unchanged.
-     */
     suspend fun getLyrics(
         id: String,
         title: String,

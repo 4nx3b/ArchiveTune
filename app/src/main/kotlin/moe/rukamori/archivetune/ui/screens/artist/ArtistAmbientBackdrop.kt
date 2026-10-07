@@ -39,14 +39,6 @@ import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.ui.theme.BackdropTonePalette
 import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 
-/**
- * Ambient backdrop for the artist SUB-pages (all albums / songs / items —
- * 2026-10-08: "In artist page if I go to all albums or any other page it
- * should also have the backdrop color extracted from the artists profile
- * picture"): the same bottom-band palette extraction + tone-mapped vertical
- * gradient the main artist page runs, factored out so every artist route
- * shares one implementation (and one palette cache mode).
- */
 @Composable
 fun ArtistAmbientBackdrop(
     artistId: String?,
@@ -108,10 +100,6 @@ fun ArtistAmbientBackdrop(
 internal const val ARTIST_SHARED_AMBIENT_MODE = "ARTIST_AMBIENT"
 internal const val ARTIST_SHARED_AMBIENT_CROSSFADE_MS = 1200
 
-/**
- * Same extraction recipe as the main artist page (bottom-band dominant +
- * muted swatches at 64px, cached under the shared ARTIST_AMBIENT mode).
- */
 internal suspend fun extractArtistAmbientColors(
     context: Context,
     mediaId: String,

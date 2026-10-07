@@ -20,27 +20,6 @@ import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
 import java.util.Locale
 
-/**
- * Web scraper for Genius.com lyrics.
- *
- * Used strictly as a last resort when none of the time-synced providers have
- * lyrics for a track, which is why it sits at the very end of the default
- * provider order: it costs a search and a full song page, and it has no
- * timestamps at all.
- *
- * Genius does not offer an API key to apps like this one, but its open
- * multi-search endpoint and its lyric containers are stable enough to read:
- *  1. search `genius.com/api/search/multi` (no key required);
- *  2. match the best candidate song and take its page URL;
- *  3. fetch the page and read the `data-lyrics-container` markup;
- *  4. clean out Genius furniture (headers, translation links, "You might
- *     also like", "Embed"), keeping section headers like "[Verse 1]".
- *
- * The User-Agent is deliberately not a browser: Genius sits behind
- * Cloudflare, which challenges a browser-claiming agent whose TLS
- * fingerprint does not back the claim up. A plain agent is answered with
- * the page; a Chrome one with a bot challenge.
- */
 object GeniusLyricsProvider : LyricsProvider {
     override val name = "Genius"
 
@@ -66,7 +45,6 @@ object GeniusLyricsProvider : LyricsProvider {
             val cleanTitle = cleanQuery(title)
             val cleanArtist = cleanQuery(artist)
 
-            // If the title is in "Artist - Title" form, take both parts out of it.
             val titleParts =
                 if (cleanTitle.contains(TITLE_SEPARATOR)) {
                     TITLE_SEPARATOR.split(cleanTitle, limit = 2)
@@ -98,8 +76,6 @@ object GeniusLyricsProvider : LyricsProvider {
                     .replace(Regex("\\s+"), " ")
                     .trim()
 
-            // Asked in order of how likely each query is to have been how the
-            // song was catalogued, and only until one of them finds a page.
             val attempts =
                 buildList {
                     if (extractedArtist.isNotBlank() && extractedTitle.isNotBlank()) {
@@ -125,7 +101,6 @@ object GeniusLyricsProvider : LyricsProvider {
             null
         }
 
-    /** Searches Genius for the track and returns the song page's URL. */
     private suspend fun searchSongUrl(
         query: String,
         targetTitle: String,
@@ -185,8 +160,6 @@ object GeniusLyricsProvider : LyricsProvider {
                     score += if (artist == normArtist) 40 else 20
                 }
 
-                // Penalise translations, instrumentals and tracklists unless
-                // they are what was asked for.
                 val path = item.string("path").orEmpty()
                 if (path.contains("translation", ignoreCase = true) && !normTitle.contains("translation")) score -= 30
                 if (path.contains("türkçe", ignoreCase = true) || path.contains("polskie-tlumaczenie")) score -= 40
@@ -207,12 +180,6 @@ object GeniusLyricsProvider : LyricsProvider {
             ),
         )
 
-    /**
-     * Reads the lyric containers out of the song page: modern pages mark them
-     * `data-lyrics-container="true"`, older ones use `div.lyrics`. The
-     * containers hold nested markup, so the matching `</div>` is found by
-     * walking the div depth rather than by trusting the first one seen.
-     */
     private fun extractLyricsText(html: String): String? {
         val bodies = extractContainerBodies(html)
         if (bodies.isEmpty()) return null
@@ -236,7 +203,6 @@ object GeniusLyricsProvider : LyricsProvider {
         return bodies
     }
 
-    /** The content of the div opened just before [from], or null if unbalanced. */
     private fun balancedDivBody(
         html: String,
         from: Int,
@@ -265,11 +231,6 @@ object GeniusLyricsProvider : LyricsProvider {
 
     private fun isNameChar(c: Char?): Boolean = c != null && (c.isLetterOrDigit() || c == '-' || c == '_')
 
-    /**
-     * One container's markup as running text: the noise blocks go, `<br>` and
-     * paragraph boundaries become newlines, and what is left is stripped of
-     * tags and entity-escaped characters.
-     */
     private fun containerText(body: String): String {
         var text = body
         NOISE_BLOCKS.forEach { pattern -> text = pattern.replace(text, "\n") }
@@ -279,11 +240,6 @@ object GeniusLyricsProvider : LyricsProvider {
         return LyricsPayload.decodeEntities(text)
     }
 
-    /**
-     * Genius furniture that survives tag stripping: mid-text
-     * "You might also like" insertions, and the trailing "Embed" share label
-     * (with its access-count prefix).
-     */
     private fun stripArtifacts(raw: String): String =
         raw
             .replace('\u00A0', ' ')

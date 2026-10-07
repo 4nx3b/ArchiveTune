@@ -38,9 +38,7 @@ fun HomeAtmosphereBackground(
 ) {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     if (dark) {
-        // Dark mode is pitch black on every screen (2026-10-08: "if I've
-        // selected dark mode it should be pitch black in all the screens") —
-        // no atmosphere washes over the black background in dark mode.
+
         Box(
             modifier =
                 modifier

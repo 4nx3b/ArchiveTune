@@ -131,10 +131,6 @@ fun SearchScreen(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var searchProvider by rememberEnumPreference(DefaultSearchSourceKey, SearchProvider.YOUTUBE)
 
-    // ---- Live suggestions with thumbnails (2026-10-08: "I should see
-    // suggestion as soon as I type in the search bar in search page along
-    // with its thumbnails (it should support all kinds of search
-    // categories)") ----
     var liveSuggestions by remember { mutableStateOf<SearchSuggestions?>(null) }
     var liveSummary by remember { mutableStateOf<SearchSummaryPage?>(null) }
     val (hideExplicit) = rememberPreference(HideExplicitKey, defaultValue = false)
@@ -146,7 +142,7 @@ fun SearchScreen(
             liveSummary = null
             return@LaunchedEffect
         }
-        // Debounce so every keystroke doesn't fire a request pair.
+
         delay(250)
         if (searchQuery.trim() != query) return@LaunchedEffect
 
@@ -382,14 +378,6 @@ private fun RecentSearchesPanel(
     }
 }
 
-/**
- * Live suggestions shown while typing on the search tab (2026-10-08):
- * text-query rows on top, then categorized results with thumbnails
- * (top result / songs / artists / albums / playlists / videos …) from the
- * YouTube search summary; falls back to the suggestion engine's recommended
- * items when no summary is available. Tapping a query runs the search;
- * tapping an item plays/navigates exactly like the results screen.
- */
 @Composable
 private fun LiveSearchSuggestionsPanel(
     suggestions: SearchSuggestions?,

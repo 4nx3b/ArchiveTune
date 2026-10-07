@@ -56,8 +56,6 @@ class ArtistItemsViewModel
         val itemsPage = MutableStateFlow<ItemsPage?>(null)
         val itemsLayout = MutableStateFlow(ArtistItemsPageLayout.LIST)
 
-        // Artist entity (for the ambient backdrop extracted from the artist's
-        // profile picture on this sub-page, 2026-10-08).
         val artist =
             database
                 .artist(browseId)

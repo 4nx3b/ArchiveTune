@@ -46,15 +46,6 @@ internal fun JsonObject.boolean(key: String): Boolean? = (this[key] as? JsonPrim
 
 internal fun JsonObject.array(key: String): JsonArray? = this[key] as? JsonArray
 
-/**
- * Shared plumbing for the BitChord-derived lyrics providers.
- *
- * Every provider built on this is raced against the other sources by
- * [LyricsHelper], so a request that hangs holds up the whole lookup. The
- * timeouts are deliberately far shorter than the stream-oriented clients
- * elsewhere in the app: a lyric that arrives after the second chorus is of
- * no use to anyone, and the fallbacks behind it are the better answer.
- */
 internal object LyricsProviderHttp {
     const val USER_AGENT = "ArchiveTune (https://github.com/rukamori)"
 
@@ -72,13 +63,10 @@ internal object LyricsProviderHttp {
                 socketTimeoutMillis = 12_000
             }
 
-            // Non-2xx answers are misses, not exceptions: read the status and
-            // let the provider fall through to its next option.
             expectSuccess = false
         }
     }
 
-    /** Body of a successful GET, or null for any failure at all. */
     suspend fun get(
         url: String,
         headers: Map<String, String> = emptyMap(),
@@ -100,23 +88,12 @@ internal object LyricsProviderHttp {
             null
         }
 
-    /** Query-parameter encoding for the URLs the providers build by hand. */
     fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 
     fun parseJson(raw: String): JsonElement? = runCatching { json.parseToJsonElement(raw) }.getOrNull()
 }
 
-/**
- * Normalises whatever a lyrics endpoint returned into one of the lyric
- * representations [LyricsUtils] understands: TTML, (enhanced) LRC, or plain
- * text. A provider hands the answer straight to its [Result]; everything
- * that cannot be recognised is a miss so the chain carries on past it.
- */
 internal object LyricsPayload {
-    /**
-     * Provider envelopes: a plain lyric document wrapped in one or two layers
-     * of JSON, e.g. PaxSenix's `{"type":"TTML","content":"<tt …>"}`.
-     */
     fun unwrap(raw: String): String? {
         var value = raw.replace("\uFEFF", "").trim()
         if (value.startsWith("```")) {
@@ -162,13 +139,6 @@ internal object LyricsPayload {
         return false
     }
 
-    /**
-     * The structured word-timed payload PaxSenix serves for Spotify lyrics:
-     * rows of `{"timestamp": ms, "text": [{"text", "timestamp", "endtime",
-     * "part"}]}`, where `part` marks a syllable that runs straight into the
-     * next one. Turned into a TTML document so the app's own word-sync
-     * machinery — per-word end times included — can read it.
-     */
     fun timedAppleToTtml(raw: String): String? {
         val root = LyricsProviderHttp.parseJson(raw) ?: return null
         val content = root.findTimedContent() ?: return null
@@ -186,8 +156,6 @@ internal object LyricsPayload {
             val timed = wordRows.mapNotNull { it.asObject() }.filter { it.long("timestamp") != null }
             val lineEnd = nextLine ?: (start + DEFAULT_WORD_MS)
 
-            // A syllable with no stamp leaves nothing to time the line by; the
-            // text is then the entries as they came, as one untimed line.
             if (timed.size != wordRows.size) {
                 val text = wordRows.mapNotNull { it.asObject()?.string("text") }.joinToString(" ") { it.trim() }
                 if (text.isBlank()) return@forEachIndexed
@@ -228,10 +196,6 @@ internal object LyricsPayload {
         return builder.toString()
     }
 
-    /**
-     * The whole recognition pipeline: structured word-timed JSON, TTML (raw,
-     * escaped, or enveloped), LRC, or plain text — whichever this is.
-     */
     fun toLyrics(raw: String): String? {
         val body = raw.replace("\uFEFF", "").trim()
         if (body.isEmpty()) return null
@@ -247,7 +211,6 @@ internal object LyricsPayload {
         val unescapedInner = unescapeTtml(inner)
         if (isTtmlDocument(unescapedInner)) return unescapedInner
 
-        // Some XML-shaped thing that is not lyrics we can read.
         if (inner.trimStart().startsWith("<")) return null
 
         val text = decodeEntities(inner)
@@ -274,10 +237,6 @@ internal object LyricsPayload {
             value
         }
 
-    /**
-     * Some providers serve their LRC HTML-escaped, so an apostrophe arrives
-     * as `&#x27;` and would be sung literally.
-     */
     fun decodeEntities(text: String): String {
         if ('&' !in text) return text
         return text
@@ -290,7 +249,7 @@ internal object LyricsPayload {
             .replace("&nbsp;", " ")
             .replace("&lt;", "<")
             .replace("&gt;", ">")
-            // Last, so "&amp;#x27;" doesn't decode twice into an apostrophe.
+
             .replace("&amp;", "&")
     }
 
@@ -302,7 +261,6 @@ internal object LyricsPayload {
             .replace("\"", "&quot;")
             .replace("'", "&apos;")
 
-    /** Milliseconds as TTML seconds: always three places, never scientific. */
     private fun seconds(ms: Long): String = String.format(Locale.ROOT, "%.3f", ms / 1000.0)
 
     private fun JsonElement.findTimedContent(): JsonArray? =
@@ -361,16 +319,6 @@ internal object LyricsPayload {
     private val DEC_ENTITY = Regex("""&#(\d{1,5});""")
 }
 
-/**
- * A media title, as a lyrics database would have indexed it.
- *
- * Only credits and packaging come off: who else is on the record, and how the
- * upload was labelled. Anything that names a *different recording* stays —
- * "(Remix)", "(Live)", "(Remastered 2011)" — because stripping those turns a
- * search for one recording into a search for another, and a miss is
- * recoverable while the wrong words scrolling in time with the right song
- * is not.
- */
 internal fun String.forLyricsSearch(): String {
     var name = this
     CREDITS.forEach { pattern -> name = pattern.replace(name, " ") }
@@ -379,23 +327,21 @@ internal fun String.forLyricsSearch(): String {
         .trim()
         .trimEnd(',', '-', '–', '—')
         .trim()
-        // A title that was *only* packaging is no title at all; better to ask
-        // with what we were given than with nothing.
+
         .ifBlank { trim() }
 }
 
-/** Trims " - Topic" off an auto-generated channel name. */
 internal fun String.artistForLyricsSearch(): String = removeSuffix(" - Topic").trim().ifBlank { trim() }
 
 private val SEARCH_WHITESPACE = Regex("""\s+""")
 
 private val CREDITS =
     listOf(
-        // Bracketed credits: (feat. X), [ft. X], (with X).
+
         Regex("""\s*[(\[]\s*(feat|ft|featuring|with)\b[^)\]]*[)\]]""", RegexOption.IGNORE_CASE),
-        // The same, unbracketed and running to the end of the title.
+
         Regex("""\s+(feat|ft|featuring)\.?\s+.*$""", RegexOption.IGNORE_CASE),
-        // How the upload was labelled, not what was recorded.
+
         Regex(
             """\s*[(\[]\s*(official\s*)?(music\s*)?""" +
                 """(video|audio|visuali[sz]er|lyrics?\s*video|lyrics?|m/?v|hd|hq|4k|full\s*song)""" +

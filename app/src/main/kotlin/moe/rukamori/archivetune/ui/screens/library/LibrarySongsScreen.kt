@@ -106,8 +106,7 @@ fun LibrarySongsScreen(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val coroutineScope = rememberCoroutineScope()
     val isDarkTheme = isSystemInDarkTheme()
-    // Pure black is now the default dark theme (2026-10-08) — derived from
-    // the surface color instead of the removed preference toggle.
+
     val pureBlack = MaterialTheme.colorScheme.surface.luminance() < 0.05f
 
     val (sortType, onSortTypeChange) =

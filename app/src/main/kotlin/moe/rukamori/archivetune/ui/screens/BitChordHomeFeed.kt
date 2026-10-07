@@ -79,7 +79,6 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.models.MediaMetadata
 
-// ---- SF Pro Display (bundled, Apple-style grotesque — the BitChord look) ----
 val BitChordFontFamily =
     FontFamily(
         Font(R.font.sf_pro_display_regular, FontWeight.W400),
@@ -89,7 +88,6 @@ val BitChordFontFamily =
         Font(R.font.sf_pro_display_heavy, FontWeight.W800),
     )
 
-// ---- BitChord dimensions (Common.kt) ----
 val BitChordPageGutter = 16.dp
 val BitChordShelfCardWidth = 150.dp
 val BitChordShelfCardCorner = 12.dp
@@ -105,7 +103,6 @@ val BitChordPlayingAccent = Color(0xFFFB4A62)
 
 fun bitChordHeroCardWidth(available: Dp): Dp = (available * BitChordHeroCardFraction).coerceAtMost(BitChordHeroCardMaxWidth)
 
-/** 1dp hairline around every artwork (BitChord's thumbnailBorder). */
 fun Modifier.bitChordThumbnailBorder(shape: RoundedCornerShape): Modifier =
     drawWithCache {
         val border = 1.dp.toPx()
@@ -116,7 +113,6 @@ fun Modifier.bitChordThumbnailBorder(shape: RoundedCornerShape): Modifier =
         }
     }
 
-// ---- Section header (BitChord: headlineMedium title + optional subtitle) ----
 @Composable
 fun BitChordSectionHeader(
     title: String,
@@ -154,7 +150,6 @@ fun BitChordSectionHeader(
     }
 }
 
-/** The animated equalizer bars plate shown over the playing item's artwork. */
 @Composable
 fun BitChordPlayingBars(modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "BitChordPlayingBars")
@@ -198,7 +193,6 @@ fun BitChordPlayingBars(modifier: Modifier = Modifier) {
     }
 }
 
-// ---- Hero card (large, gradient scrim with title/subtitle inside) ----
 @Composable
 fun BitChordHeroCard(
     artworkUrl: String?,
@@ -276,7 +270,6 @@ fun BitChordHeroCard(
     }
 }
 
-// ---- Shelf card (150dp square art + two text lines below) ----
 @Composable
 fun BitChordShelfCard(
     artworkUrl: String?,
@@ -348,7 +341,6 @@ fun BitChordShelfCard(
     }
 }
 
-// ---- Compact track row (the recents shelf's list layout) ----
 @Composable
 fun BitChordCompactTrackRow(
     artworkUrl: String?,
@@ -415,7 +407,6 @@ fun BitChordCompactTrackRow(
     }
 }
 
-// ---- Shimmer (metric-matched skeleton blocks) ----
 private const val BitChordShimmerPeriodMs = 1400
 
 @Composable
@@ -451,7 +442,6 @@ private fun BitChordShimmerBox(
     )
 }
 
-/** Skeleton for one shelf (three cards), matching the real card metrics. */
 @Composable
 fun BitChordShelfSkeleton(modifier: Modifier = Modifier) {
     Row(
@@ -475,7 +465,6 @@ fun BitChordShelfSkeleton(modifier: Modifier = Modifier) {
     }
 }
 
-// ---- The recents shelf with BitChord's list/grid view toggle ----
 private enum class BitChordRecentsView { LIST, GRID }
 
 @Composable
@@ -530,8 +519,7 @@ fun BitChordRecentsShelf(
 
     when (view) {
         BitChordRecentsView.LIST -> {
-            // Songs chunked into columns of compact rows (BitChord's LIST
-            // layout) inside a single non-scrollable LazyRow page.
+
             val columns =
                 remember(songs) {
                     songs
@@ -592,7 +580,6 @@ fun BitChordRecentsShelf(
     Spacer(Modifier.height(BitChordShelfBottomSpacing))
 }
 
-/** One generic BitChord shelf row of cards with show-all header support. */
 @Composable
 fun <T> BitChordShelf(
     items: List<T>,
@@ -610,5 +597,4 @@ fun <T> BitChordShelf(
     }
 }
 
-/** Small utility used by the feed: resolves a song's artist line. */
 fun Song.artistLine(): String = artists.joinToString { it.name }

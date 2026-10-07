@@ -139,9 +139,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
     val (navigationBarBitchord, onNavigationBarBitchordChange) =
         rememberPreference(NavigationBarBitchordKey, defaultValue = false)
 
-    // Turning on ANY navigation bar type turns every other type off
-    // (2026-10-08: "whenever I turn on any type of navigation bar all the
-    // other types should turn off automatically").
     val onFrostedBlurChange: (Boolean) -> Unit = { checked ->
         onNavigationBarFrostedBlurChange(checked)
         if (checked) {
@@ -325,10 +322,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 }
 
                 item {
-                    // BitChord navigation bar (2026-10-08: "add an option in
-                    // navigation bar style named enable Bitchord Navigation
-                    // bar") — the ported frosted-pill bar with the travelling
-                    // stretch-squash selection pill.
+
                     SwitchPreference(
                         modifier = positions.modifierFor("navigation_bar_bitchord"),
                         title = { Text(stringResource(R.string.navigation_bar_bitchord)) },
