@@ -40,11 +40,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -80,6 +85,8 @@ import androidx.compose.runtime.setValue
 
 internal val LibraryHeaderContentPadding = 8.dp
 internal val LibraryPullToRefreshIndicatorOffset = 0.dp
+
+val LocalLibraryTitleReveal = staticCompositionLocalOf { mutableStateOf(false) }
 
 @Composable
 fun LibraryScreen(navController: NavController) {
@@ -130,11 +137,36 @@ fun LibraryScreen(navController: NavController) {
     }
 
     val libraryHazeState = LocalLibraryHazeState.current
+
+    // The big "Library" top-bar title only appears when the user swipes
+    // upward (scrolls toward the list top) and hides again on the way down
+    // (2026-10-08: "the library text on the top shouldn't be constant, it
+    // should only appear if I swipe in the upward direction") — the state
+    // itself lives in MainActivity next to the title.
+    val libraryTitleReveal = LocalLibraryTitleReveal.current
+    val titleRevealScrollConnection =
+        remember(libraryTitleReveal) {
+            object : NestedScrollConnection {
+                override fun onPreScroll(
+                    available: Offset,
+                    source: NestedScrollSource,
+                ): Offset {
+                    if (source != NestedScrollSource.UserInput) return Offset.Zero
+                    when {
+                        available.y < -6f -> libraryTitleReveal.value = true
+                        available.y > 18f -> libraryTitleReveal.value = false
+                    }
+                    return Offset.Zero
+                }
+            }
+        }
+
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
                 .let { m -> if (libraryHazeState != null) m.hazeSource(libraryHazeState) else m }
+                .nestedScroll(titleRevealScrollConnection)
                 .background(MaterialTheme.colorScheme.background),
     ) {
         if (!disableBlur) {
