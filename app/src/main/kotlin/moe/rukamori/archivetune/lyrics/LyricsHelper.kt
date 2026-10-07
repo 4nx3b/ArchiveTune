@@ -43,19 +43,31 @@ class LyricsHelper
     ) {
         private val baseProviders =
             listOf(
+                LrcRedLyricsProvider,
+                BiniLyricsProvider,
                 BetterLyricsProvider,
                 BetterLyricsPortatoProvider,
                 YouLyPlusLyricsProvider,
-                LrcLibLyricsProvider,
-                KuGouLyricsProvider,
+
+                PaxSenixAppleMusicLyricsProvider,
+                PaxSenixSpotifyLyricsProvider,
+                PaxSenixMusixmatchLyricsProvider,
+
+                SimpMusicLyricsProvider,
 
                 UnisonLyricsProvider,
+
+                LrcLibLyricsProvider,
+                KuGouLyricsProvider,
+                MegalobizLyricsProvider,
 
                 AppleMusicAccountLyricsProvider,
                 YouTubeSubtitleLyricsProvider,
                 YouTubeLyricsProvider,
 
                 MusixmatchExperimentalLyricsProvider,
+
+                GeniusLyricsProvider,
             )
 
         private val cache = LruCache<String, List<LyricsResult>>(MAX_CACHE_SIZE)
@@ -132,7 +144,7 @@ class LyricsHelper
                 GlobalLog.append(
                     Log.DEBUG,
                     "LyricsHelper",
-                    "PrioritizeWordSynced=on: querying BetterLyrics/YouLyPlus/Unison for word-synced lyrics",
+                    "PrioritizeWordSynced=on: querying the word-synced providers for word-synced lyrics",
                 )
                 val wordSyncedResult = tryFetchWordSyncedFromPriorityProviders(mediaMetadata)
                 if (wordSyncedResult != null && isMeaningfulLyrics(wordSyncedResult.lyrics)) {
@@ -175,6 +187,12 @@ class LyricsHelper
                     UnisonLyricsProvider,
                     AppleMusicAccountLyricsProvider,
                     KuGouLyricsProvider,
+
+                    LrcRedLyricsProvider,
+                    BiniLyricsProvider,
+                    PaxSenixAppleMusicLyricsProvider,
+                    PaxSenixMusixmatchLyricsProvider,
+                    SimpMusicLyricsProvider,
                 )
 
             val artist = mediaMetadata.artists.joinToString { it.name }
@@ -320,6 +338,7 @@ class LyricsHelper
                         artist,
                         mediaMetadata.album?.title,
                         mediaMetadata.duration,
+                        mediaMetadata.isrc,
                     ).fold(
                         onSuccess = { lyrics ->
                             LyricsUtils.lyricsOrNotFound(lyrics).takeIf { it != LYRICS_NOT_FOUND }
@@ -341,15 +360,24 @@ class LyricsHelper
             val orderedEnums = deserializeLyricsProviderOrder(orderStr)
             val providerMap: Map<PreferredLyricsProvider, LyricsProvider> =
                 mapOf(
-                    PreferredLyricsProvider.LRCLIB to LrcLibLyricsProvider,
-                    PreferredLyricsProvider.KUGOU to KuGouLyricsProvider,
+                    PreferredLyricsProvider.LRC_RED to LrcRedLyricsProvider,
+                    PreferredLyricsProvider.BINI_LYRICS to BiniLyricsProvider,
                     PreferredLyricsProvider.BETTER_LYRICS to BetterLyricsProvider,
                     PreferredLyricsProvider.BETTER_LYRICS_PORTATO to BetterLyricsPortatoProvider,
                     PreferredLyricsProvider.YOULY_PLUS to YouLyPlusLyricsProvider,
+                    PreferredLyricsProvider.PAXSENIX to PaxSenixAppleMusicLyricsProvider,
+                    PreferredLyricsProvider.PAXSENIX_SPOTIFY to PaxSenixSpotifyLyricsProvider,
+                    PreferredLyricsProvider.PAXSENIX_MUSIXMATCH to PaxSenixMusixmatchLyricsProvider,
+                    PreferredLyricsProvider.SIMP_MUSIC to SimpMusicLyricsProvider,
+
+                    PreferredLyricsProvider.LRCLIB to LrcLibLyricsProvider,
+                    PreferredLyricsProvider.KUGOU to KuGouLyricsProvider,
+                    PreferredLyricsProvider.MEGALOBIZ to MegalobizLyricsProvider,
 
                     PreferredLyricsProvider.APPLE_MUSIC to AppleMusicAccountLyricsProvider,
                     PreferredLyricsProvider.UNISON to UnisonLyricsProvider,
                     PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL to MusixmatchExperimentalLyricsProvider,
+                    PreferredLyricsProvider.GENIUS to GeniusLyricsProvider,
                 )
             val userOrdered = orderedEnums.mapNotNull { providerMap[it] }
             val rest = baseProviders.filterNot { it in userOrdered }
@@ -366,7 +394,10 @@ class LyricsHelper
             if (!isNonYouTubeId) return true
 
             return provider !is YouTubeLyricsProvider &&
-                provider !is YouTubeSubtitleLyricsProvider
+                provider !is YouTubeSubtitleLyricsProvider &&
+                // SimpMusic is keyed on the YouTube video id; a local or
+                // Telegram track has nothing it can look up.
+                provider !is SimpMusicLyricsProvider
         }
 
         fun clearCache() {

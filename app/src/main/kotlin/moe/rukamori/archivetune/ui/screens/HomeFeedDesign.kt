@@ -192,20 +192,20 @@ private fun HomeSkeletonLine(fraction: Float, height: Dp, modifier: Modifier = M
 
 @Composable
 private fun HomeSectionHeaderSkeleton(index: Int = 0) {
-    Column(Modifier.padding(horizontal = HomeFeedGutter, vertical = 10.dp)) {
+    Column(Modifier.padding(horizontal = BitChordPageGutter, vertical = 10.dp)) {
         HomeSkeletonLine(fraction = HomeTitleWidths[index % HomeTitleWidths.size] * 0.7f, height = 18.dp)
     }
 }
 
 @Composable
 private fun HomeHeroShelfSkeleton() {
-    Column(Modifier.padding(bottom = HomeShelfBottomSpacing)) {
+    Column(Modifier.padding(bottom = BitChordShelfBottomSpacing)) {
         HomeSectionHeaderSkeleton()
         BoxWithConstraints {
-            val cardWidth = homeHeroCardWidth(maxWidth)
+            val cardWidth = bitChordHeroCardWidth(maxWidth)
             LazyRow(
-                contentPadding = PaddingValues(horizontal = HomeFeedGutter),
-                horizontalArrangement = Arrangement.spacedBy(HomeShelfCardSpacing),
+                contentPadding = PaddingValues(horizontal = BitChordPageGutter),
+                horizontalArrangement = Arrangement.spacedBy(BitChordShelfCardSpacing),
                 userScrollEnabled = false,
             ) {
                 items(2) {
@@ -213,8 +213,8 @@ private fun HomeHeroShelfSkeleton() {
                         modifier =
                             Modifier
                                 .width(cardWidth)
-                                .aspectRatio(HomeHeroCardRatio),
-                        shape = RoundedCornerShape(HomeHeroCardCorner),
+                                .aspectRatio(BitChordHeroCardRatio),
+                        shape = RoundedCornerShape(BitChordHeroCardCorner),
                     )
                 }
             }
@@ -224,21 +224,21 @@ private fun HomeHeroShelfSkeleton() {
 
 @Composable
 fun HomeShelfSkeleton(index: Int = 0) {
-    Column(Modifier.padding(bottom = HomeShelfBottomSpacing)) {
+    Column(Modifier.padding(bottom = BitChordShelfBottomSpacing)) {
         HomeSectionHeaderSkeleton(index = index)
         LazyRow(
-            contentPadding = PaddingValues(horizontal = HomeFeedGutter),
-            horizontalArrangement = Arrangement.spacedBy(HomeShelfCardSpacing),
+            contentPadding = PaddingValues(horizontal = BitChordPageGutter),
+            horizontalArrangement = Arrangement.spacedBy(BitChordShelfCardSpacing),
             userScrollEnabled = false,
         ) {
             items(3) { card ->
-                Column(Modifier.width(HomeShelfCardWidth)) {
+                Column(Modifier.width(BitChordShelfCardWidth)) {
                     HomeShimmerBox(
                         modifier =
                             Modifier
-                                .width(HomeShelfCardWidth)
+                                .width(BitChordShelfCardWidth)
                                 .aspectRatio(1f),
-                        shape = RoundedCornerShape(HomeShelfCardCorner),
+                        shape = RoundedCornerShape(BitChordShelfCardCorner),
                     )
                     Spacer(Modifier.height(10.dp))
                     HomeSkeletonLine(

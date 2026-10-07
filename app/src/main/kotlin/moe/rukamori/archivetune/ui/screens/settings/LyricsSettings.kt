@@ -510,16 +510,25 @@ fun LyricsSettings(
 
 internal fun PreferredLyricsProvider.displayName(): String =
     when (this) {
-        PreferredLyricsProvider.LRCLIB -> "LrcLib"
-        PreferredLyricsProvider.KUGOU -> "KuGou"
+        PreferredLyricsProvider.LRC_RED -> "lrc.red"
+        PreferredLyricsProvider.BINI_LYRICS -> "BiniLyrics"
         PreferredLyricsProvider.BETTER_LYRICS -> "BetterLyrics"
         PreferredLyricsProvider.BETTER_LYRICS_PORTATO -> "BetterLyrics Portato"
+        PreferredLyricsProvider.PAXSENIX -> "PaxSenix (Apple Music)"
+        PreferredLyricsProvider.PAXSENIX_SPOTIFY -> "PaxSenix (Spotify)"
+        PreferredLyricsProvider.PAXSENIX_MUSIXMATCH -> "PaxSenix (Musixmatch)"
         PreferredLyricsProvider.YOULY_PLUS -> "YouLyPlus"
+        PreferredLyricsProvider.SIMP_MUSIC -> "SimpMusic"
 
         PreferredLyricsProvider.UNISON -> "Unison"
 
+        PreferredLyricsProvider.LRCLIB -> "LrcLib"
+        PreferredLyricsProvider.KUGOU -> "KuGou"
+        PreferredLyricsProvider.MEGALOBIZ -> "Megalobiz"
+
         PreferredLyricsProvider.APPLE_MUSIC -> "Apple Music (account)"
         PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL -> "Musixmatch (experimental)"
+        PreferredLyricsProvider.GENIUS -> "Genius"
     }
 
 @Composable
