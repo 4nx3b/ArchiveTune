@@ -359,6 +359,12 @@ fun FlamingoPlayerContent(
 
         LaunchedEffect(mediaMetadata.id, landscape) {
             nowPage = if (landscape) FlamingoPage.Lyric else FlamingoPage.Album
+        }
+        // Controls visibility resets only on ORIENTATION change — a song
+        // change must never re-hide controls the user has already poked back
+        // into view (landscape tap-anywhere-reveal would otherwise be undone
+        // on every track transition).
+        LaunchedEffect(landscape) {
             showControl.value = !landscape
         }
 
@@ -509,8 +515,32 @@ fun FlamingoPlayerContent(
         var showAnchoredLyricsMenu by remember { mutableStateOf(false) }
         var moreIconBounds by remember { mutableStateOf(Rect.Zero) }
 
+        // ---- Glass backdrop sources ----
+        // TWO sources with different scopes, and the consumers must NEVER sit
+        // inside the subtree their own source records — a consumer drawing the
+        // GraphicsLayer that is simultaneously recording it builds a mutual
+        // layer-reference cycle (frame N records the consumer's layer into the
+        // source layer; frame N+1 records the source layer into the consumer's
+        // layer) and HWUI replays the cycle recursively until the RenderThread
+        // stack overflows (native crash 2026-10-07, fault 0x30 below sp — same
+        // signature as the SearchScreen glass recorder crash in the worklog).
+        //
+        // 1. popupBackdrop — records the WHOLE player Box, consumed ONLY by
+        //    AnchoredLyricsOverflowMenu which renders OUTSIDE the Box (safe).
+        // 2. panelBackdrop — records ONLY the background + the lyrics list,
+        //    consumed by the translation panel which lives in the controls
+        //    stack that draws AFTER (and outside) the recorded source Box.
+        //    The panel therefore samples exactly what is visually behind it
+        //    (lyrics + floating-light background) and can never recurse.
+        val glassAvailable = rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
         val popupBackdrop: PlatformBackdrop? =
-            if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (glassAvailable) {
+                rememberBackdrop(Color.Transparent)
+            } else {
+                null
+            }
+        val panelBackdrop: PlatformBackdrop? =
+            if (glassAvailable) {
                 rememberBackdrop(Color.Transparent)
             } else {
                 null
@@ -559,7 +589,8 @@ fun FlamingoPlayerContent(
                     delay(time)
                     withContext(Dispatchers.Main) {
                         if (System.currentTimeMillis() - lastClickTime.longValue >= time &&
-                            nowPageLambda.value == FlamingoPage.Lyric
+                            nowPageLambda.value == FlamingoPage.Lyric &&
+                            !landscape
                         ) {
                             showControl.value = false
                         }
@@ -572,10 +603,12 @@ fun FlamingoPlayerContent(
         val sliderPositionState = rememberUpdatedState(sliderPosition)
         val lyricsPosProvider = remember { { sliderPositionState.value } }
 
-        // Everything the glass popups sample while the anchored lyrics menu OR
-        // the translation panel is open (the panel's liquid-glass background
-        // samples this layer too).
-        val glassLayerActive = showAnchoredLyricsMenu || translationPanelOpen
+        // The outer Box records ONLY while the anchored lyrics menu (its sole
+        // consumer, rendered outside this Box) is open. The translation panel
+        // deliberately does NOT activate this recorder: the panel is INSIDE
+        // this Box, so a layer recorded here would contain the panel's own
+        // sampling layer — the reference cycle that crashed the app.
+        val glassLayerActive = showAnchoredLyricsMenu
         Box(
             modifier =
                 Modifier
@@ -588,31 +621,107 @@ fun FlamingoPlayerContent(
                         }
                     },
         ) {
-            // ---- Background (color behind the artwork) ----
+            // ---- Recorded source for the translation panel ----
+            // Background + portrait lyrics ONLY. The panel (and the rest of
+            // the controls) draw after this Box as siblings, so nothing that
+            // samples panelBackdrop is ever recorded into panelBackdrop.
             FlamingoWrapper {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .let { base ->
+                                if (panelBackdrop != null && translationPanelOpen) {
+                                    base.layerBackdrop(panelBackdrop)
+                                } else {
+                                    base
+                                }
+                            },
                 ) {
-                    FlamingoFloatingLight(
-                        albumUrl = { artworkUrl },
-                        isPlaying = { isPlayingStatusLambda.value },
-                        modifier = Modifier.fillMaxSize(),
-                        nowPage = { nowPageLambda.value },
-                        backgroundEffect = backgroundEffect,
-                    )
-
-                    // (No canvas backdrop here — see the constants block comment
-                    // above for why the second, blurred CanvasArtworkPlayer was
-                    // removed: interop layer escape above the controls, double
-                    // decoder, and the tap-swallowing layout box.)
-
-                    if (!videoShowing && canvasVisualActive) {
+                    // ---- Background (color behind the artwork) ----
+                    FlamingoWrapper {
                         Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .graphicsLayer { alpha = canvasScrimReveal }
-                                .background(FlamingoCanvasScrimBrush),
-                        )
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            FlamingoFloatingLight(
+                                albumUrl = { artworkUrl },
+                                isPlaying = { isPlayingStatusLambda.value },
+                                modifier = Modifier.fillMaxSize(),
+                                nowPage = { nowPageLambda.value },
+                                backgroundEffect = backgroundEffect,
+                            )
+
+                            // (No canvas backdrop here — see the constants block comment
+                            // above for why the second, blurred CanvasArtworkPlayer was
+                            // removed: interop layer escape above the controls, double
+                            // decoder, and the tap-swallowing layout box.)
+
+                            if (!videoShowing && canvasVisualActive) {
+                                Box(
+                                    modifier = Modifier
+                                        .matchParentSize()
+                                        .graphicsLayer { alpha = canvasScrimReveal }
+                                        .background(FlamingoCanvasScrimBrush),
+                                )
+                            }
+                        }
+                    }
+
+                    // ---- Portrait lyrics (mounted/unmounted with the page) ----
+                    // Lyrics page: fully removed from composition while the album
+                    // page is showing. The enhanced-lyrics list runs per-frame
+                    // scroll tracking; keeping it composed (even at alpha 0) made
+                    // the whole player style feel laggy, so it mounts/unmounts
+                    // with the page like the pre-redesign player did.
+                    if (!landscape) {
+                        FlamingoWrapper {
+                            AnimatedVisibility(
+                                visible = nowPage == FlamingoPage.Lyric,
+                                enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
+                                exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
+                            ) {
+                                Column(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .graphicsLayer {
+                                            compositingStrategy = CompositingStrategy.ModulateAlpha
+                                            this.alpha = alphaAnim.value
+                                        },
+                                ) {
+                                    Spacer(modifier = Modifier.height(topInset + 104.dp))
+
+                                    if (lyricsContentReady) {
+                                        val isAiTranslated =
+                                            currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value
+                                        AnimatedContent(
+                                            targetState = Triple(autoTranslateLyrics, romanizationOn, isAiTranslated),
+                                            transitionSpec = {
+                                                fadeIn(tween(360, easing = FastOutSlowInEasing)) togetherWith
+                                                    fadeOut(tween(280, easing = FastOutSlowInEasing))
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .weight(1f),
+                                            label = "FlamingoLyricsRender",
+                                        ) { renderKey ->
+                                            val (showTranslationLines, showRomanization, _) = renderKey
+                                            LyricsEnhanced(
+                                                sliderPositionProvider = lyricsPosProvider,
+                                                lyricsSyncOffset = lyricsSyncOffset,
+                                                translationVisibleOverride = showTranslationLines,
+                                                phoneticVisibleOverride = if (showRomanization) null else false,
+                                                textColorOverride = Color.White,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .flamingoLyricsEdgeFade(
+                                                        weightLambda = { showControlLambda.value },
+                                                    ),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -876,60 +985,9 @@ fun FlamingoPlayerContent(
                     }
                 } else {
                     // ---- Portrait ----
-
-                    // Lyrics page: fully removed from composition while the album
-                    // page is showing. The enhanced-lyrics list runs per-frame
-                    // scroll tracking; keeping it composed (even at alpha 0) made
-                    // the whole player style feel laggy, so it now mounts/unmounts
-                    // with the page like the pre-redesign player did.
-                    FlamingoWrapper {
-                        AnimatedVisibility(
-                            visible = nowPage == FlamingoPage.Lyric,
-                            enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
-                            exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
-                        ) {
-                            Column(
-                                Modifier
-                                    .fillMaxSize()
-                                    .graphicsLayer {
-                                        compositingStrategy = CompositingStrategy.ModulateAlpha
-                                        this.alpha = alphaAnim.value
-                                    },
-                            ) {
-                                Spacer(modifier = Modifier.height(topInset + 104.dp))
-
-                                if (lyricsContentReady) {
-                                    val isAiTranslated =
-                                        currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value
-                                    AnimatedContent(
-                                        targetState = Triple(autoTranslateLyrics, romanizationOn, isAiTranslated),
-                                        transitionSpec = {
-                                            fadeIn(tween(360, easing = FastOutSlowInEasing)) togetherWith
-                                                fadeOut(tween(280, easing = FastOutSlowInEasing))
-                                        },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .weight(1f),
-                                        label = "FlamingoLyricsRender",
-                                    ) { renderKey ->
-                                        val (showTranslationLines, showRomanization, _) = renderKey
-                                        LyricsEnhanced(
-                                            sliderPositionProvider = lyricsPosProvider,
-                                            lyricsSyncOffset = lyricsSyncOffset,
-                                            translationVisibleOverride = showTranslationLines,
-                                            phoneticVisibleOverride = if (showRomanization) null else false,
-                                            textColorOverride = Color.White,
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .flamingoLyricsEdgeFade(
-                                                    weightLambda = { showControlLambda.value },
-                                                ),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // (The portrait lyrics list lives in the panel-glass source
+                    // Box above — it records together with the background so the
+                    // translation panel can sample what is visually behind it.)
 
                     // Drag handle (小把手)
                     FlamingoWrapper {
@@ -1170,7 +1228,13 @@ fun FlamingoPlayerContent(
                                                     interactionSource = remember { MutableInteractionSource() },
                                                     indication = null,
                                                     onClick = {
-                                                        // Poke the controls back on tap.
+                                                        // Poke the controls back on tap; a tap
+                                                        // on the lyrics while the translation
+                                                        // panel is open counts as a manual
+                                                        // close of the panel.
+                                                        if (translationPanelOpen) {
+                                                            translationPanelOpen = false
+                                                        }
                                                         showControl.value = true
                                                         lastClickTime.longValue =
                                                             System.currentTimeMillis()
@@ -1243,17 +1307,18 @@ fun FlamingoPlayerContent(
                                                         transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 1f),
                                                     ),
                                                 ) {
-                                                    // Liquid-glass backdrop: samples the player
-                                                    // content behind the panel (the same
-                                                    // popupBackdrop the anchored lyrics menu
-                                                    // uses) with vibrancy + blur. Translucent
-                                                    // charcoal when glass is unavailable
-                                                    // (pre-S / liquid glass toggle off).
+                                                    // Liquid-glass backdrop: samples the
+                                                    // panelBackdrop source Box (background +
+                                                    // lyrics — everything visually behind the
+                                                    // panel, and nothing that samples this
+                                                    // panel itself) with vibrancy + 28dp blur.
+                                                    // Translucent charcoal when glass is
+                                                    // unavailable (pre-S / toggle off).
                                                     val panelGlassModifier =
-                                                        remember(popupBackdrop) {
-                                                            if (popupBackdrop != null) {
+                                                        remember(panelBackdrop) {
+                                                            if (panelBackdrop != null) {
                                                                 Modifier.drawBackdrop(
-                                                                    backdrop = popupBackdrop,
+                                                                    backdrop = panelBackdrop,
                                                                     effects = {
                                                                         vibrancy()
                                                                         blur(28f.dp.toPx())

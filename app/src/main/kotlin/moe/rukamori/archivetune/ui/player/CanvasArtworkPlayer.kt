@@ -22,9 +22,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.layout
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -510,19 +509,54 @@ fun CanvasArtworkPlayer(
 
     val aspect = videoDisplayAspectRatio
     if (effectiveContentVisible) {
-        if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM && aspect != null && aspect > 0f) {
+        if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM) {
+            // Cover-crop WITHOUT an oversized interop layout node.
+            //
+            // The old approach (ContentScale.Crop + the manual canvasCoverLayout
+            // layout modifier) measured the AndroidView (TextureView interop
+            // node) LARGER than its container and placed it at negative offsets
+            // — a portrait 720x1280 canvas in a ~411x386dp artwork stage
+            // produced a ~411x730dp node extending ~170dp past the stage into
+            // the title-row band below. That oversized interop node participates
+            // in pointer hit-testing wherever it is PLACED (speculative /
+            // out-of-bounds child hits), and it is why the album page's
+            // like/overflow chips sat dead while the canvas-free queue page
+            // worked (user report 2026-10-07). It also let the video overlap
+            // neighbouring panes whenever the OEM ROM's TextureView interop
+            // escapes Compose layer clipping.
+            //
+            // Now the surface node stays at its FIT size — always inside the
+            // container — and the cover-crop is a plain graphicsLayer scale on
+            // the ContentFrame: s = max(a/c, c/a). The parent clipToBounds()
+            // keeps the drawing confined to the stage, and the interop hit
+            // region never leaves the artwork stage.
             Box(modifier = modifier.clipToBounds()) {
                 ContentFrame(
                     player = exoPlayer,
                     surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-                    contentScale = resizeMode.toContentScale(),
+                    contentScale = ContentScale.Fit,
                     keepContentOnReset = false,
                     shutter = {},
                     modifier =
                         Modifier
                             .matchParentSize()
                             .alpha(alpha)
-                            .canvasCoverLayout(aspect),
+                            .graphicsLayer {
+                                val videoAspect = aspect
+                                if (videoAspect != null && videoAspect > 0f &&
+                                    size.width > 0f && size.height > 0f
+                                ) {
+                                    val containerAspect = size.width / size.height
+                                    val coverScale =
+                                        if (videoAspect >= containerAspect) {
+                                            videoAspect / containerAspect
+                                        } else {
+                                            containerAspect / videoAspect
+                                        }
+                                    scaleX = coverScale
+                                    scaleY = coverScale
+                                }
+                            },
                 )
             }
         } else {
@@ -537,40 +571,6 @@ fun CanvasArtworkPlayer(
         }
     }
 }
-
-private fun Modifier.canvasCoverLayout(videoAspect: Float): Modifier =
-    layout { measurable, constraints ->
-        val containerWidth = constraints.maxWidth
-        val containerHeight = constraints.maxHeight
-        if (containerWidth <= 0 || containerHeight <= 0) {
-            val placeable = measurable.measure(constraints)
-            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-        } else {
-            val containerAspect = containerWidth.toFloat() / containerHeight.toFloat()
-            val targetWidth: Int
-            val targetHeight: Int
-            if (videoAspect >= containerAspect) {
-                targetHeight = containerHeight
-                targetWidth = (containerHeight.toFloat() * videoAspect + 0.5f).toInt().coerceAtLeast(containerWidth)
-            } else {
-                targetWidth = containerWidth
-                targetHeight = (containerWidth.toFloat() / videoAspect + 0.5f).toInt().coerceAtLeast(containerHeight)
-            }
-            val placeable =
-                measurable.measure(
-                    Constraints.fixed(
-                        targetWidth.coerceAtLeast(1),
-                        targetHeight.coerceAtLeast(1),
-                    )
-                )
-            layout(containerWidth, containerHeight) {
-                placeable.place(
-                    -((targetWidth - containerWidth) / 2),
-                    -((targetHeight - containerHeight) / 2),
-                )
-            }
-        }
-    }
 
 private fun Int.toContentScale(): ContentScale =
     when (this) {
