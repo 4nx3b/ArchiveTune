@@ -129,6 +129,16 @@ fun ArtistAlbumsScreen(
     Box(
         modifier = Modifier.fillMaxSize(),
     ) {
+        // Backdrop color extracted from the artist's profile picture — the
+        // same ambient gradient the main artist page runs (2026-10-08:
+        // "In artist page if I go to all albums or any other page it should
+        // also have the backdrop color extracted from the artists profile
+        // picture").
+        ArtistAmbientBackdrop(
+            artistId = viewModel.artistId,
+            artworkUrl = artist?.artist?.thumbnailUrl,
+        )
+
         LazyVerticalGrid(
             state = lazyGridState,
             columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
