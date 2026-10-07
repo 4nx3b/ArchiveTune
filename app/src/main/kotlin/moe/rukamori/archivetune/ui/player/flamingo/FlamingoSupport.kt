@@ -25,7 +25,6 @@ import android.os.Vibrator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -63,16 +62,26 @@ import moe.rukamori.archivetune.R
 import kotlin.math.sqrt
 
 /**
- * Recomposition-isolating wrapper, ported verbatim from Flamingo's YosWrapper:
- * keys the subtree by the content lambda's identity so unrelated parent
- * recompositions do not re-run player subtrees.
+ * Recomposition-isolating wrapper, derived from Flamingo's YosWrapper.
+ *
+ * The original keyed the subtree by `content.hashCode()` — the identity hash
+ * of the content lambda. Capturing lambdas are only memoized by the Compose
+ * compiler when every captured value is stable; the player's content lambdas
+ * capture unstable values (MediaMetadata, PlayerConnection, …), so every
+ * parent recomposition (which fires at least once per playback-position tick)
+ * produced a fresh lambda instance, a fresh hashCode, and therefore a NEW
+ * key — Compose disposed and rebuilt the entire wrapped subtree on every
+ * tick. In the Flamingo player that meant a brand-new CanvasArtworkPlayer
+ * (and ExoPlayer + video decoder) every second: the style's constant
+ * stutter, the artwork-transition jank, and the landscape static-thumbnail
+ * crossfade state resetting behind the canvas. The wrapper is now a plain
+ * invocation — Compose's own skipping already provides the isolation the
+ * identity key was meant to give, without the rebuild storm.
  */
 @Composable
 @NonRestartableComposable
 fun FlamingoWrapper(content: @Composable () -> Unit) =
-    key(content.hashCode()) {
-        content()
-    }
+    content()
 
 /**
  * "Add" compositing effect ported from Flamingo's Modifier.overlayEffect()
