@@ -314,6 +314,9 @@ private fun YearInMusicRecapScreen(
                     )
                 }
             },
+            onArtistClick = { artist ->
+                navController.navigate("artist/${artist.id}")
+            },
             onShare = onShare,
             isGenerating = isGeneratingImage,
             modifier =
@@ -435,6 +438,7 @@ private fun RecapCardPager(
     onCardBoundsChanged: (Rect) -> Unit,
     onTopSongLongClick: (Song) -> Unit,
     onTopArtistLongClick: (Artist) -> Unit,
+    onArtistClick: (Artist) -> Unit,
     onShare: () -> Unit,
     isGenerating: Boolean,
     modifier: Modifier = Modifier,
@@ -467,6 +471,7 @@ private fun RecapCardPager(
             canAdvance = canAdvance,
             onTopSongLongClick = onTopSongLongClick,
             onTopArtistLongClick = onTopArtistLongClick,
+            onArtistClick = onArtistClick,
             onShare = onShare,
             isGenerating = isGenerating,
             modifier =
@@ -489,6 +494,7 @@ private fun RecapCardFrame(
     canAdvance: Boolean,
     onTopSongLongClick: (Song) -> Unit,
     onTopArtistLongClick: (Artist) -> Unit,
+    onArtistClick: (Artist) -> Unit,
     onShare: () -> Unit,
     isGenerating: Boolean,
     modifier: Modifier = Modifier,
@@ -556,6 +562,7 @@ private fun RecapCardFrame(
                         card = card,
                         applySafeContentInsets = applySafeContentInsets,
                         onArtistLongClick = onTopArtistLongClick,
+                        onArtistClick = onArtistClick,
                     )
                 }
 
@@ -937,6 +944,7 @@ private fun RankedArtistsRecapCard(
     card: YearInMusicRecapCard.RankedArtists,
     applySafeContentInsets: Boolean,
     onArtistLongClick: (Artist) -> Unit,
+    onArtistClick: (Artist) -> Unit,
 ) {
     RecapCardContent(
         badge = stringResource(R.string.top_artists),
@@ -974,7 +982,7 @@ private fun RankedArtistsRecapCard(
                     artist = artist,
                     modifier =
                         Modifier.combinedClickable(
-                            onClick = {},
+                            onClick = { onArtistClick(artist) },
                             onLongClick = { onArtistLongClick(artist) },
                         ),
                 )

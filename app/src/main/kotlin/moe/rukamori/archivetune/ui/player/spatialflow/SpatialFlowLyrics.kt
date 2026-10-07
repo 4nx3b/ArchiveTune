@@ -962,6 +962,9 @@ private fun SpatialFlowLyricsMovingBlur(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val isPlaying by (LocalPlayerConnection.current?.isPlaying
+        ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) })
+        .collectAsStateWithLifecycle()
     val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
 
     val morph = remember { Animatable(0f) }
@@ -976,7 +979,7 @@ private fun SpatialFlowLyricsMovingBlur(
                 .clipToBounds(),
     ) {
         val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
-        val blurWander = rememberBlurWanderDrift(active = true, maxDriftDp = wanderMaxDrift)
+        val blurWander = rememberBlurWanderDrift(active = isPlaying, maxDriftDp = wanderMaxDrift)
         val driftFootprint =
             remember(maxWidth, maxHeight) {
                 blurBackdropFootprint(

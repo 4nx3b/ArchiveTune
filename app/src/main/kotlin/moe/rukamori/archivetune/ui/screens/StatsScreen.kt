@@ -1159,7 +1159,11 @@ private fun StatsHighlightsSection(
                 )} • ${makeTimeString(topSong.timeListened)}",
                 imageUrl = topSong.thumbnailUrl,
                 useCircleShape = false,
-                onClick = {},
+                onClick = {
+                    topSongEntity.song.albumId?.let { albumId ->
+                        navController.navigate("album/$albumId")
+                    }
+                },
             )
         }
     }

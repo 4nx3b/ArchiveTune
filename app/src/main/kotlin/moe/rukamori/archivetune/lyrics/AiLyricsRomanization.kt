@@ -109,7 +109,11 @@ object AiLyricsRomanization {
     private val romanizer = AiLyricsRomanizer()
     private val inFlight = ConcurrentHashMap<String, Deferred<List<String?>?>>()
 
-    private val cache = LinkedHashMap<String, Map<String, String>>(64, 0.75f, true)
+    private val cache =
+        object : LinkedHashMap<String, Map<String, String>>(64, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Map<String, String>>): Boolean =
+                size > 64
+        }
 
     private val _results = MutableStateFlow<Result?>(null)
     val results: StateFlow<Result?> = _results.asStateFlow()

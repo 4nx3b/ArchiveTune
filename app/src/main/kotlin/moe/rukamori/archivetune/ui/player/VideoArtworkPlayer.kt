@@ -169,7 +169,12 @@ private const val VideoStreamInfoCacheMaxEntries = 16
 private const val VideoStreamInfoCacheValidityMs = 45 * 60 * 1000L
 
 private val videoStreamInfoCache =
-    java.util.Collections.synchronizedMap(LinkedHashMap<String, Pair<Long, VideoStreamInfo>>())
+    java.util.Collections.synchronizedMap(
+        object : LinkedHashMap<String, Pair<Long, VideoStreamInfo>>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<Long, VideoStreamInfo>>): Boolean =
+                size > VideoStreamInfoCacheMaxEntries
+        },
+    )
 
 private fun resolveVideoStreamInfoFromCache(cacheKey: String): VideoStreamInfo? {
     val cached = videoStreamInfoCache[cacheKey] ?: return null
@@ -1311,8 +1316,9 @@ private fun VideoAmbientBackdrop(
             ),
         label = "video-ambient-y",
     )
-    val driftX = if (isPreS) 0f else animatedDriftX
-    val driftY = if (isPreS) 0f else animatedDriftY
+    val preSDriftOff = isPreS
+    fun currentDrift(): Pair<Float, Float> =
+        if (preSDriftOff) 0f to 0f else animatedDriftX to animatedDriftY
 
     val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
         value =
@@ -1354,13 +1360,14 @@ private fun VideoAmbientBackdrop(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .graphicsLayer(
-                            translationX = driftX,
-                            translationY = driftY,
-                            scaleX = 1.4f,
-                            scaleY = 1.4f,
-                            alpha = 0.85f,
-                        ),
+                        .graphicsLayer {
+                            val (x, y) = currentDrift()
+                            translationX = x
+                            translationY = y
+                            scaleX = 1.4f
+                            scaleY = 1.4f
+                            alpha = 0.85f
+                        },
             )
         }
 

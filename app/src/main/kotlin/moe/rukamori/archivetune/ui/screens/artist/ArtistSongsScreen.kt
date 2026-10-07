@@ -123,7 +123,6 @@ fun ArtistSongsScreen(
     Box(
         modifier = Modifier.fillMaxSize(),
     ) {
-
         ArtistAmbientBackdrop(
             artistId = artist?.id,
             artworkUrl = artist?.thumbnailUrl,

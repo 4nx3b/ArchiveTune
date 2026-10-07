@@ -61,7 +61,6 @@ object BiniLyricsProvider : LyricsProvider {
                 append(BASE_URL)
                 append('?')
                 if (!isrc.isNullOrBlank()) {
-
                     append("isrc=")
                     append(LyricsProviderHttp.encode(isrc.trim().uppercase(Locale.ROOT)))
                 } else {

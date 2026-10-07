@@ -684,12 +684,15 @@ fun BitChordPlayerContent(
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
+                    val heroArtRequest = remember(artUrl) {
+                        ImageRequest.Builder(context)
+                            .data(artUrl)
+                            .size(ART_PX)
+                            .build()
+                    }
                     if (!heroCanvasShowing) {
                         AsyncImage(
-                            model = ImageRequest.Builder(context)
-                                .data(artUrl)
-                                .size(ART_PX)
-                                .build(),
+                            model = heroArtRequest,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
@@ -943,13 +946,16 @@ fun BitChordPlayerContent(
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
+                        val cardArtRequest = remember(artUrl) {
+                            ImageRequest.Builder(context)
+                                .data(artUrl)
+                                .size(ART_PX)
+                                .build()
+                        }
                         if (!cardCanvasShowing) {
                             AsyncImage(
 
-                                model = ImageRequest.Builder(context)
-                                    .data(artUrl)
-                                    .size(ART_PX)
-                                    .build(),
+                                model = cardArtRequest,
                                 contentDescription = null,
 
                                 contentScale = ContentScale.Crop,

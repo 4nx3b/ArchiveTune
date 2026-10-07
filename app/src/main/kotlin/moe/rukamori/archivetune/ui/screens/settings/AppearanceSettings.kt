@@ -370,11 +370,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     val supportedHighestFps = rememberSupportedHighestFps()
     val isHighRefreshRateSupported = supportedHighestFps > HIGH_REFRESH_RATE_THRESHOLD_FPS
 
-    ApplyRefreshRate(
-        isEnabled = forceHighRefreshRate && isHighRefreshRateSupported,
-        targetFps = supportedHighestFps,
-    )
-
     var showSliderOptionDialog by rememberSaveable {
         mutableStateOf(false)
     }
@@ -1157,34 +1152,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 }
 }
 
-@Composable
-fun ApplyRefreshRate(
-    isEnabled: Boolean,
-    targetFps: Float,
-) {
-    val context = LocalContext.current
-    val view = LocalView.current
-    val activity = remember(context) { context.findActivity() }
-    val requestedFps = if (isEnabled) targetFps else DEFAULT_REFRESH_RATE_REQUEST
-
-    DisposableEffect(view, activity, requestedFps) {
-        applyRefreshRate(
-            view = view,
-            activity = activity,
-            requestedFps = requestedFps,
-        )
-
-        onDispose {
-            applyRefreshRate(
-                view = view,
-                activity = activity,
-                requestedFps = DEFAULT_REFRESH_RATE_REQUEST,
-            )
-        }
-    }
-}
-
-@Composable
 private fun rememberSupportedHighestFps(): Float {
     val view = LocalView.current
 
@@ -1197,32 +1164,6 @@ private fun rememberSupportedHighestFps(): Float {
             ?: DEFAULT_STANDARD_REFRESH_RATE_FPS
     }
 }
-
-private fun applyRefreshRate(
-    view: View,
-    activity: Activity?,
-    requestedFps: Float,
-) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-        view.setRequestedFrameRate(requestedFps)
-        return
-    }
-
-    activity?.window?.let { window ->
-        val attributes = window.attributes
-        if (attributes.preferredRefreshRate != requestedFps) {
-            attributes.preferredRefreshRate = requestedFps
-            window.attributes = attributes
-        }
-    }
-}
-
-private tailrec fun Context.findActivity(): Activity? =
-    when (this) {
-        is Activity -> this
-        is ContextWrapper -> baseContext.findActivity()
-        else -> null
-    }
 
 private const val HIGH_REFRESH_RATE_THRESHOLD_FPS = 60.5f
 private const val DEFAULT_STANDARD_REFRESH_RATE_FPS = 60f

@@ -529,7 +529,6 @@ dependencies {
     implementation(libs.liquid.glass)
 
     implementation(libs.hilt)
-    implementation(libs.re2j)
     annotationProcessor(libs.kotlin.metadata.jvm)
     ksp(libs.hilt.compiler)
     ksp(libs.kotlin.metadata.jvm)

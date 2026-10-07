@@ -159,7 +159,6 @@ fun SpatialFlowPlayerContent(
     isLoading: Boolean,
     canSkipPrevious: Boolean,
     canSkipNext: Boolean,
-    position: Long,
     duration: Long,
     playerConnection: PlayerConnection,
     navController: NavController,

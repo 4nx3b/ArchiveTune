@@ -322,7 +322,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 }
 
                 item {
-
                     SwitchPreference(
                         modifier = positions.modifierFor("navigation_bar_bitchord"),
                         title = { Text(stringResource(R.string.navigation_bar_bitchord)) },

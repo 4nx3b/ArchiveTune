@@ -174,7 +174,6 @@ fun BitChordNavBar(
                     .padding(horizontal = BitChordPillInset, vertical = BitChordPillInset)
                     .onGloballyPositioned { rowWidthPx = it.size.width.toFloat() },
         ) {
-
             if (frostedBackdrop != null) {
                 var barPositionInRoot by remember { mutableStateOf(Offset.Zero) }
                 Box(

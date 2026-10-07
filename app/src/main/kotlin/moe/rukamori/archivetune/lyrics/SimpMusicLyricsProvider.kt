@@ -41,7 +41,6 @@ object SimpMusicLyricsProvider : LyricsProvider {
         duration: Int,
     ): String? =
         withContext(Dispatchers.IO) {
-
             if (!VIDEO_ID.matches(videoId)) return@withContext null
 
             val body = LyricsProviderHttp.get("$BASE_URL$videoId") ?: return@withContext null

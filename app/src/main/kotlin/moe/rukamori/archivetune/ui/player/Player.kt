@@ -553,11 +553,13 @@ fun BottomSheetPlayer(
     val spatialFlowMiniArtworkRect =
         rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
 
-val dockFullArtworkRect = androidx.compose.runtime.mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
-val dockMiniArtworkRect = androidx.compose.runtime.mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
-val dockArtworkReporter: (androidx.compose.ui.geometry.Rect?) -> Unit = { rect ->
+val dockFullArtworkRect =
+    remember { androidx.compose.runtime.mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+val dockMiniArtworkRect =
+    remember { androidx.compose.runtime.mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+val dockArtworkReporter: (androidx.compose.ui.geometry.Rect?) -> Unit = remember(dockFullArtworkRect) { { rect ->
     dockFullArtworkRect.value = rect
-}
+} }
 
 val spatialFlowFullArtworkRect =
         rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
@@ -1352,7 +1354,6 @@ val spatialFlowFullArtworkRect =
                 }
             } else {
                 {
-
                     androidx.compose.foundation.layout.BoxWithConstraints {
                         val fallbackSide = (maxWidth - 64.dp).coerceAtLeast(200.dp)
                         val fallbackRect =
@@ -2012,7 +2013,6 @@ val spatialFlowFullArtworkRect =
                             isLoading = isLoading,
                             canSkipPrevious = canSkipPrevious,
                             canSkipNext = canSkipNext,
-                            position = position,
                             duration = duration,
                             playerConnection = playerConnection,
                             navController = navController,
@@ -2020,7 +2020,7 @@ val spatialFlowFullArtworkRect =
                             menuState = menuState,
                             bottomSheetPageState = bottomSheetPageState,
                             currentFormat = currentFormat,
-                            positionProvider = { position },
+                            positionProvider = positionProvider,
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
                             appIsDark = useDarkTheme,
@@ -2558,7 +2558,6 @@ val spatialFlowFullArtworkRect =
                             isLoading = isLoading,
                             canSkipPrevious = canSkipPrevious,
                             canSkipNext = canSkipNext,
-                            position = position,
                             duration = duration,
                             playerConnection = playerConnection,
                             navController = navController,
@@ -2566,7 +2565,7 @@ val spatialFlowFullArtworkRect =
                             menuState = menuState,
                             bottomSheetPageState = bottomSheetPageState,
                             currentFormat = currentFormat,
-                            positionProvider = { position },
+                            positionProvider = positionProvider,
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
                             appIsDark = useDarkTheme,

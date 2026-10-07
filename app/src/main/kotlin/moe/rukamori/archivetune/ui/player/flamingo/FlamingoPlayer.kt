@@ -833,7 +833,6 @@ fun FlamingoPlayerContent(
                     Row(
                         modifier = Modifier.fillMaxSize(),
                     ) {
-
                         BoxWithConstraints(
                             modifier =
                                 Modifier
@@ -908,7 +907,6 @@ fun FlamingoPlayerContent(
                                     .weight(1f)
                                     .fillMaxHeight(),
                         ) {
-
                             androidx.compose.animation.AnimatedVisibility(
                                 visible = nowPage == FlamingoPage.Lyric,
                                 enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
@@ -957,7 +955,6 @@ fun FlamingoPlayerContent(
                                 exit = fadeOut(tween(100)),
                                 modifier = Modifier.matchParentSize(),
                             ) {
-
                                 Column(
                                     modifier =
                                         Modifier
@@ -975,7 +972,6 @@ fun FlamingoPlayerContent(
                                                     onClick = pokeControls,
                                                 ),
                                     ) {
-
                                         FlamingoLandscapeTitleBlock(
                                             mediaMetadata = mediaMetadata,
                                             currentSongLiked = currentSongLiked,
@@ -1063,7 +1059,6 @@ fun FlamingoPlayerContent(
                         }
                     }
                 } else {
-
                     FlamingoWrapper {
                         Column(Modifier.fillMaxWidth()) {
                             Box(
@@ -1106,7 +1101,6 @@ fun FlamingoPlayerContent(
                                         ) {
                                             FlamingoWrapper {
                                                 Column(Modifier.fillMaxHeight(0.595f)) {
-
                                                     FlamingoAlbum(
                                                         modifier = Modifier.sharedElementWithCallerManagedVisibility(
                                                             sharedContentState = rememberSharedContentState(
@@ -1289,7 +1283,6 @@ fun FlamingoPlayerContent(
                                     .fillMaxWidth(),
                             ) {
                                 FlamingoWrapper {
-
                                     if (nowPage == FlamingoPage.Lyric) {
                                         Box(
                                             modifier = Modifier
@@ -1325,7 +1318,6 @@ fun FlamingoPlayerContent(
                                             ),
                                         ) {
                                             FlamingoWrapper {
-
                                                 if (nowPage == FlamingoPage.Lyric) {
                                                 Row(
                                                     Modifier
@@ -1339,7 +1331,6 @@ fun FlamingoPlayerContent(
                                                     horizontalArrangement = Arrangement.End,
                                                 ) {
                                                     FlamingoWrapper {
-
                                                         Box(
                                                             modifier = Modifier
                                                                 .overlayEffect()
@@ -1560,7 +1551,6 @@ private val FlamingoPopupHorizontalMargin = 16.dp
 private fun FlamingoPopupDismissScrim(
     onDismiss: () -> Unit,
 ) {
-
     Box(
         modifier =
             Modifier
@@ -2052,7 +2042,6 @@ private fun ColumnScope.FlamingoAlbum(
     }
 
     if (canvasActive) {
-
         Box(
             Modifier
                 .weight(1f)
@@ -2118,7 +2107,6 @@ private fun FlamingoLandscapeStage(
 
     Box(modifier = modifier) {
         if (fullBleed && hasCanvas) {
-
             var canvasRendering by remember(canvasPrimaryUrl, canvasFallbackUrl) {
                 mutableStateOf(false)
             }
@@ -2455,7 +2443,6 @@ private fun FlamingoPlayingList(
                 }
             }
         } else {
-
             val historyWindows =
                 remember(currentWindowIndex, queueWindows) {
                     if (currentWindowIndex in 1..queueWindows.lastIndex) {
@@ -4010,7 +3997,6 @@ private fun FlamingoQualityIndicator(
             ),
         contentAlignment = Alignment.Center,
     ) {
-
         Box(
             modifier = Modifier
                 .overlayEffect()

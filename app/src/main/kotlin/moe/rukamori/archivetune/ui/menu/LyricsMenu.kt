@@ -487,7 +487,6 @@ fun LyricsMenu(
                             isDestructive = false,
                             enabled = isTranslateEnabled && isAiTranslationEnabled && !isTranslationInProgress,
                             onClick = {
-
                                 viewModel.translateLyricsWithAi(
                                     mediaMetadata = mediaMetadataProvider(),
                                     lyrics = lyricsText,

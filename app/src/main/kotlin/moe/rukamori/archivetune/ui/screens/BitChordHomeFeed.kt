@@ -519,7 +519,6 @@ fun BitChordRecentsShelf(
 
     when (view) {
         BitChordRecentsView.LIST -> {
-
             val columns =
                 remember(songs) {
                     songs

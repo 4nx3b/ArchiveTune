@@ -1287,7 +1287,6 @@ object TidalAudioProvider {
 
                         val error = result.exceptionOrNull() ?: TidalAudioResolutionException("unknown mirror failure")
                         if (AudioSourceAttemptScope.current()?.isExpired() == true) {
-
                             errors += "${endpoint.name}: source attempt deadline exceeded"
                         } else {
                             if (error is TidalRateLimitedException) {

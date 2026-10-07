@@ -50,9 +50,17 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableBetterLyricsKey
 import moe.rukamori.archivetune.constants.EnableBetterLyricsPortatoKey
+import moe.rukamori.archivetune.constants.EnableBiniLyricsKey
+import moe.rukamori.archivetune.constants.EnableGeniusLyricsKey
 import moe.rukamori.archivetune.constants.EnableKugouKey
 import moe.rukamori.archivetune.constants.EnableLrcLibKey
+import moe.rukamori.archivetune.constants.EnableLrcRedKey
+import moe.rukamori.archivetune.constants.EnableMegalobizLyricsKey
 import moe.rukamori.archivetune.constants.EnableMusixmatchExperimentalKey
+import moe.rukamori.archivetune.constants.EnablePaxsenixAppleMusicLyricsKey
+import moe.rukamori.archivetune.constants.EnablePaxsenixMusixmatchLyricsKey
+import moe.rukamori.archivetune.constants.EnablePaxsenixSpotifyLyricsKey
+import moe.rukamori.archivetune.constants.EnableSimpMusicLyricsKey
 import moe.rukamori.archivetune.constants.EnableUnisonLyricsKey
 import moe.rukamori.archivetune.constants.EnableYouLyPlusLyricsKey
 import moe.rukamori.archivetune.constants.LyricsProviderOrderKey
@@ -90,6 +98,22 @@ fun LyricsProvidersSettings(
         rememberPreference(key = EnableYouLyPlusLyricsKey, defaultValue = true)
     val (enableUnisonLyrics, onEnableUnisonLyricsChange) =
         rememberPreference(key = EnableUnisonLyricsKey, defaultValue = true)
+    val (enableLrcRed, onEnableLrcRedChange) =
+        rememberPreference(key = EnableLrcRedKey, defaultValue = true)
+    val (enableBiniLyrics, onEnableBiniLyricsChange) =
+        rememberPreference(key = EnableBiniLyricsKey, defaultValue = true)
+    val (enableSimpMusicLyrics, onEnableSimpMusicLyricsChange) =
+        rememberPreference(key = EnableSimpMusicLyricsKey, defaultValue = true)
+    val (enableMegalobizLyrics, onEnableMegalobizLyricsChange) =
+        rememberPreference(key = EnableMegalobizLyricsKey, defaultValue = true)
+    val (enableGeniusLyrics, onEnableGeniusLyricsChange) =
+        rememberPreference(key = EnableGeniusLyricsKey, defaultValue = true)
+    val (enablePaxsenixAppleMusic, onEnablePaxsenixAppleMusicChange) =
+        rememberPreference(key = EnablePaxsenixAppleMusicLyricsKey, defaultValue = true)
+    val (enablePaxsenixSpotify, onEnablePaxsenixSpotifyChange) =
+        rememberPreference(key = EnablePaxsenixSpotifyLyricsKey, defaultValue = true)
+    val (enablePaxsenixMusixmatch, onEnablePaxsenixMusixmatchChange) =
+        rememberPreference(key = EnablePaxsenixMusixmatchLyricsKey, defaultValue = true)
     val (prioritizeWordSynced, onPrioritizeWordSyncedChange) =
         rememberPreference(key = PrioritizeWordSyncedLyricsKey, defaultValue = false)
     val (enableMusixmatchExperimental, onEnableMusixmatchExperimentalChange) =
@@ -236,6 +260,94 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enableUnisonLyrics,
                         onCheckedChange = onEnableUnisonLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_lrcred", "lrcred"),
+                        title = { Text("LrcRed") },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableLrcRed,
+                        onCheckedChange = onEnableLrcRedChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_binilyrics", "binilyrics"),
+                        title = { Text("BiniLyrics") },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableBiniLyrics,
+                        onCheckedChange = onEnableBiniLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_simpmusic_lyrics", "simpmusic_lyrics"),
+                        title = { Text("SimpMusic") },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableSimpMusicLyrics,
+                        onCheckedChange = onEnableSimpMusicLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_megalobiz_lyrics", "megalobiz_lyrics"),
+                        title = { Text("Megalobiz") },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableMegalobizLyrics,
+                        onCheckedChange = onEnableMegalobizLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_genius_lyrics", "genius_lyrics"),
+                        title = { Text("Genius") },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableGeniusLyrics,
+                        onCheckedChange = onEnableGeniusLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_paxsenix_applemusic", "paxsenix_applemusic"),
+                        title = { Text("PaxSenix (Apple Music)") },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enablePaxsenixAppleMusic,
+                        onCheckedChange = onEnablePaxsenixAppleMusicChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_paxsenix_spotify", "paxsenix_spotify"),
+                        title = { Text("PaxSenix (Spotify)") },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enablePaxsenixSpotify,
+                        onCheckedChange = onEnablePaxsenixSpotifyChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_paxsenix_musixmatch", "paxsenix_musixmatch"),
+                        title = { Text("PaxSenix (Musixmatch)") },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enablePaxsenixMusixmatch,
+                        onCheckedChange = onEnablePaxsenixMusixmatchChange,
                         isEnabled = providerTogglesEnabled,
                     )
                 }

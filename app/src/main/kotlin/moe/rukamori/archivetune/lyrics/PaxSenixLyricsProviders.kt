@@ -195,7 +195,6 @@ internal object PaxSenixApi {
     }
 
     private suspend fun appleToken(): String? {
-
         AppleMusicProvider.devTokenProvider?.invoke()?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
         return cachedAppleToken.get() ?: tokenMutex.withLock {
             cachedAppleToken.get() ?: scrapeAppleToken()?.also { cachedAppleToken.set(it) }
