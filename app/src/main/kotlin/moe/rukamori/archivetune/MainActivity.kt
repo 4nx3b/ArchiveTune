@@ -308,6 +308,7 @@ import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.ThrottledLayerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberThrottledLayerBackdrop
 import moe.rukamori.archivetune.ui.component.throttledLayerBackdrop
+import moe.rukamori.archivetune.ui.component.iosOverscroll
 import moe.rukamori.archivetune.ui.component.GlassPipelinePrewarm
 import moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
@@ -3448,22 +3449,25 @@ class MainActivity : ComponentActivity() {
                                                             navBarFrostedBackdrop.contentOffsetInRoot =
                                                                 coordinates.positionInRoot()
                                                         }.drawWithContent {
-                                                            val now = SystemClock.uptimeMillis()
-                                                            if (now - frostedRecordClock[0] >= 100L) {
-                                                                frostedRecordClock[0] = now
-
-                                                                val recorded =
-                                                                    runCatching {
-                                                                        navBarFrostedBackdrop.layer.record {
-                                                                            this@drawWithContent.drawContent()
-                                                                        }
-                                                                    }.isSuccess
-                                                                if (recorded) {
-                                                                    runCatching {
-                                                                        drawLayer(navBarFrostedBackdrop.layer)
+                                                            // Recorded EVERY frame now (2026-10-08: "make
+                                                            // sure the content don't tear up like they do
+                                                            // now"): the old 100ms throttle replayed stale
+                                                            // snapshots under the frosted bar while the
+                                                            // content scrolled — the visible tearing.
+                                                            // drawWithContent already runs once per frame,
+                                                            // so recording unconditionally is the same
+                                                            // work the un-throttled kyant backdrop does.
+                                                            val recorded =
+                                                                runCatching {
+                                                                    navBarFrostedBackdrop.layer.record {
+                                                                        this@drawWithContent.drawContent()
                                                                     }
-                                                                    return@drawWithContent
+                                                                }.isSuccess
+                                                            if (recorded) {
+                                                                runCatching {
+                                                                    drawLayer(navBarFrostedBackdrop.layer)
                                                                 }
+                                                                return@drawWithContent
                                                             }
 
                                                             drawContent()
@@ -3489,6 +3493,17 @@ class MainActivity : ComponentActivity() {
                                                 topAppBarScrollBehavior.nestedScrollConnection,
                                             ).nestedScroll(
                                                 navBarScrollHideConnection,
+                                            ).then(
+                                                // UIKit-style overscroll (2026-10-08 BitChord
+                                                // port): one hook around the whole NavHost gives
+                                                // every screen's lists the rubber band + spring
+                                                // settle; pull-to-refresh sits closer to its list
+                                                // and still consumes first.
+                                                if (!isTvDevice) {
+                                                    Modifier.iosOverscroll()
+                                                } else {
+                                                    Modifier
+                                                },
                                             ),
                                 ) {
                                     navigationBuilder(

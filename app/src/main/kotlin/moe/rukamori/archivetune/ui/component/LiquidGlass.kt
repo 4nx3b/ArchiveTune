@@ -241,7 +241,7 @@ fun rememberLiquidGlassTuning(): LiquidGlassTuning {
     }
 }
 
-internal const val ThrottledLayerBackdropDefaultIntervalMillis = 100L
+internal const val ThrottledLayerBackdropDefaultIntervalMillis = 32L
 
 private val liveRecorderBackdrops =
     java.util.Collections.synchronizedMap(
