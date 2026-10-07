@@ -256,6 +256,9 @@ val EnableYouLyPlusLyricsKey = booleanPreferencesKey("enableYouLyPlusLyrics")
 
 val EnableMegalobizLyricsKey = booleanPreferencesKey("enableMegalobizLyrics")
 val EnableBiniLyricsKey = booleanPreferencesKey("enableBiniLyrics")
+val EnableLrcRedKey = booleanPreferencesKey("enableLrcRed")
+val EnableSimpMusicLyricsKey = booleanPreferencesKey("enableSimpMusicLyrics")
+val EnableGeniusLyricsKey = booleanPreferencesKey("enableGeniusLyrics")
 
 val PaxsenixApiKeyKey = stringPreferencesKey("paxsenixApiKey")
 val PaxsenixEndpointKey = stringPreferencesKey("paxsenixEndpoint")
@@ -867,28 +870,51 @@ enum class QuickPicks {
 }
 
 enum class PreferredLyricsProvider {
+    LRC_RED,
+    BINI_LYRICS,
     BETTER_LYRICS,
     BETTER_LYRICS_PORTATO,
+    PAXSENIX,
+    PAXSENIX_SPOTIFY,
+    PAXSENIX_MUSIXMATCH,
     YOULY_PLUS,
-    LRCLIB,
-    KUGOU,
+    SIMP_MUSIC,
 
     UNISON,
 
+    LRCLIB,
+    KUGOU,
+    MEGALOBIZ,
+
     APPLE_MUSIC,
     MUSIXMATCH_EXPERIMENTAL,
+    GENIUS,
 }
 
 val DefaultLyricsProviderOrder =
     listOf(
+        PreferredLyricsProvider.LRC_RED,
+        PreferredLyricsProvider.BINI_LYRICS,
         PreferredLyricsProvider.BETTER_LYRICS,
         PreferredLyricsProvider.BETTER_LYRICS_PORTATO,
+        PreferredLyricsProvider.PAXSENIX,
+        PreferredLyricsProvider.PAXSENIX_SPOTIFY,
+        PreferredLyricsProvider.PAXSENIX_MUSIXMATCH,
         PreferredLyricsProvider.YOULY_PLUS,
+        PreferredLyricsProvider.SIMP_MUSIC,
+
+        PreferredLyricsProvider.UNISON,
+
         PreferredLyricsProvider.LRCLIB,
         PreferredLyricsProvider.KUGOU,
-        PreferredLyricsProvider.UNISON,
+        PreferredLyricsProvider.MEGALOBIZ,
+
         PreferredLyricsProvider.APPLE_MUSIC,
         PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL,
+
+        // Plain text, no sync, and a whole song page per lookup: last, so it
+        // only answers when every timed source has missed.
+        PreferredLyricsProvider.GENIUS,
     )
 
 fun deserializeLyricsProviderOrder(orderStr: String?): List<PreferredLyricsProvider> {
