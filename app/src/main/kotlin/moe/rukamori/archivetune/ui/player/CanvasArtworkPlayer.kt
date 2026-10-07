@@ -11,7 +11,6 @@ package moe.rukamori.archivetune.ui.player
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -21,8 +20,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
@@ -507,68 +504,22 @@ fun CanvasArtworkPlayer(
         label = "canvasAlpha",
     )
 
-    val aspect = videoDisplayAspectRatio
     if (effectiveContentVisible) {
-        if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM) {
-            // Cover-crop WITHOUT an oversized interop layout node.
-            //
-            // The old approach (ContentScale.Crop + the manual canvasCoverLayout
-            // layout modifier) measured the AndroidView (TextureView interop
-            // node) LARGER than its container and placed it at negative offsets
-            // — a portrait 720x1280 canvas in a ~411x386dp artwork stage
-            // produced a ~411x730dp node extending ~170dp past the stage into
-            // the title-row band below. That oversized interop node participates
-            // in pointer hit-testing wherever it is PLACED (speculative /
-            // out-of-bounds child hits), and it is why the album page's
-            // like/overflow chips sat dead while the canvas-free queue page
-            // worked (user report 2026-10-07). It also let the video overlap
-            // neighbouring panes whenever the OEM ROM's TextureView interop
-            // escapes Compose layer clipping.
-            //
-            // Now the surface node stays at its FIT size — always inside the
-            // container — and the cover-crop is a plain graphicsLayer scale on
-            // the ContentFrame: s = max(a/c, c/a). The parent clipToBounds()
-            // keeps the drawing confined to the stage, and the interop hit
-            // region never leaves the artwork stage.
-            Box(modifier = modifier.clipToBounds()) {
-                ContentFrame(
-                    player = exoPlayer,
-                    surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-                    contentScale = ContentScale.Fit,
-                    keepContentOnReset = false,
-                    shutter = {},
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .alpha(alpha)
-                            .graphicsLayer {
-                                val videoAspect = aspect
-                                if (videoAspect != null && videoAspect > 0f &&
-                                    size.width > 0f && size.height > 0f
-                                ) {
-                                    val containerAspect = size.width / size.height
-                                    val coverScale =
-                                        if (videoAspect >= containerAspect) {
-                                            videoAspect / containerAspect
-                                        } else {
-                                            containerAspect / videoAspect
-                                        }
-                                    scaleX = coverScale
-                                    scaleY = coverScale
-                                }
-                            },
-                )
-            }
-        } else {
-            ContentFrame(
-                player = exoPlayer,
-                surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-                contentScale = resizeMode.toContentScale(),
-                keepContentOnReset = false,
-                shutter = {},
-                modifier = modifier.alpha(alpha),
-            )
-        }
+        // Plain media3 ContentFrame with the content scale derived from the
+        // resize mode — the long-proven form (pre-2026-09-21 main branch)
+        // that rendered the canvas correctly positioned on every tested
+        // device. The two later rewrites (canvasCoverLayout oversized node,
+        // and FIT-surface + graphicsLayer cover-scale) each broke rendering
+        // or hit-testing on OEM TextureView interop, and are deliberately
+        // NOT restored.
+        ContentFrame(
+            player = exoPlayer,
+            surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+            contentScale = resizeMode.toContentScale(),
+            keepContentOnReset = false,
+            shutter = {},
+            modifier = modifier.alpha(alpha),
+        )
     }
 }
 
