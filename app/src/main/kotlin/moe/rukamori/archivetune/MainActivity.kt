@@ -1786,16 +1786,42 @@ class MainActivity : ComponentActivity() {
                             shouldShowNavigationBar,
                             playerBottomSheetState.isDismissed,
                             effectiveStatusBarTop,
+                            // Animated so the content inset tracks the compacting
+                            // bottom UI frame-by-frame (see the miniplayer branch).
+                            bottomUiCompactFractionState.value,
                         ) {
                             var bottom = bottomInset
                             if (!useRail) {
                                 bottom += floatingBarsBottomPadding
                             }
-                            if (shouldShowNavigationBar && !useRail) {
-                                bottom += getBottomNavPadding()
-                            }
                             if (!playerBottomSheetState.isDismissed) {
-                                bottom += MiniPlayerHeight + MiniPlayerBottomSpacing
+                                if (shouldShowNavigationBar && !useRail) {
+                                    // COMPACT-AWARE BOTTOM STACK (2026-10-08:
+                                    // "There's empty space between Mini Compact
+                                    // mini player and search bar in search tab
+                                    // when I've turned off keyboard"): when the
+                                    // nav bar slides away, the compact pill and
+                                    // the control circles share the old nav area
+                                    // and the whole stack shrinks from
+                                    // nav + spacing + mini (full) down to
+                                    // (nav + miniCompact) / 2 — the content
+                                    // bottom inset follows that collapse instead
+                                    // of reserving the full-height stack.
+                                    val fullStack =
+                                        navVisibleHeight + MiniPlayerBottomSpacing + MiniPlayerHeight
+                                    val compactStack =
+                                        (navVisibleHeight + MiniPlayerCompactHeight) / 2
+                                    bottom +=
+                                        androidx.compose.ui.unit.lerp(
+                                            fullStack,
+                                            compactStack,
+                                            bottomUiCompactFractionState.value,
+                                        )
+                                } else {
+                                    bottom += MiniPlayerHeight + MiniPlayerBottomSpacing
+                                }
+                            } else if (shouldShowNavigationBar && !useRail) {
+                                bottom += getBottomNavPadding()
                             }
                             effectiveWindowsInsets
                                 .only(
@@ -2151,6 +2177,11 @@ class MainActivity : ComponentActivity() {
                         }
                     val haptic = LocalHapticFeedback.current
                     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
+
+                    // The Library route's reveal-on-upward-swipe title state (driven
+                    // by LibraryScreen's nestedScroll connection, consumed by the
+                    // top-bar title).
+                    val libraryTitleRevealState = remember { mutableStateOf(false) }
                     val customHaptic =
                         remember(haptic, enableHapticFeedback) {
                             object : HapticFeedback {
@@ -2172,6 +2203,7 @@ class MainActivity : ComponentActivity() {
                         LocalPlayerConnection provides playerConnection,
                         LocalListenTogetherManager provides listenTogetherManager,
                         LocalPlayerAwareWindowInsets provides playerAwareWindowInsets,
+                        moe.rukamori.archivetune.ui.screens.library.LocalLibraryTitleReveal provides libraryTitleRevealState,
                         LocalStableSystemBarsTopPadding provides effectiveStatusBarTop,
                         LocalDownloadUtil provides downloadUtil,
                         LocalShimmerTheme provides ShimmerTheme,
@@ -2405,6 +2437,26 @@ class MainActivity : ComponentActivity() {
                                         val isLibraryRoute = navBackStackEntry?.destination?.route == Screens.Library.route
                                         val isHomeRoute = navBackStackEntry?.destination?.route == Screens.Home.route
                                         val isSearchRoute = navBackStackEntry?.destination?.route == Screens.Search.route
+
+                                        // The Library route's big title reveals only on upward
+                                        // swipes (LibraryScreen's nestedScroll connection
+                                        // drives this state; reset when leaving the route).
+                                        LaunchedEffect(isLibraryRoute) {
+                                            if (!isLibraryRoute) {
+                                                libraryTitleRevealState.value = false
+                                            }
+                                        }
+                                        val libraryTitleRevealed by libraryTitleRevealState
+                                        val libraryTitleAlpha by animateFloatAsState(
+                                            targetValue = if (isLibraryRoute && libraryTitleRevealed) 1f else 0f,
+                                            animationSpec = tween(220),
+                                            label = "libraryTitleAlpha",
+                                        )
+                                        val libraryTitleSlideFraction by animateFloatAsState(
+                                            targetValue = if (isLibraryRoute && libraryTitleRevealed) 1f else 0f,
+                                            animationSpec = tween(220),
+                                            label = "libraryTitleSlide",
+                                        )
                                         val homeBarScrolled by remember(isHomeRoute) {
                                             derivedStateOf {
                                                 homeScrollBehavior.state.collapsedFraction > 0.05f
@@ -2591,7 +2643,17 @@ class MainActivity : ComponentActivity() {
                                                 title = {
                                                     if (isLibraryRoute) {
                                                         Box(
-                                                            modifier = Modifier.fillMaxWidth(),
+                                                            modifier =
+                                                                Modifier
+                                                                    .fillMaxWidth()
+                                                                    .graphicsLayer {
+                                                                        // Revealed only by swiping upward inside the
+                                                                        // library list (2026-10-08); slides down +
+                                                                        // fades otherwise.
+                                                                        alpha = libraryTitleAlpha
+                                                                        translationY =
+                                                                            (1f - libraryTitleSlideFraction) * -32.dp.toPx()
+                                                                    },
                                                             contentAlignment = Alignment.Center,
                                                         ) {
                                                             Text(

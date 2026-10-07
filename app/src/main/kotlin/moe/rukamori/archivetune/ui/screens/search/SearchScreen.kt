@@ -87,6 +87,30 @@ import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.viewmodels.SearchHistoryViewModel
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.Dp
+import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.constants.HideExplicitKey
+import moe.rukamori.archivetune.constants.HideVideoKey
+import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.innertube.models.AlbumItem
+import moe.rukamori.archivetune.innertube.models.ArtistItem
+import moe.rukamori.archivetune.innertube.models.PlaylistItem
+import moe.rukamori.archivetune.innertube.models.SearchSuggestions
+import moe.rukamori.archivetune.innertube.models.SongItem
+import moe.rukamori.archivetune.innertube.models.WatchEndpoint
+import moe.rukamori.archivetune.innertube.models.YTItem
+import moe.rukamori.archivetune.innertube.models.filterExplicit
+import moe.rukamori.archivetune.innertube.models.filterVideo
+import moe.rukamori.archivetune.innertube.pages.SearchSummaryPage
+import moe.rukamori.archivetune.models.toMediaMetadata
+import moe.rukamori.archivetune.playback.PlayerConnection
+import moe.rukamori.archivetune.playback.queues.YouTubeQueue
+import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -104,6 +128,53 @@ fun SearchScreen(
 ) {
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var searchProvider by rememberEnumPreference(DefaultSearchSourceKey, SearchProvider.YOUTUBE)
+
+    // ---- Live suggestions with thumbnails (2026-10-08: "I should see
+    // suggestion as soon as I type in the search bar in search page along
+    // with its thumbnails (it should support all kinds of search
+    // categories)") ----
+    var liveSuggestions by remember { mutableStateOf<SearchSuggestions?>(null) }
+    var liveSummary by remember { mutableStateOf<SearchSummaryPage?>(null) }
+    val (hideExplicit) = rememberPreference(HideExplicitKey, defaultValue = false)
+    val (hideVideo) = rememberPreference(HideVideoKey, defaultValue = false)
+    LaunchedEffect(searchQuery, searchProvider, hideExplicit, hideVideo) {
+        val query = searchQuery.trim()
+        if (query.isEmpty()) {
+            liveSuggestions = null
+            liveSummary = null
+            return@LaunchedEffect
+        }
+        // Debounce so every keystroke doesn't fire a request pair.
+        delay(250)
+        if (searchQuery.trim() != query) return@LaunchedEffect
+
+        YouTube
+            .searchSuggestions(query)
+            .onSuccess { page ->
+                if (searchQuery.trim() == query) {
+                    liveSuggestions =
+                        SearchSuggestions(
+                            queries = page.queries,
+                            recommendedItems =
+                                page.recommendedItems
+                                    .filterExplicit(hideExplicit)
+                                    .filterVideo(hideVideo),
+                        )
+                }
+            }
+        if (searchProvider == SearchProvider.YOUTUBE) {
+            YouTube
+                .searchSummary(query)
+                .onSuccess { page ->
+                    if (searchQuery.trim() == query) {
+                        liveSummary =
+                            page
+                                .filterExplicit(hideExplicit)
+                                .filterVideo(hideVideo)
+                    }
+                }
+        }
+    }
 
     val onSearchSourceSelection: (SearchSource, SearchProvider) -> Unit = { _, provider ->
         searchProvider = provider
@@ -173,12 +244,25 @@ fun SearchScreen(
                             .padding(bottom = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    RecentSearchesPanel(
-                        recentSearches = recentSearches,
-                        maxHeight = recentsMaxHeight,
-                        onClearAll = historyViewModel::clearAll,
-                        onPick = onSearchQuery,
-                    )
+                    if (searchQuery.isNotBlank()) {
+                        LiveSearchSuggestionsPanel(
+                            suggestions = liveSuggestions,
+                            summary = liveSummary,
+                            maxHeight = recentsMaxHeight,
+                            navController = navController,
+                            onQueryPick = { picked ->
+                                searchQuery = picked
+                                onSearchQuery(picked)
+                            },
+                        )
+                    } else {
+                        RecentSearchesPanel(
+                            recentSearches = recentSearches,
+                            maxHeight = recentsMaxHeight,
+                            onClearAll = historyViewModel::clearAll,
+                            onPick = onSearchQuery,
+                        )
+                    }
 
                     Spacer(Modifier.height(10.dp))
 
@@ -294,6 +378,190 @@ private fun RecentSearchesPanel(
             }
         }
     }
+}
+
+/**
+ * Live suggestions shown while typing on the search tab (2026-10-08):
+ * text-query rows on top, then categorized results with thumbnails
+ * (top result / songs / artists / albums / playlists / videos …) from the
+ * YouTube search summary; falls back to the suggestion engine's recommended
+ * items when no summary is available. Tapping a query runs the search;
+ * tapping an item plays/navigates exactly like the results screen.
+ */
+@Composable
+private fun LiveSearchSuggestionsPanel(
+    suggestions: SearchSuggestions?,
+    summary: SearchSummaryPage?,
+    maxHeight: Dp,
+    navController: NavController,
+    onQueryPick: (String) -> Unit,
+) {
+    val playerConnection = LocalPlayerConnection.current ?: return
+    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
+    val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
+    val haptic = LocalHapticFeedback.current
+
+    val queries = suggestions?.queries.orEmpty()
+    val summarySections =
+        summary?.summaries.orEmpty().filter { it.items.isNotEmpty() }
+    val fallbackItems =
+        if (summarySections.isEmpty()) suggestions?.recommendedItems.orEmpty() else emptyList()
+
+    if (queries.isEmpty() && summarySections.isEmpty() && fallbackItems.isEmpty()) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = maxHeight),
+        )
+        return
+    }
+
+    LazyColumn(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = maxHeight),
+    ) {
+        items(
+            count = queries.size,
+            contentType = { 1 },
+        ) { index ->
+            val query = queries[index]
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            onClick = { onQueryPick(query) },
+                            onLongClick = {},
+                        )
+                        .padding(horizontal = SearchHorizontalPadding, vertical = 10.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.search),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = query,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        if (summarySections.isNotEmpty()) {
+            summarySections.forEach { section ->
+                item(key = "summary_header_${section.title}") {
+                    Text(
+                        text = section.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    start = SearchHorizontalPadding,
+                                    end = SearchHorizontalPadding,
+                                    top = 14.dp,
+                                    bottom = 4.dp,
+                                ),
+                    )
+                }
+                items(
+                    items = section.items,
+                    key = { it.id },
+                    contentType = { 2 },
+                ) { item ->
+                    SuggestedResultRow(
+                        item = item,
+                        currentMediaId = mediaMetadata?.id,
+                        currentAlbumId = mediaMetadata?.album?.id,
+                        isPlaying = isPlaying,
+                        navController = navController,
+                        playerConnection = playerConnection,
+                        haptic = haptic,
+                    )
+                }
+            }
+        } else if (fallbackItems.isNotEmpty()) {
+            items(
+                items = fallbackItems,
+                key = { it.id },
+                contentType = { 2 },
+            ) { item ->
+                SuggestedResultRow(
+                    item = item,
+                    currentMediaId = mediaMetadata?.id,
+                    currentAlbumId = mediaMetadata?.album?.id,
+                    isPlaying = isPlaying,
+                    navController = navController,
+                    playerConnection = playerConnection,
+                    haptic = haptic,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SuggestedResultRow(
+    item: YTItem,
+    currentMediaId: String?,
+    currentAlbumId: String?,
+    isPlaying: Boolean,
+    navController: NavController,
+    playerConnection: PlayerConnection,
+    haptic: HapticFeedback,
+) {
+    YouTubeListItem(
+        item = item,
+        isActive =
+            when (item) {
+                is SongItem -> currentMediaId == item.id
+                is AlbumItem -> currentAlbumId == item.id
+                else -> false
+            },
+        isPlaying = isPlaying,
+        isSwipeable = false,
+        modifier =
+            Modifier.combinedClickable(
+                onClick = {
+                    when (item) {
+                        is SongItem -> {
+                            if (item.id == currentMediaId) {
+                                playerConnection.player.togglePlayPause()
+                            } else {
+                                playerConnection.playQueue(
+                                    YouTubeQueue(
+                                        item.endpoint ?: WatchEndpoint(videoId = item.id),
+                                        item.toMediaMetadata(),
+                                    ),
+                                )
+                            }
+                        }
+
+                        is AlbumItem -> navController.navigate("album/${item.id}")
+
+                        is ArtistItem -> navController.navigate("artist/${item.id}")
+
+                        is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
+
+                        else -> {}
+                    }
+                },
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                },
+            ),
+    )
 }
 
 @Composable
