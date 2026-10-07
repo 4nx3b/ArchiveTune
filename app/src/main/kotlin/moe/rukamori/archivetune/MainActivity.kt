@@ -984,6 +984,10 @@ class MainActivity : ComponentActivity() {
                 LiquidGlassNavBarEnabledKey,
                 defaultValue = false,
             )
+            val navigationBarBitchord by rememberPreference(
+                moe.rukamori.archivetune.constants.NavigationBarBitchordKey,
+                defaultValue = false,
+            )
 
             val liquidGlassTuning = rememberLiquidGlassTuning()
 
@@ -1477,6 +1481,7 @@ class MainActivity : ComponentActivity() {
                     val anyFrostedConsumerActive =
                         navigationBarFrostedBlur ||
                             navigationBarTintFrostedBlur ||
+                            navigationBarBitchord ||
                             miniPlayerBgStyle == MiniPlayerBackgroundStyle.FROSTED
                     val navBarFrostedBackdrop =
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && anyFrostedConsumerActive) {
@@ -3157,6 +3162,45 @@ class MainActivity : ComponentActivity() {
                                                         alpha = 1f - bottomUiCompactFractionState.value * 0.9f
                                                     },
                                         ) {
+                                            if (navigationBarBitchord) {
+                                                // ---- BitChord navigation bar (2026-10-08):
+                                                // "add an option in navigation bar style named
+                                                // enable Bitchord Navigation bar" — hosted in the
+                                                // same slide/hide box so compact behaviour is
+                                                // unchanged. ----
+                                                moe.rukamori.archivetune.ui.component.BitChordNavBar(
+                                                    barHeight = navVisibleHeight,
+                                                    selectedRoute =
+                                                        navBackStackEntry?.destination?.route,
+                                                    onRouteSelected = { route ->
+                                                        navigationItems
+                                                            .firstOrNull { it.route == route }
+                                                            ?.let { screen ->
+                                                                val isSelected =
+                                                                    navBackStackEntry?.destination?.hierarchy
+                                                                        ?.any { it.route == screen.route } == true
+                                                                handlePrimaryNavigationClick(screen, isSelected)
+                                                            }
+                                                    },
+                                                    itemCount = navigationItems.size,
+                                                    itemRoute = { navigationItems[it].route },
+                                                    itemLabel = { androidx.compose.ui.res.stringResource(navigationItems[it].titleId) },
+                                                    itemIcon = { index ->
+                                                        when (navigationItems[index].route) {
+                                                            "home" -> moe.rukamori.archivetune.ui.component.BitChordHomeIcon
+                                                            "search" -> moe.rukamori.archivetune.ui.component.BitChordSearchIcon
+                                                            else -> moe.rukamori.archivetune.ui.component.BitChordLibraryIcon
+                                                        }
+                                                    },
+                                                    modifier =
+                                                        Modifier
+                                                            .align(Alignment.BottomCenter)
+                                                            .padding(
+                                                                bottom = bottomInset + floatingBarsBottomPadding,
+                                                            ),
+                                                    frostedBackdrop = navBarFrostedBackdrop,
+                                                )
+                                            } else {
                                             FloatingNavigationToolbar(
                                                 items = navigationItems,
                                                 pureBlack = pureBlack,
@@ -3187,6 +3231,7 @@ class MainActivity : ComponentActivity() {
                                                     openSearch()
                                                 },
                                             )
+                                            }
                                         }
                                         }
 

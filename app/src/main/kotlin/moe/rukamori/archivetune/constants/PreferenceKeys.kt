@@ -121,6 +121,7 @@ val MiniPlayerBackgroundStyleKey = stringPreferencesKey("miniPlayerBackgroundSty
 
 val LiquidGlassEnabledKey = booleanPreferencesKey("liquidGlassEnabled")
 val LiquidGlassNavBarEnabledKey = booleanPreferencesKey("liquidGlassNavBarEnabled")
+val NavigationBarBitchordKey = booleanPreferencesKey("navigationBarBitchord")
 
 enum class LiquidGlassIntensity { SUBTLE, STANDARD, VIVID }
 

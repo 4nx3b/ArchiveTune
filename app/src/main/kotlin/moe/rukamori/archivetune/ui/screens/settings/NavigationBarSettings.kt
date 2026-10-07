@@ -82,6 +82,7 @@ import moe.rukamori.archivetune.constants.NavigationBarCompactBehavior
 import moe.rukamori.archivetune.constants.NavigationBarCompactBehaviorKey
 import moe.rukamori.archivetune.constants.NavigationBarCornerRadiusKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
+import moe.rukamori.archivetune.constants.NavigationBarBitchordKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.LiquidGlassNavBarEnabledKey
 import moe.rukamori.archivetune.ui.component.NavigationBarGlassGlowKey
@@ -135,16 +136,42 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
             defaultValue = NAVIGATION_BAR_GLASS_GLOW_INTENSITY_DEFAULT,
         )
 
+    val (navigationBarBitchord, onNavigationBarBitchordChange) =
+        rememberPreference(NavigationBarBitchordKey, defaultValue = false)
+
+    // Turning on ANY navigation bar type turns every other type off
+    // (2026-10-08: "whenever I turn on any type of navigation bar all the
+    // other types should turn off automatically").
     val onFrostedBlurChange: (Boolean) -> Unit = { checked ->
         onNavigationBarFrostedBlurChange(checked)
-        if (checked && navigationBarTintFrostedBlur) {
-            onNavigationBarTintFrostedBlurChange(false)
+        if (checked) {
+            if (navigationBarTintFrostedBlur) onNavigationBarTintFrostedBlurChange(false)
+            if (navigationBarBitchord) onNavigationBarBitchordChange(false)
+            if (liquidGlassNavBarEnabled) onLiquidGlassNavBarEnabledChange(false)
         }
     }
     val onTintFrostedBlurChange: (Boolean) -> Unit = { checked ->
         onNavigationBarTintFrostedBlurChange(checked)
-        if (checked && navigationBarFrostedBlur) {
-            onNavigationBarFrostedBlurChange(false)
+        if (checked) {
+            if (navigationBarFrostedBlur) onNavigationBarFrostedBlurChange(false)
+            if (navigationBarBitchord) onNavigationBarBitchordChange(false)
+            if (liquidGlassNavBarEnabled) onLiquidGlassNavBarEnabledChange(false)
+        }
+    }
+    val onLiquidGlassNavBarChange: (Boolean) -> Unit = { checked ->
+        onLiquidGlassNavBarEnabledChange(checked)
+        if (checked) {
+            if (navigationBarFrostedBlur) onNavigationBarFrostedBlurChange(false)
+            if (navigationBarTintFrostedBlur) onNavigationBarTintFrostedBlurChange(false)
+            if (navigationBarBitchord) onNavigationBarBitchordChange(false)
+        }
+    }
+    val onBitchordChange: (Boolean) -> Unit = { checked ->
+        onNavigationBarBitchordChange(checked)
+        if (checked) {
+            if (navigationBarFrostedBlur) onNavigationBarFrostedBlurChange(false)
+            if (navigationBarTintFrostedBlur) onNavigationBarTintFrostedBlurChange(false)
+            if (liquidGlassNavBarEnabled) onLiquidGlassNavBarEnabledChange(false)
         }
     }
     val (hideNavigationBarLabels, onHideNavigationBarLabelsChange) =
@@ -293,7 +320,22 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         checked = liquidGlassNavBarEnabled,
 
                         isEnabled = liquidGlassEnabled && supported,
-                        onCheckedChange = onLiquidGlassNavBarEnabledChange,
+                        onCheckedChange = onLiquidGlassNavBarChange,
+                    )
+                }
+
+                item {
+                    // BitChord navigation bar (2026-10-08: "add an option in
+                    // navigation bar style named enable Bitchord Navigation
+                    // bar") — the ported frosted-pill bar with the travelling
+                    // stretch-squash selection pill.
+                    SwitchPreference(
+                        modifier = positions.modifierFor("navigation_bar_bitchord"),
+                        title = { Text(stringResource(R.string.navigation_bar_bitchord)) },
+                        description = stringResource(R.string.navigation_bar_bitchord_desc),
+                        icon = { Icon(painterResource(R.drawable.grid_view), null) },
+                        checked = navigationBarBitchord,
+                        onCheckedChange = onBitchordChange,
                     )
                 }
 
