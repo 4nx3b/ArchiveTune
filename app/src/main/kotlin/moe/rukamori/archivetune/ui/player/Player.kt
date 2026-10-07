@@ -552,7 +552,19 @@ fun BottomSheetPlayer(
 
     val spatialFlowMiniArtworkRect =
         rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
-    val spatialFlowFullArtworkRect =
+    // The generic player->miniplayer artwork flight (2026-10-08 BitChord
+// port): every style except SPATIALFLOW (which keeps its own richer
+// floating-artwork morph) renders PlayerDockingArtwork from the sheet's
+// sharedLayer; player styles report their artwork bounds through
+// LocalPlayerDockArtwork (dockArtworkAnchor), the miniplayer reports its
+// artwork slot below.
+val dockFullArtworkRect = androidx.compose.runtime.mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
+val dockMiniArtworkRect = androidx.compose.runtime.mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
+val dockArtworkReporter: (androidx.compose.ui.geometry.Rect?) -> Unit = { rect ->
+    dockFullArtworkRect.value = rect
+}
+
+val spatialFlowFullArtworkRect =
         rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
     var spatialFlowPagerArtworkActive by remember { mutableStateOf(true) }
 
@@ -1344,7 +1356,30 @@ fun BottomSheetPlayer(
                     }
                 }
             } else {
-                null
+                {
+                    // The BitChord-style flying thumbnail: only visible while
+                    // the sheet travels (never intercepts touches), landing on
+                    // the miniplayer cover. Styles that report no artwork rect
+                    // get a centered-square fallback estimate.
+                    androidx.compose.foundation.layout.BoxWithConstraints {
+                        val fallbackSide = (maxWidth - 64.dp).coerceAtLeast(200.dp)
+                        val fallbackRect =
+                            androidx.compose.ui.geometry.Rect(
+                                left = (maxWidth - fallbackSide) / 2f,
+                                top = 24.dp,
+                                right = (maxWidth + fallbackSide) / 2f,
+                                bottom = 24.dp + fallbackSide,
+                            )
+                        enrichedMetadata?.let { metadata ->
+                            PlayerDockingArtwork(
+                                sheetProgress = state.progress.coerceIn(0f, 1f),
+                                fullArtworkRect = dockFullArtworkRect.value ?: fallbackRect,
+                                miniArtworkRect = dockMiniArtworkRect.value,
+                                artworkUrl = metadata.thumbnailUrl?.highRes(),
+                            )
+                        }
+                    }
+                }
             },
         collapsedContent = {
             MiniPlayer(
@@ -1359,10 +1394,14 @@ fun BottomSheetPlayer(
                     if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
                         spatialFlowMiniArtworkRect.value = rect
                     }
+                    dockMiniArtworkRect.value = rect
                 },
             )
         },
     ) {
+        androidx.compose.runtime.CompositionLocalProvider(
+            LocalPlayerDockArtwork provides dockArtworkReporter,
+        ) {
         val onSliderValueChange: (Long) -> Unit = {
             isUserSeeking = true
             sliderPosition = it
@@ -2888,6 +2927,7 @@ fun BottomSheetPlayer(
                 }
             }
         }
+        }  // CompositionLocalProvider(LocalPlayerDockArtwork) wrapper
     }
     }
     }

@@ -329,7 +329,9 @@ fun Thumbnail(
     var seekDirection by remember { mutableStateOf("") }
     val layoutDirection = LocalLayoutDirection.current
 
-    Box(modifier = modifier) {
+    // Reports the artwork bounds for the player-to-miniplayer thumbnail
+    // flight (2026-10-08 BitChord port); a no-op outside the player sheet.
+    Box(modifier = modifier.dockArtworkAnchor()) {
         Column(
             modifier =
                 Modifier
