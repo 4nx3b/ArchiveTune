@@ -1364,12 +1364,17 @@ val spatialFlowFullArtworkRect =
                     androidx.compose.foundation.layout.BoxWithConstraints {
                         val fallbackSide = (maxWidth - 64.dp).coerceAtLeast(200.dp)
                         val fallbackRect =
-                            androidx.compose.ui.geometry.Rect(
-                                left = (maxWidth - fallbackSide) / 2f,
-                                top = 24.dp,
-                                right = (maxWidth + fallbackSide) / 2f,
-                                bottom = 24.dp + fallbackSide,
-                            )
+                            with(androidx.compose.ui.platform.LocalDensity.current) {
+                                val sidePx = fallbackSide.toPx()
+                                val topPx = 24.dp.toPx()
+                                val widthPx = maxWidth.toPx()
+                                androidx.compose.ui.geometry.Rect(
+                                    left = (widthPx - sidePx) / 2f,
+                                    top = topPx,
+                                    right = (widthPx + sidePx) / 2f,
+                                    bottom = topPx + sidePx,
+                                )
+                            }
                         enrichedMetadata?.let { metadata ->
                             PlayerDockingArtwork(
                                 sheetProgress = state.progress.coerceIn(0f, 1f),

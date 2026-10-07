@@ -20,7 +20,6 @@ package moe.rukamori.archivetune.ui.screens
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.at
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -62,7 +61,9 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -488,6 +489,7 @@ fun BitChordRecentsShelf(
     modifier: Modifier = Modifier,
 ) {
     var view by rememberSaveable { mutableStateOf(BitChordRecentsView.LIST) }
+    val distinctSongs = remember(songs) { songs.distinctBy { it.id } }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -572,8 +574,7 @@ fun BitChordRecentsShelf(
                 horizontalArrangement = Arrangement.spacedBy(BitChordShelfCardSpacing),
                 modifier = modifier.fillMaxWidth(),
             ) {
-                val distinct = remember(songs) { songs.distinctBy { it.id } }
-                items(distinct, key = { "recent_${it.id}" }) { song ->
+                items(distinctSongs, key = { "recent_${it.id}" }) { song ->
                     BitChordHeroCard(
                         artworkUrl = song.thumbnailUrl,
                         title = song.song.title,
@@ -581,7 +582,7 @@ fun BitChordRecentsShelf(
                         isCurrent = mediaMetadata?.id == song.id,
                         isPlaying = isPlaying,
                         modifier = Modifier.width(bitChordHeroCardWidth(availableWidth)),
-                        onClick = { onPlaySong(song, distinct.indexOf(song)) },
+                        onClick = { onPlaySong(song, distinctSongs.indexOf(song)) },
                         onLongClick = { onSongLongClick(song) },
                     )
                 }

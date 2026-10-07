@@ -2419,6 +2419,7 @@ private fun FlamingoLandscapeTitleBlock(
     onArtistClick: () -> Unit = {},
     playerMenuOpen: Boolean = false,
 ) {
+    val context = LocalContext.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -2449,7 +2450,7 @@ private fun FlamingoLandscapeTitleBlock(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {
-                            FlamingoHaptics.click(LocalContext.current)
+                            FlamingoHaptics.click(context)
                             onArtistClick()
                         },
                     ),
@@ -3461,6 +3462,7 @@ private fun FlamingoPlayingBar(
     onArtistClick: () -> Unit = {},
     playerMenuOpen: Boolean = false,
 ) = FlamingoWrapper {
+    val context = LocalContext.current
     Row(
         Modifier
             .fillMaxWidth()
@@ -3516,7 +3518,7 @@ private fun FlamingoPlayingBar(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {
-                            FlamingoHaptics.click(LocalContext.current)
+                            FlamingoHaptics.click(context)
                             onArtistClick()
                         },
                     ),
