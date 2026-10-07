@@ -129,7 +129,6 @@ fun ArtistAlbumsScreen(
     Box(
         modifier = Modifier.fillMaxSize(),
     ) {
-
         ArtistAmbientBackdrop(
             artistId = viewModel.artistId,
             artworkUrl = artist?.artist?.thumbnailUrl,

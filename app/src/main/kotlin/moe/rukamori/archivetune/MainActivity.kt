@@ -228,7 +228,6 @@ import moe.rukamori.archivetune.constants.DarkModeKey
 import moe.rukamori.archivetune.constants.DefaultOpenTabKey
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.DisableScreenshotKey
-import moe.rukamori.archivetune.constants.DynamicThemeKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.constants.EnablePipModeKey
 import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
@@ -254,7 +253,6 @@ import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
 import moe.rukamori.archivetune.constants.NavigationBarTintFrostedBlurKey
-import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.HideStatusBarKey
 import moe.rukamori.archivetune.constants.RemindAfterKey
 import moe.rukamori.archivetune.constants.SYSTEM_DEFAULT
@@ -946,6 +944,37 @@ class MainActivity : ComponentActivity() {
 
             val customThemeColorValue by rememberPreference(CustomThemeColorKey, defaultValue = "default")
             val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
+            val forceHighRefreshRate by rememberPreference(
+                moe.rukamori.archivetune.constants.ForceHighRefreshRateKey,
+                defaultValue = false,
+            )
+            val refreshRateView = androidx.compose.ui.platform.LocalView.current
+            val supportedHighestFps =
+                remember(refreshRateView) {
+                    val display = refreshRateView.display
+                    display?.supportedModes
+                        ?.maxOfOrNull { mode -> mode.refreshRate }
+                        ?: display?.refreshRate
+                        ?: 60f
+                }
+            androidx.compose.runtime.DisposableEffect(
+                refreshRateView,
+                forceHighRefreshRate,
+                supportedHighestFps,
+            ) {
+                val requested =
+                    if (forceHighRefreshRate && supportedHighestFps > 60.5f) supportedHighestFps else 0f
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                    refreshRateView.setRequestedFrameRate(requested)
+                } else {
+                    val attributes = window.attributes
+                    if (attributes.preferredRefreshRate != requested.toInt()) {
+                        attributes.preferredRefreshRate = requested.toInt()
+                        window.attributes = attributes
+                    }
+                }
+                onDispose { }
+            }
             val defaultDisableAnimations = remember(this@MainActivity) { applicationContext.isLowRamDevice() }
             val disableAnimations by rememberPreference(
                 DisableAnimationsKey,
@@ -1775,6 +1804,11 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    val quantizedCompactFraction by remember {
+                        androidx.compose.runtime.derivedStateOf {
+                            kotlin.math.round(bottomUiCompactFractionState.value * 20f) / 20f
+                        }
+                    }
                     val playerAwareWindowInsets =
                         remember(
                             useRail,
@@ -1783,7 +1817,7 @@ class MainActivity : ComponentActivity() {
                             playerBottomSheetState.isDismissed,
                             effectiveStatusBarTop,
 
-                            bottomUiCompactFractionState.value,
+                            quantizedCompactFraction,
                         ) {
                             var bottom = bottomInset
                             if (!useRail) {
@@ -1791,7 +1825,6 @@ class MainActivity : ComponentActivity() {
                             }
                             if (!playerBottomSheetState.isDismissed) {
                                 if (shouldShowNavigationBar && !useRail) {
-
                                     val fullStack =
                                         navVisibleHeight + MiniPlayerBottomSpacing + MiniPlayerHeight
                                     val compactStack =
@@ -1800,7 +1833,7 @@ class MainActivity : ComponentActivity() {
                                         androidx.compose.ui.unit.lerp(
                                             fullStack,
                                             compactStack,
-                                            bottomUiCompactFractionState.value,
+                                            quantizedCompactFraction,
                                         )
                                 } else {
                                     bottom += MiniPlayerHeight + MiniPlayerBottomSpacing
@@ -2626,7 +2659,6 @@ class MainActivity : ComponentActivity() {
                                                                 Modifier
                                                                     .fillMaxWidth()
                                                                     .graphicsLayer {
-
                                                                         alpha = libraryTitleAlpha
                                                                         translationY =
                                                                             (1f - libraryTitleSlideFraction) * -32.dp.toPx()
@@ -3135,7 +3167,6 @@ class MainActivity : ComponentActivity() {
                                                     },
                                         ) {
                                             if (navigationBarBitchord) {
-
                                                 moe.rukamori.archivetune.ui.component.BitChordNavBar(
                                                     barHeight = navVisibleHeight,
                                                     selectedRoute =
@@ -3416,7 +3447,6 @@ class MainActivity : ComponentActivity() {
                                                             navBarFrostedBackdrop.contentOffsetInRoot =
                                                                 coordinates.positionInRoot()
                                                         }.drawWithContent {
-
                                                             val recorded =
                                                                 runCatching {
                                                                     navBarFrostedBackdrop.layer.record {

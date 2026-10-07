@@ -67,6 +67,7 @@ fun JioSettings(
     navController: NavController,
     scrollTo: String? = null,
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val (saavnEnabled, onSaavnEnabledChange) = rememberPreference(JioSaavnEnabledKey, false)
     val (saavnQuality, onSaavnQualityChange) =
         rememberEnumPreference(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320)
@@ -146,7 +147,16 @@ fun JioSettings(
                         title = { Text(stringResource(R.string.jiosaavn_credit)) },
                         description = stringResource(R.string.jiosaavn_credit_description),
                         icon = { Icon(painterResource(R.drawable.info), null) },
-                        onClick = {},
+                        onClick = {
+                            runCatching {
+                                context.startActivity(
+                                    android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse("https://www.jiosaavn.com"),
+                                    ),
+                                )
+                            }
+                        },
                     )
                 }
             }

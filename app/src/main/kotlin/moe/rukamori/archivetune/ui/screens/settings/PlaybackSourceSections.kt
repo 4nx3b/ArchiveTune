@@ -73,7 +73,6 @@ import moe.rukamori.archivetune.constants.QobuzEnabledKey
 import moe.rukamori.archivetune.constants.QobuzBackupEnabledKey
 import moe.rukamori.archivetune.constants.QobuzBackupEndpointsKey
 import moe.rukamori.archivetune.constants.TidalAccountFirstKey
-import moe.rukamori.archivetune.constants.TidalAnimatedCoversEnabledKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
 import moe.rukamori.archivetune.constants.TidalAudioQualityKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
@@ -207,9 +206,6 @@ internal fun PlaybackSourceSections(
         rememberPreference(QobuzBackupEndpointsKey, "")
     var showQobuzBackupEndpointsDialog by rememberSaveable { mutableStateOf(false) }
     var qobuzBackupEndpointsDraft by rememberSaveable { mutableStateOf("") }
-
-    val (animatedCovers, onAnimatedCoversChange) =
-        rememberPreference(TidalAnimatedCoversEnabledKey, false)
 
     val sourceOrder =
         remember(sourceOrderRaw) {
@@ -475,17 +471,6 @@ internal fun PlaybackSourceSections(
         }
 
         item {
-            SwitchPreference(
-                modifier = positions.modifierFor("tidal_animated_covers"),
-                title = { Text(stringResource(R.string.tidal_animated_covers)) },
-                description = stringResource(R.string.tidal_animated_covers_description),
-                checked = animatedCovers,
-                onCheckedChange = onAnimatedCoversChange,
-                isEnabled = tidalEnabled,
-            )
-        }
-
-        item {
             PreferenceEntry(
                 modifier = positions.modifierFor("tidal_manage_instances"),
                 title = { Text(stringResource(R.string.tidal_manage_instances)) },
@@ -688,7 +673,16 @@ internal fun PlaybackSourceSections(
                 title = { Text(stringResource(R.string.jiosaavn_credit)) },
                 description = stringResource(R.string.jiosaavn_credit_description),
                 icon = { Icon(painterResource(R.drawable.info), null) },
-                onClick = {},
+                onClick = {
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse("https://www.jiosaavn.com"),
+                            ),
+                        )
+                    }
+                },
             )
         }
 

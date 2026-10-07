@@ -92,7 +92,6 @@ val AodShowClockKey = booleanPreferencesKey("aodShowClock")
 val AodClockStyleKey = stringPreferencesKey("aodClockStyle")
 val AodShowBatteryKey = booleanPreferencesKey("aodShowBattery")
 val AodPixelShiftEnabledKey = booleanPreferencesKey("aodPixelShiftEnabled")
-val AodShowLyricTickerKey = booleanPreferencesKey("aodShowLyricTicker")
 val AodAutoDimmingKey = booleanPreferencesKey("aodAutoDimming")
 val AodAutoDimTimeoutKey = intPreferencesKey("aodAutoDimTimeout")
 val AodGesturesEnabledKey = booleanPreferencesKey("aodGesturesEnabled")
@@ -265,14 +264,9 @@ val PaxsenixApiKeyKey = stringPreferencesKey("paxsenixApiKey")
 val PaxsenixEndpointKey = stringPreferencesKey("paxsenixEndpoint")
 val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 
-val EnablePaxsenixLyricsKey = booleanPreferencesKey("enablePaxsenixLyrics")
 val EnablePaxsenixAppleMusicLyricsKey = booleanPreferencesKey("enablePaxsenixAppleMusicLyrics")
-val EnablePaxsenixNeteaseLyricsKey = booleanPreferencesKey("enablePaxsenixNeteaseLyrics")
 val EnablePaxsenixSpotifyLyricsKey = booleanPreferencesKey("enablePaxsenixSpotifyLyrics")
 val EnablePaxsenixMusixmatchLyricsKey = booleanPreferencesKey("enablePaxsenixMusixmatchLyrics")
-val EnablePaxsenixYouTubeLyricsKey = booleanPreferencesKey("enablePaxsenixYouTubeLyrics")
-val EnableTidalLyricsKey = booleanPreferencesKey("enableTidalLyrics")
-val EnableDeezerLyricsKey = booleanPreferencesKey("enableDeezerLyrics")
 
 val PrioritizeWordSyncedLyricsKey = booleanPreferencesKey("prioritizeWordSyncedLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
@@ -396,7 +390,6 @@ val ProxyPasswordKey = stringPreferencesKey("proxyPassword")
 val ProxyTypeKey = stringPreferencesKey("proxyType")
 val EnableDnsOverHttpsKey = booleanPreferencesKey("enableDnsOverHttps")
 val DnsOverHttpsProviderKey = stringPreferencesKey("dnsOverHttpsProvider")
-val TidalInstanceUrlKey = stringPreferencesKey("tidalInstanceUrl")
 val StreamBypassProxyKey = booleanPreferencesKey("streamBypassProxy")
 val IpRotationEnabledKey = booleanPreferencesKey("ipRotationEnabled")
 val YtmSyncKey = booleanPreferencesKey("ytmSync")
@@ -435,8 +428,6 @@ val DeeplFormalityKey = stringPreferencesKey("deeplFormality")
 val OpenRouterApiKeyKey = stringPreferencesKey("openRouterApiKey")
 val OpenRouterBaseUrlKey = stringPreferencesKey("openRouterBaseUrl")
 val OpenRouterModelKey = stringPreferencesKey("openRouterModel")
-
-val TranslateModeKey = stringPreferencesKey("translateMode")
 
 val TranslateLanguageKey = stringPreferencesKey("translateLanguage")
 
@@ -505,8 +496,7 @@ enum class LastFmProvider {
 
 val AudioQualityKey = stringPreferencesKey("audioQuality")
 
-val NetworkMeteredKey = booleanPreferencesKey("networkMetered")
-val LowDataModeKey = NetworkMeteredKey
+val LowDataModeKey = booleanPreferencesKey("networkMetered")
 
 enum class AudioQuality {
     AUTO,
@@ -621,9 +611,6 @@ val PauseSearchHistoryKey = booleanPreferencesKey("pauseSearchHistory")
 val SyncPlaybackToYouTubeHistoryKey = booleanPreferencesKey("syncPlaybackToYouTubeHistory")
 val DisableScreenshotKey = booleanPreferencesKey("disableScreenshot")
 
-val PinLastFmCardKey = booleanPreferencesKey("pinLastFmCard")
-val PinDiscordCardKey = booleanPreferencesKey("pinDiscordCard")
-
 val LastFmPreferYtThumbnailsKey = booleanPreferencesKey("lastfmPreferYtThumbnails")
 
 val DiscordTokenKey = stringPreferencesKey("discordToken")
@@ -706,7 +693,6 @@ val QuickPicksKey = stringPreferencesKey("discover")
 
 val NewsLastReadTimestampKey = longPreferencesKey("news_last_read_timestamp")
 val SpeedDialSongIdsKey = stringPreferencesKey("speedDialSongIds")
-val PreferredLyricsProviderKey = stringPreferencesKey("lyricsProvider")
 val LyricsProviderOrderKey = stringPreferencesKey("lyricsProviderOrder")
 val ArtworkProviderOrderKey = stringPreferencesKey("artworkProviderOrder")
 val QueueEditLockKey = booleanPreferencesKey("queueEditLock")
@@ -1121,8 +1107,6 @@ val LyricsRomanizeKoreanKey = booleanPreferencesKey("lyricsRomanizeKorean")
 val LyricsRomanizeChineseKey = booleanPreferencesKey("lyricsRomanizeChinese")
 val LyricsRomanizeHindiKey = booleanPreferencesKey("lyricsRomanizeHindi")
 val LyricsRomanizeOtherLanguagesKey = booleanPreferencesKey("lyricsRomanizeOtherLanguages")
-val TranslateLyricsKey = booleanPreferencesKey("translateLyrics")
-val UseLyricsV2Key = booleanPreferencesKey("useLyricsV2")
 val LyricsModeKey = stringPreferencesKey("lyricsMode")
 val LyricsV2BounceFactorKey = floatPreferencesKey("lyricsV2BounceFactor")
 val LyricsV2GlowFactorKey = floatPreferencesKey("lyricsV2GlowFactor")
@@ -1135,7 +1119,6 @@ enum class LyricsMode {
     SPOTIFY,
 }
 
-val PreloadQueueLyricsEnabledKey = booleanPreferencesKey("preload_queue_lyrics_enabled")
 val QueueLyricsPreloadCountKey = intPreferencesKey("queue_lyrics_preload_count")
 
 val PlayerVolumeKey = floatPreferencesKey("playerVolume")
@@ -1211,7 +1194,6 @@ val TidalCookieKey = stringPreferencesKey("tidalCookie")
 val TidalEnabledKey = booleanPreferencesKey("tidalEnabled")
 val TidalAudioQualityKey = stringPreferencesKey("tidalAudioQuality")
 val TidalArtworkFallbackEnabledKey = booleanPreferencesKey("tidalArtworkFallbackEnabled")
-val TidalAnimatedCoversEnabledKey = booleanPreferencesKey("tidalAnimatedCoversEnabled")
 val TidalAccountNameKey = stringPreferencesKey("tidal_account_name")
 
 val TidalInstancesKey = stringPreferencesKey("tidalInstances")

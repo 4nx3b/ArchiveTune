@@ -215,7 +215,19 @@ class DownloadUtil
         fun prewarmDownloadConnections() {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             scope.launch {
+                val tidalEnabled = context.dataStore[moe.rukamori.archivetune.constants.TidalEnabledKey] ?: true
+                val qobuzEnabled = context.dataStore[moe.rukamori.archivetune.constants.QobuzEnabledKey] ?: true
+                val deezerEnabled = context.dataStore[moe.rukamori.archivetune.constants.DeezerEnabledKey] ?: false
+                val saavnEnabled = context.dataStore[moe.rukamori.archivetune.constants.JioSaavnEnabledKey] ?: false
                 for (host in PREWARM_HOSTS) {
+                    val skip = when {
+                        host.endsWith("tidal.com") -> !tidalEnabled
+                        host.endsWith("qobuz.com") -> !qobuzEnabled
+                        host.endsWith("deezer.com") -> !deezerEnabled
+                        host.endsWith("jiosaavn.com") -> !saavnEnabled
+                        else -> false
+                    }
+                    if (skip) continue
                     runCatching {
                         val request = Request.Builder()
                             .url("https://$host/")
@@ -1171,7 +1183,6 @@ class DownloadUtil
             private val PREWARM_HOSTS = listOf(
                 "www.youtube.com",
                 "music.youtube.com",
-                "r1---sn.googlevideo.com",
                 "api.qobuz.com",
                 "api.tidal.com",
                 "amp-api.tidal.com",

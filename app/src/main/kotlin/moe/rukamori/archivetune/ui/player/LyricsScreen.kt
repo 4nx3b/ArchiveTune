@@ -792,6 +792,9 @@ internal fun MovingBlurBackground(
     gradientColors: List<Color>,
     modifier: Modifier = Modifier,
 ) {
+    val isPlaying by (LocalPlayerConnection.current?.isPlaying
+        ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) })
+        .collectAsStateWithLifecycle()
     val colors = if (gradientColors.isNotEmpty()) gradientColors else AppleMusicFallbackGradient
 
     val backgroundBrush =
@@ -844,7 +847,7 @@ internal fun MovingBlurBackground(
                 .background(AppleMusicFallbackGradient.last()),
     ) {
         val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
-        val blurWander = rememberBlurWanderDrift(active = true, maxDriftDp = wanderMaxDrift)
+        val blurWander = rememberBlurWanderDrift(active = isPlaying, maxDriftDp = wanderMaxDrift)
         val preSDriftScale =
             if (isPreS) {
                 val safetyMargin = 48.dp

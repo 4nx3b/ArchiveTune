@@ -38,7 +38,6 @@ fun HomeAtmosphereBackground(
 ) {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     if (dark) {
-
         Box(
             modifier =
                 modifier

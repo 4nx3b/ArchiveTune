@@ -102,7 +102,6 @@ class LocalSongScanner
     ) {
         suspend fun scanDevice(scanConfig: LocalSongScanConfig = LocalSongScanConfig()): LocalSongScanSummary =
             withContext(Dispatchers.IO) {
-
                 val fullRescan =
                     (context.dataStore.getAsync(LocalScanExtractionVersionKey) ?: 0) < ExtractionVersion
                 val previousScan = if (fullRescan) emptyMap() else loadSongs(database.localSongIds())

@@ -125,7 +125,6 @@ import moe.rukamori.archivetune.constants.HideAiMixKey
 import moe.rukamori.archivetune.constants.OpenRouterApiKeyKey
 import moe.rukamori.archivetune.constants.OpenRouterBaseUrlKey
 import moe.rukamori.archivetune.constants.OpenRouterModelKey
-import moe.rukamori.archivetune.constants.TranslateModeKey
 import moe.rukamori.archivetune.constants.TranslateLanguageKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EditTextPreference
@@ -175,7 +174,6 @@ fun AiIntegrationSettings(
     val (openRouterApiKey, setOpenRouterApiKey) = rememberPreference(OpenRouterApiKeyKey, "")
     val (openRouterBaseUrl, setOpenRouterBaseUrl) = rememberPreference(OpenRouterBaseUrlKey, "")
     val (openRouterModel, setOpenRouterModel) = rememberPreference(OpenRouterModelKey, "openai/gpt-4o-mini")
-    val (translateMode, setTranslateMode) = rememberPreference(TranslateModeKey, "translate")
     val (translateLanguage, setTranslateLanguage) = rememberPreference(TranslateLanguageKey, "en")
     var showDeeplKeyDialog by rememberSaveable { mutableStateOf(false) }
     var showOpenRouterKeyDialog by rememberSaveable { mutableStateOf(false) }
@@ -205,7 +203,6 @@ fun AiIntegrationSettings(
     var showRomanizeApiKeyDialog by rememberSaveable { mutableStateOf(false) }
     var showApiKeyDialog by rememberSaveable { mutableStateOf(false) }
     var showDeeplFormalityDialog by rememberSaveable { mutableStateOf(false) }
-    var showTranslateModeDialog by rememberSaveable { mutableStateOf(false) }
     var showTranslateLanguageDialog by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -324,30 +321,6 @@ fun AiIntegrationSettings(
                         onClick = {
                             setDeeplFormality(value)
                             showDeeplFormalityDialog = false
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(stringResource(labelRes))
-                    }
-                }
-            }
-        }
-    }
-
-    if (showTranslateModeDialog) {
-        DefaultDialog(
-            onDismiss = { showTranslateModeDialog = false },
-            title = { Text(stringResource(R.string.translate_mode)) },
-            buttons = {
-                TextButton(onClick = { showTranslateModeDialog = false }) { Text(stringResource(R.string.cancel)) }
-            },
-        ) {
-            Column {
-                listOf("translate" to R.string.translate_mode_translate, "romanize" to R.string.translate_mode_romanize).forEach { (value, labelRes) ->
-                    TextButton(
-                        onClick = {
-                            setTranslateMode(value)
-                            showTranslateModeDialog = false
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
@@ -1009,15 +982,6 @@ fun AiIntegrationSettings(
                         description = translateLanguage,
                         icon = { Icon(painterResource(R.drawable.translate), null) },
                         onClick = { showTranslateLanguageDialog = true },
-                    )
-                }
-                item {
-                    PreferenceEntry(
-                        modifier = positions.modifierFor("translate_mode"),
-                        title = { Text(stringResource(R.string.translate_mode)) },
-                        description = if (translateMode == "romanize") stringResource(R.string.translate_mode_romanize) else stringResource(R.string.translate_mode_translate),
-                        icon = { Icon(painterResource(R.drawable.text_fields), null) },
-                        onClick = { showTranslateModeDialog = true },
                     )
                 }
             }

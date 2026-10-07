@@ -334,7 +334,6 @@ fun CanvasArtworkPlayer(
                 }
 
             if (stalledForMs >= CanvasPlaybackStallTimeoutMs) {
-
                 currentUrl = fallback
                 isVideoReady = false
                 return@LaunchedEffect
@@ -441,7 +440,6 @@ fun CanvasArtworkPlayer(
                                 kotlin.math.abs(newPosition.positionMs - target) >
                                     CanvasSyncSeekThresholdMs
                             ) {
-
                                 exoPlayer.seekTo(target.coerceAtLeast(0L))
                             }
                         }
@@ -511,7 +509,6 @@ fun CanvasArtworkPlayer(
 
     val aspect = videoDisplayAspectRatio
     if (effectiveContentVisible) {
-
         if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM && aspect != null && aspect > 0f) {
             Box(modifier = modifier.clipToBounds()) {
                 ContentFrame(

@@ -51,7 +51,6 @@ import moe.rukamori.archivetune.storage.StorageLocationRepository
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
-import moe.rukamori.archivetune.repository.SearchDiscoveryRepository
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
 import moe.rukamori.archivetune.ui.screens.settings.ThemePalettes
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPalette
@@ -90,7 +89,6 @@ class App :
     lateinit var spotifyLibraryRepository: SpotifyLibraryRepository
 
     @Inject
-    lateinit var searchDiscoveryRepository: SearchDiscoveryRepository
 
     private val applicationScope = CoroutineScope(
         SupervisorJob() + Dispatchers.Main + kotlinx.coroutines.CoroutineExceptionHandler { _, error ->
@@ -266,12 +264,6 @@ class App :
 
     private fun initializeDeferredAsync() {
         moe.rukamori.archivetune.utils.SourceRefreshWorker.schedule(this)
-
-        applicationScope.launch(Dispatchers.IO) {
-            runCatching {
-                searchDiscoveryRepository.loadDiscovery(forceRefresh = false)
-            }
-        }
 
         applicationScope.launch(Dispatchers.IO) {
             try {

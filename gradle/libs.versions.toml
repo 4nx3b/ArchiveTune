@@ -19,7 +19,6 @@ hilt = "2.60.1"
 ktor = "3.5.1"
 ksp = "2.3.10"
 jsoup = "1.22.2"
-re2j = "1.8"
 coil = "3.5.0"
 guava = "33.6.0-jre"
 coroutinesGuava = "1.11.0"
@@ -37,7 +36,6 @@ lottie = "6.6.6"
 profileinstaller = "1.4.1"
 palette = "1.0.0"
 apacheLang3 = "3.20.0"
-brotli = "0.1.2"
 junit = "4.13.2"
 turbine = "1.2.1"
 timber = "5.0.1"
@@ -168,13 +166,11 @@ ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.re
 ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation", version.ref = "ktor" }
 
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
-re2j = { module = "com.google.re2j:re2j", version.ref = "re2j" }
 
 json = { module = "org.json:json", version.ref = "json" }
 okhttp_dnsoverhttps = { module = "com.squareup.okhttp3:okhttp-dnsoverhttps", version.ref = "okhttp" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 
-brotli = { module = "org.brotli:dec", version.ref = "brotli" }
 rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
 
 androidx-graphics-shapes = { group = "androidx.graphics", name = "graphics-shapes", version.ref = "graphicsShapes" }

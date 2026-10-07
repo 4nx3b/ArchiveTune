@@ -151,7 +151,6 @@ fun ArtistItemsScreen(
     val artist by viewModel.artist.collectAsStateWithLifecycle()
 
     Box(modifier = Modifier.fillMaxSize()) {
-
         ArtistAmbientBackdrop(
             artistId = artist?.id,
             artworkUrl = artist?.thumbnailUrl,
