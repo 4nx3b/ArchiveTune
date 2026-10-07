@@ -4821,3 +4821,87 @@ Stage Summary:
 - Landscape lyrics interactions never summon the controls; controls-area
   touch still keeps them alive.
 - Lyrics-page thumbnail aligned with the lyric lines.
+
+---
+Task ID: 79
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 2026-10-07 night reports — overflow popup should open like SpatialFlow
+(not anchored to the icon; chip only fired on its top edge), canvas wrong
+position/shifted-left/no-notch-collision/sharp-bottom-line, background dimming
+behind the translation popup, quality pill should open the song-details sheet,
+landscape artwork/canvas taps summoning the controls, and the static album
+cover flashing on song skips and page transitions.
+
+Work Log:
+- Forensics: pixel-level analysis of the two new screenshots (1080x2412)
+  proved the album-page canvas rendered as a ~675x1204px fit-sized,
+  top-start-anchored region on the left of the stage — i.e. media3 1.10.1's
+  ContentFrame/resizeWithContentScale layout (videoSizeDp = raw pixels
+  mislabelled as Dp; wrapContentSize alignment) behaved as Fit+TopStart on
+  the device instead of Crop. Pulled the media3 ui-compose 1.10.1 sources
+  from Google Maven (ContentFrame/PlayerSurface/PresentationState/extensions)
+  to ground the analysis; cross-checked the pre-port AppleMusicPlayer and the
+  SpatialFlowPlayer reference implementations.
+- CanvasArtworkPlayer.kt: restored the long-proven cover path (the form that
+  rendered correctly for weeks on this device, removed only in task 76):
+  RESIZE_MODE_ZOOM + known aspect -> Box(modifier.clipToBounds()) wrapping a
+  ContentFrame measured at the EXACT cover size for the real video aspect
+  (canvasCoverLayout, fixed Constraints + centered negative placement). The
+  plain-ContentFrame fallback stays for FIT/unknown-aspect. This is
+  deterministic — no dependence on media3's dp-confused sizing.
+- FlamingoPlayer.kt canvas: rebuilt the portrait canvas as full-bleed
+  BACKGROUND layers, an exact clone of the SpatialFlow recipe (which the user
+  cites as the reference): (1) blurred frost twin behind the bottom controls
+  (1/6 footprint, maxVideoEdgePx 480, 12dp blur, 6.6x upscale, loop-sync
+  follower), (2) full-screen scrim gradient, (3) sharp stage running from the
+  player root's VERY TOP (behind the notch) down to the title row (height
+  MEASURED via onGloballyPositioned, exactly like SpatialFlow's
+  sharpStageHeight; no magic fractions), dissolving into the frost via an
+  Offscreen+DstIn bottom fade instead of a sharp line. Players stay composed
+  while a canvas exists; leaving the album page flips `visible` (surface
+  detached, decode paused, 650ms fade) — SpatialFlow's exact lifecycle.
+- FlamingoAlbum: when a canvas is active the album stage now renders NOTHING
+  — no static artwork under the video, so nothing flashes on song skips and
+  no artwork morphs during main-player->queue/lyrics transitions (the user's
+  "remove that album cover" report). Non-canvas songs keep the static
+  artwork + shared-element morph exactly as before.
+- Overflow menu: the in-player anchored panel (FlamingoAnchoredPlayerMenu)
+  was deleted entirely; the album/queue/landscape more-chip now routes
+  through the host BottomSheetMenu via menuState.show { PlayerMenu(...) } —
+  SpatialFlow's exact route (the earlier "sheet never appeared" diagnosis was
+  a misread of the dead-touch symptom; the sheet itself was never broken).
+  The lyrics page keeps AnchoredLyricsOverflowMenu for its lyrics-sync
+  actions. Like/more chips now reserve a 48dp minimum touch target (28dp
+  icon centered, no visual change), and the translation-icon Row composes
+  only on the lyrics page — the previously always-composed, alpha-0
+  translation box sat in the title-row band and is the prime suspect for the
+  "only opens when I click almost on the upper edge" dead zone.
+- Translation popup: the dismiss layer no longer dims the background
+  (transparent tap-catcher only) per "the background shouldn't get dim when
+  I expand the translation icon box".
+- Quality pill: tapping it now opens the song-details bottom sheet
+  (bottomSheetPageState.show { ShowMediaInfo(id) }) — the same sheet the
+  other styles open; threaded onQualityClick through both
+  FlamingoPlayerControl call sites.
+- Landscape: the artwork-pane tap poke was removed (thumbnail/canvas taps no
+  longer summon the controls; the horizontal skip swipe stays). With every
+  poke path gone, landscape controls are now ALWAYS visible (showControl
+  initial true + orientation reset to true; portrait keeps the 2500ms lyrics
+  auto-hide) — otherwise a hidden state would only be recoverable through
+  the back gesture.
+- Static review agent pass over the full diff: no compile blockers; the
+  flagged logic gap (landscape controls reveal path) was fixed by the
+  always-visible change; interop-layer risks (frost blur + offscreen fade)
+  are the SpatialFlow-exact patterns, deliberately restored now that the
+  task-76 rebuild storm is fixed. Kotlin structure checker OK on both files.
+
+Stage Summary:
+- Canvas: full-bleed sharp stage colliding with the notch, full width,
+  deterministic cover rendering, blending into the controls via the blurred
+  frost — no sharp bottom line.
+- Overflow: standard player menu sheet like SpatialFlow; reliable 48dp chip
+  targets.
+- No background dim behind the translation popup; quality pill opens the
+  song-details sheet; landscape artwork/lyrics taps never summon controls
+  and the controls are always reachable; no album-cover flash on skips or
+  page transitions.

@@ -18,9 +18,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -504,24 +508,86 @@ fun CanvasArtworkPlayer(
         label = "canvasAlpha",
     )
 
+    val aspect = videoDisplayAspectRatio
     if (effectiveContentVisible) {
-        // Plain media3 ContentFrame with the content scale derived from the
-        // resize mode — the long-proven form (pre-2026-09-21 main branch)
-        // that rendered the canvas correctly positioned on every tested
-        // device. The two later rewrites (canvasCoverLayout oversized node,
-        // and FIT-surface + graphicsLayer cover-scale) each broke rendering
-        // or hit-testing on OEM TextureView interop, and are deliberately
-        // NOT restored.
-        ContentFrame(
-            player = exoPlayer,
-            surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-            contentScale = resizeMode.toContentScale(),
-            keepContentOnReset = false,
-            shutter = {},
-            modifier = modifier.alpha(alpha),
-        )
+        // The cover path (RESIZE_MODE_ZOOM) uses the pre-2026-10-07 form that
+        // rendered correctly positioned canvas on this device for weeks in
+        // every style: the surface is measured at the EXACT cover size for the
+        // real video aspect ratio (from onVideoSizeChanged — no media3 dp
+        // conversion involved), placed at explicit centered negative offsets,
+        // and clipped to the container bounds. media3 1.10.1's plain
+        // ContentFrame instead relies on resizeWithContentScale(), whose
+        // videoSizeDp is the raw pixel size mislabelled as Dp and whose
+        // wrapContentSize alignment produced a fit-sized, top-start-anchored
+        // video on the affected device (2026-10-07 report: "the canvas is
+        // completely shifted to the left side").
+        if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM && aspect != null && aspect > 0f) {
+            Box(modifier = modifier.clipToBounds()) {
+                ContentFrame(
+                    player = exoPlayer,
+                    surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+                    contentScale = resizeMode.toContentScale(),
+                    keepContentOnReset = false,
+                    shutter = {},
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .alpha(alpha)
+                            .canvasCoverLayout(aspect),
+                )
+            }
+        } else {
+            ContentFrame(
+                player = exoPlayer,
+                surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+                contentScale = resizeMode.toContentScale(),
+                keepContentOnReset = false,
+                shutter = {},
+                modifier = modifier.alpha(alpha),
+            )
+        }
     }
 }
+
+/**
+ * Measures the video surface at the exact cover size for [videoAspect] and
+ * centers the overflow, so the video fills the container while the layout
+ * (and the interop node) stays deterministic. Paired with a clipToBounds
+ * parent this is the long-proven ArchiveTune cover rendering.
+ */
+private fun Modifier.canvasCoverLayout(videoAspect: Float): Modifier =
+    layout { measurable, constraints ->
+        val containerWidth = constraints.maxWidth
+        val containerHeight = constraints.maxHeight
+        if (containerWidth <= 0 || containerHeight <= 0) {
+            val placeable = measurable.measure(constraints)
+            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+        } else {
+            val containerAspect = containerWidth.toFloat() / containerHeight.toFloat()
+            val targetWidth: Int
+            val targetHeight: Int
+            if (videoAspect >= containerAspect) {
+                targetHeight = containerHeight
+                targetWidth = (containerHeight.toFloat() * videoAspect + 0.5f).toInt().coerceAtLeast(containerWidth)
+            } else {
+                targetWidth = containerWidth
+                targetHeight = (containerWidth.toFloat() / videoAspect + 0.5f).toInt().coerceAtLeast(containerHeight)
+            }
+            val placeable =
+                measurable.measure(
+                    Constraints.fixed(
+                        targetWidth.coerceAtLeast(1),
+                        targetHeight.coerceAtLeast(1),
+                    )
+                )
+            layout(containerWidth, containerHeight) {
+                placeable.place(
+                    -((targetWidth - containerWidth) / 2),
+                    -((targetHeight - containerHeight) / 2),
+                )
+            }
+        }
+    }
 
 private fun Int.toContentScale(): ContentScale =
     when (this) {
