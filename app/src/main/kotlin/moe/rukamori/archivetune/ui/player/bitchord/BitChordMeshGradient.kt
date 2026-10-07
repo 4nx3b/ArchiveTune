@@ -3,36 +3,25 @@
  * © Rukamori — github.com/rukamori
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
+ *
+ * Artwork palette for the BitChord player's styled lyrics backgrounds,
+ * adapted from BitChord (GPL-3.0) https://github.com/kushagrasinghx/BitChord
+ * as an original re-implementation for ArchiveTune.
  */
 
 package moe.rukamori.archivetune.ui.player.bitchord
 
 import android.graphics.Bitmap
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.AnimationSpec
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import androidx.core.graphics.ColorUtils
 import androidx.palette.graphics.Palette
 import coil3.imageLoader
@@ -40,13 +29,8 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
-import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.min
-import kotlin.math.sin
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 
 private val FallbackColors = listOf(
     Color(0xFF3A1C71),
@@ -57,86 +41,6 @@ private val FallbackColors = listOf(
 
 @Immutable
 data class MeshPalette(val colors: List<Color>)
-
-@Composable
-fun MeshGradientBackground(
-    palette: MeshPalette,
-    modifier: Modifier = Modifier,
-    trackKey: Any? = null,
-    driftMillis: Int = 8_000,
-    reduceAnimation: Boolean = false,
-    blurRadius: Dp = 64.dp,
-) {
-    val tuned = (palette.colors.ifEmpty { FallbackColors } + FallbackColors)
-        .take(4)
-        .map { it.tuned() }
-
-    val colorSpec: AnimationSpec<Color> = if (reduceAnimation) snap() else tween(1400)
-    val animatedColors = tuned.mapIndexed { index, color ->
-        animateColorAsState(color, colorSpec, label = "meshColor$index").value
-    }
-    val baseColor by animateColorAsState(tuned.first().dimmed(), colorSpec, label = "meshBase")
-
-    val phase = remember { Animatable(0f) }
-    LaunchedEffect(trackKey, reduceAnimation) {
-        when {
-            reduceAnimation -> phase.snapTo(0f)
-
-            else -> phase.animateTo(
-                targetValue = phase.value + DRIFT_RADIANS,
-                animationSpec = tween(driftMillis, easing = FastOutSlowInEasing),
-            )
-        }
-    }
-
-    Canvas(
-        modifier = modifier
-            .fillMaxSize()
-            .clipToBounds()
-            .graphicsLayer {
-                scaleX = 1.3f
-                scaleY = 1.3f
-            }
-            .background(baseColor)
-            .blur(blurRadius),
-    ) {
-        val anchors = listOf(
-            Offset(0.20f, 0.25f),
-            Offset(0.80f, 0.20f),
-            Offset(0.75f, 0.80f),
-            Offset(0.25f, 0.75f),
-        )
-        val speeds = listOf(1f, -0.7f, 0.85f, -1.15f)
-        val drift = phase.value
-
-        animatedColors.forEachIndexed { index, color ->
-            val anchor = anchors[index]
-            val center = Offset(
-                x = (anchor.x + 0.16f * cos(drift * speeds[index] + index * 1.7f)) * size.width,
-                y = (anchor.y + 0.16f * sin(drift * speeds[index] * 0.9f + index * 2.3f)) * size.height,
-            )
-            val radius = size.maxDimension * 0.62f
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(color.copy(alpha = 0.95f), color.copy(alpha = 0f)),
-                    center = center,
-                    radius = radius,
-                ),
-                radius = radius,
-                center = center,
-            )
-        }
-
-        drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    Color.Black.copy(alpha = 0.05f),
-                    Color.Black.copy(alpha = 0.20f),
-                ),
-            ),
-        )
-    }
-}
 
 @Composable
 fun rememberArtworkColors(imageUrl: String?): MeshPalette {
@@ -156,8 +60,6 @@ fun rememberArtworkColors(imageUrl: String?): MeshPalette {
     }
     return palette
 }
-
-private const val DRIFT_RADIANS = (PI * 0.45f).toFloat()
 
 private fun paletteOf(bitmap: Bitmap): List<Color> {
     fun swatchesOf(builder: Palette.Builder): List<Color> =
@@ -209,18 +111,3 @@ private fun Color.shifted(hue: Float, lightness: Float): Color {
 
 private fun Color.hsl(): FloatArray =
     FloatArray(3).also { ColorUtils.colorToHSL(toArgb(), it) }
-
-private fun Color.tuned(): Color {
-    val hsl = FloatArray(3)
-    ColorUtils.colorToHSL(toArgb(), hsl)
-    hsl[1] = (hsl[1] * 1.6f).coerceAtMost(1f)
-    hsl[2] = hsl[2].coerceIn(0.22f, 0.68f)
-    return Color(ColorUtils.HSLToColor(hsl))
-}
-
-private fun Color.dimmed(): Color {
-    val hsl = FloatArray(3)
-    ColorUtils.colorToHSL(toArgb(), hsl)
-    hsl[2] = 0.12f
-    return Color(ColorUtils.HSLToColor(hsl))
-}
