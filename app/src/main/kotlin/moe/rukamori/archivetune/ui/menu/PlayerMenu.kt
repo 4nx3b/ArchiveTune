@@ -1877,9 +1877,7 @@ private fun SongSourceDialog(
                                         more.items
                                             .filterIsInstance<SongItem>()
                                             .map { song -> song.toSourceSearchResult(aacLabel) }
-                                    // Guard against a cancelled restart of this effect
-                                    // wiping the list mid-tap (caused the wrong song to
-                                    // be played when rows shifted under the finger).
+
                                     currentCoroutineContext().ensureActive()
                                     resultsBySource =
                                         resultsBySource + (

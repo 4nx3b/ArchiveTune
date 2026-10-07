@@ -552,12 +552,7 @@ fun BottomSheetPlayer(
 
     val spatialFlowMiniArtworkRect =
         rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
-    // The generic player->miniplayer artwork flight (2026-10-08 BitChord
-// port): every style except SPATIALFLOW (which keeps its own richer
-// floating-artwork morph) renders PlayerDockingArtwork from the sheet's
-// sharedLayer; player styles report their artwork bounds through
-// LocalPlayerDockArtwork (dockArtworkAnchor), the miniplayer reports its
-// artwork slot below.
+
 val dockFullArtworkRect = androidx.compose.runtime.mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
 val dockMiniArtworkRect = androidx.compose.runtime.mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
 val dockArtworkReporter: (androidx.compose.ui.geometry.Rect?) -> Unit = { rect ->
@@ -1357,10 +1352,7 @@ val spatialFlowFullArtworkRect =
                 }
             } else {
                 {
-                    // The BitChord-style flying thumbnail: only visible while
-                    // the sheet travels (never intercepts touches), landing on
-                    // the miniplayer cover. Styles that report no artwork rect
-                    // get a centered-square fallback estimate.
+
                     androidx.compose.foundation.layout.BoxWithConstraints {
                         val fallbackSide = (maxWidth - 64.dp).coerceAtLeast(200.dp)
                         val fallbackRect =
@@ -2932,7 +2924,7 @@ val spatialFlowFullArtworkRect =
                 }
             }
         }
-        }  // CompositionLocalProvider(LocalPlayerDockArtwork) wrapper
+        }
     }
     }
     }

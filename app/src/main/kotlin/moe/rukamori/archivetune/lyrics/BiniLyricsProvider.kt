@@ -19,21 +19,6 @@ import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
 import java.util.Locale
 
-/**
- * Apple Music TTML again, from a third host — and the only one here besides
- * [LrcRedLyricsProvider] that will answer to a recording rather than to a
- * name.
- *
- * The catalogue is the same one lrc.red serves; on a track both have, the
- * documents come back byte for byte identical. What it adds is a different
- * matcher over that catalogue, which finds tracks the other Apple hosts
- * miss, particularly outside the English-language releases.
- *
- * Two requests either way — the search returns a URL rather than the
- * document, so the TTML itself is a second fetch from the storage host
- * (which is lrc.red's own file store these days; the API host redirects
- * there and the client follows it).
- */
 object BiniLyricsProvider : LyricsProvider {
     private const val BASE_URL = "https://lyrics-api.binimum.org/"
 
@@ -76,8 +61,7 @@ object BiniLyricsProvider : LyricsProvider {
                 append(BASE_URL)
                 append('?')
                 if (!isrc.isNullOrBlank()) {
-                    // Nothing else is worth sending: the recording is named, and
-                    // a title alongside it could only ever disagree with it.
+
                     append("isrc=")
                     append(LyricsProviderHttp.encode(isrc.trim().uppercase(Locale.ROOT)))
                 } else {
@@ -96,8 +80,6 @@ object BiniLyricsProvider : LyricsProvider {
                 }
             }
 
-            // A miss is a 404 here rather than an empty result set, which the
-            // shared client already turns into a null.
             val body = LyricsProviderHttp.get(url) ?: return@withContext null
             val root = LyricsProviderHttp.parseJson(body).asObject() ?: return@withContext null
             val results = root.array("results") ?: return@withContext null

@@ -149,8 +149,6 @@ import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
-
-
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun LyricsMenu(
@@ -452,7 +450,6 @@ fun LyricsMenu(
     val (targetLanguage, _) = rememberPreference(TranslatorTargetLangKey, defaultLanguageCode)
     val isTranslationInProgress = isAiTranslating
 
-
     LazyColumn(
         userScrollEnabled = true,
         contentPadding =
@@ -490,8 +487,7 @@ fun LyricsMenu(
                             isDestructive = false,
                             enabled = isTranslateEnabled && isAiTranslationEnabled && !isTranslationInProgress,
                             onClick = {
-                                // Traditional translation removed: translate directly
-                                // with AI, no dialog, no language picker.
+
                                 viewModel.translateLyricsWithAi(
                                     mediaMetadata = mediaMetadataProvider(),
                                     lyrics = lyricsText,
@@ -1166,7 +1162,6 @@ private fun LyricsSearchMessageContent(
 }
 
 private fun formatLyricsSyncOffset(offsetMs: Int): String = if (offsetMs > 0) "+$offsetMs ms" else "$offsetMs ms"
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1879,9 +1874,7 @@ private val TtmlTagRegex = Regex("""<[^>]+>""")
 
 internal fun prettyPrintLyricsForExport(raw: String): String {
     if (raw.isBlank()) return raw
-    // Word-synced TTML (Apple Music / BetterLyrics / Portato providers) needs the
-    // TTML parser; LyricsUtils.parseLyrics only understands QRC + LRC dialects and
-    // would otherwise fall through and emit the raw XML markup.
+
     val entries =
         runCatching {
             if (moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml(raw)) {

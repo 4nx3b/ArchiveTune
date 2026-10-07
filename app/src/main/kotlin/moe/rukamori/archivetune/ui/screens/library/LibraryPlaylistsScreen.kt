@@ -844,8 +844,7 @@ fun rememberArtworkCardColor(
         )
     val surfaceColor = MaterialTheme.colorScheme.surface
     val useDarkTheme = remember(surfaceColor) { ColorUtils.calculateLuminance(surfaceColor.toArgb()) < 0.5 }
-    // Pure black is now the default dark theme (2026-10-08) — derived from
-    // the surface color instead of the removed preference toggle.
+
     val pureBlack = useDarkTheme && MaterialTheme.colorScheme.surface.luminance() < 0.05f
 
     return remember(gradientColors, useDarkTheme, pureBlack) {

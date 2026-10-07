@@ -30,9 +30,6 @@ object TidalAccountManager {
         val durationMs: Long?,
     )
 
-    // The legacy device client (cid 3235) was retired by Tidal: it still mints tokens, but the
-    // refresh grant now rejects them. The registered Android TV client below is accepted for both
-    // the initial grant and refreshes.
     private const val CLIENT_ID = "fX2JxdmntZWK0ixT"
     private const val CLIENT_SECRET = "1Nn9AfDAjxrgJFJbKNWLeAyKGVGmINuXPPLHVXAvxAg="
 
@@ -586,18 +583,6 @@ object TidalAccountManager {
         return false
     }
 
-    /**
-     * True when a Tidal access JWT is expired, or expires within [marginSecs].
-     *
-     * Tidal access tokens live about an hour while the app's Source Pool cache is held for hours,
-     * so a cached pooled token is usually stale before it is ever used. Reading `exp` lets the
-     * resolver notice that and re-lease a fresh one, instead of firing the token, taking a 401,
-     * and reporting a perfectly healthy account dead.
-     *
-     * Non-JWT or unparseable tokens are reported as not expired: an unparseable token is not
-     * proof of expiry, so the request itself decides. The signature is deliberately not verified
-     * — it only decides whether to re-fetch.
-     */
     fun isAccessTokenExpired(token: String, marginSecs: Long = 300L): Boolean {
         val payload = token.split('.').getOrNull(1) ?: return false
         return try {
@@ -611,7 +596,6 @@ object TidalAccountManager {
             val exp = json.optLong("exp", 0L)
             exp > 0 && exp - marginSecs <= System.currentTimeMillis() / 1000L
         } catch (e: Exception) {
-            // An unparseable token is not proof of expiry; let the request itself decide.
             false
         }
     }

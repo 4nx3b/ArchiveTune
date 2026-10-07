@@ -25,20 +25,6 @@ import moe.rukamori.archivetune.utils.get
 import java.util.Locale
 import kotlin.math.abs
 
-/**
- * Line-synced community LRC from Megalobiz.
- *
- * BitChord scraped the search page of the old Megalobiz site; that site has
- * since been rebuilt as an API-backed single-page app, and the search-and-
- * fetch semantics now live at `api.megalobiz.com`: search the LRC sheets,
- * pick the one that is this recording, read its timed lines. The same
- * endpoint semantics, a host that still answers.
- *
- * The API wants a bearer token. The public app key the site's own JavaScript
- * ships is used first; if the site has been rebuilt since (the key rotated),
- * a fresh one is scraped out of the bundle the same way BitChord scrapes its
- * Apple developer token, cached, and the request retried once.
- */
 object MegalobizLyricsProvider : LyricsProvider {
     override val name = "Megalobiz"
 
@@ -70,8 +56,6 @@ object MegalobizLyricsProvider : LyricsProvider {
                 searchAndConvert(query, title, artist, duration, key)?.let { return@withContext it }
             }
 
-            // The embedded key was rejected (or never read): the site has been
-            // rebuilt and the key with it. Scrape a fresh one and try once more.
             val fresh = refreshAppKey() ?: return@withContext null
             if (fresh == key) return@withContext null
             searchAndConvert(query, title, artist, duration, fresh)
@@ -111,12 +95,6 @@ object MegalobizLyricsProvider : LyricsProvider {
         return toLrc(best.lines)
     }
 
-    /**
-     * The sheet that is this recording: the title (Megalobiz often files one
-     * string as "Artist - Title") and at least one credited artist have to be
-     * in it, and a length that matches when both are known. Of the sheets
-     * that pass, the closest in length wins.
-     */
     private fun best(
         sheets: List<Sheet>,
         title: String,
@@ -160,7 +138,6 @@ object MegalobizLyricsProvider : LyricsProvider {
             ?.first
     }
 
-    /** The timed lines as a plain LRC document the app parses natively. */
     private fun toLrc(lines: List<JsonElement>): String? {
         val builder = StringBuilder()
         lines.forEach { element ->
@@ -198,12 +175,6 @@ object MegalobizLyricsProvider : LyricsProvider {
         cachedAppKey.get() ?: DEFAULT_APP_KEY.also { cachedAppKey.set(it) }
     }
 
-    /**
-     * Pulls the app key out of the site's JavaScript bundle: the light LRC
-     * page, then the chunks it names, until one carries a JWT next to the API
-     * host. Rate-limited, because a down host would otherwise cost a bundle
-     * walk on every lookup.
-     */
     private suspend fun refreshAppKey(): String? {
         val now = System.currentTimeMillis()
         if (now - lastScrapeAttemptMs < SCRAPE_COOLDOWN_MS) return null
@@ -238,12 +209,6 @@ object MegalobizLyricsProvider : LyricsProvider {
     private const val PAGE_SIZE = 8
     private const val MINIMUM_MATCH_SCORE = 10
 
-    /**
-     * The public app key shipped by the site's own JavaScript — a JWT with no
-     * expiry claim, rotated only when the site is rebuilt. Kept here so the
-     * ordinary lookup costs no bundle walk, with [refreshAppKey] as the
-     * recovery when the site moves on from it.
-     */
     private const val DEFAULT_APP_KEY =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
             "eyJhcHBfaWQiOjEsImlhdCI6MTc5MDQ1NzA4MH0." +

@@ -33,7 +33,6 @@ import moe.rukamori.archivetune.utils.get
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
 
-/** Public Apple lyrics through the original keyless provider. */
 object PaxSenixAppleMusicLyricsProvider : LyricsProvider {
     override val name = "PaxSenix (Apple Music)"
 
@@ -55,7 +54,6 @@ object PaxSenixAppleMusicLyricsProvider : LyricsProvider {
         }
 }
 
-/** Spotify lyrics through PaxSenix's authenticated API; needs an API key. */
 object PaxSenixSpotifyLyricsProvider : LyricsProvider {
     override val name = "PaxSenix (Spotify)"
 
@@ -77,7 +75,6 @@ object PaxSenixSpotifyLyricsProvider : LyricsProvider {
         }
 }
 
-/** Musixmatch lyrics through PaxSenix's authenticated API; needs an API key. */
 object PaxSenixMusixmatchLyricsProvider : LyricsProvider {
     override val name = "PaxSenix (Musixmatch)"
 
@@ -99,15 +96,6 @@ object PaxSenixMusixmatchLyricsProvider : LyricsProvider {
         }
 }
 
-/**
- * The PaxSenix API: a public Apple Music proxy plus authenticated Spotify and
- * Musixmatch routes.
- *
- * The Apple route needs a catalogue id, which is resolved against Apple's own
- * search with a developer token scraped from music.apple.com's index script
- * (cached; a failed scrape is a miss, not a crash — the sources behind this
- * one get their turn).
- */
 internal object PaxSenixApi {
     private const val DEFAULT_API = "https://api.paxsenix.org"
     private const val PUBLIC_PROXY = "https://lyrics.paxsenix.org"
@@ -123,10 +111,6 @@ internal object PaxSenixApi {
     private val tokenMutex = Mutex()
     private val cachedAppleToken = AtomicReference<String?>(null)
 
-    /**
-     * Re-reads the user's API key and endpoint override. [LyricsProvider.isEnabled]
-     * runs before every fetch round, so this piggybacks on it.
-     */
     fun refreshConfig(context: Context) {
         val key = context.dataStore[PaxsenixApiKeyKey]?.trim().orEmpty()
         apiKey = normalizeApiKey(key)
@@ -145,7 +129,6 @@ internal object PaxSenixApi {
         }
     }
 
-    /** The original keyless Apple Music provider. */
     suspend fun appleMusicLyrics(
         title: String,
         artist: String,
@@ -202,8 +185,7 @@ internal object PaxSenixApi {
                 mapOf(
                     "Authorization" to "Bearer $token",
                     "Accept" to "application/json",
-                    // amp-api.music.apple.com answers a token with no Origin at
-                    // all the same way it answers a wrong one, with a 403.
+
                     "Origin" to "https://music.apple.com",
                     "Referer" to "https://music.apple.com/",
                 ),
@@ -213,8 +195,7 @@ internal object PaxSenixApi {
     }
 
     private suspend fun appleToken(): String? {
-        // The canvas module already holds a developer token when an Apple
-        // account is configured; reuse it rather than scraping a fresh one.
+
         AppleMusicProvider.devTokenProvider?.invoke()?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
         return cachedAppleToken.get() ?: tokenMutex.withLock {
             cachedAppleToken.get() ?: scrapeAppleToken()?.also { cachedAppleToken.set(it) }
@@ -241,13 +222,6 @@ internal object PaxSenixApi {
         return bestCandidate(root, title, artist, durationSec)?.id
     }
 
-    /**
-     * The general authenticated endpoint returns search candidates, not one
-     * lyric document. Parsing its array as one document concatenates every
-     * candidate and makes each song's timestamps restart at zero, which
-     * appears as repeated lines that cannot stay in sync — so one recording
-     * is selected before its lyrics are parsed.
-     */
     private suspend fun genericAuthenticatedLyrics(
         title: String,
         artist: String,
@@ -286,11 +260,6 @@ internal object PaxSenixApi {
         )
     }
 
-    /**
-     * The candidate that is this recording, or null if none of them is sure
-     * enough to be. Everything a catalogue returns is walked for things that
-     * look like a track, then scored against what is playing.
-     */
     private fun bestCandidate(
         root: JsonElement,
         title: String,
@@ -346,7 +315,6 @@ internal object PaxSenixApi {
     private fun JsonObject.firstLong(keys: List<String>): Long? =
         keys.firstNotNullOfOrNull { key -> (this[key] as? JsonPrimitive)?.longOrNull }
 
-    /** The same shape [toCandidate] reads, as a score for a whole document. */
     private fun JsonObject.lyricCandidateScore(
         title: String,
         artist: String,
@@ -400,7 +368,6 @@ internal object PaxSenixApi {
             else -> 0
         }
 
-    /** How far the last stamped line sits from the end of the playing track. */
     private fun durationDistanceMs(
         text: String,
         wantedMs: Long,

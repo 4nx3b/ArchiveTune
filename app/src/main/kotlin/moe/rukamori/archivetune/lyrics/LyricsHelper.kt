@@ -395,8 +395,7 @@ class LyricsHelper
 
             return provider !is YouTubeLyricsProvider &&
                 provider !is YouTubeSubtitleLyricsProvider &&
-                // SimpMusic is keyed on the YouTube video id; a local or
-                // Telegram track has nothing it can look up.
+
                 provider !is SimpMusicLyricsProvider
         }
 

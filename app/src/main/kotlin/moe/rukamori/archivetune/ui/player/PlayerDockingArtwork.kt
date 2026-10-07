@@ -41,19 +41,8 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import kotlin.math.roundToInt
 
-/**
- * Reports the CURRENT player artwork's bounds (in root layout coordinates —
- * the same frame the sheet's sharedLayer lives in) for the docking flight.
- * Player styles attach [dockArtworkAnchor] to their main artwork; the
- * flight layer falls back to a centered-square estimate for styles that do
- * not report.
- */
 val LocalPlayerDockArtwork = compositionLocalOf<(Rect?) -> Unit> { {} }
 
-/**
- * Attaches to a player style's main artwork: reports its bounds while the
- * artwork is composed and clears them when it leaves composition.
- */
 @Composable
 fun Modifier.dockArtworkAnchor(): Modifier {
     val reporter = LocalPlayerDockArtwork.current
@@ -76,12 +65,6 @@ fun Modifier.dockArtworkAnchor(): Modifier {
     }
 }
 
-/**
- * The flying artwork overlay, rendered from the sheet's sharedLayer (above
- * both the expanded content and the miniplayer). [fullArtworkRect] comes
- * from the player style (or the fallback estimate), [miniArtworkRect] from
- * the miniplayer's artwork slot.
- */
 @Composable
 fun BoxScope.PlayerDockingArtwork(
     sheetProgress: Float,
@@ -101,11 +84,6 @@ fun BoxScope.PlayerDockingArtwork(
 
     val density = LocalDensity.current
 
-    // Visible only while the sheet is actually travelling: fades in as the
-    // collapse begins (p 1 -> 0.85), solid through the flight, fades out as
-    // it lands on the miniplayer cover (p 0.12 -> 0). While fully expanded
-    // it stays invisible so it never covers the player's own artwork (or a
-    // canvas / TikTok video beneath it).
     val alpha =
         when {
             p >= 0.85f -> ((1f - p) / 0.15f).coerceIn(0f, 1f)

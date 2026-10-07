@@ -78,24 +78,18 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-// ---- BitChord FloatingBottomBar constants ----
 private val BitChordBarGutter = 16.dp
 private val BitChordPillInset = 6.dp
 private val BitChordTabSpacing = 6.dp
 private val BitChordTabIconSize = 25.dp
 private val BitChordTabIconLabelGap = 2.dp
 private val BitChordGlassEdgeWidth = 0.5.dp
-private const val BitChordStretch = 0.16f // pill elongation at full stride
-private const val BitChordSquash = 0.5f // fraction of the stretch taken out of the height
+private const val BitChordStretch = 0.16f
+private const val BitChordSquash = 0.5f
 private const val BitChordDragStrideThreshold = 0.35f
 private val BitChordGlassSpring = spring<Float>(dampingRatio = 0.72f, stiffness = 320f)
 private val BitChordIconSpring = spring<Float>(dampingRatio = 0.72f, stiffness = 320f)
 
-/**
- * The BitChord bottom navigation bar: a frosted 50%-radius pill with a
- * travelling, stretching selection pill, icon bounce, 200ms color crossfade
- * and the horizontal drag-to-switch gesture.
- */
 @Composable
 fun BitChordNavBar(
     barHeight: Dp,
@@ -180,8 +174,7 @@ fun BitChordNavBar(
                     .padding(horizontal = BitChordPillInset, vertical = BitChordPillInset)
                     .onGloballyPositioned { rowWidthPx = it.size.width.toFloat() },
         ) {
-            // Frosted backdrop (the blurred NavHost layer) — the BitChord
-            // regular-glass look on the app's own frosted infra.
+
             if (frostedBackdrop != null) {
                 var barPositionInRoot by remember { mutableStateOf(Offset.Zero) }
                 Box(
@@ -208,7 +201,6 @@ fun BitChordNavBar(
                 )
             }
 
-            // The travelling selection pill, stretching under motion.
             if (tabWidthDp > 0.dp) {
                 Box(
                     modifier =
@@ -225,7 +217,6 @@ fun BitChordNavBar(
                 )
             }
 
-            // The tabs.
             Row(
                 modifier =
                     Modifier
@@ -239,7 +230,7 @@ fun BitChordNavBar(
                                         val ratio = totalDrag / tabStepPx
                                         if (abs(ratio) > BitChordDragStrideThreshold) {
                                             val shift = maxOf(1, abs(ratio).roundToInt())
-                                            // A rightward drag walks BACK through the tabs.
+
                                             selectIndex(selectedIndex - shift * kotlin.math.sign(ratio).toInt())
                                         }
                                     }
@@ -278,7 +269,6 @@ fun BitChordNavBar(
     }
 }
 
-/** The 0.5dp glass edge stroke around the pill. */
 private fun Modifier.borderGuard(): Modifier =
     this.then(
         Modifier.drawBehind {
@@ -344,9 +334,6 @@ private fun BitChordNavBarItem(
     }
 }
 
-// ---- Icon glyphs (original re-implementations of the BitChord tab set) ----
-
-/** Stroked house — BitChord's Home glyph (1.7 stroke, round caps). */
 val BitChordHomeIcon: ImageVector by lazy {
     ImageVector.Builder(name = "BitChordHome", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
         path(
@@ -370,7 +357,6 @@ val BitChordHomeIcon: ImageVector by lazy {
     }.build()
 }
 
-/** Layered squares — BitChord's Library glyph. */
 val BitChordLibraryIcon: ImageVector by lazy {
     ImageVector.Builder(name = "BitChordLibrary", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
         path(fill = androidx.compose.ui.graphics.SolidColor(Color.Black)) {
@@ -398,7 +384,6 @@ val BitChordLibraryIcon: ImageVector by lazy {
     }.build()
 }
 
-/** Circle + handle — BitChord's Search glyph. */
 val BitChordSearchIcon: ImageVector by lazy {
     ImageVector.Builder(name = "BitChordSearch", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
         path(

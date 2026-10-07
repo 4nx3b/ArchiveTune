@@ -53,29 +53,17 @@ import moe.rukamori.archivetune.ui.player.blurBackdropFootprint
 import moe.rukamori.archivetune.ui.player.movingBlurWanderMaxDriftDp
 import moe.rukamori.archivetune.ui.player.rememberBlurWanderDrift
 
-/** Page keys of the Flamingo player's in-page state machine. */
 object FlamingoPage {
     const val Album = "Album"
     const val PlayingList = "PlayingList"
     const val Lyric = "Lyric"
 }
 
-/**
- * The moving-blur drift speed tuning: clearly visible motion (the old Ken Burns
- * 12s legs were imperceptible) while staying slow enough to read as a floating
- * backdrop rather than a pan.
- */
 private const val FlamingoMovingBlurSpeedDpPerSecond = 44f
 private const val FlamingoMovingBlurMinLegMs = 3_500f
 private const val FlamingoMovingBlurMaxLegMs = 11_000f
 private const val FlamingoMovingBlurScale = 1.35f
 
-/**
- * Ported from Flamingo's YosFloatingLight. Renders the processed artwork as the
- * player background with an optional moving-blur drift (the pre-redesign
- * floating-blur animation), plus the dim layer that fades in (alpha 0.618,
- * 300ms FastOutSlowIn) whenever the lyrics page is not showing.
- */
 @Composable
 fun FlamingoFloatingLight(
     modifier: Modifier,
@@ -188,14 +176,6 @@ fun FlamingoFloatingLight(
     }
 }
 
-/**
- * The moving blur: the pre-redesign floating-blur behaviour (BlurWanderDrift
- * drift + rotation, frozen while paused) applied to the processed Flamingo
- * backdrop. The image is laid out from an oversized footprint
- * (blurBackdropFootprint) so translation and rotation never expose the black
- * base at the screen edges — the bug the old Ken Burns implementation had
- * (scale started at 1f with a ±3.5% pan).
- */
 @Composable
 private fun FlamingoMovingBlurImage(
     bitmap: android.graphics.Bitmap,

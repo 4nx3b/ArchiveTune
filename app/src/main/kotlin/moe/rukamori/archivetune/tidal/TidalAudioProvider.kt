@@ -66,9 +66,6 @@ object TidalAudioProvider {
     private const val MAX_STREAM_CANDIDATES = 2
     private const val MAX_DIRECT_STREAM_CANDIDATES = 3
 
-    // Cap the number of mirror endpoints raced per request: with a large discovered instance
-    // list the concurrent race otherwise multiplies into dozens of simultaneous connections for
-    // a single track resolve, which is slow on mobile radios and hammering on the mirrors.
     private const val MAX_CONCURRENT_TIDAL_ENDPOINTS = 8
     private const val MIN_MATCH_SCORE = 90
     private const val ARTWORK_MAX_SCORE = 220
@@ -698,9 +695,7 @@ object TidalAudioProvider {
                     error.rethrowIfAudioSourceCancelled()
                     Timber.tag("TidalAudio").w(error, "TIDAL $quality stream failed for ${track.trackId}")
                     errors += "${track.trackId}/$quality: ${error.message ?: error.javaClass.simpleName}"
-                    // A failed attempt that only died because the overall deadline expired is
-                    // not a real resolver failure: caching it would poison the cache for the
-                    // next (perfectly valid) resolve of the same track.
+
                     if (AudioSourceAttemptScope.current()?.isExpired() != true) {
                         cacheStreamFailure(now, error, streamCacheKey, trackFailureCacheKey)
                     }
@@ -1239,15 +1234,8 @@ object TidalAudioProvider {
         var rateLimitCount = 0
         var longestRetryAfterMs = 0L
 
-        // Healthy instances first; instances on cooldown are only reached if all are down. The
-        // concurrent race is capped so a large instance list cannot fan out unbounded.
         val endpoints = orderedEndpoints().take(MAX_CONCURRENT_TIDAL_ENDPOINTS)
 
-        // Race all instances concurrently. A successful full-quality result returns immediately;
-        // waiting for every mirror here made one dead endpoint delay playback even when another
-        // mirror had already produced a valid stream. Downgraded AAC results are retained while we
-        // wait for a possible full-quality result from another mirror. The attempt deadline is
-        // carried into the worker coroutines so individual OkHttp calls are bounded by it too.
         return runBlocking(Dispatchers.IO + AudioSourceAttemptScope.coroutineContextElement()) {
             supervisorScope {
                 val results = Channel<Pair<TidalDownloadEndpoint, Result<Resolved>>>(endpoints.size.coerceAtLeast(1))
@@ -1299,8 +1287,7 @@ object TidalAudioProvider {
 
                         val error = result.exceptionOrNull() ?: TidalAudioResolutionException("unknown mirror failure")
                         if (AudioSourceAttemptScope.current()?.isExpired() == true) {
-                            // The deadline expired mid-race; this mirror did not really fail, so do
-                            // not cool it down or record it as an error against the account.
+
                             errors += "${endpoint.name}: source attempt deadline exceeded"
                         } else {
                             if (error is TidalRateLimitedException) {

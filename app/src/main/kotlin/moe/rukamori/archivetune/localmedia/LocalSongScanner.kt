@@ -102,12 +102,7 @@ class LocalSongScanner
     ) {
         suspend fun scanDevice(scanConfig: LocalSongScanConfig = LocalSongScanConfig()): LocalSongScanSummary =
             withContext(Dispatchers.IO) {
-                // A library last read by an older extractor is re-read in full once. After that, a
-                // file whose MediaStore size and modification time match its stored row skips the
-                // three per-file reads (artwork retriever, lyrics tag parse, replay-gain parse)
-                // that made every rescan cost as much as the first. This snapshot only drives
-                // that skip: the merge below reloads inside the transaction, so a like or play
-                // count written mid-scan is not overwritten.
+
                 val fullRescan =
                     (context.dataStore.getAsync(LocalScanExtractionVersionKey) ?: 0) < ExtractionVersion
                 val previousScan = if (fullRescan) emptyMap() else loadSongs(database.localSongIds())
@@ -126,7 +121,7 @@ class LocalSongScanner
                     }
 
                     val existingSongs = loadSongs(scannedIds)
-                    // Only files re-read this scan can change their embedded lyrics.
+
                     val existingLyrics =
                         loadLyrics(snapshot.tracks.filterNot(LocalTrackRecord::unchanged).map(LocalTrackRecord::id))
                     val existingArtists = loadArtists(snapshot.artists.map(LocalArtistRecord::id))
@@ -257,8 +252,7 @@ class LocalSongScanner
                                 ),
                             )
                         }
-                        // An unchanged file was not re-read, so its stored lyrics stand: passing its
-                        // unread (null) lyrics on would delete an EMBEDDED row it still carries.
+
                         if (!track.unchanged) {
                             updateEmbeddedLyrics(track, existingLyrics[track.id])
                         }
@@ -360,7 +354,7 @@ class LocalSongScanner
             val unknownTitle = context.getString(R.string.unknown)
             val tracks = mutableListOf<LocalTrackRecord>()
             val pending = mutableListOf<PendingExtraction>()
-            // Concurrent: the extraction pass below adds to it from several coroutines at once.
+
             val retainedArtworkFileNames: MutableSet<String> = ConcurrentHashMap.newKeySet<String>()
             val embeddedLyricsExtractor = EmbeddedLyricsExtractor(context.contentResolver)
             context.contentResolver
@@ -476,7 +470,7 @@ class LocalSongScanner
                                 dateModified = dateModified,
                                 sizeBytes = sizeBytes,
                                 mimeType = mimeType,
-                                // Set by the extraction pass below for every file that needs one.
+
                                 thumbnailUrl = kept?.thumbnailUrl,
                                 embeddedLyrics = null,
                                 replayGain = null,
@@ -484,9 +478,7 @@ class LocalSongScanner
                             )
                     }
                 }
-            // Only new or changed files reach here. Their reads run a few at a time: each holds a
-            // file open plus a retriever, so the bound keeps descriptors and memory flat however
-            // large the library, while one file's waits overlap the next file's reads.
+
             if (pending.isNotEmpty()) {
                 val permits = Semaphore(ExtractionParallelism)
                 val extractions =
@@ -594,12 +586,6 @@ class LocalSongScanner
                 ?.takeIf { it > 0L }
                 ?.let { ContentUris.withAppendedId(AlbumArtUri, it).toString() }
 
-        /**
-         * What a file unchanged since its last scan keeps, or null when it must be read again: it
-         * is new, its MediaStore size or modification time moved (a missing time never counts as
-         * unchanged), the embedded picture cached for it has gone from disk, or its stored
-         * thumbnail is not one this scanner wrote (another build's provider, a restored backup).
-         */
         private fun keptArtwork(
             previous: Song,
             dateModified: LocalDateTime?,
@@ -617,14 +603,11 @@ class LocalSongScanner
                 retainedArtworkFileNames += cachedFileName
                 return KeptArtwork(previousThumbnail)
             }
-            // No embedded picture was found last time: the row holds MediaStore album art or
-            // nothing, so there is nothing on disk to keep, and the fallback is recomputed as it
-            // costs no file read.
+
             if (previousThumbnail != null && !previousThumbnail.startsWith("$AlbumArtUri/")) return null
             return KeptArtwork(albumArtUri(albumName, mediaStoreAlbumId))
         }
 
-        /** The file in the local artwork directory that [thumbnailUrl] serves, or null if none. */
         private fun cachedArtworkFileName(thumbnailUrl: String?): String? {
             val uri = thumbnailUrl?.let(Uri::parse) ?: return null
             if (uri.authority != artworkAuthority) return null
@@ -869,11 +852,10 @@ class LocalSongScanner
             val thumbnailUrl: String?,
             val embeddedLyrics: String?,
             val replayGain: ReplayGainTagParser.ReplayGain?,
-            /** Carried over from the last scan: artwork, lyrics and replay gain were not read this time. */
+
             val unchanged: Boolean,
         )
 
-        /** A new or changed file waiting for its artwork, lyrics and replay-gain reads; [index] is its track slot. */
         private data class PendingExtraction(
             val index: Int,
             val contentUri: Uri,
@@ -892,7 +874,6 @@ class LocalSongScanner
             val replayGain: ReplayGainTagParser.ReplayGain?,
         )
 
-        /** An unchanged file's artwork, which may legitimately be none. */
         private data class KeptArtwork(
             val thumbnailUrl: String?,
         )
@@ -919,13 +900,8 @@ class LocalSongScanner
             const val LogTag = "LocalSongScanner"
             const val SqlBatchSize = 900
 
-            /** Files read at once during a scan; each read holds a descriptor and a retriever. */
             const val ExtractionParallelism = 4
 
-            /**
-             * Bump when the scan starts reading something new from files: the next scan then re-reads
-             * every file once rather than skipping unchanged ones (see LocalScanExtractionVersionKey).
-             */
             const val ExtractionVersion = 1
         }
     }

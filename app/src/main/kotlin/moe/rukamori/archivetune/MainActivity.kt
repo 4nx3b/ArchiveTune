@@ -963,10 +963,7 @@ class MainActivity : ComponentActivity() {
                 remember(darkTheme, isSystemInDarkTheme) {
                     if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
                 }
-            // Pitch black is now THE dark theme (2026-10-08: "if I've selected
-            // dark mode it should be pitch black in all the screens … remove
-            // the pure dark mode theme since it'll be applied by default") —
-            // the pure-black toggle is gone from the settings.
+
             val pureBlack = useDarkTheme
             val hideStatusBar by rememberPreference(HideStatusBarKey, defaultValue = false)
             val navigationBarFrostedBlur by rememberPreference(
@@ -1027,11 +1024,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-            // The song-driven dynamic background is REMOVED (2026-10-08:
-            // "Remove the dynamic background change of the app that is
-            // affected by the current song playing") — the app theme now
-            // comes solely from the user's palette choice; dark mode is
-            // pitch black everywhere.
             val themeColor = customThemeColor
 
             LaunchedEffect(legacyUseSystemFont) {
@@ -1414,9 +1406,7 @@ class MainActivity : ComponentActivity() {
                     val compactLeftCircleIsLibrary =
                         remember(navBackStackEntry?.destination?.route) {
                             val route = navBackStackEntry?.destination?.route ?: ""
-                            // On Home the left pill is a Library shortcut (the compact
-                            // bar hides the expanded 3-tab bar, so Library would
-                            // otherwise be unreachable).
+
                             route == "home" ||
                                 route == "history" ||
                                 route == "local_songs" ||
@@ -1792,8 +1782,7 @@ class MainActivity : ComponentActivity() {
                             shouldShowNavigationBar,
                             playerBottomSheetState.isDismissed,
                             effectiveStatusBarTop,
-                            // Animated so the content inset tracks the compacting
-                            // bottom UI frame-by-frame (see the miniplayer branch).
+
                             bottomUiCompactFractionState.value,
                         ) {
                             var bottom = bottomInset
@@ -1802,17 +1791,7 @@ class MainActivity : ComponentActivity() {
                             }
                             if (!playerBottomSheetState.isDismissed) {
                                 if (shouldShowNavigationBar && !useRail) {
-                                    // COMPACT-AWARE BOTTOM STACK (2026-10-08:
-                                    // "There's empty space between Mini Compact
-                                    // mini player and search bar in search tab
-                                    // when I've turned off keyboard"): when the
-                                    // nav bar slides away, the compact pill and
-                                    // the control circles share the old nav area
-                                    // and the whole stack shrinks from
-                                    // nav + spacing + mini (full) down to
-                                    // (nav + miniCompact) / 2 — the content
-                                    // bottom inset follows that collapse instead
-                                    // of reserving the full-height stack.
+
                                     val fullStack =
                                         navVisibleHeight + MiniPlayerBottomSpacing + MiniPlayerHeight
                                     val compactStack =
@@ -2184,9 +2163,6 @@ class MainActivity : ComponentActivity() {
                     val haptic = LocalHapticFeedback.current
                     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
 
-                    // The Library route's reveal-on-upward-swipe title state (driven
-                    // by LibraryScreen's nestedScroll connection, consumed by the
-                    // top-bar title).
                     val libraryTitleRevealState = remember { mutableStateOf(false) }
                     val customHaptic =
                         remember(haptic, enableHapticFeedback) {
@@ -2444,9 +2420,6 @@ class MainActivity : ComponentActivity() {
                                         val isHomeRoute = navBackStackEntry?.destination?.route == Screens.Home.route
                                         val isSearchRoute = navBackStackEntry?.destination?.route == Screens.Search.route
 
-                                        // The Library route's big title reveals only on upward
-                                        // swipes (LibraryScreen's nestedScroll connection
-                                        // drives this state; reset when leaving the route).
                                         LaunchedEffect(isLibraryRoute) {
                                             if (!isLibraryRoute) {
                                                 libraryTitleRevealState.value = false
@@ -2653,9 +2626,7 @@ class MainActivity : ComponentActivity() {
                                                                 Modifier
                                                                     .fillMaxWidth()
                                                                     .graphicsLayer {
-                                                                        // Revealed only by swiping upward inside the
-                                                                        // library list (2026-10-08); slides down +
-                                                                        // fades otherwise.
+
                                                                         alpha = libraryTitleAlpha
                                                                         translationY =
                                                                             (1f - libraryTitleSlideFraction) * -32.dp.toPx()
@@ -3164,11 +3135,7 @@ class MainActivity : ComponentActivity() {
                                                     },
                                         ) {
                                             if (navigationBarBitchord) {
-                                                // ---- BitChord navigation bar (2026-10-08):
-                                                // "add an option in navigation bar style named
-                                                // enable Bitchord Navigation bar" — hosted in the
-                                                // same slide/hide box so compact behaviour is
-                                                // unchanged. ----
+
                                                 moe.rukamori.archivetune.ui.component.BitChordNavBar(
                                                     barHeight = navVisibleHeight,
                                                     selectedRoute =
@@ -3449,14 +3416,7 @@ class MainActivity : ComponentActivity() {
                                                             navBarFrostedBackdrop.contentOffsetInRoot =
                                                                 coordinates.positionInRoot()
                                                         }.drawWithContent {
-                                                            // Recorded EVERY frame now (2026-10-08: "make
-                                                            // sure the content don't tear up like they do
-                                                            // now"): the old 100ms throttle replayed stale
-                                                            // snapshots under the frosted bar while the
-                                                            // content scrolled — the visible tearing.
-                                                            // drawWithContent already runs once per frame,
-                                                            // so recording unconditionally is the same
-                                                            // work the un-throttled kyant backdrop does.
+
                                                             val recorded =
                                                                 runCatching {
                                                                     navBarFrostedBackdrop.layer.record {
@@ -3494,11 +3454,7 @@ class MainActivity : ComponentActivity() {
                                             ).nestedScroll(
                                                 navBarScrollHideConnection,
                                             ).then(
-                                                // UIKit-style overscroll (2026-10-08 BitChord
-                                                // port): one hook around the whole NavHost gives
-                                                // every screen's lists the rubber band + spring
-                                                // settle; pull-to-refresh sits closer to its list
-                                                // and still consumes first.
+
                                                 if (!isTvDevice) {
                                                     Modifier.iosOverscroll()
                                                 } else {

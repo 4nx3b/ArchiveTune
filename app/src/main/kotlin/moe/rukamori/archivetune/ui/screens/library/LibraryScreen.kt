@@ -138,11 +138,6 @@ fun LibraryScreen(navController: NavController) {
 
     val libraryHazeState = LocalLibraryHazeState.current
 
-    // The big "Library" top-bar title only appears when the user swipes
-    // upward (scrolls toward the list top) and hides again on the way down
-    // (2026-10-08: "the library text on the top shouldn't be constant, it
-    // should only appear if I swipe in the upward direction") — the state
-    // itself lives in MainActivity next to the title.
     val libraryTitleReveal = LocalLibraryTitleReveal.current
     val titleRevealScrollConnection =
         remember(libraryTitleReveal) {

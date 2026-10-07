@@ -61,33 +61,11 @@ import coil3.request.crossfade
 import moe.rukamori.archivetune.R
 import kotlin.math.sqrt
 
-/**
- * Recomposition-isolating wrapper, derived from Flamingo's YosWrapper.
- *
- * The original keyed the subtree by `content.hashCode()` — the identity hash
- * of the content lambda. Capturing lambdas are only memoized by the Compose
- * compiler when every captured value is stable; the player's content lambdas
- * capture unstable values (MediaMetadata, PlayerConnection, …), so every
- * parent recomposition (which fires at least once per playback-position tick)
- * produced a fresh lambda instance, a fresh hashCode, and therefore a NEW
- * key — Compose disposed and rebuilt the entire wrapped subtree on every
- * tick. In the Flamingo player that meant a brand-new CanvasArtworkPlayer
- * (and ExoPlayer + video decoder) every second: the style's constant
- * stutter, the artwork-transition jank, and the landscape static-thumbnail
- * crossfade state resetting behind the canvas. The wrapper is now a plain
- * invocation — Compose's own skipping already provides the isolation the
- * identity key was meant to give, without the rebuild storm.
- */
 @Composable
 @NonRestartableComposable
 fun FlamingoWrapper(content: @Composable () -> Unit) =
     content()
 
-/**
- * "Add" compositing effect ported from Flamingo's Modifier.overlayEffect()
- * (BlendMode.Plus saveLayer). If a Modifier.alpha() is applied it must come
- * after this modifier, or use graphicsLayer { alpha = ... } instead.
- */
 @Composable
 fun Modifier.overlayEffect(): Modifier = this.drawWithCache {
     val overlayPaint = androidx.compose.ui.graphics.Paint().apply {
@@ -106,14 +84,12 @@ fun Modifier.overlayEffect(): Modifier = this.drawWithCache {
     }
 }
 
-/** Shadow presets, ported from Flamingo's ShadowType. */
 enum class ShadowType(val blur: Dp, val offsetY: Float, val offsetX: Float, val areaWeight: Float) {
     Large(24.dp, 0.08f, 0f, 0.94f),
     Medium(28.dp, 0.08f, 0f, 0.94f),
     Small(24.dp, 0.11f, 0f, 0.94f),
 }
 
-/** Drop-shadow modifier ported verbatim from Flamingo's Modifier.dropShadow. */
 @Composable
 fun Modifier.dropShadow(
     shape: Shape,
@@ -159,11 +135,6 @@ fun Modifier.dropShadow(
     }
 }
 
-/**
- * Smooth-corner (squircle) shape ported from Flamingo's YosRoundedCornerShape
- * (originally by Kyant). Provides the iOS-style continuous corner curvature used
- * across the Flamingo player's artwork and buttons.
- */
 fun FlamingoSmoothCornerShape(
     roundSize: Dp,
     n: Float = 0.5f,
@@ -305,7 +276,6 @@ class FlamingoSmoothCornerShape(
 private operator fun FloatArray.component6(): Float = this[5]
 private operator fun FloatArray.component7(): Float = this[6]
 
-/** Artwork decode quality tiers, ported from Flamingo's ImageQuality. */
 @Stable
 enum class ImageQuality {
     RAW, LOW, HIGH
@@ -342,7 +312,6 @@ private fun flamingoImageRequest(
     }
 }
 
-/** Ported from Flamingo's ShadowImageWithCache — squircle-clipped artwork with drop shadow. */
 @Composable
 fun ShadowImageWithCache(
     dataLambda: () -> Any?,
@@ -393,10 +362,6 @@ fun ShadowImageWithCache(
     }
 }
 
-/**
- * Haptic helpers ported from Flamingo's Vibrator companion (predefined effects,
- * 30ms fallback below API 29).
- */
 @Stable
 object FlamingoHaptics {
     private fun vibrator(context: Context): Vibrator =
@@ -445,11 +410,6 @@ object FlamingoHaptics {
     }
 }
 
-/**
- * Bitmap pipeline ported from Flamingo's BitmapResolver + imageResolve:
- * center-square crop, downscale, saturation x3, darkening overlay fills, then a
- * stack blur with radius 25. This is what produces the color behind the artwork.
- */
 @Stable
 object FlamingoBitmapResolver {
     fun bitmapCompress(bitmap: Bitmap, px: Int): Bitmap {
@@ -691,7 +651,6 @@ object FlamingoBitmapResolver {
     }
 }
 
-/** Ported verbatim from Flamingo's imageResolve (saturation x3 + darkening + blur 25). */
 fun flamingoImageResolve(image: Bitmap): Bitmap {
     val resizedBitmap = image.copy(Bitmap.Config.ARGB_8888, true)
     resizedBitmap.applyCanvas {
