@@ -2025,6 +2025,10 @@
     <string name="flamingo_settings_background_effect_desc">Drift the blurred artwork behind the player (faster, edge-safe)</string>
     <string name="flamingo_translation_option">Translation</string>
     <string name="flamingo_romanisation_option">Romanisation</string>
+    <string name="show_translation">Show Translation</string>
+    <string name="hide_translation">Hide Translation</string>
+    <string name="show_romanization">Show Romanization</string>
+    <string name="hide_romanization">Hide Romanization</string>
     <string name="flamingo_settings_volume_bar">Show volume bar</string>
     <string name="flamingo_settings_volume_bar_desc">Display the hardware volume slider in the player</string>
 </resources>

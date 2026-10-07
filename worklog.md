@@ -4741,3 +4741,83 @@ Stage Summary:
 - CI final: Build Pull Request SUCCESS + Nightly (canary) SUCCESS on
   3044f8f93; canary release N202610070338 (17.0.6654-3044f8f93) published
   with APK assets for device testing.
+
+---
+Task ID: 78
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 2026-10-07 evening reports — canvas+static artwork both gone from the
+Flamingo album stage, overflow menu still dead (user's own zIndex attempt
+c9ff5eda4 didn't help), landscape controls appear on lyrics swipe/tap, lyrics
+page thumbnail misaligned with the lyric lines, and the translation icon needs
+the compact anchored popup treatment (behavior-only spec supplied by the user).
+
+Work Log:
+- Forensics: pulled origin/dev (three new commits since task 76: 28d8f9431,
+  3044f8f93, c9ff5eda4-by-yuki). Pixel-level screenshot analysis (stage region
+  = pure background gradient, roughness 0.15-0.37) proved the album stage
+  renders NOTHING — neither canvas nor static artwork. Pulled media3 1.10.1
+  ui-compose sources (ContentFrame/resizeWithContentScale) and the MochaRealm
+  lyrics-ui sources jar (KaraokeLineText horizontal padding = 16dp) from Maven
+  to ground the canvas and alignment analyses. Cloned upstream Flamingo to
+  compare the original NowPlaying structure.
+- Canvas (CanvasArtworkPlayer.kt): reverted the ZOOM path to the pre-2026-09-21
+  main-branch form — plain ContentFrame(contentScale = Crop-derived, modifier
+  .alpha). The canvasCoverLayout and FIT+graphicsLayer-scale rewrites are gone;
+  this is the configuration that rendered correctly positioned canvas on the
+  user's device for weeks in the pre-port AM player.
+- Album stage (FlamingoPlayer.kt): the shared-element morph switched from the
+  port's sharedBounds(animatedVisibilityScope) to upstream Flamingo's exact
+  sharedElementWithCallerManagedVisibility(visible = nowPage == <branch>) at
+  all three page branches — no AnimatedContent-scope coupling, deterministic
+  in-place rendering. The morph now attaches to the static ARTWORK only: the
+  canvas TextureView carries no transform of any kind (no shared-element
+  layer, no offscreen compositing, no scale) — the mid-morph transform was
+  both the jank source and the interop-escape class. The static artwork gained
+  placeholder/error/fallback painters — the stage can never render fully
+  blank.
+- Overflow menu: removed Flamingo's route through the host BottomSheetMenu
+  (LocalMenuState.show — never appeared above the maximized player on the
+  device). New FlamingoAnchoredPlayerMenu renders INSIDE the player (outside
+  the recorded Box, above every player layer): full-screen dismiss scrim +
+  300dp glass panel (drawBackdrop + colorControls/blur, AnchoredLyricsOverflow-
+  Menu recipe) hosting the full PlayerMenu content, anchored to the more chip,
+  opens above/below by space. The more icon fill state follows the new popup
+  (playerMenuOpen threaded through FlamingoActionButtonsRow /
+  FlamingoPlayingBar / FlamingoLandscapeTitleBlock).
+- Translation icon: the expanding full-width panel + panelBackdrop + outside-
+  tap scrim + FlamingoTranslationOptionRow were deleted entirely. New compact
+  FlamingoTranslationPopup (200dp wide, two rows + single 1dp divider, glass
+  blur, opens attached ABOVE the icon, never overlapping it) rendered outside
+  the recorded Box — the glass-cycle crash class is structurally gone (single
+  popupBackdrop source, all consumers are later siblings). Rows flip
+  reactively between Show/Hide Translation and Show/Hide Romanization, calling
+  the existing setTranslationEnabled/setRomanizationEnabled state paths
+  (immediate enable + silent AI translation kick). Controls stay while the
+  popup is open (auto-hide suppressed); page switch closes it.
+- Landscape: the right pane's awaitEachGesture poke was REMOVED — swiping or
+  clicking the lyrics can no longer reveal the controls. The controls overlay
+  became a content-sized Column (title block + controls) with the poke
+  clickable on the controls strip itself, so the lyrics above stay fully
+  interactive even while controls are visible. Artwork-pane tap still pokes;
+  no auto-hide in landscape (unchanged).
+- Lyrics page thumbnail: FlamingoPlayingBar Row padding 28.5dp -> 16dp — the
+  thumbnail's left edge now aligns exactly with the karaoke lines' own 16dp
+  horizontal padding (KaraokeLineText in the accompanist lyrics-ui library).
+- Static review agent pass over the full diff: 1 compile blocker found and
+  fixed (const val with Dp initializer — illegal in Kotlin), plus the exit-
+  animation job joins restored (scaleJob/alphaJob joined before onDismiss so
+  the popup exit animation actually plays). All symbols/resources verified
+  (LocalLiquidGlassTuning, colorControls, PlatformBackdrop typealias,
+  solar_eye/language/ic_music_placeholder drawables, 4 new strings).
+- Kotlin balance checker OK on both files.
+
+Stage Summary:
+- Canvas + static artwork always render in the album stage (proven Crop
+  pipeline, placeholder fallbacks, no transforms around the TextureView).
+- Overflow menu opens as an in-player anchored glass popup on every page —
+  independent of the host BottomSheetMenu z-order entirely.
+- Translation icon opens the compact glass popup above the icon; no crash
+  class remains (single backdrop source, consumers outside the recorder).
+- Landscape lyrics interactions never summon the controls; controls-area
+  touch still keeps them alive.
+- Lyrics-page thumbnail aligned with the lyric lines.
