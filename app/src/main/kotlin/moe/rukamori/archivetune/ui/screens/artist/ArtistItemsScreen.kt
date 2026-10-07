@@ -148,7 +148,16 @@ fun ArtistItemsScreen(
         }
     }
 
+    val artist by viewModel.artist.collectAsStateWithLifecycle()
+
     Box(modifier = Modifier.fillMaxSize()) {
+        // Backdrop color extracted from the artist's profile picture (same
+        // ambient gradient as the main artist page, 2026-10-08).
+        ArtistAmbientBackdrop(
+            artistId = artist?.id,
+            artworkUrl = artist?.thumbnailUrl,
+        )
+
         if (itemsPage == null) {
             ShimmerHost(
                 modifier =

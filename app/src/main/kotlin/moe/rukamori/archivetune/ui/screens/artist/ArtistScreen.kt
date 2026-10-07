@@ -1235,7 +1235,13 @@ fun ArtistScreen(
                                 }
 
                             LazyRow(
-                                contentPadding = PaddingValues(horizontal = 12.dp),
+                                // 0dp gutter: the GridItem cards carry their own
+                                // 12dp internal padding, so the FIRST thumbnail
+                                // lands at 12dp — exactly where the section
+                                // header title starts (2026-10-08: "the
+                                // thumbnails and the headers are not aligned in
+                                // the artist page for albums, singles, eps").
+                                contentPadding = PaddingValues(horizontal = 0.dp),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 items(
@@ -1330,6 +1336,11 @@ fun ArtistScreen(
                                     },
                                     modifier =
                                         Modifier
+                                            // ListItem's 8dp row + 8dp thumbnail padding puts
+                                            // the artwork at 16dp; shifting the row 4dp left
+                                            // aligns it with the 12dp section header
+                                            // (2026-10-08 header/thumbnail alignment pass).
+                                            .offset(x = (-4).dp)
                                             .combinedClickable(
                                                 onClick = {
                                                     if (song.id == mediaMetadata?.id) {
@@ -1362,7 +1373,9 @@ fun ArtistScreen(
                                 contentType = CONTENT_TYPE_LIST,
                             ) {
                                 LazyRow(
-                                    contentPadding = PaddingValues(horizontal = 12.dp),
+                                    // 6dp gutter + the circle item's 6dp internal
+                                    // padding = 12dp, aligned with the header.
+                                    contentPadding = PaddingValues(horizontal = 6.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
                                     items(
@@ -1396,7 +1409,10 @@ fun ArtistScreen(
                                 contentType = CONTENT_TYPE_LIST,
                             ) {
                                 LazyRow(
-                                    contentPadding = PaddingValues(horizontal = 12.dp),
+                                    // 0dp gutter — GridItem's 12dp internal padding
+                                    // puts the first thumbnail at 12dp, aligned
+                                    // with the section header (2026-10-08).
+                                    contentPadding = PaddingValues(horizontal = 0.dp),
                                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 ) {
                                     items(

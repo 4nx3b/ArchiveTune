@@ -82,7 +82,6 @@ import moe.rukamori.archivetune.constants.FlamingoShowVolumeBarKey
 import moe.rukamori.archivetune.constants.DefaultOpenTabKey
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
-import moe.rukamori.archivetune.constants.DynamicThemeKey
 import moe.rukamori.archivetune.constants.FontPreferenceKey
 import moe.rukamori.archivetune.constants.ForceHighRefreshRateKey
 import moe.rukamori.archivetune.constants.HideStatusBarKey
@@ -104,14 +103,12 @@ import moe.rukamori.archivetune.constants.PlayerButtonsStyleKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.TikTokMainLyricsEnabledKey
-import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.SliderStyleKey
 import moe.rukamori.archivetune.constants.TabletModeEnabledKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
-import moe.rukamori.archivetune.constants.WallpaperExtractionFailedKey
 import moe.rukamori.archivetune.constants.UiScaleFactorKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -147,13 +144,6 @@ import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     val context = LocalContext.current
     val defaultDisableAnimations = remember(context) { context.isLowRamDevice() }
-    val (wallpaperExtractionFailed) =
-        rememberPreference(WallpaperExtractionFailedKey, defaultValue = false)
-    val (dynamicTheme, onDynamicThemeChange) =
-        rememberPreference(
-            DynamicThemeKey,
-            defaultValue = true,
-        )
     val (randomThemeOnStartup, onRandomThemeOnStartupChange) =
         rememberPreference(
             RandomThemeOnStartupKey,
@@ -231,7 +221,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             LiquidGlassEnabledKey,
             defaultValue = true,
         )
-    val (pureBlack, onPureBlackChange) = rememberPreference(PureBlackKey, defaultValue = false)
     val (disableBlur, onDisableBlurChange) = rememberPreference(DisableBlurKey, defaultValue = false)
     val (disableAnimations, onDisableAnimationsChange) =
         rememberPreference(
@@ -531,32 +520,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     SwitchPreference(
-                        title = { Text(stringResource(R.string.enable_dynamic_theme)) },
-                        icon = { Icon(painterResource(R.drawable.palette), null) },
-                        checked = dynamicTheme,
-                        onCheckedChange = onDynamicThemeChange,
-                    )
-                }
-
-                item(visible = dynamicTheme && Build.VERSION.SDK_INT < Build.VERSION_CODES.S && wallpaperExtractionFailed) {
-                    PreferenceEntry(
-                        modifier = positions.modifierFor("wallpaper_permission"),
-                        title = { Text(stringResource(R.string.wallpaper_permission)) },
-                        description = stringResource(R.string.wallpaper_permission_desc),
-                        icon = { Icon(painterResource(R.drawable.storage), null) },
-                        onClick = {
-                            val intent =
-                                android.content.Intent(
-                                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                    android.net.Uri.fromParts("package", context.packageName, null),
-                                )
-                            context.startActivity(intent)
-                        },
-                    )
-                }
-
-                item(visible = !dynamicTheme) {
-                    SwitchPreference(
                         modifier = positions.modifierFor("random_theme_on_startup"),
                         title = { Text(stringResource(R.string.random_theme_on_startup)) },
                         description = stringResource(R.string.random_theme_on_startup_desc),
@@ -566,7 +529,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                     )
                 }
 
-                item(visible = !dynamicTheme || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                item {
                     Column(modifier = positions.modifierFor("color_palette")) {
                         PreferenceEntry(
                             modifier = positions.modifierFor("palette_picker", "theme_creator"),
@@ -603,17 +566,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                     DarkMode.AUTO -> stringResource(R.string.dark_theme_follow_system)
                                 }
                             },
-                        )
-                    }
-                }
-
-                item(visible = useDarkTheme) {
-                    Column(modifier = positions.modifierFor("pure_black")) {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.pure_black)) },
-                            icon = { Icon(painterResource(R.drawable.contrast), null) },
-                            checked = pureBlack,
-                            onCheckedChange = onPureBlackChange,
                         )
                     }
                 }

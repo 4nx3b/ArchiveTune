@@ -49,6 +49,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -98,7 +99,6 @@ import moe.rukamori.archivetune.constants.PlaylistSortDescendingKey
 import moe.rukamori.archivetune.constants.PlaylistSortType
 import moe.rukamori.archivetune.constants.PlaylistSortTypeKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadius
-import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.ShowTagsInLibraryKey
 import moe.rukamori.archivetune.db.entities.Playlist
 import moe.rukamori.archivetune.extensions.move
@@ -844,7 +844,9 @@ fun rememberArtworkCardColor(
         )
     val surfaceColor = MaterialTheme.colorScheme.surface
     val useDarkTheme = remember(surfaceColor) { ColorUtils.calculateLuminance(surfaceColor.toArgb()) < 0.5 }
-    val pureBlack by rememberPreference(PureBlackKey, defaultValue = false)
+    // Pure black is now the default dark theme (2026-10-08) — derived from
+    // the surface color instead of the removed preference toggle.
+    val pureBlack = useDarkTheme && MaterialTheme.colorScheme.surface.luminance() < 0.05f
 
     return remember(gradientColors, useDarkTheme, pureBlack) {
         val baseColor = gradientColors.firstOrNull() ?: fallbackColor
