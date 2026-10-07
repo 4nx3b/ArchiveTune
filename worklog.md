@@ -4681,3 +4681,63 @@ Stage Summary:
 - Album-page overflow chip unblocked; lyrics morph smooth; panel per spec;
   landscape tap-to-reveal + no static thumbnail behind the canvas.
 - Commit follows; CI monitored to green.
+---
+Task ID: 76 (session web-e130fa90)
+Task: "none of the tasks I asked you to complete work + the app crashes when
+I click on the translation button in lyrics page" — repair the task-75 batch
+against native crash report native_crash_1791340922.txt.
+
+Work Log:
+- Crash forensics: SIGSEGV on RenderThread in libhwui with fault_addr = sp -
+  0x30 (stack exhaustion). Traced to a mutual GraphicsLayer reference cycle:
+  the task-75 translation panel sampled popupBackdrop while sitting INSIDE
+  the Box that layerBackdrop(popupBackdrop) records. Frame N records the
+  panel's sampling layer into the backdrop layer; frame N+1 (inside the 100ms
+  throttle) records the backdrop layer into the panel's layer; HWUI replays
+  the cycle recursively until the RenderThread stack overflows. The
+  recordingInProgress guard cannot catch the cross-frame form — only
+  structural separation can.
+- FlamingoPlayer.kt: dedicated panelBackdrop records ONLY background + the
+  portrait lyrics (a first-child source Box); the panel (in the controls
+  stack, a later sibling) samples it — no consumer inside its own source, no
+  cycle possible. popupBackdrop now records only while the anchored lyrics
+  menu (rendered outside the Box) is open. Portrait lyrics block moved into
+  the source Box verbatim (gated !landscape). Panel keeps liquid glass
+  (vibrancy + 28dp blur), 1dp divider, pinned controls; lyrics taps now
+  manually close the open panel.
+- Overflow chip root cause (album page dead, queue page worked — both call
+  the same onMoreClick closure): CanvasArtworkPlayer's ZOOM path measured the
+  TextureView interop node at cover-crop size (720x1280 video in a ~411x386dp
+  stage -> ~411x730dp node at negative offsets) — the interop layout node
+  extended ~170dp past the artwork stage into the title-row band where the
+  like/overflow chips sit, and interop nodes hit-test wherever they are
+  placed. The queue page has no canvas — hence it worked. CanvasArtworkPlayer
+  ZOOM now keeps the surface at FIT size (always inside the container) and
+  applies cover-crop as a graphicsLayer scale (s = max(a/c, c/a)) under
+  clipToBounds; canvasCoverLayout deleted. Visuals identical for all ZOOM
+  call sites (Flamingo portrait/landscape, TikTok, V7, hero pages); the
+  interop hit region now never leaves the artwork stage.
+- Recomposition storm fixed (the style's lag, artwork-morph jank, landscape
+  static thumbnail returning): FlamingoWrapper keyed its subtree by
+  content.hashCode() — the identity hash of a capturing lambda capturing
+  unstable values, so >= 1/s position ticks minted new lambdas -> new keys ->
+  Compose disposed and rebuilt the entire wrapped subtree each tick,
+  including a fresh CanvasArtworkPlayer + ExoPlayer + decoder every second.
+  FlamingoWrapper is now a plain invocation.
+- Landscape: 2500ms auto-hide disabled in landscape (poked controls stay),
+  and showControl resets only on orientation change (song changes no longer
+  re-hide revealed controls).
+- Static review agent pass over the diff: all checks PASS, verdict
+  safe-to-push (imports, scopes, brace balance, byte-equivalent lyrics move,
+  all 45 FlamingoWrapper call sites compatible).
+- Commit 3044f8f93 pushed to dev; Build PR + Nightly canary monitored.
+
+Stage Summary:
+- Translation button no longer crashes: glass cycle eliminated structurally.
+- Album-page overflow chip unblocked with a mechanism that also explains the
+  queue-page asymmetry in the user's report.
+- Single video decoder, stable subtree (no per-second rebuilds), bounded
+  canvas interop node, landscape controls persistent after tap.
+- CI final: Build Pull Request SUCCESS + Nightly (canary) SUCCESS on
+  3044f8f93; canary release N202610070338 (17.0.6654-3044f8f93) published
+  with APK assets for device testing.
