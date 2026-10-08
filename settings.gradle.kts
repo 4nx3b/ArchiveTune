@@ -34,6 +34,23 @@ dependencyResolutionManagement {
                 releasesOnly()
             }
         }
+        // The accompanist lyrics libraries publish RC builds (2.0.0-rc.x) that
+        // mavenCentral's releasesOnly() filter refuses to serve, and the GCS
+        // Central mirror can lag a freshly published release by hours — route
+        // the group straight at repo1.maven.org so pre-release lyrics builds
+        // resolve the moment they exist.
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = "AccompanistCentral"
+                    setUrl("https://repo1.maven.org/maven2/")
+                }
+            }
+            filter {
+                includeGroup("com.mocharealm.accompanist")
+                includeGroup("com.mocharealm.gaze")
+            }
+        }
         exclusiveContent {
             forRepository {
                 maven {
