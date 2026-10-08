@@ -53,6 +53,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
@@ -306,7 +307,7 @@ import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.ThrottledLayerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberThrottledLayerBackdrop
 import moe.rukamori.archivetune.ui.component.throttledLayerBackdrop
-import moe.rukamori.archivetune.ui.component.iosOverscroll
+import moe.rukamori.archivetune.ui.component.rememberIosOverscrollFactory
 import moe.rukamori.archivetune.ui.component.GlassPipelinePrewarm
 import moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
@@ -1018,6 +1019,8 @@ class MainActivity : ComponentActivity() {
 
             val liquidGlassTuning = rememberLiquidGlassTuning()
 
+            val iosOverscrollFactory = rememberIosOverscrollFactory()
+
             val customThemeSeedPalette =
                 remember(customThemeColorValue) {
                     if (customThemeColorValue.startsWith("#")) {
@@ -1518,7 +1521,9 @@ class MainActivity : ComponentActivity() {
                             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
                     val liquidGlassBackdrop: ThrottledLayerBackdrop? =
-                        if (liquidGlassActive) {
+                        if (liquidGlassActive ||
+                            (navigationBarBitchord && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                        ) {
                             rememberThrottledLayerBackdrop()
                         } else {
                             null
@@ -2238,6 +2243,7 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
                         moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive provides isPlayerSheetOverlayActive,
                         moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction provides playerSheetOverlayFractionState,
+                        LocalOverscrollFactory provides iosOverscrollFactory,
                     ) {
                         Row(
                             modifier =
@@ -3198,6 +3204,7 @@ class MainActivity : ComponentActivity() {
                                                                 bottom = bottomInset + floatingBarsBottomPadding,
                                                             ),
                                                     frostedBackdrop = navBarFrostedBackdrop,
+                                                    liquidGlassBackdrop = liquidGlassBackdrop,
                                                 )
                                             } else {
                                             FloatingNavigationToolbar(
@@ -3483,13 +3490,6 @@ class MainActivity : ComponentActivity() {
                                                 topAppBarScrollBehavior.nestedScrollConnection,
                                             ).nestedScroll(
                                                 navBarScrollHideConnection,
-                                            ).then(
-
-                                                if (!isTvDevice) {
-                                                    Modifier.iosOverscroll()
-                                                } else {
-                                                    Modifier
-                                                },
                                             ),
                                 ) {
                                     navigationBuilder(

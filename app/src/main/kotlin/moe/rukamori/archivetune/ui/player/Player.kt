@@ -553,12 +553,12 @@ fun BottomSheetPlayer(
     val spatialFlowMiniArtworkRect =
         rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
 
-val dockFullArtworkRect =
-    remember { androidx.compose.runtime.mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+val dockFullArtworkAnchor =
+    remember { androidx.compose.runtime.mutableStateOf<PlayerDockAnchor?>(null) }
 val dockMiniArtworkRect =
     remember { androidx.compose.runtime.mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
-val dockArtworkReporter: (androidx.compose.ui.geometry.Rect?) -> Unit = remember(dockFullArtworkRect) { { rect ->
-    dockFullArtworkRect.value = rect
+val dockArtworkReporter: (PlayerDockAnchor?) -> Unit = remember(dockFullArtworkAnchor) { { anchor ->
+    dockFullArtworkAnchor.value = anchor
 } }
 
 val spatialFlowFullArtworkRect =
@@ -1207,6 +1207,18 @@ val spatialFlowFullArtworkRect =
             }
         }
 
+    val dockSheetProgressProvider = remember(state) { { state.progress } }
+    val dockFlightActive =
+        remember(state) {
+            derivedStateOf {
+                val p = state.progress
+                p > 0f && p < 1f
+            }
+        }
+
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalPlayerDockFlight provides dockFlightActive,
+    ) {
     BottomSheet(
         state = state,
         modifier =
@@ -1355,23 +1367,10 @@ val spatialFlowFullArtworkRect =
             } else {
                 {
                     androidx.compose.foundation.layout.BoxWithConstraints {
-                        val fallbackSide = (maxWidth - 64.dp).coerceAtLeast(200.dp)
-                        val fallbackRect =
-                            with(androidx.compose.ui.platform.LocalDensity.current) {
-                                val sidePx = fallbackSide.toPx()
-                                val topPx = 24.dp.toPx()
-                                val widthPx = maxWidth.toPx()
-                                androidx.compose.ui.geometry.Rect(
-                                    left = (widthPx - sidePx) / 2f,
-                                    top = topPx,
-                                    right = (widthPx + sidePx) / 2f,
-                                    bottom = topPx + sidePx,
-                                )
-                            }
                         enrichedMetadata?.let { metadata ->
                             PlayerDockingArtwork(
-                                sheetProgress = state.progress.coerceIn(0f, 1f),
-                                fullArtworkRect = dockFullArtworkRect.value ?: fallbackRect,
+                                sheetProgress = dockSheetProgressProvider,
+                                fullAnchor = dockFullArtworkAnchor.value,
                                 miniArtworkRect = dockMiniArtworkRect.value,
                                 artworkUrl = metadata.thumbnailUrl?.highRes(),
                             )
@@ -2924,6 +2923,7 @@ val spatialFlowFullArtworkRect =
             }
         }
         }
+    }
     }
     }
     }

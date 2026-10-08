@@ -219,6 +219,9 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import moe.rukamori.archivetune.ui.player.LocalPlayerDockFlight
+import moe.rukamori.archivetune.ui.player.dockFlightHidden
 import androidx.media3.ui.AspectRatioFrameLayout
 import coil3.compose.AsyncImage
 import sh.calvin.reorderable.ReorderableItem
@@ -262,6 +265,7 @@ private val FlamingoLandscapeRightScrim =
 
 private const val FlamingoLyricsContentDeferMs = 600L
 private const val FlamingoLyricsContentDeferCanvasMs = 300L
+private const val FlamingoPageMorphHoldMs = 420L
 
 private data class QueueReorderTarget(
     val nextInQueue: Boolean,
@@ -366,7 +370,7 @@ fun FlamingoPlayerContent(
         }
 
         val showControl = rememberSaveable(key = "FlamingoNowPlaying_showControl") {
-            mutableStateOf(true)
+            mutableStateOf(!landscape)
         }
 
         var nowPage by rememberSaveable(key = "FlamingoNowPlaying_nowPage") {
@@ -378,11 +382,29 @@ fun FlamingoPlayerContent(
         }
 
         LaunchedEffect(landscape) {
-            showControl.value = true
+            showControl.value = !landscape
         }
 
         val nowPageLambda = rememberUpdatedState(nowPage)
         val showControlLambda = rememberUpdatedState(showControl.value)
+
+        val firstPageObservation = remember { mutableStateOf(true) }
+        var pageMorphRunning by remember { mutableStateOf(false) }
+        LaunchedEffect(nowPage) {
+            if (firstPageObservation.value) {
+                firstPageObservation.value = false
+                return@LaunchedEffect
+            }
+            pageMorphRunning = true
+            delay(FlamingoPageMorphHoldMs)
+            pageMorphRunning = false
+        }
+
+        val overlayArtworkReveal by animateFloatAsState(
+            targetValue = if (pageMorphRunning || nowPage != FlamingoPage.Album) 1f else 0f,
+            animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+            label = "flamingo-overlay-artwork-reveal",
+        )
 
         val canvasOnAlbum = nowPage == FlamingoPage.Album
         var canvasSurfacesPlaying by remember { mutableStateOf(true) }
@@ -404,6 +426,13 @@ fun FlamingoPlayerContent(
                 easing = FastOutSlowInEasing,
             ),
             label = "flamingo-canvas-surfaces-fade",
+        )
+
+        val dockFlight = LocalPlayerDockFlight.current
+        val canvasFlightAlpha by animateFloatAsState(
+            targetValue = if (dockFlight.value) 0f else 1f,
+            animationSpec = tween(durationMillis = 150, easing = LinearOutSlowInEasing),
+            label = "flamingo-canvas-flight-fade",
         )
 
         BackHandler(enabled = nowPage != FlamingoPage.Album) {
@@ -657,7 +686,7 @@ fun FlamingoPlayerContent(
                                             .fillMaxWidth()
                                             .fillMaxHeight(frostFraction)
                                             .graphicsLayer {
-                                                alpha = canvasSurfacesAlpha * canvasBackdropReveal
+                                                alpha = canvasSurfacesAlpha * canvasBackdropReveal * canvasFlightAlpha
                                             },
                                 ) {
                                     Box(
@@ -694,7 +723,7 @@ fun FlamingoPlayerContent(
                                         Modifier
                                             .matchParentSize()
                                             .graphicsLayer {
-                                                alpha = canvasSurfacesAlpha * canvasBackdropReveal
+                                                alpha = canvasSurfacesAlpha * canvasBackdropReveal * canvasFlightAlpha
                                             }
                                             .background(FlamingoCanvasScrimBrush),
                                 )
@@ -711,7 +740,7 @@ fun FlamingoPlayerContent(
                                                 },
                                             )
                                             .graphicsLayer {
-                                                alpha = canvasSurfacesAlpha
+                                                alpha = canvasSurfacesAlpha * canvasFlightAlpha
                                                 compositingStrategy = CompositingStrategy.Offscreen
                                             }
                                             .drawWithContent {
@@ -803,13 +832,6 @@ fun FlamingoPlayerContent(
                 }
 
                 if (landscape) {
-                    val pokeControls = {
-                        if (!showControlLambda.value) {
-                            showControl.value = true
-                        }
-                        lastClickTime.longValue = System.currentTimeMillis()
-                    }
-
                     val landscapeSwipeModifier =
                         Modifier
 
@@ -963,14 +985,7 @@ fun FlamingoPlayerContent(
                                     verticalArrangement = Arrangement.Bottom,
                                 ) {
                                     Column(
-                                        modifier =
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .clickable(
-                                                    interactionSource = remember { MutableInteractionSource() },
-                                                    indication = null,
-                                                    onClick = pokeControls,
-                                                ),
+                                        modifier = Modifier.fillMaxWidth(),
                                     ) {
                                         FlamingoLandscapeTitleBlock(
                                             mediaMetadata = mediaMetadata,
@@ -1112,6 +1127,7 @@ fun FlamingoPlayerContent(
                                                         isPlaying = { isPlayingStatusLambda.value },
                                                         canvasActive = canvasVisualActive,
                                                         videoShowing = videoShowing,
+                                                        overlayArtworkReveal = overlayArtworkReveal,
                                                     )
                                                     AnimatedContent(
                                                         targetState = mediaMetadata,
@@ -2019,7 +2035,9 @@ private fun ColumnScope.FlamingoAlbum(
     isPlaying: () -> Boolean,
     canvasActive: Boolean,
     videoShowing: Boolean,
+    overlayArtworkReveal: Float,
 ) {
+    val dockFlight = LocalPlayerDockFlight.current
     if (videoShowing) {
         Box(
             Modifier
@@ -2027,15 +2045,32 @@ private fun ColumnScope.FlamingoAlbum(
                 .padding(top = 20.dp)
                 .padding(horizontal = 15.dp)
                 .padding(bottom = 33.dp),
-            contentAlignment = Alignment.BottomCenter,
+            contentAlignment = Alignment.Center,
         ) {
+            ShadowImageWithCache(
+                dataLambda = { artworkUrl },
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .graphicsLayer {
+                        compositingStrategy = CompositingStrategy.ModulateAlpha
+                        alpha = overlayArtworkReveal * if (dockFlight.value) 0f else 1f
+                    }
+                    .then(modifier),
+                imageQuality = ImageQuality.LOW,
+                shadowOverlay = true,
+            )
             InlineVideoPlayer(
                 controlsOnTap = true,
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
+                    .graphicsLayer {
+                        alpha = if (dockFlight.value) 0f else 1f
+                    }
                     .clip(RoundedCornerShape(16.dp))
-                    .dockArtworkAnchor(),
+                    .dockArtworkAnchor(cornerRadius = 16.dp),
             )
         }
         return
@@ -2045,8 +2080,26 @@ private fun ColumnScope.FlamingoAlbum(
         Box(
             Modifier
                 .weight(1f)
-                .dockArtworkAnchor(),
-        )
+                .padding(top = 20.dp)
+                .padding(horizontal = 15.dp)
+                .padding(bottom = 33.dp),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            ShadowImageWithCache(
+                dataLambda = { artworkUrl },
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        compositingStrategy = CompositingStrategy.ModulateAlpha
+                        alpha = overlayArtworkReveal * if (dockFlight.value) 0f else 1f
+                    }
+                    .then(modifier)
+                    .dockArtworkAnchor(cornerRadius = 8.dp),
+                imageQuality = ImageQuality.RAW,
+                shadowOverlay = true,
+            )
+        }
         return
     }
 
@@ -2085,7 +2138,8 @@ private fun ColumnScope.FlamingoAlbum(
                     .padding(start = dp, end = dp, bottom = dp)
                     .then(modifier)
 
-                    .dockArtworkAnchor(),
+                    .dockArtworkAnchor(cornerRadius = 8.dp)
+                    .dockFlightHidden(),
                 imageQuality = ImageQuality.RAW,
                 shadowOverlay = true,
             )
@@ -2178,7 +2232,9 @@ private fun FlamingoLandscapeStage(
                             .graphicsLayer {
                                 compositingStrategy = CompositingStrategy.ModulateAlpha
                             }
-                            .padding(start = dp, end = dp, bottom = dp),
+                            .padding(start = dp, end = dp, bottom = dp)
+                            .dockArtworkAnchor(cornerRadius = 8.dp)
+                            .dockFlightHidden(),
                         imageQuality = ImageQuality.RAW,
                         shadowOverlay = true,
                     )
@@ -3120,7 +3176,7 @@ private fun FlamingoActionButtonsRow(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
                 ),
-            contentAlignment = Alignment.Center,
+            contentAlignment = Alignment.CenterEnd,
         ) {
             AnimatedContent(
                 targetState = currentSongLiked,
@@ -3147,7 +3203,7 @@ private fun FlamingoActionButtonsRow(
             }
         }
 
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(8.dp))
 
         Box(
             modifier = Modifier
@@ -3166,7 +3222,7 @@ private fun FlamingoActionButtonsRow(
                         base
                     }
                 },
-            contentAlignment = Alignment.Center,
+            contentAlignment = Alignment.CenterStart,
         ) {
             AnimatedContent(
                 targetState = overflowOpen,
@@ -3227,6 +3283,8 @@ private fun FlamingoPlayingBar(
             contentDescription = null,
             modifier = modifier
                 .size(69.dp)
+                .dockArtworkAnchor(cornerRadius = 5.dp)
+                .dockFlightHidden()
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },

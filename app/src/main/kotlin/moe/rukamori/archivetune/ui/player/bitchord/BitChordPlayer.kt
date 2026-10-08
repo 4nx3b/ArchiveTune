@@ -78,6 +78,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.media3.ui.AspectRatioFrameLayout
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
 import moe.rukamori.archivetune.ui.player.dockArtworkAnchor
+import moe.rukamori.archivetune.ui.player.dockFlightHidden
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -889,7 +890,8 @@ fun BitChordPlayerContent(
 
                         .offset { IntOffset(artStart.roundToPx(), artTop.roundToPx()) }
                         .size(artSize)
-                        .dockArtworkAnchor()
+                        .dockArtworkAnchor(cornerRadius = 8.dp)
+                        .dockFlightHidden()
 
                         .onGloballyPositioned {
                             dismissBandTop = it.boundsInRoot().top

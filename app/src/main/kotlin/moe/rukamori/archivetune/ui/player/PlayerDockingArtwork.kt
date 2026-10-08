@@ -4,16 +4,17 @@
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
- * The maximized-player -> miniplayer artwork flight (2026-10-08: "Port the
- * maximised player transition into miniplayer animation and how the songs
- * thumbnail flies and then goes into the miniplayer and it should apply to
- * all the miniplayer styles"). Adapted from BitChord's PlayerDock flight
- * (https://github.com/kushagrasinghx/BitChord, GPL-3.0) — re-implemented on
- * ArchiveTune's in-window BottomSheet: the sheet's sharedLayer hosts a
- * thumbnail overlay that interpolates between the player artwork's rect and
- * the miniplayer artwork slot while the sheet progress runs 1 -> 0, landing
- * exactly on the miniplayer's cover (which cross-fades in beneath it at the
- * very end). It never intercepts touches.
+ * The maximized-player <-> miniplayer artwork flight. One continuous
+ * thumbnail travels between the expanded player's artwork bounds and the
+ * miniplayer's cover while the sheet progress runs 1 -> 0: it is re-measured
+ * and re-placed at the interpolated rect every frame (layout phase only, the
+ * sheet's own spring drives it), the expanded artwork and the miniplayer
+ * cover stand aside for it, and at each end of the journey it hands its
+ * pixels over to the node that owns that position — never a fade, never a
+ * second copy of the artwork. Re-implemented on ArchiveTune's in-window
+ * BottomSheet after BitChord's PlayerDock flight semantics
+ * (https://github.com/kushagrasinghx/BitChord, GPL-3.0): the artwork leads,
+ * the rest of the player follows behind it.
  */
 
 package moe.rukamori.archivetune.ui.player
@@ -21,30 +22,40 @@ package moe.rukamori.archivetune.ui.player
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import kotlin.math.roundToInt
 
-val LocalPlayerDockArtwork = compositionLocalOf<(Rect?) -> Unit> { {} }
+data class PlayerDockAnchor(
+    val rect: Rect,
+    val cornerRadius: Dp,
+)
+
+val LocalPlayerDockArtwork = compositionLocalOf<(PlayerDockAnchor?) -> Unit> { {} }
+
+val LocalPlayerDockFlight = compositionLocalOf<State<Boolean>> {
+    mutableStateOf(false)
+}
 
 @Composable
-fun Modifier.dockArtworkAnchor(): Modifier {
+fun Modifier.dockArtworkAnchor(cornerRadius: Dp = 8.dp): Modifier {
     val reporter = LocalPlayerDockArtwork.current
     DisposableEffect(reporter) {
         onDispose { reporter(null) }
@@ -54,11 +65,14 @@ fun Modifier.dockArtworkAnchor(): Modifier {
         if (size.width > 0 && size.height > 0) {
             val topLeft = coordinates.positionInRoot()
             reporter(
-                Rect(
-                    left = topLeft.x,
-                    top = topLeft.y,
-                    right = topLeft.x + size.width,
-                    bottom = topLeft.y + size.height,
+                PlayerDockAnchor(
+                    rect = Rect(
+                        left = topLeft.x,
+                        top = topLeft.y,
+                        right = topLeft.x + size.width,
+                        bottom = topLeft.y + size.height,
+                    ),
+                    cornerRadius = cornerRadius,
                 ),
             )
         }
@@ -66,56 +80,58 @@ fun Modifier.dockArtworkAnchor(): Modifier {
 }
 
 @Composable
+fun Modifier.dockFlightHidden(): Modifier {
+    val flight = LocalPlayerDockFlight.current
+    return this.graphicsLayer {
+        alpha = if (flight.value) 0f else 1f
+    }
+}
+
+@Composable
 fun BoxScope.PlayerDockingArtwork(
-    sheetProgress: Float,
-    fullArtworkRect: Rect?,
+    sheetProgress: () -> Float,
+    fullAnchor: PlayerDockAnchor?,
     miniArtworkRect: Rect?,
     artworkUrl: String?,
     modifier: Modifier = Modifier,
 ) {
     if (artworkUrl.isNullOrBlank()) return
     val full =
-        fullArtworkRect
+        fullAnchor?.rect
             ?.takeIf { it.width > 0f && it.height > 0f }
             ?: return
     val mini = miniArtworkRect ?: full
-    val p = sheetProgress.coerceIn(0f, 1f)
-    if (p <= 0.01f) return
-
     val density = LocalDensity.current
-
-    val alpha =
-        when {
-            p >= 0.85f -> ((1f - p) / 0.15f).coerceIn(0f, 1f)
-            p >= 0.12f -> 1f
-            else -> (p / 0.12f).coerceIn(0f, 1f)
-        }
-    if (alpha <= 0.01f) return
-
-    val scale = lerp(mini.width / full.width, 1f, p)
-    val targetCentreX = lerp(mini.center.x, full.center.x, p)
-    val targetCentreY = lerp(mini.center.y, full.center.y, p)
+    val fullCornerPx = with(density) { (fullAnchor?.cornerRadius ?: 8.dp).toPx() }
+    val miniCornerPx = with(density) { 10.dp.toPx() }
 
     Box(
         modifier =
             modifier
-                .offset { IntOffset(full.left.roundToInt(), full.top.roundToInt()) }
-                .size(with(density) { full.width.toDp() })
-                .graphicsLayer {
-                    this.alpha = alpha
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = targetCentreX - full.center.x
-                    translationY = targetCentreY - full.center.y
-                    val cornerPx =
-                        lerp(
-                            with(density) { 8.dp.toPx() },
-                            with(density) { 16.dp.toPx() },
-                            p,
+                .layout { measurable, _ ->
+                    val p = sheetProgress().coerceIn(0f, 1f)
+                    val left = lerp(mini.left, full.left, p)
+                    val top = lerp(mini.top, full.top, p)
+                    val width = lerp(mini.width, full.width, p)
+                    val height = lerp(mini.height, full.height, p)
+                    val placeable =
+                        measurable.measure(
+                            Constraints.fixed(
+                                width.roundToInt().coerceAtLeast(1),
+                                height.roundToInt().coerceAtLeast(1),
+                            ),
                         )
+                    layout(0, 0) {
+                        placeable.place(left.roundToInt(), top.roundToInt())
+                    }
+                }
+                .graphicsLayer {
+                    val p = sheetProgress().coerceIn(0f, 1f)
+                    alpha = if (p > 0f && p < 1f) 1f else 0f
+                    val cornerPx = lerp(miniCornerPx, fullCornerPx, p)
                     shape = RoundedCornerShape(cornerPx)
                     clip = true
-                    shadowElevation = lerp(0f, 12.dp.toPx(), p)
+                    shadowElevation = 10.dp.toPx() * (4f * p * (1f - p))
                 },
     ) {
         AsyncImage(
