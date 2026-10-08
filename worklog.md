@@ -5015,3 +5015,18 @@ Work Log:
 
 Stage Summary:
 - dev @ 91bdd9c62: ALL workflows GREEN — Build Pull Request (build+tests+lint) SUCCESS and Nightly 8/8 (check, 5x APK matrix incl. R8 release builds, create-nightly) SUCCESS. All 12 tasks of the batch landed CI-clean.
+
+---
+Task ID: 87
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 7-item batch — accompanist lyrics v2.0.0-rc.2 + Blossom animation style, flamingo canvas positioning fix, search suggestions rework, listen-together typing indicator, subtle app-wide gradient, video background re-buffering, lyrics font-weight fix
+
+Work Log:
+- 4 parallel Explore agents + VLM screenshot forensics (two passes + pixel-band analysis) to diagnose the flamingo canvas misplacement; accompanist v2 sources pulled from repo1 and mapped API-by-API; LyricsBlossom confirmed closed-source (no library) → Blossom implemented natively.
+- 532fb09b0 (21 files, +1095/-315): lyrics-ui 1.0.19→2.0.0-rc.2 + lyrics-core 0.4.6→0.5.0 with LyricsLazyListState/LyricsAnchor/translationTextStyle migration and the app-level auto-scroll driver removed (v2 follows internally); LyricsFontFamily rebuilt as a 9-weight SF Pro family (the single static bold file had been swallowing every weight — the font-weight setting's real bug); new LyricsBlossom.kt renderer (word-by-word emphasis via graphicsLayer-only reads, blur falloff, spring following, interlude dots) + "Lyrics animation style" setting (Accompanist/Blossom); flamingo stage back to its fixed full-bleed rect with the album square carrying the shared bounds (also removes SharedTransitionLayout overlay work from sheet expand/collapse); engage-driven rounded halo on the expanded seek/volume rails; search recommendations above queries + progressive haze top-fade + bigger YouTube icon + mic shifted right; typing indicator above the composer; subtle gradient (light+dark, ~1/3 intensity) at the root under every page while disable-blur is off (Scaffold transparent, per-screen copies removed); video players pause (not stop) on ON_STOP and re-anchor silently on ON_START.
+- Static review pass fixed 2 blockers (ISyncedLine smart casts, HazeProgressive package) before push.
+- 532fb09b0 CI: nightly matrix red — releasesOnly() mavenCentral refuses -rc versions and the GCS mirror lagged the hours-old artifact. Verified every companion artifact exists on repo1 (lyrics-ui-android AAR, lyrics-core-jvm, capsule-android; JB material3 1.9.0 redirects to androidx 1.4.0 so the app's 1.5.0-alpha23 pin wins).
+- c3c1b7ae4: exclusiveContent routes com.mocharealm.accompanist + com.mocharealm.gaze straight to repo1.maven.org.
+
+Stage Summary:
+- dev @ c3c1b7ae4: ALL workflows GREEN — build (compile+tests+lint), check, 5x Nightly APK matrix (incl. R8 release) and create-nightly all SUCCESS.
