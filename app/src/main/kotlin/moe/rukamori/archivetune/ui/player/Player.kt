@@ -2912,7 +2912,6 @@ val spatialFlowFullArtworkRect =
                 }
             }
         }
-        }
     }
     }
     }
@@ -3793,3 +3792,4 @@ private fun Modifier.littlePlayerOverlayGestures(
                 }
             }
         }
+    }
