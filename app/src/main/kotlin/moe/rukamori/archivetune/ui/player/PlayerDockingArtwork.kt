@@ -40,7 +40,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -51,6 +50,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.CornerSize
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
@@ -268,8 +268,7 @@ fun MiniPlayerArtworkFlightHost(
                     val visualCorner =
                         lerp(controller.startCorner.toPx(), controller.targetCorner.toPx(), sizeP)
                     val cornerX = if (scaleX > 0.01f) visualCorner / scaleX else visualCorner
-                    val cornerY = if (scaleY > 0.01f) visualCorner / scaleY else visualCorner
-                    shape = RoundedCornerShape(CornerRadius(cornerX, cornerY))
+                    shape = RoundedCornerShape(CornerSize(cornerX))
                     clip = true
                 },
     ) {
