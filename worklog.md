@@ -4907,3 +4907,14 @@ Stage Summary:
   page transitions.
 - CI final: 8/8 check-runs SUCCESS on 506d6b6bb (build, check, all 5 Nightly
   APK matrix jobs, create-nightly release published with APK assets).
+
+---
+Task ID: 82
+Task: Compile-error repair + BitChord player update + Apple Music video/marquee + dead-code/comment sweep + full codebase audit round
+
+- e4ba9a1bb: repaired the 30+ Kotlin errors from the 2026-10-08 batch (imports, BASE_URL, Dp-vs-Float Rect, composable-context violations, togglePlayPause extension).
+- 6a1666ccb: BitChord player restyled to the repo's current design — new artwork-mesh backdrop (6x6 means, seam-anchored, 32dp blur, #121212 floor, 0.06->0.30 bottom scrim = blurred blend-in of the bottom controls), updated transport/pill metrics, marquee title, dock anchor; legacy mesh gradient deleted. Apple Music style: inline music-video playback (portrait stage + landscape full-bleed) + marquee titles.
+- c2e615722: comment-block sweep, 42 files / 1019 lines, license headers preserved.
+- f2bcad24a: audit round — 6 perf fixes (position storm mitigations, blur-wander gating, remember fixes, draw-phase deferrals, inset quantization), DeepL implemented + OpenRouter/DeepL keys wired, 8 missing lyrics provider toggles, refresh-rate applied at activity level, dead toggles/keys/dialogs removed, dead clickables wired, SearchDiscovery cluster deleted (5 wasted cold-start requests), singleton imageLoader, 64px probes, LRU bounds, gated prewarm, 8 dead files + 53 unused drawables + re2j/brotli removed.
+- d20068194..390c36080: CI repair rounds (orphaned @Inject; core+lyrics submodule bumps; Float preferredRefreshRate; DataStore get import; YIM share-capture param; safe-call takeIf; context.imageLoader property; @Composable restoration; appContext scope in DownloadUtil).
+- CI on 390c36080: ALL 8 check-runs SUCCESS (build incl. tests+lint, check, 5x Nightly APK matrix, create-nightly release).
