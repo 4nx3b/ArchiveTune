@@ -2201,7 +2201,7 @@ class MainActivity : ComponentActivity() {
                     val haptic = LocalHapticFeedback.current
                     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
 
-                    val libraryTitleRevealState = remember { mutableStateOf(false) }
+                    val libraryTitleRevealState = remember { mutableStateOf(true) }
                     val customHaptic =
                         remember(haptic, enableHapticFeedback) {
                             object : HapticFeedback {
@@ -2460,9 +2460,10 @@ class MainActivity : ComponentActivity() {
                                         val isSearchRoute = navBackStackEntry?.destination?.route == Screens.Search.route
 
                                         LaunchedEffect(isLibraryRoute) {
-                                            if (!isLibraryRoute) {
-                                                libraryTitleRevealState.value = false
-                                            }
+                                            // The "Library" large title is visible whenever the
+                                            // tab is entered from scratch; it then scrolls away on
+                                            // downward scrolling and re-reveals on upward scrolling.
+                                            libraryTitleRevealState.value = isLibraryRoute
                                         }
                                         val libraryTitleRevealed by libraryTitleRevealState
                                         val libraryTitleAlpha by animateFloatAsState(

@@ -384,7 +384,6 @@ private fun MiniPlayerArtwork(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val dockFlight = moe.rukamori.archivetune.ui.player.LocalPlayerDockFlight.current
     Box(
         contentAlignment = Alignment.Center,
         modifier =
@@ -396,7 +395,6 @@ private fun MiniPlayerArtwork(
             modifier =
                 Modifier
                     .size(48.dp)
-                    .playerDockArt(cornerRadius = 10.dp)
                     .onGloballyPositioned { coordinates ->
                         if (onArtworkSlotPositioned != null) {
                             onArtworkSlotPositioned(
@@ -410,9 +408,6 @@ private fun MiniPlayerArtwork(
                                 ),
                             )
                         }
-                    }
-                    .graphicsLayer {
-                        alpha = if (dockFlight.value) 0f else 1f
                     }
                     .clip(MiniPlayerArtworkShape)
                     .background(colors.artworkContainer)

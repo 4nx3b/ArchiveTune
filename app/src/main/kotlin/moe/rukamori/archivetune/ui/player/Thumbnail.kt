@@ -598,14 +598,13 @@ fun Thumbnail(
                                                 Modifier
                                                     .fillMaxSize()
                                                     .let { if (shouldCropArtwork) it.aspectRatio(1f) else it }
-                                                    .dockFlightHidden()
                                                     .graphicsLayer(
                                                         renderEffect = BlurEffect(radiusX = blurRadiusPx, radiusY = blurRadiusPx),
                                                         alpha = 0.6f,
                                                     ),
                                         )
                                     } else if (thumbnailBgBlurEnabled) {
-                                        Box(Modifier.matchParentSize().dockFlightHidden()) {
+                                        Box(Modifier.matchParentSize()) {
                                             ThumbnailBgBlurApi30(
                                                 imageUrl = displayUrl,
                                                 blurAmount = backdropBlurAmount,
@@ -621,7 +620,6 @@ fun Thumbnail(
                                                 Modifier
                                                     .fillMaxSize()
                                                     .let { if (shouldCropArtwork) it.aspectRatio(1f) else it }
-                                                    .dockFlightHidden()
                                                     .graphicsLayer(alpha = 0.6f),
                                         )
                                     }
@@ -640,9 +638,10 @@ fun Thumbnail(
                                             Modifier
                                                 .fillMaxSize()
                                                 .let { if (shouldCropArtwork) it.aspectRatio(1f) else it }
+                                                .miniFlightHidden()
                                                 .let { base ->
                                                     if (page.slotKey == "current") {
-                                                        base.dockSleeve(cornerRadius = thumbnailCornerRadius.dp)
+                                                        base.miniFlightSleeve(cornerRadius = thumbnailCornerRadius.dp)
                                                     } else {
                                                         base
                                                     }
@@ -657,29 +656,13 @@ fun Thumbnail(
                                             primaryUrl = primaryCanvasUrl,
                                             fallbackUrl = fallbackCanvasUrl,
                                             isPlaying = isPlaying,
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .let { base ->
-                                                    if (page.slotKey == "current") {
-                                                        base.dockFlightHidden()
-                                                    } else {
-                                                        base
-                                                    }
-                                                },
+                                            modifier = Modifier.fillMaxSize(),
                                         )
                                     }
 
                                     if (isCurrentMusicVideo) {
                                         InlineVideoPlayer(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .let { base ->
-                                                    if (page.slotKey == "current") {
-                                                        base.dockFlightHidden()
-                                                    } else {
-                                                        base
-                                                    }
-                                                },
+                                            modifier = Modifier.fillMaxSize(),
                                         )
                                     }
                                 }

@@ -60,7 +60,7 @@ import coil3.request.allowHardware
 import coil3.request.crossfade
 import moe.rukamori.archivetune.R
 import kotlin.math.sqrt
-import moe.rukamori.archivetune.ui.player.dockFlightHidden
+import moe.rukamori.archivetune.ui.player.miniFlightHidden
 
 @Composable
 @NonRestartableComposable
@@ -333,7 +333,7 @@ fun ShadowImageWithCache(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .dockFlightHidden()
+            .miniFlightHidden()
             .dropShadow(shape, shadowAlpha, shadowType, shadowOverlay)
             .graphicsLayer {
                 compositingStrategy = CompositingStrategy.Offscreen
