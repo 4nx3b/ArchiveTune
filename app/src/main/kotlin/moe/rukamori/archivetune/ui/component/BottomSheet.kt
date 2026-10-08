@@ -169,7 +169,7 @@ fun BottomSheet(
                                 alpha = ((p - 0.5f) * 2).coerceIn(0f, 1f)
                                 if (p <= 0.01f) translationY = 10_000f
                             } else {
-                                alpha = if (state.isCollapsed) 0f else ((state.progress - 0.25f) * 4).coerceIn(0f, 1f)
+                                alpha = if (state.isCollapsed) 0f else ((state.progress - 0.15f) / 0.85f).coerceIn(0f, 1f)
                             }
                         },
                 content = content,
@@ -185,7 +185,7 @@ fun BottomSheet(
                                 val p = state.progress.coerceIn(0f, 1f)
                                 alpha = ((p - 0.5f) * 2).coerceIn(0f, 1f)
                             } else {
-                                alpha = ((state.progress - 0.25f) * 4).coerceIn(0f, 1f)
+                                alpha = ((state.progress - 0.15f) / 0.85f).coerceIn(0f, 1f)
                             }
                         },
                 content = content,

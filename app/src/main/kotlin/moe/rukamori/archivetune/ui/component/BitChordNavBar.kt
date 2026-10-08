@@ -18,6 +18,7 @@
 
 package moe.rukamori.archivetune.ui.component
 
+import android.os.Build
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -103,9 +104,13 @@ fun BitChordNavBar(
     frostedBackdrop: NavigationBarBackdrop? = null,
     frostedBlurRadiusPx: Float = 60f,
     frostedOverlayAlpha: Float = 0.30f,
+    liquidGlassBackdrop: ThrottledLayerBackdrop? = null,
 ) {
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
+    val canLiquidGlass =
+        liquidGlassBackdrop != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val pillShape = RoundedCornerShape(percent = 50)
 
     var selectedIndex by remember(selectedRoute, itemCount) {
         mutableIntStateOf(
@@ -159,10 +164,27 @@ fun BitChordNavBar(
                 .height(barHeight)
                 .padding(horizontal = BitChordBarGutter)
                 .padding(bottom = 2.dp)
-                .clip(RoundedCornerShape(percent = 50))
+                .then(
+                    if (liquidGlassBackdrop != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        Modifier.liquidGlass(
+                            backdrop = liquidGlassBackdrop,
+                            shape = pillShape,
+                            interactive = false,
+                            baseColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        )
+                    } else {
+                        Modifier
+                    },
+                )
+                .clip(pillShape)
                 .borderGuard(),
-        shape = RoundedCornerShape(percent = 50),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f),
+        shape = pillShape,
+        color =
+            if (canLiquidGlass) {
+                Color.Transparent
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f)
+            },
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
@@ -174,7 +196,7 @@ fun BitChordNavBar(
                     .padding(horizontal = BitChordPillInset, vertical = BitChordPillInset)
                     .onGloballyPositioned { rowWidthPx = it.size.width.toFloat() },
         ) {
-            if (frostedBackdrop != null) {
+            if (frostedBackdrop != null && !canLiquidGlass) {
                 var barPositionInRoot by remember { mutableStateOf(Offset.Zero) }
                 Box(
                     modifier =

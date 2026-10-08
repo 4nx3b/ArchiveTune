@@ -329,7 +329,7 @@ fun Thumbnail(
     var seekDirection by remember { mutableStateOf("") }
     val layoutDirection = LocalLayoutDirection.current
 
-    Box(modifier = modifier.dockArtworkAnchor()) {
+    Box(modifier = modifier) {
         Column(
             modifier =
                 Modifier
@@ -545,6 +545,15 @@ fun Thumbnail(
                                 modifier =
                                     Modifier
                                         .size(containerMaxWidth - (PlayerHorizontalPadding * 2))
+                                        .let { base ->
+                                            if (page.slotKey == "current") {
+                                                base
+                                                    .dockArtworkAnchor(cornerRadius = thumbnailCornerRadius.dp)
+                                                    .dockFlightHidden()
+                                            } else {
+                                                base
+                                            }
+                                        }
                                         .clip(RoundedCornerShape(thumbnailCornerRadius.dp)),
                             ) {
                                 if (hidePlayerThumbnail) {
