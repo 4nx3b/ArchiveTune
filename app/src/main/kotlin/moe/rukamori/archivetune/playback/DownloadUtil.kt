@@ -216,10 +216,10 @@ class DownloadUtil
         fun prewarmDownloadConnections() {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             scope.launch {
-                val tidalEnabled = context.dataStore[moe.rukamori.archivetune.constants.TidalEnabledKey] ?: true
-                val qobuzEnabled = context.dataStore[moe.rukamori.archivetune.constants.QobuzEnabledKey] ?: true
-                val deezerEnabled = context.dataStore[moe.rukamori.archivetune.constants.DeezerEnabledKey] ?: false
-                val saavnEnabled = context.dataStore[moe.rukamori.archivetune.constants.JioSaavnEnabledKey] ?: false
+                val tidalEnabled = appContext.dataStore[moe.rukamori.archivetune.constants.TidalEnabledKey] ?: true
+                val qobuzEnabled = appContext.dataStore[moe.rukamori.archivetune.constants.QobuzEnabledKey] ?: true
+                val deezerEnabled = appContext.dataStore[moe.rukamori.archivetune.constants.DeezerEnabledKey] ?: false
+                val saavnEnabled = appContext.dataStore[moe.rukamori.archivetune.constants.JioSaavnEnabledKey] ?: false
                 for (host in PREWARM_HOSTS) {
                     val skip = when {
                         host.endsWith("tidal.com") -> !tidalEnabled
