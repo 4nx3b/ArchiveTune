@@ -2234,7 +2234,7 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState provides bottomSheetPageState,
                         moe.rukamori.archivetune.ui.component.LocalMenuState provides menuState,
                         LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
-                        LocalLiquidGlassBackdrop provides liquidGlassBackdrop,
+                        LocalLiquidGlassBackdrop provides if (liquidGlassActive) liquidGlassBackdrop else null,
                         moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop provides menuGlassBackdrop,
                         moe.rukamori.archivetune.ui.component.LocalLiquidGlassTuning provides liquidGlassTuning,
                         moe.rukamori.archivetune.ui.component.LocalBottomUiCompactFraction provides bottomUiCompactFractionState,
