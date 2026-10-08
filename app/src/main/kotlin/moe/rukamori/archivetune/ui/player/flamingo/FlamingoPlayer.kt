@@ -1055,11 +1055,6 @@ fun FlamingoPlayerContent(
                                     easing = FastOutSlowInEasing,
                                 ),
                             )
-                            val albumSharedBounds: Modifier = Modifier.sharedBounds(
-                                sharedContentState = rememberSharedContentState(key = ShareAlbumKey),
-                                enter = pageBoundsEnter,
-                                exit = pageBoundsExit,
-                            )
                             AnimatedContent(
                                 targetState = nowPage,
                                 transitionSpec = {
@@ -1070,6 +1065,13 @@ fun FlamingoPlayerContent(
                                     .padding(top = topInset + 22.dp),
                                 label = "FlamingoPageCrossfade",
                             ) { page ->
+                                val pageBoundsScope = this@AnimatedContent
+                                val albumSharedBounds = Modifier.sharedBounds(
+                                    sharedContentState = rememberSharedContentState(key = ShareAlbumKey),
+                                    animatedVisibilityScope = pageBoundsScope,
+                                    enter = pageBoundsEnter,
+                                    exit = pageBoundsExit,
+                                )
                                 when (page) {
                                     FlamingoPage.Album ->
                                         Box(Modifier.fillMaxSize()) {
@@ -1181,6 +1183,7 @@ fun FlamingoPlayerContent(
                                                         sharedContentState = rememberSharedContentState(
                                                             key = ShareAlbumKey,
                                                         ),
+                                                        animatedVisibilityScope = pageBoundsScope,
                                                         enter = pageBoundsEnter,
                                                         exit = pageBoundsExit,
                                                     ),
@@ -1212,6 +1215,7 @@ fun FlamingoPlayerContent(
                                                         sharedContentState = rememberSharedContentState(
                                                             key = ShareAlbumKey,
                                                         ),
+                                                        animatedVisibilityScope = pageBoundsScope,
                                                         enter = pageBoundsEnter,
                                                         exit = pageBoundsExit,
                                                     ),

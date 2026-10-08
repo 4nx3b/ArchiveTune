@@ -38,11 +38,11 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.GraphicsLayer
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
+import androidx.compose.ui.unit.toIntSize
 import androidx.compose.ui.unit.toSize
 import kotlin.math.roundToInt
 
@@ -118,7 +119,7 @@ val LocalPlayerDockFlight = compositionLocalOf<State<Boolean>> {
 }
 
 @Composable
-fun Modifier.playerDockArt(corner: Dp): Modifier {
+fun Modifier.playerDockArt(cornerRadius: Dp): Modifier {
     val dock = LocalPlayerDock.current ?: return this
     val placed = remember { arrayOfNulls<LayoutCoordinates>(1) }
     DisposableEffect(dock) {
@@ -126,7 +127,7 @@ fun Modifier.playerDockArt(corner: Dp): Modifier {
     }
     return this.onPlaced { coordinates ->
         placed[0] = coordinates
-        dock.reportMiniArt(coordinates, corner)
+        dock.reportMiniArt(coordinates, cornerRadius)
     }
 }
 
@@ -153,7 +154,7 @@ fun Modifier.dockSleeve(cornerRadius: Dp): Modifier {
         .drawWithContent {
             val layer = dock.sleeveLayer
             if (layer != null && dock.docking()) {
-                layer.record { this@drawWithContent.drawContent() }
+                layer.record(size.toIntSize()) { this@drawWithContent.drawContent() }
             } else {
                 drawContent()
             }
