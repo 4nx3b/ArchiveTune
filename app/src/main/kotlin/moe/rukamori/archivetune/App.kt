@@ -88,8 +88,6 @@ class App :
     @Inject
     lateinit var spotifyLibraryRepository: SpotifyLibraryRepository
 
-    @Inject
-
     private val applicationScope = CoroutineScope(
         SupervisorJob() + Dispatchers.Main + kotlinx.coroutines.CoroutineExceptionHandler { _, error ->
             Timber.e(error, "Application background initialization failed")
