@@ -48,6 +48,10 @@
     <string name="filter_all">All</string>
     <string name="filter_songs">Songs</string>
     <string name="filter_videos">Videos</string>
+    <string name="top_result">Top result</string>
+    <string name="search_hint_all">Artists, Songs, Lyrics and More</string>
+    <string name="search_hint_local">Songs, Artists and Albums</string>
+    <string name="search_no_results_msg">No results found</string>
     <string name="filter_albums">Albums</string>
     <string name="filter_artists">Artists</string>
     <string name="filter_playlists">Playlists</string>

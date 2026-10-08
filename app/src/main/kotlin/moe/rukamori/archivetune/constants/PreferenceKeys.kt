@@ -1140,6 +1140,7 @@ enum class SearchProvider {
     YOUTUBE,
     SPOTIFY,
     APPLE_MUSIC,
+    LOCAL,
 }
 
 enum class SearchSource {

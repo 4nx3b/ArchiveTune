@@ -316,6 +316,7 @@ internal fun PlaybackSourceSections(
                         SearchProvider.YOUTUBE -> stringResource(R.string.search_source_youtube)
                         SearchProvider.SPOTIFY -> stringResource(R.string.search_source_spotify)
                         SearchProvider.APPLE_MUSIC -> stringResource(R.string.search_source_apple_music)
+                        SearchProvider.LOCAL -> stringResource(R.string.search_library)
                     }
                 },
                 onValueSelected = onDefaultSearchSourceChange,
