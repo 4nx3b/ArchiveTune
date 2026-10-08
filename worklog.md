@@ -4933,3 +4933,7 @@ Work Log:
 
 Stage Summary:
 - dev @ 682ee5461 (+glass-scope fix pending): all four tasks implemented; CI push + monitoring next.
+- 041d604be: compile fix round — SearchHistory.displayTitle is nullable (orEmpty at the record call site in BitChordYTItemRow) and the album branch of YTItem.subtitleText needed a null fallback. CI after the fix: ALL 8 check-runs SUCCESS on 041d604be (build incl. tests+lint, check, all 5 Nightly APK matrix jobs, create-nightly release).
+
+Stage Summary:
+- dev @ 041d604be: all four tasks of the 2026-10-08 night batch complete and CI-green — AM landscape controls/overscroll/canvas-morph/video-shift/favourite-spacing, BitChord search tab port, reference-exact artwork flight, BitChord nav glass.
