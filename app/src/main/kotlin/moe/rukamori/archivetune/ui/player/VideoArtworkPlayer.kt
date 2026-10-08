@@ -1047,14 +1047,32 @@ fun rememberVideoArtworkState(
                     !state.hasPlaybackFailed &&
                     exoPlayer.playerError == null &&
                     state.streamUrl != null &&
-                    state.isVideoReady &&
                     updatedMainAudioReady
                 ) {
+                    // The player was only PAUSED on ON_STOP (never stopped), so
+                    // the buffered stream and position survive the background
+                    // trip: re-anchor silently to wherever the music advanced
+                    // to while backgrounded and resume — no re-prepare and no
+                    // visible BUFFERING round-trip on return.
+                    if (state.isVideoReady) {
+                        val mainPos = currentPosition()
+                        val videoPos = exoPlayer.currentPosition
+                        if (mainPos > 0 && kotlin.math.abs(videoPos - mainPos) > VideoSoftSeekDriftThresholdMs) {
+                            exoPlayer.seekTo(mainPos)
+                            state.lastSeekAtMs = SystemClock.elapsedRealtime()
+                            state.lastSurfaceReanchorAtMs = state.lastSeekAtMs
+                        }
+                    }
                     exoPlayer.setVideoPlayback(shouldPlay)
                 }
                 if (event == Lifecycle.Event.ON_STOP) {
-                    runCatching { exoPlayer.setVideoSurface(null) }
-                    runCatching { exoPlayer.stop() }
+                    // PAUSE only — stop() would discard the buffered stream and
+                    // reset the position to zero, forcing a full re-prepare and
+                    // the "video buffers for no reason after returning to the
+                    // app" double round-trip (re-prepare + sync watchdog hard
+                    // resync). The TextureView's surface is detached by the
+                    // window system itself when the activity stops.
+                    runCatching { exoPlayer.pause() }
                 }
             }
         lifecycleOwner.lifecycle.addObserver(observer)

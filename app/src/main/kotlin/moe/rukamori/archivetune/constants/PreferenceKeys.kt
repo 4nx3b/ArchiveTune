@@ -1118,6 +1118,22 @@ fun lyricsFontWeightFor(name: String): FontWeight =
         else -> FontWeight.ExtraBold
     }
 
+/**
+ * Animation library used by the enhanced (karaoke) lyrics renderer — selected
+ * under "Lyrics animation style" in the lyrics settings' Display group.
+ * ACCOMPANIST renders through the mocharealm accompanist lyrics-ui library
+ * (v2); BLOSSOM is the in-house Apple-Music-style renderer after
+ * LyricsBlossom 8.x (word-by-word emphasis, dimmed blur falloff and spring
+ * following). Both honour the lyrics font weight / size settings.
+ */
+val EnhancedLyricsStyleKey = stringPreferencesKey("enhancedLyricsStyle")
+
+enum class EnhancedLyricsStyle(val displayName: String) {
+    ACCOMPANIST("Accompanist"),
+    BLOSSOM("Blossom"),
+}
+
+
 val ShowLyricsPlayerControlsKey = booleanPreferencesKey("showLyricsPlayerControls")
 val AutoHideLyricsPlayerControlsKey = booleanPreferencesKey("autoHideLyricsPlayerControls")
 

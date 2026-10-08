@@ -140,7 +140,26 @@ private fun buildTypography(fontFamily: FontFamily) =
     )
 
 val AppFontFamily = FontFamily(Font(R.font.poppins))
-val LyricsFontFamily = FontFamily(Font(R.font.sfprodisplaybold))
+
+/**
+ * The lyrics font is registered across the full weight axis (SF Pro Display
+ * Regular / Medium / SemiBold / Bold / Heavy) so the lyrics font-weight
+ * setting resolves to a real, visually distinct font file. A single static
+ * file here would silently swallow every weight — the exact bug that made
+ * the "Lyrics font weight" setting appear to do nothing.
+ */
+val LyricsFontFamily =
+    FontFamily(
+        Font(R.font.sf_pro_display_regular, FontWeight.Thin),
+        Font(R.font.sf_pro_display_regular, FontWeight.ExtraLight),
+        Font(R.font.sf_pro_display_regular, FontWeight.Light),
+        Font(R.font.sf_pro_display_regular, FontWeight.Normal),
+        Font(R.font.sf_pro_display_medium, FontWeight.Medium),
+        Font(R.font.sf_pro_display_semibold, FontWeight.SemiBold),
+        Font(R.font.sfprodisplaybold, FontWeight.Bold),
+        Font(R.font.sf_pro_display_heavy, FontWeight.ExtraBold),
+        Font(R.font.sf_pro_display_heavy, FontWeight.Black),
+    )
 val AppTypography = buildTypography(AppFontFamily)
 val SystemTypography = buildTypography(FontFamily.Default)
 

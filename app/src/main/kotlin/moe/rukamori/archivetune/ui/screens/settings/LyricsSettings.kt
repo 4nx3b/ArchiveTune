@@ -100,6 +100,9 @@ import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import dev.chrisbanes.haze.hazeSource
+import moe.rukamori.archivetune.constants.EnhancedLyricsStyle
+import moe.rukamori.archivetune.constants.EnhancedLyricsStyleKey
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
 import sh.calvin.reorderable.ReorderableItem
@@ -125,6 +128,8 @@ fun LyricsSettings(
     val (lyricsLineSpacing, onLyricsLineSpacingChange) = rememberPreference(LyricsLineSpacingKey, defaultValue = 1.3f)
     val (lyricsFontWeight, onLyricsFontWeightChange) =
         rememberPreference(LyricsFontWeightKey, defaultValue = "ExtraBold")
+    val (enhancedLyricsStyle, onEnhancedLyricsStyleChange) =
+        rememberEnumPreference(EnhancedLyricsStyleKey, defaultValue = EnhancedLyricsStyle.ACCOMPANIST)
 
     val (enableLrclib, onEnableLrclibChange) = rememberPreference(key = EnableLrcLibKey, defaultValue = true)
     val (enableKugou, onEnableKugouChange) = rememberPreference(key = EnableKugouKey, defaultValue = true)
@@ -204,6 +209,72 @@ fun LyricsSettings(
     ) {
         var showLyricsTextSizeDialog by rememberSaveable { mutableStateOf(false) }
         var showLyricsFontWeightDialog by rememberSaveable { mutableStateOf(false) }
+        var showLyricsAnimationStyleDialog by rememberSaveable { mutableStateOf(false) }
+
+        if (showLyricsAnimationStyleDialog) {
+            DefaultDialog(
+                onDismiss = { showLyricsAnimationStyleDialog = false },
+                buttons = {
+                    TextButton(
+                        onClick = {
+                            onEnhancedLyricsStyleChange(EnhancedLyricsStyle.ACCOMPANIST)
+                            showLyricsAnimationStyleDialog = false
+                        },
+                        shapes = ButtonDefaults.shapes(),
+                    ) {
+                        Text(stringResource(R.string.reset))
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    TextButton(
+                        onClick = { showLyricsAnimationStyleDialog = false },
+                        shapes = ButtonDefaults.shapes(),
+                    ) {
+                        Text(stringResource(android.R.string.cancel))
+                    }
+                },
+            ) {
+                Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                    Text(
+                        text = stringResource(R.string.lyrics_animation_style),
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                    EnhancedLyricsStyle.entries.forEach { style ->
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = style == enhancedLyricsStyle,
+                                onClick = {
+                                    onEnhancedLyricsStyleChange(style)
+                                    showLyricsAnimationStyleDialog = false
+                                },
+                            )
+                            Column(modifier = Modifier.padding(start = 8.dp)) {
+                                Text(text = style.displayName)
+                                Text(
+                                    text = stringResource(
+                                        if (style == EnhancedLyricsStyle.BLOSSOM) {
+                                            R.string.lyrics_animation_style_blossom_description
+                                        } else {
+                                            R.string.lyrics_animation_style_accompanist_description
+                                        },
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         if (showLyricsFontWeightDialog) {
             DefaultDialog(
@@ -509,6 +580,16 @@ fun LyricsSettings(
                     description = lyricsFontWeight,
                     icon = { Icon(painterResource(R.drawable.text_fields), null) },
                     onClick = { showLyricsFontWeightDialog = true },
+                )
+            }
+
+            item {
+                PreferenceEntry(
+                    modifier = positions.modifierFor("lyrics_animation_style"),
+                    title = { Text(stringResource(R.string.lyrics_animation_style)) },
+                    description = enhancedLyricsStyle.displayName,
+                    icon = { Icon(painterResource(R.drawable.animation), null) },
+                    onClick = { showLyricsAnimationStyleDialog = true },
                 )
             }
 

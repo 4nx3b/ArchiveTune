@@ -130,7 +130,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -1094,16 +1093,14 @@ fun FlamingoPlayerContent(
                 } else {
                     FlamingoWrapper {
                         SharedTransitionLayout {
-                            // Pre-redesign / canary-exact page morph: a symmetric
-                            // 600ms crossfade between the album and lyrics/queue
-                            // pages while the shared element travels between the
-                            // artwork and the playing-bar thumbnail. For canvas
-                            // songs the CANVAS STAGE is the shared element — it
-                            // captures the whole screen width and stage height
-                            // unrounded at the start, rounds itself progressively
-                            // (AdaptiveCornerShape overlay clip) and crossfades
-                            // into the playing-bar's static thumbnail at the end;
-                            // for plain songs the album square carries the bounds.
+                            // Canary-exact page morph: a symmetric 600ms crossfade
+                            // between the album and lyrics/queue pages while the
+                            // static artwork shared element travels between the
+                            // album square and the playing-bar thumbnail. The
+                            // canvas itself is NEVER the shared element — it stays
+                            // at its fixed full-bleed rect and simply fades with
+                            // its page, so the video surface is never resized
+                            // mid-transition (the glitch and black-bar source).
                             AnimatedContent(
                                 targetState = nowPage,
                                 transitionSpec = {
@@ -1149,12 +1146,7 @@ fun FlamingoPlayerContent(
                                                             .fillMaxHeight(0.595f),
                                                     ) {
                                                         FlamingoAlbum(
-                                                            // Canvas songs: the CANVAS STAGE below is the
-                                                            // shared-element participant (pre-redesign / canary
-                                                            // behavior — full-screen, unrounded capture that
-                                                            // morphs into the playing-bar thumbnail); the album
-                                                            // square renders nothing while a canvas is active.
-                                                            modifier = if (canvasVisualActive) Modifier else albumSharedBounds,
+                                                            modifier = albumSharedBounds,
                                                             artworkUrl = artworkUrl,
                                                             isPlaying = { isPlayingStatusLambda.value },
                                                             canvasActive = canvasVisualActive,
@@ -1227,15 +1219,11 @@ fun FlamingoPlayerContent(
                                                     }
                                                 }
                                             }
-                                            // The canvas stage IS the page-morph shared element for
-                                            // canvas songs (pre-redesign / canary mechanics): at the
-                                            // start of the transition it captures the whole screen
-                                            // width and stage height with effectively unrounded
-                                            // corners, then the shared bounds travel toward the
-                                            // playing-bar thumbnail — the overlay clip rounds
-                                            // itself progressively while the outgoing canvas
-                                            // crossfades into the incoming static thumbnail at
-                                            // the end of the transition. The static under-layer
+                                            // The canvas stage renders at its FIXED full-bleed
+                                            // rect (player top -> title row) and is never a
+                                            // shared element: it fades away with the album page
+                                            // while the static artwork square above morphs into
+                                            // the playing-bar thumbnail. The static under-layer
                                             // inside the stage covers the stream re-prepare when
                                             // the page re-composes it on the way back.
                                             if (canvasVisualActive) {
@@ -1248,7 +1236,6 @@ fun FlamingoPlayerContent(
                                                     refreshEpoch = orientationRefreshEpoch,
                                                     stageHeight = sharpStageHeight,
                                                     staticArtworkUrl = artworkUrl,
-                                                    modifier = albumSharedBounds,
                                                 )
                                             }
                                         }
@@ -2169,18 +2156,33 @@ private fun ColumnScope.FlamingoAlbum(
     }
 
     if (canvasActive) {
-        // Canvas songs render NOTHING in the album square slot — the
-        // full-bleed FlamingoCanvasStage (composed by the Album page, carrying
-        // the shared bounds) owns both the video and the static under-layer.
-        // The empty weighted Box only preserves the title row's position so
-        // the measured stage height stays stable.
+        // The static album square is ALWAYS composed for canvas songs — it is
+        // the shared-element partner that morphs into the playing-bar
+        // thumbnail during page transitions (the canvas itself never travels).
+        // At rest it sits under the full-bleed canvas stage at a near-zero
+        // alpha floor, revealed only while a page morph runs.
         Box(
             Modifier
                 .weight(1f)
                 .padding(top = 20.dp)
                 .padding(horizontal = 15.dp)
                 .padding(bottom = 33.dp),
-        )
+        ) {
+            AsyncImage(
+                model = artworkUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .graphicsLayer {
+                        compositingStrategy = CompositingStrategy.ModulateAlpha
+                        alpha = overlayArtworkReveal.coerceAtLeast(1f / 255f)
+                    }
+                    .clip(RoundedCornerShape(8.dp))
+                    .then(modifier),
+            )
+        }
         return
     }
 
@@ -3790,6 +3792,7 @@ private fun FlamingoPlayerControl(
                                     0f
                                 },
                                 height = 7.dp + 4.dp * sliderEngage,
+                                engage = sliderEngage,
                             )
                         },
                     )
@@ -4114,6 +4117,7 @@ private fun FlamingoVolumeSlider(
                     FlamingoTrack(
                         activeFraction = animatedProgress.value.coerceIn(0f, 1f),
                         height = 7.dp + 4.dp * volumeEngage,
+                        engage = volumeEngage,
                     )
                 },
                 onValueChangeFinished = {
@@ -4135,11 +4139,10 @@ private fun FlamingoTrack(
     activeFraction: Float,
     modifier: Modifier = Modifier,
     height: Dp,
+    engage: Float = 0f,
 ) = FlamingoWrapper {
     val inactiveTrackColor = Color.White.copy(alpha = 0.5f)
     val activeTrackColor = Color.White
-    val inactiveTickColor = Color.White.copy(alpha = 0.5f)
-    val activeTickColor = Color.White
     Canvas(
         modifier
             .fillMaxWidth()
@@ -4150,14 +4153,34 @@ private fun FlamingoTrack(
         val sliderRight = Offset(size.width, center.y)
         val sliderStart = if (isRtl) sliderRight else sliderLeft
         val sliderEnd = if (isRtl) sliderLeft else sliderRight
-        val tickSize = 2.0.dp.toPx()
         val trackStrokeWidth = height.toPx()
-        drawLine(
-            inactiveTrackColor,
-            sliderStart,
-            sliderEnd,
-            trackStrokeWidth,
-            StrokeCap.Round,
+
+        // While held, the rail wears a soft rounded halo that grows with the
+        // engage factor — the expanded state reads visibly rounder (and the
+        // rails stay drawn inside their bounds instead of poking past the
+        // edges as StrokeCap.Round overhangs do).
+        if (engage > 0.01f) {
+            val halo1 = trackStrokeWidth + 4.dp.toPx() * engage
+            drawRoundRect(
+                color = activeTrackColor.copy(alpha = 0.10f * engage),
+                topLeft = Offset(0f, center.y - halo1 / 2f),
+                size = Size(size.width, halo1),
+                cornerRadius = CornerRadius(halo1 / 2f),
+            )
+            val halo2 = trackStrokeWidth + 8.dp.toPx() * engage
+            drawRoundRect(
+                color = activeTrackColor.copy(alpha = 0.05f * engage),
+                topLeft = Offset(0f, center.y - halo2 / 2f),
+                size = Size(size.width, halo2),
+                cornerRadius = CornerRadius(halo2 / 2f),
+            )
+        }
+
+        drawRoundRect(
+            color = inactiveTrackColor,
+            topLeft = Offset(0f, center.y - trackStrokeWidth / 2f),
+            size = Size(size.width, trackStrokeWidth),
+            cornerRadius = CornerRadius(trackStrokeWidth / 2f),
         )
         val sliderValueEnd = Offset(
             sliderStart.x +
@@ -4171,12 +4194,13 @@ private fun FlamingoTrack(
             center.y,
         )
 
-        drawLine(
-            activeTrackColor,
-            sliderValueStart,
-            sliderValueEnd,
-            trackStrokeWidth,
-            StrokeCap.Round,
+        val activeLeft = minOf(sliderValueStart.x, sliderValueEnd.x)
+        val activeWidth = kotlin.math.abs(sliderValueEnd.x - sliderValueStart.x)
+        drawRoundRect(
+            color = activeTrackColor,
+            topLeft = Offset(activeLeft, center.y - trackStrokeWidth / 2f),
+            size = Size(activeWidth, trackStrokeWidth),
+            cornerRadius = CornerRadius(trackStrokeWidth / 2f),
         )
     }
 }

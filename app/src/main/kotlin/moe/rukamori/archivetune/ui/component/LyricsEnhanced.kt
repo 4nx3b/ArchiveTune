@@ -29,8 +29,6 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -77,7 +75,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -112,13 +109,12 @@ import com.mocharealm.accompanist.lyrics.core.model.karaoke.KaraokeLine
 import com.mocharealm.accompanist.lyrics.core.model.karaoke.KaraokeSyllable
 import com.mocharealm.accompanist.lyrics.core.model.synced.SyncedLine
 import com.mocharealm.accompanist.lyrics.ui.composable.lyrics.KaraokeLyricsView
+import com.mocharealm.accompanist.lyrics.ui.composable.lyrics.LyricsAnchor
+import com.mocharealm.accompanist.lyrics.ui.composable.list.LyricsLazyListState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -126,6 +122,8 @@ import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.player.LocalLyricsScrollListener
+import moe.rukamori.archivetune.constants.EnhancedLyricsStyle
+import moe.rukamori.archivetune.constants.EnhancedLyricsStyleKey
 import moe.rukamori.archivetune.constants.LyricsClickKey
 import moe.rukamori.archivetune.constants.LyricsLineBlurKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeChineseKey
@@ -163,7 +161,6 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.reportException
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import androidx.compose.runtime.getValue
@@ -176,19 +173,10 @@ private const val TTML_LEAD_MS = 0L
 private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 0L
 private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L
 private const val MANUAL_SCROLL_DEBOUNCE_MS = 50L
-private const val LYRIC_FOCUS_TOP_ANCHOR_RATIO = 0.08f
 
-private const val LYRIC_FOCUS_TOP_GUARD_RATIO = 0.04f
-private const val LYRIC_FOCUS_BOTTOM_GUARD_RATIO = 0.30f
-private const val LYRIC_FOCUS_MIN_SCROLL_PX = 6
-
-private const val LYRIC_FOCUS_INSTANT_SCROLL_RATIO = 0.40f
-private const val LYRIC_FOCUS_ANIMATED_DISTANCE = 4
 private const val SMOOTH_PLAYBACK_MAX_FORWARD_DRIFT_MS = 80L
 private const val SMOOTH_PLAYBACK_MAX_BACKWARD_DRIFT_MS = 180L
 private const val SMOOTH_PLAYBACK_DRIFT_CORRECTION = 0.55f
-
-private const val LYRIC_FOCUS_SCROLL_DURATION_MS = 280
 
 private const val LYRIC_FIRST_FOCUS_FADE_MS = 200
 
@@ -251,9 +239,14 @@ fun LyricsEnhanced(
     val lyricsTextSize = textSizeOverride ?: lyricsTextSizePreference
 
     // The Flamingo-ported font weight setting — drives the karaoke lines in
-    // every player style that renders enhanced lyrics.
+    // every player style that renders enhanced lyrics (both the Accompanist
+    // library renderer and the in-house Blossom renderer honour it).
     val (lyricsFontWeightName) = rememberPreference(LyricsFontWeightKey, defaultValue = "ExtraBold")
     val lyricsFontWeight = remember(lyricsFontWeightName) { lyricsFontWeightFor(lyricsFontWeightName) }
+
+    // "Lyrics animation style" — which renderer drives the enhanced lyrics:
+    // the mocharealm Accompanist library (v2) or the in-house Blossom style.
+    val (enhancedLyricsStyle) = rememberEnumPreference(EnhancedLyricsStyleKey, defaultValue = EnhancedLyricsStyle.ACCOMPANIST)
 
     val (lyricsLineBlurPreference) = rememberPreference(LyricsLineBlurKey, defaultValue = false)
     val (romanizeChinese) = rememberPreference(LyricsRomanizeChineseKey, defaultValue = true)
@@ -562,6 +555,14 @@ fun LyricsEnhanced(
 
     val listState = key(lyricsSessionKey, positionResetCounter, karaokeGeneration) { rememberLazyListState() }
 
+    // The Accompanist v2 renderer owns its scroll state (internal spring
+    // following + manual-scroll detection with auto-resume); the app-level
+    // LazyListState above keeps serving the plain (unsynced) lyrics view.
+    val karaokeListState =
+        key(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
+            remember { LyricsLazyListState() }
+        }
+
     var awaitingFirstFocus by
         remember(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
             mutableStateOf(isSynced)
@@ -748,46 +749,14 @@ fun LyricsEnhanced(
         onLyricsScroll(isManualScrolling)
     }
 
-    val latestSyncedLyricsForScroll = rememberUpdatedState(syncedLyrics)
-
-    LaunchedEffect(lyricsSessionKey, isSynced, positionResetCounter, karaokeGeneration) {
-        if (!isSynced || singleActiveLine) {
+    // First-focus fade-in: cleared as soon as the position loop locks onto
+    // the first active line (or by the timeout below). The Accompanist v2
+    // renderer performs its own spring following internally, so no app-level
+    // scroll driver is needed for the karaoke view anymore.
+    LaunchedEffect(currentLineIndexState.intValue, lyricsSessionKey) {
+        if (currentLineIndexState.intValue >= 0 && awaitingFirstFocus) {
             awaitingFirstFocus = false
-            return@LaunchedEffect
         }
-
-        snapshotFlow { latestSyncedLyricsForScroll.value.lines.isNotEmpty() }.first { it }
-        snapshotFlow {
-            listState.layoutInfo.viewportEndOffset > listState.layoutInfo.viewportStartOffset
-        }.first { it }
-
-        var forceNextScroll = true
-        snapshotFlow {
-            if (isManualScrolling || isSelectionModeActive) {
-                null
-            } else {
-                currentLineIndexState.intValue
-                    .takeIf { index -> index in latestSyncedLyricsForScroll.value.lines.indices }
-            }
-        }.distinctUntilChanged()
-            .collectLatest { index ->
-                if (index == null) {
-                    forceNextScroll = true
-
-                    awaitingFirstFocus = false
-                    return@collectLatest
-                }
-
-                val isFirstFocus = awaitingFirstFocus
-                listState.scrollLyricIntoFocus(
-                    index = index,
-                    animateToNearbyItem = !forceNextScroll,
-                    force = forceNextScroll,
-                    snap = isFirstFocus,
-                )
-                forceNextScroll = false
-                if (isFirstFocus) awaitingFirstFocus = false
-            }
     }
 
     BackHandler(enabled = isSelectionModeActive) {
@@ -825,9 +794,18 @@ fun LyricsEnhanced(
             )
         }
     val accompanimentTextStyle =
-        remember(typography, lyricsTextSize, lyricsFontFamily) {
+        remember(typography, lyricsTextSize, lyricsFontFamily, lyricsFontWeight) {
             typography.titleLarge.copy(
                 fontSize = (lyricsTextSize * 0.82f).sp,
+                fontWeight = lyricsFontWeight,
+                fontFamily = lyricsFontFamily ?: typography.titleLarge.fontFamily,
+            )
+        }
+    val translationTextStyle =
+        remember(typography, lyricsTextSize, lyricsFontFamily, lyricsFontWeight) {
+            typography.titleLarge.copy(
+                fontSize = (lyricsTextSize * 0.72f).sp,
+                fontWeight = lyricsFontWeight,
                 fontFamily = lyricsFontFamily ?: typography.titleLarge.fontFamily,
             )
         }
@@ -1091,43 +1069,83 @@ fun LyricsEnhanced(
                         androidx.compose.runtime.CompositionLocalProvider(
                             androidx.compose.material3.LocalTextStyle provides phoneticTextStyle,
                         ) {
-                            KaraokeLyricsView(
-                                listState = listState,
-                                lyrics = syncedLyrics,
-                                currentPosition = playbackSyncPosition,
-                                onLineClicked = { line ->
-                                    if (isSelectionModeActive) {
-                                        toggleSelectedLine(line.selectionKey())
-                                    } else if (lyricsClick && isSynced && line.start > 0) {
-                                        player.seekTo(line.start.toLong())
-                                    }
-                                },
-                                onLinePressed = { line ->
-                                    val lineKey = line.selectionKey()
-                                    if (!isSelectionModeActive) {
-                                        isSelectionModeActive = true
-                                        if (!selectedLineKeys.contains(lineKey)) {
-                                            selectedLineKeys.add(lineKey)
+                            if (enhancedLyricsStyle == EnhancedLyricsStyle.BLOSSOM) {
+                                // In-house Apple-Music-style renderer (after
+                                // LyricsBlossom 8.x): word-by-word emphasis,
+                                // dimmed blur falloff and spring following.
+                                BlossomLyricsView(
+                                    lyrics = syncedLyrics,
+                                    currentPosition = playbackSyncPosition,
+                                    activeLineIndex = currentLineIndexState.intValue,
+                                    onLineClicked = { line ->
+                                        if (isSelectionModeActive) {
+                                            toggleSelectedLine(line.selectionKey())
+                                        } else if (lyricsClick && isSynced && line.start > 0) {
+                                            player.seekTo(line.start.toLong())
                                         }
-                                    } else if (!selectedLineKeys.contains(lineKey)) {
-                                        toggleSelectedLine(lineKey)
-                                    }
-                                },
-                                textColor = textColor,
-                                normalLineTextStyle = normalTextStyle,
-                                accompanimentLineTextStyle = accompanimentTextStyle,
-                                phoneticTextStyle = phoneticTextStyle,
-                                blendMode = BlendMode.SrcOver,
+                                    },
+                                    onLinePressed = { line ->
+                                        val lineKey = line.selectionKey()
+                                        if (!isSelectionModeActive) {
+                                            isSelectionModeActive = true
+                                            if (!selectedLineKeys.contains(lineKey)) {
+                                                selectedLineKeys.add(lineKey)
+                                            }
+                                        } else if (!selectedLineKeys.contains(lineKey)) {
+                                            toggleSelectedLine(lineKey)
+                                        }
+                                    },
+                                    textColor = textColor,
+                                    normalTextStyle = normalTextStyle,
+                                    accompanimentTextStyle = accompanimentTextStyle,
+                                    translationTextStyle = translationTextStyle,
+                                    phoneticTextStyle = phoneticTextStyle,
+                                    useBlurEffect = lyricsLineBlur && !animationsDisabled,
+                                    showTranslation = showTranslations,
+                                    showPhonetic = showPhoneticLines,
+                                    anchorTopPadding = lyricsViewportOffset,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            } else {
+                                KaraokeLyricsView(
+                                    listState = karaokeListState,
+                                    lyrics = syncedLyrics,
+                                    currentPosition = playbackSyncPosition,
+                                    onLineClicked = { line ->
+                                        if (isSelectionModeActive) {
+                                            toggleSelectedLine(line.selectionKey())
+                                        } else if (lyricsClick && isSynced && line.start > 0) {
+                                            player.seekTo(line.start.toLong())
+                                        }
+                                    },
+                                    onLinePressed = { line ->
+                                        val lineKey = line.selectionKey()
+                                        if (!isSelectionModeActive) {
+                                            isSelectionModeActive = true
+                                            if (!selectedLineKeys.contains(lineKey)) {
+                                                selectedLineKeys.add(lineKey)
+                                            }
+                                        } else if (!selectedLineKeys.contains(lineKey)) {
+                                            toggleSelectedLine(lineKey)
+                                        }
+                                    },
+                                    textColor = textColor,
+                                    normalLineTextStyle = normalTextStyle,
+                                    translationTextStyle = translationTextStyle,
+                                    accompanimentLineTextStyle = accompanimentTextStyle,
+                                    phoneticTextStyle = phoneticTextStyle,
+                                    blendMode = BlendMode.SrcOver,
 
-                                useBlurEffect = lyricsLineBlur && !animationsDisabled,
-                                showTranslation = showTranslations,
+                                    useBlurEffect = lyricsLineBlur && !animationsDisabled,
+                                    showTranslation = showTranslations,
 
-                                showPhonetic = showPhoneticLines,
-                                offset = lyricsViewportOffset,
+                                    showPhonetic = showPhoneticLines,
+                                    anchor = LyricsAnchor.Fixed(lyricsViewportOffset),
 
-                                keepAliveZone = 8.dp,
-                                modifier = Modifier.fillMaxSize(),
-                            )
+                                    keepAliveZone = 8.dp,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
                         }
                     }
                 }
@@ -1522,60 +1540,6 @@ private fun LyricsSelectionLineItem(
                 style = MaterialTheme.typography.headlineSmall,
                 color = contentColor,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            )
-        }
-    }
-}
-
-private suspend fun LazyListState.scrollLyricIntoFocus(
-    index: Int,
-    animateToNearbyItem: Boolean,
-    force: Boolean,
-
-    snap: Boolean = false,
-) {
-    val itemCount = layoutInfo.totalItemsCount
-    if (itemCount == 0) return
-
-    val targetIndex = index.coerceIn(0, itemCount - 1)
-    var itemInfo = layoutInfo.visibleItemsInfo.firstOrNull { item -> item.index == targetIndex }
-    if (itemInfo == null) {
-        val distance = abs(targetIndex - firstVisibleItemIndex)
-        if (!snap && animateToNearbyItem && distance <= LYRIC_FOCUS_ANIMATED_DISTANCE) {
-            animateScrollToItem(targetIndex)
-        } else {
-            scrollToItem(targetIndex)
-        }
-        withFrameNanos { }
-        itemInfo = layoutInfo.visibleItemsInfo.firstOrNull { item -> item.index == targetIndex }
-    }
-
-    itemInfo ?: return
-
-    val viewportStart = layoutInfo.viewportStartOffset
-    val viewportEnd = layoutInfo.viewportEndOffset
-    val viewportHeight = viewportEnd - viewportStart
-    if (viewportHeight <= 0) return
-
-    val itemFocusPoint = itemInfo.offset
-    val topGuard = viewportStart + (viewportHeight * LYRIC_FOCUS_TOP_GUARD_RATIO).roundToInt()
-    val bottomGuard = viewportEnd - (viewportHeight * LYRIC_FOCUS_BOTTOM_GUARD_RATIO).roundToInt()
-    if (!force && itemFocusPoint in topGuard..bottomGuard) return
-
-    val targetFocusPoint = viewportStart + (viewportHeight * LYRIC_FOCUS_TOP_ANCHOR_RATIO).roundToInt()
-    val scrollDelta = itemFocusPoint - targetFocusPoint
-    if (abs(scrollDelta) > LYRIC_FOCUS_MIN_SCROLL_PX) {
-        val instantThreshold = (viewportHeight * LYRIC_FOCUS_INSTANT_SCROLL_RATIO).roundToInt()
-        if (snap || (abs(scrollDelta) <= instantThreshold && !force)) {
-            scrollBy(scrollDelta.toFloat())
-        } else {
-            animateScrollBy(
-                value = scrollDelta.toFloat(),
-                animationSpec =
-                    tween(
-                        durationMillis = LYRIC_FOCUS_SCROLL_DURATION_MS,
-                        easing = FastOutSlowInEasing,
-                    ),
             )
         }
     }

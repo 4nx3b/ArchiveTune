@@ -26,6 +26,16 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.ExperimentalFoundationApi
+import android.os.Build
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.EaseOutCubic
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -82,9 +92,13 @@ import moe.rukamori.archivetune.constants.SearchProvider
 import moe.rukamori.archivetune.constants.SearchSource
 import moe.rukamori.archivetune.db.entities.SearchHistory
 import moe.rukamori.archivetune.ui.component.SearchSourcePicker
-import moe.rukamori.archivetune.ui.screens.HomeAtmosphereBackground
 import moe.rukamori.archivetune.ui.screens.LocalSearchHazeState
 import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
+import dev.chrisbanes.haze.materials.HazeMaterials
+import dev.chrisbanes.haze.HazeProgressive
 import moe.rukamori.archivetune.viewmodels.SearchHistoryViewModel
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -113,7 +127,6 @@ import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
 private val SearchHorizontalPadding = 24.dp
@@ -217,9 +230,7 @@ fun SearchScreen(
                         if (barState.backdrop != null) m.glassSource(barState.backdrop!!) else m
                     },
         ) {
-            if (!disableBlur) {
-                HomeAtmosphereBackground()
-            }
+            // Root-level subtle atmosphere gradient — see MainActivity.
         }
 
         BoxWithConstraints(
@@ -246,8 +257,10 @@ fun SearchScreen(
                         LiveSearchSuggestionsPanel(
                             suggestions = liveSuggestions,
                             summary = liveSummary,
-                            maxHeight = recentsMaxHeight,
                             navController = navController,
+                            maxHeight = recentsMaxHeight,
+                            hazeState = searchHazeState,
+                            disableBlur = disableBlur,
                             onQueryPick = { picked ->
                                 searchQuery = picked
                                 onSearchQuery(picked)
@@ -378,18 +391,22 @@ private fun RecentSearchesPanel(
     }
 }
 
+@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 private fun LiveSearchSuggestionsPanel(
     suggestions: SearchSuggestions?,
     summary: SearchSummaryPage?,
-    maxHeight: Dp,
     navController: NavController,
+    maxHeight: Dp,
+    hazeState: HazeState?,
+    disableBlur: Boolean,
     onQueryPick: (String) -> Unit,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val haptic = LocalHapticFeedback.current
+    val listState = rememberLazyListState()
 
     val queries = suggestions?.queries.orEmpty()
     val summarySections =
@@ -407,66 +424,60 @@ private fun LiveSearchSuggestionsPanel(
         return
     }
 
-    LazyColumn(
+    // Recommendations render ABOVE the query completions: newly loaded
+    // summary sections prepend at the panel's top (always inside the visible
+    // window once the list clips) while the query rows the user is reading
+    // stay anchored right above the search bar instead of jumping upward.
+    Box(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .heightIn(max = maxHeight),
     ) {
-        items(
-            count = queries.size,
-            contentType = { 1 },
-        ) { index ->
-            val query = queries[index]
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(
-                            onClick = { onQueryPick(query) },
-                            onLongClick = {},
+        LazyColumn(
+            state = listState,
+            modifier =
+                Modifier
+                    .fillMaxWidth(),
+        ) {
+            if (summarySections.isNotEmpty()) {
+                summarySections.forEach { section ->
+                    item(key = "summary_header_${section.title}") {
+                        Text(
+                            text = section.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        start = SearchHorizontalPadding,
+                                        end = SearchHorizontalPadding,
+                                        top = 14.dp,
+                                        bottom = 4.dp,
+                                    ),
                         )
-                        .padding(horizontal = SearchHorizontalPadding, vertical = 10.dp),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.search),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    text = query,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-
-        if (summarySections.isNotEmpty()) {
-            summarySections.forEach { section ->
-                item(key = "summary_header_${section.title}") {
-                    Text(
-                        text = section.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    start = SearchHorizontalPadding,
-                                    end = SearchHorizontalPadding,
-                                    top = 14.dp,
-                                    bottom = 4.dp,
-                                ),
-                    )
+                    }
+                    items(
+                        items = section.items,
+                        key = { it.id },
+                        contentType = { 2 },
+                    ) { item ->
+                        SuggestedResultRow(
+                            item = item,
+                            currentMediaId = mediaMetadata?.id,
+                            currentAlbumId = mediaMetadata?.album?.id,
+                            isPlaying = isPlaying,
+                            navController = navController,
+                            playerConnection = playerConnection,
+                            haptic = haptic,
+                        )
+                    }
                 }
+            } else if (fallbackItems.isNotEmpty()) {
                 items(
-                    items = section.items,
+                    items = fallbackItems,
                     key = { it.id },
                     contentType = { 2 },
                 ) { item ->
@@ -481,20 +492,94 @@ private fun LiveSearchSuggestionsPanel(
                     )
                 }
             }
-        } else if (fallbackItems.isNotEmpty()) {
+
             items(
-                items = fallbackItems,
-                key = { it.id },
-                contentType = { 2 },
-            ) { item ->
-                SuggestedResultRow(
-                    item = item,
-                    currentMediaId = mediaMetadata?.id,
-                    currentAlbumId = mediaMetadata?.album?.id,
-                    isPlaying = isPlaying,
-                    navController = navController,
-                    playerConnection = playerConnection,
-                    haptic = haptic,
+                count = queries.size,
+                key = { index -> "query_$index" },
+                contentType = { 1 },
+            ) { index ->
+                val query = queries[index]
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .combinedClickable(
+                                onClick = { onQueryPick(query) },
+                                onLongClick = {},
+                            )
+                            .padding(horizontal = SearchHorizontalPadding, vertical = 10.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.search),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = query,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+
+        // Progressive haze fade over the panel's top edge while the list is
+        // scrolled — the same ultraThin progressive treatment the home header
+        // uses, so content dissolving off the top blurs into the background.
+        if (hazeState != null && !disableBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val scrolledAway by remember {
+                derivedStateOf {
+                    listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
+                }
+            }
+            val fadeAlpha by animateFloatAsState(
+                targetValue = if (scrolledAway) 1f else 0f,
+                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                label = "searchSuggestionsHaze",
+            )
+            if (fadeAlpha > 0.01f) {
+                val pageColor = MaterialTheme.colorScheme.surface
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .height(28.dp)
+                            .graphicsLayer { alpha = fadeAlpha }
+                            .hazeEffect(
+                                state = hazeState,
+                                style = HazeMaterials.ultraThin(pageColor),
+                            ) {
+                                progressive =
+                                    HazeProgressive.verticalGradient(
+                                        easing = EaseOutCubic,
+                                        startIntensity = 0.75f,
+                                        endIntensity = 0f,
+                                    )
+                                noiseFactor = 0f
+                            },
+                )
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .height(28.dp)
+                            .graphicsLayer { alpha = fadeAlpha }
+                            .background(
+                                Brush.verticalGradient(
+                                    colorStops =
+                                        Array(4) { i ->
+                                            val t = i / 3f
+                                            t to pageColor.copy(alpha = 0.30f * (1f - t))
+                                        },
+                                ),
+                            ),
                 )
             }
         }
@@ -693,7 +778,7 @@ private fun SearchTabBottomChrome(
             )
             IconButton(
                 onClick = onVoiceSearch,
-                modifier = Modifier.padding(end = 4.dp),
+                modifier = Modifier.padding(end = 10.dp),
             ) {
                 Icon(
                     painter = painterResource(R.drawable.mic),

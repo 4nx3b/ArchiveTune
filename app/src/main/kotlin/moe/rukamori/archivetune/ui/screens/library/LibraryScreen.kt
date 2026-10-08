@@ -56,7 +56,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import dev.chrisbanes.haze.hazeSource
-import moe.rukamori.archivetune.ui.screens.HomeAtmosphereBackground
 import moe.rukamori.archivetune.ui.screens.LocalLibraryHazeState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -72,7 +71,6 @@ import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ChipSortTypeKey
-import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.LibraryFilter
 import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
 import moe.rukamori.archivetune.constants.ShowTagsInLibraryKey
@@ -96,7 +94,6 @@ fun LibraryScreen(navController: NavController) {
     val allTags by database.allTags().collectAsStateWithLifecycle(initialValue = emptyList())
     val (showTagsInLibrary) = rememberPreference(ShowTagsInLibraryKey, defaultValue = true)
     val (showSpotifyPlaylists) = rememberPreference(ShowSpotifyPlaylistsKey, defaultValue = false)
-    val (disableBlur) = rememberPreference(DisableBlurKey, false)
     var showTagsManagementDialog by rememberSaveable { mutableStateOf(false) }
     val activeSelectedTagIds = if (showTagsInLibrary) selectedTagIds else emptySet()
     val libraryFilters =
@@ -186,12 +183,9 @@ fun LibraryScreen(navController: NavController) {
             Modifier
                 .fillMaxSize()
                 .let { m -> if (libraryHazeState != null) m.hazeSource(libraryHazeState) else m }
-                .nestedScroll(titleRevealScrollConnection)
-                .background(MaterialTheme.colorScheme.background),
+                .nestedScroll(titleRevealScrollConnection),
     ) {
-        if (!disableBlur) {
-            HomeAtmosphereBackground()
-        }
+        // Root-level subtle atmosphere gradient — see MainActivity.
 
         Column(
             modifier =

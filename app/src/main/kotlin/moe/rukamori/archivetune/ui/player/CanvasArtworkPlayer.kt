@@ -354,8 +354,10 @@ fun CanvasArtworkPlayer(
                     exoPlayer.setCanvasPlayback(shouldPlay)
                 }
                 if (event == Lifecycle.Event.ON_STOP) {
-                    runCatching { exoPlayer.setVideoSurface(null) }
-                    runCatching { exoPlayer.stop() }
+                    // PAUSE only — stop() would discard the cached canvas
+                    // stream and reset the loop position, forcing a visible
+                    // re-buffer whenever the app returns from background.
+                    runCatching { exoPlayer.pause() }
                 }
             }
         lifecycleOwner.lifecycle.addObserver(observer)
