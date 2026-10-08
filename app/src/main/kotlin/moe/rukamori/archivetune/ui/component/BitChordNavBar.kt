@@ -46,6 +46,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -112,21 +113,18 @@ fun BitChordNavBar(
         liquidGlassBackdrop != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val pillShape = RoundedCornerShape(percent = 50)
 
-    var selectedIndex by remember(selectedRoute, itemCount) {
+    var selectedIndex by remember {
         mutableIntStateOf(
             (0 until itemCount).firstOrNull { itemRoute(it) == selectedRoute } ?: 0,
         )
     }
+    LaunchedEffect(selectedRoute, itemCount) {
+        val index = (0 until itemCount).firstOrNull { itemRoute(it) == selectedRoute } ?: 0
+        if (index != selectedIndex) selectedIndex = index
+    }
     val dragOffset = remember { mutableFloatStateOf(0f) }
 
     val tabSpacingPx = with(density) { BitChordTabSpacing.toPx() }
-    val animatedPillOffset by
-        animateFloatAsState(
-            targetValue = selectedIndex * tabSpacingPx,
-            animationSpec = BitChordGlassSpring,
-            label = "BitChordNavPillOffset",
-        )
-
     var rowWidthPx by remember { mutableFloatStateOf(0f) }
     val tabStepPx =
         if (itemCount > 0 && rowWidthPx > 0f) {
@@ -140,7 +138,13 @@ fun BitChordNavBar(
         } else {
             0.dp
         }
-    val pillTargetPx = animatedPillOffset + dragOffset.floatValue
+    val animatedPillOffset by
+        animateFloatAsState(
+            targetValue = selectedIndex * tabStepPx,
+            animationSpec = BitChordGlassSpring,
+            label = "BitChordNavPillOffset",
+        )
+    val pillTargetPx = selectedIndex * tabStepPx + dragOffset.floatValue
     val pillLag =
         if (tabStepPx > 0f) {
             (abs(pillTargetPx - animatedPillOffset) / tabStepPx).coerceIn(0f, 1f)
@@ -256,6 +260,7 @@ fun BitChordNavBar(
                                         }
                                     }
                                     totalDrag = 0f
+                                    dragOffset.floatValue = 0f
                                 },
                             ) { change, dragAmount ->
                                 change.consume()

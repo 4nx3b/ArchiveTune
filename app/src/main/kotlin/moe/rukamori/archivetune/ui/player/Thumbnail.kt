@@ -545,15 +545,6 @@ fun Thumbnail(
                                 modifier =
                                     Modifier
                                         .size(containerMaxWidth - (PlayerHorizontalPadding * 2))
-                                        .let { base ->
-                                            if (page.slotKey == "current") {
-                                                base
-                                                    .dockArtworkAnchor(cornerRadius = thumbnailCornerRadius.dp)
-                                                    .dockFlightHidden()
-                                            } else {
-                                                base
-                                            }
-                                        }
                                         .clip(RoundedCornerShape(thumbnailCornerRadius.dp)),
                             ) {
                                 if (hidePlayerThumbnail) {
@@ -607,17 +598,20 @@ fun Thumbnail(
                                                 Modifier
                                                     .fillMaxSize()
                                                     .let { if (shouldCropArtwork) it.aspectRatio(1f) else it }
+                                                    .dockFlightHidden()
                                                     .graphicsLayer(
                                                         renderEffect = BlurEffect(radiusX = blurRadiusPx, radiusY = blurRadiusPx),
                                                         alpha = 0.6f,
                                                     ),
                                         )
                                     } else if (thumbnailBgBlurEnabled) {
-                                        ThumbnailBgBlurApi30(
-                                            imageUrl = displayUrl,
-                                            blurAmount = backdropBlurAmount,
-                                            shouldCropArtwork = shouldCropArtwork,
-                                        )
+                                        Box(Modifier.matchParentSize().dockFlightHidden()) {
+                                            ThumbnailBgBlurApi30(
+                                                imageUrl = displayUrl,
+                                                blurAmount = backdropBlurAmount,
+                                                shouldCropArtwork = shouldCropArtwork,
+                                            )
+                                        }
                                     } else {
                                         AsyncImage(
                                             model = thumbnailBgRequest,
@@ -627,6 +621,7 @@ fun Thumbnail(
                                                 Modifier
                                                     .fillMaxSize()
                                                     .let { if (shouldCropArtwork) it.aspectRatio(1f) else it }
+                                                    .dockFlightHidden()
                                                     .graphicsLayer(alpha = 0.6f),
                                         )
                                     }
@@ -644,7 +639,14 @@ fun Thumbnail(
                                         modifier =
                                             Modifier
                                                 .fillMaxSize()
-                                                .let { if (shouldCropArtwork) it.aspectRatio(1f) else it },
+                                                .let { if (shouldCropArtwork) it.aspectRatio(1f) else it }
+                                                .let { base ->
+                                                    if (page.slotKey == "current") {
+                                                        base.dockSleeve(cornerRadius = thumbnailCornerRadius.dp)
+                                                    } else {
+                                                        base
+                                                    }
+                                                },
                                     )
 
                                     if (!isCurrentMusicVideo &&
@@ -655,13 +657,29 @@ fun Thumbnail(
                                             primaryUrl = primaryCanvasUrl,
                                             fallbackUrl = fallbackCanvasUrl,
                                             isPlaying = isPlaying,
-                                            modifier = Modifier.fillMaxSize(),
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .let { base ->
+                                                    if (page.slotKey == "current") {
+                                                        base.dockFlightHidden()
+                                                    } else {
+                                                        base
+                                                    }
+                                                },
                                         )
                                     }
 
                                     if (isCurrentMusicVideo) {
                                         InlineVideoPlayer(
-                                            modifier = Modifier.fillMaxSize(),
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .let { base ->
+                                                    if (page.slotKey == "current") {
+                                                        base.dockFlightHidden()
+                                                    } else {
+                                                        base
+                                                    }
+                                                },
                                         )
                                     }
                                 }

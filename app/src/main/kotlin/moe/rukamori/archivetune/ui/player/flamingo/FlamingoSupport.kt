@@ -60,6 +60,7 @@ import coil3.request.allowHardware
 import coil3.request.crossfade
 import moe.rukamori.archivetune.R
 import kotlin.math.sqrt
+import moe.rukamori.archivetune.ui.player.dockFlightHidden
 
 @Composable
 @NonRestartableComposable
@@ -323,6 +324,7 @@ fun ShadowImageWithCache(
     cornerRadius: Dp = 8.dp,
     imageQuality: ImageQuality,
     overlayContent: (@Composable BoxScope.() -> Unit)? = null,
+    sleeveModifier: Modifier = Modifier,
 ) = FlamingoWrapper {
     val shape = FlamingoSmoothCornerShape(cornerRadius)
     val url = dataLambda()
@@ -331,6 +333,7 @@ fun ShadowImageWithCache(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(1f)
+            .dockFlightHidden()
             .dropShadow(shape, shadowAlpha, shadowType, shadowOverlay)
             .graphicsLayer {
                 compositingStrategy = CompositingStrategy.Offscreen
@@ -347,14 +350,18 @@ fun ShadowImageWithCache(
                 placeholder = painterResource(R.drawable.ic_music_placeholder),
                 error = painterResource(R.drawable.ic_music_placeholder),
                 fallback = painterResource(R.drawable.ic_music_placeholder),
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(sleeveModifier),
             )
         } else {
             Image(
                 painter = painterResource(R.drawable.ic_music_placeholder),
                 contentDescription = contentDescription,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(sleeveModifier),
             )
         }
 

@@ -4937,3 +4937,20 @@ Stage Summary:
 
 Stage Summary:
 - dev @ 041d604be: all four tasks of the 2026-10-08 night batch complete and CI-green — AM landscape controls/overscroll/canvas-morph/video-shift/favourite-spacing, BitChord search tab port, reference-exact artwork flight, BitChord nav glass.
+
+---
+Task ID: 84
+Agent: Super Z (main agent, session web-e130fa90)
+Task: BitChord PlayerDock artwork-docking port (GraphicsLayer record + portal), search-tab revert, AM canvas page-morph, landscape lyrics controls, favourite spacing, BitChord nav pill animation
+
+Work Log:
+- PlayerDockingArtwork.kt rewritten as the BitChord PlayerDock architecture: PlayerDock holds mini/sleeve LayoutCoordinates + corner radii + sheet progress + the shared GraphicsLayer; mini artwork reports continuously via Modifier.playerDockArt (onPlaced, released on dispose — stale coordinates can never be flown to); each style's real artwork records itself into the GraphicsLayer every flight frame via Modifier.dockSleeve (draw-phase only, record-redirect — never a second thumbnail, never a crossfade); PlayerDockFlightHost in the sheet's sharedLayer re-draws the recorded pixels at the lerped root-space rect with lerped corner radius and mid-flight shadow, above the fading player and above the mini bar; sheet content fade keeps BitChord's 1/255 alpha floor while a flight is airborne so the recorded subtree keeps drawing; dockFlightHidden now uses the same fade floor (alpha-0 layers are skipped outright and would starve the recording).
+- Per-style sleeves: Thumbnail (main AsyncImage of the current pager page; bg-blur/canvas/video stand aside), Flamingo (video underlay, plain album, playing bar, landscape stage, canvas stage — via ShadowImageWithCache's new sleeveModifier param applied inside the clip so the recording is unclipped), BitChord card (sleeve on the static art inside the shadow/clip/background, paused-shrink scale interpolated to 1 during the flight exactly like BitChord's sleeve, static art kept alive under the canvas at the fade floor), SimpMusic sleeve. TikTok/Looper/SpatialFlow keep their existing behavior; the mini cover only stands aside when a flight will actually occur.
+- Apple Music canvas page-morph: the sharp canvas stage moved from the background box into the Album page as the page-morph shared element (sharedBounds, same rect via measured sharpStageHeight + top offset), so the CANVAS itself travels with the morphing bounds; the outgoing canvas holds for 250ms then crossfades to the playing-bar's static cover over the last 150ms (canvas inside from start till almost the end, exactly as requested); the canvas keeps playing through the morph; the backdrop/scrim stay in the background box; the drag-handle pill now composes after the pages so it stays visible over the full-bleed canvas.
+- Landscape lyrics scroll no longer summons the controls (poke gated to portrait); favourite-overflow spacer 8dp -> 2dp (the 34dp->8dp fix from the last round had landed after the user's screenshots were taken).
+- BitChordNavBar pill animation repaired: selectedIndex was re-created by remember(selectedRoute) on every route change (animateFloatAsState snapped instead of animating) and the pill target used the 6dp tab spacing instead of the tab step — the pill sat near the first tab and never travelled; now the state persists across route changes (LaunchedEffect sync), the target is index*tabStep, the stretch/squash derives from the true target lag, and dragOffset resets on release.
+- Search tab port fully reverted (682ee5461 + 041d604be): SearchScreen, SearchHistoryViewModel, SearchProvider.LOCAL, PlaybackSourceSections, DatabaseDao.trimSearchHistory, 4 strings. MusicDatabase v38 + the SearchHistory nullable columns deliberately KEPT so nobody's database is destructively wiped or schema-mismatched; the dormant columns are unused by the restored screen.
+
+Stage Summary:
+- dev: docking flight is now pixel-continuous from the player's real artwork to the mini cover and back, driven by the sheet's own progress (drag-synced); canvas songs morph their canvas; nav pill animates; search tab restored to pre-port behavior.
+- CI push + monitoring next.

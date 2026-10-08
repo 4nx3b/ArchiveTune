@@ -553,13 +553,7 @@ fun BottomSheetPlayer(
     val spatialFlowMiniArtworkRect =
         rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
 
-val dockFullArtworkAnchor =
-    remember { androidx.compose.runtime.mutableStateOf<PlayerDockAnchor?>(null) }
-val dockMiniArtworkRect =
-    remember { androidx.compose.runtime.mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
-val dockArtworkReporter: (PlayerDockAnchor?) -> Unit = remember(dockFullArtworkAnchor) { { anchor ->
-    dockFullArtworkAnchor.value = anchor
-} }
+val dockPlayerDock = remember { PlayerDock() }
 
 val spatialFlowFullArtworkRect =
         rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
@@ -1209,15 +1203,17 @@ val spatialFlowFullArtworkRect =
 
     val dockSheetProgressProvider = remember(state) { { state.progress } }
     val dockFlightActive =
-        remember(state) {
+        remember(state, playerDesignStyle, dockPlayerDock) {
             derivedStateOf {
                 val p = state.progress
-                p > 0f && p < 1f
+                p > 0f && p < 1f &&
+                    (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW || dockPlayerDock.docking())
             }
         }
 
     androidx.compose.runtime.CompositionLocalProvider(
         LocalPlayerDockFlight provides dockFlightActive,
+        LocalPlayerDock provides dockPlayerDock,
     ) {
     BottomSheet(
         state = state,
@@ -1368,11 +1364,9 @@ val spatialFlowFullArtworkRect =
                 {
                     androidx.compose.foundation.layout.BoxWithConstraints {
                         enrichedMetadata?.let { metadata ->
-                            PlayerDockingArtwork(
+                            PlayerDockFlightHost(
+                                dock = dockPlayerDock,
                                 sheetProgress = dockSheetProgressProvider,
-                                fullAnchor = dockFullArtworkAnchor.value,
-                                miniArtworkRect = dockMiniArtworkRect.value,
-                                artworkUrl = metadata.thumbnailUrl?.highRes(),
                             )
                         }
                     }
@@ -1391,14 +1385,10 @@ val spatialFlowFullArtworkRect =
                     if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
                         spatialFlowMiniArtworkRect.value = rect
                     }
-                    dockMiniArtworkRect.value = rect
                 },
             )
         },
     ) {
-        androidx.compose.runtime.CompositionLocalProvider(
-            LocalPlayerDockArtwork provides dockArtworkReporter,
-        ) {
         val onSliderValueChange: (Long) -> Unit = {
             isUserSeeking = true
             sliderPosition = it
@@ -3803,4 +3793,3 @@ private fun Modifier.littlePlayerOverlayGestures(
                 }
             }
         }
-    }

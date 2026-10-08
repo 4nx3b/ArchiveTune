@@ -38,19 +38,4 @@ class SearchHistoryViewModel
                 database.query { clearSearchHistory() }
             }
         }
-
-        fun record(entry: SearchHistory) {
-            viewModelScope.launch {
-                database.query {
-                    insert(entry)
-                    trimSearchHistory()
-                }
-            }
-        }
-
-        fun remove(entry: SearchHistory) {
-            viewModelScope.launch {
-                database.query { delete(entry) }
-            }
-        }
     }

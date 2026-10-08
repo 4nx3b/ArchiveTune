@@ -60,6 +60,7 @@ import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.constants.BottomSheetAnimationSpec
 import moe.rukamori.archivetune.constants.BottomSheetSoftAnimationSpec
+import moe.rukamori.archivetune.ui.player.LocalPlayerDock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -157,6 +158,7 @@ fun BottomSheet(
         val fullContentZIndex by remember(state) {
             derivedStateOf { if (state.progress > 0.5f) 2f else 1f }
         }
+        val contentDock = LocalPlayerDock.current
         if (keepContentAlive) {
             BoxWithConstraints(
                 modifier =
@@ -170,6 +172,9 @@ fun BottomSheet(
                                 if (p <= 0.01f) translationY = 10_000f
                             } else {
                                 alpha = if (state.isCollapsed) 0f else ((state.progress - 0.15f) / 0.85f).coerceIn(0f, 1f)
+                                if (alpha == 0f && contentDock?.docking() == true) {
+                                    alpha = 1f / 255f
+                                }
                             }
                         },
                 content = content,
