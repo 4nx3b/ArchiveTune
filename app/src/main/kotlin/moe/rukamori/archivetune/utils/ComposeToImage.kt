@@ -234,7 +234,7 @@ object ComposeToImage {
             var coverArtBitmap: Bitmap? = null
             if (coverArtUrl != null) {
                 try {
-                    val imageLoader = coil3.imageLoader(context)
+                    val imageLoader = context.imageLoader
                     val request =
                         ImageRequest
                             .Builder(context)
@@ -671,7 +671,7 @@ object ComposeToImage {
             var coverArtBitmap: Bitmap? = null
             if (coverArtUrl != null) {
                 try {
-                    val imageLoader = coil3.imageLoader(context)
+                    val imageLoader = context.imageLoader
                     val request =
                         ImageRequest
                             .Builder(context)
@@ -1424,7 +1424,7 @@ object ComposeToImage {
             var coverArtBitmap: Bitmap? = null
             if (coverArtUrl != null) {
                 runCatching {
-                    val imageLoader = coil3.imageLoader(context)
+                    val imageLoader = context.imageLoader
                     val request = ImageRequest.Builder(context)
                         .data(coverArtUrl)
                         .size(canvasSize / 2)

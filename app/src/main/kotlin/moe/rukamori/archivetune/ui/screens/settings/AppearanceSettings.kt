@@ -227,11 +227,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             DisableAnimationsKey,
             defaultValue = defaultDisableAnimations,
         )
-    val (forceHighRefreshRate, onForceHighRefreshRateChange) =
-        rememberPreference(
-            ForceHighRefreshRateKey,
-            defaultValue = false,
-        )
     val (hideStatusBar, onHideStatusBarChange) =
         rememberPreference(
             HideStatusBarKey,
@@ -366,9 +361,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         remember(darkMode, isSystemInDarkTheme) {
             if (darkMode == DarkMode.AUTO) isSystemInDarkTheme else darkMode == DarkMode.ON
         }
-
-    val supportedHighestFps = rememberSupportedHighestFps()
-    val isHighRefreshRateSupported = supportedHighestFps > HIGH_REFRESH_RATE_THRESHOLD_FPS
 
     var showSliderOptionDialog by rememberSaveable {
         mutableStateOf(false)
@@ -1152,21 +1144,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 }
 }
 
-private fun rememberSupportedHighestFps(): Float {
-    val view = LocalView.current
-
-    return remember(view) {
-        val display = view.display
-        display
-            ?.supportedModes
-            ?.maxOfOrNull { mode -> mode.refreshRate }
-            ?: display?.refreshRate
-            ?: DEFAULT_STANDARD_REFRESH_RATE_FPS
-    }
-}
-
-private const val HIGH_REFRESH_RATE_THRESHOLD_FPS = 60.5f
-private const val DEFAULT_STANDARD_REFRESH_RATE_FPS = 60f
 private const val DEFAULT_REFRESH_RATE_REQUEST = 0f
 
 @Composable

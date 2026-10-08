@@ -1792,6 +1792,7 @@ private suspend fun renderRecapCardAtScale(
                         canAdvance = false,
                         onTopSongLongClick = {},
                         onTopArtistLongClick = {},
+                        onArtistClick = {},
                         onShare = {},
                         isGenerating = false,
                         modifier = Modifier.fillMaxSize(),

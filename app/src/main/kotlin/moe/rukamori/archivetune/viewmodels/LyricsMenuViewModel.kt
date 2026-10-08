@@ -344,7 +344,7 @@ class LyricsMenuViewModel
                                         .getDisplayLanguage(java.util.Locale.ENGLISH)
                                         .uppercase()
                                 }
-                                .takeIf { it.isNotBlank() }
+                                ?.takeIf { it.isNotBlank() }
                                 ?: targetLanguage.ifBlank { "ENGLISH" }
                         val translatedLyrics =
                             AiLyricsTranslator().translate(

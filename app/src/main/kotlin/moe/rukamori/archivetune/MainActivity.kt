@@ -968,8 +968,8 @@ class MainActivity : ComponentActivity() {
                     refreshRateView.setRequestedFrameRate(requested)
                 } else {
                     val attributes = window.attributes
-                    if (attributes.preferredRefreshRate != requested.toInt()) {
-                        attributes.preferredRefreshRate = requested.toInt()
+                    if (attributes.preferredRefreshRate != requested) {
+                        attributes.preferredRefreshRate = requested
                         window.attributes = attributes
                     }
                 }
