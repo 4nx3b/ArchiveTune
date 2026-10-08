@@ -718,7 +718,7 @@ private fun BitChordYTItemRow(
                         ytItemEntityRecord(item)?.let { entry ->
                             onRecord(
                                 entry.query,
-                                entry.displayTitle,
+                                entry.displayTitle.orEmpty(),
                                 entry.subtitle,
                                 entry.artworkUrl,
                                 entry.entityType,
@@ -782,7 +782,7 @@ private fun BitChordYTItemRow(
 private fun YTItem.subtitleText(): String =
     when (this) {
         is SongItem -> artists.joinToString(" · ") { it.name }
-        is AlbumItem -> artists?.joinToString(" · ") { it.name }
+        is AlbumItem -> artists?.joinToString(" · ") { it.name } ?: ""
         is ArtistItem -> subscriberCountText.orEmpty()
         is PlaylistItem -> listOfNotNull(author?.name, songCountText).joinToString(" · ")
         else -> ""
