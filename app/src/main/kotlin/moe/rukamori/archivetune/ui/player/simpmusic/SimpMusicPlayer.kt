@@ -117,8 +117,8 @@ import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.player.LosslessOrStats
 import moe.rukamori.archivetune.ui.player.rememberInlineLyricLines
 import moe.rukamori.archivetune.ui.player.rememberMeshPalette
-import moe.rukamori.archivetune.ui.player.dockFlightHidden
-import moe.rukamori.archivetune.ui.player.dockSleeve
+import moe.rukamori.archivetune.ui.player.miniFlightHidden
+import moe.rukamori.archivetune.ui.player.miniFlightSleeve
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.ui.utils.rememberMediaInfo
@@ -546,7 +546,7 @@ private fun SimpMusicArtwork(
             modifier =
                 Modifier
                     .size(side)
-                    .dockFlightHidden()
+                    .miniFlightHidden()
                     .shadow(
                         elevation = 3.dp,
                         shape = RoundedCornerShape(8.dp),
@@ -563,7 +563,7 @@ private fun SimpMusicArtwork(
                         .fillMaxSize()
                         .padding(3.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .dockSleeve(cornerRadius = 8.dp),
+                        .miniFlightSleeve(cornerRadius = 8.dp),
             )
         }
     }

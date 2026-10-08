@@ -148,8 +148,11 @@ fun LibraryScreen(navController: NavController) {
                 ): Offset {
                     if (source != NestedScrollSource.UserInput) return Offset.Zero
                     when {
-                        available.y < -6f -> libraryTitleReveal.value = true
-                        available.y > 18f -> libraryTitleReveal.value = false
+                        // Scrolling further down the list: the large title
+                        // scrolls away with the content.
+                        available.y < -6f -> libraryTitleReveal.value = false
+                        // Scrolling back up: the large title re-reveals.
+                        available.y > 18f -> libraryTitleReveal.value = true
                     }
                     return Offset.Zero
                 }

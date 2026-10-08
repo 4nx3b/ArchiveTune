@@ -77,9 +77,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.media3.ui.AspectRatioFrameLayout
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
-import moe.rukamori.archivetune.ui.player.dockFlightHidden
-import moe.rukamori.archivetune.ui.player.LocalPlayerDock
-import moe.rukamori.archivetune.ui.player.dockSleeve
+import moe.rukamori.archivetune.ui.player.miniFlightHidden
+import moe.rukamori.archivetune.ui.player.miniFlightSleeve
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -886,7 +885,6 @@ fun BitChordPlayerContent(
                     SideEffect { heroHeight = bannerBottom }
                 }
 
-                val sleeveDock = LocalPlayerDock.current
                 Box(
                     modifier = Modifier
 
@@ -914,7 +912,6 @@ fun BitChordPlayerContent(
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer { alpha = if (artLoaded) 1f - heroVisible else 1f }
-                            .dockFlightHidden()
 
                             .shadow(
                                 if (artLoaded) lerp(10.dp, 6.dp, p) else 0.dp,
@@ -940,9 +937,7 @@ fun BitChordPlayerContent(
                                 isPlaying = isPlaying,
                                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                                 onPlaybackAvailabilityChange = { cardCanvasShowing = it },
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .dockFlightHidden(),
+                                modifier = Modifier.fillMaxSize(),
                             )
                         }
                         val cardArtRequest = remember(artUrl) {
@@ -963,14 +958,13 @@ fun BitChordPlayerContent(
                                 .graphicsLayer {
                                     alpha = if (cardCanvasShowing) 1f / 255f else 1f
                                 }
-                                .dockSleeve(cornerRadius = 8.dp)
+                                .miniFlightHidden()
+                                .miniFlightSleeve(cornerRadius = 8.dp)
                                 .graphicsLayer {
                                     val idle = artScale + (1f - artScale) * p
-                                    val t = sleeveDock?.flightFraction() ?: 1f
-                                    val scale = if (t >= 1f) idle else 1f + (idle - 1f) * t
-                                    scaleX = scale
-                                    scaleY = scale
-                                    translationX = swipeSettle * (1f - p) * t
+                                    scaleX = idle
+                                    scaleY = idle
+                                    translationX = swipeSettle * (1f - p)
                                 },
                         )
                     }

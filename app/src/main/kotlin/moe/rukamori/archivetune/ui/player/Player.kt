@@ -58,6 +58,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -97,6 +98,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -166,6 +168,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalAnimationsDisabled
@@ -213,6 +217,8 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.BottomSheet
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
+import moe.rukamori.archivetune.ui.component.DISMISSED_ANCHOR
+import moe.rukamori.archivetune.ui.component.EXPANDED_ANCHOR
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.lottie.ArchiveTuneLottie
@@ -553,9 +559,19 @@ fun BottomSheetPlayer(
     val spatialFlowMiniArtworkRect =
         rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
 
-val dockPlayerDock = remember { PlayerDock() }
-
-val spatialFlowFullArtworkRect =
+    val miniPlayerFlightController = remember { MiniPlayerFlightController() }
+    val miniPlayerFlightDensity = LocalDensity.current
+    // Mirrors the miniplayer's own swap state inputs so the flying thumbnail
+    // is pixel-identical to the artwork it settles into.
+    val miniPlayerFlightArtwork =
+        rememberThumbnailSwapState(
+            videoId = mediaMetadata?.id,
+            ytmUrl = mediaMetadata?.thumbnailUrl,
+            lowDataMode = lowDataModeActive,
+            isMusicVideo = mediaMetadata?.isMusicVideo == true,
+        )
+    val miniPlayerFlightArtworkUrl = rememberUpdatedState(miniPlayerFlightArtwork.displayUrl)
+    val spatialFlowFullArtworkRect =
         rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
     var spatialFlowPagerArtworkActive by remember { mutableStateOf(true) }
 
@@ -1201,19 +1217,40 @@ val spatialFlowFullArtworkRect =
             }
         }
 
-    val dockSheetProgressProvider = remember(state) { { state.progress } }
-    val dockFlightActive =
-        remember(state, playerDesignStyle, dockPlayerDock) {
-            derivedStateOf {
-                val p = state.progress
-                p > 0f && p < 1f &&
-                    (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW || dockPlayerDock.docking())
+    val animationsDisabledForFlight = LocalAnimationsDisabled.current
+    LaunchedEffect(state, animationsDisabledForFlight, aodModeEnabled) {
+        if (animationsDisabledForFlight || aodModeEnabled) return@LaunchedEffect
+        snapshotFlow { state.targetAnchor }
+            .distinctUntilChanged()
+            .drop(1)
+            .collect { anchor ->
+                if (anchor == COLLAPSED_ANCHOR && state.progress > 0.3f) {
+                    // One-shot reference flight, in screen space: the sheet
+                    // fades the player away while the static thumbnail
+                    // separates and settles into the miniplayer once the
+                    // player has fully minimised. The sleeve/mini rects are
+                    // layout coordinates, so both the sheet's current and
+                    // settled translations are folded in here.
+                    val startTranslationPx =
+                        with(miniPlayerFlightDensity) {
+                            (state.expandedBound - state.value).roundToPx()
+                        } + (navbarHiddenOffset?.invoke() ?: 0f) *
+                            (1f - state.progress.coerceIn(0f, 1f))
+                    val settledTranslationPx =
+                        with(miniPlayerFlightDensity) {
+                            (state.expandedBound - state.collapsedBound).roundToPx()
+                        } + (navbarHiddenOffset?.invoke() ?: 0f)
+                    miniPlayerFlightController.launch(
+                        miniPlayerFlightArtworkUrl.value,
+                        startTranslationPx,
+                        settledTranslationPx,
+                    )
+                }
             }
-        }
+    }
 
     androidx.compose.runtime.CompositionLocalProvider(
-        LocalPlayerDockFlight provides dockFlightActive,
-        LocalPlayerDock provides dockPlayerDock,
+        LocalMiniPlayerFlight provides miniPlayerFlightController,
     ) {
     BottomSheet(
         state = state,
@@ -1361,16 +1398,7 @@ val spatialFlowFullArtworkRect =
                     }
                 }
             } else {
-                {
-                    androidx.compose.foundation.layout.BoxWithConstraints {
-                        enrichedMetadata?.let { metadata ->
-                            PlayerDockFlightHost(
-                                dock = dockPlayerDock,
-                                sheetProgress = dockSheetProgressProvider,
-                            )
-                        }
-                    }
-                }
+                null
             },
         collapsedContent = {
             MiniPlayer(
@@ -1385,6 +1413,7 @@ val spatialFlowFullArtworkRect =
                     if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
                         spatialFlowMiniArtworkRect.value = rect
                     }
+                    miniPlayerFlightController.reportMini(rect)
                 },
             )
         },
@@ -2912,6 +2941,20 @@ val spatialFlowFullArtworkRect =
                 }
             }
         }
+
+        // The miniplayer artwork flight overlay — a plain screen-space sibling
+        // above the whole sheet, so the flying thumbnail renders exactly where
+        // the controller computes it and lands pixel-exact on the miniplayer's
+        // artwork slot once the sheet has fully minimised.
+        MiniPlayerArtworkFlightHost(
+            controller = miniPlayerFlightController,
+            isSheetSettled = { state.isCollapsed },
+            isFlightAbandoned = {
+                state.targetAnchor == EXPANDED_ANCHOR ||
+                    state.targetAnchor == DISMISSED_ANCHOR
+            },
+            modifier = Modifier.fillMaxSize().zIndex(10f),
+        )
     }
     }
     }

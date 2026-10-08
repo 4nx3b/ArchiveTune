@@ -4,236 +4,282 @@
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
- * The maximized-player <-> miniplayer artwork docking, re-implemented after
- * BitChord's PlayerDock flight (https://github.com/kushagrasinghx/BitChord,
- * GPL-3.0): the expanded player keeps its REAL artwork alive and records it
- * into a GraphicsLayer every frame of the sheet's travel, and the flight host
- * redraws those recorded pixels over the fading player — one continuous
- * visual object from the player's artwork bounds to the miniplayer's cover,
- * never a second thumbnail, never a crossfade. The miniplayer's cover
- * reports its LayoutCoordinates continuously and stands aside for the flight
- * (see LocalPlayerDockFlight). All geometry is measured in root layout
- * coordinates through the dock, so navigation-bar, compact-state and
- * layout changes re-target the flight on the next frame.
+ * The maximized-player -> miniplayer artwork flight, after the reference
+ * recording (YouTube-Music-style): when the player sheet collapses, the
+ * player UI fades away with the sheet while the song thumbnail SEPARATES,
+ * sweeps down, and settles into the miniplayer flying in from right to left
+ * once the full-screen player is completely minimised. It is a one-shot
+ * overlay animation — never drag-synced, never re-measuring a video surface,
+ * so canvas and music-video songs can never glitch: what flies is always the
+ * STATIC thumbnail. The reverse direction (miniplayer -> full player) has no
+ * artwork animation at all, by design.
+ *
+ * Geometry lives in root layout coordinates: the sleeve and the miniplayer
+ * slot both report their rects through positionInRoot, and the trigger
+ * captures the sheet's current and settled translations so the flight runs
+ * in pure screen space — a monotonic down-then-right-to-left sweep that can
+ * never dip past the slot, whatever pace the sheet itself settles at.
  */
 
 package moe.rukamori.archivetune.ui.player
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.State
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.layer.GraphicsLayer
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.lerp
-import androidx.compose.ui.unit.toIntSize
-import androidx.compose.ui.unit.toSize
+import androidx.compose.ui.util.lerp
+import coil3.compose.AsyncImage
+import moe.rukamori.archivetune.R
 import kotlin.math.roundToInt
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
+/**
+ * One-shot controller for the collapse flight.
+ *
+ * The expanded player's static artwork reports its root-space rect through
+ * [reportSleeve]; the miniplayer's artwork slot reports through [reportMini].
+ * When the sheet starts collapsing, the host-side trigger calls [launch] with
+ * the sheet's current translation (where the artwork is on screen right now)
+ * and its settled translation (where the miniplayer's slot ends up) — the
+ * flight then runs in pure screen space.
+ */
 @Stable
-class PlayerDock {
-    private var miniArt: LayoutCoordinates? = null
-    private var miniArtCorner: Dp = 10.dp
+class MiniPlayerFlightController {
+    internal var sleeveRect: Rect? = null
+    internal var sleeveCorner: Dp = 8.dp
 
-    private var sleeveArt: LayoutCoordinates? = null
-    private var sleeveCorner: Dp = 8.dp
+    internal var miniRect: Rect? = null
 
-    var sheetProgress: (() -> Float)? = null
-    var sleeveLayer: GraphicsLayer? = null
+    internal var flightActive by mutableStateOf(false)
+        private set
 
-    fun reportMiniArt(coordinates: LayoutCoordinates, corner: Dp) {
-        miniArt = coordinates
-        miniArtCorner = corner
-    }
+    internal var flightId by mutableIntStateOf(0)
+        private set
 
-    fun releaseMiniArt(coordinates: LayoutCoordinates) {
-        if (miniArt === coordinates) miniArt = null
-    }
+    internal var startRect: Rect? = null
+    internal var startCorner: Dp = 8.dp
+    internal var targetRect: Rect? = null
+    internal var targetCorner: Dp = 10.dp
+    internal var flightUrl: String? = null
 
-    fun reportSleeveArt(coordinates: LayoutCoordinates, corner: Dp) {
-        sleeveArt = coordinates
+    fun reportSleeve(
+        rect: Rect,
+        corner: Dp,
+    ) {
+        sleeveRect = rect
         sleeveCorner = corner
     }
 
-    fun releaseSleeveArt(coordinates: LayoutCoordinates) {
-        if (sleeveArt === coordinates) sleeveArt = null
+    fun reportMini(rect: Rect) {
+        miniRect = rect
     }
 
-    internal fun miniOnRoot(): Rect? =
-        miniArt?.takeIf { it.isAttached }?.let {
-            Rect(it.positionInRoot(), it.size.toSize())
-        }
-
-    internal fun sleeveOnRoot(): Rect? =
-        sleeveArt?.takeIf { it.isAttached }?.let {
-            Rect(it.positionInRoot(), it.size.toSize())
-        }
-
-    internal fun miniCorner(): Dp = miniArtCorner
-
-    internal fun sleeveCorner(): Dp = sleeveCorner
-
-    fun docking(): Boolean {
-        val t = flightFraction()
-        return t > 0f && t < 1f
+    /**
+     * @param url static thumbnail to fly (never a canvas/video surface).
+     * @param startTranslationPx the sheet's translation at trigger time, so
+     *   the flight begins exactly where the artwork is visible on screen.
+     * @param settledTranslationPx the sheet's translation once fully
+     *   collapsed — the miniplayer slot's final on-screen position.
+     */
+    fun launch(
+        url: String?,
+        startTranslationPx: Float,
+        settledTranslationPx: Float,
+    ): Boolean {
+        val sleeve = sleeveRect ?: return false
+        val mini = miniRect ?: return false
+        if (url.isNullOrBlank()) return false
+        if (sleeve.width <= 0f || sleeve.height <= 0f) return false
+        startRect =
+            Rect(
+                left = sleeve.left,
+                top = sleeve.top + startTranslationPx,
+                right = sleeve.right,
+                bottom = sleeve.bottom + startTranslationPx,
+            )
+        targetRect =
+            Rect(
+                left = mini.left,
+                top = mini.top + settledTranslationPx,
+                right = mini.right,
+                bottom = mini.bottom + settledTranslationPx,
+            )
+        startCorner = sleeveCorner
+        targetCorner = MiniFlightTargetCorner
+        flightUrl = url
+        flightId += 1
+        flightActive = true
+        return true
     }
 
-    fun flightFraction(): Float {
-        val p = sheetProgress?.invoke() ?: return 1f
-        if (p >= 1f) return 1f
-        if (miniArt?.isAttached != true || sleeveArt?.isAttached != true) return 1f
-        return p.coerceIn(0f, 1f)
+    internal fun finish() {
+        flightActive = false
     }
 }
 
-val LocalPlayerDock = staticCompositionLocalOf<PlayerDock?> { null }
+private val MiniFlightTargetCorner = 10.dp
 
-val LocalPlayerDockFlight = compositionLocalOf<State<Boolean>> {
-    mutableStateOf(false)
-}
+/** Total flight time; the sheet settles underneath it. */
+private const val MiniFlightDurationMs = 560
 
+val LocalMiniPlayerFlight = staticCompositionLocalOf<MiniPlayerFlightController?> { null }
+
+/**
+ * Attached to each player style's main STATIC artwork (the current pager page
+ * for the default style, the album square for Apple Music style, the card for
+ * BitChord, the sleeve for SimpMusic). Canvas and video surfaces never report
+ * — the flight always shows the static thumbnail.
+ */
 @Composable
-fun Modifier.playerDockArt(cornerRadius: Dp): Modifier {
-    val dock = LocalPlayerDock.current ?: return this
-    val placed = remember { arrayOfNulls<LayoutCoordinates>(1) }
-    DisposableEffect(dock) {
-        onDispose { placed[0]?.let(dock::releaseMiniArt) }
-    }
-    return this.onPlaced { coordinates ->
-        placed[0] = coordinates
-        dock.reportMiniArt(coordinates, cornerRadius)
+fun Modifier.miniFlightSleeve(cornerRadius: Dp): Modifier {
+    val controller = LocalMiniPlayerFlight.current ?: return this
+    return this.onGloballyPositioned { coordinates ->
+        controller.reportSleeve(
+            Rect(
+                offset = coordinates.positionInRoot(),
+                size = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat()),
+            ),
+            cornerRadius,
+        )
     }
 }
 
+/**
+ * Hides the player's real static artwork while the flight is airborne — the
+ * flying thumbnail replaces it exactly, so keeping both would double-draw.
+ * Canvas/video surfaces are NOT hidden: they keep rendering and fade away
+ * with the sheet while the static thumbnail flies out over them.
+ */
 @Composable
-fun Modifier.dockFlightHidden(): Modifier {
-    val flight = LocalPlayerDockFlight.current
+fun Modifier.miniFlightHidden(): Modifier {
+    val controller = LocalMiniPlayerFlight.current ?: return this
     return this.graphicsLayer {
-        alpha = if (flight.value) 1f / 255f else 1f
+        alpha = if (controller.flightActive) 1f / 255f else 1f
     }
 }
 
+/**
+ * The flight overlay. Compose it as a top-level sibling ABOVE the player
+ * sheet (outside the translating sheet Box) so the thumbnail's rendered
+ * position is exactly the screen-space rect the controller computes — a
+ * monotonic sweep that lands pixel-exact on the miniplayer's artwork slot.
+ */
 @Composable
-fun Modifier.dockSleeve(cornerRadius: Dp): Modifier {
-    val dock = LocalPlayerDock.current ?: return this
-    val placed = remember { arrayOfNulls<LayoutCoordinates>(1) }
-    DisposableEffect(dock) {
-        onDispose { placed[0]?.let(dock::releaseSleeveArt) }
-    }
-    return this
-        .onPlaced { coordinates ->
-            placed[0] = coordinates
-            dock.reportSleeveArt(coordinates, cornerRadius)
-        }
-        .drawWithContent {
-            val layer = dock.sleeveLayer
-            if (layer != null && dock.docking()) {
-                layer.record(size.toIntSize()) { this@drawWithContent.drawContent() }
-            } else {
-                drawContent()
-            }
-        }
-}
-
-@Composable
-fun BoxScope.PlayerDockFlightHost(
-    dock: PlayerDock,
-    sheetProgress: () -> Float,
+fun MiniPlayerArtworkFlightHost(
+    controller: MiniPlayerFlightController,
+    isSheetSettled: () -> Boolean,
+    isFlightAbandoned: () -> Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val layer = rememberGraphicsLayer()
-    dock.sleeveLayer = layer
-    dock.sheetProgress = sheetProgress
-    DisposableEffect(dock) {
-        onDispose {
-            dock.sleeveLayer = null
-            dock.sheetProgress = null
-        }
-    }
+    if (!controller.flightActive) return
+    val start = controller.startRect ?: return
+    val target = controller.targetRect ?: return
+    val url = controller.flightUrl ?: return
+
     var hostOrigin by remember { mutableStateOf<Offset?>(null) }
+
+    val progress = remember(controller.flightId) { Animatable(0f) }
+    LaunchedEffect(controller.flightId) {
+        launch {
+            snapshotFlow { isFlightAbandoned() }.first { it }
+            controller.finish()
+        }
+        progress.animateTo(
+            1f,
+            tween(durationMillis = MiniFlightDurationMs, easing = FastOutSlowInEasing),
+        )
+        // Hold pinned on the slot until the sheet has finished minimising so
+        // the handoff to the miniplayer's own artwork is never mid-motion.
+        withTimeoutOrNull(500L) {
+            snapshotFlow { isSheetSettled() }.first { it }
+        }
+        controller.finish()
+    }
+
     Box(
         modifier =
             modifier
                 .fillMaxSize()
                 .onGloballyPositioned { hostOrigin = it.positionInRoot() }
                 .layout { measurable, _ ->
-                    val t = dock.flightFraction()
-                    val mini = dock.miniOnRoot()
-                    val sleeve = dock.sleeveOnRoot()
                     val origin = hostOrigin
-                    if (t <= 0f || t >= 1f || mini == null || sleeve == null || origin == null) {
+                    if (origin == null) {
                         val empty = measurable.measure(Constraints.fixed(0, 0))
                         layout(0, 0) { empty.place(0, 0) }
                     } else {
-                        val left = lerp(mini.left, sleeve.left, t)
-                        val top = lerp(mini.top, sleeve.top, t)
-                        val width = lerp(mini.width, sleeve.width, t)
-                        val height = lerp(mini.height, sleeve.height, t)
-                        val placeable =
-                            measurable.measure(
-                                Constraints.fixed(
-                                    width.roundToInt().coerceAtLeast(1),
-                                    height.roundToInt().coerceAtLeast(1),
-                                ),
-                            )
+                        val width = start.width.roundToInt().coerceAtLeast(1)
+                        val height = start.height.roundToInt().coerceAtLeast(1)
+                        val placeable = measurable.measure(Constraints.fixed(width, height))
                         layout(0, 0) {
                             placeable.place(
-                                (left - origin.x).roundToInt(),
-                                (top - origin.y).roundToInt(),
+                                (start.left - origin.x).roundToInt(),
+                                (start.top - origin.y).roundToInt(),
                             )
                         }
                     }
-                }
-                .graphicsLayer {
-                    val t = dock.flightFraction()
-                    alpha = if (t > 0f && t < 1f) 1f else 0f
-                    if (alpha > 0f) {
-                        val cornerPx = lerp(dock.miniCorner(), dock.sleeveCorner(), t).toPx()
-                        shape = RoundedCornerShape(cornerPx)
-                        clip = true
-                        shadowElevation = 10.dp.toPx() * 4f * t * (1f - t)
-                    }
-                }
-                .drawWithContent {
-                    val sleeve = dock.sleeveOnRoot()
-                    val layer = dock.sleeveLayer
-                    if (sleeve != null && layer != null && sleeve.width > 0f && sleeve.height > 0f) {
-                        scale(
-                            size.width / sleeve.width,
-                            size.height / sleeve.height,
-                            pivot = Offset.Zero,
-                        ) {
-                            drawLayer(layer)
-                        }
-                    }
+                }.graphicsLayer {
+                    val p = progress.value
+                    val p0 = start.center
+                    val p2 = target.center
+                    // Control point: drop to the miniplayer's band first,
+                    // then sweep right-to-left into the slot.
+                    val p1x = p0.x + (p2.x - p0.x) * 0.10f
+                    val p1y = p2.y
+                    val inv = 1f - p
+                    val cx = inv * inv * p0.x + 2f * p * inv * p1x + p * p * p2.x
+                    val cy = inv * inv * p0.y + 2f * p * inv * p1y + p * p * p2.y
+                    // The thumbnail sheds most of its size early — it is
+                    // already a small square while the player dissolves.
+                    val sizeP = (p * 1.30f).coerceIn(0f, 1f)
+                    val w = lerp(start.width, target.width, sizeP)
+                    val h = lerp(start.height, target.height, sizeP)
+                    translationX = cx - p0.x
+                    translationY = cy - p0.y
+                    scaleX = if (start.width > 0f) w / start.width else 1f
+                    scaleY = if (start.height > 0f) h / start.height else 1f
+                    val visualCorner =
+                        lerp(controller.startCorner.toPx(), controller.targetCorner.toPx(), sizeP)
+                    val cornerX = if (scaleX > 0.01f) visualCorner / scaleX else visualCorner
+                    val cornerY = if (scaleY > 0.01f) visualCorner / scaleY else visualCorner
+                    shape = RoundedCornerShape(CornerRadius(cornerX, cornerY))
+                    clip = true
                 },
-    )
+    ) {
+        AsyncImage(
+            model = url,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            placeholder = painterResource(R.drawable.ic_music_placeholder),
+            error = painterResource(R.drawable.ic_music_placeholder),
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
 }
-
-private fun lerp(start: Float, stop: Float, fraction: Float): Float = start + (stop - start) * fraction
