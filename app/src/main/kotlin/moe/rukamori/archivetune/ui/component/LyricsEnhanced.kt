@@ -134,6 +134,8 @@ import moe.rukamori.archivetune.constants.LyricsRomanizeJapaneseKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeKoreanKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeOtherLanguagesKey
 import moe.rukamori.archivetune.constants.LyricsTextSizeKey
+import moe.rukamori.archivetune.constants.LyricsFontWeightKey
+import moe.rukamori.archivetune.constants.lyricsFontWeightFor
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
@@ -247,6 +249,11 @@ fun LyricsEnhanced(
     val (lyricsClick) = rememberPreference(LyricsClickKey, defaultValue = true)
     val (lyricsTextSizePreference) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
     val lyricsTextSize = textSizeOverride ?: lyricsTextSizePreference
+
+    // The Flamingo-ported font weight setting — drives the karaoke lines in
+    // every player style that renders enhanced lyrics.
+    val (lyricsFontWeightName) = rememberPreference(LyricsFontWeightKey, defaultValue = "ExtraBold")
+    val lyricsFontWeight = remember(lyricsFontWeightName) { lyricsFontWeightFor(lyricsFontWeightName) }
 
     val (lyricsLineBlurPreference) = rememberPreference(LyricsLineBlurKey, defaultValue = false)
     val (romanizeChinese) = rememberPreference(LyricsRomanizeChineseKey, defaultValue = true)
@@ -810,10 +817,10 @@ fun LyricsEnhanced(
 
     val typography = MaterialTheme.typography
     val normalTextStyle =
-        remember(typography, lyricsTextSize, lyricsFontFamily) {
+        remember(typography, lyricsTextSize, lyricsFontFamily, lyricsFontWeight) {
             typography.headlineMedium.copy(
                 fontSize = lyricsTextSize.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = lyricsFontWeight,
                 fontFamily = lyricsFontFamily ?: typography.headlineMedium.fontFamily,
             )
         }

@@ -119,7 +119,6 @@ import moe.rukamori.archivetune.constants.PlayerHorizontalPadding
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.codecLabel
-import moe.rukamori.archivetune.db.entities.isLossless
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.extensions.toggleRepeatMode
 import moe.rukamori.archivetune.models.MediaMetadata
@@ -136,12 +135,9 @@ import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.LoadingIndicator
@@ -152,7 +148,6 @@ import androidx.compose.material3.ripple
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.Outline
@@ -161,7 +156,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -3205,8 +3199,6 @@ fun V10PlayerContent(
     playbackState: Int,
     isPlaying: Boolean,
     isLoading: Boolean,
-    canSkipPrevious: Boolean,
-    canSkipNext: Boolean,
     sliderPosition: Long?,
     position: Long,
     duration: Long,
@@ -3215,9 +3207,7 @@ fun V10PlayerContent(
     state: BottomSheetState,
     textBackgroundColor: Color,
     textButtonColor: Color,
-    iconButtonColor: Color,
     onCollapseClick: () -> Unit,
-    onQueueClick: () -> Unit,
     onLyricsClick: () -> Unit,
     lyricsOpen: Boolean,
     onCloseLyrics: () -> Unit,
@@ -3229,9 +3219,6 @@ fun V10PlayerContent(
     sleepTimerEnabled: Boolean,
     sleepTimerTimeLeft: Long,
     onMenuClick: () -> Unit,
-    onAddToPlaylistClick: () -> Unit,
-    currentFormat: FormatEntity? = null,
-    onShowDetails: () -> Unit = {},
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
 ) {
@@ -3255,12 +3242,6 @@ fun V10PlayerContent(
             playerConnection.player.togglePlayPause()
         }
     }
-
-    val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsState()
-    val repeatMode by playerConnection.repeatMode.collectAsState()
-    val currentSong by playerConnection.currentSong.collectAsState(initial = null)
-    val liked = currentSong?.song?.liked == true
-    val onToggleLike = playerConnection::toggleLike
 
     val accent = textBackgroundColor
     val field = textButtonColor
@@ -3334,14 +3315,6 @@ fun V10PlayerContent(
                     Icon(painter = painterResource(R.drawable.lyrics), contentDescription = "Lyrics", modifier = Modifier.size(22.dp))
                 }
                 EditorialCircleButton(
-                    onClick = onQueueClick,
-                    accent = accent,
-                    field = field,
-                    size = 44.dp
-                ) {
-                    Icon(painter = painterResource(R.drawable.queue_music), contentDescription = "Queue", modifier = Modifier.size(22.dp))
-                }
-                EditorialCircleButton(
                     onClick = onMenuClick,
                     accent = accent,
                     field = field,
@@ -3371,13 +3344,8 @@ fun V10PlayerContent(
                     artworkUrl = artworkUrl,
                     mediaMetadataId = mediaMetadata.id,
                     isPlaying = isPlaying,
-                    onTap = onPlayPauseClick,
                     accent = accent,
-                    field = field,
-                    canSkipPrevious = canSkipPrevious,
-                    canSkipNext = canSkipNext,
-                    onSkipPrevious = { playerConnection.player.seekToPrevious() },
-                    onSkipNext = { playerConnection.player.seekToNext() }
+                    field = field
                 )
             }
 
@@ -3445,18 +3413,6 @@ fun V10PlayerContent(
                 )
             }
 
-            EditorialMetadataRow(
-                album = mediaMetadata.album,
-                currentFormat = currentFormat,
-                accent = accent,
-                onAlbumClick = {
-                    mediaMetadata.album?.let { album ->
-                        state.collapseSoft()
-                        navController.navigate("album/${album.id}")
-                    }
-                },
-                onShowDetails = onShowDetails,
-            )
         }
 
         Spacer(modifier = Modifier.height(4.dp))
@@ -3608,48 +3564,7 @@ fun V10PlayerContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 20.dp, end = 20.dp, bottom = 8.dp)
-                    .pointerInput(Unit) {
-                        detectVerticalDragGestures { change, dragAmount ->
-                            if (dragAmount < -15) {
-                                change.consume()
-                                onQueueClick()
-                            }
-                        }
-                    },
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                V10ToggleButton(
-                    checked = liked,
-                    onClick = onToggleLike,
-                    accent = accent,
-                    field = field,
-                    iconResId = if (liked) R.drawable.favorite else R.drawable.favorite_border,
-                    contentDescription = "Like"
-                )
-
-                V10ToggleButton(
-                    checked = false,
-                    onClick = onAddToPlaylistClick,
-                    accent = accent,
-                    field = field,
-                    iconResId = R.drawable.library_add,
-                    contentDescription = "Add to playlist"
-                )
-            }
         }
-
-        Spacer(
-            modifier = Modifier
-                .navigationBarsPadding()
-                .height(6.dp)
-        )
     }
 }
 
@@ -3659,13 +3574,8 @@ private fun EditorialDieCutArt(
     artworkUrl: String?,
     mediaMetadataId: String,
     isPlaying: Boolean,
-    onTap: () -> Unit,
     accent: Color,
-    field: Color,
-    canSkipPrevious: Boolean,
-    canSkipNext: Boolean,
-    onSkipPrevious: () -> Unit,
-    onSkipNext: () -> Unit
+    field: Color
 ) {
     val dieCuts = remember {
         listOf(
@@ -3717,13 +3627,6 @@ private fun EditorialDieCutArt(
     ) {
         if (maxWidth < 50.dp || maxHeight < 50.dp) return@BoxWithConstraints
         val artSize = minOf(maxWidth, maxHeight) * 0.95f
-
-        val view = androidx.compose.ui.platform.LocalView.current
-        val (enableHapticFeedback) = rememberPreference(moe.rukamori.archivetune.constants.EnableHapticFeedbackKey, true)
-        val coroutineScope = rememberCoroutineScope()
-
-        var skipIndicator by remember { mutableStateOf<String?>(null) }
-        val skipIndicatorAlpha = remember { Animatable(0f) }
 
         Box(
             modifier = Modifier
@@ -3792,141 +3695,6 @@ internal fun EditorialCircleButton(
         CompositionLocalProvider(LocalContentColor provides field) {
             content()
         }
-    }
-}
-
-@Composable
-private fun V10ToggleButton(
-    checked: Boolean,
-    onClick: () -> Unit,
-    accent: Color,
-    field: Color,
-    iconResId: Int,
-    contentDescription: String?,
-) {
-    val containerColor by animateColorAsState(
-        targetValue = if (checked) accent else accent.copy(alpha = 0.08f),
-        label = "V10ToggleButtonBg"
-    )
-    val contentColor = if (checked) field else accent
-
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .background(containerColor)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        CompositionLocalProvider(LocalContentColor provides contentColor) {
-            Icon(
-                painter = painterResource(iconResId),
-                contentDescription = contentDescription,
-                modifier = Modifier.size(20.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun EditorialMetadataRow(
-    album: MediaMetadata.Album?,
-    currentFormat: FormatEntity?,
-    accent: Color,
-    onAlbumClick: () -> Unit,
-    onShowDetails: () -> Unit,
-) {
-    val albumTitle = album?.title?.takeIf { it.isNotBlank() }
-    if (albumTitle == null && currentFormat == null) return
-
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        if (albumTitle != null) {
-            Text(
-                text = albumTitle,
-                style =
-                    MaterialTheme.typography.labelMedium.copy(
-                        fontFamily = FontFamily.Serif,
-                        fontStyle = FontStyle.Italic,
-                    ),
-                color = accent.copy(alpha = 0.6f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() },
-                            onClick = onAlbumClick,
-                        ),
-            )
-        }
-
-        if (currentFormat != null) {
-            EditorialCodecBadge(
-                currentFormat = currentFormat,
-                accent = accent,
-                onClick = onShowDetails,
-            )
-        }
-    }
-}
-
-@Composable
-private fun EditorialCodecBadge(
-    currentFormat: FormatEntity,
-    accent: Color,
-    onClick: () -> Unit,
-) {
-    val losslessLabel = stringResource(R.string.quality_badge_lossless)
-    val hiresLabel = stringResource(R.string.quality_badge_hires)
-    val label =
-        remember(currentFormat, losslessLabel, hiresLabel) {
-            val rawCodec =
-                currentFormat.codecs
-                    .ifBlank { currentFormat.mimeType.substringAfter("/") }
-                    .uppercase()
-            val base =
-                when {
-                    rawCodec.contains("FLAC") -> "FLAC"
-                    rawCodec.contains("ALAC") -> "ALAC"
-                    else -> currentFormat.codecLabel()
-                }
-            if (currentFormat.isLossless()) {
-                val hiRes = (currentFormat.sampleRate ?: 0) >= 88_200
-                "$base · ${if (hiRes) hiresLabel else losslessLabel}"
-            } else {
-                base
-            }
-        }
-
-    Box(
-        modifier =
-            Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .background(accent.copy(alpha = 0.12f))
-                .clickable(onClick = onClick)
-                .padding(horizontal = 10.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            style =
-                MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 1.sp,
-                ),
-            color = accent.copy(alpha = 0.8f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 

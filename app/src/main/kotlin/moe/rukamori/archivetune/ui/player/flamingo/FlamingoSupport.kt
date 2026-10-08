@@ -26,7 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.aspectRatio
@@ -49,7 +49,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -60,7 +59,6 @@ import coil3.request.allowHardware
 import coil3.request.crossfade
 import moe.rukamori.archivetune.R
 import kotlin.math.sqrt
-import moe.rukamori.archivetune.ui.player.miniFlightHidden
 
 @Composable
 @NonRestartableComposable
@@ -324,7 +322,6 @@ fun ShadowImageWithCache(
     cornerRadius: Dp = 8.dp,
     imageQuality: ImageQuality,
     overlayContent: (@Composable BoxScope.() -> Unit)? = null,
-    sleeveModifier: Modifier = Modifier,
 ) = FlamingoWrapper {
     val shape = FlamingoSmoothCornerShape(cornerRadius)
     val url = dataLambda()
@@ -333,7 +330,6 @@ fun ShadowImageWithCache(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .miniFlightHidden()
             .dropShadow(shape, shadowAlpha, shadowType, shadowOverlay)
             .graphicsLayer {
                 compositingStrategy = CompositingStrategy.Offscreen
@@ -347,21 +343,19 @@ fun ShadowImageWithCache(
                 model = request,
                 contentDescription = contentDescription.toString(),
                 contentScale = ContentScale.Crop,
-                placeholder = painterResource(R.drawable.ic_music_placeholder),
-                error = painterResource(R.drawable.ic_music_placeholder),
-                fallback = painterResource(R.drawable.ic_music_placeholder),
+                // No placeholder/error/fallback painter: on a skip the artwork
+                // slot stays empty for the network round-trip instead of
+                // flashing a generic anime artwork, and the next songs'
+                // thumbnails are prefetched so the real art is usually already
+                // cached.
                 modifier = Modifier
-                    .fillMaxSize()
-                    .then(sleeveModifier),
+                    .fillMaxSize(),
             )
         } else {
-            Image(
-                painter = painterResource(R.drawable.ic_music_placeholder),
-                contentDescription = contentDescription,
-                contentScale = ContentScale.Crop,
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(sleeveModifier),
+                    .background(Color.Transparent),
             )
         }
 

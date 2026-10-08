@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
@@ -51,6 +52,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableBetterLyricsKey
 import moe.rukamori.archivetune.constants.EnableBetterLyricsPortatoKey
 import moe.rukamori.archivetune.constants.EnableBiniLyricsKey
+import moe.rukamori.archivetune.constants.EnableDeezerLyricsKey
 import moe.rukamori.archivetune.constants.EnableGeniusLyricsKey
 import moe.rukamori.archivetune.constants.EnableKugouKey
 import moe.rukamori.archivetune.constants.EnableLrcLibKey
@@ -73,6 +75,10 @@ import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
@@ -108,6 +114,8 @@ fun LyricsProvidersSettings(
         rememberPreference(key = EnableMegalobizLyricsKey, defaultValue = true)
     val (enableGeniusLyrics, onEnableGeniusLyricsChange) =
         rememberPreference(key = EnableGeniusLyricsKey, defaultValue = true)
+    val (enableDeezerLyrics, onEnableDeezerLyricsChange) =
+        rememberPreference(key = EnableDeezerLyricsKey, defaultValue = true)
     val (enablePaxsenixAppleMusic, onEnablePaxsenixAppleMusicChange) =
         rememberPreference(key = EnablePaxsenixAppleMusicLyricsKey, defaultValue = true)
     val (enablePaxsenixSpotify, onEnablePaxsenixSpotifyChange) =
@@ -163,6 +171,8 @@ fun LyricsProvidersSettings(
                 )
             },
     ) { innerPadding ->
+        val headerHaze = rememberScreenHeaderHaze()
+        val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -171,6 +181,7 @@ fun LyricsProvidersSettings(
         val scrollState = rememberScrollState()
         val positions = rememberPreferencePositions()
         androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
+        Box(modifier = Modifier.fillMaxSize()) {
         Column(
             Modifier
                 .padding(top = innerPadding.calculateTopPadding())
@@ -182,6 +193,7 @@ fun LyricsProvidersSettings(
 
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
+                .hazeSource(headerHaze)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = stringResource(R.string.providers)) {
@@ -321,6 +333,17 @@ fun LyricsProvidersSettings(
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("enable_deezer_lyrics"),
+                        title = { Text(stringResource(R.string.enable_deezer_lyrics)) },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableDeezerLyrics,
+                        onCheckedChange = onEnableDeezerLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
                         modifier = positions.modifierFor("enable_paxsenix_applemusic", "paxsenix_applemusic"),
                         title = { Text("PaxSenix (Apple Music)") },
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
@@ -402,6 +425,15 @@ fun LyricsProvidersSettings(
                     }
                 }
             }
+        }
+
+        // The same transparent top haze the home page and the other settings
+        // pages render — content scrolling under the centred title now frosts
+        // over instead of sliding underneath it plainly.
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
         }
     }
 }

@@ -84,6 +84,9 @@ import moe.rukamori.archivetune.ui.screens.settings.QobuzLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.QOBUZ_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.DeezerLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.DEEZER_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.AppleMusicLoginScreen
+import moe.rukamori.archivetune.ui.screens.settings.APPLE_MUSIC_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.AppleMusicSettings
 import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LastFmLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LIBREFM_LOGIN_ROUTE
@@ -630,6 +633,9 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         DeezerSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
+    composable(route = "settings/applemusic") {
+        AppleMusicSettings(navController)
+    }
     composable(
         route = "settings/jiosaavn?scrollTo={scrollTo}",
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
@@ -644,6 +650,9 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(DEEZER_LOGIN_ROUTE) {
         DeezerLoginScreen(navController)
+    }
+    composable(APPLE_MUSIC_LOGIN_ROUTE) {
+        AppleMusicLoginScreen(navController)
     }
     composable(LASTFM_LOGIN_ROUTE) {
         LastFmLoginScreen(navController)

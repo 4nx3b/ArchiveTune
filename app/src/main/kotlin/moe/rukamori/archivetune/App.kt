@@ -398,6 +398,13 @@ class App :
 
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
+                .map { it[moe.rukamori.archivetune.constants.DeezerInstancesKey] ?: "" }
+                .distinctUntilChanged()
+                .collect { raw -> moe.rukamori.archivetune.deezer.DeezerInstances.setUserInstances(raw) }
+        }
+
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
                 .map { it.toPlaybackAuthState() }
                 .distinctUntilChanged()
                 .collect { authState ->

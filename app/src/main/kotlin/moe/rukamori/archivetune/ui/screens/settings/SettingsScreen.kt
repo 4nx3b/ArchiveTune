@@ -173,6 +173,7 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
             "android_auto" -> "settings/android_auto"
             "jiosaavn" -> "settings/jiosaavn"
             "deezer" -> "settings/deezer"
+            "applemusic" -> "settings/applemusic"
             "lyrics" -> "settings/lyrics"
             "lyrics_providers" -> "settings/lyrics/providers"
             "lyrics_romanisation" -> "settings/lyrics/romanisation"

@@ -24,6 +24,7 @@ import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.ListPreference
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.utils.TranslatorLanguages
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.foundation.layout.*
@@ -120,13 +121,19 @@ fun DiscordExperimental(
                 },
             )
 
+            val playerAwareBottomPadding =
+                LocalPlayerAwareWindowInsets.current
+                    .only(WindowInsetsSides.Bottom)
+                    .asPaddingValues()
+                    .calculateBottomPadding()
+
             LazyColumn(
                 state = listState,
 
                 modifier = Modifier.fillMaxSize().then(positions.containerModifier()),
                 contentPadding =
                     PaddingValues(
-                        bottom = inner.calculateBottomPadding() + 80.dp,
+                        bottom = inner.calculateBottomPadding() + playerAwareBottomPadding + 32.dp,
                     ),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
