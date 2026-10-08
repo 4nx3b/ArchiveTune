@@ -4954,3 +4954,15 @@ Work Log:
 Stage Summary:
 - dev: docking flight is now pixel-continuous from the player's real artwork to the mini cover and back, driven by the sheet's own progress (drag-synced); canvas songs morph their canvas; nav pill animates; search tab restored to pre-port behavior.
 - CI push + monitoring next.
+
+---
+Task ID: 84 (outcome)
+Agent: Super Z (main agent, session web-e130fa90)
+
+Work Log:
+- ca211bf07: initial push — 5 Kotlin errors (Player.kt brace orphan from the removed provider, GraphicsLayer import package, record(size) signature, playerDockArt param name, sharedBounds animatedVisibilityScope).
+- eff944d51: Player.kt brace repair.
+- 79adfbe69: round-2 compile fixes; CI: x86_64 nightly failed once on a corrupted CMake 3.22.1 SDK zip download (infrastructure flake — the same commit built on arm64/armeabi/universal/tv and the PR build+check); re-ran the failed job.
+
+Stage Summary:
+- dev @ 79adfbe69: ALL 8 check-runs SUCCESS (build incl. tests+lint, check, all 5 Nightly APK matrix jobs, create-nightly release). BitChord PlayerDock docking flight, canvas page-morph, nav pill animation, landscape lyrics fix, favourite spacing, search-tab revert all landed and CI-green.
