@@ -432,6 +432,9 @@
     <string name="lyrics_auto_scroll">Auto scroll lyrics</string>
     <string name="lyrics_text_size">Lyrics text size</string>
     <string name="lyrics_font_weight">Lyrics font weight</string>
+    <string name="lyrics_animation_style">Lyrics animation style</string>
+    <string name="lyrics_animation_style_accompanist_description">Karaoke sweep with breathing dots (accompanist lyrics-ui)</string>
+    <string name="lyrics_animation_style_blossom_description">Apple Music-style word emphasis and dimmed blur falloff</string>
     <string name="lyrics_sync_offset">Lyrics sync offset</string>
     <string name="resume_autoscroll">Resume Autoscroll</string>
     <string name="lyrics_romanize_japanese">Romanize japanese lyrics</string>

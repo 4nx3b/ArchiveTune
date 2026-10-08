@@ -57,7 +57,7 @@ fun SearchSourcePicker(
                     ),
                 contentDescription = stringResource(R.string.search_source_picker),
 
-                modifier = Modifier.size(22.dp),
+                modifier = Modifier.size(26.dp),
             )
         }
         DropdownMenu(

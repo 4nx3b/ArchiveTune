@@ -143,6 +143,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.luminance
 import moe.rukamori.archivetune.ui.screens.HomeTopFadeBlur
+import moe.rukamori.archivetune.ui.screens.HomeAtmosphereBackground
 import moe.rukamori.archivetune.ui.screens.LocalHomeHazeState
 import moe.rukamori.archivetune.ui.screens.LocalSearchHazeState
 import moe.rukamori.archivetune.ui.screens.LocalLibraryHazeState
@@ -262,6 +263,7 @@ import moe.rukamori.archivetune.constants.DefaultSearchSourceKey
 import moe.rukamori.archivetune.constants.SearchProvider
 import moe.rukamori.archivetune.constants.SearchSourceKey
 import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
+import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.TabletModeEnabledKey
 import moe.rukamori.archivetune.constants.UiScaleFactorKey
 import moe.rukamori.archivetune.constants.UpdateChannel
@@ -1130,16 +1132,39 @@ class MainActivity : ComponentActivity() {
                                 val scale = 0.96f + 0.04f * appOpenProgress.value
                                 scaleX = scale
                                 scaleY = scale
-                            }
-                            .background(
-                                if (pureBlack) Color.Black else MaterialTheme.colorScheme.surface,
-                            ),
+                            },
                 ) {
                     val focusManager = LocalFocusManager.current
                     val density = LocalDensity.current
                     val windowsInsets = WindowInsets.systemBars
                     val bottomInset = with(density) { windowsInsets.getBottom(density).toDp() }
                     val bottomInsetDp = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
+
+                    // The subtle atmosphere gradient rides under EVERY page
+                    // (light and dark modes alike) while "Disable blur effects"
+                    // is off — the same wash the home screen wears in light
+                    // mode, at roughly a third of the intensity. Pure black and
+                    // blur-disabled sessions keep the flat surface.
+                    val (disableBlurForAtmosphere) = rememberPreference(DisableBlurKey, false)
+                    if (!pureBlack) {
+                        if (disableBlurForAtmosphere) {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize()
+                                        .background(MaterialTheme.colorScheme.surface),
+                            )
+                        } else {
+                            HomeAtmosphereBackground(subtle = true)
+                        }
+                    } else {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black),
+                        )
+                    }
 
                     val isTvDevice = remember { applicationContext.isTvDevice() }
                     val (tabletModeEnabled) = rememberPreference(TabletModeEnabledKey, defaultValue = false)
@@ -2433,6 +2458,7 @@ class MainActivity : ComponentActivity() {
                             }
 
                             Scaffold(
+                                containerColor = Color.Transparent,
                                 topBar = {
                                     if (shouldShowTopBar) {
                                         val shouldUseFloatingTopBar =

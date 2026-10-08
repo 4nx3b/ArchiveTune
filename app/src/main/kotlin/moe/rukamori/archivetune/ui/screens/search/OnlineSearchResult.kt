@@ -355,8 +355,7 @@ fun OnlineSearchResult(
     Box(
         modifier =
             Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+                .fillMaxSize(),
     ) {
         LazyColumn(
             state = lazyListState,
