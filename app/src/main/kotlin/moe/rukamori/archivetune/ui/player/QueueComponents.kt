@@ -10,6 +10,7 @@
 package moe.rukamori.archivetune.ui.player
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -28,6 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -1185,6 +1188,201 @@ fun QueueCollapsedContentV9(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Segmented item shapes for V10 Connected GroupedButton.
+ * Cached singletons to prevent allocations on recomposition hot paths.
+ */
+private val EditorialGroupedFirstShape =
+    RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp, topEnd = 6.dp, bottomEnd = 6.dp)
+private val EditorialGroupedMiddleShape = RoundedCornerShape(6.dp)
+private val EditorialGroupedLastShape =
+    RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp, topEnd = 18.dp, bottomEnd = 18.dp)
+
+private fun editorialGroupedItemShape(isFirst: Boolean, isLast: Boolean): RoundedCornerShape {
+    return when {
+        isFirst -> EditorialGroupedFirstShape
+        isLast -> EditorialGroupedLastShape
+        else -> EditorialGroupedMiddleShape
+    }
+}
+
+@Composable
+private fun RowScope.EditorialSegmentedButton(
+    onClick: () -> Unit,
+    accent: Color,
+    field: Color,
+    checked: Boolean = false,
+    isToggle: Boolean = false,
+    isFirst: Boolean = false,
+    isLast: Boolean = false,
+    iconResId: Int,
+    contentDescription: String? = null,
+    enableHapticFeedback: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    val view = LocalView.current
+
+    val containerColor by animateColorAsState(
+        targetValue = if (isToggle && checked) accent else accent.copy(alpha = 0.08f),
+        label = "EditorialSegmentedBg",
+    )
+    val contentColor = if (isToggle && checked) field else accent
+    val shape = editorialGroupedItemShape(isFirst = isFirst, isLast = isLast)
+
+    Box(
+        modifier =
+            modifier
+                .weight(1f)
+                .height(46.dp)
+                .clip(shape)
+                .background(containerColor)
+                .clickable {
+                    if (enableHapticFeedback) {
+                        view.performHapticFeedback(
+                            android.view.HapticFeedbackConstants.CONTEXT_CLICK,
+                            android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
+                        )
+                    }
+                    onClick()
+                },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(iconResId),
+            contentDescription = contentDescription,
+            tint = contentColor,
+            modifier = Modifier.size(22.dp),
+        )
+    }
+}
+
+/**
+ * V10 Design Style collapsed queue content.
+ * 5-slot connected grouped segmented bar:
+ * [ Shuffle ] [ Repeat ] [ Queue ] [ Like ] [ Add to Playlist ]
+ * Safe for Android 16 (SDK 36) - no Surface(onClick) or M3 ToggleButton.
+ */
+@Composable
+fun QueueCollapsedContentV10(
+    showCodecOnPlayer: Boolean,
+    currentFormat: FormatEntity?,
+    accent: Color,
+    field: Color,
+    shuffleModeEnabled: Boolean,
+    repeatMode: Int,
+    currentSongLiked: Boolean,
+    onExpandQueue: () -> Unit,
+    onShuffleClick: () -> Unit,
+    onRepeatModeClick: () -> Unit,
+    onToggleLike: () -> Unit,
+    onAddToPlaylistClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
+
+    Column(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .windowInsetsPadding(
+                    WindowInsets.systemBars.only(
+                        WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal,
+                    ),
+                ),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        val hasCodec = showCodecOnPlayer && currentFormat != null
+        if (hasCodec) {
+            val container = currentFormat.containerLabel()
+            val bitrate = currentFormat.autoRateDisplay()
+            val fileSize = currentFormat.formattedFileSize()
+            CodecInfoRow(
+                codec = container,
+                bitrate = bitrate,
+                fileSize = fileSize,
+                textColor = accent.copy(alpha = 0.6f),
+            )
+        }
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 400.dp)
+                    .padding(
+                        start = 36.dp,
+                        end = 36.dp,
+                        top = if (hasCodec) 8.dp else 18.dp,
+                        bottom = 18.dp,
+                    ),
+        ) {
+            // 1. Queue (expand action) - leftmost
+            EditorialSegmentedButton(
+                onClick = onExpandQueue,
+                accent = accent,
+                field = field,
+                isFirst = true,
+                iconResId = R.drawable.queue_music,
+                contentDescription = stringResource(R.string.queue),
+                enableHapticFeedback = enableHapticFeedback,
+            )
+            // 2. Shuffle (toggle)
+            EditorialSegmentedButton(
+                onClick = onShuffleClick,
+                accent = accent,
+                field = field,
+                checked = shuffleModeEnabled,
+                isToggle = true,
+                iconResId = R.drawable.shuffle,
+                contentDescription = stringResource(if (shuffleModeEnabled) R.string.action_shuffle_on else R.string.action_shuffle_off),
+                enableHapticFeedback = enableHapticFeedback,
+            )
+            // 3. Repeat (toggle)
+            EditorialSegmentedButton(
+                onClick = onRepeatModeClick,
+                accent = accent,
+                field = field,
+                checked = repeatMode != Player.REPEAT_MODE_OFF,
+                isToggle = true,
+                iconResId = if (repeatMode == Player.REPEAT_MODE_ONE) R.drawable.repeat_one else R.drawable.repeat,
+                contentDescription =
+                    stringResource(
+                        when (repeatMode) {
+                            Player.REPEAT_MODE_ONE -> R.string.repeat_mode_one
+                            Player.REPEAT_MODE_ALL -> R.string.repeat_mode_all
+                            else -> R.string.repeat_mode_off
+                        },
+                    ),
+                enableHapticFeedback = enableHapticFeedback,
+            )
+            // 4. Like (toggle)
+            EditorialSegmentedButton(
+                onClick = onToggleLike,
+                accent = accent,
+                field = field,
+                checked = currentSongLiked,
+                isToggle = true,
+                iconResId = if (currentSongLiked) R.drawable.favorite else R.drawable.favorite_border,
+                contentDescription = stringResource(if (currentSongLiked) R.string.action_remove_like else R.string.action_like),
+                enableHapticFeedback = enableHapticFeedback,
+            )
+            // 5. Add to Playlist (action) - rightmost
+            EditorialSegmentedButton(
+                onClick = onAddToPlaylistClick,
+                accent = accent,
+                field = field,
+                isLast = true,
+                iconResId = R.drawable.library_add,
+                contentDescription = stringResource(R.string.add_to_playlist),
+                enableHapticFeedback = enableHapticFeedback,
+            )
         }
     }
 }

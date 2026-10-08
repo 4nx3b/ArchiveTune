@@ -393,6 +393,7 @@ fun FullscreenVideoOverlay(
     selectedHeight: Int? = null,
     onDismiss: () -> Unit,
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
+    followSensorOrientation: Boolean = false,
 ) {
     val context = LocalContext.current
     val playerConnection = LocalPlayerConnection.current
@@ -458,7 +459,7 @@ fun FullscreenVideoOverlay(
         }
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(followSensorOrientation) {
         val activity = context.findActivity()
         val originalOrientation = activity?.requestedOrientation
         val window = activity?.window
@@ -467,7 +468,16 @@ fun FullscreenVideoOverlay(
 
         val originalBrightness = window?.attributes?.screenBrightness
 
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        // Rotation-entered fullscreen follows the sensor both ways (rotating
+        // back to portrait flips the configuration and the caller dismisses
+        // the overlay); button-entered fullscreen locks landscape like a
+        // video app's fullscreen toggle.
+        activity?.requestedOrientation =
+            if (followSensorOrientation) {
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR
+            } else {
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            }
         if (controller != null) {
             controller.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE

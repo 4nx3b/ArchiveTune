@@ -3207,9 +3207,15 @@ class MusicService :
         incomingBaseVolume: Float,
         outgoingPlayer: ExoPlayer,
         incomingPlayer: ExoPlayer,
+        gentleIncoming: Boolean = false,
     ) {
         outgoingPlayer.volume = CrossfadePolicy.outgoingVolume(progress, outgoingBaseVolume, maxSafeGainFactor)
-        incomingPlayer.volume = CrossfadePolicy.incomingVolume(progress, incomingBaseVolume, maxSafeGainFactor)
+        incomingPlayer.volume =
+            if (gentleIncoming) {
+                CrossfadePolicy.gentleIncomingVolume(progress, incomingBaseVolume, maxSafeGainFactor)
+            } else {
+                CrossfadePolicy.incomingVolume(progress, incomingBaseVolume, maxSafeGainFactor)
+            }
     }
 
     private fun isCastSessionConnected(): Boolean {
@@ -3964,6 +3970,7 @@ class MusicService :
                                 crossfadeIncomingBaseVolume,
                                 localPlayer,
                                 incomingPlayer,
+                                gentleIncoming = smart,
                             )
                             if (smart) {
                                 rideAutoMixFilters(plan!!, crossfadeProgress)
@@ -8066,7 +8073,7 @@ class MusicService :
                 AudioSourceType.QOBUZ to dataStore.get(QobuzEnabledKey, false),
                 AudioSourceType.QOBUZ_BACKUP to dataStore.get(QobuzBackupEnabledKey, false),
                 AudioSourceType.DEEZER to dataStore.get(DeezerEnabledKey, false),
-                AudioSourceType.APPLE to dataStore.get(AppleMusicSourceEnabledKey, true),
+                AudioSourceType.APPLE to dataStore.get(AppleMusicSourceEnabledKey, false),
                 AudioSourceType.JIOSAAVN to dataStore.get(JioSaavnEnabledKey, false),
                 AudioSourceType.YOUTUBE to true,
             )
@@ -8086,7 +8093,7 @@ class MusicService :
             AudioSourceType.QOBUZ -> dataStore.get(QobuzEnabledKey, false)
             AudioSourceType.QOBUZ_BACKUP -> dataStore.get(QobuzBackupEnabledKey, false)
             AudioSourceType.DEEZER -> dataStore.get(DeezerEnabledKey, false)
-            AudioSourceType.APPLE -> dataStore.get(AppleMusicSourceEnabledKey, true)
+            AudioSourceType.APPLE -> dataStore.get(AppleMusicSourceEnabledKey, false)
             AudioSourceType.JIOSAAVN -> dataStore.get(JioSaavnEnabledKey, false)
         }
 
@@ -8728,7 +8735,7 @@ class MusicService :
         query: SourceQuery,
         trusted: Boolean = false,
     ): DirectStream? {
-        if (AppleMusicAudioProvider.mediaUserToken() == null) {
+        if (AppleMusicAudioProvider.mediaUserToken() == null || AppleMusicAudioProvider.usableDevToken() == null) {
             Timber
                 .tag("MusicService")
                 .d("Apple Music source: no account (sign in via Settings → Apple Music or add a pool account)")
@@ -9152,7 +9159,7 @@ class MusicService :
     }
 
     private fun resolveDeezerStream(query: SourceQuery): DirectStream? {
-        if (!DeezerAudioProvider.hasAccounts()) {
+        if (!DeezerAudioProvider.hasBackends()) {
             Timber.tag("MusicService").d("Deezer skip: no manual or pooled accounts available")
             return null
         }
@@ -9459,7 +9466,7 @@ class MusicService :
             dataStore.get(QobuzEnabledKey, false) ||
             dataStore.get(QobuzBackupEnabledKey, false) ||
             dataStore.get(DeezerEnabledKey, false) ||
-            dataStore.get(AppleMusicSourceEnabledKey, true)
+            dataStore.get(AppleMusicSourceEnabledKey, false)
     }
 
     private fun resolvePlaybackDataSpec(

@@ -195,7 +195,7 @@ object DeezerAudioProvider {
         listOf(mediaId, title.lowercase(), artists.joinToString(",").lowercase(), album.orEmpty().lowercase())
             .joinToString("|")
 
-    fun hasBackends(): Boolean = accounts().isNotEmpty()
+    fun hasBackends(): Boolean = accounts().isNotEmpty() || DeezerInstances.hasInstances()
 
     fun invalidate(
         query: Query,
@@ -211,8 +211,8 @@ object DeezerAudioProvider {
         format: String,
     ): Resolved? {
         val accounts = accounts()
-        if (accounts.isEmpty()) {
-            Timber.tag(TAG).d("resolve skipped: no manual or pooled accounts")
+        if (accounts.isEmpty() && !DeezerInstances.hasInstances()) {
+            Timber.tag(TAG).d("resolve skipped: no accounts and no API instances")
             return null
         }
 
@@ -264,8 +264,68 @@ object DeezerAudioProvider {
             return stream
         }
 
+        // Accounts first (they report the exact tier), then the API-instance tier, which serves
+        // already-decrypted audio from the instance's own accounts.
+        resolveViaInstance(query)?.let { stream ->
+            streamCache[cacheKey] = CachedStream(stream, System.currentTimeMillis() + STREAM_CACHE_MS)
+            return stream
+        }
+
         failureCache[cacheKey] = System.currentTimeMillis() + FAILURE_CACHE_MS
         return null
+    }
+
+    /**
+     * Resolves through a Deezer API instance. The recording is identified with Deezer's public
+     * catalogue (ISRC when the queue item carries one, otherwise a scored search), so no account
+     * is needed on this device; the instance receives only an ISRC or a public track id.
+     */
+    private fun resolveViaInstance(query: Query): Resolved? {
+        if (!DeezerInstances.hasInstances()) return null
+        // Resolves the pool feed (at most every 30 min) before any catalogue lookup, so a user with
+        // no reachable instance does not pay a public-API round trip on every track.
+        if (DeezerInstances.instances().isEmpty()) return null
+        val match: TrackMatching.Candidate?
+        val isrc: String?
+        val byIsrc =
+            query.isrc?.takeIf { it.isNotBlank() }?.let { code ->
+                runCatching { lookupByIsrc(code) }.getOrNull()
+            }
+        if (byIsrc != null) {
+            match = byIsrc
+            isrc = query.isrc
+        } else {
+            val metadata =
+                runCatching { kotlinx.coroutines.runBlocking { lookup(query) } }
+                    .onFailure { Timber.tag(TAG).w(it, "public lookup failed") }
+                    .getOrNull() ?: return null
+            match =
+                TrackMatching.Candidate(
+                    id = metadata.trackId,
+                    title = metadata.title,
+                    artists = listOfNotNull(metadata.artist),
+                    album = metadata.album,
+                    durationMs = metadata.durationMs,
+                )
+            isrc = metadata.isrc
+        }
+        val stream = DeezerInstances.resolve(isrc = isrc, trackId = match.id) ?: return null
+        lastResolvedTrackId = match.id
+        return Resolved(
+            // Plain https: the instance already decrypted it, so it must NOT go through the
+            // deezer:// Blowfish data source.
+            uri = stream.url,
+            mimeType = if (stream.flac) MIME_FLAC else MIME_MPEG,
+            codecs = if (stream.flac) "flac" else "mp3",
+            contentLength = stream.contentLength,
+            label = if (stream.flac) "Deezer FLAC (API)" else "Deezer MP3 (API)",
+            matchedTitle = match.title,
+            matchedArtist = match.artists.firstOrNull(),
+            matchedAlbum = match.album,
+            matchedDurationMs = match.durationMs,
+            sampleRate = if (stream.flac) 44_100 else null,
+            bitDepth = if (stream.flac) 16 else null,
+        )
     }
 
     suspend fun resolveByTrackId(

@@ -11,7 +11,6 @@ import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.DownloadSource
 import moe.rukamori.archivetune.constants.DownloadSourceConfig
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -31,6 +30,8 @@ class SourceOrderTest {
                 AudioSourceType.TIDAL,
                 AudioSourceType.QOBUZ,
                 AudioSourceType.QOBUZ_BACKUP,
+                AudioSourceType.DEEZER,
+                AudioSourceType.APPLE,
                 AudioSourceType.JIOSAAVN,
                 AudioSourceType.YOUTUBE,
             ),
@@ -39,16 +40,18 @@ class SourceOrderTest {
     }
 
     @Test
-    fun retiredSourcesNeverReenterTheChain() {
-        // Apple / Amazon / Deezer were removed from the preferred chain: a
-        // legacy saved order that still carries them must come back clean.
-        val merged = AudioSourceConfig.parseOrder("TIDAL,DEEZER,APPLE,AMAZON,QOBUZ,YOUTUBE")
+    fun savedAppleAndDeezerEntriesSurviveTheMerge() {
+        // Apple Music and Deezer are back in the preferred chain: a legacy
+        // saved order that still carries them must keep them, in place.
+        val merged = AudioSourceConfig.parseOrder("TIDAL,DEEZER,APPLE,QOBUZ,YOUTUBE")
 
-        assertFalse(AudioSourceType.DEEZER in merged)
-        assertFalse(AudioSourceType.APPLE in merged)
+        assertTrue(AudioSourceType.DEEZER in merged)
+        assertTrue(AudioSourceType.APPLE in merged)
         assertEquals(
             listOf(
                 AudioSourceType.TIDAL,
+                AudioSourceType.DEEZER,
+                AudioSourceType.APPLE,
                 AudioSourceType.QOBUZ,
                 AudioSourceType.QOBUZ_BACKUP,
                 AudioSourceType.JIOSAAVN,
@@ -64,6 +67,8 @@ class SourceOrderTest {
         val reachable = AudioSourceConfig.parseOrder("TIDAL,QOBUZ,YOUTUBE").takeWhile { it != AudioSourceType.YOUTUBE }
 
         assertTrue(AudioSourceType.QOBUZ_BACKUP in reachable)
+        assertTrue(AudioSourceType.DEEZER in reachable)
+        assertTrue(AudioSourceType.APPLE in reachable)
         assertTrue(AudioSourceType.JIOSAAVN in reachable)
     }
 
@@ -73,20 +78,20 @@ class SourceOrderTest {
 
         assertTrue(merged.indexOf(AudioSourceType.TIDAL) > merged.indexOf(AudioSourceType.YOUTUBE))
         assertTrue(merged.indexOf(AudioSourceType.QOBUZ) > merged.indexOf(AudioSourceType.TIDAL))
-        // Retired sources must not be resurrected into a saved order either.
-        assertFalse(AudioSourceType.DEEZER in merged)
-        assertFalse(AudioSourceType.APPLE in merged)
+        // Sources missing from the stored order slot in directly above YouTube
+        // so they stay reachable, and the total always covers the default set.
+        assertTrue(merged.indexOf(AudioSourceType.DEEZER) < merged.indexOf(AudioSourceType.YOUTUBE))
         assertEquals(AudioSourceConfig.DEFAULT_ORDER.size, merged.size)
     }
 
     @Test
     fun completeOrderIsReturnedUnchanged() {
-        // Retired entries (DEEZER, APPLE) are dropped; the rest round-trip
-        // in the user's exact order.
+        // Every member of the default set present: the stored order round-trips
+        // in the user's exact sequence.
         val stored = "JIOSAAVN,DEEZER,APPLE,QOBUZ_BACKUP,QOBUZ,TIDAL,YOUTUBE"
         val merged = AudioSourceConfig.parseOrder(stored)
 
-        assertEquals("JIOSAAVN,QOBUZ_BACKUP,QOBUZ,TIDAL,YOUTUBE", merged.joinToString(",") { it.name })
+        assertEquals(stored, merged.joinToString(",") { it.name })
     }
 
     @Test

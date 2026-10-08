@@ -77,8 +77,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.media3.ui.AspectRatioFrameLayout
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
-import moe.rukamori.archivetune.ui.player.miniFlightHidden
-import moe.rukamori.archivetune.ui.player.miniFlightSleeve
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -958,8 +956,6 @@ fun BitChordPlayerContent(
                                 .graphicsLayer {
                                     alpha = if (cardCanvasShowing) 1f / 255f else 1f
                                 }
-                                .miniFlightHidden()
-                                .miniFlightSleeve(cornerRadius = 8.dp)
                                 .graphicsLayer {
                                     val idle = artScale + (1f - artScale) * p
                                     scaleX = idle

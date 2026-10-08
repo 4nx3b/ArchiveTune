@@ -637,15 +637,7 @@ fun Thumbnail(
                                         modifier =
                                             Modifier
                                                 .fillMaxSize()
-                                                .let { if (shouldCropArtwork) it.aspectRatio(1f) else it }
-                                                .miniFlightHidden()
-                                                .let { base ->
-                                                    if (page.slotKey == "current") {
-                                                        base.miniFlightSleeve(cornerRadius = thumbnailCornerRadius.dp)
-                                                    } else {
-                                                        base
-                                                    }
-                                                },
+                                                .let { if (shouldCropArtwork) it.aspectRatio(1f) else it },
                                     )
 
                                     if (!isCurrentMusicVideo &&

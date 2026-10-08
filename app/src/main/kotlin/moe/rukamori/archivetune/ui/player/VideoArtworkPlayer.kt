@@ -61,6 +61,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -89,6 +90,7 @@ import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.constants.VideoPlaybackSpeedKey
 import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
+import moe.rukamori.archivetune.constants.MaxVideoCacheSizeKey
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.innertube.NewPipeUtils
@@ -99,6 +101,8 @@ import moe.rukamori.archivetune.simpstream.SimpMusicPlayer
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.StreamClientUtils
 import moe.rukamori.archivetune.utils.rememberPreference
+import dagger.hilt.android.EntryPointAccessors
+import moe.rukamori.archivetune.di.VideoCacheEntryPoint
 import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.utils.YTPlayerUtils
 import moe.rukamori.archivetune.extensions.toEnum
@@ -376,14 +380,39 @@ fun rememberVideoArtworkState(
 
     val okHttpClient = remember { videoStreamHttpClient() }
 
+    // Music-video streams run through the dedicated video cache so a replay
+    // serves the cached bytes instead of re-downloading the whole stream; the
+    // size limit lives in Storage settings. 0 disables it (streams bypass the
+    // cache entirely); -1 means unlimited.
+    val (maxVideoCacheSize) = rememberPreference(MaxVideoCacheSizeKey, defaultValue = 512)
+    val videoCacheEnabled = maxVideoCacheSize != 0
+    val videoCache =
+        remember {
+            runCatching {
+                EntryPointAccessors.fromApplication(
+                    context.applicationContext,
+                    VideoCacheEntryPoint::class.java,
+                ).videoCache()
+            }.getOrNull()
+        }
+
     val mediaSourceFactory =
-        remember(okHttpClient) {
-            DefaultMediaSourceFactory(
+        remember(okHttpClient, videoCache, videoCacheEnabled) {
+            val upstreamFactory =
                 DefaultDataSource.Factory(
                     context,
                     OkHttpDataSource.Factory(okHttpClient),
-                ),
-            )
+                )
+            val factory =
+                if (videoCache != null && videoCacheEnabled) {
+                    CacheDataSource.Factory()
+                        .setCache(videoCache)
+                        .setUpstreamDataSourceFactory(upstreamFactory)
+                        .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                } else {
+                    upstreamFactory
+                }
+            DefaultMediaSourceFactory(factory)
         }
 
     val renderersFactory =

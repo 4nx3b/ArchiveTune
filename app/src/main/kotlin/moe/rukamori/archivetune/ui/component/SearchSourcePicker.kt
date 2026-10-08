@@ -52,7 +52,7 @@ fun SearchSourcePicker(
                         } else if (currentProvider == SearchProvider.APPLE_MUSIC) {
                             R.drawable.apple_music_icon
                         } else {
-                            R.drawable.language
+                            R.drawable.youtube_icon
                         },
                     ),
                 contentDescription = stringResource(R.string.search_source_picker),
@@ -80,7 +80,7 @@ fun SearchSourcePicker(
             }
             SearchSourceMenuItem(
                 label = stringResource(R.string.search_source_youtube),
-                iconRes = R.drawable.language,
+                iconRes = R.drawable.youtube_icon,
                 selected = currentScope == SearchSource.ONLINE && currentProvider == SearchProvider.YOUTUBE,
             ) {
                 expanded = false

@@ -225,8 +225,6 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
 import androidx.compose.animation.core.FastOutSlowInEasing
-import moe.rukamori.archivetune.ui.player.miniFlightHidden
-import moe.rukamori.archivetune.ui.player.miniFlightSleeve
 import androidx.media3.ui.AspectRatioFrameLayout
 import coil3.compose.AsyncImage
 import sh.calvin.reorderable.ReorderableItem
@@ -1096,14 +1094,16 @@ fun FlamingoPlayerContent(
                 } else {
                     FlamingoWrapper {
                         SharedTransitionLayout {
-                            // Canary-exact page morph: a symmetric 600ms crossfade
-                            // between the album and lyrics/queue pages while the
-                            // static artwork shared element travels between the
-                            // album square and the playing-bar thumbnail. The
-                            // canvas itself is NEVER the shared element — it stays
-                            // at its fixed full-bleed rect and simply fades with
-                            // its page, so the video surface is never resized
-                            // mid-transition (the glitch and black-bar source).
+                            // Pre-redesign / canary-exact page morph: a symmetric
+                            // 600ms crossfade between the album and lyrics/queue
+                            // pages while the shared element travels between the
+                            // artwork and the playing-bar thumbnail. For canvas
+                            // songs the CANVAS STAGE is the shared element — it
+                            // captures the whole screen width and stage height
+                            // unrounded at the start, rounds itself progressively
+                            // (AdaptiveCornerShape overlay clip) and crossfades
+                            // into the playing-bar's static thumbnail at the end;
+                            // for plain songs the album square carries the bounds.
                             AnimatedContent(
                                 targetState = nowPage,
                                 transitionSpec = {
@@ -1149,7 +1149,12 @@ fun FlamingoPlayerContent(
                                                             .fillMaxHeight(0.595f),
                                                     ) {
                                                         FlamingoAlbum(
-                                                            modifier = albumSharedBounds,
+                                                            // Canvas songs: the CANVAS STAGE below is the
+                                                            // shared-element participant (pre-redesign / canary
+                                                            // behavior — full-screen, unrounded capture that
+                                                            // morphs into the playing-bar thumbnail); the album
+                                                            // square renders nothing while a canvas is active.
+                                                            modifier = if (canvasVisualActive) Modifier else albumSharedBounds,
                                                             artworkUrl = artworkUrl,
                                                             isPlaying = { isPlayingStatusLambda.value },
                                                             canvasActive = canvasVisualActive,
@@ -1222,13 +1227,17 @@ fun FlamingoPlayerContent(
                                                     }
                                                 }
                                             }
-                                            // The canvas stage renders at its FIXED full-bleed
-                                            // rect (player top -> title row) and is never a
-                                            // shared element: it fades away with the album page
-                                            // while the static artwork square above morphs into
-                                            // the playing-bar thumbnail. The canvas keeps
-                                            // playing through the fade and is disposed only
-                                            // when the page transition finishes.
+                                            // The canvas stage IS the page-morph shared element for
+                                            // canvas songs (pre-redesign / canary mechanics): at the
+                                            // start of the transition it captures the whole screen
+                                            // width and stage height with effectively unrounded
+                                            // corners, then the shared bounds travel toward the
+                                            // playing-bar thumbnail — the overlay clip rounds
+                                            // itself progressively while the outgoing canvas
+                                            // crossfades into the incoming static thumbnail at
+                                            // the end of the transition. The static under-layer
+                                            // inside the stage covers the stream re-prepare when
+                                            // the page re-composes it on the way back.
                                             if (canvasVisualActive) {
                                                 FlamingoCanvasStage(
                                                     canvasPrimaryUrl = canvasPrimaryUrl,
@@ -1238,6 +1247,8 @@ fun FlamingoPlayerContent(
                                                     onPlaybackAvailabilityChange = { canvasRendering = it },
                                                     refreshEpoch = orientationRefreshEpoch,
                                                     stageHeight = sharpStageHeight,
+                                                    staticArtworkUrl = artworkUrl,
+                                                    modifier = albumSharedBounds,
                                                 )
                                             }
                                         }
@@ -2143,7 +2154,6 @@ private fun ColumnScope.FlamingoAlbum(
                         alpha = overlayArtworkReveal.coerceAtLeast(1f / 255f)
                     }
                     .then(modifier),
-                sleeveModifier = Modifier.miniFlightSleeve(cornerRadius = 16.dp),
                 imageQuality = ImageQuality.LOW,
                 shadowOverlay = true,
             )
@@ -2159,36 +2169,18 @@ private fun ColumnScope.FlamingoAlbum(
     }
 
     if (canvasActive) {
-        // The static album square is ALWAYS composed for canvas songs — it is
-        // the shared-element partner that morphs into the playing-bar
-        // thumbnail during page transitions (the canvas itself never travels)
-        // and the miniplayer flight's origin anchor when the sheet collapses.
-        // At rest it sits under the full-bleed canvas stage at a near-zero
-        // alpha floor, revealed only while a page morph runs.
+        // Canvas songs render NOTHING in the album square slot — the
+        // full-bleed FlamingoCanvasStage (composed by the Album page, carrying
+        // the shared bounds) owns both the video and the static under-layer.
+        // The empty weighted Box only preserves the title row's position so
+        // the measured stage height stays stable.
         Box(
             Modifier
                 .weight(1f)
                 .padding(top = 20.dp)
                 .padding(horizontal = 15.dp)
                 .padding(bottom = 33.dp),
-        ) {
-            AsyncImage(
-                model = artworkUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .graphicsLayer {
-                        compositingStrategy = CompositingStrategy.ModulateAlpha
-                        alpha = overlayArtworkReveal.coerceAtLeast(1f / 255f)
-                    }
-                    .clip(RoundedCornerShape(8.dp))
-                    .miniFlightHidden()
-                    .miniFlightSleeve(cornerRadius = 8.dp)
-                    .then(modifier),
-            )
-        }
+        )
         return
     }
 
@@ -2226,7 +2218,6 @@ private fun ColumnScope.FlamingoAlbum(
                     }
                     .padding(start = dp, end = dp, bottom = dp)
                     .then(modifier),
-                sleeveModifier = Modifier.miniFlightSleeve(cornerRadius = 8.dp),
                 imageQuality = ImageQuality.RAW,
                 shadowOverlay = true,
             )
@@ -2243,8 +2234,23 @@ private fun FlamingoCanvasStage(
     onPlaybackAvailabilityChange: (Boolean) -> Unit,
     refreshEpoch: Int,
     stageHeight: Dp?,
+    staticArtworkUrl: String?,
     modifier: Modifier = Modifier,
 ) {
+    // Pre-redesign crossfade (after the old Apple Music player / canary's
+    // AppleMusicSharpArtwork): the static artwork sits under the canvas and
+    // crossfades away once the video's first frame has rendered, so a
+    // re-created stage (page morphs dispose and re-compose it) shows the
+    // artwork instead of a blank surface while the stream re-prepares.
+    var canvasFrameReady by remember(canvasPrimaryUrl, canvasFallbackUrl) {
+        mutableStateOf(false)
+    }
+    val staticBaseAlpha by animateFloatAsState(
+        targetValue = if (canvasFrameReady) 0f else 1f,
+        animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing),
+        label = "flamingo-canvas-static-base",
+    )
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -2266,6 +2272,16 @@ private fun FlamingoCanvasStage(
                 )
             },
     ) {
+        if (staticBaseAlpha > 0.01f) {
+            AsyncImage(
+                model = staticArtworkUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer { alpha = staticBaseAlpha },
+            )
+        }
         CanvasArtworkPlayer(
             primaryUrl = canvasPrimaryUrl,
             fallbackUrl = canvasFallbackUrl,
@@ -2274,6 +2290,7 @@ private fun FlamingoCanvasStage(
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
             loopSyncLeader = loopSyncLeader,
             onPlaybackAvailabilityChange = onPlaybackAvailabilityChange,
+            onFirstFrameRendered = { canvasFrameReady = true },
             refreshEpoch = refreshEpoch,
             modifier = Modifier.matchParentSize(),
         )
@@ -2316,9 +2333,7 @@ private fun FlamingoLandscapeStage(
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
-                            .matchParentSize()
-                            .miniFlightHidden()
-                            .miniFlightSleeve(cornerRadius = 8.dp),
+                            .matchParentSize(),
                     )
                     Box(
                         modifier = Modifier
@@ -2369,7 +2384,6 @@ private fun FlamingoLandscapeStage(
                                 compositingStrategy = CompositingStrategy.ModulateAlpha
                             }
                             .padding(start = dp, end = dp, bottom = dp),
-                        sleeveModifier = Modifier.miniFlightSleeve(cornerRadius = 8.dp),
                         imageQuality = ImageQuality.RAW,
                         shadowOverlay = true,
                     )
@@ -3426,7 +3440,6 @@ private fun FlamingoPlayingBar(
                     },
                 ),
             cornerRadius = 5.dp,
-            sleeveModifier = Modifier.miniFlightSleeve(cornerRadius = 5.dp),
             imageQuality = ImageQuality.LOW,
             shadowType = ShadowType.Small,
             shadowOverlay = true,
@@ -3728,6 +3741,13 @@ private fun FlamingoPlayerControl(
                 }
 
                 FlamingoWrapper {
+                    // The seekbar grows while the finger holds it and settles
+                    // back on release (0.45 alpha -> 0.85, 7dp -> 11dp rail).
+                    val sliderEngage by animateFloatAsState(
+                        targetValue = if (isSliding.value) 1f else 0f,
+                        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+                        label = "flamingoSeekEngage",
+                    )
                     Slider(
                         value = sliderPosition.floatValue,
                         onValueChange = { newValue ->
@@ -3757,8 +3777,8 @@ private fun FlamingoPlayerControl(
                         ),
                         modifier = Modifier
                             .overlayEffect()
-                            .alpha(0.45f)
-                            .height(14.dp),
+                            .alpha(0.45f + 0.4f * sliderEngage)
+                            .height(18.dp),
                         thumb = {
                             Spacer(modifier = Modifier.size(0.dp))
                         },
@@ -3769,7 +3789,7 @@ private fun FlamingoPlayerControl(
                                 } else {
                                     0f
                                 },
-                                height = 7.dp,
+                                height = 7.dp + 4.dp * sliderEngage,
                             )
                         },
                     )
@@ -4063,6 +4083,13 @@ private fun FlamingoVolumeSlider(
                     visibilityThreshold = 0.0001f,
                 )
             }
+            // The volume rail grows while the finger holds it and settles back
+            // on release, mirroring the seekbar's drag feedback.
+            val volumeEngage by animateFloatAsState(
+                targetValue = if (sliding.value) 1f else 0f,
+                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+                label = "flamingoVolumeEngage",
+            )
 
             Slider(
                 value = animatedProgress.value,
@@ -4086,7 +4113,7 @@ private fun FlamingoVolumeSlider(
                 track = { _ ->
                     FlamingoTrack(
                         activeFraction = animatedProgress.value.coerceIn(0f, 1f),
-                        height = 7.dp,
+                        height = 7.dp + 4.dp * volumeEngage,
                     )
                 },
                 onValueChangeFinished = {

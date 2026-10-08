@@ -474,7 +474,10 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                     .hazeSource(headerHaze)
                     .padding(
                         top = innerPadding.calculateTopPadding() + 16.dp,
-                        bottom = 32.dp,
+                        // Reserve the miniplayer's band so the last preference
+                        // group never scrolls under it (matches DeezerSettings
+                        // and the other player-aware pages).
+                        bottom = playerAwareBottomPadding + 32.dp,
                     ),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {

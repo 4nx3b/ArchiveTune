@@ -20,6 +20,13 @@ object AutoMixPlanner {
     private const val END_GUARD_MS = 1_500L
     private const val MAX_TRANSITION_LEAD_MS = 14_000L
 
+    /**
+     * Hard-ending tracks (no decoded fade-out): the blend begins this close to
+     * the content end at most, so the outgoing song is still essentially
+     * complete when the next one starts fading in.
+     */
+    private const val HARD_END_LEAD_MS = 3_500L
+
     fun plan(
         current: AutoMixAnalysis?,
         next: AutoMixAnalysis?,
@@ -146,6 +153,7 @@ object AutoMixPlanner {
         }
 
         val startMs = alignToDownbeat(current, outgoingAnchor)
+            .coerceAtLeast(outgoingAnchor)
         val endMs = startMs + overlapMs
 
         val rateAlignment =
@@ -227,6 +235,8 @@ object AutoMixPlanner {
         val hardLimit = (track.durationMs - END_GUARD_MS).coerceAtLeast(0L)
         val contentEnd = analysis.contentEndMs.coerceIn(0L, hardLimit)
 
+        // The decoded fade-out onset IS the anchor: the next song starts fading
+        // in exactly when the outgoing track begins going silent, near its end.
         val onset = analysis.finalFadeOnsetMs
         if (onset in 1L until contentEnd) {
             return onset
@@ -235,10 +245,14 @@ object AutoMixPlanner {
                 .coerceAtLeast(earliestTransitionStart(track))
         }
 
-        return (contentEnd - fallbackFadeMs)
+        // Hard ending (the energy curve stays loud to the end): a short lead
+        // only — a full fallback window here used to swallow the outro of
+        // every hard-ending track.
+        return (contentEnd - HARD_END_LEAD_MS.coerceAtMost(fallbackFadeMs))
             .coerceAtLeast(analysis.introEndMs.coerceAtLeast(0L))
             .coerceAtLeast(earliestTransitionStart(track))
             .coerceAtLeast(0L)
+            .coerceAtMost((contentEnd - 1L).coerceAtLeast(0L))
     }
 
     private fun earliestTransitionStart(track: AutoMixTrackInfo): Long =
@@ -327,17 +341,19 @@ object AutoMixPlanner {
         track: AutoMixTrackInfo,
         fallbackFadeMs: Long,
     ): Long {
-        val anchor: Long =
-            if (analysis != null) {
-                val contentEnd = analysis.contentEndMs.takeIf { it > 0L } ?: track.durationMs
-                analysis.finalFadeOnsetMs.takeIf { it > 0L && it < contentEnd }
-                    ?: analysis.outroStartMs
-                    ?: track.durationMs
-            } else {
-                track.durationMs
-            }
-        return (anchor - fallbackFadeMs)
+        val contentEnd = analysis?.contentEndMs?.takeIf { it > 0L } ?: track.durationMs
+        val silenceOnset = analysis?.finalFadeOnsetMs?.takeIf { it > 0L && it < contentEnd }
+        // Anchor the blend at the decoded silence onset — the moment the
+        // frequencies of the outgoing stream actually die down — or, without
+        // analysis, a short lead before the end. The old chain (outroStart,
+        // then onset-minus-fallback-fade) started blends up to minutes early
+        // on quiet outros and always cut the current song short of its end.
+        val anchor =
+            silenceOnset
+                ?: (contentEnd - HARD_END_LEAD_MS.coerceAtMost(fallbackFadeMs)).coerceAtLeast(0L)
+        return anchor
             .coerceAtLeast(earliestTransitionStart(track))
             .coerceAtLeast(0L)
+            .coerceAtMost((contentEnd - 1L).coerceAtLeast(0L))
     }
 }

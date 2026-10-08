@@ -13,6 +13,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
+import androidx.compose.ui.text.font.FontWeight
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.util.Locale
@@ -600,6 +601,12 @@ val MaxImageCacheSizeKey = intPreferencesKey("maxImageCacheSize")
 val SmartTrimmerKey = booleanPreferencesKey("smartTrimmer")
 val MaxSongCacheSizeKey = intPreferencesKey("maxSongCacheSize")
 val MaxCanvasCacheSizeKey = intPreferencesKey("maxCanvasCacheSize")
+
+/**
+ * Size limit for the music-video stream cache (MB; -1 = unlimited, 0 = off).
+ * Replaying a video serves the cached stream instead of re-downloading it.
+ */
+val MaxVideoCacheSizeKey = intPreferencesKey("maxVideoCacheSize")
 val StorageFolderIdKey = stringPreferencesKey("storageFolderId")
 val StorageFolderTreeUriKey = stringPreferencesKey("storageFolderTreeUri")
 val StorageFolderPathKey = stringPreferencesKey("storageFolderPath")
@@ -1077,6 +1084,40 @@ val LyricsTextSizeKey = floatPreferencesKey("lyricsTextSize")
 val LyricsLineSpacingKey = floatPreferencesKey("lyricsLineSpacing")
 val LyricsLineBlurKey = booleanPreferencesKey("lyricsLineBlur")
 
+/**
+ * Font weight for the enhanced (karaoke) lyrics lines — the setting ported
+ * from the Flamingo player. Reads the original Flamingo storage key so a
+ * choice made before the setting was generalised survives; applies to every
+ * player style that renders enhanced lyrics (all of them).
+ */
+val LyricsFontWeightKey = stringPreferencesKey("flamingoLyricFontWeight")
+
+val LyricsFontWeightNames =
+    listOf(
+        "Thin",
+        "ExtraLight",
+        "Light",
+        "Regular",
+        "Medium",
+        "SemiBold",
+        "Bold",
+        "ExtraBold",
+        "Black",
+    )
+
+fun lyricsFontWeightFor(name: String): FontWeight =
+    when (name) {
+        "Thin" -> FontWeight.Thin
+        "ExtraLight" -> FontWeight.ExtraLight
+        "Light" -> FontWeight.Light
+        "Regular" -> FontWeight.Normal
+        "Medium" -> FontWeight.Medium
+        "SemiBold" -> FontWeight.SemiBold
+        "Bold" -> FontWeight.Bold
+        "Black" -> FontWeight.Black
+        else -> FontWeight.ExtraBold
+    }
+
 val ShowLyricsPlayerControlsKey = booleanPreferencesKey("showLyricsPlayerControls")
 val AutoHideLyricsPlayerControlsKey = booleanPreferencesKey("autoHideLyricsPlayerControls")
 
@@ -1332,6 +1373,10 @@ val DeezerArlKey = stringPreferencesKey("deezerArl")
 val DeezerAccountNameKey = stringPreferencesKey("deezerAccountName")
 
 val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
+
+val DeezerInstancesKey = stringPreferencesKey("deezerInstances")
+
+val EnableDeezerLyricsKey = booleanPreferencesKey("enableDeezerLyrics")
 
 val JioSaavnEnabledKey = booleanPreferencesKey("enableSaavnStreaming")
 

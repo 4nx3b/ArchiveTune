@@ -62,6 +62,7 @@ class LyricsHelper
                 MegalobizLyricsProvider,
 
                 AppleMusicAccountLyricsProvider,
+                DeezerLyricsProvider,
                 YouTubeSubtitleLyricsProvider,
                 YouTubeLyricsProvider,
 

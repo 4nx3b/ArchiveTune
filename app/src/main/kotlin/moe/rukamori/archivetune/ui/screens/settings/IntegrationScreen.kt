@@ -205,6 +205,16 @@ fun IntegrationScreen(
                 modifier = positions.modifierFor("music_sources"),
                 title = stringResource(R.string.music_sources),
             ) {
+                item {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("applemusic"),
+                        title = { Text(stringResource(R.string.applemusic_settings)) },
+                        description = stringResource(R.string.applemusic_helper),
+                        icon = { Icon(painterResource(R.drawable.album), null) },
+                        onClick = { navController.navigate("settings/applemusic") },
+                    )
+                }
+
                 item(visible = showTidalRow) {
                     PreferenceEntry(
                         modifier = positions.modifierFor("tidal"),
@@ -241,7 +251,7 @@ fun IntegrationScreen(
                     )
                 }
 
-                item(visible = showDeezerRow) {
+                item {
                     PreferenceEntry(
                         modifier = positions.modifierFor("deezer"),
                         title = { Text(stringResource(R.string.deezer_integration)) },

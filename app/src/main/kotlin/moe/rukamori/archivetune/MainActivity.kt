@@ -2700,28 +2700,13 @@ class MainActivity : ComponentActivity() {
                                                     } else if (isSearchRoute) {
                                                         Box(modifier = Modifier.fillMaxWidth())
                                                     } else {
-                                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                                            Icon(
-                                                                painter = painterResource(R.drawable.about_appbar),
-                                                                contentDescription = null,
-                                                                modifier =
-                                                                    Modifier
-                                                                        .size(35.dp)
-                                                                        .padding(end = 3.dp),
-                                                            )
-                                                            AutoResizeText(
-                                                                text = stringResource(R.string.app_name),
-                                                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                                                                fontSizeRange = FontSizeRange(min = 14.sp, max = 22.sp),
-                                                                maxLines = 1,
-                                                                overflow = TextOverflow.Visible,
-                                                                softWrap = true,
-                                                                modifier =
-                                                                    Modifier
-                                                                        .weight(1f, fill = false)
-                                                                        .graphicsLayer { alpha = homeBarTitleAlpha },
-                                                            )
-                                                        }
+                                                        // Sub-screens carry their own headers — the main bar's
+                                                        // title slot renders nothing there. The ArchiveTune logo
+                                                        // used to compose here and flash for a split second at
+                                                        // the top-left whenever a library chip navigated into a
+                                                        // playlist/Spotify page before the destination's own
+                                                        // header covered it.
+                                                        Box(modifier = Modifier.fillMaxWidth())
                                                     }
                                                 },
                                                 actions = {
