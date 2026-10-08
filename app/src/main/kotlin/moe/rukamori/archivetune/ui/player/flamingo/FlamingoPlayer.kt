@@ -198,7 +198,6 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
 import moe.rukamori.archivetune.ui.player.CanvasLoopSync
-import moe.rukamori.archivetune.ui.player.dockArtworkAnchor
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.positionInRoot
@@ -222,6 +221,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import moe.rukamori.archivetune.ui.player.LocalPlayerDockFlight
 import moe.rukamori.archivetune.ui.player.dockFlightHidden
+import moe.rukamori.archivetune.ui.player.dockSleeve
 import androidx.media3.ui.AspectRatioFrameLayout
 import coil3.compose.AsyncImage
 import sh.calvin.reorderable.ReorderableItem
@@ -630,9 +630,9 @@ fun FlamingoPlayerContent(
         val lyricsPosProvider = remember { { sliderPositionState.value } }
 
         val lyricsControlsPoke: (Boolean) -> Unit =
-            remember(showControl) {
+            remember(showControl, landscape) {
                 { scrolling ->
-                    if (scrolling) {
+                    if (scrolling && !landscape) {
                         if (!showControl.value) showControl.value = true
                         lastClickTime.longValue = System.currentTimeMillis()
                     }
@@ -727,42 +727,6 @@ fun FlamingoPlayerContent(
                                             }
                                             .background(FlamingoCanvasScrimBrush),
                                 )
-
-                                Box(
-                                    modifier =
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .then(
-                                                if (sharpStageHeight != null) {
-                                                    Modifier.height(sharpStageHeight)
-                                                } else {
-                                                    Modifier.fillMaxHeight(0.55f)
-                                                },
-                                            )
-                                            .graphicsLayer {
-                                                alpha = canvasSurfacesAlpha * canvasFlightAlpha
-                                                compositingStrategy = CompositingStrategy.Offscreen
-                                            }
-                                            .drawWithContent {
-                                                drawContent()
-                                                drawRect(
-                                                    brush = FlamingoSharpStageFadeBrush,
-                                                    blendMode = BlendMode.DstIn,
-                                                )
-                                            },
-                                ) {
-                                    CanvasArtworkPlayer(
-                                        primaryUrl = canvasPrimaryUrl,
-                                        fallbackUrl = canvasFallbackUrl,
-                                        isPlaying = isPlayingStatusLambda.value && canvasSurfacesPlaying,
-                                        visible = canvasSurfacesVisible,
-                                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                                        loopSyncLeader = canvasLoopSync,
-                                        onPlaybackAvailabilityChange = { canvasRendering = it },
-                                        refreshEpoch = orientationRefreshEpoch,
-                                        modifier = Modifier.matchParentSize(),
-                                    )
-                                }
                             }
                         }
                     }
@@ -1075,28 +1039,27 @@ fun FlamingoPlayerContent(
                     }
                 } else {
                     FlamingoWrapper {
-                        Column(Modifier.fillMaxWidth()) {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = topInset + 20.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Box(
-                                    Modifier
-                                        .overlayEffect()
-                                        .size(
-                                            width = 32.dp,
-                                            height = 4.5.dp,
-                                        )
-                                        .background(Color(0x4DFFFFFF), RoundedCornerShape(2.25.dp)),
-                                )
-                            }
-                        }
-                    }
-
-                    FlamingoWrapper {
                         SharedTransitionLayout {
+                            val canvasPageMorph = canvasVisualActive && !videoShowing
+                            val pageBoundsEnter = fadeIn(
+                                tween(
+                                    durationMillis = if (canvasPageMorph) 150 else 100,
+                                    delayMillis = if (canvasPageMorph) 250 else 0,
+                                    easing = FastOutSlowInEasing,
+                                ),
+                            )
+                            val pageBoundsExit = fadeOut(
+                                tween(
+                                    durationMillis = if (canvasPageMorph) 150 else 100,
+                                    delayMillis = if (canvasPageMorph) 250 else 0,
+                                    easing = FastOutSlowInEasing,
+                                ),
+                            )
+                            val albumSharedBounds: Modifier = Modifier.sharedBounds(
+                                sharedContentState = rememberSharedContentState(key = ShareAlbumKey),
+                                enter = pageBoundsEnter,
+                                exit = pageBoundsExit,
+                            )
                             AnimatedContent(
                                 targetState = nowPage,
                                 transitionSpec = {
@@ -1109,37 +1072,49 @@ fun FlamingoPlayerContent(
                             ) { page ->
                                 when (page) {
                                     FlamingoPage.Album ->
-                                        Column(
-                                            Modifier
-                                                .fillMaxSize()
-                                                .clickable(enabled = false, onClick = {}),
-                                        ) {
-                                            FlamingoWrapper {
-                                                Column(Modifier.fillMaxHeight(0.595f)) {
-                                                    FlamingoAlbum(
-                                                        modifier = Modifier.sharedElementWithCallerManagedVisibility(
-                                                            sharedContentState = rememberSharedContentState(
-                                                                key = ShareAlbumKey,
-                                                            ),
-                                                            visible = nowPageLambda.value == FlamingoPage.Album,
-                                                        ),
-                                                        artworkUrl = artworkUrl,
-                                                        isPlaying = { isPlayingStatusLambda.value },
-                                                        canvasActive = canvasVisualActive,
-                                                        videoShowing = videoShowing,
-                                                        overlayArtworkReveal = overlayArtworkReveal,
-                                                    )
-                                                    AnimatedContent(
-                                                        targetState = mediaMetadata,
-                                                        transitionSpec = {
-                                                            fadeIn() togetherWith fadeOut()
-                                                        },
-                                                        modifier = Modifier
-                                                            .padding(horizontal = 32.dp)
-                                                            .onGloballyPositioned { coords ->
-                                                                titleTopInRootY = coords.positionInRoot().y
+                                        Box(Modifier.fillMaxSize()) {
+                                            if (canvasVisualActive) {
+                                                FlamingoCanvasStage(
+                                                    artworkUrl = artworkUrl,
+                                                    canvasPrimaryUrl = canvasPrimaryUrl,
+                                                    canvasFallbackUrl = canvasFallbackUrl,
+                                                    isPlaying = isPlayingStatusLambda.value &&
+                                                        (canvasOnAlbum || pageMorphRunning),
+                                                    flightAlpha = canvasFlightAlpha,
+                                                    loopSyncLeader = canvasLoopSync,
+                                                    onPlaybackAvailabilityChange = { canvasRendering = it },
+                                                    refreshEpoch = orientationRefreshEpoch,
+                                                    stageHeight = sharpStageHeight,
+                                                    topOffset = -(topInset + 22.dp),
+                                                    modifier = albumSharedBounds,
+                                                )
+                                            }
+                                            Column(
+                                                Modifier
+                                                    .fillMaxSize()
+                                                    .clickable(enabled = false, onClick = {}),
+                                            ) {
+                                                FlamingoWrapper {
+                                                    Column(Modifier.fillMaxHeight(0.595f)) {
+                                                        FlamingoAlbum(
+                                                            modifier = albumSharedBounds,
+                                                            artworkUrl = artworkUrl,
+                                                            isPlaying = { isPlayingStatusLambda.value },
+                                                            canvasActive = canvasVisualActive,
+                                                            videoShowing = videoShowing,
+                                                            overlayArtworkReveal = overlayArtworkReveal,
+                                                        )
+                                                        AnimatedContent(
+                                                            targetState = mediaMetadata,
+                                                            transitionSpec = {
+                                                                fadeIn() togetherWith fadeOut()
                                                             },
-                                                    ) { metadata ->
+                                                            modifier = Modifier
+                                                                .padding(horizontal = 32.dp)
+                                                                .onGloballyPositioned { coords ->
+                                                                    titleTopInRootY = coords.positionInRoot().y
+                                                                },
+                                                        ) { metadata ->
                                                         Row(
                                                             Modifier
                                                                 .fillMaxWidth(),
@@ -1196,16 +1171,18 @@ fun FlamingoPlayerContent(
                                                 }
                                             }
                                         }
+                                    }
 
                                     FlamingoPage.Lyric ->
                                         Column(Modifier.fillMaxSize()) {
                                             FlamingoWrapper {
                                                 FlamingoPlayingBar(
-                                                    modifier = Modifier.sharedElementWithCallerManagedVisibility(
+                                                    modifier = Modifier.sharedBounds(
                                                         sharedContentState = rememberSharedContentState(
                                                             key = ShareAlbumKey,
                                                         ),
-                                                        visible = nowPageLambda.value == FlamingoPage.Lyric,
+                                                        enter = pageBoundsEnter,
+                                                        exit = pageBoundsExit,
                                                     ),
                                                     artworkUrl = artworkUrl,
                                                     mediaMetadata = mediaMetadata,
@@ -1231,11 +1208,12 @@ fun FlamingoPlayerContent(
                                                     .clickable(enabled = false, onClick = {}),
                                             ) {
                                                 FlamingoPlayingBar(
-                                                    modifier = Modifier.sharedElementWithCallerManagedVisibility(
+                                                    modifier = Modifier.sharedBounds(
                                                         sharedContentState = rememberSharedContentState(
                                                             key = ShareAlbumKey,
                                                         ),
-                                                        visible = nowPageLambda.value == FlamingoPage.PlayingList,
+                                                        enter = pageBoundsEnter,
+                                                        exit = pageBoundsExit,
                                                     ),
                                                     artworkUrl = artworkUrl,
                                                     mediaMetadata = mediaMetadata,
@@ -1253,6 +1231,27 @@ fun FlamingoPlayerContent(
                                             }
                                         }
                                 }
+                            }
+                        }
+                    }
+
+                    FlamingoWrapper {
+                        Column(Modifier.fillMaxWidth()) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = topInset + 20.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Box(
+                                    Modifier
+                                        .overlayEffect()
+                                        .size(
+                                            width = 32.dp,
+                                            height = 4.5.dp,
+                                        )
+                                        .background(Color(0x4DFFFFFF), RoundedCornerShape(2.25.dp)),
+                                )
                             }
                         }
                     }
@@ -2055,9 +2054,10 @@ private fun ColumnScope.FlamingoAlbum(
                     .aspectRatio(16f / 9f)
                     .graphicsLayer {
                         compositingStrategy = CompositingStrategy.ModulateAlpha
-                        alpha = overlayArtworkReveal * if (dockFlight.value) 0f else 1f
+                        alpha = overlayArtworkReveal.coerceAtLeast(1f / 255f)
                     }
                     .then(modifier),
+                sleeveModifier = Modifier.dockSleeve(cornerRadius = 16.dp),
                 imageQuality = ImageQuality.LOW,
                 shadowOverlay = true,
             )
@@ -2069,8 +2069,7 @@ private fun ColumnScope.FlamingoAlbum(
                     .graphicsLayer {
                         alpha = if (dockFlight.value) 0f else 1f
                     }
-                    .clip(RoundedCornerShape(16.dp))
-                    .dockArtworkAnchor(cornerRadius = 16.dp),
+                    .clip(RoundedCornerShape(16.dp)),
             )
         }
         return
@@ -2083,23 +2082,7 @@ private fun ColumnScope.FlamingoAlbum(
                 .padding(top = 20.dp)
                 .padding(horizontal = 15.dp)
                 .padding(bottom = 33.dp),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
-            ShadowImageWithCache(
-                dataLambda = { artworkUrl },
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .graphicsLayer {
-                        compositingStrategy = CompositingStrategy.ModulateAlpha
-                        alpha = overlayArtworkReveal * if (dockFlight.value) 0f else 1f
-                    }
-                    .then(modifier)
-                    .dockArtworkAnchor(cornerRadius = 8.dp),
-                imageQuality = ImageQuality.RAW,
-                shadowOverlay = true,
-            )
-        }
+        )
         return
     }
 
@@ -2136,14 +2119,78 @@ private fun ColumnScope.FlamingoAlbum(
                         compositingStrategy = CompositingStrategy.ModulateAlpha
                     }
                     .padding(start = dp, end = dp, bottom = dp)
-                    .then(modifier)
-
-                    .dockArtworkAnchor(cornerRadius = 8.dp)
-                    .dockFlightHidden(),
+                    .then(modifier),
+                sleeveModifier = Modifier.dockSleeve(cornerRadius = 8.dp),
                 imageQuality = ImageQuality.RAW,
                 shadowOverlay = true,
             )
         }
+    }
+}
+
+@Composable
+private fun FlamingoCanvasStage(
+    artworkUrl: String?,
+    canvasPrimaryUrl: String?,
+    canvasFallbackUrl: String?,
+    isPlaying: Boolean,
+    flightAlpha: Float,
+    loopSyncLeader: CanvasLoopSync,
+    onPlaybackAvailabilityChange: (Boolean) -> Unit,
+    refreshEpoch: Int,
+    stageHeight: Dp?,
+    topOffset: Dp,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (stageHeight != null) {
+                    Modifier.height(stageHeight)
+                } else {
+                    Modifier.fillMaxHeight(0.55f)
+                },
+            )
+            .offset(y = topOffset)
+            .graphicsLayer {
+                compositingStrategy = CompositingStrategy.Offscreen
+            }
+            .drawWithContent {
+                drawContent()
+                drawRect(
+                    brush = FlamingoSharpStageFadeBrush,
+                    blendMode = BlendMode.DstIn,
+                )
+            },
+    ) {
+        AsyncImage(
+            model = artworkUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .matchParentSize()
+                .graphicsLayer {
+                    compositingStrategy = CompositingStrategy.ModulateAlpha
+                    alpha = 1f / 255f
+                }
+                .dockSleeve(cornerRadius = 8.dp),
+        )
+        CanvasArtworkPlayer(
+            primaryUrl = canvasPrimaryUrl,
+            fallbackUrl = canvasFallbackUrl,
+            isPlaying = isPlaying,
+            visible = true,
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+            loopSyncLeader = loopSyncLeader,
+            onPlaybackAvailabilityChange = onPlaybackAvailabilityChange,
+            refreshEpoch = refreshEpoch,
+            modifier = Modifier
+                .matchParentSize()
+                .graphicsLayer {
+                    alpha = flightAlpha
+                },
+        )
     }
 }
 
@@ -2176,17 +2223,20 @@ private fun FlamingoLandscapeStage(
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .graphicsLayer { alpha = staticBaseAlpha },
+                        .graphicsLayer { alpha = staticBaseAlpha.coerceAtLeast(1f / 255f) },
                 ) {
                     AsyncImage(
                         model = artworkUrl,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.matchParentSize(),
+                        modifier = Modifier
+                            .matchParentSize()
+                            .dockSleeve(cornerRadius = 8.dp),
                     )
                     Box(
                         modifier = Modifier
                             .matchParentSize()
+                            .dockFlightHidden()
                             .background(Color.Black.copy(alpha = 0.55f)),
                     )
                 }
@@ -2197,12 +2247,15 @@ private fun FlamingoLandscapeStage(
                     isPlaying = isPlaying,
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                     onPlaybackAvailabilityChange = { canvasRendering = it },
-                    modifier = Modifier.matchParentSize(),
+                    modifier = Modifier
+                        .matchParentSize()
+                        .dockFlightHidden(),
                 )
 
                 Box(
                     modifier = Modifier
                         .matchParentSize()
+                        .dockFlightHidden()
                         .background(FlamingoLandscapeRightScrim),
                 )
             }
@@ -2232,9 +2285,8 @@ private fun FlamingoLandscapeStage(
                             .graphicsLayer {
                                 compositingStrategy = CompositingStrategy.ModulateAlpha
                             }
-                            .padding(start = dp, end = dp, bottom = dp)
-                            .dockArtworkAnchor(cornerRadius = 8.dp)
-                            .dockFlightHidden(),
+                            .padding(start = dp, end = dp, bottom = dp),
+                        sleeveModifier = Modifier.dockSleeve(cornerRadius = 8.dp),
                         imageQuality = ImageQuality.RAW,
                         shadowOverlay = true,
                     )
@@ -3203,7 +3255,7 @@ private fun FlamingoActionButtonsRow(
             }
         }
 
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(2.dp))
 
         Box(
             modifier = Modifier
@@ -3283,8 +3335,6 @@ private fun FlamingoPlayingBar(
             contentDescription = null,
             modifier = modifier
                 .size(69.dp)
-                .dockArtworkAnchor(cornerRadius = 5.dp)
-                .dockFlightHidden()
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
@@ -3293,6 +3343,7 @@ private fun FlamingoPlayingBar(
                     },
                 ),
             cornerRadius = 5.dp,
+            sleeveModifier = Modifier.dockSleeve(cornerRadius = 5.dp),
             imageQuality = ImageQuality.LOW,
             shadowType = ShadowType.Small,
             shadowOverlay = true,

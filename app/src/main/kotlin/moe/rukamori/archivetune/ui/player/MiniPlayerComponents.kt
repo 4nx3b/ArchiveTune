@@ -396,6 +396,7 @@ private fun MiniPlayerArtwork(
             modifier =
                 Modifier
                     .size(48.dp)
+                    .playerDockArt(cornerRadius = 10.dp)
                     .onGloballyPositioned { coordinates ->
                         if (onArtworkSlotPositioned != null) {
                             onArtworkSlotPositioned(
