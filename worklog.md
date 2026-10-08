@@ -5004,3 +5004,14 @@ Work Log:
 
 Stage Summary:
 - dev working tree: all 12 tasks implemented; 43 files changed + 5 new. Compile/push + CI monitoring next.
+
+---
+Task ID: 86 (outcome)
+Agent: Super Z (main agent, session web-e130fa90)
+
+Work Log:
+- 938791fde: initial push — 1 Kotlin error (StorageSettings.kt:880 StorageCacheClearProgressDialog's when missing the new VIDEO branch); both workflows red on it.
+- 91bdd9c62: added the VIDEO branch + storage_clear_video_cache_progress string.
+
+Stage Summary:
+- dev @ 91bdd9c62: ALL workflows GREEN — Build Pull Request (build+tests+lint) SUCCESS and Nightly 8/8 (check, 5x APK matrix incl. R8 release builds, create-nightly) SUCCESS. All 12 tasks of the batch landed CI-clean.
