@@ -59,7 +59,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -83,7 +82,6 @@ import moe.rukamori.archivetune.constants.DefaultOpenTabKey
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.FontPreferenceKey
-import moe.rukamori.archivetune.constants.ForceHighRefreshRateKey
 import moe.rukamori.archivetune.constants.HideStatusBarKey
 import moe.rukamori.archivetune.constants.GridItemSize
 import moe.rukamori.archivetune.constants.GridItemsSizeKey
