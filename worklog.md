@@ -5047,3 +5047,15 @@ Work Log:
 
 Stage Summary:
 - dev @ 5bdbdfcc9: canvas stage architecture restored to the pre-redesign background-layer arrangement (structural fix — the user's "regression that prevents changes" theory is answered by removing the page-lifecycle coupling entirely); accompanist follow tempo restored; mic direction actually right now; light mode reverted + dark gradient visible; blossom tuned to the Eplorr reference. CI monitoring next.
+
+---
+Task ID: 88 (outcome)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: CI outcome for the batch-14 regression round
+
+Work Log:
+- 5bdbdfcc9 (code): Nightly all green — check, 5/5 APK matrix jobs (mobile universal/armeabi/arm64/x86_64 + tv universal) and create-nightly SUCCESS; the canary APK with all five fixes is published to the CANARY channel.
+- 41a579a58 (worklog + PR #228 head): build (compile + tests + lint) SUCCESS, check SUCCESS, full nightly matrix 5/5 + create-nightly SUCCESS.
+
+Stage Summary:
+- dev @ 41a579a58: ALL workflows GREEN across both commits — batch-14 complete, shipped to canary.
