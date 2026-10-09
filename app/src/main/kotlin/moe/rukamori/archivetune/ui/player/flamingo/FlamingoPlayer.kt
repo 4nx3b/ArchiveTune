@@ -67,6 +67,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -254,6 +255,11 @@ private const val FlamingoCanvasFlightMs = 600
 private val FlamingoCanvasFlightCornerDp = 5.dp
 private const val FlamingoCanvasFlightAlphaInMs = 300
 
+// After the video stage lands in the playing-bar slot, the static artwork
+// takes over in a short crossfade — the swap happens at the END of the flight,
+// never at the start.
+private const val FlamingoCanvasFlightHandoffMs = 280
+
 private val FlamingoCanvasScrimBrush =
     Brush.verticalGradient(
         0f to Color.Black.copy(alpha = 0.35f),
@@ -276,6 +282,28 @@ private val FlamingoLandscapeRightScrim =
 private const val FlamingoLyricsContentDeferMs = 600L
 private const val FlamingoLyricsContentDeferCanvasMs = 300L
 private const val FlamingoPageMorphHoldMs = 420L
+
+// Alpha-mask stops for the queue list's vertical edge fade (cached, never
+// rebuilt per draw).
+private val FlamingoQueueEdgeFadeStops =
+    listOf(
+        Color.Transparent,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Transparent,
+    )
 
 /**
  * Corner interpolation for the shared-element overlay clip — after canary's
@@ -427,6 +455,18 @@ fun FlamingoPlayerContent(
                 with(canvasDensity) { (top - backgroundTopY).coerceAtLeast(0f).toDp() }
             }
 
+        // The album-stage rect in background-box pixels: [player top -> title
+        // row top] — the region the canvas flight DEPARTS from (never the full
+        // page). Falls back to the pre-measure 0.55 fraction.
+        val sharpStageHeightPx: Float =
+            titleTopInRootY?.let { top -> (top - backgroundTopY).coerceAtLeast(0f) }
+                ?: backgroundSizePx.height * 0.55f
+
+        // Animated height of the bottom-controls block (0 when hidden). The
+        // queue list reads it so its content padding tracks the controls as
+        // they collapse/expand, letting the queue fill the freed screen.
+        var controlsOverlayHeightPx by remember { mutableStateOf(0f) }
+
         val lastClickTime = rememberSaveable(key = "FlamingoNowPlaying_lastClickTime") {
             mutableLongStateOf(0L)
         }
@@ -468,11 +508,18 @@ fun FlamingoPlayerContent(
             label = "flamingo-overlay-artwork-reveal",
         )
 
-        val lyricsTakesBackdrop = nowPage == FlamingoPage.Lyric && !landscape
+        // Both non-album pages hand the backdrop back to the floating
+        // blurred artwork: the lyrics page by design (task 85) and now the
+        // queue page too — the frost's top edge used to cut a hard seam
+        // across the queue background for canvas songs (blurred video below,
+        // blurred static art above), reading as a color-inconsistency glitch.
+        val pageTakesBackdrop =
+            (nowPage == FlamingoPage.Lyric || nowPage == FlamingoPage.PlayingList) &&
+                !landscape
         var canvasSurfacesPlaying by remember { mutableStateOf(true) }
         var canvasSurfacesVisible by remember { mutableStateOf(true) }
-        LaunchedEffect(lyricsTakesBackdrop) {
-            if (lyricsTakesBackdrop) {
+        LaunchedEffect(pageTakesBackdrop) {
+            if (pageTakesBackdrop) {
                 canvasSurfacesPlaying = true
                 canvasSurfacesVisible = true
                 delay(FlamingoCanvasPageFadeMs.toLong())
@@ -484,7 +531,7 @@ fun FlamingoPlayerContent(
             }
         }
         val canvasSurfacesAlpha by animateFloatAsState(
-            targetValue = if (lyricsTakesBackdrop) 0f else 1f,
+            targetValue = if (pageTakesBackdrop) 0f else 1f,
             animationSpec = tween(
                 durationMillis = FlamingoCanvasPageFadeMs,
                 easing = FastOutSlowInEasing,
@@ -496,42 +543,44 @@ fun FlamingoPlayerContent(
         var canvasStageSurfaceVisible by remember { mutableStateOf(true) }
         val canvasFlightAnim = remember { Animatable(0f) }
         val canvasStageAlphaAnim = remember { Animatable(1f) }
-        var canvasFlightFullscreen by remember { mutableStateOf(false) }
         var canvasFlightSlotRect by remember { mutableStateOf<Rect?>(null) }
 
         LaunchedEffect(mediaMetadata.id, canvasVisualActive) {
             if (canvasVisualActive && nowPage == FlamingoPage.Album) {
-                canvasFlightFullscreen = false
                 canvasFlightAnim.snapTo(0f)
                 canvasStageAlphaAnim.snapTo(1f)
             }
         }
 
+        // The canvas flight: the VIDEO stage itself shrinks from its album
+        // geometry (top of the player down to the title row — exactly where
+        // the blend with the bottom controls begins) into the playing-bar
+        // slot. The static artwork only takes over AFTER the flight lands,
+        // as a short crossfade; the video never switches to static at the
+        // start of the transition.
         LaunchedEffect(canvasStageOnAlbum) {
             if (canvasStageOnAlbum) {
                 canvasStageSurfaceVisible = true
+                launch {
+                    canvasStageAlphaAnim.animateTo(
+                        1f,
+                        tween(durationMillis = FlamingoCanvasFlightAlphaInMs, easing = FastOutSlowInEasing),
+                    )
+                }
                 canvasFlightAnim.animateTo(
                     0f,
                     tween(durationMillis = FlamingoCanvasFlightMs, easing = FastOutSlowInEasing),
                 )
-                canvasFlightFullscreen = false
-                canvasStageAlphaAnim.animateTo(
-                    1f,
-                    tween(durationMillis = FlamingoCanvasFlightAlphaInMs, easing = FastOutSlowInEasing),
-                )
             } else {
-                canvasFlightFullscreen = true
-                launch {
-                    canvasStageAlphaAnim.animateTo(
-                        0f,
-                        tween(durationMillis = FlamingoCanvasPageFadeMs, easing = FastOutSlowInEasing),
-                    )
-                }
                 canvasFlightAnim.animateTo(
                     1f,
                     tween(durationMillis = FlamingoCanvasFlightMs, easing = FastOutSlowInEasing),
                 )
-                delay(FlamingoCanvasPageFadeMs.toLong())
+                canvasStageAlphaAnim.animateTo(
+                    0f,
+                    tween(durationMillis = FlamingoCanvasFlightHandoffMs, easing = FastOutSlowInEasing),
+                )
+                delay(FlamingoCanvasFlightHandoffMs.toLong())
                 canvasStageSurfaceVisible = false
             }
         }
@@ -833,6 +882,12 @@ fun FlamingoPlayerContent(
                                             .background(FlamingoCanvasScrimBrush),
                                 )
 
+                                // The flight geometry rides on the stage's own
+                                // modifier: while a slot rect exists the stage
+                                // lerps from its album rect (top of the player
+                                // down to the title row) into the playing-bar
+                                // slot. With no slot yet (first frames) the
+                                // internal fallback geometry applies.
                                 FlamingoCanvasStage(
                                     canvasPrimaryUrl = canvasPrimaryUrl,
                                     canvasFallbackUrl = canvasFallbackUrl,
@@ -841,13 +896,54 @@ fun FlamingoPlayerContent(
                                     onPlaybackAvailabilityChange = { canvasRendering = it },
                                     refreshEpoch = orientationRefreshEpoch,
                                     stageHeight = sharpStageHeight,
-                                    stageFullscreen = canvasFlightFullscreen,
                                     fadeStrength = { (1f - canvasFlightAnim.value * 2.5f).coerceIn(0f, 1f) },
                                     staticArtworkUrl = artworkUrl,
                                     surfacesAlpha = canvasStageAlphaAnim.value,
                                     surfacesVisible = canvasStageSurfaceVisible,
+                                    modifier = canvasFlightSlotRect?.let { slot ->
+                                        Modifier
+                                            .offset {
+                                                val eased = canvasFlightAnim.value
+                                                IntOffset(
+                                                    lerp(0f, slot.left - backgroundLeftX, eased).roundToInt(),
+                                                    lerp(0f, slot.top - backgroundTopY, eased).roundToInt(),
+                                                )
+                                            }
+                                            .layout { measurable, _ ->
+                                                val eased = canvasFlightAnim.value
+                                                val w = lerp(
+                                                    backgroundSizePx.width.toFloat(),
+                                                    slot.width,
+                                                    eased,
+                                                )
+                                                val h = lerp(sharpStageHeightPx, slot.height, eased)
+                                                val placeable =
+                                                    measurable.measure(
+                                                        Constraints.fixed(
+                                                            w.roundToInt().coerceAtLeast(1),
+                                                            h.roundToInt().coerceAtLeast(1),
+                                                        ),
+                                                    )
+                                                layout(placeable.width, placeable.height) {
+                                                    placeable.place(0, 0)
+                                                }
+                                            }
+                                            .graphicsLayer {
+                                                shape = RoundedCornerShape(
+                                                    FlamingoCanvasFlightCornerDp * canvasFlightAnim.value,
+                                                )
+                                                clip = true
+                                            }
+                                    } ?: Modifier,
                                 )
 
+                                // Static hand-off layer. During the flight its
+                                // alpha is 0 (the video is what's flying); it
+                                // fades in only when the stage lands, so the
+                                // switch to static art happens at the END of the
+                                // transition, smoothly. It parks at the slot
+                                // behind the bar's own artwork until the album
+                                // page returns.
                                 val canvasFlightProgress = canvasFlightAnim.value
                                 val canvasFlightOverlayAlpha = 1f - canvasStageAlphaAnim.value
                                 if ((canvasFlightProgress > 0.005f || canvasFlightOverlayAlpha > 0.005f) &&
@@ -892,12 +988,12 @@ fun FlamingoPlayerContent(
                                                 val h =
                                                     if (slot != null) {
                                                         lerp(
-                                                            backgroundSizePx.height.toFloat(),
+                                                            sharpStageHeightPx,
                                                             slot.height,
                                                             eased,
                                                         )
                                                     } else {
-                                                        backgroundSizePx.height.toFloat()
+                                                        sharpStageHeightPx
                                                     }
                                                 val placeable =
                                                     measurable.measure(
@@ -1475,6 +1571,7 @@ fun FlamingoPlayerContent(
                                     currentWindowIndex = currentWindowIndex,
                                     shuffleModeEnabled = shuffleModeEnabled,
                                     repeatMode = repeatMode,
+                                    bottomOverlayPx = { controlsOverlayHeightPx },
                                     onControlsPoke = {
                                         if (!showControlLambda.value) showControl.value = true
                                         lastClickTime.longValue = System.currentTimeMillis()
@@ -1522,6 +1619,16 @@ fun FlamingoPlayerContent(
                                     ) {
                                         AnimatedVisibility(
                                             visible = showControl.value,
+                                            modifier = Modifier
+                                                .onGloballyPositioned { coords ->
+                                                    // The animated height of the
+                                                    // controls block (0 when hidden):
+                                                    // the queue list's bottom content
+                                                    // padding tracks it so the queue
+                                                    // fills the freed screen as the
+                                                    // controls collapse.
+                                                    controlsOverlayHeightPx = coords.size.height.toFloat()
+                                                },
                                             enter = fadeIn() + expandVertically(
                                                 expandFrom = Alignment.Top,
                                                 initialHeight = { (it / 1.4).toInt() },
@@ -1691,66 +1798,79 @@ fun FlamingoPlayerContent(
     }
 }
 
+// Alpha-mask stops for the lyrics edge fade, per controls-visibility state.
+private val FlamingoLyricsEdgeFadeStopsControlsVisible =
+    listOf(
+        Color.Transparent,
+        Color(0x59000000),
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color(0x59000000),
+        Color(0x21000000),
+        Color.Transparent,
+        Color.Transparent,
+        Color.Transparent,
+        Color.Transparent,
+        Color.Transparent,
+        Color.Transparent,
+        Color.Transparent,
+        Color.Transparent,
+    )
+
+private val FlamingoLyricsEdgeFadeStopsControlsHidden =
+    listOf(
+        Color.Transparent,
+        Color(0x59000000),
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+        Color.Black,
+    )
+
 private fun Modifier.flamingoLyricsEdgeFade(
     weightLambda: () -> Boolean,
 ): Modifier = drawWithCache {
+    // The gradient stops and brush are cached (per size / controls state).
+    // They used to be built INSIDE the draw lambda: an 18-stop list with
+    // boxed colors plus a fresh Brush on every redraw of the karaoke pass
+    // — dozens of allocations per frame feeding GC pressure, which read as
+    // the lyrics starting to lag after being smooth for a while.
     val overlayPaint = Paint().apply {
         blendMode = BlendMode.Plus
     }
     val rect = androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height)
+    val fadeBrush = Brush.verticalGradient(
+        if (weightLambda()) {
+            FlamingoLyricsEdgeFadeStopsControlsVisible
+        } else {
+            FlamingoLyricsEdgeFadeStopsControlsHidden
+        },
+    )
 
     onDrawWithContent {
         val canvas = this.drawContext.canvas
         canvas.saveLayer(rect, overlayPaint)
 
-        val colors = if (weightLambda()) {
-            listOf(
-                Color.Transparent,
-                Color(0x59000000),
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color(0x59000000),
-                Color(0x21000000),
-                Color.Transparent,
-                Color.Transparent,
-                Color.Transparent,
-                Color.Transparent,
-                Color.Transparent,
-                Color.Transparent,
-                Color.Transparent,
-                Color.Transparent,
-            )
-        } else {
-            listOf(
-                Color.Transparent,
-                Color(0x59000000),
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color.Black,
-                Color.Black,
-            )
-        }
-
         drawContent()
 
         drawRect(
-            brush = Brush.verticalGradient(colors),
+            brush = fadeBrush,
             blendMode = BlendMode.DstIn,
         )
 
@@ -2328,7 +2448,6 @@ private fun FlamingoCanvasStage(
     refreshEpoch: Int,
     stageHeight: Dp?,
     staticArtworkUrl: String?,
-    stageFullscreen: Boolean = false,
     fadeStrength: () -> Float = { 1f },
     surfacesAlpha: Float = 1f,
     surfacesVisible: Boolean = true,
@@ -2348,7 +2467,6 @@ private fun FlamingoCanvasStage(
             .fillMaxWidth()
             .then(
                 when {
-                    stageFullscreen -> Modifier.fillMaxSize()
                     stageHeight != null -> Modifier.height(stageHeight)
                     else -> Modifier.fillMaxHeight(0.55f)
                 },
@@ -2566,20 +2684,28 @@ private fun FlamingoPlayingList(
     currentWindowIndex: Int,
     shuffleModeEnabled: Boolean,
     repeatMode: Int,
+    bottomOverlayPx: () -> Float = { 0f },
     onControlsPoke: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val localPlayer = playerConnection.localPlayer
+    val density = LocalDensity.current
 
     Spacer(modifier = Modifier.height(12.dp))
 
     val upNextCount = (queueWindows.size - currentWindowIndex - 1).coerceAtLeast(0)
 
+    // The queue fills the full screen below the playing bar; the bottom
+    // content padding tracks the controls block so rows scroll under the
+    // controls while they are shown and the list extends to the bottom of
+    // the screen once they collapse (the freed space used to stay empty).
+    val bottomContentPadding = with(density) { bottomOverlayPx().toDp() }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .fillMaxHeight(0.545f),
+            .fillMaxSize(),
     ) {
         Row(
             Modifier
@@ -2882,7 +3008,12 @@ private fun FlamingoPlayingList(
                             available: Offset,
                             source: NestedScrollSource,
                         ): Offset {
-                            if (source == NestedScrollSource.UserInput && available.y < -4f) {
+                            // Any user scroll restores the controls — scrolling
+                            // up used to be ignored (only finger-up toward later
+                            // items poked), leaving the controls hidden forever.
+                            if (source == NestedScrollSource.UserInput &&
+                                kotlin.math.abs(available.y) > 4f
+                            ) {
                                 onControlsPoke()
                             }
                             return Offset.Zero
@@ -2893,6 +3024,7 @@ private fun FlamingoPlayingList(
             FlamingoWrapper {
                 LazyColumn(
                     state = state,
+                    contentPadding = PaddingValues(bottom = bottomContentPadding),
                     modifier = Modifier
                         .fillMaxSize()
                         .nestedScroll(controlsPokeConnection)
@@ -2900,30 +3032,15 @@ private fun FlamingoPlayingList(
                             compositingStrategy = CompositingStrategy.Offscreen
                         }
                         .drawWithCache {
+                            // Gradient stops + brush live in the cache block:
+                            // building them inside the draw lambda allocated a
+                            // 16-stop list + brush on every redraw.
+                            val fadeBrush =
+                                Brush.verticalGradient(FlamingoQueueEdgeFadeStops)
                             onDrawWithContent {
-                                val colors = listOf(
-                                    Color.Transparent,
-                                    Color.Black,
-                                    Color.Black,
-                                    Color.Black,
-                                    Color.Black,
-                                    Color.Black,
-                                    Color.Black,
-                                    Color.Black,
-                                    Color.Black,
-                                    Color.Black,
-                                    Color.Black,
-                                    Color.Black,
-                                    Color.Black,
-                                    Color.Black,
-                                    Color.Black,
-                                    Color.Transparent,
-                                )
-
                                 drawContent()
-
                                 drawRect(
-                                    brush = Brush.verticalGradient(colors),
+                                    brush = fadeBrush,
                                     blendMode = BlendMode.DstIn,
                                 )
                             }

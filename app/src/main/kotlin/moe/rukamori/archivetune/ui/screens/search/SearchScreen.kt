@@ -791,12 +791,17 @@ private fun SearchTabBottomChrome(
                     modifier = Modifier.size(22.dp),
                 )
             }
-            SearchSourcePicker(
-                currentScope = SearchSource.ONLINE,
-                currentProvider = searchProvider,
-                onSelection = onSourceSelection,
-                includeLocal = false,
-            )
+            // End padding nudges the source picker (the YouTube icon for the
+            // default YT Music provider) a bit to the left, away from the
+            // pill's right edge.
+            Box(modifier = Modifier.padding(end = 6.dp)) {
+                SearchSourcePicker(
+                    currentScope = SearchSource.ONLINE,
+                    currentProvider = searchProvider,
+                    onSelection = onSourceSelection,
+                    includeLocal = false,
+                )
+            }
         }
     }
 }

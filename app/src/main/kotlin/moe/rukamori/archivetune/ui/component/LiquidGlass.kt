@@ -39,7 +39,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.GraphicsLayerScope
+import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -61,6 +63,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toIntSize
 import androidx.compose.ui.util.lerp
@@ -455,13 +458,29 @@ fun Modifier.liquidGlass(
             shape = { shape },
             onDrawBehind =
                 if (baseColor != Color.Unspecified) {
-                    { drawRect(baseColor) }
+                    // Shape-aware base: drawRect painted a full square behind
+                    // the (round) glass, so the square's corners stuck out around
+                    // circular pills — visible as a dark backing plate behind the
+                    // home settings button in light mode. Drawing the shape's
+                    // outline keeps the base inside the glass silhouette.
+                    {
+                        drawOutline(
+                            outline = shape.createOutline(size, layoutDirection, this),
+                            color = baseColor,
+                        )
+                    }
                 } else {
                     null
                 },
             onDrawSurface = {
+                // Same shape-aware treatment for the tint layer — a square tint
+                // plate had the same corner artifact.
+                val surfaceOutline = shape.createOutline(size, layoutDirection, this)
                 if (scrim != null) {
-                    drawRect(scrim.copy(alpha = (scrim.alpha * tuning.tintFactor).coerceIn(0f, 1f)))
+                    drawOutline(
+                        outline = surfaceOutline,
+                        color = scrim.copy(alpha = (scrim.alpha * tuning.tintFactor).coerceIn(0f, 1f)),
+                    )
                 } else {
                     val darken =
                         if (tuning.adaptiveLuminance) {
@@ -474,9 +493,11 @@ fun Modifier.liquidGlass(
                         } else {
                             0.12f
                         }
-                    drawRect(
-                        (if (isDark) Color.Black else Color.White)
-                            .copy(alpha = (darken * tuning.tintFactor).coerceIn(0f, 1f)),
+                    drawOutline(
+                        outline = surfaceOutline,
+                        color =
+                            (if (isDark) Color.Black else Color.White)
+                                .copy(alpha = (darken * tuning.tintFactor).coerceIn(0f, 1f)),
                     )
                 }
             },

@@ -176,6 +176,14 @@ private const val POSITION_RESET_BACKWARD_THRESHOLD_MS = 1000L
 
 private const val PLAYBACK_SAMPLE_INTERVAL_NANOS = 250_000_000L
 
+// The renderer fan-out behind each position state write is heavy (per-line
+// timeline collectors, draw invalidations, the follow driver), so the write
+// cadence is capped: on a 120Hz display the position state advances every
+// other frame, halving the per-frame pipeline while the karaoke sweep still
+// updates at a smooth ~60fps. Seeks and other position jumps always write
+// immediately.
+private const val POSITION_WRITE_MIN_INTERVAL_NANOS = 10_000_000L
+
 private const val LYRIC_FIRST_FOCUS_FADE_MS = 200
 
 private const val LYRIC_FIRST_FOCUS_TIMEOUT_MS = 400L
@@ -585,6 +593,7 @@ fun LyricsEnhanced(
         var anchorFrameNanos = 0L
         var nextSampleNanos = 0L
         var lastEmittedMs = player.currentPosition.coerceAtLeast(0L)
+        var lastStateWriteNanos = 0L
 
         var lastLyricsRef: SyncedLyrics? = null
         var cachedLineIdx = -1
@@ -644,8 +653,14 @@ fun LyricsEnhanced(
                 val candidate = (anchorPlayerPositionMs + elapsedMs).coerceAtLeast(0L)
                 val nextPosition = maxOf(candidate, lastEmittedMs)
                 lastEmittedMs = nextPosition
-                if (playbackPositionMs.longValue != nextPosition) {
+                if (playbackPositionMs.longValue != nextPosition &&
+                    (
+                        frameNanos - lastStateWriteNanos >= POSITION_WRITE_MIN_INTERVAL_NANOS ||
+                            nextPosition - playbackPositionMs.longValue > 250L
+                        )
+                ) {
                     playbackPositionMs.longValue = nextPosition
+                    lastStateWriteNanos = frameNanos
                 }
                 effectivePositionMs =
                     (nextPosition + latestLyricsSyncOffset.value.toLong() +
