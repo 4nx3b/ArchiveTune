@@ -5073,3 +5073,15 @@ Work Log:
 
 Stage Summary:
 - dev @ f20c1c34c: batch-15 (lyrics renderer round) + the 4-item regression round both pushed; CI monitoring in flight.
+
+---
+Task ID: 89 (outcome)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: CI outcome for batch-15 + the 4-item regression round
+
+Work Log:
+- dbd411652 / f20c1c34c: 8 Kotlin errors in the interrupted session's unverified code (duplicate constant, kotlin.math.round Float/Int trap, SpicyDotExitMs case typo, const val Dp, non-existent Modifier.size{} lambda overload) — nightly matrix red, build cancelled by the follow-up push.
+- 997156d29 (repairs): ALL 8 check-runs SUCCESS — check, build (compile + tests + lint), the full nightly APK matrix 5/5 (mobile universal/armeabi/arm64/x86_64 + tv universal) and create-nightly; the canary APK with the complete batch is published to the CANARY channel.
+
+Stage Summary:
+- dev @ 997156d29: batch-15 (Spicy Mobile renderer, Blossom removal, font-weight removal, accompanist position-loop rewrite + scroll-tuning revert, overscroll physics settings, canvas artwork flight) and the regression round (overscroll settle grab, glass pill light-mode base, tab-switch flicker) are complete and CI-green.
