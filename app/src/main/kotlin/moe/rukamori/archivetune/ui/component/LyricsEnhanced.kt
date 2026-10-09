@@ -132,8 +132,6 @@ import moe.rukamori.archivetune.constants.LyricsRomanizeJapaneseKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeKoreanKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeOtherLanguagesKey
 import moe.rukamori.archivetune.constants.LyricsTextSizeKey
-import moe.rukamori.archivetune.constants.LyricsFontWeightKey
-import moe.rukamori.archivetune.constants.lyricsFontWeightFor
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
@@ -174,9 +172,9 @@ private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 0L
 private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L
 private const val MANUAL_SCROLL_DEBOUNCE_MS = 50L
 
-private const val SMOOTH_PLAYBACK_MAX_FORWARD_DRIFT_MS = 80L
-private const val SMOOTH_PLAYBACK_MAX_BACKWARD_DRIFT_MS = 180L
-private const val SMOOTH_PLAYBACK_DRIFT_CORRECTION = 0.55f
+private const val POSITION_RESET_BACKWARD_THRESHOLD_MS = 1000L
+
+private const val PLAYBACK_SAMPLE_INTERVAL_NANOS = 250_000_000L
 
 private const val LYRIC_FIRST_FOCUS_FADE_MS = 200
 
@@ -238,14 +236,6 @@ fun LyricsEnhanced(
     val (lyricsTextSizePreference) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
     val lyricsTextSize = textSizeOverride ?: lyricsTextSizePreference
 
-    // The Flamingo-ported font weight setting — drives the karaoke lines in
-    // every player style that renders enhanced lyrics (both the Accompanist
-    // library renderer and the in-house Blossom renderer honour it).
-    val (lyricsFontWeightName) = rememberPreference(LyricsFontWeightKey, defaultValue = "ExtraBold")
-    val lyricsFontWeight = remember(lyricsFontWeightName) { lyricsFontWeightFor(lyricsFontWeightName) }
-
-    // "Lyrics animation style" — which renderer drives the enhanced lyrics:
-    // the mocharealm Accompanist library (v2) or the in-house Blossom style.
     val (enhancedLyricsStyle) = rememberEnumPreference(EnhancedLyricsStyleKey, defaultValue = EnhancedLyricsStyle.ACCOMPANIST)
 
     val (lyricsLineBlurPreference) = rememberPreference(LyricsLineBlurKey, defaultValue = false)
@@ -549,22 +539,18 @@ fun LyricsEnhanced(
 
     val latestSyncedLyrics = rememberUpdatedState(syncedLyrics)
 
-    var positionResetCounter by remember { mutableIntStateOf(0) }
     var isManualScrolling by remember { mutableStateOf(false) }
     var lastManualScrollTime by remember { mutableLongStateOf(0L) }
 
-    val listState = key(lyricsSessionKey, positionResetCounter, karaokeGeneration) { rememberLazyListState() }
+    val listState = key(lyricsSessionKey, karaokeGeneration) { rememberLazyListState() }
 
-    // The Accompanist v2 renderer owns its scroll state (internal spring
-    // following + manual-scroll detection with auto-resume); the app-level
-    // LazyListState above keeps serving the plain (unsynced) lyrics view.
     val karaokeListState =
-        key(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
+        key(lyricsSessionKey, karaokeGeneration) {
             remember { LyricsLazyListState() }
         }
 
     var awaitingFirstFocus by
-        remember(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
+        remember(lyricsSessionKey, karaokeGeneration) {
             mutableStateOf(isSynced)
         }
 
@@ -599,7 +585,8 @@ fun LyricsEnhanced(
         var wasSliderActive = false
         var anchorPlayerPositionMs = player.currentPosition.coerceAtLeast(0L)
         var anchorFrameNanos = 0L
-        var lastRawPositionMs = player.currentPosition.coerceAtLeast(0L)
+        var nextSampleNanos = 0L
+        var lastEmittedMs = player.currentPosition.coerceAtLeast(0L)
 
         var lastLyricsRef: SyncedLyrics? = null
         var cachedLineIdx = -1
@@ -613,19 +600,12 @@ fun LyricsEnhanced(
             }
             wasSliderActive = isSliderActive
 
-            val rawPosition = (sliderPosition ?: player.currentPosition).coerceAtLeast(0L)
-
-            val rawPlayerPosition = player.currentPosition.coerceAtLeast(0L)
-            if (lastRawPositionMs - rawPlayerPosition > POSITION_RESET_BACKWARD_THRESHOLD_MS) {
-                positionResetCounter += 1
-                currentLineIndexState.intValue = -1
-            }
-            lastRawPositionMs = rawPlayerPosition
-
             val effectivePositionMs: Long
             if (sliderPosition != null || !player.isPlaying || animationsDisabled) {
+                val rawPosition = (sliderPosition ?: player.currentPosition).coerceAtLeast(0L)
                 anchorPlayerPositionMs = rawPosition
                 anchorFrameNanos = 0L
+                lastEmittedMs = rawPosition
                 if (playbackPositionMs.longValue != rawPosition) {
                     playbackPositionMs.longValue = rawPosition
                 }
@@ -640,32 +620,32 @@ fun LyricsEnhanced(
                 }
             } else {
                 val frameNanos = withFrameNanos { frameTimeNanos -> frameTimeNanos }
-                if (anchorFrameNanos == 0L) {
+                if (anchorFrameNanos == 0L || frameNanos >= nextSampleNanos) {
+                    val sampled = player.currentPosition.coerceAtLeast(0L)
+                    val projected =
+                        if (anchorFrameNanos == 0L) {
+                            sampled
+                        } else {
+                            anchorPlayerPositionMs +
+                                ((frameNanos - anchorFrameNanos) / 1_000_000f *
+                                    latestPlaybackSpeed.value).roundToLong()
+                        }
+                    if (projected - sampled > POSITION_RESET_BACKWARD_THRESHOLD_MS) {
+                        currentLineIndexState.intValue = -1
+                        lastEmittedMs = sampled
+                        playbackPositionMs.longValue = sampled
+                    }
+                    anchorPlayerPositionMs = sampled
                     anchorFrameNanos = frameNanos
-                    anchorPlayerPositionMs = rawPosition
+                    nextSampleNanos = frameNanos + PLAYBACK_SAMPLE_INTERVAL_NANOS
                 }
 
-                val elapsedMs = ((frameNanos - anchorFrameNanos) / 1_000_000f) * latestPlaybackSpeed.value
-                val projectedPosition = anchorPlayerPositionMs + elapsedMs.roundToLong()
-                val driftMs = rawPosition - projectedPosition
-                val nextPosition =
-                    when {
-                        driftMs > SMOOTH_PLAYBACK_MAX_FORWARD_DRIFT_MS ||
-                            driftMs < -SMOOTH_PLAYBACK_MAX_BACKWARD_DRIFT_MS -> {
-                            anchorPlayerPositionMs = rawPosition
-                            anchorFrameNanos = frameNanos
-                            rawPosition
-                        }
-
-                        driftMs != 0L -> {
-                            projectedPosition + (driftMs * SMOOTH_PLAYBACK_DRIFT_CORRECTION).roundToLong()
-                        }
-
-                        else -> {
-                            projectedPosition
-                        }
-                    }.coerceAtLeast(0L)
-
+                val elapsedMs =
+                    ((frameNanos - anchorFrameNanos) / 1_000_000f *
+                        latestPlaybackSpeed.value).roundToLong()
+                val candidate = (anchorPlayerPositionMs + elapsedMs).coerceAtLeast(0L)
+                val nextPosition = maxOf(candidate, lastEmittedMs)
+                lastEmittedMs = nextPosition
                 if (playbackPositionMs.longValue != nextPosition) {
                     playbackPositionMs.longValue = nextPosition
                 }
@@ -749,10 +729,6 @@ fun LyricsEnhanced(
         onLyricsScroll(isManualScrolling)
     }
 
-    // First-focus fade-in: cleared as soon as the position loop locks onto
-    // the first active line (or by the timeout below). The Accompanist v2
-    // renderer performs its own spring following internally, so no app-level
-    // scroll driver is needed for the karaoke view anymore.
     LaunchedEffect(currentLineIndexState.intValue, lyricsSessionKey) {
         if (currentLineIndexState.intValue >= 0 && awaitingFirstFocus) {
             awaitingFirstFocus = false
@@ -786,26 +762,26 @@ fun LyricsEnhanced(
 
     val typography = MaterialTheme.typography
     val normalTextStyle =
-        remember(typography, lyricsTextSize, lyricsFontFamily, lyricsFontWeight) {
+        remember(typography, lyricsTextSize, lyricsFontFamily) {
             typography.headlineMedium.copy(
                 fontSize = lyricsTextSize.sp,
-                fontWeight = lyricsFontWeight,
+                fontWeight = FontWeight.ExtraBold,
                 fontFamily = lyricsFontFamily ?: typography.headlineMedium.fontFamily,
             )
         }
     val accompanimentTextStyle =
-        remember(typography, lyricsTextSize, lyricsFontFamily, lyricsFontWeight) {
+        remember(typography, lyricsTextSize, lyricsFontFamily) {
             typography.titleLarge.copy(
                 fontSize = (lyricsTextSize * 0.82f).sp,
-                fontWeight = lyricsFontWeight,
+                fontWeight = FontWeight.ExtraBold,
                 fontFamily = lyricsFontFamily ?: typography.titleLarge.fontFamily,
             )
         }
     val translationTextStyle =
-        remember(typography, lyricsTextSize, lyricsFontFamily, lyricsFontWeight) {
+        remember(typography, lyricsTextSize, lyricsFontFamily) {
             typography.titleLarge.copy(
                 fontSize = (lyricsTextSize * 0.72f).sp,
-                fontWeight = lyricsFontWeight,
+                fontWeight = FontWeight.ExtraBold,
                 fontFamily = lyricsFontFamily ?: typography.titleLarge.fontFamily,
             )
         }
@@ -1029,7 +1005,7 @@ fun LyricsEnhanced(
             }
 
             singleActiveLine && isSynced -> {
-                key(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
+                key(lyricsSessionKey, karaokeGeneration) {
                     androidx.compose.runtime.CompositionLocalProvider(
                         androidx.compose.material3.LocalTextStyle provides phoneticTextStyle,
                     ) {
@@ -1065,15 +1041,12 @@ fun LyricsEnhanced(
                             if (proportional > 112.dp) proportional else 112.dp
                         }
 
-                    key(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
+                    key(lyricsSessionKey, karaokeGeneration) {
                         androidx.compose.runtime.CompositionLocalProvider(
                             androidx.compose.material3.LocalTextStyle provides phoneticTextStyle,
                         ) {
-                            if (enhancedLyricsStyle == EnhancedLyricsStyle.BLOSSOM) {
-                                // In-house Apple-Music-style renderer (after
-                                // LyricsBlossom 8.x): word-by-word emphasis,
-                                // dimmed blur falloff and spring following.
-                                BlossomLyricsView(
+                            if (enhancedLyricsStyle == EnhancedLyricsStyle.SPICY_MOBILE) {
+                                SpicyLyricsView(
                                     lyrics = syncedLyrics,
                                     currentPosition = playbackSyncPosition,
                                     activeLineIndex = currentLineIndexState.intValue,
@@ -1135,27 +1108,11 @@ fun LyricsEnhanced(
                                     accompanimentLineTextStyle = accompanimentTextStyle,
                                     phoneticTextStyle = phoneticTextStyle,
                                     blendMode = BlendMode.SrcOver,
-
                                     useBlurEffect = lyricsLineBlur && !animationsDisabled,
                                     showTranslation = showTranslations,
-
                                     showPhonetic = showPhoneticLines,
                                     anchor = LyricsAnchor.Fixed(lyricsViewportOffset),
-
-                                    // The v2 default keepAliveZone (100dp) is what the
-                                    // renderer is tuned for — 8dp made every line entering
-                                    // or leaving the viewport re-compose mid-follow, which
-                                    // read as autoscroll jank.
-                                    keepAliveZone = 100.dp,
-                                    // The old app-level driver scrolled per line change
-                                    // over ~300ms; the library's 650ms default follow felt
-                                    // noticeably laggier, so the leading follow is tuned
-                                    // back to the old tempo (the chained springs behind
-                                    // it are untouched).
-                                    scrollAnimationSpec = tween(
-                                        durationMillis = 320,
-                                        easing = FastOutSlowInEasing,
-                                    ),
+                                    keepAliveZone = 8.dp,
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }

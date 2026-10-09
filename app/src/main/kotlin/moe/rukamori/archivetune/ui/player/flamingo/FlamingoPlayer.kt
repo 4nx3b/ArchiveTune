@@ -140,7 +140,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.util.lerp
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -245,6 +248,9 @@ private val FlamingoCanvasBackdropBlurRadius = 288.dp
 private const val FlamingoCanvasBackdropMaxVideoEdgePx = 480
 
 private const val FlamingoCanvasPageFadeMs = 650
+private const val FlamingoCanvasFlightMs = 600
+private const val FlamingoCanvasFlightCornerDp = 5.dp
+private const val FlamingoCanvasFlightAlphaInMs = 300
 
 private val FlamingoCanvasScrimBrush =
     Brush.verticalGradient(
@@ -412,6 +418,8 @@ fun FlamingoPlayerContent(
         val canvasDensity = LocalDensity.current
         var titleTopInRootY by remember { mutableStateOf<Float?>(null) }
         var backgroundTopY by remember { mutableStateOf(0f) }
+        var backgroundLeftX by remember { mutableStateOf(0f) }
+        var backgroundSizePx by remember { mutableStateOf(IntSize.Zero) }
         val sharpStageHeight: Dp? =
             titleTopInRootY?.let { top ->
                 with(canvasDensity) { (top - backgroundTopY).coerceAtLeast(0f).toDp() }
@@ -458,12 +466,6 @@ fun FlamingoPlayerContent(
             label = "flamingo-overlay-artwork-reveal",
         )
 
-        // Backdrop hand-off (after canary's lyricsBackdropProgress): only the
-        // LYRICS page takes over the backdrop — the canvas frost keeps playing
-        // behind the queue page, and the cross-dissolve runs over the full
-        // 650ms morph so the video surface is only detached once the still
-        // backdrop has fully replaced it. The ExoPlayer stays retained, so
-        // returning to the album page re-attaches instantly with no blackout.
         val lyricsTakesBackdrop = nowPage == FlamingoPage.Lyric && !landscape
         var canvasSurfacesPlaying by remember { mutableStateOf(true) }
         var canvasSurfacesVisible by remember { mutableStateOf(true) }
@@ -488,29 +490,49 @@ fun FlamingoPlayerContent(
             label = "flamingo-canvas-surfaces-fade",
         )
 
-        // The SHARP stage (pre-redesign behaviour) only lives on the album
-        // page — leaving the album crossfades it away so the queue page keeps
-        // just the blurred frost behind its list. The surface detaches after
-        // the fade so no invisible video keeps decoding; the ExoPlayer stays
-        // retained, so returning re-attaches instantly.
         val canvasStageOnAlbum = !landscape && nowPage == FlamingoPage.Album
         var canvasStageSurfaceVisible by remember { mutableStateOf(true) }
+        val canvasFlightAnim = remember { Animatable(0f) }
+        val canvasStageAlphaAnim = remember { Animatable(1f) }
+        var canvasFlightFullscreen by remember { mutableStateOf(false) }
+        var canvasFlightSlotRect by remember { mutableStateOf<Rect?>(null) }
+
+        LaunchedEffect(mediaMetadata.id, canvasVisualActive) {
+            if (canvasVisualActive && nowPage == FlamingoPage.Album) {
+                canvasFlightFullscreen = false
+                canvasFlightAnim.snapTo(0f)
+                canvasStageAlphaAnim.snapTo(1f)
+            }
+        }
+
         LaunchedEffect(canvasStageOnAlbum) {
             if (canvasStageOnAlbum) {
                 canvasStageSurfaceVisible = true
+                canvasFlightAnim.animateTo(
+                    0f,
+                    tween(durationMillis = FlamingoCanvasFlightMs, easing = FastOutSlowInEasing),
+                )
+                canvasFlightFullscreen = false
+                canvasStageAlphaAnim.animateTo(
+                    1f,
+                    tween(durationMillis = FlamingoCanvasFlightAlphaInMs, easing = FastOutSlowInEasing),
+                )
             } else {
+                canvasFlightFullscreen = true
+                launch {
+                    canvasStageAlphaAnim.animateTo(
+                        0f,
+                        tween(durationMillis = FlamingoCanvasPageFadeMs, easing = FastOutSlowInEasing),
+                    )
+                }
+                canvasFlightAnim.animateTo(
+                    1f,
+                    tween(durationMillis = FlamingoCanvasFlightMs, easing = FastOutSlowInEasing),
+                )
                 delay(FlamingoCanvasPageFadeMs.toLong())
                 canvasStageSurfaceVisible = false
             }
         }
-        val canvasStageAlpha by animateFloatAsState(
-            targetValue = if (canvasStageOnAlbum) 1f else 0f,
-            animationSpec = tween(
-                durationMillis = FlamingoCanvasPageFadeMs,
-                easing = FastOutSlowInEasing,
-            ),
-            label = "flamingo-canvas-stage-fade",
-        )
 
         BackHandler(enabled = nowPage != FlamingoPage.Album) {
             nowPage = FlamingoPage.Album
@@ -737,7 +759,11 @@ fun FlamingoPlayerContent(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .onGloballyPositioned { backgroundTopY = it.positionInRoot().y },
+                                .onGloballyPositioned {
+                                    backgroundTopY = it.positionInRoot().y
+                                    backgroundLeftX = it.positionInRoot().x
+                                    backgroundSizePx = it.size
+                                },
                         ) {
                             FlamingoFloatingLight(
                                 albumUrl = { artworkUrl },
@@ -805,15 +831,6 @@ fun FlamingoPlayerContent(
                                             .background(FlamingoCanvasScrimBrush),
                                 )
 
-                                // The SHARP canvas stage — pre-redesign arrangement: it
-                                // lives in the background layer (BEHIND the album/lyrics/
-                                // queue pages), pinned to its fixed full-bleed rect
-                                // [player top -> title row]. It is NOT inside the page
-                                // AnimatedContent, so shared-element bounds, page morphs
-                                // and page disposal can never touch its geometry — the
-                                // regression that kept misplacing it. It crossfades away
-                                // when the album page is left (queue keeps only the
-                                // frost) and its ExoPlayer survives every page switch.
                                 FlamingoCanvasStage(
                                     canvasPrimaryUrl = canvasPrimaryUrl,
                                     canvasFallbackUrl = canvasFallbackUrl,
@@ -822,10 +839,75 @@ fun FlamingoPlayerContent(
                                     onPlaybackAvailabilityChange = { canvasRendering = it },
                                     refreshEpoch = orientationRefreshEpoch,
                                     stageHeight = sharpStageHeight,
+                                    stageFullscreen = canvasFlightFullscreen,
+                                    fadeStrength = { (1f - canvasFlightAnim.value * 2.5f).coerceIn(0f, 1f) },
                                     staticArtworkUrl = artworkUrl,
-                                    surfacesAlpha = canvasStageAlpha,
+                                    surfacesAlpha = canvasStageAlphaAnim.value,
                                     surfacesVisible = canvasStageSurfaceVisible,
                                 )
+
+                                val canvasFlightProgress = canvasFlightAnim.value
+                                val canvasFlightOverlayAlpha = 1f - canvasStageAlphaAnim.value
+                                if ((canvasFlightProgress > 0.005f || canvasFlightOverlayAlpha > 0.005f) &&
+                                    canvasFlightSlotRect != null
+                                ) {
+                                    AsyncImage(
+                                        model = artworkUrl,
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier =
+                                            Modifier
+                                            .offset {
+                                                val slot = canvasFlightSlotRect
+                                                val eased = canvasFlightAnim.value
+                                                val x =
+                                                    if (slot != null) {
+                                                        lerp(0f, slot.left - backgroundLeftX, eased)
+                                                    } else {
+                                                        0f
+                                                    }
+                                                val y =
+                                                    if (slot != null) {
+                                                        lerp(0f, slot.top - backgroundTopY, eased)
+                                                    } else {
+                                                        0f
+                                                    }
+                                                IntOffset(x.roundToInt(), y.roundToInt())
+                                            }
+                                            .size { _ ->
+                                                val slot = canvasFlightSlotRect
+                                                val eased = canvasFlightAnim.value
+                                                val w =
+                                                    if (slot != null) {
+                                                        lerp(
+                                                            backgroundSizePx.width.toFloat(),
+                                                            slot.width,
+                                                            eased,
+                                                        )
+                                                    } else {
+                                                        backgroundSizePx.width.toFloat()
+                                                    }
+                                                val h =
+                                                    if (slot != null) {
+                                                        lerp(
+                                                            backgroundSizePx.height.toFloat(),
+                                                            slot.height,
+                                                            eased,
+                                                        )
+                                                    } else {
+                                                        backgroundSizePx.height.toFloat()
+                                                    }
+                                                IntSize(w.roundToInt().coerceAtLeast(1), h.roundToInt().coerceAtLeast(1))
+                                            }
+                                            .graphicsLayer {
+                                                alpha = canvasFlightOverlayAlpha
+                                                shape = RoundedCornerShape(
+                                                    FlamingoCanvasFlightCornerDp * canvasFlightAnim.value,
+                                                )
+                                                clip = true
+                                            },
+                                    )
+                                }
                             }
                         }
                     }
@@ -1139,14 +1221,6 @@ fun FlamingoPlayerContent(
                 } else {
                     FlamingoWrapper {
                         SharedTransitionLayout {
-                            // Canary-exact page morph: a symmetric 600ms crossfade
-                            // between the album and lyrics/queue pages while the
-                            // static artwork shared element travels between the
-                            // album square and the playing-bar thumbnail. The
-                            // canvas itself is NEVER the shared element — it stays
-                            // at its fixed full-bleed rect and simply fades with
-                            // its page, so the video surface is never resized
-                            // mid-transition (the glitch and black-bar source).
                             AnimatedContent(
                                 targetState = nowPage,
                                 transitionSpec = {
@@ -1265,13 +1339,6 @@ fun FlamingoPlayerContent(
                                                     }
                                                 }
                                             }
-                                            // The canvas stage is composed by the BACKGROUND
-                                            // layer (behind every page) — it never participates
-                                            // in this AnimatedContent's lifecycle, shared
-                                            // bounds or overlay, and it is never disposed by a
-                                            // page switch. This is the pre-redesign arrangement:
-                                            // the ONLY shared-element participant is the static
-                                            // album square for non-canvas songs.
                                         }
                                     }
 
@@ -1306,6 +1373,7 @@ fun FlamingoPlayerContent(
                                                     onAlbumClick = { nowPage = FlamingoPage.Album },
                                                     onMoreClick = onMoreClick,
                                                     onMorePositioned = { moreIconBounds = it },
+                                                    onArtworkSlotPositioned = { canvasFlightSlotRect = it },
                                                     onArtistClick = { artistPickerOpen = true },
                                                     playerMenuOpen = showAnchoredLyricsMenu,
                                                 )
@@ -1344,6 +1412,7 @@ fun FlamingoPlayerContent(
                                                     onAlbumClick = { nowPage = FlamingoPage.Album },
                                                     onMoreClick = onMoreClick,
                                                     onMorePositioned = { moreIconBounds = it },
+                                                    onArtworkSlotPositioned = { canvasFlightSlotRect = it },
                                                     onArtistClick = { artistPickerOpen = true },
                                                     playerMenuOpen = showAnchoredLyricsMenu,
                                                 )
@@ -2190,13 +2259,6 @@ private fun ColumnScope.FlamingoAlbum(
     }
 
     if (canvasActive) {
-        // Pre-redesign behaviour: canvas songs render NOTHING in the album
-        // square slot — the full-bleed canvas stage (composed by the
-        // background layer, behind every page) shows through the empty slot.
-        // Keeping the slot empty also means no artwork square can ever be
-        // mis-positioned inside the player for canvas songs, and the page
-        // morph simply crossfades the pages (no artwork flight, exactly like
-        // the original Flamingo player).
         Box(
             Modifier
                 .weight(1f),
@@ -2255,15 +2317,12 @@ private fun FlamingoCanvasStage(
     refreshEpoch: Int,
     stageHeight: Dp?,
     staticArtworkUrl: String?,
+    stageFullscreen: Boolean = false,
+    fadeStrength: () -> Float = { 1f },
     surfacesAlpha: Float = 1f,
     surfacesVisible: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
-    // Pre-redesign crossfade (after the old Apple Music player / canary's
-    // AppleMusicSharpArtwork): the static artwork sits under the canvas and
-    // crossfades away once the video's first frame has rendered, so a
-    // re-created stage (page morphs dispose and re-compose it) shows the
-    // artwork instead of a blank surface while the stream re-prepares.
     var canvasFrameReady by remember(canvasPrimaryUrl, canvasFallbackUrl) {
         mutableStateOf(false)
     }
@@ -2277,10 +2336,10 @@ private fun FlamingoCanvasStage(
         modifier = modifier
             .fillMaxWidth()
             .then(
-                if (stageHeight != null) {
-                    Modifier.height(stageHeight)
-                } else {
-                    Modifier.fillMaxHeight(0.55f)
+                when {
+                    stageFullscreen -> Modifier.fillMaxSize()
+                    stageHeight != null -> Modifier.height(stageHeight)
+                    else -> Modifier.fillMaxHeight(0.55f)
                 },
             )
             .graphicsLayer {
@@ -2292,6 +2351,7 @@ private fun FlamingoCanvasStage(
                 drawRect(
                     brush = FlamingoSharpStageFadeBrush,
                     blendMode = BlendMode.DstIn,
+                    alpha = fadeStrength(),
                 )
             },
     ) {
@@ -3437,6 +3497,7 @@ private fun FlamingoPlayingBar(
     onAlbumClick: () -> Unit,
     onMoreClick: () -> Unit,
     onMorePositioned: (Rect) -> Unit,
+    onArtworkSlotPositioned: ((Rect) -> Unit)? = null,
     onArtistClick: () -> Unit = {},
     playerMenuOpen: Boolean = false,
 ) = FlamingoWrapper {
@@ -3455,6 +3516,17 @@ private fun FlamingoPlayingBar(
             contentDescription = null,
             modifier = modifier
                 .size(69.dp)
+                .onGloballyPositioned { coordinates ->
+                    onArtworkSlotPositioned?.invoke(
+                        Rect(
+                            offset = coordinates.positionInRoot(),
+                            size = Size(
+                                coordinates.size.width.toFloat(),
+                                coordinates.size.height.toFloat(),
+                            ),
+                        ),
+                    )
+                }
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
@@ -3764,8 +3836,6 @@ private fun FlamingoPlayerControl(
                 }
 
                 FlamingoWrapper {
-                    // The seekbar grows while the finger holds it and settles
-                    // back on release (0.45 alpha -> 0.85, 7dp -> 11dp rail).
                     val sliderEngage by animateFloatAsState(
                         targetValue = if (isSliding.value) 1f else 0f,
                         animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
@@ -4107,8 +4177,6 @@ private fun FlamingoVolumeSlider(
                     visibilityThreshold = 0.0001f,
                 )
             }
-            // The volume rail grows while the finger holds it and settles back
-            // on release, mirroring the seekbar's drag feedback.
             val volumeEngage by animateFloatAsState(
                 targetValue = if (sliding.value) 1f else 0f,
                 animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
@@ -4176,10 +4244,6 @@ private fun FlamingoTrack(
         val sliderEnd = if (isRtl) sliderLeft else sliderRight
         val trackStrokeWidth = height.toPx()
 
-        // While held, the rail wears a soft rounded halo that grows with the
-        // engage factor — the expanded state reads visibly rounder (and the
-        // rails stay drawn inside their bounds instead of poking past the
-        // edges as StrokeCap.Round overhangs do).
         if (engage > 0.01f) {
             val halo1 = trackStrokeWidth + 4.dp.toPx() * engage
             drawRoundRect(

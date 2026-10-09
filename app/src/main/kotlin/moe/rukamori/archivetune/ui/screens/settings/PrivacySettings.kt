@@ -14,6 +14,7 @@ import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -38,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -74,8 +76,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
+import moe.rukamori.archivetune.constants.OverscrollStyle
+import moe.rukamori.archivetune.constants.OverscrollStyleKey
+import moe.rukamori.archivetune.constants.OverscrollRubberBandTensionKey
+import moe.rukamori.archivetune.constants.OverscrollBounceStiffnessKey
+import moe.rukamori.archivetune.utils.rememberEnumPreference
+import androidx.compose.material3.RadioButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -119,6 +128,75 @@ fun PrivacySettings(
             key = ForceHighRefreshRateKey,
             defaultValue = false,
         )
+    val (overscrollStyle, onOverscrollStyleChange) =
+        rememberEnumPreference(OverscrollStyleKey, defaultValue = OverscrollStyle.IOS_RUBBER_BAND)
+    val (overscrollTension, onOverscrollTensionChange) =
+        rememberPreference(OverscrollRubberBandTensionKey, defaultValue = 0.55f)
+    val (overscrollStiffness, onOverscrollStiffnessChange) =
+        rememberPreference(OverscrollBounceStiffnessKey, defaultValue = 247f)
+
+    var showOverscrollStyleDialog by rememberSaveable { mutableStateOf(false) }
+
+    if (showOverscrollStyleDialog) {
+        DefaultDialog(
+            onDismiss = { showOverscrollStyleDialog = false },
+            buttons = {
+                TextButton(
+                    onClick = {
+                        onOverscrollStyleChange(OverscrollStyle.IOS_RUBBER_BAND)
+                        showOverscrollStyleDialog = false
+                    },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(R.string.reset))
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                TextButton(
+                    onClick = { showOverscrollStyleDialog = false },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        ) {
+            Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                Text(
+                    text = stringResource(R.string.overscroll_style),
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                OverscrollStyle.entries.forEach { style ->
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = style == overscrollStyle,
+                            onClick = {
+                                onOverscrollStyleChange(style)
+                                showOverscrollStyleDialog = false
+                            },
+                        )
+                        Text(
+                            text = stringResource(
+                                when (style) {
+                                    OverscrollStyle.IOS_RUBBER_BAND -> R.string.overscroll_style_ios
+                                    OverscrollStyle.ANDROID_STRETCH -> R.string.overscroll_style_android
+                                    OverscrollStyle.OFF -> R.string.overscroll_style_off
+                                },
+                            ),
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
 
     var showClearListenHistoryDialog by remember {
         mutableStateOf(false)
@@ -199,6 +277,7 @@ fun PrivacySettings(
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        containerColor = Color.Transparent,
         topBar = {
                 SettingsPageTopBar(
                     titleText = stringResource(R.string.settings_behavior_title),
@@ -271,6 +350,76 @@ fun PrivacySettings(
                         title = { Text(stringResource(R.string.clear_search_history)) },
                         icon = { Icon(painterResource(R.drawable.clear_all), null) },
                         onClick = { showClearSearchHistoryDialog = true },
+                    )
+                }
+            }
+
+            PreferenceGroup(
+                modifier = positions.modifierFor("overscroll"),
+                title = stringResource(R.string.overscroll_physics),
+            ) {
+                item {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("overscroll_style"),
+                        title = { Text(stringResource(R.string.overscroll_style)) },
+                        description =
+                            stringResource(
+                                when (overscrollStyle) {
+                                    OverscrollStyle.IOS_RUBBER_BAND -> R.string.overscroll_style_ios
+                                    OverscrollStyle.ANDROID_STRETCH -> R.string.overscroll_style_android
+                                    OverscrollStyle.OFF -> R.string.overscroll_style_off
+                                },
+                            ),
+                        icon = { Icon(painterResource(R.drawable.swipe), null) },
+                        onClick = { showOverscrollStyleDialog = true },
+                    )
+                }
+
+                item {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("overscroll_rubber_band_tension"),
+                        title = { Text(stringResource(R.string.overscroll_rubber_band_tension)) },
+                        description = stringResource(
+                            R.string.overscroll_rubber_band_tension_value,
+                            overscrollTension,
+                        ),
+                        icon = { Icon(painterResource(R.drawable.expand_more), null) },
+                        isEnabled = overscrollStyle == OverscrollStyle.IOS_RUBBER_BAND,
+                        content = {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Slider(
+                                value = overscrollTension,
+                                onValueChange = { onOverscrollTensionChange((it * 100).roundToInt() / 100f) },
+                                valueRange = 0.2f..1.2f,
+                                steps = 19,
+                                enabled = overscrollStyle == OverscrollStyle.IOS_RUBBER_BAND,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        },
+                    )
+                }
+
+                item {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("overscroll_bounce_speed"),
+                        title = { Text(stringResource(R.string.overscroll_bounce_speed)) },
+                        description = stringResource(
+                            R.string.overscroll_bounce_speed_value,
+                            overscrollStiffness.roundToInt(),
+                        ),
+                        icon = { Icon(painterResource(R.drawable.tune), null) },
+                        isEnabled = overscrollStyle == OverscrollStyle.IOS_RUBBER_BAND,
+                        content = {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Slider(
+                                value = overscrollStiffness,
+                                onValueChange = { onOverscrollStiffnessChange(it.roundToInt().toFloat()) },
+                                valueRange = 60f..600f,
+                                steps = 17,
+                                enabled = overscrollStyle == OverscrollStyle.IOS_RUBBER_BAND,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        },
                     )
                 }
             }

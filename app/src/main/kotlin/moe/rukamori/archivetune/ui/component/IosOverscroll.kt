@@ -3,19 +3,6 @@
  * © Rukamori — github.com/rukamori
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
- *
- * UIKit-style overscroll physics (2026-10-08: "The overscroll physics should
- * only apply when I'm at the end of the page or beginning of the page and I
- * still try to scroll in the direction where there's no content available").
- * Implemented as an OverscrollEffect installed through LocalOverscrollFactory:
- * the effect is only ever invoked by a scroll container that has already
- * failed to consume the delta, i.e. content is at its edge in that direction
- * — so the rubber band never fires for non-scrollable screens, mid-content
- * scrolling, or drags over horizontal-only scrollers. During the drag the
- * container's content is displaced on UIKit's self-limiting rubber-band curve;
- * on release it settles back on a critically damped spring. Re-implemented
- * from scratch on the public Compose overscroll API (no experimental
- * internals), following the same approach BitChord uses.
  */
 
 package moe.rukamori.archivetune.ui.component
@@ -48,23 +35,30 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.sign
 
-private const val RubberBandConstant = 0.55f
+private const val DefaultRubberBandConstant = 0.55f
+private const val DefaultBounceStiffness = 247f
 private const val FallbackContainerPx = 2000f
 private const val MaxBounceVelocity = 10000f
 private const val FastBounceVelocityThreshold = 5000f
-private const val NormalBounceStiffness = 247f
 private const val FastBounceStiffness = 130f
 
-private fun rubberBand(rawDistance: Float, containerPx: Float): Float {
+private fun rubberBand(
+    rawDistance: Float,
+    containerPx: Float,
+    rubberBandConstant: Float,
+): Float {
+    val c = rubberBandConstant.coerceIn(0.05f, 4f)
     val dimension = if (containerPx > 0f) containerPx else FallbackContainerPx
     val distance = abs(rawDistance)
     val banded =
-        (1f - 1f / (distance * RubberBandConstant / dimension + 1f)) *
-            dimension / RubberBandConstant
+        (1f - 1f / (distance * c / dimension + 1f)) * dimension / c
     return banded * sign(rawDistance)
 }
 
-private class IosOverscrollEffect : OverscrollEffect {
+private class IosOverscrollEffect(
+    private val rubberBandConstant: Float,
+    private val bounceStiffness: Float,
+) : OverscrollEffect {
     private val rawPullX = mutableFloatStateOf(0f)
     private val rawPullY = mutableFloatStateOf(0f)
     private var containerWidthPx = 0f
@@ -139,7 +133,7 @@ private class IosOverscrollEffect : OverscrollEffect {
                         if (abs(velocity) > FastBounceVelocityThreshold) {
                             FastBounceStiffness
                         } else {
-                            NormalBounceStiffness
+                            bounceStiffness.coerceIn(30f, 2000f)
                         },
                 ),
         ) { value, _ ->
@@ -149,8 +143,8 @@ private class IosOverscrollEffect : OverscrollEffect {
 
     override val node: DelegatableNode =
         IosOverscrollNode(
-            offsetX = { rubberBand(rawPullX.floatValue, containerWidthPx) },
-            offsetY = { rubberBand(rawPullY.floatValue, containerHeightPx) },
+            offsetX = { rubberBand(rawPullX.floatValue, containerWidthPx, rubberBandConstant) },
+            offsetY = { rubberBand(rawPullY.floatValue, containerHeightPx, rubberBandConstant) },
             onMeasured = { width, height ->
                 containerWidthPx = width
                 containerHeightPx = height
@@ -184,18 +178,67 @@ private class IosOverscrollNode(
 private class IosOverscrollFactory(
     private val density: Density,
     private val scope: CoroutineScope,
+    private val rubberBandConstant: Float,
+    private val bounceStiffness: Float,
 ) : OverscrollFactory {
-    override fun createOverscrollEffect(): OverscrollEffect = IosOverscrollEffect()
+    override fun createOverscrollEffect(): OverscrollEffect =
+        IosOverscrollEffect(rubberBandConstant, bounceStiffness)
 
     override fun equals(other: Any?): Boolean =
-        other is IosOverscrollFactory && other.density == density && other.scope === scope
+        other is IosOverscrollFactory &&
+            other.density == density &&
+            other.scope === scope &&
+            other.rubberBandConstant == rubberBandConstant &&
+            other.bounceStiffness == bounceStiffness
 
-    override fun hashCode(): Int = 31 * density.hashCode() + scope.hashCode()
+    override fun hashCode(): Int =
+        31 * (31 * (31 * density.hashCode() + scope.hashCode()) + rubberBandConstant.hashCode()) +
+            bounceStiffness.hashCode()
+}
+
+class NoOverscrollFactory : OverscrollFactory {
+    override fun createOverscrollEffect(): OverscrollEffect = NoOverscrollEffect()
+
+    override fun equals(other: Any?): Boolean = other is NoOverscrollFactory
+    override fun hashCode(): Int = NoOverscrollFactory::class.hashCode()
+}
+
+private class NoOverscrollEffect : OverscrollEffect {
+    override val isInProgress: Boolean = false
+
+    override fun applyToScroll(
+        delta: Offset,
+        source: NestedScrollSource,
+        performScroll: (Offset) -> Offset,
+    ): Offset = performScroll(delta)
+
+    override suspend fun applyToFling(
+        velocity: Velocity,
+        performFling: suspend (Velocity) -> Velocity,
+    ) {
+        performFling(velocity)
+    }
+
+    override val node: DelegatableNode =
+        object : Modifier.Node(), LayoutModifierNode {
+            override fun MeasureScope.measure(
+                measurable: Measurable,
+                constraints: Constraints,
+            ): MeasureResult {
+                val placeable = measurable.measure(constraints)
+                return layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+            }
+        }
 }
 
 @Composable
-fun rememberIosOverscrollFactory(): OverscrollFactory {
+fun rememberIosOverscrollFactory(
+    rubberBandTension: Float = DefaultRubberBandConstant,
+    bounceStiffness: Float = DefaultBounceStiffness,
+): OverscrollFactory {
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
-    return remember(density, scope) { IosOverscrollFactory(density, scope) }
+    return remember(density, scope, rubberBandTension, bounceStiffness) {
+        IosOverscrollFactory(density, scope, rubberBandTension, bounceStiffness)
+    }
 }
