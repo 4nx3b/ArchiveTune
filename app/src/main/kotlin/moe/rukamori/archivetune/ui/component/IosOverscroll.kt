@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Velocity
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -64,6 +65,16 @@ private class IosOverscrollEffect(
     private var containerWidthPx = 0f
     private var containerHeightPx = 0f
 
+    // Settle animations for the bounce-back, one per axis. A new user drag
+    // CANCELS them (see applyToScroll): while a settle is animating the
+    // spring keeps overwriting the pull every frame, so without the cancel
+    // the drag's payDown writes get instantly restored by the settle — every
+    // drag delta is swallowed paying down the resurrected pull and the list
+    // never actually scrolls for the remainder of the bounce (up to ~1s on
+    // fast flings), which reads as the app ignoring touch after scrolling.
+    private var settleJobX: Job? = null
+    private var settleJobY: Job? = null
+
     override val isInProgress: Boolean
         get() = rawPullX.floatValue != 0f || rawPullY.floatValue != 0f
 
@@ -72,6 +83,16 @@ private class IosOverscrollEffect(
         source: NestedScrollSource,
         performScroll: (Offset) -> Offset,
     ): Offset {
+        if (source == NestedScrollSource.UserInput) {
+            // The finger grabs the rubber band where it is right now: stop the
+            // running settle immediately so it stops fighting the drag. The
+            // pull keeps its current value and payDown below walks it back
+            // under the finger, exactly like UIKit.
+            settleJobX?.cancel()
+            settleJobY?.cancel()
+            settleJobX = null
+            settleJobY = null
+        }
         val paidX = payDown(rawPullX, delta.x)
         val paidY = payDown(rawPullY, delta.y)
         val remaining = Offset(delta.x - paidX, delta.y - paidY)
@@ -104,9 +125,11 @@ private class IosOverscrollEffect(
         val leftover = velocity - consumed
         if (!isInProgress && leftover == Velocity.Zero) return
 
+        settleJobX?.cancel()
+        settleJobY?.cancel()
         coroutineScope {
-            launch { settle(rawPullX, leftover.x) }
-            launch { settle(rawPullY, leftover.y) }
+            settleJobX = launch { settle(rawPullX, leftover.x) }
+            settleJobY = launch { settle(rawPullY, leftover.y) }
         }
     }
 

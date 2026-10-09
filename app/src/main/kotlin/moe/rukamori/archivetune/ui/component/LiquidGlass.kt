@@ -492,11 +492,20 @@ fun LiquidGlassContainer(
     interactive: Boolean = false,
     blurRadius: Dp = LiquidGlassPillBlurRadius,
     scrim: Color? = null,
+    baseColor: Color = Color.Unspecified,
     contentAlignment: Alignment = Alignment.Center,
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(
-        modifier = modifier.liquidGlass(backdrop, shape, interactive, blurRadius = blurRadius, scrim = scrim),
+        modifier =
+            modifier.liquidGlass(
+                backdrop,
+                shape,
+                interactive,
+                baseColor = baseColor,
+                blurRadius = blurRadius,
+                scrim = scrim,
+            ),
         contentAlignment = contentAlignment,
         content = content,
     )
@@ -563,11 +572,18 @@ fun LiquidGlassIconButton(
     onClick: () -> Unit,
 ) {
     val resolvedTint = if (tint == Color.Unspecified) liquidGlassContentColor() else tint
+    // BitChord's nav-bar pattern: an opaque surface base sits UNDER the
+    // blurred backdrop sample. Wherever the sampled backdrop is empty or
+    // darkened by the lens band, the pill reads as a proper surface-tinted
+    // glass instead of exposing a black region behind it (visible in light
+    // mode over the bright home wash).
+    val glassBase = MaterialTheme.colorScheme.surfaceContainerHigh
     LiquidGlassContainer(
         backdrop = backdrop,
         modifier = modifier,
         shape = shape,
         interactive = interactive,
+        baseColor = glassBase,
     ) {
         Material3IconButton(
             onClick = onClick,
@@ -595,11 +611,14 @@ fun LiquidGlassIconButton(
     onClick: () -> Unit,
 ) {
     val resolvedTint = if (tint == Color.Unspecified) liquidGlassContentColor() else tint
+    // Same surface base as the painter overload — see its comment.
+    val glassBase = MaterialTheme.colorScheme.surfaceContainerHigh
     LiquidGlassContainer(
         backdrop = backdrop,
         modifier = modifier,
         shape = shape,
         interactive = interactive,
+        baseColor = glassBase,
     ) {
         Material3IconButton(
             onClick = onClick,

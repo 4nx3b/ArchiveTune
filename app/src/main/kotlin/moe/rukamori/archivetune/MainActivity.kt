@@ -48,6 +48,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -3409,10 +3410,21 @@ class MainActivity : ComponentActivity() {
                                         } else if (initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
+                                            // Tab switch: quick fade-in over a slow fade-out.
+                                            // The previous delayed-enter arrangement left a window
+                                            // where neither page covered the root (the outgoing
+                                            // page finished fading at 220ms while the incoming
+                                            // page only started at 60ms and needed 260ms) — the
+                                            // root flashed through on every home <-> library
+                                            // switch. Alpha compositing of symmetric fades also
+                                            // dips to ~75% coverage mid-transition, so the enter
+                                            // is short (160ms) and the exit long (640ms): the
+                                            // incoming page is opaque well before the outgoing
+                                            // page has meaningfully faded — max root bleed ~6%.
+                                            fadeIn(tween(160, easing = LinearEasing)) +
                                                 scaleIn(
-                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
-                                                    initialScale = 0.94f,
+                                                    animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                                    initialScale = 0.96f,
                                                 )
                                         } else {
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
@@ -3428,7 +3440,7 @@ class MainActivity : ComponentActivity() {
                                         } else if (initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
+                                            fadeOut(tween(640, easing = LinearEasing))
                                         } else {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
@@ -3442,10 +3454,12 @@ class MainActivity : ComponentActivity() {
                                             ) &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
+                                            // Same flicker-free arrangement for the pop
+                                            // direction (library -> home pops back here).
+                                            fadeIn(tween(160, easing = LinearEasing)) +
                                                 scaleIn(
-                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
-                                                    initialScale = 0.94f,
+                                                    animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                                    initialScale = 0.96f,
                                                 )
                                         } else {
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
@@ -3464,7 +3478,7 @@ class MainActivity : ComponentActivity() {
                                             ) &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
+                                            fadeOut(tween(640, easing = LinearEasing))
                                         } else {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
