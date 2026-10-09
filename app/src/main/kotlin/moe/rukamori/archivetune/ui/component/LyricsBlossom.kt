@@ -60,6 +60,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -76,15 +77,16 @@ import kotlin.math.sin
 
 /*
  * "Blossom" — the in-house Apple-Music-style lyrics animation renderer, built
- * after the LyricsBlossom 8.x experience (https://lyricsblossom.theoscarshen.com,
- * a standalone app without an embeddable Android library, so its look is
- * re-implemented natively here):
+ * after the LyricsBlossom experience (https://github.com/Eplorr/LyricsBlossom —
+ * a closed-source macOS/Windows app with no embeddable Android library, so its
+ * 1:1 Apple Music look is re-implemented natively here):
  *
- *  - word-by-word emphasis: each word lifts (alpha 0.4 -> 1, gentle scale
+ *  - word-by-word emphasis: each word lifts (alpha 0.4 -> 1, springy scale
  *    arc) exactly while it is being sung, drawn through graphicsLayer lambdas
  *    so per-frame progress never triggers recomposition;
- *  - dimmed + blurred upcoming lines that sharpen as they approach the
- *    active line (mirroring the enhanced renderer's blur falloff);
+ *  - the ACTIVE line wears a soft glow (text shadow) and full size, while
+ *    inactive lines sit dimmed, smaller and blurred, sharpening as they
+ *    approach the active line — the LyricsBlossom depth-of-field falloff;
  *  - followed auto-scroll with the active line pinned at a top anchor,
  *    suspended while the user scrolls and resumed after ~3s idle;
  *  - breathing dots across instrumental interludes;
@@ -97,9 +99,18 @@ private val BlossomManualResumeMs = 3000L
 private const val BlossomUpcomingAlpha = 0.38f
 private const val BlossomPastAlpha = 0.28f
 private const val BlossomWordDimAlpha = 0.4f
-private const val BlossomWordLiftScale = 0.07f
+private const val BlossomWordLiftScale = 0.09f
 private const val BlossomBlurDeltaPerLine = 3f
 private const val BlossomInterludeGapMs = 5000
+
+/** The inactive lines sit visibly smaller than the active line (the
+ *  LyricsBlossom/Apple Music depth cue) instead of near-identical. */
+private const val BlossomInactiveScale = 0.90f
+
+/** Soft glow behind the active line's words — bright-white text floating
+ *  over the dimmed field, exactly like the reference app. */
+private const val BlossomActiveGlowAlpha = 0.38f
+private const val BlossomActiveGlowBlurRadius = 14f
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -237,7 +248,7 @@ private fun BlossomLyricsLine(
         label = "blossom-line-alpha",
     )
     val lineScale by animateFloatAsState(
-        targetValue = if (isActive) 1f else 0.955f,
+        targetValue = if (isActive) 1f else BlossomInactiveScale,
         animationSpec =
             spring(
                 dampingRatio = Spring.DampingRatioLowBouncy,
@@ -302,7 +313,16 @@ private fun BlossomLyricsLine(
                     syllables = line.syllables,
                     position = position,
                     isActive = isActive,
-                    textStyle = normalTextStyle,
+                    textStyle = if (isActive) {
+                        normalTextStyle.copy(
+                            shadow = Shadow(
+                                color = textColor.copy(alpha = BlossomActiveGlowAlpha),
+                                blurRadius = BlossomActiveGlowBlurRadius,
+                            ),
+                        )
+                    } else {
+                        normalTextStyle
+                    },
                     textColor = textColor,
                     wordAlphaFloor = 1f,
                     showPhonetic = showPhonetic,
@@ -328,7 +348,16 @@ private fun BlossomLyricsLine(
                     position = position,
                     start = line.start,
                     end = line.end,
-                    textStyle = normalTextStyle,
+                    textStyle = if (isActive) {
+                        normalTextStyle.copy(
+                            shadow = Shadow(
+                                color = textColor.copy(alpha = BlossomActiveGlowAlpha),
+                                blurRadius = BlossomActiveGlowBlurRadius,
+                            ),
+                        )
+                    } else {
+                        normalTextStyle
+                    },
                     textColor = textColor,
                 )
             }

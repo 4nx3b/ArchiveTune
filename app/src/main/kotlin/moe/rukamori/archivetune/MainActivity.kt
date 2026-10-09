@@ -1140,30 +1140,32 @@ class MainActivity : ComponentActivity() {
                     val bottomInset = with(density) { windowsInsets.getBottom(density).toDp() }
                     val bottomInsetDp = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
 
-                    // The subtle atmosphere gradient rides under EVERY page
-                    // (light and dark modes alike) while "Disable blur effects"
-                    // is off — the same wash the home screen wears in light
-                    // mode, at roughly a third of the intensity. Pure black and
+                    // The subtle atmosphere gradient rides under every page in
+                    // DARK mode only, while "Disable blur effects" is off — a
+                    // gentle version of the wash the home screen wears in light
+                    // mode. The LIGHT mode is untouched: its home screen keeps
+                    // its own full-intensity wash and every other page stays a
+                    // flat surface, exactly as before. Pure black and
                     // blur-disabled sessions keep the flat surface.
                     val (disableBlurForAtmosphere) = rememberPreference(DisableBlurKey, false)
-                    if (!pureBlack) {
-                        if (disableBlurForAtmosphere) {
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .fillMaxSize()
-                                        .background(MaterialTheme.colorScheme.surface),
-                            )
-                        } else {
-                            HomeAtmosphereBackground(subtle = true)
-                        }
-                    } else {
+                    val darkAtmosphereTheme =
+                        MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                    if (pureBlack) {
                         Box(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
                                     .background(Color.Black),
                         )
+                    } else if (disableBlurForAtmosphere || !darkAtmosphereTheme) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.surface),
+                        )
+                    } else {
+                        HomeAtmosphereBackground(subtle = true)
                     }
 
                     val isTvDevice = remember { applicationContext.isTvDevice() }

@@ -488,6 +488,30 @@ fun FlamingoPlayerContent(
             label = "flamingo-canvas-surfaces-fade",
         )
 
+        // The SHARP stage (pre-redesign behaviour) only lives on the album
+        // page — leaving the album crossfades it away so the queue page keeps
+        // just the blurred frost behind its list. The surface detaches after
+        // the fade so no invisible video keeps decoding; the ExoPlayer stays
+        // retained, so returning re-attaches instantly.
+        val canvasStageOnAlbum = !landscape && nowPage == FlamingoPage.Album
+        var canvasStageSurfaceVisible by remember { mutableStateOf(true) }
+        LaunchedEffect(canvasStageOnAlbum) {
+            if (canvasStageOnAlbum) {
+                canvasStageSurfaceVisible = true
+            } else {
+                delay(FlamingoCanvasPageFadeMs.toLong())
+                canvasStageSurfaceVisible = false
+            }
+        }
+        val canvasStageAlpha by animateFloatAsState(
+            targetValue = if (canvasStageOnAlbum) 1f else 0f,
+            animationSpec = tween(
+                durationMillis = FlamingoCanvasPageFadeMs,
+                easing = FastOutSlowInEasing,
+            ),
+            label = "flamingo-canvas-stage-fade",
+        )
+
         BackHandler(enabled = nowPage != FlamingoPage.Album) {
             nowPage = FlamingoPage.Album
         }
@@ -779,6 +803,28 @@ fun FlamingoPlayerContent(
                                                 alpha = canvasSurfacesAlpha * canvasBackdropReveal
                                             }
                                             .background(FlamingoCanvasScrimBrush),
+                                )
+
+                                // The SHARP canvas stage — pre-redesign arrangement: it
+                                // lives in the background layer (BEHIND the album/lyrics/
+                                // queue pages), pinned to its fixed full-bleed rect
+                                // [player top -> title row]. It is NOT inside the page
+                                // AnimatedContent, so shared-element bounds, page morphs
+                                // and page disposal can never touch its geometry — the
+                                // regression that kept misplacing it. It crossfades away
+                                // when the album page is left (queue keeps only the
+                                // frost) and its ExoPlayer survives every page switch.
+                                FlamingoCanvasStage(
+                                    canvasPrimaryUrl = canvasPrimaryUrl,
+                                    canvasFallbackUrl = canvasFallbackUrl,
+                                    isPlaying = isPlayingStatusLambda.value && canvasSurfacesPlaying,
+                                    loopSyncLeader = canvasLoopSync,
+                                    onPlaybackAvailabilityChange = { canvasRendering = it },
+                                    refreshEpoch = orientationRefreshEpoch,
+                                    stageHeight = sharpStageHeight,
+                                    staticArtworkUrl = artworkUrl,
+                                    surfacesAlpha = canvasStageAlpha,
+                                    surfacesVisible = canvasStageSurfaceVisible,
                                 )
                             }
                         }
@@ -1219,25 +1265,13 @@ fun FlamingoPlayerContent(
                                                     }
                                                 }
                                             }
-                                            // The canvas stage renders at its FIXED full-bleed
-                                            // rect (player top -> title row) and is never a
-                                            // shared element: it fades away with the album page
-                                            // while the static artwork square above morphs into
-                                            // the playing-bar thumbnail. The static under-layer
-                                            // inside the stage covers the stream re-prepare when
-                                            // the page re-composes it on the way back.
-                                            if (canvasVisualActive) {
-                                                FlamingoCanvasStage(
-                                                    canvasPrimaryUrl = canvasPrimaryUrl,
-                                                    canvasFallbackUrl = canvasFallbackUrl,
-                                                    isPlaying = isPlayingStatusLambda.value,
-                                                    loopSyncLeader = canvasLoopSync,
-                                                    onPlaybackAvailabilityChange = { canvasRendering = it },
-                                                    refreshEpoch = orientationRefreshEpoch,
-                                                    stageHeight = sharpStageHeight,
-                                                    staticArtworkUrl = artworkUrl,
-                                                )
-                                            }
+                                            // The canvas stage is composed by the BACKGROUND
+                                            // layer (behind every page) — it never participates
+                                            // in this AnimatedContent's lifecycle, shared
+                                            // bounds or overlay, and it is never disposed by a
+                                            // page switch. This is the pre-redesign arrangement:
+                                            // the ONLY shared-element participant is the static
+                                            // album square for non-canvas songs.
                                         }
                                     }
 
@@ -2156,33 +2190,17 @@ private fun ColumnScope.FlamingoAlbum(
     }
 
     if (canvasActive) {
-        // The static album square is ALWAYS composed for canvas songs — it is
-        // the shared-element partner that morphs into the playing-bar
-        // thumbnail during page transitions (the canvas itself never travels).
-        // At rest it sits under the full-bleed canvas stage at a near-zero
-        // alpha floor, revealed only while a page morph runs.
+        // Pre-redesign behaviour: canvas songs render NOTHING in the album
+        // square slot — the full-bleed canvas stage (composed by the
+        // background layer, behind every page) shows through the empty slot.
+        // Keeping the slot empty also means no artwork square can ever be
+        // mis-positioned inside the player for canvas songs, and the page
+        // morph simply crossfades the pages (no artwork flight, exactly like
+        // the original Flamingo player).
         Box(
             Modifier
-                .weight(1f)
-                .padding(top = 20.dp)
-                .padding(horizontal = 15.dp)
-                .padding(bottom = 33.dp),
-        ) {
-            AsyncImage(
-                model = artworkUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .graphicsLayer {
-                        compositingStrategy = CompositingStrategy.ModulateAlpha
-                        alpha = overlayArtworkReveal.coerceAtLeast(1f / 255f)
-                    }
-                    .clip(RoundedCornerShape(8.dp))
-                    .then(modifier),
-            )
-        }
+                .weight(1f),
+        )
         return
     }
 
@@ -2237,6 +2255,8 @@ private fun FlamingoCanvasStage(
     refreshEpoch: Int,
     stageHeight: Dp?,
     staticArtworkUrl: String?,
+    surfacesAlpha: Float = 1f,
+    surfacesVisible: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     // Pre-redesign crossfade (after the old Apple Music player / canary's
@@ -2265,6 +2285,7 @@ private fun FlamingoCanvasStage(
             )
             .graphicsLayer {
                 compositingStrategy = CompositingStrategy.Offscreen
+                alpha = surfacesAlpha
             }
             .drawWithContent {
                 drawContent()
@@ -2288,7 +2309,7 @@ private fun FlamingoCanvasStage(
             primaryUrl = canvasPrimaryUrl,
             fallbackUrl = canvasFallbackUrl,
             isPlaying = isPlaying,
-            visible = true,
+            visible = surfacesVisible,
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
             loopSyncLeader = loopSyncLeader,
             onPlaybackAvailabilityChange = onPlaybackAvailabilityChange,

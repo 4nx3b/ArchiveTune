@@ -1142,7 +1142,20 @@ fun LyricsEnhanced(
                                     showPhonetic = showPhoneticLines,
                                     anchor = LyricsAnchor.Fixed(lyricsViewportOffset),
 
-                                    keepAliveZone = 8.dp,
+                                    // The v2 default keepAliveZone (100dp) is what the
+                                    // renderer is tuned for — 8dp made every line entering
+                                    // or leaving the viewport re-compose mid-follow, which
+                                    // read as autoscroll jank.
+                                    keepAliveZone = 100.dp,
+                                    // The old app-level driver scrolled per line change
+                                    // over ~300ms; the library's 650ms default follow felt
+                                    // noticeably laggier, so the leading follow is tuned
+                                    // back to the old tempo (the chained springs behind
+                                    // it are untouched).
+                                    scrollAnimationSpec = tween(
+                                        durationMillis = 320,
+                                        easing = FastOutSlowInEasing,
+                                    ),
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }
