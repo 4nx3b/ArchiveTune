@@ -38,7 +38,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
@@ -48,7 +47,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -1161,28 +1159,23 @@ class MainActivity : ComponentActivity() {
                     val bottomInsetDp = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
 
                     // The subtle atmosphere gradient rides under every page in
-                    // DARK mode only, while "Disable blur effects" is off — a
-                    // gentle version of the wash the home screen wears in light
-                    // mode. The LIGHT mode is untouched: its home screen keeps
+                    // DARK mode, while "Disable blur effects" is off — a gentle
+                    // version of the wash the home screen wears in light mode.
+                    // Pure dark keeps its pitch-black base (the gradient paints
+                    // its own black surface base over the boosted glow stops) —
+                    // the flat-black override used to swallow the gradient
+                    // entirely. LIGHT mode is untouched: its home screen keeps
                     // its own full-intensity wash and every other page stays a
-                    // flat surface, exactly as before. Pure black and
-                    // blur-disabled sessions keep the flat surface.
+                    // flat surface, exactly as before.
                     val (disableBlurForAtmosphere) = rememberPreference(DisableBlurKey, false)
                     val darkAtmosphereTheme =
                         MaterialTheme.colorScheme.surface.luminance() < 0.5f
-                    if (pureBlack) {
+                    if (disableBlurForAtmosphere || !darkAtmosphereTheme) {
                         Box(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
-                                    .background(Color.Black),
-                        )
-                    } else if (disableBlurForAtmosphere || !darkAtmosphereTheme) {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxSize()
-                                    .background(MaterialTheme.colorScheme.surface),
+                                    .background(if (pureBlack) Color.Black else MaterialTheme.colorScheme.surface),
                         )
                     } else {
                         HomeAtmosphereBackground(subtle = true)
@@ -1226,7 +1219,6 @@ class MainActivity : ComponentActivity() {
                         )
                     var profileMenuExpanded by rememberSaveable { mutableStateOf(false) }
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
-                    val (previousTab) = rememberSaveable { mutableStateOf("home") }
                     val currentRoute = navBackStackEntry?.destination?.route
                     val onlineSearchEncodedQuery =
                         navBackStackEntry
@@ -3365,33 +3357,6 @@ class MainActivity : ComponentActivity() {
                                 },
                                 modifier = Modifier.fillMaxSize(),
                             ) {
-                                var transitionDirection =
-                                    AnimatedContentTransitionScope.SlideDirection.Left
-
-                                if (navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route }) {
-                                    if (navigationItems.fastAny { it.route == previousTab }) {
-                                        val curIndex =
-                                            navigationItems.indexOf(
-                                                navigationItems.fastFirstOrNull {
-                                                    it.route == navBackStackEntry?.destination?.route
-                                                },
-                                            )
-
-                                        val prevIndex =
-                                            navigationItems.indexOf(
-                                                navigationItems.fastFirstOrNull {
-                                                    it.route == previousTab
-                                                },
-                                            )
-
-                                        if (prevIndex > curIndex) {
-                                            AnimatedContentTransitionScope.SlideDirection.Right.also {
-                                                transitionDirection = it
-                                            }
-                                        }
-                                    }
-                                }
-
                                 NavHost(
                                     navController = navController,
                                     startDestination =
@@ -3410,22 +3375,14 @@ class MainActivity : ComponentActivity() {
                                         } else if (initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            // Tab switch: quick fade-in over a slow fade-out.
-                                            // The previous delayed-enter arrangement left a window
-                                            // where neither page covered the root (the outgoing
-                                            // page finished fading at 220ms while the incoming
-                                            // page only started at 60ms and needed 260ms) — the
-                                            // root flashed through on every home <-> library
-                                            // switch. Alpha compositing of symmetric fades also
-                                            // dips to ~75% coverage mid-transition, so the enter
-                                            // is short (160ms) and the exit long (640ms): the
-                                            // incoming page is opaque well before the outgoing
-                                            // page has meaningfully faded — max root bleed ~6%.
-                                            fadeIn(tween(160, easing = LinearEasing)) +
-                                                scaleIn(
-                                                    animationSpec = tween(320, easing = FastOutSlowInEasing),
-                                                    initialScale = 0.96f,
-                                                )
+                                            // Tab switches are instant. A zero-duration
+                                            // fade completes on the first frame — the
+                                            // incoming page is fully opaque before the
+                                            // outgoing page renders at all, so there is
+                                            // no crossfade window, no root bleed and no
+                                            // visible fade (the slow 160/640ms fade pair
+                                            // was never asked for).
+                                            fadeIn(tween(0))
                                         } else {
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
@@ -3440,7 +3397,7 @@ class MainActivity : ComponentActivity() {
                                         } else if (initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeOut(tween(640, easing = LinearEasing))
+                                            fadeOut(tween(0))
                                         } else {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
@@ -3454,13 +3411,8 @@ class MainActivity : ComponentActivity() {
                                             ) &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            // Same flicker-free arrangement for the pop
-                                            // direction (library -> home pops back here).
-                                            fadeIn(tween(160, easing = LinearEasing)) +
-                                                scaleIn(
-                                                    animationSpec = tween(320, easing = FastOutSlowInEasing),
-                                                    initialScale = 0.96f,
-                                                )
+                                            // Instant pop direction too — see enterTransition.
+                                            fadeIn(tween(0))
                                         } else {
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
@@ -3478,7 +3430,7 @@ class MainActivity : ComponentActivity() {
                                             ) &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeOut(tween(640, easing = LinearEasing))
+                                            fadeOut(tween(0))
                                         } else {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }

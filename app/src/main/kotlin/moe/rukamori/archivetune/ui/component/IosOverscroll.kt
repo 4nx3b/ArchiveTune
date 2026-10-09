@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Velocity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.sign
@@ -39,9 +38,16 @@ import kotlin.math.sign
 private const val DefaultRubberBandConstant = 0.55f
 private const val DefaultBounceStiffness = 247f
 private const val FallbackContainerPx = 2000f
-private const val MaxBounceVelocity = 10000f
-private const val FastBounceVelocityThreshold = 5000f
-private const val FastBounceStiffness = 130f
+
+// Release velocity is damped and clamped before it is injected into the
+// bounce-back spring. The full leftover fling velocity (up to 10000 px/s
+// before) stretched the band by close to a thousand extra pixels and made the
+// settle crawl for one to two seconds — during which a grab had to walk the
+// huge pull all the way back before the list scrolled, reading exactly as
+// "the app ignores touch until the overscroll settles". UIKit transfers only a
+// heavily damped fraction of the release velocity into the bounce.
+private const val BounceVelocityTransferFactor = 0.2f
+private const val MaxBounceVelocity = 3000f
 
 private fun rubberBand(
     rawDistance: Float,
@@ -57,6 +63,7 @@ private fun rubberBand(
 }
 
 private class IosOverscrollEffect(
+    private val scope: CoroutineScope,
     private val rubberBandConstant: Float,
     private val bounceStiffness: Float,
 ) : OverscrollEffect {
@@ -65,18 +72,24 @@ private class IosOverscrollEffect(
     private var containerWidthPx = 0f
     private var containerHeightPx = 0f
 
-    // Settle animations for the bounce-back, one per axis. A new user drag
-    // CANCELS them (see applyToScroll): while a settle is animating the
-    // spring keeps overwriting the pull every frame, so without the cancel
-    // the drag's payDown writes get instantly restored by the settle — every
-    // drag delta is swallowed paying down the resurrected pull and the list
-    // never actually scrolls for the remainder of the bounce (up to ~1s on
-    // fast flings), which reads as the app ignoring touch after scrolling.
+    // Settle animations for the bounce-back, one per axis. They run on the
+    // factory-provided scope (independent of the fling dispatch), so
+    // applyToFling returns as soon as the list's own fling finishes — the
+    // scrollable's mutation is released immediately and a new finger drag
+    // never queues behind the bounce. A new user drag CANCELS the settles
+    // (see applyToScroll): the finger grabs the rubber band wherever it is.
     private var settleJobX: Job? = null
     private var settleJobY: Job? = null
 
     override val isInProgress: Boolean
         get() = rawPullX.floatValue != 0f || rawPullY.floatValue != 0f
+
+    private fun cancelSettles() {
+        settleJobX?.cancel()
+        settleJobY?.cancel()
+        settleJobX = null
+        settleJobY = null
+    }
 
     override fun applyToScroll(
         delta: Offset,
@@ -88,10 +101,7 @@ private class IosOverscrollEffect(
             // running settle immediately so it stops fighting the drag. The
             // pull keeps its current value and payDown below walks it back
             // under the finger, exactly like UIKit.
-            settleJobX?.cancel()
-            settleJobY?.cancel()
-            settleJobX = null
-            settleJobY = null
+            cancelSettles()
         }
         val paidX = payDown(rawPullX, delta.x)
         val paidY = payDown(rawPullY, delta.y)
@@ -125,12 +135,9 @@ private class IosOverscrollEffect(
         val leftover = velocity - consumed
         if (!isInProgress && leftover == Velocity.Zero) return
 
-        settleJobX?.cancel()
-        settleJobY?.cancel()
-        coroutineScope {
-            settleJobX = launch { settle(rawPullX, leftover.x) }
-            settleJobY = launch { settle(rawPullY, leftover.y) }
-        }
+        cancelSettles()
+        settleJobX = scope.launch { settle(rawPullX, leftover.x) }
+        settleJobY = scope.launch { settle(rawPullY, leftover.y) }
     }
 
     private fun payDown(pull: MutableFloatState, delta: Float): Float {
@@ -144,7 +151,14 @@ private class IosOverscrollEffect(
 
     private suspend fun settle(pull: MutableFloatState, leftoverVelocity: Float) {
         if (pull.floatValue == 0f && leftoverVelocity == 0f) return
-        val velocity = leftoverVelocity.coerceIn(-MaxBounceVelocity, MaxBounceVelocity)
+        // The user's bounce-back-speed setting is always honoured (the old
+        // fast-fling hardcode made the slider look dead: every noticeable
+        // bounce comes from a fling, and those always took the hardcoded
+        // stiffness). Release velocity is damped + clamped — see the
+        // BounceVelocityTransferFactor note above.
+        val velocity =
+            (leftoverVelocity * BounceVelocityTransferFactor)
+                .coerceIn(-MaxBounceVelocity, MaxBounceVelocity)
         animate(
             initialValue = pull.floatValue,
             targetValue = 0f,
@@ -152,12 +166,7 @@ private class IosOverscrollEffect(
             animationSpec =
                 spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness =
-                        if (abs(velocity) > FastBounceVelocityThreshold) {
-                            FastBounceStiffness
-                        } else {
-                            bounceStiffness.coerceIn(30f, 2000f)
-                        },
+                    stiffness = bounceStiffness.coerceIn(30f, 2000f),
                 ),
         ) { value, _ ->
             pull.floatValue = value
@@ -172,6 +181,13 @@ private class IosOverscrollEffect(
                 containerWidthPx = width
                 containerHeightPx = height
             },
+            onDetachedFromHierarchy = {
+                // The scrollable left composition mid-bounce: stop animating a
+                // pull nobody renders anymore and reset the band.
+                cancelSettles()
+                rawPullX.floatValue = 0f
+                rawPullY.floatValue = 0f
+            },
         )
 }
 
@@ -179,6 +195,7 @@ private class IosOverscrollNode(
     private val offsetX: () -> Float,
     private val offsetY: () -> Float,
     private val onMeasured: (Float, Float) -> Unit,
+    private val onDetachedFromHierarchy: () -> Unit,
 ) : Modifier.Node(), LayoutModifierNode {
     override fun MeasureScope.measure(
         measurable: Measurable,
@@ -196,6 +213,11 @@ private class IosOverscrollNode(
             }
         }
     }
+
+    override fun onDetach() {
+        super.onDetach()
+        onDetachedFromHierarchy()
+    }
 }
 
 private class IosOverscrollFactory(
@@ -205,7 +227,7 @@ private class IosOverscrollFactory(
     private val bounceStiffness: Float,
 ) : OverscrollFactory {
     override fun createOverscrollEffect(): OverscrollEffect =
-        IosOverscrollEffect(rubberBandConstant, bounceStiffness)
+        IosOverscrollEffect(scope, rubberBandConstant, bounceStiffness)
 
     override fun equals(other: Any?): Boolean =
         other is IosOverscrollFactory &&
