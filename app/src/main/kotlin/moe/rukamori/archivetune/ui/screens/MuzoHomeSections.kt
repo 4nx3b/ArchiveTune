@@ -39,22 +39,22 @@ fun HomeAtmosphereBackground(
 ) {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     if (dark && !subtle) {
-        Box(
-            modifier =
-                modifier
-                    .fillMaxSize()
-                    .background(Color.Black),
-        )
+        // Dark mode's home screen no longer paints a flat black slab over
+        // the root layer — the app-wide subtle dark gradient (drawn by
+        // MainActivity while blur effects are on) shows through instead.
         return
     }
     val base = MaterialTheme.colorScheme.surface
 
-    // The app-wide subtle variant (all pages, both light and dark modes) keeps
-    // the same three-color radial wash but at roughly a third of the light
-    // mode intensity — just enough gradient to give the surfaces depth.
-    val glow = if (subtle) 0.045f else 0.12f
+    // The app-wide subtle variant rides under every page in DARK mode (the
+    // light mode is untouched — its home screen wears the full-intensity
+    // wash and every other page stays flat). On a near-black surface the
+    // previous values (0.045 glow / 0.03 wash) were imperceptible, so the
+    // dark subtle band is pushed up until the three-colour radial wash
+    // actually reads as a gentle gradient.
+    val glow = if (subtle) 0.10f else 0.12f
     val topWashAlpha = when {
-        subtle && dark -> 0.03f
+        subtle && dark -> 0.05f
         subtle -> 0.16f
         else -> 0.5f
     }
@@ -103,7 +103,7 @@ fun HomeAtmosphereBackground(
                         )
                     val bottomShade =
                         Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = if (dark) (if (subtle) 0.12f else 0.30f) else 0.05f)),
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = if (dark) (if (subtle) 0.15f else 0.30f) else 0.05f)),
                             startY = h * 0.55f,
                             endY = h,
                         )

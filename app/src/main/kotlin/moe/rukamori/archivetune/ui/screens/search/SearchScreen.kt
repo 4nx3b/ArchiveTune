@@ -778,7 +778,11 @@ private fun SearchTabBottomChrome(
             )
             IconButton(
                 onClick = onVoiceSearch,
-                modifier = Modifier.padding(end = 10.dp),
+                // Start padding shifts the mic RIGHT, away from the text field
+                // and toward the source picker (increasing the end padding
+                // instead moved it left — the picker is pinned to the row's
+                // right edge, so end padding only widens the mic-picker gap).
+                modifier = Modifier.padding(start = 10.dp, end = 4.dp),
             ) {
                 Icon(
                     painter = painterResource(R.drawable.mic),

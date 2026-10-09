@@ -64,6 +64,7 @@ import kotlinx.coroutines.CoroutineScope
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.HomeCatalogueSwitchKey
 import moe.rukamori.archivetune.constants.QuickPicks
 import moe.rukamori.archivetune.home.HomeAction
@@ -177,6 +178,7 @@ fun HomeScreen(
     }
 
     val homeHazeState = LocalHomeHazeState.current
+    val (disableBlur) = rememberPreference(DisableBlurKey, false)
     Box(
         modifier =
             Modifier
@@ -190,8 +192,13 @@ fun HomeScreen(
                     },
                 ),
     ) {
-        // The app-wide subtle atmosphere gradient is drawn by MainActivity's
-        // root layer now — no per-screen background needed here.
+        // The home screen keeps its ORIGINAL full-intensity atmosphere wash
+        // (light mode) while blur effects are on — the light-mode look was
+        // never meant to change. In dark mode this draws nothing and the
+        // root layer's subtle gradient shows through instead.
+        if (!disableBlur) {
+            HomeAtmosphereBackground()
+        }
         when (val state = screenState) {
             HomeScreenState.Loading -> {
                 HomeSkeletonFeed()
