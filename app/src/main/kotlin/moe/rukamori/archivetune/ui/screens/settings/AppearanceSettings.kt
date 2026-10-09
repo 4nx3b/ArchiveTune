@@ -451,6 +451,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        containerColor = Color.Transparent,
         topBar = {
                 SettingsPageTopBar(
                     titleText = stringResource(R.string.appearance),

@@ -82,8 +82,6 @@ import moe.rukamori.archivetune.constants.LyricsScrollKey
 import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.LyricsTextSizeKey
-import moe.rukamori.archivetune.constants.LyricsFontWeightKey
-import moe.rukamori.archivetune.constants.LyricsFontWeightNames
 import moe.rukamori.archivetune.constants.PreferredLyricsProvider
 import moe.rukamori.archivetune.constants.QueueLyricsPreloadCountKey
 import moe.rukamori.archivetune.constants.deserializeLyricsProviderOrder
@@ -126,8 +124,6 @@ fun LyricsSettings(
         rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = true)
     val (lyricsTextSize, onLyricsTextSizeChange) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
     val (lyricsLineSpacing, onLyricsLineSpacingChange) = rememberPreference(LyricsLineSpacingKey, defaultValue = 1.3f)
-    val (lyricsFontWeight, onLyricsFontWeightChange) =
-        rememberPreference(LyricsFontWeightKey, defaultValue = "ExtraBold")
     val (enhancedLyricsStyle, onEnhancedLyricsStyleChange) =
         rememberEnumPreference(EnhancedLyricsStyleKey, defaultValue = EnhancedLyricsStyle.ACCOMPANIST)
 
@@ -208,7 +204,6 @@ fun LyricsSettings(
             .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
     ) {
         var showLyricsTextSizeDialog by rememberSaveable { mutableStateOf(false) }
-        var showLyricsFontWeightDialog by rememberSaveable { mutableStateOf(false) }
         var showLyricsAnimationStyleDialog by rememberSaveable { mutableStateOf(false) }
 
         if (showLyricsAnimationStyleDialog) {
@@ -260,8 +255,8 @@ fun LyricsSettings(
                                 Text(text = style.displayName)
                                 Text(
                                     text = stringResource(
-                                        if (style == EnhancedLyricsStyle.BLOSSOM) {
-                                            R.string.lyrics_animation_style_blossom_description
+                                        if (style == EnhancedLyricsStyle.SPICY_MOBILE) {
+                                            R.string.lyrics_animation_style_spicy_description
                                         } else {
                                             R.string.lyrics_animation_style_accompanist_description
                                         },
@@ -270,61 +265,6 @@ fun LyricsSettings(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (showLyricsFontWeightDialog) {
-            DefaultDialog(
-                onDismiss = { showLyricsFontWeightDialog = false },
-                buttons = {
-                    TextButton(
-                        onClick = {
-                            onLyricsFontWeightChange("ExtraBold")
-                            showLyricsFontWeightDialog = false
-                        },
-                        shapes = ButtonDefaults.shapes(),
-                    ) {
-                        Text(stringResource(R.string.reset))
-                    }
-
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    TextButton(
-                        onClick = { showLyricsFontWeightDialog = false },
-                        shapes = ButtonDefaults.shapes(),
-                    ) {
-                        Text(stringResource(android.R.string.cancel))
-                    }
-                },
-            ) {
-                Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                    Text(
-                        text = stringResource(R.string.lyrics_font_weight),
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                    LyricsFontWeightNames.forEach { weightName ->
-                        Row(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(
-                                selected = weightName == lyricsFontWeight,
-                                onClick = {
-                                    onLyricsFontWeightChange(weightName)
-                                    showLyricsFontWeightDialog = false
-                                },
-                            )
-                            Text(
-                                text = weightName,
-                                modifier = Modifier.padding(start = 8.dp),
-                            )
                         }
                     }
                 }
@@ -570,16 +510,6 @@ fun LyricsSettings(
                     description = "${lyricsTextSize.roundToInt()} sp",
                     icon = { Icon(painterResource(R.drawable.text_fields), null) },
                     onClick = { showLyricsTextSizeDialog = true },
-                )
-            }
-
-            item {
-                PreferenceEntry(
-                    modifier = positions.modifierFor("lyrics_font_weight"),
-                    title = { Text(stringResource(R.string.lyrics_font_weight)) },
-                    description = lyricsFontWeight,
-                    icon = { Icon(painterResource(R.drawable.text_fields), null) },
-                    onClick = { showLyricsFontWeightDialog = true },
                 )
             }
 

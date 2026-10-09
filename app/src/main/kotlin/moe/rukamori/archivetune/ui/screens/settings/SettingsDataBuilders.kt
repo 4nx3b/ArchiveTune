@@ -622,6 +622,9 @@ fun buildSettingsGroups(
                 SettingsChild("Show tags in library", "show_tags_in_library", listOf("tags", "library tags", "show tags")) { SearchResultSwitch(ShowTagsInLibraryKey, false) },
                 SettingsChild("Low data mode", "low_data_mode", listOf("low data", "data saver", "save data", "metered", "data mode")) { SearchResultSwitch(LowDataModeKey, true) },
                 SettingsChild("Force high refresh rate", "force_high_refresh_rate", listOf("refresh rate", "high refresh", "120hz", "90hz", "smooth")) { SearchResultSwitch(ForceHighRefreshRateKey, false) },
+                SettingsChild("Overscroll style", "overscroll_style", listOf("overscroll", "rubber band", "bounce", "stretch", "scroll physics")),
+                SettingsChild("Rubber band tension", "overscroll_rubber_band_tension", listOf("overscroll", "rubber band", "tension", "stretch distance")),
+                SettingsChild("Bounce-back speed", "overscroll_bounce_speed", listOf("overscroll", "bounce", "settle", "spring", "bounce back")),
                 SettingsChild("Open supported links by default", "open_supported_links", listOf("open links", "supported links", "default links", "deep link", "default browser app")),
             ),
         )

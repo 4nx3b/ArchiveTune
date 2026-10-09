@@ -217,6 +217,10 @@ import moe.rukamori.archivetune.aod.ACTION_AOD_MODE
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.PlayerHeaderGlassFadeRamp
 import moe.rukamori.archivetune.constants.SheetOverlayEpsilon
+import moe.rukamori.archivetune.constants.OverscrollStyle
+import moe.rukamori.archivetune.constants.OverscrollStyleKey
+import moe.rukamori.archivetune.constants.OverscrollRubberBandTensionKey
+import moe.rukamori.archivetune.constants.OverscrollBounceStiffnessKey
 import moe.rukamori.archivetune.constants.NavigationBarCompactBehavior
 import moe.rukamori.archivetune.constants.NavigationBarCompactBehaviorKey
 import moe.rukamori.archivetune.constants.AppFontPreference
@@ -310,6 +314,7 @@ import moe.rukamori.archivetune.ui.component.ThrottledLayerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberThrottledLayerBackdrop
 import moe.rukamori.archivetune.ui.component.throttledLayerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberIosOverscrollFactory
+import moe.rukamori.archivetune.ui.component.NoOverscrollFactory
 import moe.rukamori.archivetune.ui.component.GlassPipelinePrewarm
 import moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
@@ -1021,7 +1026,21 @@ class MainActivity : ComponentActivity() {
 
             val liquidGlassTuning = rememberLiquidGlassTuning()
 
-            val iosOverscrollFactory = rememberIosOverscrollFactory()
+            val overscrollStyle by rememberEnumPreference(OverscrollStyleKey, defaultValue = OverscrollStyle.IOS_RUBBER_BAND)
+            val overscrollTension by rememberPreference(OverscrollRubberBandTensionKey, defaultValue = 0.55f)
+            val overscrollStiffness by rememberPreference(OverscrollBounceStiffnessKey, defaultValue = 247f)
+            val noOverscrollFactory = remember { NoOverscrollFactory() }
+            val iosOverscrollFactory =
+                rememberIosOverscrollFactory(
+                    rubberBandTension = overscrollTension,
+                    bounceStiffness = overscrollStiffness,
+                )
+            val effectiveOverscrollFactory =
+                when (overscrollStyle) {
+                    OverscrollStyle.IOS_RUBBER_BAND -> iosOverscrollFactory
+                    OverscrollStyle.ANDROID_STRETCH -> null
+                    OverscrollStyle.OFF -> noOverscrollFactory
+                }
 
             val customThemeSeedPalette =
                 remember(customThemeColorValue) {
@@ -2270,7 +2289,7 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
                         moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive provides isPlayerSheetOverlayActive,
                         moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction provides playerSheetOverlayFractionState,
-                        LocalOverscrollFactory provides iosOverscrollFactory,
+                        LocalOverscrollFactory provides effectiveOverscrollFactory,
                     ) {
                         Row(
                             modifier =

@@ -13,7 +13,6 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
-import androidx.compose.ui.text.font.FontWeight
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.util.Locale
@@ -1069,69 +1068,27 @@ val PlayerCustomBlurKey = floatPreferencesKey("playerCustomBlur")
 val PlayerCustomContrastKey = floatPreferencesKey("playerCustomContrast")
 val PlayerCustomBrightnessKey = floatPreferencesKey("playerCustomBrightness")
 
-val LyricsAnimationStyleKey = stringPreferencesKey("lyricsAnimationStyle")
-
-enum class LyricsAnimationStyle {
-    NONE,
-    FADE,
-    GLOW,
-    SLIDE,
-    KARAOKE,
-    APPLE,
-}
-
 val LyricsTextSizeKey = floatPreferencesKey("lyricsTextSize")
 val LyricsLineSpacingKey = floatPreferencesKey("lyricsLineSpacing")
 val LyricsLineBlurKey = booleanPreferencesKey("lyricsLineBlur")
 
-/**
- * Font weight for the enhanced (karaoke) lyrics lines — the setting ported
- * from the Flamingo player. Reads the original Flamingo storage key so a
- * choice made before the setting was generalised survives; applies to every
- * player style that renders enhanced lyrics (all of them).
- */
-val LyricsFontWeightKey = stringPreferencesKey("flamingoLyricFontWeight")
-
-val LyricsFontWeightNames =
-    listOf(
-        "Thin",
-        "ExtraLight",
-        "Light",
-        "Regular",
-        "Medium",
-        "SemiBold",
-        "Bold",
-        "ExtraBold",
-        "Black",
-    )
-
-fun lyricsFontWeightFor(name: String): FontWeight =
-    when (name) {
-        "Thin" -> FontWeight.Thin
-        "ExtraLight" -> FontWeight.ExtraLight
-        "Light" -> FontWeight.Light
-        "Regular" -> FontWeight.Normal
-        "Medium" -> FontWeight.Medium
-        "SemiBold" -> FontWeight.SemiBold
-        "Bold" -> FontWeight.Bold
-        "Black" -> FontWeight.Black
-        else -> FontWeight.ExtraBold
-    }
-
-/**
- * Animation library used by the enhanced (karaoke) lyrics renderer — selected
- * under "Lyrics animation style" in the lyrics settings' Display group.
- * ACCOMPANIST renders through the mocharealm accompanist lyrics-ui library
- * (v2); BLOSSOM is the in-house Apple-Music-style renderer after
- * LyricsBlossom 8.x (word-by-word emphasis, dimmed blur falloff and spring
- * following). Both honour the lyrics font weight / size settings.
- */
 val EnhancedLyricsStyleKey = stringPreferencesKey("enhancedLyricsStyle")
 
 enum class EnhancedLyricsStyle(val displayName: String) {
     ACCOMPANIST("Accompanist"),
-    BLOSSOM("Blossom"),
+    SPICY_MOBILE("Spicy Mobile"),
 }
+
+val OverscrollStyleKey = stringPreferencesKey("overscrollStyle")
+
+enum class OverscrollStyle {
+    IOS_RUBBER_BAND,
+    ANDROID_STRETCH,
+    OFF,
+}
+
+val OverscrollRubberBandTensionKey = floatPreferencesKey("overscrollRubberBandTension")
+val OverscrollBounceStiffnessKey = floatPreferencesKey("overscrollBounceStiffness")
 
 
 val ShowLyricsPlayerControlsKey = booleanPreferencesKey("showLyricsPlayerControls")
