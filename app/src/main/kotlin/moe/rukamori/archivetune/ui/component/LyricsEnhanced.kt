@@ -184,8 +184,6 @@ private const val MIN_KARAOKE_SYLLABLE_DURATION_MS = 1
 
 private const val LINE_SYNCED_TRAILING_LINE_DURATION_MS = 4_000L
 
-private const val POSITION_RESET_BACKWARD_THRESHOLD_MS = 1000L
-
 private const val ROMANIZATION_FIRST_BUILD_GRACE_MS = 700L
 
 private data class KaraokeBuild(
