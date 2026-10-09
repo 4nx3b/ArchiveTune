@@ -193,7 +193,7 @@ private fun spicyDotScale(t: Float, durationMs: Float): Float {
     val dipStart = stillStart - SpicyDotDipMs * factor
     val breathing = (dipStart - enterEnd).coerceAtLeast(0f)
     val halfCycles =
-        kotlin.math.round(breathing / 1500f).coerceAtLeast(1).let { if (it % 2 == 0) it + 1 else it }
+        kotlin.math.round(breathing / 1500f).toInt().coerceAtLeast(1).let { if (it % 2 == 0) it + 1 else it }
     val period = 2f * breathing / halfCycles
     return when {
         t < 0f -> 0f
@@ -220,8 +220,8 @@ private fun spicyDotAlpha(t: Float, durationMs: Float): Float = when {
     durationMs <= 0f -> 0f
     t < 0f -> 0f
     t < spicyDotEnterEnd(durationMs) -> spicySmoothStep(t / spicyDotEnterEnd(durationMs).coerceAtLeast(1e-6f))
-    t < durationMs - spicyDotExitMs * spicyDotFactor(durationMs) -> 1f
-    else -> spicySmoothStep((durationMs - t) / (spicyDotExitMs * spicyDotFactor(durationMs)).coerceAtLeast(1e-6f))
+    t < durationMs - SpicyDotExitMs * spicyDotFactor(durationMs) -> 1f
+    else -> spicySmoothStep((durationMs - t) / (SpicyDotExitMs * spicyDotFactor(durationMs)).coerceAtLeast(1e-6f))
 }
 
 private fun spicyDotFactor(durationMs: Float): Float =

@@ -131,6 +131,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -138,6 +139,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -249,7 +251,7 @@ private const val FlamingoCanvasBackdropMaxVideoEdgePx = 480
 
 private const val FlamingoCanvasPageFadeMs = 650
 private const val FlamingoCanvasFlightMs = 600
-private const val FlamingoCanvasFlightCornerDp = 5.dp
+private val FlamingoCanvasFlightCornerDp = 5.dp
 private const val FlamingoCanvasFlightAlphaInMs = 300
 
 private val FlamingoCanvasScrimBrush =
@@ -874,7 +876,7 @@ fun FlamingoPlayerContent(
                                                     }
                                                 IntOffset(x.roundToInt(), y.roundToInt())
                                             }
-                                            .size { _ ->
+                                            .layout { measurable, _ ->
                                                 val slot = canvasFlightSlotRect
                                                 val eased = canvasFlightAnim.value
                                                 val w =
@@ -897,7 +899,16 @@ fun FlamingoPlayerContent(
                                                     } else {
                                                         backgroundSizePx.height.toFloat()
                                                     }
-                                                IntSize(w.roundToInt().coerceAtLeast(1), h.roundToInt().coerceAtLeast(1))
+                                                val placeable =
+                                                    measurable.measure(
+                                                        Constraints.fixed(
+                                                            w.roundToInt().coerceAtLeast(1),
+                                                            h.roundToInt().coerceAtLeast(1),
+                                                        ),
+                                                    )
+                                                layout(placeable.width, placeable.height) {
+                                                    placeable.place(0, 0)
+                                                }
                                             }
                                             .graphicsLayer {
                                                 alpha = canvasFlightOverlayAlpha
