@@ -127,6 +127,7 @@ enum class StorageCacheClearUiKind {
     DOWNLOADS,
     IMAGES,
     CANVAS,
+    VIDEO,
 }
 
 @Immutable
@@ -241,6 +242,10 @@ class StorageSettingsViewModel
 
         fun clearCanvasCache(showFeedback: Boolean = true) {
             clearCache(StorageCacheKind.CANVAS, showFeedback)
+        }
+
+        fun clearVideoCache(showFeedback: Boolean = true) {
+            clearCache(StorageCacheKind.VIDEO, showFeedback)
         }
 
         fun clearLyricsCache() {
@@ -373,6 +378,7 @@ class StorageSettingsViewModel
                 StorageCacheKind.DOWNLOADS -> StorageCacheClearUiKind.DOWNLOADS
                 StorageCacheKind.IMAGES -> StorageCacheClearUiKind.IMAGES
                 StorageCacheKind.CANVAS -> StorageCacheClearUiKind.CANVAS
+                StorageCacheKind.VIDEO -> StorageCacheClearUiKind.VIDEO
             }
     }
 

@@ -25,6 +25,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -181,9 +182,9 @@ internal const val QUEUE_CARRY_FRACTION = 0.3f
 
 internal const val QUEUE_FLICK_VELOCITY = 450f
 
-internal val DISMISS_STRIP_HEIGHT = 44.dp
+internal val DISMISS_STRIP_HEIGHT = 32.dp
 
-internal val ART_BOX_TOP_PAD = 14.dp
+internal val ART_BOX_TOP_PAD = 8.dp
 
 internal const val HERO_FADE_FRACTION = 0.42f
 
@@ -191,7 +192,7 @@ internal val PLAYER_GUTTER = 30.dp
 
 internal val PLAYER_MAX_WIDTH = 560.dp
 
-internal val CONTROL_GAP_SPREAD_MAX = 48.dp
+internal val CONTROL_GAP_SPREAD_MAX = 24.dp
 
 private var lastControlSpread: Dp = 0.dp
 
@@ -611,6 +612,8 @@ fun BitChordPlayerContent(
     val dismissBandSpace = remember { mutableStateOf<LayoutCoordinates?>(null) }
 
     val meshColors = rememberArtworkColors(artUrl)
+    val artMesh = rememberArtworkMesh(artUrl)
+    var meshSeamPx by remember { mutableFloatStateOf(0f) }
 
     val lyricsBackgroundStylePref by rememberEnumPreference(LyricsBackgroundStyleKey, LyricsBackgroundStyle.DEFAULT)
     val playerBackgroundStylePref by rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.DEFAULT)
@@ -637,9 +640,10 @@ fun BitChordPlayerContent(
                 gradientColors = meshColors.colors,
             )
         } else {
-            MeshGradientBackground(
-                palette = meshColors,
-                trackKey = mediaMetadata.id,
+            val meshSeam = with(density) { meshSeamPx.toDp() }
+            ArtworkMeshBackdrop(
+                mesh = artMesh,
+                seam = meshSeam,
                 reduceAnimation = reduceAnimations,
             )
         }
@@ -679,12 +683,15 @@ fun BitChordPlayerContent(
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
+                    val heroArtRequest = remember(artUrl) {
+                        ImageRequest.Builder(context)
+                            .data(artUrl)
+                            .size(ART_PX)
+                            .build()
+                    }
                     if (!heroCanvasShowing) {
                         AsyncImage(
-                            model = ImageRequest.Builder(context)
-                                .data(artUrl)
-                                .size(ART_PX)
-                                .build(),
+                            model = heroArtRequest,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
@@ -882,12 +889,9 @@ fun BitChordPlayerContent(
                         .offset { IntOffset(artStart.roundToPx(), artTop.roundToPx()) }
                         .size(artSize)
 
-                        .onGloballyPositioned { dismissBandTop = it.boundsInRoot().top }
-                        .graphicsLayer {
-                            val idle = artScale + (1f - artScale) * p
-                            scaleX = idle
-                            scaleY = idle
-                            translationX = swipeSettle * (1f - p)
+                        .onGloballyPositioned {
+                            dismissBandTop = it.boundsInRoot().top
+                            meshSeamPx = it.boundsInRoot().bottom
                         }
 
                         .then(
@@ -908,10 +912,10 @@ fun BitChordPlayerContent(
                             .graphicsLayer { alpha = if (artLoaded) 1f - heroVisible else 1f }
 
                             .shadow(
-                                if (artLoaded) lerp(14.dp, 6.dp, p) else 0.dp,
-                                RoundedCornerShape(lerp(10.dp, 7.dp, p)),
+                                if (artLoaded) lerp(10.dp, 6.dp, p) else 0.dp,
+                                RoundedCornerShape(lerp(8.dp, 7.dp, p)),
                             )
-                            .clip(RoundedCornerShape(lerp(10.dp, 7.dp, p)))
+                            .clip(RoundedCornerShape(lerp(8.dp, 7.dp, p)))
                             .background(Color.Black.copy(alpha = 0.18f)),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -934,20 +938,31 @@ fun BitChordPlayerContent(
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
-                        if (!cardCanvasShowing) {
-                            AsyncImage(
-
-                                model = ImageRequest.Builder(context)
-                                    .data(artUrl)
-                                    .size(ART_PX)
-                                    .build(),
-                                contentDescription = null,
-
-                                contentScale = ContentScale.Crop,
-                                onState = { artLoaded = it is AsyncImagePainter.State.Success },
-                                modifier = Modifier.fillMaxSize(),
-                            )
+                        val cardArtRequest = remember(artUrl) {
+                            ImageRequest.Builder(context)
+                                .data(artUrl)
+                                .size(ART_PX)
+                                .build()
                         }
+                        AsyncImage(
+
+                            model = cardArtRequest,
+                            contentDescription = null,
+
+                            contentScale = ContentScale.Crop,
+                            onState = { artLoaded = it is AsyncImagePainter.State.Success },
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    alpha = if (cardCanvasShowing) 1f / 255f else 1f
+                                }
+                                .graphicsLayer {
+                                    val idle = artScale + (1f - artScale) * p
+                                    scaleX = idle
+                                    scaleY = idle
+                                    translationX = swipeSettle * (1f - p)
+                                },
+                        )
                     }
 
                     if (automixOn && p < 0.5f) {
@@ -1007,11 +1022,12 @@ fun BitChordPlayerContent(
                             ),
                             color = Color.White,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.opensPage(
-                                mediaMetadata.album?.id,
-                                onOpen = { navController.navigate("album/${it}") },
-                            ),
+                            modifier = Modifier
+                                .basicMarquee(iterations = Int.MAX_VALUE)
+                                .opensPage(
+                                    mediaMetadata.album?.id,
+                                    onOpen = { navController.navigate("album/${it}") },
+                                ),
                         )
                         Text(
                             text = mediaMetadata.artists.joinToString(", ") { it.name },
@@ -1219,11 +1235,11 @@ fun BitChordPlayerContent(
             }
 
             if (!lyricsOpen) {
-            Spacer(Modifier.height(10.dp + controlSpread / 3))
+            Spacer(Modifier.height(8.dp + controlSpread / 2))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                horizontalArrangement = Arrangement.SpaceAround,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 BitChordPreviousGlyph(
@@ -1233,7 +1249,7 @@ fun BitChordPlayerContent(
                 )
 
                 if (isLoading) {
-                    Box(Modifier.size(74.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(92.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(
                             color = Color.White,
                             strokeWidth = 3.dp,
@@ -1244,7 +1260,8 @@ fun BitChordPlayerContent(
                     TransportGlyph(
                         icon = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                         contentDescription = if (isPlaying) "Pause" else "Play",
-                        size = 72.dp,
+                        size = 74.dp,
+                        touchSize = 92.dp,
                         onClick = onPlayPause,
                         haptic = if (isPlaying) Haptic.Pause else Haptic.Resume,
                     )
@@ -1252,14 +1269,16 @@ fun BitChordPlayerContent(
                 TransportGlyph(
                     icon = Icons.Rounded.FastForward,
                     contentDescription = "Next",
-                    size = 48.dp,
+                    size = 53.dp,
+                    touchSize = 53.dp,
+                    heightScale = 0.85f,
                     onClick = { playerConnection.seekToNext() },
                     enabled = canSkipNext,
                     haptic = Haptic.SkipNext,
                 )
             }
 
-            Spacer(Modifier.height(12.dp + controlSpread / 3))
+            Spacer(Modifier.height(12.dp + controlSpread / 2))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1463,6 +1482,8 @@ private fun TransportGlyph(
     onClick: () -> Unit,
     enabled: Boolean = true,
     haptic: Haptic = Haptic.Tap,
+    touchSize: Dp = size + 12.dp,
+    heightScale: Float = 1f,
 ) {
     val haptics = rememberHaptics()
 
@@ -1472,7 +1493,7 @@ private fun TransportGlyph(
     )
     Box(
         modifier = Modifier
-            .size(size + 12.dp)
+            .size(touchSize)
             .clip(CircleShape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -1488,7 +1509,9 @@ private fun TransportGlyph(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = Color.White.copy(alpha = alpha),
-            modifier = Modifier.size(size),
+            modifier = Modifier
+                .size(size)
+                .graphicsLayer { scaleY = heightScale },
         )
     }
 }
@@ -1548,7 +1571,7 @@ private fun Modifier.opensPage(browseId: String?, onOpen: (String) -> Unit): Mod
 
 private val BOTTOM_ACTION_SIZE = 44.dp
 
-private val PILL_SEGMENT_WIDTH = 54.dp
+private val PILL_SEGMENT_WIDTH = 64.dp
 
 private val PILL_ICON_SIZE = 24.dp
 
@@ -1690,7 +1713,9 @@ private fun BitChordPreviousGlyph(
     TransportGlyph(
         icon = Icons.Rounded.FastRewind,
         contentDescription = "Previous",
-        size = 48.dp,
+        size = 53.dp,
+        touchSize = 53.dp,
+        heightScale = 0.85f,
         onClick = onClick,
 
         enabled = canSkipPrevious || positionProvider() > BACK_RESTARTS_AFTER_MS,

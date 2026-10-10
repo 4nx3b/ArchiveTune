@@ -19,7 +19,6 @@ hilt = "2.60.1"
 ktor = "3.5.1"
 ksp = "2.3.10"
 jsoup = "1.22.2"
-re2j = "1.8"
 coil = "3.5.0"
 guava = "33.6.0-jre"
 coroutinesGuava = "1.11.0"
@@ -37,7 +36,6 @@ lottie = "6.6.6"
 profileinstaller = "1.4.1"
 palette = "1.0.0"
 apacheLang3 = "3.20.0"
-brotli = "0.1.2"
 junit = "4.13.2"
 turbine = "1.2.1"
 timber = "5.0.1"
@@ -74,8 +72,13 @@ rhino = "1.9.1"
 quickjsKt = "1.0.14"
 markwon = "4.6.2"
 okhttp = "5.4.0"
-accompanist = "1.0.19"
-accompanist-core = "0.4.6"
+# Accompanist lyrics on the 2.0.0-rc line: the enhanced lyrics renderer is
+# copied from main and updated to the v2.0.0-rc.2 API (LyricsLazyListState +
+# LyricsAnchor), paired with lyrics-core 0.5.0 — the exact combination this
+# branch ran before the v1.0.15 experiment. The RC artifacts are served
+# through the dedicated repo1.maven.org route in settings.gradle.kts.
+accompanist = "2.0.0-rc.2"
+accompanist-core = "0.5.0"
 androidsvg = "1.4"
 aboutLibraries = "15.0.3"
 liquid-glass = "2.0.0"
@@ -168,13 +171,11 @@ ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.re
 ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation", version.ref = "ktor" }
 
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
-re2j = { module = "com.google.re2j:re2j", version.ref = "re2j" }
 
 json = { module = "org.json:json", version.ref = "json" }
 okhttp_dnsoverhttps = { module = "com.squareup.okhttp3:okhttp-dnsoverhttps", version.ref = "okhttp" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 
-brotli = { module = "org.brotli:dec", version.ref = "brotli" }
 rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
 
 androidx-graphics-shapes = { group = "androidx.graphics", name = "graphics-shapes", version.ref = "graphicsShapes" }

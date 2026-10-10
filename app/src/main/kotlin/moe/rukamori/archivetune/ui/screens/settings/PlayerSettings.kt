@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
@@ -93,6 +94,8 @@ import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
 import moe.rukamori.archivetune.constants.SwipeToSongKey
 import moe.rukamori.archivetune.constants.SwipeSensitivityKey
 import moe.rukamori.archivetune.constants.SwipeThumbnailKey
+import moe.rukamori.archivetune.constants.PlayerDesignStyle
+import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.deserializeArtworkProviderOrder
 import moe.rukamori.archivetune.constants.TidalArtworkFallbackEnabledKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
@@ -112,9 +115,9 @@ import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.TagsManagementDialog
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.CanvasResolverEndpoints
 import moe.rukamori.archivetune.utils.rememberPreference
-import moe.rukamori.archivetune.utils.rememberEnumPreference
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.roundToInt
@@ -134,6 +137,11 @@ import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
+    val playerDesignStyle by rememberEnumPreference(
+        key = PlayerDesignStyleKey,
+        defaultValue = PlayerDesignStyle.V4,
+    )
+
     val (persistentQueue, onPersistentQueueChange) =
         rememberPreference(
             PersistentQueueKey,

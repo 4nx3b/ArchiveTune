@@ -129,6 +129,11 @@ fun ArtistAlbumsScreen(
     Box(
         modifier = Modifier.fillMaxSize(),
     ) {
+        ArtistAmbientBackdrop(
+            artistId = viewModel.artistId,
+            artworkUrl = artist?.artist?.thumbnailUrl,
+        )
+
         LazyVerticalGrid(
             state = lazyGridState,
             columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),

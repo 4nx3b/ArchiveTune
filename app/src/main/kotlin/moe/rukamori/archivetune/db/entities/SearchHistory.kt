@@ -23,4 +23,8 @@ import androidx.room.PrimaryKey
 data class SearchHistory(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val query: String,
+    val displayTitle: String? = null,
+    val subtitle: String? = null,
+    val artworkUrl: String? = null,
+    val entityType: String? = null,
 )

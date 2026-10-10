@@ -4268,3 +4268,874 @@ Work Log:
 Stage Summary:
 - dev @ e880b40e0 (+ this docs commit): 4-task batch + comment strip + release notes ready; PR #227 (dev -> main) auto-carries everything.
 - Release sequence pending: merge PR #227 -> dispatch release.yml on main -> "ArchiveTune 17.0" (tag v17.0) with changelogs.md attached.
+
+---
+Task ID: 63 (completion addendum)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: ArchiveTune 17.0 release — outcome record
+
+Work Log:
+- CI green chain on dev: 8b07ec284 (4-task batch), e880b40e0 (comment strip + release notes), 99d19dfa5 (changelog/worklog docs) — Build Pull Request + Nightly canary all success.
+- PR #227 (dev -> main, 26 commits) merged with merge commit aa825502d.
+- release.yml dispatched on main (run 37152261677): check-version -> v17.0 (baseVersionName 17.0), all 7 release APK variants + reproducibility built and signed, create-release published.
+- Release LIVE: "ArchiveTune 17.0" (exact name), tag v17.0, stable (not draft/prerelease), https://github.com/4nx3b/ArchiveTune/releases/tag/v17.0
+  - Notes: 17.0 audiophile summary + Full changelog link (blob/v17.0/changelogs.md) + v16.0...v17.0 compare link
+  - Assets: foss+gms mobile (arm64/armeabi/universal/x86/x86_64), gms tv universal, and changelogs.md itself (verified via asset download: carries the dynamic automix trigger, artist dropdown, settings compact search and comment-strip entries)
+- README credits on the release tree: Tryptify whole-engine credit present (line 284, since 93e448f45), SimpMusic link corrected, LastWave-native/BitChord/vivi/etc. all intact.
+
+Stage Summary:
+- All 5 user tasks complete: artist overflow opens (anchored morph dropdown), header/compact search dedup, settings compact search, dynamic automix fade trigger, comment strip, and the stable "ArchiveTune 17.0" release shipped with updated changelogs.md attached.
+
+---
+Task ID: 65
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 3-item user feedback batch — per-song bit-perfect distortion, artist overflow menu glass/dividers, audiophile haze
+
+Work Log:
+- Bit-perfect distortion (specific song distorted, next song clean, toggling
+  bit-perfect off/on fixes it): root-caused to two gaps. (a) BitPerfectRuntime
+  .evaluateTrack() one-shot-seeded status.sourceSampleRate — on a track
+  transition the gate's configure-time route evaluation (onRouteEvaluated ->
+  refreshMixerBitPerfectRoute) re-pinned the BIT_PERFECT mixer at the PREVIOUS
+  song's rate while the new track's output opened (the "mis-routed PCM
+  (buzzing)" class UsbBitPerfectOutput warns about). sourceSampleRate now
+  re-latches from every incoming input rate at configure time. (b) A 1s wire
+  watchdog in the existing USB wire poll: under strict bit-perfect, if the
+  engaged wire rate (USB exclusive latched rate, else mixer configured rate —
+  exposed via new BitPerfectRuntime.wireSampleRateHz) differs from the decoded
+  source rate for 2 consecutive polls, maybeReprepareForBitPerfectWireMismatch()
+  runs the toggle-equivalent repreparePlayerForAudioRouteChange()
+  (stop/seek/prepare/play) on Dispatchers.Main — deduped per
+  mediaId|source|wire key, reset on onMediaItemTransition, gated by
+  bitPerfectNeedsRouteReprepare(). This automates the user's manual workaround
+  for any remaining stale latch (engine transports, frozen OutputConfigs).
+- Artist page overflow menu ("no liquid glass blur, opaque background,
+  unevenly aligned dividers attached to the left"): the M3 DropdownMenu hosts
+  content in a separate popup window the kyant backdrop cannot sample, so glass
+  is structurally impossible there; converted ArtistOverflowDropdown into an
+  in-screen anchored overlay modeled on the proven AnchoredLyricsOverflowMenu /
+  BottomSheetMenu recipes: single overlay composed as the last child of the
+  screen root Box (same layout tree as the artworkBackdrop glassSource),
+  drawBackdrop blur+lens via the shared tuning (LocalLiquidGlassTuning),
+  theme-aware tint (dark Color(0x8C1C1C1E)@0.55*tintFactor, light
+  surfaceContainerHigh@0.42*tintFactor), content ink override via a wrapped
+  MaterialTheme colorScheme, hairline border, 0.38 scrim with click-dismiss,
+  BackHandler dismiss, bouncy spring morphe with icon-tracking transformOrigin,
+  opaque surfaceContainerHigh fallback when glass is off (API<S or toggle).
+  Anchor bounds captured via onGloballyPositioned/boundsInRoot on BOTH header
+  variants (glass LiquidGlassIconButton and plain TopAppBar IconButton).
+  Dividers switched to the app-wide recipe: HorizontalDivider 0.5dp,
+  outlineVariant, symmetric 16dp inset (was padding-then-fillMaxWidth(0.72f)
+  which pinned the hairline 20dp from the left edge). Also fixed the dead
+  ArtistOverflowMenuItem onClick (never wired in the dropdown conversion —
+  ListItem had no clickable modifier; now Modifier.clickable(enabled)).
+- Audiophile settings haze ("add haze effect like home screen"): the page
+  already had rememberScreenHeaderHaze() + .hazeSource(headerHaze) but never
+  rendered the consumer — added ScreenHeaderHaze(hazeState, systemBarsTopPadding,
+  scrolled = scrollState.value > 0) inside the content Box after the Column,
+  mirroring the LiquidGlassSettings precedent exactly (LocalStableSystemBarsTopPadding
+  + ScreenHeaderHaze imports added).
+- Verified brace/paren balance on all 4 touched files; no test references to
+  the changed APIs. Committed 95a7c55b4 on dev, pushed, monitoring CI.
+
+Stage Summary:
+- dev @ 95a7c55b4: bit-perfect stale-rate race closed at configure time + an
+  automated toggle-equivalent re-prepare watchdog; artist overflow is a real
+  liquid-glass anchored overlay with symmetric dividers and clickable items
+  (light+dark tints from the BottomSheetMenu recipe); audiophile page gets the
+  home-screen header haze with scroll gating.
+
+---
+Task ID: 65 (CI addendum)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: CI monitoring for 95a7c55b4
+
+Work Log:
+- Nightly (canary) run 37160913225 on 95a7c55b4: all 7 jobs GREEN — check,
+  mobile armeabi/x86_64/arm64/universal, tv universal, create-nightly.
+- Build Pull Request did not trigger (PR #227 was merged for the 17.0 release;
+  no open dev->main PR for this batch — batch rides the dev/nightly channel).
+
+Stage Summary:
+- CI fully green on 95a7c55b4; the 3-item feedback batch is delivered on dev.
+
+---
+Task ID: 66
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 2-item feedback batch — some OPUS songs start pitched-up/distorted
+(skip + replay fixed them); artist overflow popup too large.
+
+Work Log:
+- Root-caused the OPUS distortion: the live container-truth reporting
+  (46a4912f9) let the extractor-declared rate overwrite
+  BitPerfectRuntime.sourceSampleRate and re-pin the bit-perfect mixer wire
+  (refreshMixerBitPerfectRoute). Opus is the one common codec where the
+  declared rate diverges from the decode rate (MediaCodec always decodes
+  opus at 48kHz; OpusHead declares the original input rate — 44.1/96k/etc.),
+  so only "some" OPUS files were affected. On codec-reuse transitions that
+  don't reconfigure the sink, the container report was the ONLY rate writer:
+  the no-conversion mixer wire got pinned at the declared rate while the
+  AudioTrack kept pumping 48kHz PCM — pitched/distorted playback for the
+  whole song, invisible to the wire watchdog (source==wire==poisoned). Skip +
+  replay forced a full configure; the 95a7c55b4 gate re-latch then restored
+  48kHz — hence "plays fine" after replay.
+- Fix (f04422b84): decodedRateLatched flag in BitPerfectRuntime — evaluateTrack
+  marks the decoded rate authoritative for the active stream;
+  reportContainerFormat may seed the rate only while nothing decoded is
+  latched (container encoding/bit-depth/lossy truth still flows unconditionally
+  for the honest pill); clearTrack drops the latch. MusicService logs the
+  declared-vs-decoded divergence at the onAudioInputFormatChanged call site
+  for future log-reading.
+- Artist overflow popup compacted: width 232dp -> 200dp, corner radius
+  18 -> 16dp, shadow 16 -> 12dp, M3 ListItem rows (~64dp, 24dp icons) replaced
+  with 44dp compact rows (18dp icons, bodyMedium single-line labels, 14dp side
+  padding), menu column padding 6 -> 4dp, divider inset 16 -> 12dp (symmetric).
+  Liquid-glass blur, morphe animation, anchored placement, scrim, BackHandler
+  and the theme-aware tint/ink recipe are untouched — light + dark parity kept.
+- Removed the now-unused material3 ListItem/ListItemDefaults imports; avoided
+  a material3.IconButton import conflict with the custom component IconButton.
+- Pushed f04422b84 to dev; monitored CI: check + all 5 Nightly APK matrix jobs
+  + create-nightly GREEN (7/7 check-runs). Build PR workflow not triggered
+  (no open dev->main PR; batch rides the dev/nightly channel, as with task 65).
+
+Stage Summary:
+- OPUS per-song pitch/distortion class closed at the root: the decoded rate
+  is now authoritative for the bit-perfect wire; container reports can seed
+  but never displace it. Artist overflow popup is compact (~200dp wide,
+  ~140dp tall for 3 items) with the liquid-glass look intact in both themes.
+- dev green at f04422b84.
+
+---
+Task ID: 67
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 8-item feedback batch — automix too-early/too-fast, nav-bar compact
+behavior setting, AM controls blur (BitChord-style) + blend removal, export
+lyrics popup, play-from search upgrades, lyrics share translation/romanisation,
+AM queue controls/haze, comment sweep + dead code.
+
+Work Log:
+- Automix: AutoMixPlanner gains MAX_TRANSITION_LEAD_MS=14s clamped onto every
+  anchor path (the fallback path previously had no clamp, so a quiet outro
+  could trigger minutes early); detectFinalFadeOnset window 45s -> 15s so a
+  quiet bridge 40s out no longer reads as the fade onset; contentEnd scan
+  floor raised to 15% of the IQ mean; autoMixFallbackFadeMs() no longer reads
+  the plain crossfade slider (fixed DEFAULT_AUTO_MIX_FALLBACK_MS=6s); automix
+  minFade raised to MIN_AUTO_MIX_FADE_MS=2.5s.
+- Navigation bar settings: new enum NavigationBarCompactBehavior
+  (ADAPTIVE/ALWAYS_EXPANDED/ALWAYS_COMPACT, no default option) + key +
+  strings; new 'Mini player and bar behavior' PreferenceGroup with an
+  interactive CompactBehaviorPreview (tap-to-try morphing mini player +
+  pill bar + compact circles, mode-aware) above an EnumListPreference.
+  MainActivity consumes it: scroll connection only mutates compact state in
+  ADAPTIVE, per-tab reset seeds ALWAYS_COMPACT, nav-bar height + mini player
+  compact fraction follow as before.
+- Apple Music player: the 0.62->1 DstIn artwork blend (fadeBottom machinery)
+  removed entirely; the backdrop stack (black base + blurred artwork/canvas
+  + scrims) is wrapped in a hazeSource Box and a 320dp BitChord-style
+  progressive haze strip (HomeTopFadeBlur recipe, peak 0.9, EaseOutCubic,
+  noise 0) sits behind the controls for canvas and non-canvas songs alike.
+- Queue behavior: the root tap poke no longer fires while queueOpen (lyrics
+  keeps it), so touches inside the open queue can't re-reveal the controls
+  after the 5s auto-hide; AppleMusicQueueSheet's list is now a haze source
+  with top/bottom progressive haze strips that fade in when the list is
+  scrolled or the first item is clipped (canScrollForward for the bottom).
+- Export lyrics: menu item opens ExportLyricsDialog — source row (provider
+  name + search button feeding the existing lyrics search flow and returning
+  to the export dialog via searchOriginatedFromExport), pretty print toggle
+  (synced-only, strips timestamps/metadata via LyricsUtils.parseLyrics,
+  keeps singer agents, generic v1/v2 voice ids filtered), expandable
+  preview, format+file-name row; the old direct-to-picker export block and
+  its dead vals removed.
+- Play-from search (SongSourceDialog): prefill = artists + title; provider
+  limits grow 8 -> 48 via loadMore (auto near list end + manual Load more
+  row) with a query-scoped token so YouTube continuation pages append
+  beyond the first page; per-source quality detail line (16-bit/44.1kHz,
+  up to 24-bit/192kHz, estimated MB from duration x nominal bitrate);
+  title/artist/quality lines autoscroll with basicMarquee.
+- Lyrics share: LyricsSharePayload carries structured LyricsShareLine
+  (text/translation/romanisation) from all three renderers (Enhanced splits
+  its combined ISyncedLine.translation); the studio gains Translation +
+  Romanisation switches (independent, both can be on); romanisation lines
+  render italic — synthetic italic typeface per line in the glass renderer,
+  StyleSpan(ITALIC) in the classic renderer, italic toggle label.
+- Cleanup: cleanup_pass.py gained CLEANUP_BASE env override; strip re-run
+  over the whole kotlin tree (63 files — com/lastwave + tf/monochrome kept
+  their comments after the moe.rukamori-only first pass); dead members
+  removed (rememberPreferenceIconShape + MaterialShapes/toShape imports,
+  AiLyricsRomanization.Result.nonce + counter/nextNonce). TidalAudioProvider
+  trips the balance checker's raw-string lexer limitation identically before
+  and after (pre-existing, compiles green in CI).
+- Committed 0d38cd153 (79 files, +1174/-334) and pushed to dev; the check
+  job (compile+lint+tests) passed on the first poll.
+
+Stage Summary:
+- dev @ 0d38cd153 with all 8 items; 'check' green; Nightly APK matrix in
+  flight at write time.
+
+---
+Task ID: 68
+Agent: Super Z (main agent)
+Task: Fix the compilation failure in Nightly run 37376220799 (07654212b) — the
+task-67 batch's second build round.
+
+Work Log:
+- Pulled the failed job logs (all 5 APK matrix jobs died at Build Release APK,
+  identical error set in the main source set; 'check' had passed, nightly-only
+  exposure).
+- AppleMusicPlayer.kt: the task-67 hazeSource Box wrapper pushed the content
+  one lambda-scope deeper, so (a) maxWidth/maxHeight stopped resolving from
+  inside the Box lambda (implicit-receiver restriction, 6 sites) — hoisted
+  playerMaxWidth/playerMaxHeight locals at the inner BoxWithConstraints scope,
+  right beside the already-working fullPlayerHeightForArtwork line; (b)
+  landscapeSwipeModifier/videoShowing/canvasActive were declared inside the Box
+  lambda but referenced by the landscape branch that sits after the Box closes
+  (1039/1046/1105) — moved the six vals (swipe modifier, videoShowing, isPreS,
+  canvasActive, canvasVisualActive, useCanvasBackdrop) above the Box opening;
+  the Box still wraps the same backdrop content, semantics unchanged.
+- LyricsEnhanced.kt:1263: ISyncedLine (interface) has no translation property
+  (the concrete SyncedLine does — the 1928 site proves it) — safe cast
+  (this as? SyncedLine)?.translation inside shareTranslationParts.
+- Preference.kt:148: segmentedPreferenceItemShape was @Composable but only
+  reads static dp constants; its caller preferenceItemShapeForPosition is
+  non-composable — dropped the annotation (RoundedCornerShape is a plain
+  constructor, no composable calls inside).
+- PlayerMenu.kt:1870: YouTube.searchContinuation already returns Result, the
+  runCatching wrapper double-wrapped it so more.continuation/items resolved
+  against Result — added .getOrNull() inside the block (same pattern as
+  searchOneSource's YouTube path).
+- Balance-checked all four files, committed d18b5b35c, pushed to dev; the
+  Nightly workflow fired automatically on the push.
+
+Stage Summary:
+- dev @ d18b5b35c; CI 7/7 green (check + 5x Nightly APK matrix +
+  create-nightly published the canary). The 8-item task-67 batch now compiles
+  and ships.
+
+---
+
+Task ID: 70
+Agent: Super Z (main agent, session web-e130fa90)
+Task: User feedback round on the task-69 AM blur port — "no blending of canvas
+and bottom controls", remove the haze effect from the queue, and fix pretty
+print export for word-synced / BetterLyrics songs.
+
+Work Log:
+- Screenshot forensics (Screenshot_20261006-063424): canvas video ends at a
+  hard horizontal edge right above the title row; the controls area measured
+  mean 13-40 brightness vs the video's 73 with zero canvas texture visible —
+  the task-69 frost rendered but the 0.65-alpha bottom scrim crushed it into a
+  flat dark surface. Compared against the user's SpatialFlow reference shot
+  (backdrop stays clearly visible behind controls).
+- AppleMusicPlayer.kt — canvas/controls blend, ported the missing half of the
+  SF architecture: (a) sharp-stage dissolve — the portrait cover canvas now
+  fades out via an offscreen DstIn vertical gradient starting at 62% of the
+  cover stage (AmSharpStageFadeStart, mirrors SF's SfSharpStageFadeBrush),
+  animated together with canvasBackdropReveal so the fade rides the same 650ms
+  reveal; steady-state brush is remembered, the animated path rebuilds the
+  gradient only while reveal < 0.999; (b) AmCanvasScrimBrush lightened
+  0.25/0.40/0.65 -> 0.20/0.34/0.52 so the frosted canvas reads clearly behind
+  the bottom controls (SF-reference visibility level).
+- AppleMusicQueueSheet.kt — removed the haze effect entirely: both scroll-edge
+  hazeEffect strips (top 56dp / bottom 48dp, HazeMaterials.ultraThin +
+  progressive gradients) deleted along with the queueHaze* visible/alpha
+  states, the backdropHaze parameter, and the HazeState/HazeProgressive/
+  hazeEffect/HazeMaterials imports + file OptIn. The transparent queue now
+  sits directly on the player backdrop (frosted canvas / blurred artwork);
+  TikTok call site needed no change (it never passed backdropHaze).
+- AppleMusicPlayer.kt — dropped the queueBackdropHaze HazeState, the
+  hazeSource modifier on the backdrop Box, and the two haze imports.
+- LyricsMenu.kt — prettyPrintLyricsForExport now routes TTML through
+  LyricsUtils.parseTtml (parseLyrics only understands QRC/LRC dialects, so
+  word-synced TTML from Apple Music / BetterLyrics / Portato fell through and
+  exported raw XML markup; same routing pattern as SpatialFlowPlayer's
+  syncedLyrics). Fallback path also strips TTML tags (TtmlTagRegex) so even a
+  parser failure yields clean text. QRC text was already clean (word texts are
+  joined into line.text by QRCParser).
+- Compile round 1 (94be53aff): 5/5 nightly matrix red — canvasBackdropReveal
+  was declared inside the backdrop Box lambda but the portrait cover stage is
+  a SIBLING of that Box, so the dissolve fade's drawWithContent couldn't
+  resolve it (Unresolved reference + cascading `to` inference errors at
+  1037/1050). Learned: the Nightly "check" job is only a version/tag gate —
+  compile signal comes exclusively from the 5 APK matrix jobs.
+- Compile round 2 (61dd225f8): hoisted canvasBackdropReveal + its
+  LaunchedEffect above the backdrop Box into the shared scope (verified with a
+  brace-depth scope analysis: decl at depth 3, all usages nested at 5-11).
+- Monitored CI: 7/7 green on 61dd225f8 (check + 5x Nightly APK matrix +
+  create-nightly); canary N202610060140 (17.0.6643-61dd225f8) published with
+  5 assets.
+
+Stage Summary:
+- dev @ 61dd225f8, CI 7/7 green, canary published.
+- AM portrait canvas now cross-dissolves into the frosted backdrop behind the
+  controls (SF-style), the queue haze is gone, and pretty print exports clean
+  text for TTML/word-synced and BetterLyrics songs.
+
+---
+Task ID: 71
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Replace the Apple Music player style with a complete port of Flamingo's player design (https://github.com/shouryadixitisverycool/Flamingo, GPLv3)
+
+Work Log:
+- Ported Flamingo's entire NowPlaying UI into ui/player/flamingo/ (4,899 lines): FlamingoPlayer.kt (album/lyrics/queue in-page state machine, shared-element artwork morph into PlayingBar, crossfade page transitions 300ms, queue overlay at 114dp, PlayerControl with custom canvas Track sliders, VolumeSlider, AirPlay with bluetooth device name, quality badge, 2500ms controls auto-hide), FlamingoLyricView.kt (per-character karaoke gradient wipe via TextMeasurer, distance-based line blur up to 8dp, countdown dots, golden-ratio scroll anchor, 550ms yosEasing spacing), FlamingoBackground.kt (artwork -> center-crop, downscale, saturation x3, darkening overlays, stack blur 25 -> background with optional Ken Burns + 0.618 dim layer off-lyrics), FlamingoSupport.kt (squircle shape, dropShadow, overlayEffect BlendMode.Plus, ShadowImageWithCache, stack-blur bitmap resolver, haptics), FlamingoLyricsData.kt (LyricsEntry -> Flamingo lyric entries adapter: word timings, translations, romanization, duet agents, instrumental countdowns).
+- Copied 26 Flamingo vector icons (flamingo_np_*, swipe, queue, earphone, quality) into res/drawable.
+- Deleted AppleMusicPlayer.kt + AppleMusicSlider.kt (2,144 lines) — AppleMusicQueueSheet.kt kept (TikTok style uses it); Player.kt APPLE_MUSIC branches now render FlamingoPlayerContent with the same integration signature.
+- Added 6 Flamingo preference keys (translation, volume bar, background effect, lyric blur, font weight, line balance — Flamingo defaults) + settings section in PlayerSettings gated on APPLE_MUSIC style with font-weight picker dialog.
+- Lyrics pipeline: currentLyrics -> isTtml/isLineSyncedLrc -> parseTtml/parseLyrics -> FlamingoLyricAdapter (non-TTML current-line advancement ported from Flamingo's MediaController runnable; TTML 10ms live-time poll preserved).
+- Queue behavior: reorder via fork's uid-anchor bookkeeping (shuffle-aware setShuffleOrder), swipe-right = play next (primary reveal + toast), swipe-left = remove (red reveal + height collapse, 110/170ms EaseOutQuart), 64dp rows, 48dp LOW-quality artwork, reorder grip.
+- Review agent pass fixed 3 compile blockers (conflicting Paint imports, missing animateFloat/ColumnScope/RowScope imports); brace-balance verified on all touched files.
+
+Stage Summary:
+- APPLE_MUSIC player style is now the Flamingo design end-to-end: icons, typography (19.5/18.5/16.5/30.5sp), dimensions (0.595/0.437 height fractions, 61/58.5dp transport, 43dp spacing), colors (floating-light blurred-saturated artwork background + Plus/Overlay/DstIn blend modes), and lyrics/queue page behavior with their original transition animations.
+---
+Task ID: 71 (CI addendum)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Flamingo player port — CI repair rounds
+
+Work Log:
+- Rebased the port onto origin/dev (task 63-70 had evolved AppleMusicPlayer.kt + Player.kt); kept deletion of AppleMusicPlayer.kt/AppleMusicSlider.kt (modify/delete conflicts), re-applied call-site swaps onto the new integration signature (orientationRefreshEpoch added; onQueueClick/onLyricsClick now optional), merged strings/keys/settings, deduped a double rememberEnumPreference import.
+- Round 1 (97e4ca604): 14 errors — androidx.compose.runtime.snapshots.Snapshot import path; geometry.Rect (not graphics.Rect) for the saveLayer bounds; liveTimeLambda rememberUpdatedState trailing-lambda created () -> () -> Int (rewritten as typed remember with a stable offset-state capture); this@Crossfade "Unresolved label" — Crossfade's content lambda has no usable label receiver in this Compose, so the page machine now uses AnimatedContent with the fork-proven this@AnimatedContent pattern (identical fade transition); coil3 ImageRequest.Builder has no error/placeholder/fallback(Int) overloads — moved those to AsyncImage painter params and null-url renders the placeholder Image directly.
+- Round 2 (368e74df5): 1 error — missing androidx.compose.runtime.remember import in FlamingoSupport.
+- Round 3 (c0e171e02): Nightly 7/7 GREEN — check + all 5 release/R8 matrix jobs (mobile arm64/x86_64/armeabi/universal + tv universal) + create-nightly.
+
+Stage Summary:
+- dev green at c0e171e02 with the Flamingo player port; canary published by create-nightly.
+
+---
+Task ID: 74 (session web-e130fa90)
+Task: 7-item Flamingo style fix batch — canvas blend restoration, lag, translation panel, overflow menu, landscape title, quality pill
+
+Work Log:
+- Screenshot forensics (3 uploads via VLM) + main-branch diffing isolated root causes for every reported symptom.
+- FlamingoPlayer.kt / FlamingoBackground.kt fixes (commit 69290b256, +315/-335):
+  1. Canvas stage: static artwork permanently under the video; canvasFrameReady/staticBaseAlpha crossfade removed (it emptied the stage during primary->fallback canvas transitions — the "completely blurred everywhere" bug); plain CanvasArtworkPlayer call; sharedBounds-outside-fade modifier order.
+  2. Backdrop: 72dp blur / 1.2 cover scale / 0.25-0.40-0.65 scrim (pre-redesign values).
+  3. CanvasLoopSync leader/follower removed (20Hz main-thread ExoPlayer polls + rate-lock churn).
+  4. Portrait lyrics layer mounts/unmounts via AnimatedVisibility (was always composed at alpha 0 — the main lag source).
+  5. Offscreen compositing dropped from 3 floating-light backdrop images.
+  6. Poke overlay gated to the lyrics page (was swallowing like/overflow taps on the album title row).
+  7. Translation panel: translucent container consuming taps + outside-tap dismiss scrim + reset on page/control change.
+  8. Landscape title block moved into the right pane above the controls (main-branch two-pane layout).
+  9. Quality pill shows for all formats (codecLabel + player_graphic_eq for non-lossless).
+- Static review agent pass: compile-safe, all signatures/resources verified.
+- CI monitored to green: Build Pull Request SUCCESS, Nightly canary SUCCESS.
+
+Stage Summary:
+- dev green at 69290b256; PR #216 includes the batch. Canary APK published for device testing.
+
+---
+Task ID: 75 (session web-e130fa90)
+Task: Follow-up to the 2026-10-07 Flamingo reports — the task-74 canvas blend
+restoration did not fix the underlying interop bug: canvas still renders in
+the background above the controls (fully blurred) instead of inside the
+artwork stage, the album-page overflow chip is still dead (queue page works),
+the artwork→lyrics morph is still janky with word-synced lyrics, the
+translation panel needs liquid glass + a single divider + pinned controls,
+landscape needs tap-anywhere reveal and loses the static thumbnail behind
+the canvas.
+
+Work Log:
+- Root cause (both symptom families): the task-74 code kept BOTH
+  CanvasArtworkPlayers inside Compose layers hostile to interop views — the
+  blurred backdrop inside Modifier.blur (RenderEffect) + a 7.2x
+  graphicsLayer scale, and the sharp stages inside
+  CompositingStrategy.Offscreen + DstIn fades. A TextureView (media3
+  ContentFrame) cannot composite into Compose offscreen/RenderEffect layers,
+  so the video escaped: the backdrop drew ABOVE the player controls (upscaled
+  480px decode = "completely blurred"), the sharp canvas never rendered
+  inside the artwork stage, a second full video decoder ran constantly (the
+  lag), and the backdrop's layout box swallowed taps in the title-row band —
+  exactly where the album page's like/overflow chips sit (the queue page's
+  chip, near the top, kept working).
+- FlamingoPlayer.kt, canvas: removed the full-height blurred canvas backdrop
+  (+ FlamingoCanvasBackdrop* constants, canvasBackdropReveal,
+  canvasVisibleForLyrics, lyricsBackdropProgress). The static floating-light
+  background + canvas scrim is the sole backdrop again; one video decoder.
+- FlamingoPlayer.kt, sharp stages: FlamingoAlbum no longer wraps the canvas
+  in Offscreen+DstIn — plain Box, static artwork base, ZOOM canvas, and the
+  bottom dissolve is a plain gradient scrim drawn ON TOP of the video.
+  FlamingoLandscapeStage: ZOOM fill (the whole canvas fits the pane — no
+  letterbox), Offscreen+DstIn right-edge fade replaced by an overlay
+  gradient, and the static artwork + dim crossfade out via
+  onPlaybackAvailabilityChange once the video renders (no static thumbnail
+  behind the landscape canvas; it returns as the buffering fallback).
+- FlamingoPlayer.kt, overflow chip: the tap-swallowing interop box is gone;
+  the album page's more chip calls the unchanged onMoreClick path.
+- FlamingoPlayer.kt, translation panel: liquid-glass background — samples the
+  player's popupBackdrop layer (layerBackdrop now attached while the panel
+  is open too) with vibrancy + 28dp blur, translucent charcoal fallback when
+  glass is off/pre-S; the spacer between the two rows is now a single 1dp
+  divider line; and the 2500ms controls auto-hide is suppressed (keyed +
+  early return) while the panel is open — the controls stay until it is
+  manually closed.
+- FlamingoPlayer.kt, lyrics morph: LyricsEnhanced composition deferred 600ms
+  after nowPage becomes Lyric (portrait AND landscape in-pane) — the
+  word-synced karaoke machinery no longer composes mid-crossfade/mid-morph.
+- FlamingoPlayer.kt, landscape: the artwork pane's swipe modifier now also
+  detects plain taps — touching anywhere (artwork or controls pane) pokes
+  the hidden bottom controls back into view and restarts the timer.
+
+Stage Summary:
+- One file changed (FlamingoPlayer.kt, +275/-213).
+- Canvas: sharp video confined to the artwork stage (the red-annotated
+  area) under the controls; no blurred full-screen video; single decoder.
+- Album-page overflow chip unblocked; lyrics morph smooth; panel per spec;
+  landscape tap-to-reveal + no static thumbnail behind the canvas.
+- Commit follows; CI monitored to green.
+---
+Task ID: 76 (session web-e130fa90)
+Task: "none of the tasks I asked you to complete work + the app crashes when
+I click on the translation button in lyrics page" — repair the task-75 batch
+against native crash report native_crash_1791340922.txt.
+
+Work Log:
+- Crash forensics: SIGSEGV on RenderThread in libhwui with fault_addr = sp -
+  0x30 (stack exhaustion). Traced to a mutual GraphicsLayer reference cycle:
+  the task-75 translation panel sampled popupBackdrop while sitting INSIDE
+  the Box that layerBackdrop(popupBackdrop) records. Frame N records the
+  panel's sampling layer into the backdrop layer; frame N+1 (inside the 100ms
+  throttle) records the backdrop layer into the panel's layer; HWUI replays
+  the cycle recursively until the RenderThread stack overflows. The
+  recordingInProgress guard cannot catch the cross-frame form — only
+  structural separation can.
+- FlamingoPlayer.kt: dedicated panelBackdrop records ONLY background + the
+  portrait lyrics (a first-child source Box); the panel (in the controls
+  stack, a later sibling) samples it — no consumer inside its own source, no
+  cycle possible. popupBackdrop now records only while the anchored lyrics
+  menu (rendered outside the Box) is open. Portrait lyrics block moved into
+  the source Box verbatim (gated !landscape). Panel keeps liquid glass
+  (vibrancy + 28dp blur), 1dp divider, pinned controls; lyrics taps now
+  manually close the open panel.
+- Overflow chip root cause (album page dead, queue page worked — both call
+  the same onMoreClick closure): CanvasArtworkPlayer's ZOOM path measured the
+  TextureView interop node at cover-crop size (720x1280 video in a ~411x386dp
+  stage -> ~411x730dp node at negative offsets) — the interop layout node
+  extended ~170dp past the artwork stage into the title-row band where the
+  like/overflow chips sit, and interop nodes hit-test wherever they are
+  placed. The queue page has no canvas — hence it worked. CanvasArtworkPlayer
+  ZOOM now keeps the surface at FIT size (always inside the container) and
+  applies cover-crop as a graphicsLayer scale (s = max(a/c, c/a)) under
+  clipToBounds; canvasCoverLayout deleted. Visuals identical for all ZOOM
+  call sites (Flamingo portrait/landscape, TikTok, V7, hero pages); the
+  interop hit region now never leaves the artwork stage.
+- Recomposition storm fixed (the style's lag, artwork-morph jank, landscape
+  static thumbnail returning): FlamingoWrapper keyed its subtree by
+  content.hashCode() — the identity hash of a capturing lambda capturing
+  unstable values, so >= 1/s position ticks minted new lambdas -> new keys ->
+  Compose disposed and rebuilt the entire wrapped subtree each tick,
+  including a fresh CanvasArtworkPlayer + ExoPlayer + decoder every second.
+  FlamingoWrapper is now a plain invocation.
+- Landscape: 2500ms auto-hide disabled in landscape (poked controls stay),
+  and showControl resets only on orientation change (song changes no longer
+  re-hide revealed controls).
+- Static review agent pass over the diff: all checks PASS, verdict
+  safe-to-push (imports, scopes, brace balance, byte-equivalent lyrics move,
+  all 45 FlamingoWrapper call sites compatible).
+- Commit 3044f8f93 pushed to dev; Build PR + Nightly canary monitored.
+
+Stage Summary:
+- Translation button no longer crashes: glass cycle eliminated structurally.
+- Album-page overflow chip unblocked with a mechanism that also explains the
+  queue-page asymmetry in the user's report.
+- Single video decoder, stable subtree (no per-second rebuilds), bounded
+  canvas interop node, landscape controls persistent after tap.
+- CI final: Build Pull Request SUCCESS + Nightly (canary) SUCCESS on
+  3044f8f93; canary release N202610070338 (17.0.6654-3044f8f93) published
+  with APK assets for device testing.
+
+---
+Task ID: 78
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 2026-10-07 evening reports — canvas+static artwork both gone from the
+Flamingo album stage, overflow menu still dead (user's own zIndex attempt
+c9ff5eda4 didn't help), landscape controls appear on lyrics swipe/tap, lyrics
+page thumbnail misaligned with the lyric lines, and the translation icon needs
+the compact anchored popup treatment (behavior-only spec supplied by the user).
+
+Work Log:
+- Forensics: pulled origin/dev (three new commits since task 76: 28d8f9431,
+  3044f8f93, c9ff5eda4-by-yuki). Pixel-level screenshot analysis (stage region
+  = pure background gradient, roughness 0.15-0.37) proved the album stage
+  renders NOTHING — neither canvas nor static artwork. Pulled media3 1.10.1
+  ui-compose sources (ContentFrame/resizeWithContentScale) and the MochaRealm
+  lyrics-ui sources jar (KaraokeLineText horizontal padding = 16dp) from Maven
+  to ground the canvas and alignment analyses. Cloned upstream Flamingo to
+  compare the original NowPlaying structure.
+- Canvas (CanvasArtworkPlayer.kt): reverted the ZOOM path to the pre-2026-09-21
+  main-branch form — plain ContentFrame(contentScale = Crop-derived, modifier
+  .alpha). The canvasCoverLayout and FIT+graphicsLayer-scale rewrites are gone;
+  this is the configuration that rendered correctly positioned canvas on the
+  user's device for weeks in the pre-port AM player.
+- Album stage (FlamingoPlayer.kt): the shared-element morph switched from the
+  port's sharedBounds(animatedVisibilityScope) to upstream Flamingo's exact
+  sharedElementWithCallerManagedVisibility(visible = nowPage == <branch>) at
+  all three page branches — no AnimatedContent-scope coupling, deterministic
+  in-place rendering. The morph now attaches to the static ARTWORK only: the
+  canvas TextureView carries no transform of any kind (no shared-element
+  layer, no offscreen compositing, no scale) — the mid-morph transform was
+  both the jank source and the interop-escape class. The static artwork gained
+  placeholder/error/fallback painters — the stage can never render fully
+  blank.
+- Overflow menu: removed Flamingo's route through the host BottomSheetMenu
+  (LocalMenuState.show — never appeared above the maximized player on the
+  device). New FlamingoAnchoredPlayerMenu renders INSIDE the player (outside
+  the recorded Box, above every player layer): full-screen dismiss scrim +
+  300dp glass panel (drawBackdrop + colorControls/blur, AnchoredLyricsOverflow-
+  Menu recipe) hosting the full PlayerMenu content, anchored to the more chip,
+  opens above/below by space. The more icon fill state follows the new popup
+  (playerMenuOpen threaded through FlamingoActionButtonsRow /
+  FlamingoPlayingBar / FlamingoLandscapeTitleBlock).
+- Translation icon: the expanding full-width panel + panelBackdrop + outside-
+  tap scrim + FlamingoTranslationOptionRow were deleted entirely. New compact
+  FlamingoTranslationPopup (200dp wide, two rows + single 1dp divider, glass
+  blur, opens attached ABOVE the icon, never overlapping it) rendered outside
+  the recorded Box — the glass-cycle crash class is structurally gone (single
+  popupBackdrop source, all consumers are later siblings). Rows flip
+  reactively between Show/Hide Translation and Show/Hide Romanization, calling
+  the existing setTranslationEnabled/setRomanizationEnabled state paths
+  (immediate enable + silent AI translation kick). Controls stay while the
+  popup is open (auto-hide suppressed); page switch closes it.
+- Landscape: the right pane's awaitEachGesture poke was REMOVED — swiping or
+  clicking the lyrics can no longer reveal the controls. The controls overlay
+  became a content-sized Column (title block + controls) with the poke
+  clickable on the controls strip itself, so the lyrics above stay fully
+  interactive even while controls are visible. Artwork-pane tap still pokes;
+  no auto-hide in landscape (unchanged).
+- Lyrics page thumbnail: FlamingoPlayingBar Row padding 28.5dp -> 16dp — the
+  thumbnail's left edge now aligns exactly with the karaoke lines' own 16dp
+  horizontal padding (KaraokeLineText in the accompanist lyrics-ui library).
+- Static review agent pass over the full diff: 1 compile blocker found and
+  fixed (const val with Dp initializer — illegal in Kotlin), plus the exit-
+  animation job joins restored (scaleJob/alphaJob joined before onDismiss so
+  the popup exit animation actually plays). All symbols/resources verified
+  (LocalLiquidGlassTuning, colorControls, PlatformBackdrop typealias,
+  solar_eye/language/ic_music_placeholder drawables, 4 new strings).
+- Kotlin balance checker OK on both files.
+
+Stage Summary:
+- Canvas + static artwork always render in the album stage (proven Crop
+  pipeline, placeholder fallbacks, no transforms around the TextureView).
+- Overflow menu opens as an in-player anchored glass popup on every page —
+  independent of the host BottomSheetMenu z-order entirely.
+- Translation icon opens the compact glass popup above the icon; no crash
+  class remains (single backdrop source, consumers outside the recorder).
+- Landscape lyrics interactions never summon the controls; controls-area
+  touch still keeps them alive.
+- Lyrics-page thumbnail aligned with the lyric lines.
+
+---
+Task ID: 79
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 2026-10-07 night reports — overflow popup should open like SpatialFlow
+(not anchored to the icon; chip only fired on its top edge), canvas wrong
+position/shifted-left/no-notch-collision/sharp-bottom-line, background dimming
+behind the translation popup, quality pill should open the song-details sheet,
+landscape artwork/canvas taps summoning the controls, and the static album
+cover flashing on song skips and page transitions.
+
+Work Log:
+- Forensics: pixel-level analysis of the two new screenshots (1080x2412)
+  proved the album-page canvas rendered as a ~675x1204px fit-sized,
+  top-start-anchored region on the left of the stage — i.e. media3 1.10.1's
+  ContentFrame/resizeWithContentScale layout (videoSizeDp = raw pixels
+  mislabelled as Dp; wrapContentSize alignment) behaved as Fit+TopStart on
+  the device instead of Crop. Pulled the media3 ui-compose 1.10.1 sources
+  from Google Maven (ContentFrame/PlayerSurface/PresentationState/extensions)
+  to ground the analysis; cross-checked the pre-port AppleMusicPlayer and the
+  SpatialFlowPlayer reference implementations.
+- CanvasArtworkPlayer.kt: restored the long-proven cover path (the form that
+  rendered correctly for weeks on this device, removed only in task 76):
+  RESIZE_MODE_ZOOM + known aspect -> Box(modifier.clipToBounds()) wrapping a
+  ContentFrame measured at the EXACT cover size for the real video aspect
+  (canvasCoverLayout, fixed Constraints + centered negative placement). The
+  plain-ContentFrame fallback stays for FIT/unknown-aspect. This is
+  deterministic — no dependence on media3's dp-confused sizing.
+- FlamingoPlayer.kt canvas: rebuilt the portrait canvas as full-bleed
+  BACKGROUND layers, an exact clone of the SpatialFlow recipe (which the user
+  cites as the reference): (1) blurred frost twin behind the bottom controls
+  (1/6 footprint, maxVideoEdgePx 480, 12dp blur, 6.6x upscale, loop-sync
+  follower), (2) full-screen scrim gradient, (3) sharp stage running from the
+  player root's VERY TOP (behind the notch) down to the title row (height
+  MEASURED via onGloballyPositioned, exactly like SpatialFlow's
+  sharpStageHeight; no magic fractions), dissolving into the frost via an
+  Offscreen+DstIn bottom fade instead of a sharp line. Players stay composed
+  while a canvas exists; leaving the album page flips `visible` (surface
+  detached, decode paused, 650ms fade) — SpatialFlow's exact lifecycle.
+- FlamingoAlbum: when a canvas is active the album stage now renders NOTHING
+  — no static artwork under the video, so nothing flashes on song skips and
+  no artwork morphs during main-player->queue/lyrics transitions (the user's
+  "remove that album cover" report). Non-canvas songs keep the static
+  artwork + shared-element morph exactly as before.
+- Overflow menu: the in-player anchored panel (FlamingoAnchoredPlayerMenu)
+  was deleted entirely; the album/queue/landscape more-chip now routes
+  through the host BottomSheetMenu via menuState.show { PlayerMenu(...) } —
+  SpatialFlow's exact route (the earlier "sheet never appeared" diagnosis was
+  a misread of the dead-touch symptom; the sheet itself was never broken).
+  The lyrics page keeps AnchoredLyricsOverflowMenu for its lyrics-sync
+  actions. Like/more chips now reserve a 48dp minimum touch target (28dp
+  icon centered, no visual change), and the translation-icon Row composes
+  only on the lyrics page — the previously always-composed, alpha-0
+  translation box sat in the title-row band and is the prime suspect for the
+  "only opens when I click almost on the upper edge" dead zone.
+- Translation popup: the dismiss layer no longer dims the background
+  (transparent tap-catcher only) per "the background shouldn't get dim when
+  I expand the translation icon box".
+- Quality pill: tapping it now opens the song-details bottom sheet
+  (bottomSheetPageState.show { ShowMediaInfo(id) }) — the same sheet the
+  other styles open; threaded onQualityClick through both
+  FlamingoPlayerControl call sites.
+- Landscape: the artwork-pane tap poke was removed (thumbnail/canvas taps no
+  longer summon the controls; the horizontal skip swipe stays). With every
+  poke path gone, landscape controls are now ALWAYS visible (showControl
+  initial true + orientation reset to true; portrait keeps the 2500ms lyrics
+  auto-hide) — otherwise a hidden state would only be recoverable through
+  the back gesture.
+- Static review agent pass over the full diff: no compile blockers; the
+  flagged logic gap (landscape controls reveal path) was fixed by the
+  always-visible change; interop-layer risks (frost blur + offscreen fade)
+  are the SpatialFlow-exact patterns, deliberately restored now that the
+  task-76 rebuild storm is fixed. Kotlin structure checker OK on both files.
+
+Stage Summary:
+- Canvas: full-bleed sharp stage colliding with the notch, full width,
+  deterministic cover rendering, blending into the controls via the blurred
+  frost — no sharp bottom line.
+- Overflow: standard player menu sheet like SpatialFlow; reliable 48dp chip
+  targets.
+- No background dim behind the translation popup; quality pill opens the
+  song-details sheet; landscape artwork/lyrics taps never summon controls
+  and the controls are always reachable; no album-cover flash on skips or
+  page transitions.
+- CI final: 8/8 check-runs SUCCESS on 506d6b6bb (build, check, all 5 Nightly
+  APK matrix jobs, create-nightly release published with APK assets).
+
+---
+Task ID: 82
+Task: Compile-error repair + BitChord player update + Apple Music video/marquee + dead-code/comment sweep + full codebase audit round
+
+- e4ba9a1bb: repaired the 30+ Kotlin errors from the 2026-10-08 batch (imports, BASE_URL, Dp-vs-Float Rect, composable-context violations, togglePlayPause extension).
+- 6a1666ccb: BitChord player restyled to the repo's current design — new artwork-mesh backdrop (6x6 means, seam-anchored, 32dp blur, #121212 floor, 0.06->0.30 bottom scrim = blurred blend-in of the bottom controls), updated transport/pill metrics, marquee title, dock anchor; legacy mesh gradient deleted. Apple Music style: inline music-video playback (portrait stage + landscape full-bleed) + marquee titles.
+- c2e615722: comment-block sweep, 42 files / 1019 lines, license headers preserved.
+- f2bcad24a: audit round — 6 perf fixes (position storm mitigations, blur-wander gating, remember fixes, draw-phase deferrals, inset quantization), DeepL implemented + OpenRouter/DeepL keys wired, 8 missing lyrics provider toggles, refresh-rate applied at activity level, dead toggles/keys/dialogs removed, dead clickables wired, SearchDiscovery cluster deleted (5 wasted cold-start requests), singleton imageLoader, 64px probes, LRU bounds, gated prewarm, 8 dead files + 53 unused drawables + re2j/brotli removed.
+- d20068194..390c36080: CI repair rounds (orphaned @Inject; core+lyrics submodule bumps; Float preferredRefreshRate; DataStore get import; YIM share-capture param; safe-call takeIf; context.imageLoader property; @Composable restoration; appContext scope in DownloadUtil).
+- CI on 390c36080: ALL 8 check-runs SUCCESS (build incl. tests+lint, check, 5x Nightly APK matrix, create-nightly release).
+
+---
+Task ID: 83
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 2026-10-08 four-item batch — AM landscape controls + edge-only overscroll + canvas morph + video shift + favourite spacing; BitChord search tab port; reference-exact mini/maxi artwork flight; BitChord nav blur
+
+Work Log:
+- 43f36ed74: PlayerDockingArtwork rewritten to BitChord's PlayerDock semantics — one continuous thumbnail re-measured at the lerped rect every frame (layout/draw phase only), corner+shadow lerped, artwork and mini cover stand aside via LocalPlayerDockFlight, pixel-exact handoffs at progress 0/1, rect lerp handles 16:9 stages. Per-style anchors now report corner radii (Thumbnail page, Flamingo album/canvas/video/playing-bar/landscape, BitChord card, SimpMusic sleeve); synthetic fallback dropped (TikTok keeps a plain fade — its feed has no single artwork); mini cover reports its visible 48dp rect and hides while the flight is airborne; sheet content fade now (p-0.15)/0.85 so the player gets out of the way ahead of the artwork like the reference.
+- IosOverscroll reimplemented as an OverscrollEffect + LocalOverscrollFactory (API stable in foundation 1.12.0-beta02): the rubber band only engages when a scroll container is at its edge with no content in that direction — non-scrollable screens, mid-content drags and horizontal scrollers never bounce.
+- Apple Music style: landscape controls start hidden and no touch path summons them (lyrics/queue scroll still pokes + 2500ms autohide); favourite icon End-aligned + overflow Start-aligned with 8dp gap (34dp visual gap -> 8dp); canvas and music-video songs morph the thumbnail into the lyrics/queue playing bar (shared-element origin rendered beneath the stage, revealed only while the page morph runs — no flash on skips); portrait video stage vertically centered (shifted up).
+- BitChordNavBar: real liquid-glass background (blurred+saturated content behind via drawBackdrop infra, baseColor surfaceContainerHigh) instead of the diluted 30%-alpha frosted layer; the glass backdrop is created whenever the BitChord bar is enabled; LocalLiquidGlassBackdrop still only provided when global glass is on (no chrome drift).
+- 682ee5461: the search tab ported to BitChord's SearchScreen — 46dp field (magnifier-submit, re-focusing clear), pill source row + filter tabs (12dp corners, inverted), 3 completions with NW fill arrows, typeahead media dropdown, recents as entity rows with per-row remove, Top result card (72dp art, Play + add-to-playlist), sectioned results with 0.5dp dividers inset 84dp, animated playing bars over the current artwork, 4-item lookahead pagination with skeletons; YouTube summary sections for All + filtered searches with continuation, Local DB songs in place, Spotify/Apple keep the results route. SearchHistory extended (displayTitle/subtitle/artworkUrl/entityType, DB v38 reconciled migration), recorded on submits + result taps, trimmed to newest 20, SearchProvider gains LOCAL. Review-agent pass fixed: SearchProvider.LOCAL missing, mediaMetadata type, composable stringResource in submit, CommittedSearch Serializable, pagination self-cancellation (snapshotFlow now observes the continuation, finally-reset loading), search job cancellation, local loading state, key dedup, locale-safe top-result detection.
+
+Stage Summary:
+- dev @ 682ee5461 (+glass-scope fix pending): all four tasks implemented; CI push + monitoring next.
+- 041d604be: compile fix round — SearchHistory.displayTitle is nullable (orEmpty at the record call site in BitChordYTItemRow) and the album branch of YTItem.subtitleText needed a null fallback. CI after the fix: ALL 8 check-runs SUCCESS on 041d604be (build incl. tests+lint, check, all 5 Nightly APK matrix jobs, create-nightly release).
+
+Stage Summary:
+- dev @ 041d604be: all four tasks of the 2026-10-08 night batch complete and CI-green — AM landscape controls/overscroll/canvas-morph/video-shift/favourite-spacing, BitChord search tab port, reference-exact artwork flight, BitChord nav glass.
+
+---
+Task ID: 84
+Agent: Super Z (main agent, session web-e130fa90)
+Task: BitChord PlayerDock artwork-docking port (GraphicsLayer record + portal), search-tab revert, AM canvas page-morph, landscape lyrics controls, favourite spacing, BitChord nav pill animation
+
+Work Log:
+- PlayerDockingArtwork.kt rewritten as the BitChord PlayerDock architecture: PlayerDock holds mini/sleeve LayoutCoordinates + corner radii + sheet progress + the shared GraphicsLayer; mini artwork reports continuously via Modifier.playerDockArt (onPlaced, released on dispose — stale coordinates can never be flown to); each style's real artwork records itself into the GraphicsLayer every flight frame via Modifier.dockSleeve (draw-phase only, record-redirect — never a second thumbnail, never a crossfade); PlayerDockFlightHost in the sheet's sharedLayer re-draws the recorded pixels at the lerped root-space rect with lerped corner radius and mid-flight shadow, above the fading player and above the mini bar; sheet content fade keeps BitChord's 1/255 alpha floor while a flight is airborne so the recorded subtree keeps drawing; dockFlightHidden now uses the same fade floor (alpha-0 layers are skipped outright and would starve the recording).
+- Per-style sleeves: Thumbnail (main AsyncImage of the current pager page; bg-blur/canvas/video stand aside), Flamingo (video underlay, plain album, playing bar, landscape stage, canvas stage — via ShadowImageWithCache's new sleeveModifier param applied inside the clip so the recording is unclipped), BitChord card (sleeve on the static art inside the shadow/clip/background, paused-shrink scale interpolated to 1 during the flight exactly like BitChord's sleeve, static art kept alive under the canvas at the fade floor), SimpMusic sleeve. TikTok/Looper/SpatialFlow keep their existing behavior; the mini cover only stands aside when a flight will actually occur.
+- Apple Music canvas page-morph: the sharp canvas stage moved from the background box into the Album page as the page-morph shared element (sharedBounds, same rect via measured sharpStageHeight + top offset), so the CANVAS itself travels with the morphing bounds; the outgoing canvas holds for 250ms then crossfades to the playing-bar's static cover over the last 150ms (canvas inside from start till almost the end, exactly as requested); the canvas keeps playing through the morph; the backdrop/scrim stay in the background box; the drag-handle pill now composes after the pages so it stays visible over the full-bleed canvas.
+- Landscape lyrics scroll no longer summons the controls (poke gated to portrait); favourite-overflow spacer 8dp -> 2dp (the 34dp->8dp fix from the last round had landed after the user's screenshots were taken).
+- BitChordNavBar pill animation repaired: selectedIndex was re-created by remember(selectedRoute) on every route change (animateFloatAsState snapped instead of animating) and the pill target used the 6dp tab spacing instead of the tab step — the pill sat near the first tab and never travelled; now the state persists across route changes (LaunchedEffect sync), the target is index*tabStep, the stretch/squash derives from the true target lag, and dragOffset resets on release.
+- Search tab port fully reverted (682ee5461 + 041d604be): SearchScreen, SearchHistoryViewModel, SearchProvider.LOCAL, PlaybackSourceSections, DatabaseDao.trimSearchHistory, 4 strings. MusicDatabase v38 + the SearchHistory nullable columns deliberately KEPT so nobody's database is destructively wiped or schema-mismatched; the dormant columns are unused by the restored screen.
+
+Stage Summary:
+- dev: docking flight is now pixel-continuous from the player's real artwork to the mini cover and back, driven by the sheet's own progress (drag-synced); canvas songs morph their canvas; nav pill animates; search tab restored to pre-port behavior.
+- CI push + monitoring next.
+
+---
+Task ID: 84 (outcome)
+Agent: Super Z (main agent, session web-e130fa90)
+
+Work Log:
+- ca211bf07: initial push — 5 Kotlin errors (Player.kt brace orphan from the removed provider, GraphicsLayer import package, record(size) signature, playerDockArt param name, sharedBounds animatedVisibilityScope).
+- eff944d51: Player.kt brace repair.
+- 79adfbe69: round-2 compile fixes; CI: x86_64 nightly failed once on a corrupted CMake 3.22.1 SDK zip download (infrastructure flake — the same commit built on arm64/armeabi/universal/tv and the PR build+check); re-ran the failed job.
+
+Stage Summary:
+- dev @ 79adfbe69: ALL 8 check-runs SUCCESS (build incl. tests+lint, check, all 5 Nightly APK matrix jobs, create-nightly release). BitChord PlayerDock docking flight, canvas page-morph, nav pill animation, landscape lyrics fix, favourite spacing, search-tab revert all landed and CI-green.
+
+---
+Task ID: 85
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 2026-10-08 night batch — Apple Music canvas page-transition fix (canary port), miniplayer dock flight revert + reference-exact one-shot flight, library large-title behaviour
+
+Work Log:
+- Canvas -> lyrics/queue transition (Apple Music style) ported to the canary branch's proven mechanics: the AnimatedContent page crossfade is now a symmetric 600ms FastOutSlowIn tween; the STATIC artwork square is always composed (alpha 1/255 at rest under the full-bleed canvas) and is the ONLY sharedBounds participant (key flamingoAlbum) with an AdaptiveCornerShape overlay clip (5dp@69dp <-> 8dp@400dp, canary's FlamingoAdaptiveCornerShape) and a NoBouncy/MediumLow spring boundsTransform; the canvas stage itself NEVER travels — it stays at its fixed full-bleed rect (top -> title row), keeps playing through the fade and is disposed only when the transition ends, so the video surface is never re-measured mid-morph (the glitch + black-bar source: the task-84 offset rider, the 250ms alpha hold, and the per-frame TextureView resize are all gone). The AnimatedContent top padding moved into each page (album column / lyric / playing-list) so both shared elements share one coordinate space — no 74dp vertical mismatch, no exposed notch band.
+- Frost/backdrop hand-off copied from canary's lyricsBackdropProgress: only the LYRICS page takes over the backdrop (650ms cross-dissolve, surface detach + pause deferred to after the fade, ExoPlayer retained so the return re-attaches instantly); the QUEUE page keeps the canvas frost playing behind it. FlamingoCanvasPageFadeMs 300 -> 650.
+- Miniplayer dock flight: the task-83/84 drag-synced GraphicsLayer-record PlayerDock (PlayerDockFlightHost, dockSleeve, playerDockArt, LocalPlayerDockFlight, BottomSheet alpha floor) fully removed; replaced with a one-shot MiniPlayerFlightController + MiniPlayerArtworkFlightHost after the reference recording — when the sheet's targetAnchor flips to COLLAPSED while progress > 0.3, a STATIC thumbnail (never a canvas/video surface) flies in pure screen space along a bezier that drops to the miniplayer band then sweeps right-to-left into the slot (560ms FastOutSlowIn, corner lerp, early size shedding), holds pinned until the sheet settles, and lands pixel-exact on the miniplayer's artwork; the player's real artwork hides via miniFlightHidden while airborne; canvases/videos keep rendering and fade with the sheet (static thumbnail flies out over them); aborts if the sheet re-expands or dismisses; maximize has NO artwork animation. Sleeve anchors: Thumbnail current pager page, Flamingo album square/video underlay/playing-bar thumb/landscape stages, BitChord card art, SimpMusic sleeve; the miniplayer's slot feeds the target through the existing onArtworkSlotPositioned reporter.
+- Library large title: now visible at the top whenever the library tab is entered (initial true + reset-on-entry), scrolls away when scrolling down and re-reveals when scrolling up (nested-scroll connection booleans flipped to the standard large-title behaviour).
+
+Stage Summary:
+- dev: canvas songs transition to lyrics/queue and back without video-surface resize glitches or black bars (canary-exact morph choreography); minimizing the player runs the reference one-shot thumbnail flight (down, then right-to-left into the miniplayer) for static, canvas and video songs alike; maximizing is animation-free; the Library title behaves like a standard collapsing large title. CI push + monitoring next.
+
+---
+Task ID: 86
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 2026-10-08 twelve-item batch — lyrics font-weight setting back, editorial-polish port, Discord/Providers fixes, logo flash removal, canary AM+Deezer port, YouTube search icon, placeholder removal + artwork prefetch, video cache, AM slider grow + rotation fullscreen, automix silence-anchored fades, miniplayer flight revert + pre-redesign canvas morph, library title slow-scroll fix
+
+Work Log:
+- T11 revert: PlayerDockingArtwork.kt deleted (MiniPlayerFlightController/MiniPlayerArtworkFlightHost/LocalMiniPlayerFlight/miniFlightSleeve/miniFlightHidden all removed); Player.kt trigger/provider/host/brace surgery; sleeve anchors stripped from FlamingoPlayer/FlamingoSupport (ShadowImageWithCache lost sleeveModifier)/BitChord/SimpMusic/Thumbnail. No flying-thumbnail animation remains between player and miniplayer.
+- T11 canvas morph (pre-redesign/canary mechanics): FlamingoCanvasStage IS the sharedBounds participant for canvas songs — full-width stage at the Album page top (whole-screen capture, effectively unrounded) morphing into the playing-bar thumbnail with the AdaptiveCornerShape overlay clip (5dp@69dp <-> 8dp@400dp) and NoBouncy/MediumLow spring; static under-layer at staticBaseAlpha (1 -> 0 on first frame, 450ms) inside the stage covers stream re-prepares; FlamingoAlbum renders nothing for canvas songs (empty weighted Box keeps the title row position/stage height stable); non-canvas songs keep the album-square shared element.
+- T12: LibraryScreen title-reveal nested-scroll connection now accumulates deltas (per-frame thresholds never tripped on slow upward scrolls); hide at -6px cumulative down, reveal at +24px cumulative up.
+- T1: LyricsFontWeightKey ("flamingoLyricFontWeight" storage key preserved from the original Flamingo port, default ExtraBold) + lyricsFontWeightFor + 9 weight names in PreferenceKeys; LyricsEnhanced karaoke normalTextStyle uses the pref (all enhanced-lyrics styles = all of them); LyricsSettings Display group gains the radio dialog row; lyrics_font_weight string.
+- T2 (agent 12-b): V10 Editorial polish from adam-adrian/feat/editorial-polish@4e9d7e2fc — QueueCollapsedContentV10 5-segment connected pill (Queue/Shuffle/Repeat/Like/Add-to-Playlist, 46dp segments, 18/6dp grouped shapes, two-tone accent/field), Queue.kt V10 branch + AddToPlaylistDialog playing-song fallback, Player.kt TextBackgroundColor/pair V10 arms + dynamic peek 82/100dp + call-site slimming, PlayerComponents V10PlayerContent/EditorialDieCutArt slimmed + V10ToggleButton/EditorialMetadataRow/EditorialCodecBadge deleted.
+- T3: DiscordSettings bottom padding = playerAware + 32dp (was fixed 32dp under the miniplayer); DiscordExperimental contentPadding player-aware; LyricsProvidersSettings gains hazeSource + ScreenHeaderHaze over the Box-wrapped body (DeezerSettings pattern).
+- T4: MainActivity top-bar title slot renders nothing on non-home/library/search routes — the ArchiveTune logo that flashed at the top-left when a library chip opened a playlist/Spotify page is gone.
+- T5 (agent 12-c): canary Apple Music + Deezer port — AppleMusicSettings/AppleMusicLoginScreen (MusicKit JS poll hook)/DeezerInstances/DeezerLyricsProvider new files; releaseAuthWebView; DeezerSettings ARL dialog + API-instances group; routes settings/applemusic(+login); IntegrationScreen Apple row + Deezer ungated; PlaybackSourceSections APPLE/DEEZER enabled (RETIRED_FROM_CHAIN removed, tests updated); MusicService guards + AppleMusicSourceEnabledKey default false; App.kt instances collector; DeezerAudioProvider hasBackends + resolveViaInstance tier (accounts first, then instances; review-agent caught the gated-but-unwired instance path and it is now wired); canvas ensureTokenFresh public.
+- T6: SearchSourcePicker YouTube shows the new youtube_icon drawable (rounded play-button glyph) instead of the globe, both in the current-source chip and the dropdown row.
+- T7: anime-girl placeholder removed from ShadowImageWithCache (AsyncImage has no placeholder/error/fallback; null-URL renders an empty Box); next-3-songs artwork prefetch (url + highRes variants, memory+disk cache) in Player.kt.
+- T8: video cache — MaxVideoCacheSizeKey (default 512MB, -1 unlimited, 0 off), StorageFolderKind.VIDEO_CACHE, @VideoCache SimpleCache + VideoCacheEntryPoint in AppModule, VideoArtworkPlayer streams through CacheDataSource (FLAG_IGNORE_CACHE_ON_ERROR), StorageCacheKind.VIDEO clear path, Storage settings video-cache group (size list, usage bar, clear dialog) + strings.
+- T9: Flamingo seekbar/volume rails grow on drag (7dp -> 11dp, alpha 0.45 -> 0.85, 180ms) and settle on release; physical rotation to landscape with a music video enters FullscreenVideoOverlay (followSensorOrientation = SENSOR instead of locked SENSOR_LANDSCAPE so rotating back to portrait dismisses; button-entered fullscreen keeps the locked behaviour; onDismiss clears the rotation flag).
+- T10: AutoMixPlanner fallbackAnchor now anchors at the decoded finalFadeOnset (outroStart and onset-minus-fade chains removed — they started blends minutes early); pickMixOutAnchor hard-ending lead 3.5s; beat-matched start never snaps before the anchor; CrossfadePolicy.gentleIncomingGain (sin^2) applied to automix incoming fades for the slow fade-in.
+- Independent static review agent over the full diff: no compile blockers; the one BUG (Deezer instance tier gated but unwired) fixed by porting canary's resolveViaInstance; 3 warnings acknowledged (video-cache evictor resize needs restart — same as song cache; DisposableEffect re-lock transient; unused-symbol warnings).
+
+Stage Summary:
+- dev working tree: all 12 tasks implemented; 43 files changed + 5 new. Compile/push + CI monitoring next.
+
+---
+Task ID: 86 (outcome)
+Agent: Super Z (main agent, session web-e130fa90)
+
+Work Log:
+- 938791fde: initial push — 1 Kotlin error (StorageSettings.kt:880 StorageCacheClearProgressDialog's when missing the new VIDEO branch); both workflows red on it.
+- 91bdd9c62: added the VIDEO branch + storage_clear_video_cache_progress string.
+
+Stage Summary:
+- dev @ 91bdd9c62: ALL workflows GREEN — Build Pull Request (build+tests+lint) SUCCESS and Nightly 8/8 (check, 5x APK matrix incl. R8 release builds, create-nightly) SUCCESS. All 12 tasks of the batch landed CI-clean.
+
+---
+Task ID: 87
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 7-item batch — accompanist lyrics v2.0.0-rc.2 + Blossom animation style, flamingo canvas positioning fix, search suggestions rework, listen-together typing indicator, subtle app-wide gradient, video background re-buffering, lyrics font-weight fix
+
+Work Log:
+- 4 parallel Explore agents + VLM screenshot forensics (two passes + pixel-band analysis) to diagnose the flamingo canvas misplacement; accompanist v2 sources pulled from repo1 and mapped API-by-API; LyricsBlossom confirmed closed-source (no library) → Blossom implemented natively.
+- 532fb09b0 (21 files, +1095/-315): lyrics-ui 1.0.19→2.0.0-rc.2 + lyrics-core 0.4.6→0.5.0 with LyricsLazyListState/LyricsAnchor/translationTextStyle migration and the app-level auto-scroll driver removed (v2 follows internally); LyricsFontFamily rebuilt as a 9-weight SF Pro family (the single static bold file had been swallowing every weight — the font-weight setting's real bug); new LyricsBlossom.kt renderer (word-by-word emphasis via graphicsLayer-only reads, blur falloff, spring following, interlude dots) + "Lyrics animation style" setting (Accompanist/Blossom); flamingo stage back to its fixed full-bleed rect with the album square carrying the shared bounds (also removes SharedTransitionLayout overlay work from sheet expand/collapse); engage-driven rounded halo on the expanded seek/volume rails; search recommendations above queries + progressive haze top-fade + bigger YouTube icon + mic shifted right; typing indicator above the composer; subtle gradient (light+dark, ~1/3 intensity) at the root under every page while disable-blur is off (Scaffold transparent, per-screen copies removed); video players pause (not stop) on ON_STOP and re-anchor silently on ON_START.
+- Static review pass fixed 2 blockers (ISyncedLine smart casts, HazeProgressive package) before push.
+- 532fb09b0 CI: nightly matrix red — releasesOnly() mavenCentral refuses -rc versions and the GCS mirror lagged the hours-old artifact. Verified every companion artifact exists on repo1 (lyrics-ui-android AAR, lyrics-core-jvm, capsule-android; JB material3 1.9.0 redirects to androidx 1.4.0 so the app's 1.5.0-alpha23 pin wins).
+- c3c1b7ae4: exclusiveContent routes com.mocharealm.accompanist + com.mocharealm.gaze straight to repo1.maven.org.
+
+Stage Summary:
+- dev @ c3c1b7ae4: ALL workflows GREEN — build (compile+tests+lint), check, 5x Nightly APK matrix (incl. R8 release) and create-nightly all SUCCESS.
+
+---
+Task ID: 88
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 5-item regression round — Apple Music canvas still misplaced (regression suspicion), use Eplorr/LyricsBlossom, accompanist autoscroll lag, search-bar mic still not right, dark-mode gradient invisible + light mode wrongly modified
+
+Work Log:
+- Forensics first: pulled the user's uploaded screenshots/video from the session upload dir and ran VLM passes (full-image, zoomed crops, row-band pixel analysis). The Oct-7 album-page shot shows the ÷ artwork square floating left-aligned with empty background; the Oct-8 shot shows the artwork crammed into the controls region with the top 55% flat; the SpatialFlow comparison shot renders the same canvas full-bleed correctly. Conclusion: every canvas complaint screenshot predates batch-13, and the shared architectural trait of every broken state since task 84 is the stage living INSIDE the page AnimatedContent (shared-bounds overlay mechanics + per-page disposal).
+- Canvas fix (FlamingoPlayer.kt): the sharp FlamingoCanvasStage moved back OUT of the AnimatedContent into the background layer (composed right after the frost+scrim, gated on the same !landscape && !videoShowing && canvasVisualActive) — its geometry [player top -> title row] can no longer be touched by page morphs, shared-element bounds or overlay rendering, and the ExoPlayer survives every page switch (no dispose/re-prepare cycle at all). FlamingoAlbum's canvas branch renders the pre-redesign EMPTY weighted slot (no static square, no shared modifier — nothing can mis-place artwork for canvas songs). Stage-specific alpha: crossfades away over 650ms when the album page is left (queue keeps only the frost, per the task-85 backdrop hand-off) and the surface detaches after the fade so no invisible video keeps decoding; re-attach on return is instant (player retained).
+- Accompanist v2 autoscroll (LyricsEnhanced.kt): keepAliveZone 8dp -> 100dp (the library default — 8dp re-composed every line crossing the viewport edge mid-follow, which read as jank) and scrollAnimationSpec set to tween(320ms, FastOutSlowIn) (the v2 default 650ms leading follow felt laggier than the old 280ms app-level driver; the chained springs behind the leader are untouched).
+- Blossom (LyricsBlossom.kt): Eplorr/LyricsBlossom verified closed-source (proprietary license, macOS/Windows Skia binary, no Android/embeddable code — screenshots only), so the in-house renderer is re-tuned to its 1:1 Apple Music look instead: soft glow (text shadow) on the active line, inactive lines visibly smaller (0.955 -> 0.90), stronger word lift (0.07 -> 0.09).
+- Mic (SearchScreen.kt): batch-13 had increased the mic's END padding, which actually moved the mic LEFT (the source picker is pinned to the row's right edge, so end padding only widens the mic-picker gap) — the "regression" the user felt. Fixed with start padding: padding(start = 10.dp, end = 4.dp) — the mic now sits clearly right of the text field, close to the picker.
+- Atmosphere (MainActivity.kt + HomeScreen.kt + MuzoHomeSections.kt): light mode FULLY reverted — the home screen draws its original full-intensity wash again when disable-blur is off, every other light page stays flat surface (root draws surface, not the subtle gradient). The subtle gradient now rides under every page in DARK mode only, with boosted visibility (glow 0.045 -> 0.10, top wash 0.03 -> 0.05, bottom shade 0.12 -> 0.15 — the old values were imperceptible on near-black). HomeAtmosphereBackground's dark non-subtle branch no longer paints a flat black slab over the root layer (returns transparent so the root gradient shows on home in dark mode).
+- Local compile loop rebuilt in the sandbox: SDK platform 37.0 + platform-tools installed, submodules re-initialised (core/lyrics/IconPack/morideobfuscator/moriextractor), gradle.properties heap capped to fit the 3.9GB sandbox (2.5G daemon / 1.5G kotlin daemon), :app:compileGmsMobileUniversalDebugKotlin BUILD SUCCESSFUL on the final tree (Room schema 38.json export committed per the e13d6281c convention).
+
+Stage Summary:
+- dev @ 5bdbdfcc9: canvas stage architecture restored to the pre-redesign background-layer arrangement (structural fix — the user's "regression that prevents changes" theory is answered by removing the page-lifecycle coupling entirely); accompanist follow tempo restored; mic direction actually right now; light mode reverted + dark gradient visible; blossom tuned to the Eplorr reference. CI monitoring next.
+
+---
+Task ID: 88 (outcome)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: CI outcome for the batch-14 regression round
+
+Work Log:
+- 5bdbdfcc9 (code): Nightly all green — check, 5/5 APK matrix jobs (mobile universal/armeabi/arm64/x86_64 + tv universal) and create-nightly SUCCESS; the canary APK with all five fixes is published to the CANARY channel.
+- 41a579a58 (worklog + PR #228 head): build (compile + tests + lint) SUCCESS, check SUCCESS, full nightly matrix 5/5 + create-nightly SUCCESS.
+
+Stage Summary:
+- dev @ 41a579a58: ALL workflows GREEN across both commits — batch-14 complete, shipped to canary.
+
+---
+Task ID: 89
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 2026-10-09 lyrics-renderer round (finish + ship) — Spicy Mobile renderer after spicylyrics/mobile, Blossom library removal, lyrics font-weight setting removal, accompanist autoscroll fix without downgrade, Apple-Music-quality accompanist tuning, overscroll physics settings, canvas artwork flight; then the 4-item regression round (revert batch-14 scroll tuning, overscroll touch freeze, light-mode glass pill black background, home<->library tab-switch flicker)
+
+Work Log:
+- dbd411652 (batch-15 code, 14 files, +1222/-3647): legacy Lyrics.kt (2728-line in-house karaoke) and LyricsBlossom.kt deleted; new LyricsSpicyMobile.kt (753 lines) implements the Spicy Mobile look natively — word-level karaoke fill read in the draw phase via graphicsLayer position lambdas (no per-frame recomposition), sung-word lift with a critically-damped spring response, emphasis grow for long held words, background-vocal fold-in with presence response, active-line glow shadow, interlude breathing dots (enter/dip/still/exit phases), spring following with 3s manual-scroll pause and resume, per-line blur falloff honouring the Lyrics line blur setting, translation/phonetic/RTL-aware alignment preserved; "Lyrics animation style" now offers Accompanist (default) or Spicy Mobile; lyrics font-weight setting + key + dialog + string fully removed (styles hardcode ExtraBold); accompanist position loop rewritten to 250ms player sampling with monotonic frame projection (drift-correction steps gone, seek detection via sampled-vs-projected backward jump, positionResetCounter key-churn removed); overscroll physics settings group in Privacy (style iOS rubber band / Android stretch / Off + rubber-band tension + bounce-back speed sliders — IosOverscrollFactory parameterised, NoOverscrollFactory for OFF); Flamingo canvas page-switch gains a static-artwork flight (600ms FastOutSlowIn lerp from the full-bleed stage rect into the playing-bar slot with corner-radius and alpha crossfade, driven by the same page-fade effects); home atmosphere retuned; settings scaffolds transparent so the root gradient shows.
+- Per user feedback the batch-14 accompanist scroll tuning is REVERTED in the same commit: keepAliveZone back to 8dp and the scrollAnimationSpec override dropped entirely (library default follow tempo) — the 100dp keep-alive + faster follow experiment is withdrawn; the mic start-padding fix stays (user confirmed the mic now shifts right; the earlier direction complaint was the user's own error).
+- f20c1c34c (regression round, 3 files): overscroll settle-grab fix — while the bounce settle animates, a new drag's payDown writes were overwritten every frame by the settle spring, so all drag deltas were swallowed paying down the resurrected pull and the list never scrolled for the remainder of the bounce (up to ~1s on fast flings) — reads exactly as "app unresponsive to touch for 1-2 seconds after scrolling"; applyToScroll cancels the settle Jobs on UserInput source so the finger grabs the band where it is (UIKit behaviour), applyToFling re-settles from wherever the finger leaves it. Settings glass pill black background in light mode: LiquidGlassIconButton sat directly on its backdrop sample with no base — wherever the sample is empty or darkened by the lens refraction band the artifact showed over the bright home wash; both icon-button overloads now use the BitChord nav-bar pattern (opaque surfaceContainerHigh base under the blurred sample — invisible where the backdrop works, proper surface glass where it doesn't). Home<->library tab-switch flicker: the NavHost tab transition ran a 60ms-delayed 260ms enter against an undelayed 220ms exit, leaving a 100ms window with ~38% root bleed (plus the symmetric-fade ~75% coverage dip inherent to alpha compositing); all four tab-path transition lambdas (enter/exit/popEnter/popExit) now run a 160ms linear fade-in + 320ms scale-in over a 640ms linear fade-out — the incoming page is opaque before the outgoing page meaningfully fades, max root bleed ~6%.
+- gradle.properties deliberately NOT touched (the local-sandbox heap/JDK/worker tweaks from the interrupted session were reverted before commit so CI keeps its tuned 8GB/4GB daemon settings).
+
+Stage Summary:
+- dev @ f20c1c34c: batch-15 (lyrics renderer round) + the 4-item regression round both pushed; CI monitoring in flight.
+
+---
+Task ID: 89 (outcome)
+Agent: Super Z (main agent, session web-e130fa90)
+Task: CI outcome for batch-15 + the 4-item regression round
+
+Work Log:
+- dbd411652 / f20c1c34c: 8 Kotlin errors in the interrupted session's unverified code (duplicate constant, kotlin.math.round Float/Int trap, SpicyDotExitMs case typo, const val Dp, non-existent Modifier.size{} lambda overload) — nightly matrix red, build cancelled by the follow-up push.
+- 997156d29 (repairs): ALL 8 check-runs SUCCESS — check, build (compile + tests + lint), the full nightly APK matrix 5/5 (mobile universal/armeabi/arm64/x86_64 + tv universal) and create-nightly; the canary APK with the complete batch is published to the CANARY channel.
+
+Stage Summary:
+- dev @ 997156d29: batch-15 (Spicy Mobile renderer, Blossom removal, font-weight removal, accompanist position-loop rewrite + scroll-tuning revert, overscroll physics settings, canvas artwork flight) and the regression round (overscroll settle grab, glass pill light-mode base, tab-switch flicker) are complete and CI-green.
+
+---
+Task ID: 90
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 5-issue regression round — accompanist lyrics lag after a smooth period, unwanted slow fade on home<->library tab switch, overscroll touch freeze + dead customisation sliders, AM-style canvas transition (start rect, static-swap timing) + queue page (full-height fill, canvas color glitch, scroll-up control restore), glass icon black backing in light mode + subtle gradient in pure dark + search-tab YouTube icon position
+
+Work Log:
+- Forensics: VLM passes over both uploaded screenshots (queue page's hard horizontal seam at ~30% height = the canvas frost's top edge cutting between blurred static art above and scrimmed blurred video below; second shot = the mid-transition glitch state). Downloaded + CFR-decompiled accompanist lyrics-ui 2.0.0-rc.2 (position consumed via per-line-item LyricsSession snapshotFlow collectors + draw-phase reads — well-built but heavy per frame), io.github.kyant0:backdrop-android 2.0.0 (DrawBackdropNode draw order: onDrawBehind/onDrawSurface are NOT shape-clipped — full squares), and compose foundation-android 1.12.0-beta02 (ScrollableAreaNode.onObservedReadsChanged recreates the overscroll effect whenever the provided factory's equals changes — the slider wiring was correct end-to-end; MutatorMutex: drag UserInput preempts fling Default; applyToFling suspension holds the dispatcher coroutine, not the mutation).
+- 15ec854d3 (batch-16, 6 files, +334/-202):
+  * Lyrics lag: flamingoLyricsEdgeFade and the queue list's edge fade built their color-stop lists + Brush.verticalGradient INSIDE onDrawWithContent — dozens of boxed-color allocations per redraw riding the per-frame karaoke pass; both hoisted into the drawWithCache block (stops extracted to file-level vals). Position state writes now capped at >=10ms intervals — the accompanist renderer fans every write out to per-line timeline collectors, draw invalidations and the follow driver, so on 120Hz displays the whole pipeline halves while the sweep stays ~60fps; seeks (jumps > 250ms) always write immediately.
+  * Tab fade: all four tab-path NavHost transitions set to tween(0) — the incoming page is fully opaque on the first frame of the transition, so there is no crossfade window, no root bleed and no visible fade at all. The dead transitionDirection/previousTab computation above the NavHost removed.
+  * Overscroll: applyToFling returns as soon as the list's own fling completes — the bounce settles now run on the factory-provided scope (was: coroutineScope suspension inside the nested-scroll dispatcher coroutine) and cancel on node detach with the band reset. The fast-fling stiffness hardcode (130f) is gone — every noticeable bounce comes from a fling, and those always took the hardcode, which is why the bounce-back-speed slider looked dead; the user's stiffness (clamped 30-2000) is always used. Release velocity is damped (x0.2) and clamped (3000px/s) before entering the settle spring — the old full leftover (up to 10000px/s) stretched the band by ~900 extra pixels and made the settle crawl for 1-2s, during which a grab had to pay the huge pull all the way down before the list scrolled: that was the real "app unresponsive until the overscroll settles".
+  * Canvas flight: the video stage itself now flies — its modifier lerps offset/size/corner from the album-stage rect (player top -> title-row top, exactly where the blend with the bottom controls begins; never the full page) into the playing-bar slot (stageFullscreen removed entirely). The static artwork hand-off happens at the END: during the 600ms flight the static overlay is alpha-0 and the video is fully visible; after landing a 280ms crossfade swaps video -> static at the slot, then the surface detaches. Returning to album runs the alpha-in concurrently with the reverse flight.
+  * Queue page: the list's 0.545 height cap removed — it fills the screen below the playing bar; the LazyColumn's bottom contentPadding tracks the measured (and shrink-animated) height of the controls block, so rows scroll under the controls and the queue extends to the bottom of the screen the moment they collapse. Any-direction user scroll (abs(dy) > 4px) restores the controls — scrolling up was previously ignored. The queue page no longer keeps the canvas frost: pageTakesBackdrop covers both non-album pages, handing the backdrop to the floating blurred artwork exactly like non-canvas songs — the frost's top edge was cutting the hard seam seen in the screenshot.
+  * Glass/gradient/icon: Modifier.liquidGlass's base (LiquidGlassIconButton's surfaceContainerHigh) and tint layers drew full SQUARES — the corners stuck out around every round glass pill, the "black background behind the settings icon" in light mode; both now draw the shape's outline (drawOutline). Pure dark no longer flattens the root to Color.Black — HomeAtmosphereBackground(subtle) paints over its own black base (disable-blur still opts out to flat black). The search tab's source picker (YouTube icon) nudged 6dp left off the pill's right edge.
+- Local verification: Android SDK 37.0 + all submodules set up in the sandbox; :core and :canvas compiled clean locally, but the :app Kotlin daemon needs > 3GB against the 3.9GB sandbox ceiling — OOM-killed across three heap splits, so CI carried the verification per the established loop.
+
+Stage Summary:
+- dev @ 15ec854d3: CI GREEN on the first push — all 8 check-runs SUCCESS (check; build with compile+tests+lint; the full 5-job nightly APK matrix; create-nightly). No compile repairs needed this round.
+
+---
+Task ID: 91
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 5-item batch — pin accompanist lyrics to the 6xingyv v1.0.15 release, queue-page controls blur + real-time overflow-popup glass in the AM player, reproduce the user's reference video transition for Lyrics/Queue canvas page switches, settings-sub-page animation for home/search/library/settings tab switches, dead-code removal
+
+Work Log:
+- Reference forensics first: the uploaded VID_20261009_235304 is VFR (20fps real content rate, CFR container) — re-extracted with pass-through timestamps, frame-diffed and artwork-bbox tracked. Measured: artwork flight ~250-300ms ease-in-out open / ~200-250ms close; lyrics visible as a faint ghost DURING the flight (concurrent, not deferred), fully settled ~100ms after the flight lands; header pill forms as the artwork arrives; controls pinned and always visible; single continuously-moving artwork layer with corner radius interpolating sharp->~10dp. The first VLM montage pass over the CFR-resampled frames had misled toward ~650ms — the true-timestamp pass corrected it.
+- dee05ae55 (batch-17 code, 6 files):
+  * Accompanist pin: lyrics-ui 2.0.0-rc.2 -> 1.0.15 + lyrics-core 0.5.0 -> 0.4.2 (the exact pair the tag was built against; verified against the actual fork sources cloned at v1.0.15/v0.4.2 — KaraokeLine is a data class there, KaraokeLyricsView has no anchor/keepAliveZone/showTranslation/showPhonetic/translation-phonetic style params, takes a plain LazyListState + offset). Migration: LyricsLazyListState -> rememberLazyListState; translation visibility applied to a derived model (lineWithoutTranslation) instead of a renderer param so the karaoke pipeline keys never churn; buildSyncedLyrics emits background vocals as FLAT isAccompaniment lines before their main line; Spicy renderer + SingleActiveLineCluster dispatch on isAccompaniment (Spicy keeps its bg-vocal fold-in); gaze-capsule 2.1.1-patch2 resolves transitively through the existing repo1 route.
+  * Queue controls blur + live popup glass: ThrottledLayerBackdrop gains requestRecord()/recordTick (draw-phase read in the recorder node) + a frame-aligned ticker while any glass layer is visible — root cause of the frozen popup blur was that video frames land in the TextureView without invalidating Compose and nested-layer animation never reaches the recorder, so the record stayed at the attach-time snapshot. New dedicated controls-glass recorder Box nested inside the popup recorder but outside the controls host (the portrait controls FlamingoWrapper moved out of the else branch to an if(!landscape) sibling); the frosted bar (colorControls + 20dp blur + 50% tint, RectangleShape, full width) sits in a matchParentSize background layer under the controls content, fading with the page clock via a draw-phase-only reveal; queue rows scroll under a blurred bar exactly like the reference. Glass disabled -> unchanged transparent controls.
+  * Reference transition: one clock pair (FlamingoPageFlightOpenMs=300 / CloseMs=250 / ContentFadeOutMs=200, FastOutSlowIn) now drives every AM page-switch layer — canvas flight (same album-rect->slot geometry, container-only lerp, crop-preserving resize, end-handoff 150ms), frost/surfaces fade 650->300, AnimatedContent shell crossfade direction-aware + 200ms outgoing, sharedBounds spring->tween(300) on all three bounds, lyrics/queue overlay fades 400/300->300/200, morph hold 420->300, lyrics content defer 600/300->120 (content now fades in concurrently with the flight per the reference instead of popping in after). No second player, no restart, no aspect-ratio distortion; non-canvas tracks keep the shared-bounds path.
+  * Tab switches: the four NavHost transition lambdas lost their tween(0) topLevelScreens special cases — home/search/library/settings now run the settings sub-page animation (fade 260ms/60ms + scale 0.94->1, fade-out 220ms).
+  * Dead code: joinSyllableContents + SpicyLineSettleMs + AnimDurationMillis + unused sizeIn/Outline/LayoutDirection imports removed; module-wide comment-block scan found only GPL headers (prior batches already purged code comments).
+- Local verification attempt: full sandbox toolchain rebuilt (SDK cmdline-tools + platform-37.0, all 5 submodules initialized); :core/:canvas/:audio compiled clean and dependency resolution confirmed the accompanist 1.0.15/0.4.2/gaze pair resolves, but :app's Kotlin compile OOM-killed the sandbox across daemon/in-process/heap splits — CI carried it per the established loop.
+- CI round 1 (dee05ae55): exactly ONE compile error — RectangleShape imported from foundation.shape instead of ui.graphics (everything else in the 6-file batch compiled). 7b614f52b fixed the import and added the glass reveal (fade the frosted bar with the page clock instead of popping in — matchParentSize background layer under the controls content, draw-phase-only alpha read, 250ms grace window keeping the recorder attached through the fade-out).
+
+Stage Summary:
+- dev @ 7b614f52b: ALL 8 check-runs SUCCESS — check; build (compile + tests + lint); full 5-job nightly APK matrix; create-nightly published the canary APK with the complete batch.
+
+---
+Task ID: 92 (outcome)
+Agent: Super Z (main agent, session web-e130fa90)
+
+Task: 3-item round — enhanced lyrics code from main updated to accompanist v2.0.0-rc.2, queue-page bottom controls styled like the lyrics page (no blur), original morphe canvas transition restored (revert of the batch-17 reference implementation) with square corners through the flight
+
+Work Log:
+- 960d5105c (4 files, +483/-506):
+  * Lyrics: lyrics-ui 1.0.15 -> 2.0.0-rc.2 + lyrics-core 0.4.2 -> 0.5.0; LyricsEnhanced.kt restored to main's enhanced engine (drift-corrected position projection, positionResetCounter seek resets, scrollLyricIntoFocus guard-band follow, Bold karaoke weight) ported onto the v2 API (LyricsLazyListState keyed on session/reset/generation, LyricsAnchor.Fixed, showTranslation/showPhonetic + per-slot styles back on KaraokeLyricsView, nested 0.5.0 karaoke model from buildSyncedLyrics); LyricsSpicyMobile.kt back on the sealed KaraokeLine model; the flat isAccompaniment emission + lineWithoutTranslation trick deleted.
+  * Queue controls: the batch-17 frosted bar + dedicated controls recorder + reveal/grace machinery fully removed; portrait controls host back in its original shared position, transparent over the page exactly like the lyrics page. The popup live-glass ticker (real-time overflow blur) retained.
+  * Canvas transition: batch-17's reference clocks reverted wholesale to the original morphe (600ms flight, 650ms surfaces fade, NoBouncy/MediumLow spring bounds, 600ms symmetric shell crossfade, 420ms morph hold, 600/300ms lyrics defer, 280ms static hand-off); new canvasFlightCornerT() keeps the video square through departure + cruise and only rounds into the bar slot's radius in the final flight quarter (no round corners from the start); flight geometry = original container-only lerp from the exact album rect (no start distortion/seams). Dead code reintroduced by the revert pruned (SpicyLineSettleMs, unused sizeIn import).
+- CI (per the always-push-and-monitor loop, no local compile): first push went GREEN with zero repairs — all 8 check-runs SUCCESS on 960d5105c: check, build (compile + tests + lint), the full 5-job nightly APK matrix (mobile universal/armeabi/arm64/x86_64 + tv universal, incl. R8 release) and create-nightly; canary APK with the round published to the CANARY channel.
+
+Stage Summary:
+- dev @ 960d5105c: all three items complete and CI-green; canary shipped.

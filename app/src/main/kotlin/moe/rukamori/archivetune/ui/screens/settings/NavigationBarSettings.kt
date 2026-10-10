@@ -10,7 +10,12 @@
 package moe.rukamori.archivetune.ui.screens.settings
 
 import android.os.Build
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,8 +26,10 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,20 +48,26 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
@@ -65,8 +78,11 @@ import moe.rukamori.archivetune.constants.NAVIGATION_BAR_LABEL_SPACING_DEFAULT
 import moe.rukamori.archivetune.constants.NAVIGATION_BAR_OPACITY_DEFAULT
 import moe.rukamori.archivetune.constants.NAVIGATION_BAR_TRANSPARENCY_DEFAULT
 import moe.rukamori.archivetune.constants.NAVIGATION_BAR_WIDTH_DEFAULT
+import moe.rukamori.archivetune.constants.NavigationBarCompactBehavior
+import moe.rukamori.archivetune.constants.NavigationBarCompactBehaviorKey
 import moe.rukamori.archivetune.constants.NavigationBarCornerRadiusKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
+import moe.rukamori.archivetune.constants.NavigationBarBitchordKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.LiquidGlassNavBarEnabledKey
 import moe.rukamori.archivetune.ui.component.NavigationBarGlassGlowKey
@@ -84,10 +100,12 @@ import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
+import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.screens.Screens
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.asPaddingValues
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
@@ -118,20 +136,49 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
             defaultValue = NAVIGATION_BAR_GLASS_GLOW_INTENSITY_DEFAULT,
         )
 
+    val (navigationBarBitchord, onNavigationBarBitchordChange) =
+        rememberPreference(NavigationBarBitchordKey, defaultValue = false)
+
     val onFrostedBlurChange: (Boolean) -> Unit = { checked ->
         onNavigationBarFrostedBlurChange(checked)
-        if (checked && navigationBarTintFrostedBlur) {
-            onNavigationBarTintFrostedBlurChange(false)
+        if (checked) {
+            if (navigationBarTintFrostedBlur) onNavigationBarTintFrostedBlurChange(false)
+            if (navigationBarBitchord) onNavigationBarBitchordChange(false)
+            if (liquidGlassNavBarEnabled) onLiquidGlassNavBarEnabledChange(false)
         }
     }
     val onTintFrostedBlurChange: (Boolean) -> Unit = { checked ->
         onNavigationBarTintFrostedBlurChange(checked)
-        if (checked && navigationBarFrostedBlur) {
-            onNavigationBarFrostedBlurChange(false)
+        if (checked) {
+            if (navigationBarFrostedBlur) onNavigationBarFrostedBlurChange(false)
+            if (navigationBarBitchord) onNavigationBarBitchordChange(false)
+            if (liquidGlassNavBarEnabled) onLiquidGlassNavBarEnabledChange(false)
+        }
+    }
+    val onLiquidGlassNavBarChange: (Boolean) -> Unit = { checked ->
+        onLiquidGlassNavBarEnabledChange(checked)
+        if (checked) {
+            if (navigationBarFrostedBlur) onNavigationBarFrostedBlurChange(false)
+            if (navigationBarTintFrostedBlur) onNavigationBarTintFrostedBlurChange(false)
+            if (navigationBarBitchord) onNavigationBarBitchordChange(false)
+        }
+    }
+    val onBitchordChange: (Boolean) -> Unit = { checked ->
+        onNavigationBarBitchordChange(checked)
+        if (checked) {
+            if (navigationBarFrostedBlur) onNavigationBarFrostedBlurChange(false)
+            if (navigationBarTintFrostedBlur) onNavigationBarTintFrostedBlurChange(false)
+            if (liquidGlassNavBarEnabled) onLiquidGlassNavBarEnabledChange(false)
         }
     }
     val (hideNavigationBarLabels, onHideNavigationBarLabelsChange) =
         rememberPreference(HideNavigationBarLabelsKey, defaultValue = false)
+
+    val (compactBehavior, onCompactBehaviorChange) =
+        rememberEnumPreference(
+            NavigationBarCompactBehaviorKey,
+            defaultValue = NavigationBarCompactBehavior.ADAPTIVE,
+        )
 
     val (navigationBarWidth, onNavigationBarWidthChange) =
         rememberPreference(NavigationBarWidthKey, defaultValue = NAVIGATION_BAR_WIDTH_DEFAULT)
@@ -194,6 +241,34 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 .padding(top = topPadding)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
+            PreferenceGroup(title = stringResource(R.string.navigation_bar_compact_behavior)) {
+                item {
+                    CompactBehaviorPreview(
+                        behavior = compactBehavior,
+                        modifier = positions.modifierFor("navigation_bar_compact_behavior_preview"),
+                    )
+                }
+                item {
+                    EnumListPreference(
+                        title = { Text(stringResource(R.string.navigation_bar_compact_behavior)) },
+                        description = stringResource(R.string.navigation_bar_compact_behavior_desc),
+                        icon = { Icon(painterResource(R.drawable.nav_bar), null) },
+                        selectedValue = compactBehavior,
+                        onValueSelected = onCompactBehaviorChange,
+                        valueText = {
+                            when (it) {
+                                NavigationBarCompactBehavior.ADAPTIVE ->
+                                    stringResource(R.string.navigation_bar_compact_adaptive)
+                                NavigationBarCompactBehavior.ALWAYS_EXPANDED ->
+                                    stringResource(R.string.navigation_bar_compact_always_expanded)
+                                NavigationBarCompactBehavior.ALWAYS_COMPACT ->
+                                    stringResource(R.string.navigation_bar_compact_always_compact)
+                            }
+                        },
+                    )
+                }
+            }
+
             PreferenceGroup(title = stringResource(R.string.general)) {
                 item {
                     Column {
@@ -242,7 +317,18 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         checked = liquidGlassNavBarEnabled,
 
                         isEnabled = liquidGlassEnabled && supported,
-                        onCheckedChange = onLiquidGlassNavBarEnabledChange,
+                        onCheckedChange = onLiquidGlassNavBarChange,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("navigation_bar_bitchord"),
+                        title = { Text(stringResource(R.string.navigation_bar_bitchord)) },
+                        description = stringResource(R.string.navigation_bar_bitchord_desc),
+                        icon = { Icon(painterResource(R.drawable.grid_view), null) },
+                        checked = navigationBarBitchord,
+                        onCheckedChange = onBitchordChange,
                     )
                 }
 
@@ -258,7 +344,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 }
 
                 item {
-
                     SliderPreferenceRow(
                         title = stringResource(R.string.navigation_bar_glass_glow_intensity),
                         description = stringResource(R.string.navigation_bar_glass_glow_intensity_desc),
@@ -679,5 +764,221 @@ private fun NavBarPreview(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CompactBehaviorPreview(
+    behavior: NavigationBarCompactBehavior,
+    modifier: Modifier = Modifier,
+) {
+    var demoCompact by remember { mutableStateOf(false) }
+    LaunchedEffect(behavior) {
+        when (behavior) {
+            NavigationBarCompactBehavior.ALWAYS_EXPANDED -> demoCompact = false
+            NavigationBarCompactBehavior.ALWAYS_COMPACT -> demoCompact = true
+            NavigationBarCompactBehavior.ADAPTIVE -> Unit
+        }
+    }
+    val compactFraction by animateFloatAsState(
+        targetValue = when (behavior) {
+            NavigationBarCompactBehavior.ALWAYS_EXPANDED -> 0f
+            NavigationBarCompactBehavior.ALWAYS_COMPACT -> 1f
+            NavigationBarCompactBehavior.ADAPTIVE -> if (demoCompact) 1f else 0f
+        },
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = 350f),
+        label = "compactBehaviorPreviewFraction",
+    )
+
+    val primary = MaterialTheme.colorScheme.primary
+    val surfaceContainer = MaterialTheme.colorScheme.surfaceContainer
+    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+    val fauxScreenBrush =
+        Brush.verticalGradient(
+            listOf(
+                primary.copy(alpha = 0.30f),
+                MaterialTheme.colorScheme.surfaceVariant,
+            ),
+        )
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(212.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(fauxScreenBrush)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) {
+                        if (behavior == NavigationBarCompactBehavior.ADAPTIVE) {
+                            demoCompact = !demoCompact
+                        }
+                    },
+        ) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                repeat(2) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .height(52.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(primary.copy(alpha = 0.22f)),
+                    )
+                }
+            }
+
+            val miniPlayerHeight = lerp(30.dp, 26.dp, compactFraction)
+            val navSlide = lerp(0.dp, 62.dp, compactFraction)
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 62.dp),
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(miniPlayerHeight)
+                            .offset { IntOffset(x = 0, y = (navSlide.toPx() * 0.35f).roundToInt()) }
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(surfaceContainer.copy(alpha = 0.96f)),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .size(18.dp)
+                                    .clip(RoundedCornerShape(5.dp))
+                                    .background(primary.copy(alpha = 0.55f)),
+                        )
+                        Box(
+                            modifier =
+                                Modifier
+                                    .padding(start = 8.dp)
+                                    .weight(1f)
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(onSurfaceVariant.copy(alpha = 0.35f)),
+                        )
+                        Icon(
+                            painter = painterResource(R.drawable.solar_play_linear),
+                            contentDescription = null,
+                            tint = onSurfaceVariant,
+                            modifier =
+                                Modifier
+                                    .size(16.dp)
+                                    .alpha(1f - compactFraction * 0.6f),
+                        )
+                    }
+                }
+                CompactPreviewCircle(
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .offset { IntOffset(x = (-46.dp.toPx() * compactFraction).roundToInt(), y = 0) }
+                            .alpha(compactFraction),
+                    tint = surfaceContainer,
+                    iconTint = onSurfaceVariant,
+                )
+                CompactPreviewCircle(
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterEnd)
+                            .offset { IntOffset(x = (46.dp.toPx() * compactFraction).roundToInt(), y = 0) }
+                            .alpha(compactFraction),
+                    tint = surfaceContainer,
+                    iconTint = onSurfaceVariant,
+                )
+            }
+
+            Surface(
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 14.dp)
+                        .fillMaxWidth(0.8f)
+                        .height(44.dp)
+                        .offset { IntOffset(x = 0, y = (navSlide.toPx()).roundToInt()) }
+                        .graphicsLayer { alpha = 1f - compactFraction * 0.95f },
+                shape = RoundedCornerShape(24.dp),
+                color = surfaceContainer.copy(alpha = 0.96f),
+                shadowElevation = 6.dp,
+            ) {
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    val items = Screens.MainScreens
+                    items.forEachIndexed { index, screen ->
+                        val selected = index == 0
+                        Icon(
+                            painter = painterResource(
+                                if (selected) screen.iconIdActive else screen.iconIdInactive,
+                            ),
+                            contentDescription = null,
+                            tint = if (selected) primary else onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
+        }
+        Text(
+            text = stringResource(R.string.navigation_bar_tap_to_try),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 4.dp),
+        )
+    }
+}
+
+@Composable
+private fun CompactPreviewCircle(
+    modifier: Modifier = Modifier,
+    tint: Color,
+    iconTint: Color,
+) {
+    Box(
+        modifier =
+            modifier
+                .size(28.dp)
+                .clip(RoundedCornerShape(percent = 50))
+                .background(tint.copy(alpha = 0.96f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.search),
+            contentDescription = null,
+            tint = iconTint,
+            modifier = Modifier.size(14.dp),
+        )
     }
 }

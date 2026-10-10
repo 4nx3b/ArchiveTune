@@ -756,7 +756,6 @@ fun HistoryScreen(
                 }
 
                 if (selectionCount == 0) {
-
                     val compactFraction = LocalBottomUiCompactFraction.current
                     LiquidGlassActionPill(
                         backdrop = backdrop,

@@ -123,6 +123,11 @@ fun ArtistSongsScreen(
     Box(
         modifier = Modifier.fillMaxSize(),
     ) {
+        ArtistAmbientBackdrop(
+            artistId = artist?.id,
+            artworkUrl = artist?.thumbnailUrl,
+        )
+
         LazyColumn(
             state = lazyListState,
             contentPadding = listContentPadding,

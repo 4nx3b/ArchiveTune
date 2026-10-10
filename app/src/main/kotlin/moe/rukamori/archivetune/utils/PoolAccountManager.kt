@@ -126,6 +126,9 @@ object PoolAccountManager {
     val isEnabled: Boolean
         get() = BuildConfig.SOURCE_PROVIDER_URL.isNotBlank()
 
+    /** True when the Source Pool can be consulted for contributed accounts and instance feeds. */
+    fun isPoolEnabled(): Boolean = isEnabled
+
     private val poolBaseUrl: String?
         get() {
             val raw = BuildConfig.SOURCE_PROVIDER_URL.trim()

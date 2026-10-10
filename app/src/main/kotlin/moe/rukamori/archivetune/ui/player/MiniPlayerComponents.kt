@@ -388,27 +388,27 @@ private fun MiniPlayerArtwork(
         contentAlignment = Alignment.Center,
         modifier =
             modifier
-                .size(52.dp)
-                .onGloballyPositioned { coordinates ->
-                    if (onArtworkSlotPositioned != null) {
-                        onArtworkSlotPositioned(
-                            androidx.compose.ui.geometry.Rect(
-                                offset = coordinates.positionInRoot(),
-                                size =
-                                    androidx.compose.ui.geometry.Size(
-                                        width = coordinates.size.width.toFloat(),
-                                        height = coordinates.size.height.toFloat(),
-                                    ),
-                            ),
-                        )
-                    }
-                },
+                .size(52.dp),
     ) {
         Box(
             contentAlignment = Alignment.Center,
             modifier =
                 Modifier
                     .size(48.dp)
+                    .onGloballyPositioned { coordinates ->
+                        if (onArtworkSlotPositioned != null) {
+                            onArtworkSlotPositioned(
+                                androidx.compose.ui.geometry.Rect(
+                                    offset = coordinates.positionInRoot(),
+                                    size =
+                                        androidx.compose.ui.geometry.Size(
+                                            width = coordinates.size.width.toFloat(),
+                                            height = coordinates.size.height.toFloat(),
+                                        ),
+                                ),
+                            )
+                        }
+                    }
                     .clip(MiniPlayerArtworkShape)
                     .background(colors.artworkContainer)
                     .border(

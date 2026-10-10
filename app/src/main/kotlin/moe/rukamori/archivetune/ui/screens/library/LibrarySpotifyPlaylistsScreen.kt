@@ -447,7 +447,6 @@ fun LibrarySpotifyPlaylistsScreen(
         }
 
         if (glassHeaderActive) {
-
             val compactFraction = LocalBottomUiCompactFraction.current
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,

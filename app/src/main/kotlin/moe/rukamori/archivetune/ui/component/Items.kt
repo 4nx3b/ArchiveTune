@@ -181,7 +181,6 @@ inline fun ListItem(
                 .then(
                     if (isActive && showActiveContainer) {
                         if (activeContainerBackdrop) {
-
                             Modifier
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(

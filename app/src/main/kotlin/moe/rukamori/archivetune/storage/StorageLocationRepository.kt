@@ -40,6 +40,7 @@ import moe.rukamori.archivetune.constants.StorageFolderPathKey
 import moe.rukamori.archivetune.constants.StorageFolderTreeUriKey
 import moe.rukamori.archivetune.di.DownloadCache
 import moe.rukamori.archivetune.di.PlayerCache
+import moe.rukamori.archivetune.di.VideoCache
 import moe.rukamori.archivetune.playback.DownloadUtil
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
 import moe.rukamori.archivetune.utils.ArtworkStorage
@@ -56,6 +57,7 @@ enum class StorageFolderKind(
     IMAGE_CACHE(defaultDirectoryName = "coil"),
     CANVAS_CACHE(defaultDirectoryName = "canvas"),
     ARTWORK_CACHE(defaultDirectoryName = "artwork"),
+    VIDEO_CACHE(defaultDirectoryName = "videocache"),
 }
 
 @Immutable
@@ -126,6 +128,7 @@ enum class StorageCacheKind {
     DOWNLOADS,
     IMAGES,
     CANVAS,
+    VIDEO,
 }
 
 sealed interface StorageCacheClearResult {
@@ -185,6 +188,7 @@ class StorageLocationRepository
         @ApplicationContext private val context: Context,
         @PlayerCache private val playerCache: Cache,
         @DownloadCache private val downloadCache: Cache,
+        @VideoCache private val videoCache: Cache,
         private val downloadUtil: DownloadUtil,
     ) {
         val selection: Flow<StorageFolderSelection> =
@@ -205,6 +209,7 @@ class StorageLocationRepository
                             StorageCacheKind.DOWNLOADS -> clearDownloads(onProgress)
                             StorageCacheKind.IMAGES -> clearImageCache(onProgress)
                             StorageCacheKind.CANVAS -> clearCanvasCache(onProgress)
+                            StorageCacheKind.VIDEO -> clearMediaCache(videoCache, StorageCacheKind.VIDEO, onProgress)
                         }
                     if (cleared) {
                         onProgress(StorageCacheClearProgress(kind = kind, percent = 100))
@@ -912,6 +917,8 @@ private fun StorageFolderKind.toCacheKind(): StorageCacheKind =
         -> StorageCacheKind.IMAGES
 
         StorageFolderKind.CANVAS_CACHE -> StorageCacheKind.CANVAS
+
+        StorageFolderKind.VIDEO_CACHE -> StorageCacheKind.VIDEO
     }
 
 private fun File.toStorageLocationOption(

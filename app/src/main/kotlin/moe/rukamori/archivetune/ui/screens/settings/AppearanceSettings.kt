@@ -59,7 +59,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -77,12 +76,12 @@ import moe.rukamori.archivetune.constants.CropThumbnailToSquareKey
 import moe.rukamori.archivetune.constants.CustomFontNameKey
 import moe.rukamori.archivetune.constants.CustomFontUriKey
 import moe.rukamori.archivetune.constants.DarkModeKey
+import moe.rukamori.archivetune.constants.FlamingoBackgroundEffectKey
+import moe.rukamori.archivetune.constants.FlamingoShowVolumeBarKey
 import moe.rukamori.archivetune.constants.DefaultOpenTabKey
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
-import moe.rukamori.archivetune.constants.DynamicThemeKey
 import moe.rukamori.archivetune.constants.FontPreferenceKey
-import moe.rukamori.archivetune.constants.ForceHighRefreshRateKey
 import moe.rukamori.archivetune.constants.HideStatusBarKey
 import moe.rukamori.archivetune.constants.GridItemSize
 import moe.rukamori.archivetune.constants.GridItemsSizeKey
@@ -102,14 +101,12 @@ import moe.rukamori.archivetune.constants.PlayerButtonsStyleKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.TikTokMainLyricsEnabledKey
-import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.SliderStyleKey
 import moe.rukamori.archivetune.constants.TabletModeEnabledKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
-import moe.rukamori.archivetune.constants.WallpaperExtractionFailedKey
 import moe.rukamori.archivetune.constants.UiScaleFactorKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -145,13 +142,6 @@ import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     val context = LocalContext.current
     val defaultDisableAnimations = remember(context) { context.isLowRamDevice() }
-    val (wallpaperExtractionFailed) =
-        rememberPreference(WallpaperExtractionFailedKey, defaultValue = false)
-    val (dynamicTheme, onDynamicThemeChange) =
-        rememberPreference(
-            DynamicThemeKey,
-            defaultValue = true,
-        )
     val (randomThemeOnStartup, onRandomThemeOnStartupChange) =
         rememberPreference(
             RandomThemeOnStartupKey,
@@ -172,6 +162,10 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             TikTokMainLyricsEnabledKey,
             defaultValue = false,
         )
+    val (flamingoBackgroundEffect, onFlamingoBackgroundEffectChange) =
+        rememberPreference(FlamingoBackgroundEffectKey, defaultValue = false)
+    val (flamingoShowVolumeBar, onFlamingoShowVolumeBarChange) =
+        rememberPreference(FlamingoShowVolumeBarKey, defaultValue = true)
     val (_, onAppleMusicExperienceChange) =
         rememberPreference(
             AppleMusicExperienceKey,
@@ -225,17 +219,11 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             LiquidGlassEnabledKey,
             defaultValue = true,
         )
-    val (pureBlack, onPureBlackChange) = rememberPreference(PureBlackKey, defaultValue = false)
     val (disableBlur, onDisableBlurChange) = rememberPreference(DisableBlurKey, defaultValue = false)
     val (disableAnimations, onDisableAnimationsChange) =
         rememberPreference(
             DisableAnimationsKey,
             defaultValue = defaultDisableAnimations,
-        )
-    val (forceHighRefreshRate, onForceHighRefreshRateChange) =
-        rememberPreference(
-            ForceHighRefreshRateKey,
-            defaultValue = false,
         )
     val (hideStatusBar, onHideStatusBarChange) =
         rememberPreference(
@@ -372,14 +360,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             if (darkMode == DarkMode.AUTO) isSystemInDarkTheme else darkMode == DarkMode.ON
         }
 
-    val supportedHighestFps = rememberSupportedHighestFps()
-    val isHighRefreshRateSupported = supportedHighestFps > HIGH_REFRESH_RATE_THRESHOLD_FPS
-
-    ApplyRefreshRate(
-        isEnabled = forceHighRefreshRate && isHighRefreshRateSupported,
-        targetFps = supportedHighestFps,
-    )
-
     var showSliderOptionDialog by rememberSaveable {
         mutableStateOf(false)
     }
@@ -471,6 +451,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        containerColor = Color.Transparent,
         topBar = {
                 SettingsPageTopBar(
                     titleText = stringResource(R.string.appearance),
@@ -525,32 +506,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     SwitchPreference(
-                        title = { Text(stringResource(R.string.enable_dynamic_theme)) },
-                        icon = { Icon(painterResource(R.drawable.palette), null) },
-                        checked = dynamicTheme,
-                        onCheckedChange = onDynamicThemeChange,
-                    )
-                }
-
-                item(visible = dynamicTheme && Build.VERSION.SDK_INT < Build.VERSION_CODES.S && wallpaperExtractionFailed) {
-                    PreferenceEntry(
-                        modifier = positions.modifierFor("wallpaper_permission"),
-                        title = { Text(stringResource(R.string.wallpaper_permission)) },
-                        description = stringResource(R.string.wallpaper_permission_desc),
-                        icon = { Icon(painterResource(R.drawable.storage), null) },
-                        onClick = {
-                            val intent =
-                                android.content.Intent(
-                                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                    android.net.Uri.fromParts("package", context.packageName, null),
-                                )
-                            context.startActivity(intent)
-                        },
-                    )
-                }
-
-                item(visible = !dynamicTheme) {
-                    SwitchPreference(
                         modifier = positions.modifierFor("random_theme_on_startup"),
                         title = { Text(stringResource(R.string.random_theme_on_startup)) },
                         description = stringResource(R.string.random_theme_on_startup_desc),
@@ -560,7 +515,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                     )
                 }
 
-                item(visible = !dynamicTheme || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                item {
                     Column(modifier = positions.modifierFor("color_palette")) {
                         PreferenceEntry(
                             modifier = positions.modifierFor("palette_picker", "theme_creator"),
@@ -597,17 +552,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                     DarkMode.AUTO -> stringResource(R.string.dark_theme_follow_system)
                                 }
                             },
-                        )
-                    }
-                }
-
-                item(visible = useDarkTheme) {
-                    Column(modifier = positions.modifierFor("pure_black")) {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.pure_black)) },
-                            icon = { Icon(painterResource(R.drawable.contrast), null) },
-                            checked = pureBlack,
-                            onCheckedChange = onPureBlackChange,
                         )
                     }
                 }
@@ -827,6 +771,28 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                 icon = { Icon(painterResource(R.drawable.lyrics), null) },
                                 checked = tikTokMainLyrics,
                                 onCheckedChange = onTikTokMainLyricsChange,
+                            )
+                        }
+                    }
+                }
+
+                if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
+                    item {
+                        Column(modifier = positions.modifierFor("flamingo_player")) {
+                            SwitchPreference(
+                                title = { Text(stringResource(R.string.flamingo_settings_background_effect)) },
+                                description = stringResource(R.string.flamingo_settings_background_effect_desc),
+                                icon = { Icon(painterResource(R.drawable.flamingo_np_airplay), null) },
+                                checked = flamingoBackgroundEffect,
+                                onCheckedChange = onFlamingoBackgroundEffectChange,
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            SwitchPreference(
+                                title = { Text(stringResource(R.string.flamingo_settings_volume_bar)) },
+                                description = stringResource(R.string.flamingo_settings_volume_bar_desc),
+                                icon = { Icon(painterResource(R.drawable.flamingo_np_volume), null) },
+                                checked = flamingoShowVolumeBar,
+                                onCheckedChange = onFlamingoShowVolumeBarChange,
                             )
                         }
                     }
@@ -1177,75 +1143,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 }
 }
 
-@Composable
-fun ApplyRefreshRate(
-    isEnabled: Boolean,
-    targetFps: Float,
-) {
-    val context = LocalContext.current
-    val view = LocalView.current
-    val activity = remember(context) { context.findActivity() }
-    val requestedFps = if (isEnabled) targetFps else DEFAULT_REFRESH_RATE_REQUEST
-
-    DisposableEffect(view, activity, requestedFps) {
-        applyRefreshRate(
-            view = view,
-            activity = activity,
-            requestedFps = requestedFps,
-        )
-
-        onDispose {
-            applyRefreshRate(
-                view = view,
-                activity = activity,
-                requestedFps = DEFAULT_REFRESH_RATE_REQUEST,
-            )
-        }
-    }
-}
-
-@Composable
-private fun rememberSupportedHighestFps(): Float {
-    val view = LocalView.current
-
-    return remember(view) {
-        val display = view.display
-        display
-            ?.supportedModes
-            ?.maxOfOrNull { mode -> mode.refreshRate }
-            ?: display?.refreshRate
-            ?: DEFAULT_STANDARD_REFRESH_RATE_FPS
-    }
-}
-
-private fun applyRefreshRate(
-    view: View,
-    activity: Activity?,
-    requestedFps: Float,
-) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-        view.setRequestedFrameRate(requestedFps)
-        return
-    }
-
-    activity?.window?.let { window ->
-        val attributes = window.attributes
-        if (attributes.preferredRefreshRate != requestedFps) {
-            attributes.preferredRefreshRate = requestedFps
-            window.attributes = attributes
-        }
-    }
-}
-
-private tailrec fun Context.findActivity(): Activity? =
-    when (this) {
-        is Activity -> this
-        is ContextWrapper -> baseContext.findActivity()
-        else -> null
-    }
-
-private const val HIGH_REFRESH_RATE_THRESHOLD_FPS = 60.5f
-private const val DEFAULT_STANDARD_REFRESH_RATE_FPS = 60f
 private const val DEFAULT_REFRESH_RATE_REQUEST = 0f
 
 @Composable

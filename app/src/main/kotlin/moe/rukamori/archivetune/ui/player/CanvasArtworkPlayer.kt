@@ -11,7 +11,6 @@ package moe.rukamori.archivetune.ui.player
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -19,6 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
@@ -336,7 +336,6 @@ fun CanvasArtworkPlayer(
             if (stalledForMs >= CanvasPlaybackStallTimeoutMs) {
                 currentUrl = fallback
                 isVideoReady = false
-                reportAvailability?.invoke(false)
                 return@LaunchedEffect
             }
 
@@ -355,8 +354,10 @@ fun CanvasArtworkPlayer(
                     exoPlayer.setCanvasPlayback(shouldPlay)
                 }
                 if (event == Lifecycle.Event.ON_STOP) {
-                    runCatching { exoPlayer.setVideoSurface(null) }
-                    runCatching { exoPlayer.stop() }
+                    // PAUSE only — stop() would discard the cached canvas
+                    // stream and reset the loop position, forcing a visible
+                    // re-buffer whenever the app returns from background.
+                    runCatching { exoPlayer.pause() }
                 }
             }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -439,7 +440,7 @@ fun CanvasArtworkPlayer(
                                 target != Long.MIN_VALUE &&
                                 loopSyncFollower.leaderSource == currentUrl &&
                                 kotlin.math.abs(newPosition.positionMs - target) >
-                                    CanvasSyncRateLockThresholdMs
+                                    CanvasSyncSeekThresholdMs
                             ) {
                                 exoPlayer.seekTo(target.coerceAtLeast(0L))
                             }

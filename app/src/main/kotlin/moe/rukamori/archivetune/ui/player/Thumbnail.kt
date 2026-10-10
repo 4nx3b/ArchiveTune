@@ -604,11 +604,13 @@ fun Thumbnail(
                                                     ),
                                         )
                                     } else if (thumbnailBgBlurEnabled) {
-                                        ThumbnailBgBlurApi30(
-                                            imageUrl = displayUrl,
-                                            blurAmount = backdropBlurAmount,
-                                            shouldCropArtwork = shouldCropArtwork,
-                                        )
+                                        Box(Modifier.matchParentSize()) {
+                                            ThumbnailBgBlurApi30(
+                                                imageUrl = displayUrl,
+                                                blurAmount = backdropBlurAmount,
+                                                shouldCropArtwork = shouldCropArtwork,
+                                            )
+                                        }
                                     } else {
                                         AsyncImage(
                                             model = thumbnailBgRequest,

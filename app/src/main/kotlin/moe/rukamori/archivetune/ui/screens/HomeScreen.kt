@@ -11,6 +11,11 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -71,6 +76,27 @@ import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
+import moe.rukamori.archivetune.db.entities.Album
+import moe.rukamori.archivetune.db.entities.Artist
+import moe.rukamori.archivetune.db.entities.LocalItem
+import moe.rukamori.archivetune.db.entities.Playlist
+import moe.rukamori.archivetune.db.entities.Song
+import moe.rukamori.archivetune.extensions.toMediaItem
+import moe.rukamori.archivetune.extensions.togglePlayPause
+import moe.rukamori.archivetune.innertube.models.AlbumItem
+import moe.rukamori.archivetune.innertube.models.ArtistItem
+import moe.rukamori.archivetune.innertube.models.PlaylistItem
+import moe.rukamori.archivetune.innertube.models.SongItem
+import moe.rukamori.archivetune.innertube.models.WatchEndpoint
+import moe.rukamori.archivetune.innertube.models.YTItem
+import moe.rukamori.archivetune.models.toMediaMetadata
+import moe.rukamori.archivetune.playback.queues.ListQueue
+import moe.rukamori.archivetune.playback.queues.YouTubeQueue
+import moe.rukamori.archivetune.ui.menu.AlbumMenu
+import moe.rukamori.archivetune.ui.menu.ArtistMenu
+import moe.rukamori.archivetune.ui.menu.PlaylistMenu
+import moe.rukamori.archivetune.ui.menu.SongMenu
+import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
 import dev.chrisbanes.haze.hazeSource
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -166,6 +192,10 @@ fun HomeScreen(
                     },
                 ),
     ) {
+        // The home screen keeps its ORIGINAL full-intensity atmosphere wash
+        // (light mode) while blur effects are on — the light-mode look was
+        // never meant to change. In dark mode this draws nothing and the
+        // root layer's subtle gradient shows through instead.
         if (!disableBlur) {
             HomeAtmosphereBackground()
         }
@@ -286,6 +316,7 @@ private fun HomeContent(
         uiState
             .takeIf { it.quickPicksMode == QuickPicks.QUICK_PICKS }
             ?.remoteQuickPicks
+    val context = androidx.compose.ui.platform.LocalContext.current
     Box(modifier = modifier.fillMaxSize()) {
         val pullState = rememberPullToRefreshState()
         PullToRefreshBox(
@@ -334,211 +365,146 @@ private fun HomeContent(
                         )
                     }
 
-                    if (homeCatalogueSwitchEnabled) {
+                    val availableWidth = maxWidth
+                    val minimalMode = uiState.minimalHomeMode
+
+                    if (uiState.recentlyPlayed.size > 1) {
                         item(
-                            key = "home_source_switcher",
-                            contentType = "source_switcher",
+                            key = "home_recently_played",
+                            contentType = "recently_played",
                         ) {
-                            HomeSourceSwitcher(modifier = Modifier.animateItem())
+                            val recentSongs =
+                                remember(uiState.recentlyPlayed) {
+                                    uiState.recentlyPlayed.distinctBy { it.id }
+                                }
+                            Column(Modifier.animateItem()) {
+                                BitChordRecentsShelf(
+                                    songs = recentSongs,
+                                    mediaMetadata = mediaMetadata,
+                                    isPlaying = isPlaying,
+                                    availableWidth = availableWidth,
+                                    onPlaySong = { song, index ->
+                                        onPlayQueue(
+                                            moe.rukamori.archivetune.playback.queues.ListQueue(
+                                                title = context.getString(R.string.home_recently_played),
+                                                items = recentSongs.map { it.toMediaItem() },
+                                                startIndex = index,
+                                            ),
+                                        )
+                                    },
+                                    onSongLongClick = { song ->
+                                        menuState.show {
+                                            moe.rukamori.archivetune.ui.menu.SongMenu(
+                                                originalSong = song,
+                                                navController = navController,
+                                                onDismiss = menuState::dismiss,
+                                            )
+                                        }
+                                    },
+                                )
+                            }
                         }
                     }
-
-                    val minimalMode = uiState.minimalHomeMode
 
                     if (uiState.heroPicks.isNotEmpty()) {
                         item(
                             key = "home_jump_back_in",
                             contentType = "jump_back_in",
                         ) {
-                            JumpBackInHeroSection(
-                                recentlyPlayed = uiState.heroPicks,
-                                mediaMetadata = mediaMetadata,
-                                isPlaying = isPlaying,
-                                navController = navController,
-                                playerConnection = playerConnection,
-                                onPlayQueue = onPlayQueue,
-                                menuState = menuState,
-                                haptic = haptic,
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                    }
-
-                    if (!minimalMode && uiState.showCategoryChips) {
-                        item(
-                            key = "home_category_chips",
-                            contentType = "category_chips",
-                        ) {
-                            HomeCategoryChips(
-                                chips = uiState.homePage?.chips.orEmpty(),
-                                selectedChip = uiState.selectedChip,
-                                onChipSelected = { onAction(HomeAction.SelectChip(it)) },
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                    }
-
-                    if (!minimalMode) {
-                        if (remoteQuickPicks?.items?.isNotEmpty() == true) {
-                            sectionSpacer("remote_quick_picks")
-                            item(
-                                key = "home_remote_quick_picks_header",
-                                contentType = "section_header",
-                            ) {
-                                HomeSectionHeader(
-                                    title = remoteQuickPicks.title,
-                                    leadingIcon = {
-                                        HomeSectionLeadingIcon(iconRes = R.drawable.discover_tune)
-                                    },
-                                    modifier = Modifier.animateItem(),
-                                )
-                            }
-                            item(
-                                key = "home_remote_quick_picks",
-                                contentType = "media_shelf",
-                            ) {
-                                HomePageSectionContent(
-                                    section = remoteQuickPicks,
-                                    mediaMetadata = mediaMetadata,
-                                    isPlaying = isPlaying,
-                                    navController = navController,
-                                    playerConnection = playerConnection,
-                                    onPlayQueue = onPlayQueue,
-                                    menuState = menuState,
-                                    haptic = haptic,
-                                    scope = scope,
-                                    modifier = Modifier.animateItem(),
-                                )
+                            val heroSongs =
+                                remember(uiState.heroPicks) {
+                                    uiState.heroPicks.distinctBy { it.id }
+                                }
+                            Column(Modifier.animateItem()) {
+                                BitChordSectionHeader(title = stringResource(R.string.home_jump_back_in_badge))
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = BitChordPageGutter),
+                                    horizontalArrangement = Arrangement.spacedBy(BitChordShelfCardSpacing),
+                                ) {
+                                    items(heroSongs, key = { "hero_${it.id}" }) { song ->
+                                        BitChordHeroCard(
+                                            artworkUrl = song.thumbnailUrl,
+                                            title = song.song.title,
+                                            subtitle = song.artists.joinToString { it.name },
+                                            isCurrent = mediaMetadata?.id == song.id,
+                                            isPlaying = isPlaying,
+                                            modifier = Modifier.width(bitChordHeroCardWidth(availableWidth)),
+                                            onClick = {
+                                                onPlayQueue(
+                                                    moe.rukamori.archivetune.playback.queues.ListQueue(
+                                                        title = context.getString(R.string.home_jump_back_in_badge),
+                                                        items = heroSongs.map { it.toMediaItem() },
+                                                        startIndex = heroSongs.indexOf(song),
+                                                    ),
+                                                )
+                                            },
+                                            onLongClick = {
+                                                menuState.show {
+                                                    moe.rukamori.archivetune.ui.menu.SongMenu(
+                                                        originalSong = song,
+                                                        navController = navController,
+                                                        onDismiss = menuState::dismiss,
+                                                    )
+                                                }
+                                            },
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(BitChordShelfBottomSpacing))
                             }
                         }
-
                     }
 
-                    if (uiState.recentlyPlayed.size > 1) {
-                        sectionSpacer("recently_played")
+                    if (remoteQuickPicks?.items?.isNotEmpty() == true) {
                         item(
-                            key = "home_recently_played_header",
-                            contentType = "section_header",
+                            key = "home_remote_quick_picks",
+                            contentType = "media_shelf",
                         ) {
-                            HomeSectionHeader(
-                                title = stringResource(R.string.home_recently_played),
-                                leadingIcon = {
-                                    HomeSectionLeadingIcon(iconRes = R.drawable.history)
-                                },
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                        item(
-                            key = "home_recently_played",
-                            contentType = "recently_played",
-                        ) {
-                            RecentlyPlayedSection(
-                                recentlyPlayed = uiState.recentlyPlayed,
+                            BitChordYtItemShelf(
+                                title = remoteQuickPicks.title,
+                                items = remoteQuickPicks.items,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
-                                onPlayQueue = onPlayQueue,
                                 menuState = menuState,
-                                haptic = haptic,
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                    }
-
-                    if (!minimalMode && uiState.speedDialItems.isNotEmpty()) {
-                        sectionSpacer("speed_dial")
-                        item(
-                            key = "home_speed_dial_header",
-                            contentType = "section_header",
-                        ) {
-                            HomeSectionHeader(
-                                title = stringResource(R.string.speed_dial),
-                                leadingIcon = {
-                                    HomeSectionLeadingIcon(iconRes = R.drawable.bolt)
-                                },
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                        item(
-                            key = "home_speed_dial",
-                            contentType = "speed_dial",
-                        ) {
-                            SpeedDialSection(
-                                speedDialItems = uiState.speedDialItems,
-                                mediaMetadata = mediaMetadata,
-                                isPlaying = isPlaying,
-                                navController = navController,
-                                playerConnection = playerConnection,
-                                onPlayQueue = onPlayQueue,
-                                menuState = menuState,
-                                haptic = haptic,
-                                scope = scope,
                                 modifier = Modifier.animateItem(),
                             )
                         }
                     }
 
                     if (uiState.keepListening.isNotEmpty()) {
-                        sectionSpacer("keep_listening")
-                        item(
-                            key = "home_keep_listening_header",
-                            contentType = "section_header",
-                        ) {
-                            HomeSectionHeader(
-                                title = stringResource(R.string.keep_listening),
-                                leadingIcon = {
-                                    HomeSectionLeadingIcon(iconRes = R.drawable.listening)
-                                },
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
                         item(
                             key = "home_keep_listening",
                             contentType = "media_shelf",
                         ) {
-                            KeepListeningSection(
-                                keepListening = uiState.keepListening,
+                            BitChordLocalItemShelf(
+                                title = stringResource(R.string.keep_listening),
+                                items = uiState.keepListening,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
-                                onPlayQueue = onPlayQueue,
                                 menuState = menuState,
-                                haptic = haptic,
                                 scope = scope,
                                 modifier = Modifier.animateItem(),
                             )
                         }
                     }
 
-                    if (minimalMode && uiState.speedDialItems.isNotEmpty()) {
-                        sectionSpacer("speed_dial_minimal")
+                    if (uiState.speedDialItems.isNotEmpty()) {
                         item(
-                            key = "home_speed_dial_header_minimal",
-                            contentType = "section_header",
-                        ) {
-                            HomeSectionHeader(
-                                title = stringResource(R.string.speed_dial),
-                                leadingIcon = {
-                                    HomeSectionLeadingIcon(iconRes = R.drawable.bolt)
-                                },
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                        item(
-                            key = "home_speed_dial_minimal",
+                            key = "home_speed_dial",
                             contentType = "speed_dial",
                         ) {
-                            SpeedDialSection(
-                                speedDialItems = uiState.speedDialItems,
+                            BitChordLocalItemShelf(
+                                title = stringResource(R.string.speed_dial),
+                                items = uiState.speedDialItems,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
-                                onPlayQueue = onPlayQueue,
                                 menuState = menuState,
-                                haptic = haptic,
                                 scope = scope,
                                 modifier = Modifier.animateItem(),
                             )
@@ -547,88 +513,70 @@ private fun HomeContent(
 
                     livePerformanceSections.forEachIndexed { index, section ->
                         val sectionKey = "${section.endpoint?.browseId ?: section.title}_$index"
-                        sectionSpacer("live_performances_$sectionKey")
-                        item(
-                            key = "home_live_performances_header_$sectionKey",
-                            contentType = "section_header",
-                        ) {
-                            HomePageSectionTitle(
-                                section = section,
-                                navController = navController,
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
                         item(
                             key = "home_live_performances_$sectionKey",
                             contentType = "media_shelf",
                         ) {
-                            HomePageSectionContent(
-                                section = section,
+                            BitChordYtItemShelf(
+                                title = section.title,
+                                items = section.items,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
-                                onPlayQueue = onPlayQueue,
                                 menuState = menuState,
-                                haptic = haptic,
-                                scope = scope,
                                 modifier = Modifier.animateItem(),
                             )
                         }
                     }
 
                     if (!minimalMode && uiState.accountPlaylists.isNotEmpty()) {
-                        sectionSpacer("account_playlists")
                         item(
                             key = "home_account_playlists",
                             contentType = "media_shelf",
                         ) {
-                            Column(modifier = Modifier.animateItem()) {
-                                AccountPlaylistsTitle(
-                                    accountName = uiState.accountName,
-                                    accountImageUrl = uiState.accountImageUrl,
-                                    onClick = { navController.navigate("account") },
+                            Column(Modifier.animateItem()) {
+                                BitChordSectionHeader(
+                                    title = stringResource(R.string.your_youtube_playlists),
+                                    subtitle = uiState.accountName.takeIf { it.isNotBlank() },
                                 )
-                                AccountPlaylistsSection(
-                                    accountPlaylists = uiState.accountPlaylists,
-                                    mediaMetadata = mediaMetadata,
-                                    isPlaying = isPlaying,
-                                    navController = navController,
-                                    menuState = menuState,
-                                    haptic = haptic,
-                                    scope = scope,
-                                )
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = BitChordPageGutter),
+                                    horizontalArrangement = Arrangement.spacedBy(BitChordShelfCardSpacing),
+                                ) {
+                                    items(
+                                        uiState.accountPlaylists,
+                                        key = { "account_playlist_${it.id}" },
+                                    ) { playlist ->
+                                        BitChordShelfCard(
+                                            artworkUrl = playlist.thumbnail,
+                                            title = playlist.title,
+                                            subtitle = playlist.songCountText ?: "",
+                                            isCurrent = false,
+                                            isPlaying = false,
+                                            onClick = { navController.navigate("online_playlist/${playlist.id}") },
+                                            onLongClick = {},
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(BitChordShelfBottomSpacing))
                             }
                         }
                     }
 
                     if (!minimalMode && uiState.forgottenFavorites.isNotEmpty()) {
-                        sectionSpacer("forgotten_favorites")
-                        item(
-                            key = "home_forgotten_favorites_header",
-                            contentType = "section_header",
-                        ) {
-                            HomeSectionHeader(
-                                title = stringResource(R.string.forgotten_favorites),
-                                leadingIcon = {
-                                    HomeSectionLeadingIcon(iconRes = R.drawable.cached)
-                                },
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
                         item(
                             key = "home_forgotten_favorites",
                             contentType = "song_shelf",
                         ) {
-                            ForgottenFavoritesSection(
-                                forgottenFavorites = uiState.forgottenFavorites,
+                            BitChordSongShelf(
+                                title = stringResource(R.string.forgotten_favorites),
+                                songs = uiState.forgottenFavorites,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
                                 navController = navController,
-                                playerConnection = playerConnection,
-                                onPlayQueue = onPlayQueue,
                                 menuState = menuState,
-                                haptic = haptic,
+                                onPlayQueue = onPlayQueue,
                                 modifier = Modifier.animateItem(),
                             )
                         }
@@ -636,29 +584,18 @@ private fun HomeContent(
 
                     if (!minimalMode) {
                         uiState.similarRecommendations.forEach { recommendation ->
-                            sectionSpacer("similar_${recommendation.title.id}")
-                            item(
-                                key = "home_similar_header_${recommendation.title.id}",
-                                contentType = "section_header",
-                            ) {
-                                SimilarRecommendationsTitle(
-                                    recommendation = recommendation,
-                                    navController = navController,
-                                    modifier = Modifier.animateItem(),
-                                )
-                            }
                             item(
                                 key = "home_similar_${recommendation.title.id}",
                                 contentType = "media_shelf",
                             ) {
-                                SimilarRecommendationsSection(
-                                    recommendation = recommendation,
+                                BitChordYtItemShelf(
+                                    title = recommendation.title.title,
+                                    items = recommendation.items,
                                     mediaMetadata = mediaMetadata,
                                     isPlaying = isPlaying,
                                     navController = navController,
+                                    playerConnection = playerConnection,
                                     menuState = menuState,
-                                    haptic = haptic,
-                                    scope = scope,
                                     modifier = Modifier.animateItem(),
                                 )
                             }
@@ -668,31 +605,18 @@ private fun HomeContent(
                     if (!minimalMode) {
                         otherRemoteSections.forEachIndexed { index, section ->
                             val sectionKey = "${section.endpoint?.browseId ?: section.title}_$index"
-                            sectionSpacer("remote_$sectionKey")
-                            item(
-                                key = "home_remote_header_$sectionKey",
-                                contentType = "section_header",
-                            ) {
-                                HomePageSectionTitle(
-                                    section = section,
-                                    navController = navController,
-                                    modifier = Modifier.animateItem(),
-                                )
-                            }
                             item(
                                 key = "home_remote_$sectionKey",
                                 contentType = "media_shelf",
                             ) {
-                                HomePageSectionContent(
-                                    section = section,
+                                BitChordYtItemShelf(
+                                    title = section.title,
+                                    items = section.items,
                                     mediaMetadata = mediaMetadata,
                                     isPlaying = isPlaying,
                                     navController = navController,
                                     playerConnection = playerConnection,
-                                    onPlayQueue = onPlayQueue,
                                     menuState = menuState,
-                                    haptic = haptic,
-                                    scope = scope,
                                     modifier = Modifier.animateItem(),
                                 )
                             }
@@ -742,7 +666,7 @@ internal fun HomeSkeletonFeed(
             HomeShimmerBox(
                 modifier =
                     Modifier
-                        .padding(horizontal = HomeFeedGutter)
+                        .padding(horizontal = BitChordPageGutter)
                         .padding(vertical = 14.dp)
                         .fillMaxWidth(0.55f)
                         .height(34.dp),
@@ -750,5 +674,238 @@ internal fun HomeSkeletonFeed(
             )
         }
         homeFeedSkeleton()
+    }
+}
+
+@Composable
+private fun BitChordSongShelf(
+    title: String,
+    songs: List<Song>,
+    mediaMetadata: MediaMetadata?,
+    isPlaying: Boolean,
+    navController: NavController,
+    menuState: MenuState,
+    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val distinct = remember(songs) { songs.distinctBy { it.id } }
+    Column(modifier) {
+        BitChordSectionHeader(title = title)
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = BitChordPageGutter),
+            horizontalArrangement = Arrangement.spacedBy(BitChordShelfCardSpacing),
+        ) {
+            items(distinct, key = { "song_${it.id}" }) { song ->
+                BitChordShelfCard(
+                    artworkUrl = song.thumbnailUrl,
+                    title = song.song.title,
+                    subtitle = song.artists.joinToString { it.name },
+                    isCurrent = mediaMetadata?.id == song.id,
+                    isPlaying = isPlaying,
+                    onClick = {
+                        onPlayQueue(
+                            ListQueue(
+                                title = title,
+                                items = distinct.map { it.toMediaItem() },
+                                startIndex = distinct.indexOf(song),
+                            ),
+                        )
+                    },
+                    onLongClick = {
+                        menuState.show {
+                            SongMenu(
+                                originalSong = song,
+                                navController = navController,
+                                onDismiss = menuState::dismiss,
+                            )
+                        }
+                    },
+                )
+            }
+        }
+        Spacer(Modifier.height(BitChordShelfBottomSpacing))
+    }
+}
+
+@Composable
+private fun BitChordLocalItemShelf(
+    title: String,
+    items: List<LocalItem>,
+    mediaMetadata: MediaMetadata?,
+    isPlaying: Boolean,
+    navController: NavController,
+    playerConnection: PlayerConnection?,
+    menuState: MenuState,
+    scope: kotlinx.coroutines.CoroutineScope,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier) {
+        BitChordSectionHeader(title = title)
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = BitChordPageGutter),
+            horizontalArrangement = Arrangement.spacedBy(BitChordShelfCardSpacing),
+        ) {
+            items(items, key = { "local_${it.id}" }) { localItem ->
+                val isActive = mediaMetadata?.id == localItem.id
+                BitChordShelfCard(
+                    artworkUrl = localItem.thumbnailUrl,
+                    title = localItem.title,
+                    subtitle =
+                        when (localItem) {
+                            is Song -> localItem.artists.joinToString { it.name }
+                            is Album -> localItem.artists.joinToString { it.name }
+                            is Playlist -> androidx.compose.ui.res.pluralStringResource(
+                                R.plurals.n_song,
+                                localItem.songCount,
+                                localItem.songCount,
+                            )
+                            is Artist -> ""
+                            else -> ""
+                        },
+                    isCurrent = isActive,
+                    isPlaying = isPlaying,
+                    onClick = {
+                        when (localItem) {
+                            is Song -> {
+                                if (isActive) {
+                                    playerConnection?.player?.togglePlayPause()
+                                } else {
+                                    playerConnection?.playQueue(
+                                        ListQueue(
+                                            title = title,
+                                            items = items.filterIsInstance<Song>().map { it.toMediaItem() },
+                                        ),
+                                    )
+                                }
+                            }
+
+                            is Album -> navController.navigate("album/${localItem.id}")
+
+                            is Artist -> navController.navigate("artist/${localItem.id}")
+
+                            is Playlist -> navController.navigate("local_playlist/${localItem.id}")
+
+                            else -> {}
+                        }
+                    },
+                    onLongClick = {
+                        menuState.show {
+                            when (localItem) {
+                                is Song ->
+                                    SongMenu(
+                                        originalSong = localItem,
+                                        navController = navController,
+                                        onDismiss = menuState::dismiss,
+                                    )
+
+                                is Album ->
+                                    AlbumMenu(
+                                        originalAlbum = localItem,
+                                        navController = navController,
+                                        onDismiss = menuState::dismiss,
+                                    )
+
+                                is Artist ->
+                                    ArtistMenu(
+                                        originalArtist = localItem,
+                                        coroutineScope = scope,
+                                        onDismiss = menuState::dismiss,
+                                    )
+
+                                is Playlist ->
+                                    PlaylistMenu(
+                                        playlist = localItem,
+                                        coroutineScope = scope,
+                                        onDismiss = menuState::dismiss,
+                                    )
+
+                                else -> {}
+                            }
+                        }
+                    },
+                )
+            }
+        }
+        Spacer(Modifier.height(BitChordShelfBottomSpacing))
+    }
+}
+
+@Composable
+private fun BitChordYtItemShelf(
+    title: String,
+    items: List<YTItem>,
+    mediaMetadata: MediaMetadata?,
+    isPlaying: Boolean,
+    navController: NavController,
+    playerConnection: PlayerConnection?,
+    menuState: MenuState,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier) {
+        BitChordSectionHeader(title = title)
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = BitChordPageGutter),
+            horizontalArrangement = Arrangement.spacedBy(BitChordShelfCardSpacing),
+        ) {
+            items(items, key = { "yt_${it.id}" }) { item ->
+                BitChordShelfCard(
+                    artworkUrl = item.thumbnail,
+                    title = item.title,
+                    subtitle =
+                        when (item) {
+                            is SongItem -> item.artists?.joinToString { it.name } ?: ""
+                            is AlbumItem -> item.artists?.joinToString { it.name } ?: ""
+                            is ArtistItem -> ""
+                            is PlaylistItem -> item.songCountText ?: ""
+                            else -> ""
+                        },
+                    isCurrent =
+                        when (item) {
+                            is SongItem -> mediaMetadata?.id == item.id
+                            is AlbumItem -> mediaMetadata?.album?.id == item.id
+                            else -> false
+                        },
+                    isPlaying = isPlaying,
+                    onClick = {
+                        when (item) {
+                            is SongItem -> {
+                                if (item.id == mediaMetadata?.id) {
+                                    playerConnection?.player?.togglePlayPause()
+                                } else {
+                                    playerConnection?.playQueue(
+                                        YouTubeQueue(
+                                            item.endpoint ?: WatchEndpoint(videoId = item.id),
+                                            item.toMediaMetadata(),
+                                        ),
+                                    )
+                                }
+                            }
+
+                            is AlbumItem -> navController.navigate("album/${item.id}")
+
+                            is ArtistItem -> navController.navigate("artist/${item.id}")
+
+                            is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
+
+                            else -> {}
+                        }
+                    },
+                    onLongClick = {
+                        val songItem = item as? SongItem
+                        if (songItem != null) {
+                            menuState.show {
+                                YouTubeSongMenu(
+                                    song = songItem,
+                                    navController = navController,
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
+                        }
+                    },
+                )
+            }
+        }
+        Spacer(Modifier.height(BitChordShelfBottomSpacing))
     }
 }

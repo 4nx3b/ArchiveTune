@@ -167,7 +167,7 @@ object AppleMusicProvider {
             fresh
         }
 
-    private suspend fun ensureTokenFresh(): String {
+    suspend fun ensureTokenFresh(): String {
         devTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { userDevToken ->
             val expSec = decodeJwtExpSec(userDevToken)
             val nowSec = System.currentTimeMillis() / 1000L

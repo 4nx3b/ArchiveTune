@@ -26,6 +26,16 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.ExperimentalFoundationApi
+import android.os.Build
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.EaseOutCubic
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -41,6 +51,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -81,13 +92,41 @@ import moe.rukamori.archivetune.constants.SearchProvider
 import moe.rukamori.archivetune.constants.SearchSource
 import moe.rukamori.archivetune.db.entities.SearchHistory
 import moe.rukamori.archivetune.ui.component.SearchSourcePicker
-import moe.rukamori.archivetune.ui.screens.HomeAtmosphereBackground
 import moe.rukamori.archivetune.ui.screens.LocalSearchHazeState
 import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
+import dev.chrisbanes.haze.materials.HazeMaterials
+import dev.chrisbanes.haze.HazeProgressive
 import moe.rukamori.archivetune.viewmodels.SearchHistoryViewModel
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
-import androidx.compose.runtime.getValue
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.Dp
+import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.constants.HideExplicitKey
+import moe.rukamori.archivetune.constants.HideVideoKey
+import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.innertube.models.AlbumItem
+import moe.rukamori.archivetune.innertube.models.ArtistItem
+import moe.rukamori.archivetune.innertube.models.PlaylistItem
+import moe.rukamori.archivetune.innertube.models.SearchSuggestions
+import moe.rukamori.archivetune.innertube.models.SongItem
+import moe.rukamori.archivetune.innertube.models.WatchEndpoint
+import moe.rukamori.archivetune.innertube.models.YTItem
+import moe.rukamori.archivetune.innertube.models.filterExplicit
+import moe.rukamori.archivetune.innertube.models.filterVideo
+import moe.rukamori.archivetune.innertube.pages.SearchSummaryPage
+import moe.rukamori.archivetune.extensions.togglePlayPause
+import moe.rukamori.archivetune.models.toMediaMetadata
+import moe.rukamori.archivetune.playback.PlayerConnection
+import moe.rukamori.archivetune.playback.queues.YouTubeQueue
+import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import androidx.compose.runtime.setValue
 
 private val SearchHorizontalPadding = 24.dp
@@ -104,6 +143,49 @@ fun SearchScreen(
 ) {
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var searchProvider by rememberEnumPreference(DefaultSearchSourceKey, SearchProvider.YOUTUBE)
+
+    var liveSuggestions by remember { mutableStateOf<SearchSuggestions?>(null) }
+    var liveSummary by remember { mutableStateOf<SearchSummaryPage?>(null) }
+    val (hideExplicit) = rememberPreference(HideExplicitKey, defaultValue = false)
+    val (hideVideo) = rememberPreference(HideVideoKey, defaultValue = false)
+    LaunchedEffect(searchQuery, searchProvider, hideExplicit, hideVideo) {
+        val query = searchQuery.trim()
+        if (query.isEmpty()) {
+            liveSuggestions = null
+            liveSummary = null
+            return@LaunchedEffect
+        }
+
+        delay(250)
+        if (searchQuery.trim() != query) return@LaunchedEffect
+
+        YouTube
+            .searchSuggestions(query)
+            .onSuccess { page ->
+                if (searchQuery.trim() == query) {
+                    liveSuggestions =
+                        SearchSuggestions(
+                            queries = page.queries,
+                            recommendedItems =
+                                page.recommendedItems
+                                    .filterExplicit(hideExplicit)
+                                    .filterVideo(hideVideo),
+                        )
+                }
+            }
+        if (searchProvider == SearchProvider.YOUTUBE) {
+            YouTube
+                .searchSummary(query)
+                .onSuccess { page ->
+                    if (searchQuery.trim() == query) {
+                        liveSummary =
+                            page
+                                .filterExplicit(hideExplicit)
+                                .filterVideo(hideVideo)
+                    }
+                }
+        }
+    }
 
     val onSearchSourceSelection: (SearchSource, SearchProvider) -> Unit = { _, provider ->
         searchProvider = provider
@@ -140,7 +222,6 @@ fun SearchScreen(
                     },
                 ),
     ) {
-
         Box(
             modifier =
                 Modifier
@@ -149,9 +230,7 @@ fun SearchScreen(
                         if (barState.backdrop != null) m.glassSource(barState.backdrop!!) else m
                     },
         ) {
-            if (!disableBlur) {
-                HomeAtmosphereBackground()
-            }
+            // Root-level subtle atmosphere gradient — see MainActivity.
         }
 
         BoxWithConstraints(
@@ -174,12 +253,27 @@ fun SearchScreen(
                             .padding(bottom = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    RecentSearchesPanel(
-                        recentSearches = recentSearches,
-                        maxHeight = recentsMaxHeight,
-                        onClearAll = historyViewModel::clearAll,
-                        onPick = onSearchQuery,
-                    )
+                    if (searchQuery.isNotBlank()) {
+                        LiveSearchSuggestionsPanel(
+                            suggestions = liveSuggestions,
+                            summary = liveSummary,
+                            navController = navController,
+                            maxHeight = recentsMaxHeight,
+                            hazeState = searchHazeState,
+                            disableBlur = disableBlur,
+                            onQueryPick = { picked ->
+                                searchQuery = picked
+                                onSearchQuery(picked)
+                            },
+                        )
+                    } else {
+                        RecentSearchesPanel(
+                            recentSearches = recentSearches,
+                            maxHeight = recentsMaxHeight,
+                            onClearAll = historyViewModel::clearAll,
+                            onPick = onSearchQuery,
+                        )
+                    }
 
                     Spacer(Modifier.height(10.dp))
 
@@ -295,6 +389,254 @@ private fun RecentSearchesPanel(
             }
         }
     }
+}
+
+@OptIn(ExperimentalHazeMaterialsApi::class)
+@Composable
+private fun LiveSearchSuggestionsPanel(
+    suggestions: SearchSuggestions?,
+    summary: SearchSummaryPage?,
+    navController: NavController,
+    maxHeight: Dp,
+    hazeState: HazeState?,
+    disableBlur: Boolean,
+    onQueryPick: (String) -> Unit,
+) {
+    val playerConnection = LocalPlayerConnection.current ?: return
+    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
+    val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
+    val haptic = LocalHapticFeedback.current
+    val listState = rememberLazyListState()
+
+    val queries = suggestions?.queries.orEmpty()
+    val summarySections =
+        summary?.summaries.orEmpty().filter { it.items.isNotEmpty() }
+    val fallbackItems =
+        if (summarySections.isEmpty()) suggestions?.recommendedItems.orEmpty() else emptyList()
+
+    if (queries.isEmpty() && summarySections.isEmpty() && fallbackItems.isEmpty()) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = maxHeight),
+        )
+        return
+    }
+
+    // Recommendations render ABOVE the query completions: newly loaded
+    // summary sections prepend at the panel's top (always inside the visible
+    // window once the list clips) while the query rows the user is reading
+    // stay anchored right above the search bar instead of jumping upward.
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = maxHeight),
+    ) {
+        LazyColumn(
+            state = listState,
+            modifier =
+                Modifier
+                    .fillMaxWidth(),
+        ) {
+            if (summarySections.isNotEmpty()) {
+                summarySections.forEach { section ->
+                    item(key = "summary_header_${section.title}") {
+                        Text(
+                            text = section.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        start = SearchHorizontalPadding,
+                                        end = SearchHorizontalPadding,
+                                        top = 14.dp,
+                                        bottom = 4.dp,
+                                    ),
+                        )
+                    }
+                    items(
+                        items = section.items,
+                        key = { it.id },
+                        contentType = { 2 },
+                    ) { item ->
+                        SuggestedResultRow(
+                            item = item,
+                            currentMediaId = mediaMetadata?.id,
+                            currentAlbumId = mediaMetadata?.album?.id,
+                            isPlaying = isPlaying,
+                            navController = navController,
+                            playerConnection = playerConnection,
+                            haptic = haptic,
+                        )
+                    }
+                }
+            } else if (fallbackItems.isNotEmpty()) {
+                items(
+                    items = fallbackItems,
+                    key = { it.id },
+                    contentType = { 2 },
+                ) { item ->
+                    SuggestedResultRow(
+                        item = item,
+                        currentMediaId = mediaMetadata?.id,
+                        currentAlbumId = mediaMetadata?.album?.id,
+                        isPlaying = isPlaying,
+                        navController = navController,
+                        playerConnection = playerConnection,
+                        haptic = haptic,
+                    )
+                }
+            }
+
+            items(
+                count = queries.size,
+                key = { index -> "query_$index" },
+                contentType = { 1 },
+            ) { index ->
+                val query = queries[index]
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .combinedClickable(
+                                onClick = { onQueryPick(query) },
+                                onLongClick = {},
+                            )
+                            .padding(horizontal = SearchHorizontalPadding, vertical = 10.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.search),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = query,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+
+        // Progressive haze fade over the panel's top edge while the list is
+        // scrolled — the same ultraThin progressive treatment the home header
+        // uses, so content dissolving off the top blurs into the background.
+        if (hazeState != null && !disableBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val scrolledAway by remember {
+                derivedStateOf {
+                    listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
+                }
+            }
+            val fadeAlpha by animateFloatAsState(
+                targetValue = if (scrolledAway) 1f else 0f,
+                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                label = "searchSuggestionsHaze",
+            )
+            if (fadeAlpha > 0.01f) {
+                val pageColor = MaterialTheme.colorScheme.surface
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .height(28.dp)
+                            .graphicsLayer { alpha = fadeAlpha }
+                            .hazeEffect(
+                                state = hazeState,
+                                style = HazeMaterials.ultraThin(pageColor),
+                            ) {
+                                progressive =
+                                    HazeProgressive.verticalGradient(
+                                        easing = EaseOutCubic,
+                                        startIntensity = 0.75f,
+                                        endIntensity = 0f,
+                                    )
+                                noiseFactor = 0f
+                            },
+                )
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .height(28.dp)
+                            .graphicsLayer { alpha = fadeAlpha }
+                            .background(
+                                Brush.verticalGradient(
+                                    colorStops =
+                                        Array(4) { i ->
+                                            val t = i / 3f
+                                            t to pageColor.copy(alpha = 0.30f * (1f - t))
+                                        },
+                                ),
+                            ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SuggestedResultRow(
+    item: YTItem,
+    currentMediaId: String?,
+    currentAlbumId: String?,
+    isPlaying: Boolean,
+    navController: NavController,
+    playerConnection: PlayerConnection,
+    haptic: HapticFeedback,
+) {
+    YouTubeListItem(
+        item = item,
+        isActive =
+            when (item) {
+                is SongItem -> currentMediaId == item.id
+                is AlbumItem -> currentAlbumId == item.id
+                else -> false
+            },
+        isPlaying = isPlaying,
+        isSwipeable = false,
+        modifier =
+            Modifier.combinedClickable(
+                onClick = {
+                    when (item) {
+                        is SongItem -> {
+                            if (item.id == currentMediaId) {
+                                playerConnection.player.togglePlayPause()
+                            } else {
+                                playerConnection.playQueue(
+                                    YouTubeQueue(
+                                        item.endpoint ?: WatchEndpoint(videoId = item.id),
+                                        item.toMediaMetadata(),
+                                    ),
+                                )
+                            }
+                        }
+
+                        is AlbumItem -> navController.navigate("album/${item.id}")
+
+                        is ArtistItem -> navController.navigate("artist/${item.id}")
+
+                        is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
+
+                        else -> {}
+                    }
+                },
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                },
+            ),
+    )
 }
 
 @Composable
@@ -436,7 +778,11 @@ private fun SearchTabBottomChrome(
             )
             IconButton(
                 onClick = onVoiceSearch,
-                modifier = Modifier.padding(end = 4.dp),
+                // Start padding shifts the mic RIGHT, away from the text field
+                // and toward the source picker (increasing the end padding
+                // instead moved it left — the picker is pinned to the row's
+                // right edge, so end padding only widens the mic-picker gap).
+                modifier = Modifier.padding(start = 10.dp, end = 4.dp),
             ) {
                 Icon(
                     painter = painterResource(R.drawable.mic),
@@ -445,12 +791,17 @@ private fun SearchTabBottomChrome(
                     modifier = Modifier.size(22.dp),
                 )
             }
-            SearchSourcePicker(
-                currentScope = SearchSource.ONLINE,
-                currentProvider = searchProvider,
-                onSelection = onSourceSelection,
-                includeLocal = false,
-            )
+            // End padding nudges the source picker (the YouTube icon for the
+            // default YT Music provider) a bit to the left, away from the
+            // pill's right edge.
+            Box(modifier = Modifier.padding(end = 6.dp)) {
+                SearchSourcePicker(
+                    currentScope = SearchSource.ONLINE,
+                    currentProvider = searchProvider,
+                    onSelection = onSourceSelection,
+                    includeLocal = false,
+                )
+            }
         }
     }
 }

@@ -517,7 +517,6 @@ class MusicService :
         object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<AudioDeviceInfo>) {
                 if (addedDevices.any { it.isSink }) {
-
                     if (exclusiveRouteSessionFallback) {
                         exclusiveRouteSessionFallback = false
                         Timber.tag(TAG).i("USB audio device added; exclusive session fallback cleared")
@@ -1363,6 +1362,7 @@ class MusicService :
             }
             ioScope.launch {
                 var lastPolledWireRateHz = -1
+                var wireMismatchStreak = 0
                 while (isActive) {
                     val wireRateHz = lastwaveExclusiveUsb.currentRateHz()
                     EngineRuntime.publishUsbWire(
@@ -1385,6 +1385,13 @@ class MusicService :
                         if (wireRateHz > 0 || lastwaveAudioProcessing) {
                             applyNativeRateOverride()
                         }
+                    }
+
+                    wireMismatchStreak =
+                        if (bitPerfectWireRateMismatched()) wireMismatchStreak + 1 else 0
+                    if (wireMismatchStreak >= BIT_PERFECT_WIRE_MISMATCH_TRIGGER_POLLS) {
+                        maybeReprepareForBitPerfectWireMismatch()
+                        wireMismatchStreak = 0
                     }
                     delay(1000)
                 }
@@ -1799,7 +1806,6 @@ class MusicService :
                         usbExclusiveRequested,
                     )
                 }.onFailure {
-
                     if (it is CancellationException) throw it
                     Timber.tag(TAG).e(it, "Audio route collector (float-dsp/usb-exclusive) emission failed; will retry on next preference change")
                 }
@@ -1904,7 +1910,6 @@ class MusicService :
                     }
 
                     if (engineSelectionChanged) {
-
                         BitPerfectRuntime.reevaluateEngines(
                             context = this@MusicService,
                             engineOrDspEngaged = tryptify || lastwaveEffective || primaryFloatDspProcessor.engaged,
@@ -1918,7 +1923,6 @@ class MusicService :
                     applyFloatDspEngagement()
 
                     if (engineSelectionChanged && bitPerfectNeedsRouteReprepare()) {
-
                         scope.launch(Dispatchers.Main) {
                             runCatching { repreparePlayerForAudioRouteChange() }
                         }
@@ -1932,7 +1936,6 @@ class MusicService :
                                 if (wanted == AudioEngineRouterProcessor.Engine.NONE) return@launch
                                 if (EngineRuntime.activeEngine == wanted) return@launch
                                 if (!bitPerfectNeedsRouteReprepare()) {
-
                                     if (player.playbackState == Player.STATE_IDLE) return@launch
                                     continue
                                 }
@@ -2621,7 +2624,6 @@ class MusicService :
                 ensureDiscordSyncFresh(request.epoch)
                 val snapshot =
                     buildDiscordPresenceSnapshot(song, decision.isPaused) ?: run {
-
                         requestDiscordSync(
                             reason = "playback_changed_before_presence_apply",
                             force = true,
@@ -3205,9 +3207,15 @@ class MusicService :
         incomingBaseVolume: Float,
         outgoingPlayer: ExoPlayer,
         incomingPlayer: ExoPlayer,
+        gentleIncoming: Boolean = false,
     ) {
         outgoingPlayer.volume = CrossfadePolicy.outgoingVolume(progress, outgoingBaseVolume, maxSafeGainFactor)
-        incomingPlayer.volume = CrossfadePolicy.incomingVolume(progress, incomingBaseVolume, maxSafeGainFactor)
+        incomingPlayer.volume =
+            if (gentleIncoming) {
+                CrossfadePolicy.gentleIncomingVolume(progress, incomingBaseVolume, maxSafeGainFactor)
+            } else {
+                CrossfadePolicy.incomingVolume(progress, incomingBaseVolume, maxSafeGainFactor)
+            }
     }
 
     private fun isCastSessionConnected(): Boolean {
@@ -3386,7 +3394,7 @@ class MusicService :
                             nextTrack = nextItem.toAutoMixTrackInfo(nextDurationMs),
                             positionMs = player.currentPosition,
                             fallbackFadeMs = autoMixFallbackFadeMs(),
-                            minFadeMs = MIN_CROSSFADE_DURATION_MS,
+                            minFadeMs = MIN_AUTO_MIX_FADE_MS,
                             gaplessAlbum = crossfadeGapless && isGaplessAlbumTransition(currentItem, nextItem),
                         )
 
@@ -3498,10 +3506,7 @@ class MusicService :
         )
     }
 
-    private fun autoMixFallbackFadeMs(): Long {
-        val configured = crossfadeDurationMs.takeIf { it > 0L } ?: DEFAULT_AUTO_MIX_FALLBACK_MS
-        return configured.coerceIn(MIN_CROSSFADE_DURATION_MS, 12_000L)
-    }
+    private fun autoMixFallbackFadeMs(): Long = DEFAULT_AUTO_MIX_FALLBACK_MS
 
     private fun timelineDurationMsAt(
         index: Int,
@@ -3965,6 +3970,7 @@ class MusicService :
                                 crossfadeIncomingBaseVolume,
                                 localPlayer,
                                 incomingPlayer,
+                                gentleIncoming = smart,
                             )
                             if (smart) {
                                 rideAutoMixFilters(plan!!, crossfadeProgress)
@@ -3977,7 +3983,6 @@ class MusicService :
                     }
 
                     if (smart) {
-
                         val tailDeadlineMs =
                             android.os.SystemClock.elapsedRealtime() + AUTO_MIX_TAIL_WAIT_MS
                         while (isActive && player.currentMediaItem?.mediaId == outgoingMediaId) {
@@ -6649,6 +6654,7 @@ class MusicService :
 
         crossfadeConsecutiveFailures = 0
         crossfadeFailureMediaId = null
+        lastBitPerfectWireReprepareKey = null
 
         initialBufferRecoveryJob?.cancel()
         initialBufferRecoveryJob = null
@@ -8067,7 +8073,7 @@ class MusicService :
                 AudioSourceType.QOBUZ to dataStore.get(QobuzEnabledKey, false),
                 AudioSourceType.QOBUZ_BACKUP to dataStore.get(QobuzBackupEnabledKey, false),
                 AudioSourceType.DEEZER to dataStore.get(DeezerEnabledKey, false),
-                AudioSourceType.APPLE to dataStore.get(AppleMusicSourceEnabledKey, true),
+                AudioSourceType.APPLE to dataStore.get(AppleMusicSourceEnabledKey, false),
                 AudioSourceType.JIOSAAVN to dataStore.get(JioSaavnEnabledKey, false),
                 AudioSourceType.YOUTUBE to true,
             )
@@ -8087,7 +8093,7 @@ class MusicService :
             AudioSourceType.QOBUZ -> dataStore.get(QobuzEnabledKey, false)
             AudioSourceType.QOBUZ_BACKUP -> dataStore.get(QobuzBackupEnabledKey, false)
             AudioSourceType.DEEZER -> dataStore.get(DeezerEnabledKey, false)
-            AudioSourceType.APPLE -> dataStore.get(AppleMusicSourceEnabledKey, true)
+            AudioSourceType.APPLE -> dataStore.get(AppleMusicSourceEnabledKey, false)
             AudioSourceType.JIOSAAVN -> dataStore.get(JioSaavnEnabledKey, false)
         }
 
@@ -8729,7 +8735,7 @@ class MusicService :
         query: SourceQuery,
         trusted: Boolean = false,
     ): DirectStream? {
-        if (AppleMusicAudioProvider.mediaUserToken() == null) {
+        if (AppleMusicAudioProvider.mediaUserToken() == null || AppleMusicAudioProvider.usableDevToken() == null) {
             Timber
                 .tag("MusicService")
                 .d("Apple Music source: no account (sign in via Settings → Apple Music or add a pool account)")
@@ -9153,7 +9159,7 @@ class MusicService :
     }
 
     private fun resolveDeezerStream(query: SourceQuery): DirectStream? {
-        if (!DeezerAudioProvider.hasAccounts()) {
+        if (!DeezerAudioProvider.hasBackends()) {
             Timber.tag("MusicService").d("Deezer skip: no manual or pooled accounts available")
             return null
         }
@@ -9460,7 +9466,7 @@ class MusicService :
             dataStore.get(QobuzEnabledKey, false) ||
             dataStore.get(QobuzBackupEnabledKey, false) ||
             dataStore.get(DeezerEnabledKey, false) ||
-            dataStore.get(AppleMusicSourceEnabledKey, true)
+            dataStore.get(AppleMusicSourceEnabledKey, false)
     }
 
     private fun resolvePlaybackDataSpec(
@@ -10342,7 +10348,6 @@ class MusicService :
                     BitPerfectRuntime.notifyUsbExclusive(true, rate, bits, engineTransport)
                 }
             } else if (BitPerfectRuntime.status.usbExclusiveActive) {
-
                 BitPerfectRuntime.notifyUsbExclusive(false, 0, 0)
             }
         }
@@ -10499,6 +10504,40 @@ class MusicService :
         if (resumePlayback) player.play() else player.pause()
     }
 
+    private fun bitPerfectWireRateMismatched(): Boolean {
+        if (!BitPerfectRuntime.requested) return false
+        val sourceRate = BitPerfectRuntime.status.sourceSampleRate
+        if (sourceRate <= 0) return false
+        val wireRate = BitPerfectRuntime.wireSampleRateHz
+        return wireRate > 0 && wireRate != sourceRate
+    }
+
+    @Volatile
+    private var lastBitPerfectWireReprepareKey: String? = null
+
+    private fun maybeReprepareForBitPerfectWireMismatch() {
+        val sourceRate = BitPerfectRuntime.status.sourceSampleRate
+        val wireRate = BitPerfectRuntime.wireSampleRateHz
+        if (sourceRate <= 0 || wireRate <= 0) return
+        scope.launch(Dispatchers.Main) {
+            if (!bitPerfectWireRateMismatched()) return@launch
+            if (!bitPerfectNeedsRouteReprepare()) return@launch
+            val mediaId =
+                runCatching { player.currentMediaItem?.mediaId }.getOrNull() ?: return@launch
+            val key = "$mediaId|$sourceRate|$wireRate"
+            if (key == lastBitPerfectWireReprepareKey) return@launch
+            lastBitPerfectWireReprepareKey = key
+            Timber.tag(TAG).w(
+                "Bit-perfect wire stuck at %dHz while the source decodes at %dHz (mediaId=%s) — " +
+                    "re-preparing the audio path the same way a bit-perfect toggle would",
+                wireRate,
+                sourceRate,
+                mediaId,
+            )
+            runCatching { repreparePlayerForAudioRouteChange() }
+        }
+    }
+
     private fun updateAudioOffload(enabled: Boolean) {
         val effectiveEnabled = enabled && !crossfadeEnabled
         runCatching {
@@ -10581,7 +10620,6 @@ class MusicService :
     private fun applyNativeRateOverride() {
         val wireRateHz =
             if (usbSinkActiveNow && lastwaveAudioProcessing && !BitPerfectRuntime.requested) {
-
                 lastwaveExclusiveUsb.currentRateHz().takeIf { it > 0 }
             } else {
                 null
@@ -10679,6 +10717,16 @@ class MusicService :
         val sampleRate = format.sampleRate.takeIf { it > 0 } ?: return
         val channels = format.channelCount.takeIf { it in 1..2 } ?: 2
         val encoding = format.pcmEncoding
+        if (BitPerfectRuntime.decodedRateIsAuthoritative &&
+            BitPerfectRuntime.status.sourceSampleRate != sampleRate
+        ) {
+            Timber.tag(TAG).i(
+                "Container declares %dHz but the decoded stream runs at %dHz — the decoded rate " +
+                    "stays authoritative for the wire (lossy codecs decode at their own rate)",
+                sampleRate,
+                BitPerfectRuntime.status.sourceSampleRate,
+            )
+        }
         runCatching {
             BitPerfectRuntime.reportContainerFormat(
                 inputEncoding = encoding,
@@ -10701,7 +10749,6 @@ class MusicService :
                 true
             }.getOrDefault(false)
             if (written) {
-
                 formatSampleRateSynced[entity.id] = decodedRate
                 Timber.tag(TAG).i(
                     "Format entity synced with decoded stream: %dHz (was %s)",
@@ -10910,7 +10957,6 @@ class MusicService :
                     bitPerfectSink = bitPerfectSink,
                     routeActive = {
                         if (primary) {
-
                             BitPerfectRuntime.requested ||
                                 tryptifyAudioProcessing ||
                                 lastwaveAudioProcessing
@@ -11595,6 +11641,7 @@ class MusicService :
         private const val ArchiveTuneExtractorExpirySafetyMs = 30_000L
         private const val AUDIO_EFFECT_INITIALIZATION_MAX_ATTEMPTS = 4
         private const val AUDIO_EFFECT_INITIALIZATION_RETRY_DELAY_MS = 250L
+        private const val BIT_PERFECT_WIRE_MISMATCH_TRIGGER_POLLS = 2
         private const val INFINITE_QUEUE_MAX_BOOTSTRAP_PAGES = 3
         private const val DISCORD_SYNC_TAG = "DiscordSync"
         private const val DISCORD_HOLD_TIMEOUT_MS = 7_000L
@@ -11633,6 +11680,7 @@ class MusicService :
         const val EFFECTIVE_VOLUME_RAMP_DOWN_MS = 180L
         const val EFFECTIVE_VOLUME_RAMP_MIN_DELTA = 0.015f
         const val MIN_CROSSFADE_DURATION_MS = 500L
+        const val MIN_AUTO_MIX_FADE_MS = 2_500L
         const val CROSSFADE_END_GUARD_MS = 150L
         const val CROSSFADE_PREPARE_AHEAD_MS = 30_000L
         const val CROSSFADE_READY_TIMEOUT_MS = 5_000L

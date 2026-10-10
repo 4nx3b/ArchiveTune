@@ -61,6 +61,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -89,6 +90,7 @@ import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.constants.VideoPlaybackSpeedKey
 import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
+import moe.rukamori.archivetune.constants.MaxVideoCacheSizeKey
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.innertube.NewPipeUtils
@@ -99,6 +101,8 @@ import moe.rukamori.archivetune.simpstream.SimpMusicPlayer
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.StreamClientUtils
 import moe.rukamori.archivetune.utils.rememberPreference
+import dagger.hilt.android.EntryPointAccessors
+import moe.rukamori.archivetune.di.VideoCacheEntryPoint
 import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.utils.YTPlayerUtils
 import moe.rukamori.archivetune.extensions.toEnum
@@ -169,7 +173,12 @@ private const val VideoStreamInfoCacheMaxEntries = 16
 private const val VideoStreamInfoCacheValidityMs = 45 * 60 * 1000L
 
 private val videoStreamInfoCache =
-    java.util.Collections.synchronizedMap(LinkedHashMap<String, Pair<Long, VideoStreamInfo>>())
+    java.util.Collections.synchronizedMap(
+        object : LinkedHashMap<String, Pair<Long, VideoStreamInfo>>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<Long, VideoStreamInfo>>): Boolean =
+                size > VideoStreamInfoCacheMaxEntries
+        },
+    )
 
 private fun resolveVideoStreamInfoFromCache(cacheKey: String): VideoStreamInfo? {
     val cached = videoStreamInfoCache[cacheKey] ?: return null
@@ -371,14 +380,39 @@ fun rememberVideoArtworkState(
 
     val okHttpClient = remember { videoStreamHttpClient() }
 
+    // Music-video streams run through the dedicated video cache so a replay
+    // serves the cached bytes instead of re-downloading the whole stream; the
+    // size limit lives in Storage settings. 0 disables it (streams bypass the
+    // cache entirely); -1 means unlimited.
+    val (maxVideoCacheSize) = rememberPreference(MaxVideoCacheSizeKey, defaultValue = 512)
+    val videoCacheEnabled = maxVideoCacheSize != 0
+    val videoCache =
+        remember {
+            runCatching {
+                EntryPointAccessors.fromApplication(
+                    context.applicationContext,
+                    VideoCacheEntryPoint::class.java,
+                ).videoCache()
+            }.getOrNull()
+        }
+
     val mediaSourceFactory =
-        remember(okHttpClient) {
-            DefaultMediaSourceFactory(
+        remember(okHttpClient, videoCache, videoCacheEnabled) {
+            val upstreamFactory =
                 DefaultDataSource.Factory(
                     context,
                     OkHttpDataSource.Factory(okHttpClient),
-                ),
-            )
+                )
+            val factory =
+                if (videoCache != null && videoCacheEnabled) {
+                    CacheDataSource.Factory()
+                        .setCache(videoCache)
+                        .setUpstreamDataSourceFactory(upstreamFactory)
+                        .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                } else {
+                    upstreamFactory
+                }
+            DefaultMediaSourceFactory(factory)
         }
 
     val renderersFactory =
@@ -1013,14 +1047,32 @@ fun rememberVideoArtworkState(
                     !state.hasPlaybackFailed &&
                     exoPlayer.playerError == null &&
                     state.streamUrl != null &&
-                    state.isVideoReady &&
                     updatedMainAudioReady
                 ) {
+                    // The player was only PAUSED on ON_STOP (never stopped), so
+                    // the buffered stream and position survive the background
+                    // trip: re-anchor silently to wherever the music advanced
+                    // to while backgrounded and resume — no re-prepare and no
+                    // visible BUFFERING round-trip on return.
+                    if (state.isVideoReady) {
+                        val mainPos = currentPosition()
+                        val videoPos = exoPlayer.currentPosition
+                        if (mainPos > 0 && kotlin.math.abs(videoPos - mainPos) > VideoSoftSeekDriftThresholdMs) {
+                            exoPlayer.seekTo(mainPos)
+                            state.lastSeekAtMs = SystemClock.elapsedRealtime()
+                            state.lastSurfaceReanchorAtMs = state.lastSeekAtMs
+                        }
+                    }
                     exoPlayer.setVideoPlayback(shouldPlay)
                 }
                 if (event == Lifecycle.Event.ON_STOP) {
-                    runCatching { exoPlayer.setVideoSurface(null) }
-                    runCatching { exoPlayer.stop() }
+                    // PAUSE only — stop() would discard the buffered stream and
+                    // reset the position to zero, forcing a full re-prepare and
+                    // the "video buffers for no reason after returning to the
+                    // app" double round-trip (re-prepare + sync watchdog hard
+                    // resync). The TextureView's surface is detached by the
+                    // window system itself when the activity stops.
+                    runCatching { exoPlayer.pause() }
                 }
             }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -1311,8 +1363,9 @@ private fun VideoAmbientBackdrop(
             ),
         label = "video-ambient-y",
     )
-    val driftX = if (isPreS) 0f else animatedDriftX
-    val driftY = if (isPreS) 0f else animatedDriftY
+    val preSDriftOff = isPreS
+    fun currentDrift(): Pair<Float, Float> =
+        if (preSDriftOff) 0f to 0f else animatedDriftX to animatedDriftY
 
     val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
         value =
@@ -1354,13 +1407,14 @@ private fun VideoAmbientBackdrop(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .graphicsLayer(
-                            translationX = driftX,
-                            translationY = driftY,
-                            scaleX = 1.4f,
-                            scaleY = 1.4f,
-                            alpha = 0.85f,
-                        ),
+                        .graphicsLayer {
+                            val (x, y) = currentDrift()
+                            translationX = x
+                            translationY = y
+                            scaleX = 1.4f
+                            scaleY = 1.4f
+                            alpha = 0.85f
+                        },
             )
         }
 

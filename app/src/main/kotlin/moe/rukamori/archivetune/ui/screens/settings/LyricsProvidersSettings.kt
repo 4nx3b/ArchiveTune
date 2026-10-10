@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
@@ -50,9 +51,18 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableBetterLyricsKey
 import moe.rukamori.archivetune.constants.EnableBetterLyricsPortatoKey
+import moe.rukamori.archivetune.constants.EnableBiniLyricsKey
+import moe.rukamori.archivetune.constants.EnableDeezerLyricsKey
+import moe.rukamori.archivetune.constants.EnableGeniusLyricsKey
 import moe.rukamori.archivetune.constants.EnableKugouKey
 import moe.rukamori.archivetune.constants.EnableLrcLibKey
+import moe.rukamori.archivetune.constants.EnableLrcRedKey
+import moe.rukamori.archivetune.constants.EnableMegalobizLyricsKey
 import moe.rukamori.archivetune.constants.EnableMusixmatchExperimentalKey
+import moe.rukamori.archivetune.constants.EnablePaxsenixAppleMusicLyricsKey
+import moe.rukamori.archivetune.constants.EnablePaxsenixMusixmatchLyricsKey
+import moe.rukamori.archivetune.constants.EnablePaxsenixSpotifyLyricsKey
+import moe.rukamori.archivetune.constants.EnableSimpMusicLyricsKey
 import moe.rukamori.archivetune.constants.EnableUnisonLyricsKey
 import moe.rukamori.archivetune.constants.EnableYouLyPlusLyricsKey
 import moe.rukamori.archivetune.constants.LyricsProviderOrderKey
@@ -65,6 +75,10 @@ import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
@@ -90,6 +104,24 @@ fun LyricsProvidersSettings(
         rememberPreference(key = EnableYouLyPlusLyricsKey, defaultValue = true)
     val (enableUnisonLyrics, onEnableUnisonLyricsChange) =
         rememberPreference(key = EnableUnisonLyricsKey, defaultValue = true)
+    val (enableLrcRed, onEnableLrcRedChange) =
+        rememberPreference(key = EnableLrcRedKey, defaultValue = true)
+    val (enableBiniLyrics, onEnableBiniLyricsChange) =
+        rememberPreference(key = EnableBiniLyricsKey, defaultValue = true)
+    val (enableSimpMusicLyrics, onEnableSimpMusicLyricsChange) =
+        rememberPreference(key = EnableSimpMusicLyricsKey, defaultValue = true)
+    val (enableMegalobizLyrics, onEnableMegalobizLyricsChange) =
+        rememberPreference(key = EnableMegalobizLyricsKey, defaultValue = true)
+    val (enableGeniusLyrics, onEnableGeniusLyricsChange) =
+        rememberPreference(key = EnableGeniusLyricsKey, defaultValue = true)
+    val (enableDeezerLyrics, onEnableDeezerLyricsChange) =
+        rememberPreference(key = EnableDeezerLyricsKey, defaultValue = true)
+    val (enablePaxsenixAppleMusic, onEnablePaxsenixAppleMusicChange) =
+        rememberPreference(key = EnablePaxsenixAppleMusicLyricsKey, defaultValue = true)
+    val (enablePaxsenixSpotify, onEnablePaxsenixSpotifyChange) =
+        rememberPreference(key = EnablePaxsenixSpotifyLyricsKey, defaultValue = true)
+    val (enablePaxsenixMusixmatch, onEnablePaxsenixMusixmatchChange) =
+        rememberPreference(key = EnablePaxsenixMusixmatchLyricsKey, defaultValue = true)
     val (prioritizeWordSynced, onPrioritizeWordSyncedChange) =
         rememberPreference(key = PrioritizeWordSyncedLyricsKey, defaultValue = false)
     val (enableMusixmatchExperimental, onEnableMusixmatchExperimentalChange) =
@@ -139,6 +171,8 @@ fun LyricsProvidersSettings(
                 )
             },
     ) { innerPadding ->
+        val headerHaze = rememberScreenHeaderHaze()
+        val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -147,6 +181,7 @@ fun LyricsProvidersSettings(
         val scrollState = rememberScrollState()
         val positions = rememberPreferencePositions()
         androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
+        Box(modifier = Modifier.fillMaxSize()) {
         Column(
             Modifier
                 .padding(top = innerPadding.calculateTopPadding())
@@ -158,6 +193,7 @@ fun LyricsProvidersSettings(
 
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
+                .hazeSource(headerHaze)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = stringResource(R.string.providers)) {
@@ -241,6 +277,105 @@ fun LyricsProvidersSettings(
                 }
 
                 item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_lrcred", "lrcred"),
+                        title = { Text("LrcRed") },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableLrcRed,
+                        onCheckedChange = onEnableLrcRedChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_binilyrics", "binilyrics"),
+                        title = { Text("BiniLyrics") },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableBiniLyrics,
+                        onCheckedChange = onEnableBiniLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_simpmusic_lyrics", "simpmusic_lyrics"),
+                        title = { Text("SimpMusic") },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableSimpMusicLyrics,
+                        onCheckedChange = onEnableSimpMusicLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_megalobiz_lyrics", "megalobiz_lyrics"),
+                        title = { Text("Megalobiz") },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableMegalobizLyrics,
+                        onCheckedChange = onEnableMegalobizLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_genius_lyrics", "genius_lyrics"),
+                        title = { Text("Genius") },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableGeniusLyrics,
+                        onCheckedChange = onEnableGeniusLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_deezer_lyrics"),
+                        title = { Text(stringResource(R.string.enable_deezer_lyrics)) },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableDeezerLyrics,
+                        onCheckedChange = onEnableDeezerLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_paxsenix_applemusic", "paxsenix_applemusic"),
+                        title = { Text("PaxSenix (Apple Music)") },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enablePaxsenixAppleMusic,
+                        onCheckedChange = onEnablePaxsenixAppleMusicChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_paxsenix_spotify", "paxsenix_spotify"),
+                        title = { Text("PaxSenix (Spotify)") },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enablePaxsenixSpotify,
+                        onCheckedChange = onEnablePaxsenixSpotifyChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("enable_paxsenix_musixmatch", "paxsenix_musixmatch"),
+                        title = { Text("PaxSenix (Musixmatch)") },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enablePaxsenixMusixmatch,
+                        onCheckedChange = onEnablePaxsenixMusixmatchChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
                     PreferenceEntry(
                         modifier = positions.modifierFor("lyrics_test"),
                         title = { Text(stringResource(R.string.lyrics_test)) },
@@ -290,6 +425,15 @@ fun LyricsProvidersSettings(
                     }
                 }
             }
+        }
+
+        // The same transparent top haze the home page and the other settings
+        // pages render — content scrolling under the centred title now frosts
+        // over instead of sliding underneath it plainly.
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
         }
     }
 }

@@ -137,7 +137,20 @@ object LosslessStreamResolver {
                 if (stream != null) return stream
             }
 
-            val poolAccounts = PoolAccountManager.tidalAccounts()
+            var poolAccounts = PoolAccountManager.tidalAccounts()
+
+            if (poolAccounts.any { TidalAccountManager.isAccessTokenExpired(it.token) }) {
+                runCatching {
+                    runBlocking(Dispatchers.IO) { PoolAccountManager.refresh(context, force = true) }
+                }.onFailure {
+                    Timber.tag("LosslessResolver").w(it, "Tidal pool re-lease failed; using cached accounts")
+                }
+                val refreshed = PoolAccountManager.tidalAccounts()
+                if (refreshed.isNotEmpty()) {
+                    poolAccounts = refreshed
+                    Timber.tag("LosslessResolver").d("Re-leased %d fresh Tidal pool account(s)", refreshed.size)
+                }
+            }
             if (poolAccounts.isNotEmpty()) {
                 val stream = runCatching {
                     runBlocking(Dispatchers.IO) {

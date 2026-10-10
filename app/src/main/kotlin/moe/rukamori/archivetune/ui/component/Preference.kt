@@ -44,7 +44,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ProvideTextStyle
@@ -59,7 +58,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberSliderState
-import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
@@ -110,9 +108,6 @@ private val PreferenceEntryVerticalPadding = 10.dp
 private val PreferenceGroupCardCorner = 20.dp
 
 private val PreferenceEntryIconSize = 22.dp
-
-@Composable
-private fun rememberPreferenceIconShape(): Shape = MaterialShapes.Ghostish.toShape()
 
 private fun segmentedPreferenceItemShape(
     index: Int,

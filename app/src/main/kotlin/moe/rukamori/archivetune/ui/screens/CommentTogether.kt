@@ -672,6 +672,17 @@ fun CommentTogetherScreen(navController: NavController) {
                     )
                 }
 
+                // The typing indicator animates ABOVE the composer (not below
+                // it) so the bouncing avatars lead into the input row the same
+                // way modern chat apps reveal who is typing.
+                AnimatedVisibility(
+                    visible = typingUsers.isNotEmpty(),
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut(),
+                ) {
+                    TypingIndicatorRow(typingUsers = typingUsers)
+                }
+
                 TelegramGlassComposer(
                     text = textInput,
                     onTextChange = { newText ->
@@ -694,14 +705,6 @@ fun CommentTogetherScreen(navController: NavController) {
                     scrim = chatWallpaperGlass.scrim,
                     contentColor = chatWallpaperGlass.contentColor,
                 )
-
-                AnimatedVisibility(
-                    visible = typingUsers.isNotEmpty(),
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut(),
-                ) {
-                    TypingIndicatorRow(typingUsers = typingUsers)
-                }
             } else {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),

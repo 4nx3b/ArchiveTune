@@ -118,6 +118,8 @@ object PreferenceStore {
 
     @Volatile private var started = false
 
+    val isStarted: Boolean get() = started
+
     fun start(context: Context) {
         if (started) return
         synchronized(this) {
@@ -163,7 +165,13 @@ operator fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>): T? {
 
     val loaded =
         runBlocking(Dispatchers.IO) {
-            withTimeoutOrNull(1500) { PreferenceStore.awaitSnapshot() }
+            withTimeoutOrNull(1500) {
+                if (PreferenceStore.isStarted) {
+                    PreferenceStore.awaitSnapshot()
+                } else {
+                    data.first()
+                }
+            }
         }
     return loaded?.get(key)
 }

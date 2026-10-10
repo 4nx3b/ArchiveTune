@@ -51,7 +51,6 @@ import moe.rukamori.archivetune.storage.StorageLocationRepository
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
-import moe.rukamori.archivetune.repository.SearchDiscoveryRepository
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
 import moe.rukamori.archivetune.ui.screens.settings.ThemePalettes
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPalette
@@ -88,9 +87,6 @@ class App :
     SingletonImageLoader.Factory {
     @Inject
     lateinit var spotifyLibraryRepository: SpotifyLibraryRepository
-
-    @Inject
-    lateinit var searchDiscoveryRepository: SearchDiscoveryRepository
 
     private val applicationScope = CoroutineScope(
         SupervisorJob() + Dispatchers.Main + kotlinx.coroutines.CoroutineExceptionHandler { _, error ->
@@ -268,12 +264,6 @@ class App :
         moe.rukamori.archivetune.utils.SourceRefreshWorker.schedule(this)
 
         applicationScope.launch(Dispatchers.IO) {
-            runCatching {
-                searchDiscoveryRepository.loadDiscovery(forceRefresh = false)
-            }
-        }
-
-        applicationScope.launch(Dispatchers.IO) {
             try {
                 val prefs = dataStore.data.first()
 
@@ -404,6 +394,13 @@ class App :
                 .collect { (arl, premium) ->
                     DeezerAudioProvider.setManualArl(arl, premium)
                 }
+        }
+
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
+                .map { it[moe.rukamori.archivetune.constants.DeezerInstancesKey] ?: "" }
+                .distinctUntilChanged()
+                .collect { raw -> moe.rukamori.archivetune.deezer.DeezerInstances.setUserInstances(raw) }
         }
 
         applicationScope.launch(Dispatchers.IO) {
