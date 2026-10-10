@@ -39,7 +39,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.GraphicsLayerScope
-import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
@@ -63,7 +62,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toIntSize
 import androidx.compose.ui.util.lerp
@@ -265,6 +263,25 @@ class ThrottledLayerBackdrop internal constructor(
 
     internal var recordingInProgress by mutableStateOf(false)
 
+    /**
+     * Bumped by [requestRecord] and read inside the recorder node's draw phase,
+     * so a tick invalidates that single draw node — forcing the source layer to
+     * be re-recorded even when nothing in the Compose tree invalidated the draw
+     * (video frames rendered straight into a TextureView, or content that only
+     * animates inside a nested graphics layer, never reach the recorder on their
+     * own — that was the "popup blur is a frozen snapshot" bug).
+     */
+    internal var recordTick by mutableStateOf(0)
+
+    /**
+     * Asks the backdrop to re-record its source layer on the next draw pass.
+     * Call this once per frame while a glass consumer is visible to keep the
+     * blur live (the node's own 32 ms throttle still caps the real work).
+     */
+    fun requestRecord() {
+        recordTick++
+    }
+
     internal fun notifyRecorderAttached() {
         consumerInvalidationTick++
     }
@@ -363,6 +380,9 @@ private class ThrottledLayerBackdropNode(
     }
 
     override fun ContentDrawScope.draw() {
+        // Snapshot read in the draw phase: every requestRecord() bump invalidates
+        // this node's draw, which re-runs the (throttled) record below.
+        @Suppress("UNUSED_VARIABLE") val tick = backdrop.recordTick
         val now = SystemClock.uptimeMillis()
         if (now - lastRecordUptimeMillis >= backdrop.minIntervalMillis) {
             lastRecordUptimeMillis = now

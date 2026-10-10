@@ -109,8 +109,6 @@ import com.mocharealm.accompanist.lyrics.core.model.karaoke.KaraokeLine
 import com.mocharealm.accompanist.lyrics.core.model.karaoke.KaraokeSyllable
 import com.mocharealm.accompanist.lyrics.core.model.synced.SyncedLine
 import com.mocharealm.accompanist.lyrics.ui.composable.lyrics.KaraokeLyricsView
-import com.mocharealm.accompanist.lyrics.ui.composable.lyrics.LyricsAnchor
-import com.mocharealm.accompanist.lyrics.ui.composable.list.LyricsLazyListState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -552,7 +550,7 @@ fun LyricsEnhanced(
 
     val karaokeListState =
         key(lyricsSessionKey, karaokeGeneration) {
-            remember { LyricsLazyListState() }
+            rememberLazyListState()
         }
 
     var awaitingFirstFocus by
@@ -1093,9 +1091,24 @@ fun LyricsEnhanced(
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             } else {
+                                // lyrics-ui 1.0.15 renders the translation slot
+                                // whenever the line model carries one (no renderer
+                                // toggle), so the visibility preference is applied
+                                // to a derived model instead of rebuilding the
+                                // karaoke pipeline (which would churn the list keys).
+                                val accompanistSyncedLyrics =
+                                    remember(syncedLyrics, showTranslations) {
+                                        if (showTranslations) {
+                                            syncedLyrics
+                                        } else {
+                                            syncedLyrics.copy(
+                                                lines = syncedLyrics.lines.map(::lineWithoutTranslation),
+                                            )
+                                        }
+                                    }
                                 KaraokeLyricsView(
                                     listState = karaokeListState,
-                                    lyrics = syncedLyrics,
+                                    lyrics = accompanistSyncedLyrics,
                                     currentPosition = playbackSyncPosition,
                                     onLineClicked = { line ->
                                         if (isSelectionModeActive) {
@@ -1117,15 +1130,10 @@ fun LyricsEnhanced(
                                     },
                                     textColor = textColor,
                                     normalLineTextStyle = normalTextStyle,
-                                    translationTextStyle = translationTextStyle,
                                     accompanimentLineTextStyle = accompanimentTextStyle,
-                                    phoneticTextStyle = phoneticTextStyle,
                                     blendMode = BlendMode.SrcOver,
                                     useBlurEffect = lyricsLineBlur && !animationsDisabled,
-                                    showTranslation = showTranslations,
-                                    showPhonetic = showPhoneticLines,
-                                    anchor = LyricsAnchor.Fixed(lyricsViewportOffset),
-                                    keepAliveZone = 8.dp,
+                                    offset = lyricsViewportOffset,
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }
@@ -1667,38 +1675,40 @@ private fun buildSyncedLyrics(
 
             val lineTranslation = translation
 
-            val accompanimentLines =
-                if (mainWords.isNotEmpty() && bgWords.isNotEmpty()) {
-                    val bgSyllables = bgWords.toKaraokeSyllables(emptyList())
-                    val bgStart = bgSyllables.first().start
-                    val bgEnd = bgSyllables.last().end
-                    if (bgEnd > bgStart) {
-                        listOf(
-                            KaraokeLine.AccompanimentKaraokeLine(
-                                syllables = bgSyllables,
-                                translation = null,
-                                alignment = alignment,
-                                start = bgStart,
-                                end = bgEnd,
-                                phonetic = null,
-                            ),
-                        )
-                    } else {
-                        null
-                    }
-                } else {
-                    null
+            // lyrics-core 0.4.2 keeps background vocals as FLAT KaraokeLine
+            // entries with isAccompaniment = true (no nested
+            // accompanimentLines like the 0.5+ sealed interface) — the flat
+            // line is emitted just before its main line so it renders above
+            // it while the 1.0.15 renderer's accompaniment visibility ranges
+            // keep it on screen across the pair.
+            if (mainWords.isNotEmpty() && bgWords.isNotEmpty()) {
+                val bgSyllables = bgWords.toKaraokeSyllables(emptyList())
+                val bgStart = bgSyllables.first().start
+                val bgEnd = bgSyllables.last().end
+                if (bgEnd > bgStart) {
+                    lines.add(
+                        KaraokeLine(
+                            syllables = bgSyllables,
+                            translation = null,
+                            isAccompaniment = true,
+                            alignment = alignment,
+                            start = bgStart,
+                            end = bgEnd,
+                            phonetic = null,
+                        ),
+                    )
                 }
+            }
 
             lines.add(
-                KaraokeLine.MainKaraokeLine(
+                KaraokeLine(
                     syllables = mainSyllables,
                     translation = lineTranslation,
+                    isAccompaniment = false,
                     alignment = alignment,
                     start = lineStart,
                     end = lineEnd,
                     phonetic = null,
-                    accompanimentLines = accompanimentLines,
                 ),
             )
         } else {
@@ -1834,21 +1844,8 @@ private fun SingleActiveLineCluster(
     ) {
         when (line) {
             is KaraokeLine -> {
-                (line as? KaraokeLine.MainKaraokeLine)?.accompanimentLines?.forEach { accompaniment ->
-                    val accompanimentText = (accompaniment as? KaraokeLine)?.syllables?.joinSyllableContents().orEmpty()
-                    if (accompanimentText.isNotBlank()) {
-                        Text(
-                            text = accompanimentText,
-                            style = accompanimentTextStyle,
-                            color = textColor.copy(alpha = 0.45f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-
                 val phonetic = line.syllables.mapNotNull { it.phonetic?.trim() }.filter { it.isNotEmpty() }.joinToString(" ")
-                if (phonetic.isNotEmpty()) {
+                if (phonetic.isNotEmpty() && !line.isAccompaniment) {
                     Text(
                         text = phonetic,
                         style = phoneticTextStyle,
@@ -1862,7 +1859,7 @@ private fun SingleActiveLineCluster(
                     syllables = line.syllables,
                     currentPosition = currentPosition,
                     textColor = textColor,
-                    textStyle = normalTextStyle,
+                    textStyle = if (line.isAccompaniment) accompanimentTextStyle else normalTextStyle,
                 )
 
                 if (showTranslation) {
@@ -1949,14 +1946,13 @@ private fun isLatinWordChar(ch: Char?): Boolean {
     return ch in 'a'..'z' || ch in 'A'..'Z' || ch in '0'..'9' || ch == '\'' || ch == ','
 }
 
-private fun List<KaraokeSyllable>.joinSyllableContents(): String {
-    val builder = StringBuilder()
-    forEachIndexed { index, syllable ->
-        builder.append(syllable.content)
-        val next = getOrNull(index + 1)
-        if (next != null && needsLatinWordGap(syllable.content, next.content)) {
-            builder.append(' ')
-        }
+/**
+ * Strips the translation slot from a line for the lyrics-ui 1.0.15 renderer,
+ * which displays `translation` unconditionally (no renderer-side toggle).
+ */
+private fun lineWithoutTranslation(line: ISyncedLine): ISyncedLine =
+    when (line) {
+        is KaraokeLine -> line.copy(translation = null)
+        is SyncedLine -> line.copy(translation = null)
+        else -> line
     }
-    return builder.toString()
-}

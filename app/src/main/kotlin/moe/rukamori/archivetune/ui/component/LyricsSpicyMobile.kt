@@ -92,7 +92,6 @@ private const val SpicyInactiveScale = 0.98f
 private const val SpicyLineOpacityMs = 700
 private const val SpicyScaleInMs = 500
 private const val SpicyScaleOutMs = 700
-private const val SpicyLineSettleMs = 600
 
 private const val SpicyBlurStrength = 0.6f
 private const val SpicyBlurFadeMs = 500
@@ -439,31 +438,12 @@ private fun SpicyLyricsLine(
             }
 
         when (line) {
-            is KaraokeLine.MainKaraokeLine -> {
-                SpicyWordsRow(
-                    syllables = line.syllables,
-                    lineStartMs = line.start.toLong(),
-                    lineEndMs = lineEndMs,
-                    position = position,
-                    isActive = isActive,
-                    textStyle = if (isActive) {
-                        normalTextStyle.copy(
-                            shadow = Shadow(
-                                color = textColor.copy(alpha = SpicyActiveGlowAlpha),
-                                blurRadius = SpicyActiveGlowBlurRadius,
-                            ),
-                        )
-                    } else {
-                        normalTextStyle
-                    },
-                    textColor = textColor,
-                    isBackgroundRow = false,
-                    showPhonetic = showPhonetic,
-                )
-                line.accompanimentLines?.forEach { bgLine ->
-                    Spacer(Modifier.height(6.dp))
+            is KaraokeLine -> {
+                // lyrics-core 0.4.2 model: flat lines, background vocals carry
+                // isAccompaniment = true instead of the 0.5+ sealed subtypes.
+                if (line.isAccompaniment) {
                     SpicyBackgroundRow(
-                        syllables = bgLine.syllables,
+                        syllables = line.syllables,
                         lineStartMs = line.start.toLong(),
                         lineEndMs = lineEndMs,
                         position = position,
@@ -472,21 +452,28 @@ private fun SpicyLyricsLine(
                         textColor = textColor,
                         showPhonetic = false,
                     )
+                } else {
+                    SpicyWordsRow(
+                        syllables = line.syllables,
+                        lineStartMs = line.start.toLong(),
+                        lineEndMs = lineEndMs,
+                        position = position,
+                        isActive = isActive,
+                        textStyle = if (isActive) {
+                            normalTextStyle.copy(
+                                shadow = Shadow(
+                                    color = textColor.copy(alpha = SpicyActiveGlowAlpha),
+                                    blurRadius = SpicyActiveGlowBlurRadius,
+                                ),
+                            )
+                        } else {
+                            normalTextStyle
+                        },
+                        textColor = textColor,
+                        isBackgroundRow = false,
+                        showPhonetic = showPhonetic,
+                    )
                 }
-            }
-
-            is KaraokeLine.AccompanimentKaraokeLine -> {
-                SpicyWordsRow(
-                    syllables = line.syllables,
-                    lineStartMs = line.start.toLong(),
-                    lineEndMs = lineEndMs,
-                    position = position,
-                    isActive = isActive,
-                    textStyle = accompanimentTextStyle,
-                    textColor = textColor,
-                    isBackgroundRow = true,
-                    showPhonetic = showPhonetic,
-                )
             }
 
             is SyncedLine -> {
@@ -522,7 +509,9 @@ private fun SpicyLyricsLine(
         val linePhonetic =
             when (line) {
                 is KaraokeLine -> line.phonetic
-                is SyncedLine -> line.phonetic
+                // lyrics-core 0.4.2 SyncedLine has no phonetic field —
+                // romanisation of plain lines rides the translation slot.
+                is SyncedLine -> null
                 else -> null
             }
 

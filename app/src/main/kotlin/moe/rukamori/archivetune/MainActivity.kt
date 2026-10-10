@@ -3372,17 +3372,6 @@ class MainActivity : ComponentActivity() {
                                     enterTransition = {
                                         if (disableAnimations) {
                                             fadeIn(tween(0))
-                                        } else if (initialState.destination.route in topLevelScreens &&
-                                            targetState.destination.route in topLevelScreens
-                                        ) {
-                                            // Tab switches are instant. A zero-duration
-                                            // fade completes on the first frame — the
-                                            // incoming page is fully opaque before the
-                                            // outgoing page renders at all, so there is
-                                            // no crossfade window, no root bleed and no
-                                            // visible fade (the slow 160/640ms fade pair
-                                            // was never asked for).
-                                            fadeIn(tween(0))
                                         } else {
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
@@ -3394,24 +3383,12 @@ class MainActivity : ComponentActivity() {
                                     exitTransition = {
                                         if (disableAnimations) {
                                             fadeOut(tween(0))
-                                        } else if (initialState.destination.route in topLevelScreens &&
-                                            targetState.destination.route in topLevelScreens
-                                        ) {
-                                            fadeOut(tween(0))
                                         } else {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
                                     },
                                     popEnterTransition = {
                                         if (disableAnimations) {
-                                            fadeIn(tween(0))
-                                        } else if ((
-                                                initialState.destination.route in topLevelScreens ||
-                                                    initialState.destination.route?.startsWith(OnlineSearchResultRoutePrefix) == true
-                                            ) &&
-                                            targetState.destination.route in topLevelScreens
-                                        ) {
-                                            // Instant pop direction too — see enterTransition.
                                             fadeIn(tween(0))
                                         } else {
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
@@ -3423,13 +3400,6 @@ class MainActivity : ComponentActivity() {
                                     },
                                     popExitTransition = {
                                         if (disableAnimations) {
-                                            fadeOut(tween(0))
-                                        } else if ((
-                                                initialState.destination.route in topLevelScreens ||
-                                                    initialState.destination.route?.startsWith(OnlineSearchResultRoutePrefix) == true
-                                            ) &&
-                                            targetState.destination.route in topLevelScreens
-                                        ) {
                                             fadeOut(tween(0))
                                         } else {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
