@@ -72,8 +72,13 @@ rhino = "1.9.1"
 quickjsKt = "1.0.14"
 markwon = "4.6.2"
 okhttp = "5.4.0"
-accompanist = "2.0.0-rc.2"
-accompanist-core = "0.5.0"
+# Accompanist lyrics pinned to the v1.0.15 release (github.com/
+# 6xingyv/accompanist-lyrics-ui tag v1.0.15) per user request — the classic
+# single-pass renderer, paired with the lyrics-core 0.4.2 line that tag was
+# built against (KaraokeLine is a data class there, not the 0.5+ sealed
+# interface).
+accompanist = "1.0.15"
+accompanist-core = "0.4.2"
 androidsvg = "1.4"
 aboutLibraries = "15.0.3"
 liquid-glass = "2.0.0"

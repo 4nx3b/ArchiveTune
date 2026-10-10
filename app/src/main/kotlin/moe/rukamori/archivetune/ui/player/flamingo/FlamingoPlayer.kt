@@ -89,6 +89,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.RectangleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -114,6 +115,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -170,6 +172,7 @@ import java.time.LocalDateTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
@@ -213,7 +216,6 @@ import moe.rukamori.archivetune.ui.player.CanvasLoopSync
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.ui.platform.LocalConfiguration
@@ -230,6 +232,7 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.media3.ui.AspectRatioFrameLayout
 import coil3.compose.AsyncImage
 import sh.calvin.reorderable.ReorderableItem
@@ -239,7 +242,6 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import moe.rukamori.archivetune.utils.isLocalMediaId
 
-private const val AnimDurationMillis = 300
 private const val ShareAlbumKey = "flamingoAlbum"
 private val QueueRowHeight = 64.dp
 private val QueueDraggingItemShape = RoundedCornerShape(0.dp)
@@ -250,15 +252,27 @@ private const val FlamingoCanvasBackdropOverscan = 1.10f
 private val FlamingoCanvasBackdropBlurRadius = 288.dp
 private const val FlamingoCanvasBackdropMaxVideoEdgePx = 480
 
-private const val FlamingoCanvasPageFadeMs = 650
-private const val FlamingoCanvasFlightMs = 600
+// Apple-Music reference transition timings, measured frame-by-frame from the
+// user's reference recording (20fps capture, frame-diff + artwork-bbox
+// tracking): the artwork flight runs ~250-300ms ease-in-out on open and
+// ~200-250ms on close, with the page content fading in CONCURRENTLY (faint
+// ghost visible before the artwork starts moving) and settling roughly
+// 100ms after the flight lands. All AM-style page-switch layers use these
+// two clocks so the artwork, page shells, overlays and background stay in
+// lockstep — the old zoo of 600ms crossfades, springs, 650ms fades and a
+// 600ms content defer read as a slow, disjointed, abrupt swap.
+private const val FlamingoPageFlightOpenMs = 300
+private const val FlamingoPageFlightCloseMs = 250
+private const val FlamingoContentFadeOutMs = 200
+
+private const val FlamingoCanvasPageFadeMs = 300
+private const val FlamingoCanvasFlightAlphaInMs = 200
 private val FlamingoCanvasFlightCornerDp = 5.dp
-private const val FlamingoCanvasFlightAlphaInMs = 300
 
 // After the video stage lands in the playing-bar slot, the static artwork
 // takes over in a short crossfade — the swap happens at the END of the flight,
 // never at the start.
-private const val FlamingoCanvasFlightHandoffMs = 280
+private const val FlamingoCanvasFlightHandoffMs = 150
 
 private val FlamingoCanvasScrimBrush =
     Brush.verticalGradient(
@@ -279,9 +293,8 @@ private val FlamingoLandscapeRightScrim =
         1f to Color.Black.copy(alpha = 0.45f),
     )
 
-private const val FlamingoLyricsContentDeferMs = 600L
-private const val FlamingoLyricsContentDeferCanvasMs = 300L
-private const val FlamingoPageMorphHoldMs = 420L
+private const val FlamingoLyricsContentDeferMs = 120L
+private const val FlamingoPageMorphHoldMs = 300L
 
 // Alpha-mask stops for the queue list's vertical edge fade (cached, never
 // rebuilt per draw).
@@ -504,7 +517,7 @@ fun FlamingoPlayerContent(
 
         val overlayArtworkReveal by animateFloatAsState(
             targetValue = if (pageMorphRunning || nowPage != FlamingoPage.Album) 1f else 0f,
-            animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+            animationSpec = tween(durationMillis = FlamingoCanvasFlightHandoffMs, easing = FastOutSlowInEasing),
             label = "flamingo-overlay-artwork-reveal",
         )
 
@@ -557,7 +570,9 @@ fun FlamingoPlayerContent(
         // the blend with the bottom controls begins) into the playing-bar
         // slot. The static artwork only takes over AFTER the flight lands,
         // as a short crossfade; the video never switches to static at the
-        // start of the transition.
+        // start of the transition. Direction-matched to the reference: the
+        // open flight (album -> bar) runs the 300ms clock, the close (bar ->
+        // album) the 250ms one, both FastOutSlowIn (ease-in-out, no bounce).
         LaunchedEffect(canvasStageOnAlbum) {
             if (canvasStageOnAlbum) {
                 canvasStageSurfaceVisible = true
@@ -569,12 +584,12 @@ fun FlamingoPlayerContent(
                 }
                 canvasFlightAnim.animateTo(
                     0f,
-                    tween(durationMillis = FlamingoCanvasFlightMs, easing = FastOutSlowInEasing),
+                    tween(durationMillis = FlamingoPageFlightCloseMs, easing = FastOutSlowInEasing),
                 )
             } else {
                 canvasFlightAnim.animateTo(
                     1f,
-                    tween(durationMillis = FlamingoCanvasFlightMs, easing = FastOutSlowInEasing),
+                    tween(durationMillis = FlamingoPageFlightOpenMs, easing = FastOutSlowInEasing),
                 )
                 canvasStageAlphaAnim.animateTo(
                     0f,
@@ -598,13 +613,13 @@ fun FlamingoPlayerContent(
             if (nowPage == FlamingoPage.Lyric) {
                 lyricsContentReady = false
 
-                delay(
-                    if (canvasVisualActive) {
-                        FlamingoLyricsContentDeferCanvasMs
-                    } else {
-                        FlamingoLyricsContentDeferMs
-                    },
-                )
+                // Short defer (a few frames into the flight) so the karaoke
+                // list's first composition never lands on the transition's
+                // opening frames — the reference shows the lyrics as a faint
+                // ghost DURING the flight and fully settled shortly after it
+                // lands, so the content fades in concurrently instead of
+                // popping in after the page settles.
+                delay(FlamingoLyricsContentDeferMs)
                 lyricsContentReady = true
             } else {
                 lyricsContentReady = false
@@ -615,7 +630,13 @@ fun FlamingoPlayerContent(
         LaunchedEffect(nowPage) {
             val targetAlpha = if (nowPage == FlamingoPage.Lyric) 1f else 0f
             scope.launch {
-                alphaAnim.animateTo(targetAlpha)
+                alphaAnim.animateTo(
+                    targetAlpha,
+                    tween(
+                        durationMillis = if (targetAlpha > 0f) FlamingoPageFlightOpenMs else FlamingoContentFadeOutMs,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
             }
         }
 
@@ -790,6 +811,49 @@ fun FlamingoPlayerContent(
             }
 
         val glassLayerActive = showAnchoredLyricsMenu || translationPopupOpen || artistPickerOpen
+
+        // Hoisted out of the (moved) bottom-controls host so both the landscape
+        // lyrics branch and the portrait controls can read it.
+        val translationButtonEnabled = remember("FlamingoNowPlaying_translationButtonEnabled") {
+            derivedStateOf {
+                showControlLambda.value && alphaAnim.value != 0f
+            }
+        }
+
+        // Queue-page controls glass (AM style): a frosted material behind the
+        // bottom controls so the queue rows scroll under a blurred bar, like
+        // the reference player. Its recorder wraps everything BELOW the
+        // controls — background, page shells and the queue list — so the blur
+        // samples the rows scrolling underneath and never the controls
+        // themselves.
+        val queueControlsGlassActive = !landscape && nowPage == FlamingoPage.PlayingList
+        val controlsBackdrop: PlatformBackdrop? =
+            if (glassAvailable) {
+                rememberBackdrop(Color.Transparent)
+            } else {
+                null
+            }
+
+        // Live-glass ticker: while any glass layer is visible, ask the
+        // recorders to re-record once per frame. Compose only re-records a
+        // backdrop when something invalidates the source layer's draw — video
+        // frames land inside the TextureView without invalidating Compose, and
+        // content animating inside nested graphics layers never reaches the
+        // recorder — so without this the popup blur is a frozen snapshot taken
+        // when the layer attached (the "not real-time" bug).
+        LaunchedEffect(glassLayerActive, queueControlsGlassActive) {
+            if (!glassLayerActive && !queueControlsGlassActive) return@LaunchedEffect
+            while (isActive) {
+                withFrameNanos { }
+                if (glassLayerActive) {
+                    popupBackdrop?.requestRecord()
+                }
+                if (queueControlsGlassActive && showControlLambda.value) {
+                    controlsBackdrop?.requestRecord()
+                }
+            }
+        }
+
         Box(
             modifier =
                 Modifier
@@ -802,6 +866,23 @@ fun FlamingoPlayerContent(
                         }
                     },
         ) {
+            // Controls-glass recorder box: everything below the bottom
+            // controls is recorded here while the queue page is showing. It
+            // sits INSIDE the popup recorder (popups sample content +
+            // controls) but OUTSIDE the controls themselves (the frosted bar
+            // must not blur itself).
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .let { base ->
+                            if (controlsBackdrop != null && queueControlsGlassActive) {
+                                base.layerBackdrop(controlsBackdrop)
+                            } else {
+                                base
+                            }
+                        },
+            ) {
             FlamingoWrapper {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -1023,8 +1104,8 @@ fun FlamingoPlayerContent(
                         FlamingoWrapper {
                             AnimatedVisibility(
                                 visible = nowPage == FlamingoPage.Lyric,
-                                enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
-                                exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
+                                enter = fadeIn(tween(FlamingoPageFlightOpenMs, easing = FastOutSlowInEasing)),
+                                exit = fadeOut(tween(FlamingoContentFadeOutMs, easing = FastOutSlowInEasing)),
                             ) {
                                 Column(
                                     Modifier
@@ -1077,12 +1158,6 @@ fun FlamingoPlayerContent(
             }
 
             FlamingoWrapper {
-                val translationButtonEnabled = remember("FlamingoNowPlaying_translationButtonEnabled") {
-                    derivedStateOf {
-                        showControlLambda.value && alphaAnim.value != 0f
-                    }
-                }
-
                 if (landscape) {
                     val landscapeSwipeModifier =
                         Modifier
@@ -1183,8 +1258,8 @@ fun FlamingoPlayerContent(
                         ) {
                             androidx.compose.animation.AnimatedVisibility(
                                 visible = nowPage == FlamingoPage.Lyric,
-                                enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
-                                exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
+                                enter = fadeIn(tween(FlamingoPageFlightOpenMs, easing = FastOutSlowInEasing)),
+                                exit = fadeOut(tween(FlamingoContentFadeOutMs, easing = FastOutSlowInEasing)),
                                 modifier = Modifier.matchParentSize(),
                             ) {
                                 Box(
@@ -1300,8 +1375,8 @@ fun FlamingoPlayerContent(
                     FlamingoWrapper {
                         AnimatedVisibility(
                             visible = nowPage == FlamingoPage.PlayingList,
-                            enter = fadeIn(tween(AnimDurationMillis)),
-                            exit = fadeOut(tween(AnimDurationMillis)),
+                            enter = fadeIn(tween(FlamingoPageFlightOpenMs, easing = FastOutSlowInEasing)),
+                            exit = fadeOut(tween(FlamingoContentFadeOutMs, easing = FastOutSlowInEasing)),
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(top = topInset + 20.dp),
@@ -1331,15 +1406,30 @@ fun FlamingoPlayerContent(
                             AnimatedContent(
                                 targetState = nowPage,
                                 transitionSpec = {
-                                    fadeIn(
+                                    // Reference-matched, direction-aware crossfade of
+                                    // the page shells: the incoming page fades in
+                                    // on the flight clock (300ms open / 250ms
+                                    // close, ease-in-out) while the outgoing page
+                                    // clears in 200ms — every shell, overlay and
+                                    // the canvas flight now share the same clock.
+                                    if (targetState == FlamingoPage.Album) {
+                                        fadeIn(
+                                            tween(
+                                                durationMillis = FlamingoPageFlightCloseMs,
+                                                easing = FastOutSlowInEasing,
+                                            ),
+                                        )
+                                    } else {
+                                        fadeIn(
+                                            tween(
+                                                durationMillis = FlamingoPageFlightOpenMs,
+                                                easing = FastOutSlowInEasing,
+                                            ),
+                                        )
+                                    } togetherWith fadeOut(
                                         tween(
-                                            durationMillis = 600,
-                                            easing = FastOutSlowInEasing,
-                                        ),
-                                    ) togetherWith fadeOut(
-                                        tween(
-                                            durationMillis = 600,
-                                            easing = FastOutSlowInEasing,
+                                            durationMillis = FlamingoContentFadeOutMs,
+                                            easing = LinearOutSlowInEasing,
                                         ),
                                     )
                                 },
@@ -1352,9 +1442,9 @@ fun FlamingoPlayerContent(
                                     animatedVisibilityScope = pageBoundsScope,
                                     clipInOverlayDuringTransition = OverlayClip(FlamingoAlbumOverlayShape),
                                     boundsTransform = BoundsTransform { _, _ ->
-                                        spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                            stiffness = Spring.StiffnessMediumLow,
+                                        tween(
+                                            durationMillis = FlamingoPageFlightOpenMs,
+                                            easing = FastOutSlowInEasing,
                                         )
                                     },
                                 )
@@ -1464,9 +1554,9 @@ fun FlamingoPlayerContent(
                                                         animatedVisibilityScope = pageBoundsScope,
                                                         clipInOverlayDuringTransition = OverlayClip(FlamingoAlbumOverlayShape),
                                                         boundsTransform = BoundsTransform { _, _ ->
-                                                            spring(
-                                                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                                                stiffness = Spring.StiffnessMediumLow,
+                                                            tween(
+                                                                durationMillis = FlamingoPageFlightOpenMs,
+                                                                easing = FastOutSlowInEasing,
                                                             )
                                                         },
                                                     ),
@@ -1503,9 +1593,9 @@ fun FlamingoPlayerContent(
                                                         animatedVisibilityScope = pageBoundsScope,
                                                         clipInOverlayDuringTransition = OverlayClip(FlamingoAlbumOverlayShape),
                                                         boundsTransform = BoundsTransform { _, _ ->
-                                                            spring(
-                                                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                                                stiffness = Spring.StiffnessMediumLow,
+                                                            tween(
+                                                                durationMillis = FlamingoPageFlightOpenMs,
+                                                                easing = FastOutSlowInEasing,
                                                             )
                                                         },
                                                     ),
@@ -1554,8 +1644,8 @@ fun FlamingoPlayerContent(
                     FlamingoWrapper {
                         AnimatedVisibility(
                             visible = nowPage == FlamingoPage.PlayingList,
-                            enter = fadeIn(tween(AnimDurationMillis)),
-                            exit = fadeOut(tween(AnimDurationMillis)),
+                            enter = fadeIn(tween(FlamingoPageFlightOpenMs, easing = FastOutSlowInEasing)),
+                            exit = fadeOut(tween(FlamingoContentFadeOutMs, easing = FastOutSlowInEasing)),
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(top = topInset + 114.dp),
@@ -1581,170 +1671,183 @@ fun FlamingoPlayerContent(
                         }
                     }
 
-                    FlamingoWrapper {
-                        Column(
-                            Modifier
-                                .fillMaxSize()
-                                .padding(top = topInset),
-                            verticalArrangement = Arrangement.Bottom,
-                        ) {
-                            Box(
-                                Modifier
-                                    .fillMaxHeight(0.437f)
-                                    .fillMaxWidth(),
-                            ) {
-                                FlamingoWrapper {
-                                    if (nowPage == FlamingoPage.Lyric) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(top = 40.dp)
-                                                .clickable(
-                                                    interactionSource = remember { MutableInteractionSource() },
-                                                    indication = null,
-                                                    onClick = {
-                                                        showControl.value = true
-                                                        lastClickTime.longValue =
-                                                            System.currentTimeMillis()
-                                                    },
-                                                ),
-                                        )
-                                    }
-                                }
+                }
+            }
+            }
 
-                                FlamingoWrapper {
-                                    Column(
-                                        Modifier.fillMaxSize(),
-                                        verticalArrangement = Arrangement.Bottom,
-                                    ) {
-                                        AnimatedVisibility(
-                                            visible = showControl.value,
-                                            modifier = Modifier
-                                                .onGloballyPositioned { coords ->
-                                                    // The animated height of the
-                                                    // controls block (0 when hidden):
-                                                    // the queue list's bottom content
-                                                    // padding tracks it so the queue
-                                                    // fills the freed screen as the
-                                                    // controls collapse.
-                                                    controlsOverlayHeightPx = coords.size.height.toFloat()
+            // The bottom controls host lives OUTSIDE the controls-glass
+            // recorder (so the frosted bar never blurs itself) but INSIDE
+            // the popup recorder (so popups still sample the controls
+            // stacked above them). Portrait-only, exactly as when it sat
+            // inside the else branch.
+            if (!landscape) {
+                FlamingoWrapper {
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(top = topInset),
+                        verticalArrangement = Arrangement.Bottom,
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxHeight(0.437f)
+                                .fillMaxWidth(),
+                        ) {
+                            FlamingoWrapper {
+                                if (nowPage == FlamingoPage.Lyric) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(top = 40.dp)
+                                            .clickable(
+                                                interactionSource = remember { MutableInteractionSource() },
+                                                indication = null,
+                                                onClick = {
+                                                    showControl.value = true
+                                                    lastClickTime.longValue =
+                                                        System.currentTimeMillis()
                                                 },
-                                            enter = fadeIn() + expandVertically(
-                                                expandFrom = Alignment.Top,
-                                                initialHeight = { (it / 1.4).toInt() },
                                             ),
-                                            exit = fadeOut() + shrinkVertically(
-                                                shrinkTowards = Alignment.Top,
-                                                targetHeight = { (it / 1.4).toInt() },
-                                            ),
-                                        ) {
-                                            FlamingoWrapper {
-                                                if (nowPage == FlamingoPage.Lyric) {
-                                                Row(
-                                                    Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(horizontal = 32.dp)
-                                                        .graphicsLayer {
-                                                            compositingStrategy =
-                                                                CompositingStrategy.ModulateAlpha
-                                                            this.alpha = alphaAnim.value
-                                                        },
-                                                    horizontalArrangement = Arrangement.End,
-                                                ) {
-                                                    FlamingoWrapper {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .overlayEffect()
-                                                                .alpha(0.4f)
-                                                                .onGloballyPositioned { coords ->
-                                                                    translationIconBounds = coords.boundsInRoot()
-                                                                }
-                                                                .clickable(
-                                                                    enabled = translationButtonEnabled.value,
-                                                                    onClick = {
-                                                                        FlamingoHaptics.click(context)
-                                                                        translationPopupOpen = !translationPopupOpen
-                                                                        showControl.value = true
-                                                                        lastClickTime.longValue =
-                                                                            System.currentTimeMillis()
-                                                                    },
-                                                                    indication = null,
-                                                                    interactionSource = remember { MutableInteractionSource() },
-                                                                ),
-                                                            contentAlignment = Alignment.Center,
-                                                        ) {
-                                                            AnimatedContent(
-                                                                targetState = autoTranslateLyrics || romanizationOn,
-                                                                transitionSpec = {
-                                                                    fadeIn() togetherWith fadeOut()
+                                    )
+                                }
+                            }
+
+                            FlamingoWrapper {
+                                Column(
+                                    Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.Bottom,
+                                ) {
+                                    AnimatedVisibility(
+                                        visible = showControl.value,
+                                        modifier = Modifier
+                                            .flamingoQueueControlsGlass(
+                                                backdrop = controlsBackdrop,
+                                                active = queueControlsGlassActive,
+                                            )
+                                            .onGloballyPositioned { coords ->
+                                                // The animated height of the
+                                                // controls block (0 when hidden):
+                                                // the queue list's bottom content
+                                                // padding tracks it so the queue
+                                                // fills the freed screen as the
+                                                // controls collapse.
+                                                controlsOverlayHeightPx = coords.size.height.toFloat()
+                                            },
+                                        enter = fadeIn() + expandVertically(
+                                            expandFrom = Alignment.Top,
+                                            initialHeight = { (it / 1.4).toInt() },
+                                        ),
+                                        exit = fadeOut() + shrinkVertically(
+                                            shrinkTowards = Alignment.Top,
+                                            targetHeight = { (it / 1.4).toInt() },
+                                        ),
+                                    ) {
+                                        FlamingoWrapper {
+                                            if (nowPage == FlamingoPage.Lyric) {
+                                            Row(
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 32.dp)
+                                                    .graphicsLayer {
+                                                        compositingStrategy =
+                                                            CompositingStrategy.ModulateAlpha
+                                                        this.alpha = alphaAnim.value
+                                                    },
+                                                horizontalArrangement = Arrangement.End,
+                                            ) {
+                                                FlamingoWrapper {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .overlayEffect()
+                                                            .alpha(0.4f)
+                                                            .onGloballyPositioned { coords ->
+                                                                translationIconBounds = coords.boundsInRoot()
+                                                            }
+                                                            .clickable(
+                                                                enabled = translationButtonEnabled.value,
+                                                                onClick = {
+                                                                    FlamingoHaptics.click(context)
+                                                                    translationPopupOpen = !translationPopupOpen
+                                                                    showControl.value = true
+                                                                    lastClickTime.longValue =
+                                                                        System.currentTimeMillis()
                                                                 },
-                                                            ) { translationOn ->
-                                                                if (translationOn) {
-                                                                    Icon(
-                                                                        painterResource(id = R.drawable.flamingo_np_translateon),
-                                                                        contentDescription = null,
-                                                                        tint = Color.Unspecified,
-                                                                        modifier = Modifier
-                                                                            .size(30.dp),
-                                                                    )
-                                                                } else {
-                                                                    Icon(
-                                                                        painterResource(id = R.drawable.flamingo_np_translate),
-                                                                        contentDescription = null,
-                                                                        tint = Color.Unspecified,
-                                                                        modifier = Modifier
-                                                                            .size(30.dp),
-                                                                    )
-                                                                }
+                                                                indication = null,
+                                                                interactionSource = remember { MutableInteractionSource() },
+                                                            ),
+                                                        contentAlignment = Alignment.Center,
+                                                    ) {
+                                                        AnimatedContent(
+                                                            targetState = autoTranslateLyrics || romanizationOn,
+                                                            transitionSpec = {
+                                                                fadeIn() togetherWith fadeOut()
+                                                            },
+                                                        ) { translationOn ->
+                                                            if (translationOn) {
+                                                                Icon(
+                                                                    painterResource(id = R.drawable.flamingo_np_translateon),
+                                                                    contentDescription = null,
+                                                                    tint = Color.Unspecified,
+                                                                    modifier = Modifier
+                                                                        .size(30.dp),
+                                                                )
+                                                            } else {
+                                                                Icon(
+                                                                    painterResource(id = R.drawable.flamingo_np_translate),
+                                                                    contentDescription = null,
+                                                                    tint = Color.Unspecified,
+                                                                    modifier = Modifier
+                                                                        .size(30.dp),
+                                                                )
                                                             }
                                                         }
                                                     }
                                                 }
-                                                }
                                             }
-
-                                            FlamingoPlayerControl(
-                                                isPlayingLambda = { isPlayingStatusLambda.value },
-                                                playbackState = playbackState,
-                                                positionProvider = positionProvider,
-                                                durationProvider = { duration },
-                                                playerConnection = playerConnection,
-                                                currentFormat = currentFormat,
-                                                showVolumeBar = showVolumeBar,
-                                                volume = volume,
-                                                onVolumeChange = onVolumeChange,
-                                                nowPage = { nowPageLambda.value },
-                                                onLyrics = {
-                                                    translationPopupOpen = false
-                                                    nowPage = if (nowPageLambda.value == FlamingoPage.Lyric) {
-                                                        FlamingoPage.Album
-                                                    } else {
-                                                        FlamingoPage.Lyric
-                                                    }
-                                                },
-                                                onPlaylist = {
-                                                    translationPopupOpen = false
-                                                    nowPage = if (nowPageLambda.value == FlamingoPage.PlayingList) {
-                                                        FlamingoPage.Album
-                                                    } else {
-                                                        FlamingoPage.PlayingList
-                                                    }
-                                                },
-                                                onSlider = {
-                                                    showControl.value = true
-                                                    lastClickTime.longValue = System.currentTimeMillis()
-                                                },
-                                                onQualityClick = {
-                                                    bottomSheetPageState.show {
-                                                        ShowMediaInfo(mediaMetadata.id)
-                                                    }
-                                                },
-                                                onSliderValueChange = onSliderValueChange,
-                                                onSliderValueChangeFinished = onSliderValueChangeFinished,
-                                                modifier = Modifier
-                                                    .padding(top = 52.dp),
-                                            )
+                                            }
                                         }
+
+                                        FlamingoPlayerControl(
+                                            isPlayingLambda = { isPlayingStatusLambda.value },
+                                            playbackState = playbackState,
+                                            positionProvider = positionProvider,
+                                            durationProvider = { duration },
+                                            playerConnection = playerConnection,
+                                            currentFormat = currentFormat,
+                                            showVolumeBar = showVolumeBar,
+                                            volume = volume,
+                                            onVolumeChange = onVolumeChange,
+                                            nowPage = { nowPageLambda.value },
+                                            onLyrics = {
+                                                translationPopupOpen = false
+                                                nowPage = if (nowPageLambda.value == FlamingoPage.Lyric) {
+                                                    FlamingoPage.Album
+                                                } else {
+                                                    FlamingoPage.Lyric
+                                                }
+                                            },
+                                            onPlaylist = {
+                                                translationPopupOpen = false
+                                                nowPage = if (nowPageLambda.value == FlamingoPage.PlayingList) {
+                                                    FlamingoPage.Album
+                                                } else {
+                                                    FlamingoPage.PlayingList
+                                                }
+                                            },
+                                            onSlider = {
+                                                showControl.value = true
+                                                lastClickTime.longValue = System.currentTimeMillis()
+                                            },
+                                            onQualityClick = {
+                                                bottomSheetPageState.show {
+                                                    ShowMediaInfo(mediaMetadata.id)
+                                                }
+                                            },
+                                            onSliderValueChange = onSliderValueChange,
+                                            onSliderValueChangeFinished = onSliderValueChangeFinished,
+                                            modifier = Modifier
+                                                .padding(top = 52.dp),
+                                        )
                                     }
                                 }
                             }
@@ -1880,6 +1983,36 @@ private fun Modifier.flamingoLyricsEdgeFade(
 
 private val FlamingoPopupVerticalGap = 4.dp
 private val FlamingoPopupHorizontalMargin = 16.dp
+
+/**
+ * Frosted material behind the bottom controls on the queue page (AM style):
+ * blurs whatever the queue list and background are showing underneath the
+ * controls bar through the dedicated controls-glass recorder. The tint keeps
+ * the white controls legible over bright artwork, matching the app's popup
+ * glass language (colorControls + 20dp blur + dark tint). Inactive (or when
+ * glass is disabled) the controls keep their fully transparent look.
+ */
+@Composable
+private fun Modifier.flamingoQueueControlsGlass(
+    backdrop: PlatformBackdrop?,
+    active: Boolean,
+): Modifier {
+    if (!active || backdrop == null) return this
+    val glassTuning = LocalLiquidGlassTuning.current
+    return remember(backdrop, glassTuning) {
+        this
+            .drawBackdrop(
+                backdrop = backdrop,
+                effects = {
+                    colorControls(saturation = glassTuning.saturation)
+                    blur((20f * glassTuning.blurFactor).dp.toPx())
+                },
+                onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
+                shape = { RectangleShape },
+            )
+            .background(Color.Black.copy(alpha = (0.50f * glassTuning.tintFactor).coerceIn(0f, 1f)))
+    }
+}
 
 @Composable
 private fun FlamingoPopupDismissScrim(
