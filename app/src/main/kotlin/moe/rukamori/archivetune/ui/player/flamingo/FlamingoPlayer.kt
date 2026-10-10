@@ -89,7 +89,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.shape.RectangleShape
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -825,8 +825,26 @@ fun FlamingoPlayerContent(
         // the reference player. Its recorder wraps everything BELOW the
         // controls — background, page shells and the queue list — so the blur
         // samples the rows scrolling underneath and never the controls
-        // themselves.
+        // themselves. The material fades with the page clock (reveal below)
+        // so the bar never pops in or out mid-transition.
         val queueControlsGlassActive = !landscape && nowPage == FlamingoPage.PlayingList
+        var queueControlsGlassComposed by remember { mutableStateOf(queueControlsGlassActive) }
+        LaunchedEffect(queueControlsGlassActive) {
+            if (queueControlsGlassActive) {
+                queueControlsGlassComposed = true
+            } else {
+                delay(FlamingoPageFlightCloseMs.toLong())
+                queueControlsGlassComposed = false
+            }
+        }
+        // Read only inside the graphicsLayer block (draw phase) so the reveal
+        // never recomposes this (very large) composable per frame.
+        val queueControlsGlassReveal =
+            animateFloatAsState(
+                targetValue = if (queueControlsGlassActive) 1f else 0f,
+                animationSpec = tween(FlamingoPageFlightCloseMs, easing = FastOutSlowInEasing),
+                label = "flamingo-queue-controls-glass-reveal",
+            )
         val controlsBackdrop: PlatformBackdrop? =
             if (glassAvailable) {
                 rememberBackdrop(Color.Transparent)
@@ -841,14 +859,14 @@ fun FlamingoPlayerContent(
         // content animating inside nested graphics layers never reaches the
         // recorder — so without this the popup blur is a frozen snapshot taken
         // when the layer attached (the "not real-time" bug).
-        LaunchedEffect(glassLayerActive, queueControlsGlassActive) {
-            if (!glassLayerActive && !queueControlsGlassActive) return@LaunchedEffect
+        LaunchedEffect(glassLayerActive, queueControlsGlassComposed) {
+            if (!glassLayerActive && !queueControlsGlassComposed) return@LaunchedEffect
             while (isActive) {
                 withFrameNanos { }
                 if (glassLayerActive) {
                     popupBackdrop?.requestRecord()
                 }
-                if (queueControlsGlassActive && showControlLambda.value) {
+                if (queueControlsGlassComposed && showControlLambda.value) {
                     controlsBackdrop?.requestRecord()
                 }
             }
@@ -876,7 +894,7 @@ fun FlamingoPlayerContent(
                     Modifier
                         .fillMaxSize()
                         .let { base ->
-                            if (controlsBackdrop != null && queueControlsGlassActive) {
+                            if (controlsBackdrop != null && queueControlsGlassComposed) {
                                 base.layerBackdrop(controlsBackdrop)
                             } else {
                                 base
@@ -1720,10 +1738,6 @@ fun FlamingoPlayerContent(
                                     AnimatedVisibility(
                                         visible = showControl.value,
                                         modifier = Modifier
-                                            .flamingoQueueControlsGlass(
-                                                backdrop = controlsBackdrop,
-                                                active = queueControlsGlassActive,
-                                            )
                                             .onGloballyPositioned { coords ->
                                                 // The animated height of the
                                                 // controls block (0 when hidden):
@@ -1742,6 +1756,26 @@ fun FlamingoPlayerContent(
                                             targetHeight = { (it / 1.4).toInt() },
                                         ),
                                     ) {
+                                        Box(Modifier.fillMaxWidth()) {
+                                            // Frosted material behind the controls — a
+                                            // sibling layer UNDER the content, fading
+                                            // with the page clock (draw-phase read) so
+                                            // the bar materialises with the queue page
+                                            // instead of popping in.
+                                            if (queueControlsGlassComposed && controlsBackdrop != null) {
+                                                Box(
+                                                    modifier =
+                                                        Modifier
+                                                            .matchParentSize()
+                                                            .graphicsLayer {
+                                                                alpha = queueControlsGlassReveal.value
+                                                            }
+                                                            .flamingoQueueControlsGlass(
+                                                                backdrop = controlsBackdrop,
+                                                            )
+                                                )
+                                            }
+                                            Column(Modifier.fillMaxWidth()) {
                                         FlamingoWrapper {
                                             if (nowPage == FlamingoPage.Lyric) {
                                             Row(
@@ -1848,6 +1882,8 @@ fun FlamingoPlayerContent(
                                             modifier = Modifier
                                                 .padding(top = 52.dp),
                                         )
+                                        }
+                                            }
                                     }
                                 }
                             }
@@ -1995,9 +2031,8 @@ private val FlamingoPopupHorizontalMargin = 16.dp
 @Composable
 private fun Modifier.flamingoQueueControlsGlass(
     backdrop: PlatformBackdrop?,
-    active: Boolean,
 ): Modifier {
-    if (!active || backdrop == null) return this
+    if (backdrop == null) return this
     val glassTuning = LocalLiquidGlassTuning.current
     return remember(backdrop, glassTuning) {
         this
