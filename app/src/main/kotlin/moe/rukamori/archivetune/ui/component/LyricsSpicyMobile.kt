@@ -438,12 +438,31 @@ private fun SpicyLyricsLine(
             }
 
         when (line) {
-            is KaraokeLine -> {
-                // lyrics-core 0.4.2 model: flat lines, background vocals carry
-                // isAccompaniment = true instead of the 0.5+ sealed subtypes.
-                if (line.isAccompaniment) {
+            is KaraokeLine.MainKaraokeLine -> {
+                SpicyWordsRow(
+                    syllables = line.syllables,
+                    lineStartMs = line.start.toLong(),
+                    lineEndMs = lineEndMs,
+                    position = position,
+                    isActive = isActive,
+                    textStyle = if (isActive) {
+                        normalTextStyle.copy(
+                            shadow = Shadow(
+                                color = textColor.copy(alpha = SpicyActiveGlowAlpha),
+                                blurRadius = SpicyActiveGlowBlurRadius,
+                            ),
+                        )
+                    } else {
+                        normalTextStyle
+                    },
+                    textColor = textColor,
+                    isBackgroundRow = false,
+                    showPhonetic = showPhonetic,
+                )
+                line.accompanimentLines?.forEach { bgLine ->
+                    Spacer(Modifier.height(6.dp))
                     SpicyBackgroundRow(
-                        syllables = line.syllables,
+                        syllables = bgLine.syllables,
                         lineStartMs = line.start.toLong(),
                         lineEndMs = lineEndMs,
                         position = position,
@@ -452,28 +471,21 @@ private fun SpicyLyricsLine(
                         textColor = textColor,
                         showPhonetic = false,
                     )
-                } else {
-                    SpicyWordsRow(
-                        syllables = line.syllables,
-                        lineStartMs = line.start.toLong(),
-                        lineEndMs = lineEndMs,
-                        position = position,
-                        isActive = isActive,
-                        textStyle = if (isActive) {
-                            normalTextStyle.copy(
-                                shadow = Shadow(
-                                    color = textColor.copy(alpha = SpicyActiveGlowAlpha),
-                                    blurRadius = SpicyActiveGlowBlurRadius,
-                                ),
-                            )
-                        } else {
-                            normalTextStyle
-                        },
-                        textColor = textColor,
-                        isBackgroundRow = false,
-                        showPhonetic = showPhonetic,
-                    )
                 }
+            }
+
+            is KaraokeLine.AccompanimentKaraokeLine -> {
+                SpicyWordsRow(
+                    syllables = line.syllables,
+                    lineStartMs = line.start.toLong(),
+                    lineEndMs = lineEndMs,
+                    position = position,
+                    isActive = isActive,
+                    textStyle = accompanimentTextStyle,
+                    textColor = textColor,
+                    isBackgroundRow = true,
+                    showPhonetic = showPhonetic,
+                )
             }
 
             is SyncedLine -> {
@@ -509,9 +521,7 @@ private fun SpicyLyricsLine(
         val linePhonetic =
             when (line) {
                 is KaraokeLine -> line.phonetic
-                // lyrics-core 0.4.2 SyncedLine has no phonetic field —
-                // romanisation of plain lines rides the translation slot.
-                is SyncedLine -> null
+                is SyncedLine -> line.phonetic
                 else -> null
             }
 
