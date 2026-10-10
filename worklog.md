@@ -5123,3 +5123,19 @@ Work Log:
 
 Stage Summary:
 - dev @ 7b614f52b: ALL 8 check-runs SUCCESS — check; build (compile + tests + lint); full 5-job nightly APK matrix; create-nightly published the canary APK with the complete batch.
+
+---
+Task ID: 92 (outcome)
+Agent: Super Z (main agent, session web-e130fa90)
+
+Task: 3-item round — enhanced lyrics code from main updated to accompanist v2.0.0-rc.2, queue-page bottom controls styled like the lyrics page (no blur), original morphe canvas transition restored (revert of the batch-17 reference implementation) with square corners through the flight
+
+Work Log:
+- 960d5105c (4 files, +483/-506):
+  * Lyrics: lyrics-ui 1.0.15 -> 2.0.0-rc.2 + lyrics-core 0.4.2 -> 0.5.0; LyricsEnhanced.kt restored to main's enhanced engine (drift-corrected position projection, positionResetCounter seek resets, scrollLyricIntoFocus guard-band follow, Bold karaoke weight) ported onto the v2 API (LyricsLazyListState keyed on session/reset/generation, LyricsAnchor.Fixed, showTranslation/showPhonetic + per-slot styles back on KaraokeLyricsView, nested 0.5.0 karaoke model from buildSyncedLyrics); LyricsSpicyMobile.kt back on the sealed KaraokeLine model; the flat isAccompaniment emission + lineWithoutTranslation trick deleted.
+  * Queue controls: the batch-17 frosted bar + dedicated controls recorder + reveal/grace machinery fully removed; portrait controls host back in its original shared position, transparent over the page exactly like the lyrics page. The popup live-glass ticker (real-time overflow blur) retained.
+  * Canvas transition: batch-17's reference clocks reverted wholesale to the original morphe (600ms flight, 650ms surfaces fade, NoBouncy/MediumLow spring bounds, 600ms symmetric shell crossfade, 420ms morph hold, 600/300ms lyrics defer, 280ms static hand-off); new canvasFlightCornerT() keeps the video square through departure + cruise and only rounds into the bar slot's radius in the final flight quarter (no round corners from the start); flight geometry = original container-only lerp from the exact album rect (no start distortion/seams). Dead code reintroduced by the revert pruned (SpicyLineSettleMs, unused sizeIn import).
+- CI (per the always-push-and-monitor loop, no local compile): first push went GREEN with zero repairs — all 8 check-runs SUCCESS on 960d5105c: check, build (compile + tests + lint), the full 5-job nightly APK matrix (mobile universal/armeabi/arm64/x86_64 + tv universal, incl. R8 release) and create-nightly; canary APK with the round published to the CANARY channel.
+
+Stage Summary:
+- dev @ 960d5105c: all three items complete and CI-green; canary shipped.
