@@ -22,7 +22,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,7 +34,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -57,7 +55,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil3.compose.AsyncImage
@@ -78,68 +75,12 @@ private val SpotifyAccountIconSize = 44.dp
 private const val SpotifyLoginUserAgent =
     "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
 
-internal fun PreferenceGroupScope.spotifyAccountPreferences(
+internal fun PreferenceGroupScope.spotifyLibraryPreferences(
     state: SpotifyAccountUiState,
     showPlaylists: Boolean,
-    onConnectClick: () -> Unit,
     onShowPlaylistsChange: (Boolean) -> Unit,
     onReloadClick: () -> Unit,
-    onLogoutClick: () -> Unit,
 ) {
-    if (!state.isAuthenticated) {
-        item {
-            PreferenceEntry(
-                title = { Text(stringResource(R.string.spotify_connect)) },
-                description = stringResource(R.string.spotify_not_connected),
-                icon = { Icon(painterResource(R.drawable.spotify_icon), null) },
-                trailingContent = {
-                    AnimatedVisibility(visible = state.isLoading) {
-                        CircularWavyProgressIndicator(
-                            modifier = Modifier.size(28.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                },
-                onClick = onConnectClick,
-                isEnabled = !state.isLoading,
-            )
-        }
-        return
-    }
-
-    item {
-        PreferenceEntry(
-            title = {
-                Text(
-                    text =
-                        if (state.accountName.isNotBlank()) {
-                            stringResource(R.string.spotify_connected_as, state.accountName)
-                        } else {
-                            stringResource(R.string.spotify_account)
-                        },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            description =
-                when {
-                    state.isLoading -> stringResource(R.string.spotify_loading_library)
-                    state.playlistCount > 0 -> stringResource(R.string.spotify_available_count, state.playlistCount)
-                    else -> stringResource(R.string.spotify_no_sources)
-                },
-            icon = { SpotifyAccountIcon(avatarUrl = state.accountAvatarUrl) },
-            trailingContent = {
-                AnimatedVisibility(visible = state.isLoading) {
-                    CircularWavyProgressIndicator(
-                        modifier = Modifier.size(28.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            },
-            isEnabled = false,
-        )
-    }
-
     item {
         SwitchPreference(
             title = { Text(stringResource(R.string.spotify_show_playlist)) },
@@ -160,19 +101,10 @@ internal fun PreferenceGroupScope.spotifyAccountPreferences(
             isEnabled = !state.isLoading,
         )
     }
-
-    item {
-        PreferenceEntry(
-            title = { Text(stringResource(R.string.action_logout)) },
-            icon = { Icon(painterResource(R.drawable.logout), null) },
-            onClick = onLogoutClick,
-            isEnabled = !state.isLoading,
-        )
-    }
 }
 
 @Composable
-private fun SpotifyAccountIcon(avatarUrl: String?) {
+internal fun SpotifyAccountIcon(avatarUrl: String?) {
     val context = LocalContext.current
     val requestSize = with(LocalDensity.current) { SpotifyAccountIconSize.roundToPx() }
     val accountIcon = painterResource(R.drawable.spotify_icon)

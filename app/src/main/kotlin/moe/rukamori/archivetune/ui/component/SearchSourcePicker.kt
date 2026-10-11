@@ -51,6 +51,8 @@ fun SearchSourcePicker(
                             R.drawable.spotify_icon
                         } else if (currentProvider == SearchProvider.APPLE_MUSIC) {
                             R.drawable.apple_music_icon
+                        } else if (currentProvider == SearchProvider.SOUNDCLOUD) {
+                            R.drawable.solar_music_note_2_linear
                         } else {
                             R.drawable.youtube_icon
                         },
@@ -101,6 +103,14 @@ fun SearchSourcePicker(
             ) {
                 expanded = false
                 onSelection(SearchSource.ONLINE, SearchProvider.APPLE_MUSIC)
+            }
+            SearchSourceMenuItem(
+                label = stringResource(R.string.search_source_soundcloud),
+                iconRes = R.drawable.solar_music_note_2_linear,
+                selected = currentScope == SearchSource.ONLINE && currentProvider == SearchProvider.SOUNDCLOUD,
+            ) {
+                expanded = false
+                onSelection(SearchSource.ONLINE, SearchProvider.SOUNDCLOUD)
             }
         }
     }

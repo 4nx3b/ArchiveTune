@@ -513,7 +513,7 @@ private data class CdnProbe(
             return SourceCheckResult(
                 status = SourceCheckStatus.NOT_CONFIGURED,
                 summary = "Spotify direct streaming requires a signed-in Spotify web session. " +
-                    "Sign in via Settings → Integrations → Spotify, then enable the source here.",
+                    "Sign in below the Spotify source toggle, then enable the source.",
             )
         }
         return SourceCheckResult(

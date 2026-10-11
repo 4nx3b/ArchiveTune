@@ -271,6 +271,46 @@ fun CanvasSettingsScreen(
                             )
                         }
                     }
+
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.tidal_artwork_fallback)) },
+                            description =
+                                stringResource(
+                                    if (tidalEnabled) {
+                                        R.string.tidal_artwork_fallback_description
+                                    } else {
+                                        R.string.tidal_artwork_fallback_unavailable
+                                    },
+                                ),
+                            icon = { Icon(painterResource(R.drawable.image), null) },
+                            checked = tidalArtworkEnabled,
+                            onCheckedChange = onTidalArtworkEnabledChange,
+                            isEnabled = tidalEnabled,
+                        )
+                    }
+
+                    item {
+                        var showArtworkOrderDialog by remember { mutableStateOf(false) }
+                        Column(modifier = positions.modifierFor("artwork_priority")) {
+                            PreferenceEntry(
+                                title = { Text(stringResource(R.string.artwork_priority)) },
+                                description = artworkProviderOrder.firstOrNull()?.displayName(),
+                                icon = { Icon(painterResource(R.drawable.filter_alt), null) },
+                                onClick = { showArtworkOrderDialog = true },
+                            )
+                        }
+                        if (showArtworkOrderDialog) {
+                            ArtworkProviderOrderDialog(
+                                initialOrder = artworkProviderOrder,
+                                onDismiss = { showArtworkOrderDialog = false },
+                                onConfirm = { newOrder ->
+                                    onArtworkProviderOrderStrChange(newOrder.joinToString(",") { it.name })
+                                    showArtworkOrderDialog = false
+                                },
+                            )
+                        }
+                    }
                 }
 
                 PreferenceGroup(
@@ -321,51 +361,6 @@ fun CanvasSettingsScreen(
                                 icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                                 checked = canvasAudioReactive,
                                 onCheckedChange = onCanvasAudioReactiveChange,
-                            )
-                        }
-                    }
-                }
-
-                PreferenceGroup(
-                    modifier = positions.modifierFor("tidal_artwork_fallback"),
-                    title = stringResource(R.string.artwork_priority_group_title),
-                ) {
-                    item {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.tidal_artwork_fallback)) },
-                            description =
-                                stringResource(
-                                    if (tidalEnabled) {
-                                        R.string.tidal_artwork_fallback_description
-                                    } else {
-                                        R.string.tidal_artwork_fallback_unavailable
-                                    },
-                                ),
-                            icon = { Icon(painterResource(R.drawable.image), null) },
-                            checked = tidalArtworkEnabled,
-                            onCheckedChange = onTidalArtworkEnabledChange,
-                            isEnabled = tidalEnabled,
-                        )
-                    }
-
-                    item {
-                        var showArtworkOrderDialog by remember { mutableStateOf(false) }
-                        Column(modifier = positions.modifierFor("artwork_priority")) {
-                            PreferenceEntry(
-                                title = { Text(stringResource(R.string.artwork_priority)) },
-                                description = artworkProviderOrder.firstOrNull()?.displayName(),
-                                icon = { Icon(painterResource(R.drawable.filter_alt), null) },
-                                onClick = { showArtworkOrderDialog = true },
-                            )
-                        }
-                        if (showArtworkOrderDialog) {
-                            ArtworkProviderOrderDialog(
-                                initialOrder = artworkProviderOrder,
-                                onDismiss = { showArtworkOrderDialog = false },
-                                onConfirm = { newOrder ->
-                                    onArtworkProviderOrderStrChange(newOrder.joinToString(",") { it.name })
-                                    showArtworkOrderDialog = false
-                                },
                             )
                         }
                     }

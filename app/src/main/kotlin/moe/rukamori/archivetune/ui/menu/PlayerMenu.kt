@@ -97,6 +97,8 @@ import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.soundcloud.SoundCloudAudioProvider
+import moe.rukamori.archivetune.spotify.Spotify as SpotifyCore
+import moe.rukamori.archivetune.spotify.SpotifyWebSession
 import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
@@ -1799,8 +1801,21 @@ private suspend fun searchOneSource(
             }
 
             AudioSourceType.SPOTIFY -> {
-
-                emptyList()
+                val token = SpotifyWebSession.ensureToken(context) ?: return@withContext emptyList()
+                SpotifyCore.accessToken = token
+                val result = runCatching { SpotifyCore.search(query, listOf("track"), limit).getOrNull() }.getOrNull()
+                result?.tracks?.items.orEmpty().map { track ->
+                    SourceSearchResult(
+                        source = AudioSourceType.SPOTIFY,
+                        trackId = track.id,
+                        title = track.name,
+                        artist = track.artists.joinToString(", ") { it.name },
+                        thumbnailUrl = track.album?.images?.firstOrNull()?.url,
+                        durationMs = track.durationMs.toLong().takeIf { it > 0 },
+                        qualityLabel = aacLabel,
+                        songItem = null,
+                    )
+                }
             }
         }
     }
@@ -1856,6 +1871,8 @@ private fun SongSourceDialog(
                     AudioSourceType.QOBUZ_BACKUP,
                     AudioSourceType.DEEZER,
                     AudioSourceType.JIOSAAVN,
+                    AudioSourceType.SOUNDCLOUD,
+                    AudioSourceType.SPOTIFY,
                 )
             val ordered = sourceOrder.filter { it in eligible }
             ordered + eligible.filterNot { it in ordered }

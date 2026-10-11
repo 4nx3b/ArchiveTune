@@ -2930,6 +2930,10 @@ class MainActivity : ComponentActivity() {
                                                                 SearchSource.ONLINE ->
                                                                     if (searchProvider == SearchProvider.SPOTIFY) {
                                                                         R.string.search_source_spotify
+                                                                    } else if (searchProvider == SearchProvider.APPLE_MUSIC) {
+                                                                        R.string.search_source_apple_music
+                                                                    } else if (searchProvider == SearchProvider.SOUNDCLOUD) {
+                                                                        R.string.search_source_soundcloud
                                                                     } else {
                                                                         R.string.search_yt_music
                                                                     }
