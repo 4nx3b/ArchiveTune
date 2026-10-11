@@ -27,6 +27,8 @@ import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.TikTokMainLyricsEnabledKey
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.SpotifyCanvasKey
+import moe.rukamori.archivetune.constants.ProceduralArtworkEnabledKey
+import moe.rukamori.archivetune.constants.CanvasAudioReactiveKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.FloatDspEnabledKey
@@ -380,6 +382,9 @@ fun buildSettingsGroups(
                 SettingsChild("ArchiveTune Canvas", "archive_tune_canvas", listOf("canvas", "animated artwork", "motion artwork", "live artwork")) { SearchResultSwitch(ArchiveTuneCanvasKey, true) },
                 SettingsChild("Spotify Canvas", "spotify_canvas", listOf("spotify", "canvas", "spotify canvas", "looping video", "music video", "video artwork")) { SearchResultSwitch(SpotifyCanvasKey, false) },
                 SettingsChild("Canvas resolvers", "canvas_resolvers", listOf("canvas resolver", "canvas resolvers", "canvas endpoint", "canvas fallback", "spotify canvas resolver")),
+                SettingsChild("Animate static album art", "procedural_artwork", listOf("animate album art", "fluid artwork", "kawarp", "square tunnel", "procedural artwork", "artwork motion", "wave distortion")) { SearchResultSwitch(ProceduralArtworkEnabledKey, false) },
+                SettingsChild("Motion style", "procedural_artwork_style", listOf("motion style", "kawarp", "square tunnel", "corridor", "fluid wave")),
+                SettingsChild("Audio-reactive animation", "canvas_audio_reactive", listOf("audio reactive", "bass", "beats", "music reactive", "experimental")) { SearchResultSwitch(CanvasAudioReactiveKey, false) },
                 SettingsChild("Tidal artwork fallback", "tidal_artwork_fallback", listOf("tidal artwork", "artwork fallback", "tidal cover", "hi-res artwork")) { SearchResultSwitch(TidalArtworkFallbackEnabledKey, true) },
                 SettingsChild("Persistent queue", "persistent_queue", listOf("queue", "persistent", "save queue", "resume")) { SearchResultSwitch(PersistentQueueKey, true) },
                 SettingsChild("Permanent shuffle", "permanent_shuffle", listOf("shuffle", "random", "permanent")) { SearchResultSwitch(PermanentShuffleKey, false) },

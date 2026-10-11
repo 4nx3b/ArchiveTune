@@ -144,6 +144,12 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
             "qobuz_enable", "qobuz_audio_quality", "qobuz_backup_enable", "qobuz_manage_instances",
             "deezer_enable", "deezer_audio_quality", "jiosaavn_enable", "jiosaavn_audio_quality",
         )
+        own(
+            "canvas", "playback",
+            "archive_tune_canvas", "spotify_canvas", "album_canvas_enabled", "canvas_resolvers",
+            "canvas_check", "tidal_artwork_fallback", "artwork_priority", "procedural_artwork",
+            "procedural_artwork_style", "canvas_audio_reactive",
+        )
         own("sources", "deezer", "deezer_enable", "deezer_audio_quality")
         own("qobuz", "sources", "qobuz")
         own("tidal", "sources", "tidal")
@@ -168,6 +174,7 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
             "liquid_glass" -> "settings/appearance/liquid_glass"
 
             "playback" -> "settings/player"
+            "canvas" -> "settings/player/canvas"
             "audiophile" -> "settings/player/audiophile"
             "sources" -> "settings/sources"
             "android_auto" -> "settings/android_auto"
