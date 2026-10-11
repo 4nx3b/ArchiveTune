@@ -521,7 +521,6 @@ private fun SpicyLyricsLine(
         val linePhonetic =
             when (line) {
                 is KaraokeLine -> line.phonetic
-                is SyncedLine -> line.phonetic
                 else -> null
             }
 

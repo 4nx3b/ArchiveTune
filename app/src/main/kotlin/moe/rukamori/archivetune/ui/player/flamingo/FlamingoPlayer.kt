@@ -77,6 +77,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
@@ -208,6 +209,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
 import moe.rukamori.archivetune.canvas.procedural.ProceduralArtworkFallback
+import moe.rukamori.archivetune.constants.ProceduralArtworkEnabledKey
 import moe.rukamori.archivetune.ui.player.CanvasLoopSync
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
@@ -275,6 +277,13 @@ private const val FlamingoLyricsContentDeferCanvasMs = 120L
 
 private const val FlamingoLyricsExitHoldMs = 240L
 private const val FlamingoPageMorphHoldMs = 420L
+
+private const val FlamingoStageFlightMs = 420
+private const val FlamingoStageFlightHandoffMs = 180
+private const val FlamingoStageFlightFadeInMs = 80
+private val FlamingoStageFlightCornerDp = 5.dp
+
+private fun stageFlightCornerT(progress: Float): Float = ((progress - 0.75f) / 0.25f).coerceIn(0f, 1f)
 
 private class FlamingoAdaptiveCornerShape(
     private val smallRadius: Dp,
@@ -494,6 +503,60 @@ fun FlamingoPlayerContent(
             label = "flamingo-canvas-surfaces-fade",
         )
 
+        val (proceduralArtworkEnabled) = rememberPreference(ProceduralArtworkEnabledKey, defaultValue = false)
+        val proceduralStageActive =
+            !canvasVisualActive && !videoShowing && !landscape && proceduralArtworkEnabled
+        val stageVisualActive = (canvasVisualActive || proceduralStageActive) && !landscape
+
+        val canvasFlightAnim = remember { Animatable(0f) }
+        val canvasFlightAlpha = remember { Animatable(1f) }
+        var stageAlbumRect by remember { mutableStateOf<Rect?>(null) }
+        var stageBarSlotRect by remember { mutableStateOf<Rect?>(null) }
+        var stageFlightHostOrigin by remember { mutableStateOf(Offset.Zero) }
+
+        LaunchedEffect(mediaMetadata.id, stageVisualActive) {
+            if (!stageVisualActive) return@LaunchedEffect
+            if (nowPage == FlamingoPage.Album) {
+                canvasFlightAnim.snapTo(0f)
+                canvasFlightAlpha.snapTo(1f)
+            } else {
+                canvasFlightAnim.snapTo(1f)
+                canvasFlightAlpha.snapTo(0f)
+            }
+        }
+
+        LaunchedEffect(nowPage, stageVisualActive, stageBarSlotRect != null) {
+            if (!stageVisualActive) return@LaunchedEffect
+            when {
+                nowPage == FlamingoPage.Album -> {
+                    if (canvasFlightAnim.value > 0.0005f) {
+                        canvasFlightAlpha.animateTo(
+                            1f,
+                            tween(FlamingoStageFlightFadeInMs, easing = FastOutSlowInEasing),
+                        )
+                        canvasFlightAnim.animateTo(
+                            0f,
+                            tween(FlamingoStageFlightMs, easing = FastOutSlowInEasing),
+                        )
+                    }
+                }
+                stageBarSlotRect != null -> {
+                    canvasFlightAlpha.animateTo(
+                        1f,
+                        tween(FlamingoStageFlightFadeInMs, easing = FastOutSlowInEasing),
+                    )
+                    canvasFlightAnim.animateTo(
+                        1f,
+                        tween(FlamingoStageFlightMs, easing = FastOutSlowInEasing),
+                    )
+                    canvasFlightAlpha.animateTo(
+                        0f,
+                        tween(FlamingoStageFlightHandoffMs, easing = FastOutSlowInEasing),
+                    )
+                }
+            }
+        }
+
         BackHandler(enabled = nowPage != FlamingoPage.Album) {
             nowPage = FlamingoPage.Album
         }
@@ -508,7 +571,7 @@ fun FlamingoPlayerContent(
                 lyricsContentReady = false
 
                 delay(
-                    if (canvasVisualActive) {
+                    if (stageVisualActive) {
                         FlamingoLyricsContentDeferCanvasMs
                     } else {
                         FlamingoLyricsContentDeferMs
@@ -1132,22 +1195,43 @@ fun FlamingoPlayerContent(
                                 val pageBoundsScope = this@AnimatedContent
 
                                 val albumOverlayShape =
-                                    if (canvasVisualActive) {
+                                    if (stageVisualActive) {
                                         FlamingoCanvasAlbumOverlayShape
                                     } else {
                                         FlamingoAlbumOverlayShape
                                     }
-                                val albumSharedBounds = Modifier.sharedBounds(
-                                    sharedContentState = rememberSharedContentState(key = ShareAlbumKey),
-                                    animatedVisibilityScope = pageBoundsScope,
-                                    clipInOverlayDuringTransition = OverlayClip(albumOverlayShape),
-                                    boundsTransform = BoundsTransform { _, _ ->
-                                        spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                            stiffness = Spring.StiffnessMediumLow,
+                                val albumSharedBounds =
+                                    if (stageVisualActive) {
+                                        Modifier
+                                    } else {
+                                        Modifier.sharedBounds(
+                                            sharedContentState = rememberSharedContentState(key = ShareAlbumKey),
+                                            animatedVisibilityScope = pageBoundsScope,
+                                            clipInOverlayDuringTransition = OverlayClip(albumOverlayShape),
+                                            boundsTransform = BoundsTransform { _, _ ->
+                                                spring(
+                                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                                    stiffness = Spring.StiffnessMediumLow,
+                                                )
+                                            },
                                         )
-                                    },
-                                )
+                                    }
+                                val barSharedBounds =
+                                    if (stageVisualActive) {
+                                        Modifier
+                                    } else {
+                                        Modifier.sharedBounds(
+                                            sharedContentState = rememberSharedContentState(key = ShareAlbumKey),
+                                            animatedVisibilityScope = pageBoundsScope,
+                                            clipInOverlayDuringTransition = OverlayClip(FlamingoAlbumOverlayShape),
+                                            boundsTransform = BoundsTransform { _, _ ->
+                                                spring(
+                                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                                    stiffness = Spring.StiffnessMediumLow,
+                                                )
+                                            },
+                                        )
+                                    }
                                 when (page) {
                                     FlamingoPage.Album ->
                                         Box(Modifier.fillMaxSize()) {
@@ -1161,7 +1245,7 @@ fun FlamingoPlayerContent(
                                                         Modifier
                                                             .then(
 
-                                                                if (canvasVisualActive) {
+                                                                if (stageVisualActive) {
                                                                     Modifier
                                                                 } else {
                                                                     Modifier.padding(top = topInset + 22.dp)
@@ -1175,12 +1259,9 @@ fun FlamingoPlayerContent(
                                                             isPlaying = { isPlayingStatusLambda.value },
                                                             canvasActive = canvasVisualActive,
                                                             videoShowing = videoShowing,
+                                                            proceduralActive = proceduralStageActive,
                                                             overlayArtworkReveal = overlayArtworkReveal,
-                                                            canvasPrimaryUrl = canvasPrimaryUrl,
-                                                            canvasFallbackUrl = canvasFallbackUrl,
-                                                            canvasLoopSyncLeader = canvasLoopSync,
-                                                            onCanvasPlaybackAvailabilityChange = { canvasRendering = it },
-                                                            canvasRefreshEpoch = orientationRefreshEpoch,
+                                                            onStageRectPositioned = { stageAlbumRect = it },
                                                         )
                                                         AnimatedContent(
                                                             targetState = mediaMetadata,
@@ -1259,19 +1340,7 @@ fun FlamingoPlayerContent(
                                         ) {
                                             FlamingoWrapper {
                                                 FlamingoPlayingBar(
-                                                    modifier = Modifier.sharedBounds(
-                                                        sharedContentState = rememberSharedContentState(
-                                                            key = ShareAlbumKey,
-                                                        ),
-                                                        animatedVisibilityScope = pageBoundsScope,
-                                                        clipInOverlayDuringTransition = OverlayClip(FlamingoAlbumOverlayShape),
-                                                        boundsTransform = BoundsTransform { _, _ ->
-                                                            spring(
-                                                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                                                stiffness = Spring.StiffnessMediumLow,
-                                                            )
-                                                        },
-                                                    ),
+                                                    modifier = barSharedBounds,
                                                     artworkUrl = artworkUrl,
                                                     mediaMetadata = mediaMetadata,
                                                     playerConnection = playerConnection,
@@ -1284,6 +1353,7 @@ fun FlamingoPlayerContent(
                                                     onMorePositioned = { moreIconBounds = it },
                                                     onArtistClick = { artistPickerOpen = true },
                                                     playerMenuOpen = showAnchoredLyricsMenu,
+                                                    onArtworkPositioned = { stageBarSlotRect = it },
                                                 )
                                             }
                                         }
@@ -1297,19 +1367,7 @@ fun FlamingoPlayerContent(
                                                     .clickable(enabled = false, onClick = {}),
                                             ) {
                                                 FlamingoPlayingBar(
-                                                    modifier = Modifier.sharedBounds(
-                                                        sharedContentState = rememberSharedContentState(
-                                                            key = ShareAlbumKey,
-                                                        ),
-                                                        animatedVisibilityScope = pageBoundsScope,
-                                                        clipInOverlayDuringTransition = OverlayClip(FlamingoAlbumOverlayShape),
-                                                        boundsTransform = BoundsTransform { _, _ ->
-                                                            spring(
-                                                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                                                stiffness = Spring.StiffnessMediumLow,
-                                                            )
-                                                        },
-                                                    ),
+                                                    modifier = barSharedBounds,
                                                     artworkUrl = artworkUrl,
                                                     mediaMetadata = mediaMetadata,
                                                     playerConnection = playerConnection,
@@ -1322,6 +1380,7 @@ fun FlamingoPlayerContent(
                                                     onMorePositioned = { moreIconBounds = it },
                                                     onArtistClick = { artistPickerOpen = true },
                                                     playerMenuOpen = showAnchoredLyricsMenu,
+                                                    onArtworkPositioned = { stageBarSlotRect = it },
                                                 )
                                             }
                                         }
@@ -1329,6 +1388,7 @@ fun FlamingoPlayerContent(
                             }
                         }
                     }
+
 
                     FlamingoWrapper {
                         Column(Modifier.fillMaxWidth()) {
@@ -1378,6 +1438,80 @@ fun FlamingoPlayerContent(
                                         lastClickTime.longValue = System.currentTimeMillis()
                                     },
                                 )
+                            }
+                        }
+                    }
+
+                    if (stageVisualActive) {
+                        Box(
+                            Modifier
+                                .matchParentSize()
+                                .onGloballyPositioned { coords ->
+                                    stageFlightHostOrigin = coords.positionInRoot()
+                                },
+                        ) {
+                            val stageRect = stageAlbumRect
+                            if (stageRect != null) {
+                                val stageSizeDp =
+                                    with(canvasDensity) {
+                                        DpSize(
+                                            stageRect.width.toDp().coerceAtLeast(1.dp),
+                                            stageRect.height.toDp().coerceAtLeast(1.dp),
+                                        )
+                                    }
+                                Box(
+                                    Modifier
+                                        .size(stageSizeDp)
+                                        .offset {
+                                            IntOffset(
+                                                (stageRect.left - stageFlightHostOrigin.x).roundToInt(),
+                                                (stageRect.top - stageFlightHostOrigin.y).roundToInt(),
+                                            )
+                                        }
+                                        .graphicsLayer {
+                                            val t = canvasFlightAnim.value
+                                            val slot = stageBarSlotRect
+                                            if (t > 0.0005f && slot != null) {
+                                                translationX = (slot.left - stageRect.left) * t
+                                                translationY = (slot.top - stageRect.top) * t
+                                                scaleX = 1f + (slot.width / stageRect.width - 1f) * t
+                                                scaleY = 1f + (slot.height / stageRect.height - 1f) * t
+                                            } else {
+                                                translationX = 0f
+                                                translationY = 0f
+                                                scaleX = 1f
+                                                scaleY = 1f
+                                            }
+                                            transformOrigin = TransformOrigin(0f, 0f)
+                                            shape = RoundedCornerShape(
+                                                FlamingoStageFlightCornerDp * stageFlightCornerT(t),
+                                            )
+                                            clip = true
+                                            alpha = canvasFlightAlpha.value
+                                            compositingStrategy = CompositingStrategy.Offscreen
+                                        },
+                                ) {
+                                    if (canvasVisualActive) {
+                                        FlamingoCanvasStage(
+                                            canvasPrimaryUrl = canvasPrimaryUrl,
+                                            canvasFallbackUrl = canvasFallbackUrl,
+                                            isPlaying = isPlayingStatusLambda.value,
+                                            loopSyncLeader = canvasLoopSync,
+                                            onPlaybackAvailabilityChange = { canvasRendering = it },
+                                            refreshEpoch = orientationRefreshEpoch,
+                                            fadeStrength = { 1f - overlayArtworkReveal },
+                                            staticArtworkUrl = artworkUrl,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    } else {
+                                        FlamingoProceduralStage(
+                                            artworkUrl = artworkUrl,
+                                            isPlaying = isPlayingStatusLambda.value,
+                                            fadeStrength = { 1f - overlayArtworkReveal },
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -2145,12 +2279,9 @@ private fun ColumnScope.FlamingoAlbum(
     isPlaying: () -> Boolean,
     canvasActive: Boolean,
     videoShowing: Boolean,
+    proceduralActive: Boolean,
     overlayArtworkReveal: Float,
-    canvasPrimaryUrl: String?,
-    canvasFallbackUrl: String?,
-    canvasLoopSyncLeader: CanvasLoopSync,
-    onCanvasPlaybackAvailabilityChange: (Boolean) -> Unit,
-    canvasRefreshEpoch: Int,
+    onStageRectPositioned: (Rect) -> Unit,
 ) {
     if (videoShowing) {
         Box(
@@ -2186,26 +2317,14 @@ private fun ColumnScope.FlamingoAlbum(
         return
     }
 
-    if (canvasActive) {
-
+    if (canvasActive || proceduralActive) {
         Box(
             Modifier
                 .weight(1f)
-                .then(modifier),
-        ) {
-            FlamingoCanvasStage(
-                canvasPrimaryUrl = canvasPrimaryUrl,
-                canvasFallbackUrl = canvasFallbackUrl,
-                isPlaying = isPlaying(),
-                loopSyncLeader = canvasLoopSyncLeader,
-                onPlaybackAvailabilityChange = onCanvasPlaybackAvailabilityChange,
-                refreshEpoch = canvasRefreshEpoch,
-
-                fadeStrength = { 1f - overlayArtworkReveal },
-                staticArtworkUrl = artworkUrl,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
+                .onGloballyPositioned { coords ->
+                    onStageRectPositioned(coords.boundsInRoot())
+                },
+        )
         return
     }
 
@@ -2245,14 +2364,6 @@ private fun ColumnScope.FlamingoAlbum(
                     .then(modifier),
                 imageQuality = ImageQuality.RAW,
                 shadowOverlay = true,
-            )
-
-            ProceduralArtworkFallback(
-                artworkUrl = artworkUrl,
-                isPlaying = isPlaying(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = dp, end = dp, bottom = dp),
             )
         }
     }
@@ -2312,6 +2423,35 @@ private fun FlamingoCanvasStage(
             onPlaybackAvailabilityChange = onPlaybackAvailabilityChange,
             onFirstFrameRendered = { canvasFrameReady = true },
             refreshEpoch = refreshEpoch,
+            modifier = Modifier.matchParentSize(),
+        )
+    }
+}
+
+@Composable
+private fun FlamingoProceduralStage(
+    artworkUrl: String?,
+    isPlaying: Boolean,
+    fadeStrength: () -> Float = { 1f },
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                compositingStrategy = CompositingStrategy.Offscreen
+            }
+            .drawWithContent {
+                drawContent()
+                drawRect(
+                    brush = FlamingoSharpStageFadeBrush,
+                    blendMode = BlendMode.DstIn,
+                    alpha = fadeStrength(),
+                )
+            },
+    ) {
+        ProceduralArtworkFallback(
+            artworkUrl = artworkUrl,
+            isPlaying = isPlaying,
             modifier = Modifier.matchParentSize(),
         )
     }
@@ -2835,15 +2975,28 @@ private fun FlamingoPlayingList(
                             compositingStrategy = CompositingStrategy.Offscreen
                         }
                         .drawWithCache {
-
+                            val topFadePx = (size.height * 0.06f).coerceAtLeast(24.dp.toPx())
                             val fadeBrush =
-                                Brush.verticalGradient(
-                                    if (controlsVisible()) {
-                                        FlamingoLyricsEdgeFadeStopsControlsVisible
-                                    } else {
-                                        FlamingoLyricsEdgeFadeStopsControlsHidden
-                                    },
-                                )
+                                if (controlsVisible()) {
+                                    val fadeBandPx = 56.dp.toPx()
+                                    val transparentFromPx =
+                                        (size.height - bottomOverlayPx() - 8.dp.toPx())
+                                            .coerceAtLeast(topFadePx + fadeBandPx)
+                                    val fadeStartPx = transparentFromPx - fadeBandPx
+                                    Brush.verticalGradient(
+                                        0f to Color.Transparent,
+                                        topFadePx / size.height to Color.Black,
+                                        fadeStartPx / size.height to Color.Black,
+                                        transparentFromPx / size.height to Color.Transparent,
+                                        1f to Color.Transparent,
+                                    )
+                                } else {
+                                    Brush.verticalGradient(
+                                        0f to Color.Transparent,
+                                        topFadePx / size.height to Color.Black,
+                                        1f to Color.Black,
+                                    )
+                                }
                             onDrawWithContent {
                                 drawContent()
                                 drawRect(
@@ -3434,6 +3587,7 @@ private fun FlamingoPlayingBar(
     onMorePositioned: (Rect) -> Unit,
     onArtistClick: () -> Unit = {},
     playerMenuOpen: Boolean = false,
+    onArtworkPositioned: ((Rect) -> Unit)? = null,
 ) = FlamingoWrapper {
     val context = LocalContext.current
     Row(
@@ -3450,6 +3604,9 @@ private fun FlamingoPlayingBar(
             contentDescription = null,
             modifier = modifier
                 .size(69.dp)
+                .onGloballyPositioned { coords ->
+                    onArtworkPositioned?.invoke(coords.boundsInRoot())
+                }
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
