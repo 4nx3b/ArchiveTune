@@ -165,6 +165,7 @@ import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.ui.player.LocalLyricsScrollListener
 import java.time.LocalDateTime
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay

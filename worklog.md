@@ -5224,3 +5224,55 @@ Stage Summary:
 - dev @ 561e9b364: startup crash root-caused, fixed, and shipped to the canary channel (N202610111417); PR-check workflow restored to green after the task-95 test regressions were corrected.
 - The crash was NOT in the sources port itself — it was the atmosphere-gradient route check (task 95, item 5) flipping the Screens class-init order; the sources-port code is untouched and unaffected.
 - User action: update to canary N202610111417 (or later) to get the fix; the app should launch normally with all task-95 features intact.
+
+---
+Task ID: 97
+Agent: Super Z (main agent, session web-60bd54af)
+
+Task: Batch A of the 2026-10-11 ten-task round — items 2 (accompanist lyrics aligned to main), 4 (ambient mode fully removed + no-comment-blocks rule), and 9 (Apple Music slider hold glow removed).
+
+Work Log:
+- accompanist lyrics pinned to the main-branch pair lyrics-ui 1.0.19 + lyrics-core 0.4.6; LyricsEnhanced reverted to the v1 KaraokeLyricsView API (plain LazyListState + offset) while keeping dev improvements (position publish throttle, translation/phonetic overrides, Spicy renderer branch, share payload, keepAliveZone 100dp).
+- Follow-up 3eac635f1: Spicy renderer no longer references SyncedLine.phonetic (0.5.0-only API) — CI repair for the version pin.
+- Ambient mode (task-94 Sekai Tune port) removed completely: AmbientModeScreen, AmbientGlowBackground, ambient_mode route, AppearanceSettings entry, strings. AOD true-ambient and the video-player ambient glow are separate legacy features and stay.
+- rules.md gains Rule 3 (never write comment blocks; GPL headers only); the app module purged of non-license comments across 44 files with a string-aware stripper verified by brace-balance.
+- Apple Music player seekbar: engage halos and alpha brightening on hold removed; holding only expands the track 7dp -> 11dp, appearance otherwise identical.
+
+Stage Summary:
+- dev @ 3eac635f1: items 2, 4, 9 complete; CI green at that point.
+- Worklog entry backfilled retroactively (entry was missing from the original commits).
+
+---
+Task ID: 98
+Agent: Super Z (main agent, session web-60bd54af)
+
+Task: Items 3 (source checks + web auth + settings reorganization) and 10 (SoundCloud in search category popup).
+
+Work Log:
+- Sources page Spotify group: SpotifyLoginSheet web login, account display, logout now live under the Spotify source toggle; old "sign in via Integrations" hint removed; SourceCheckRow wired to checkSpotifyDirect.
+- Sources page SoundCloud group: SoundCloudLoginSheet (MetroFusePlus port) loads soundcloud.com/signin, sweeps cookies/localStorage/sessionStorage/SDK runtime for the OAuth token, saves automatically.
+- Integration settings Spotify section reduced to "Show Spotify in Library" toggle + "Reload Playlist"; connect/account/logout moved to sources page.
+- Canvas settings: duplicate second Artwork group removed; Tidal artwork fallback switch and artwork priority merged into the single Artwork group.
+- Play-from source picker: SoundCloud and Spotify category pills; Spotify results resolve via SpotifyCore.search with SpotifyWebSession (new shared token helper).
+- Search: SoundCloud added to the search source popup (SearchProvider.SOUNDCLOUD) with a dedicated results screen matching tracks to the queue via YouTube catalog resolution.
+
+Stage Summary:
+- dev @ f5a950891: items 3 and 10 implemented.
+- Compile regressions slipped through (no local Android SDK): missing imports/strings/when-branch — fixed in task 99.
+- Worklog entry backfilled retroactively (entry was missing from the original commit).
+
+---
+Task ID: 99
+Agent: Super Z (main agent, session web-60bd54af)
+
+Task: CI repair for f5a950891 — the nightly "Build, Test and Lint" job failed with 9 Kotlin compile errors.
+
+Work Log:
+- FlamingoPlayer.kt 1467/1468: added the missing kotlin.math.roundToInt import.
+- SoundCloudOnlineSearchResult.kt: toMediaMetadata import corrected to moe.rukamori.archivetune.models.toMediaMetadata; search_no_result string replaced with no_results_found; nullable SongItem.duration handled via local val before arithmetic.
+- PlaybackSourceSections.kt 340: SearchProvider when gained the SOUNDCLOUD branch (search_source_soundcloud from fork_strings).
+- Audited the rest of the f5a950891 surface (SpotifyWebSession, PlayerMenu Spotify branch, ItemThumbnail/EmptyPlaceholder signatures, searchMetadata signature, drawable resources) — no further unresolved references found.
+- Initialized the core/lyrics/morideobfuscator/moriextractor submodules in the workspace to make SongItem/MediaMetadata source visible for the audit.
+
+Stage Summary:
+- Pushed on top of f5a950891; CI monitored per Rule 1 (outcome recorded below in the next entry).

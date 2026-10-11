@@ -45,11 +45,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.extensions.toMediaMetadata
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.soundcloud.SoundCloudAudioProvider
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
@@ -92,7 +92,7 @@ internal fun SoundCloudOnlineSearchResult(
     if (tracks.isEmpty()) {
         EmptyPlaceholder(
             icon = R.drawable.search,
-            text = stringResource(R.string.search_no_result),
+            text = stringResource(R.string.no_results_found),
             modifier = Modifier.fillMaxSize(),
         )
         return
@@ -213,8 +213,9 @@ private suspend fun resolveSoundCloudTrackToMetadata(
             if (track.artist.isNotBlank() && candidateArtists.contains(track.artist, ignoreCase = true)) {
                 score += 3
             }
-            if (wantedDurationSec != null && candidate.duration > 0) {
-                val delta = kotlin.math.abs(candidate.duration - wantedDurationSec)
+            val candidateDuration = candidate.duration
+            if (wantedDurationSec != null && candidateDuration != null && candidateDuration > 0) {
+                val delta = kotlin.math.abs(candidateDuration - wantedDurationSec)
                 score +=
                     when {
                         delta <= 2 -> 3
