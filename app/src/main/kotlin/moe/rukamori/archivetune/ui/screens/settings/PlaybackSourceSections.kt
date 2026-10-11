@@ -70,6 +70,14 @@ import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
 import moe.rukamori.archivetune.constants.SaavnAudioQuality
 import moe.rukamori.archivetune.constants.SaavnAudioQualityKey
+import moe.rukamori.archivetune.constants.SoundCloudAudioQuality
+import moe.rukamori.archivetune.constants.SoundCloudAudioQualityKey
+import moe.rukamori.archivetune.constants.SoundCloudAuthTokenKey
+import moe.rukamori.archivetune.constants.SoundCloudEnabledKey
+import moe.rukamori.archivetune.constants.SpotifyDirectEnabledKey
+import moe.rukamori.archivetune.constants.SpotifyDirectQuality
+import moe.rukamori.archivetune.constants.SpotifyDirectQualityKey
+import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
 import moe.rukamori.archivetune.constants.QobuzEnabledKey
@@ -97,6 +105,10 @@ import moe.rukamori.archivetune.ui.component.ListPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.ui.component.TextFieldDialog
+import moe.rukamori.archivetune.soundcloud.SoundCloudAudioProvider
+import moe.rukamori.archivetune.utils.soundcloud.isSoundCloudAuthConfigured
+import moe.rukamori.archivetune.utils.soundcloud.normalizeSoundCloudAuthInput
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.PoolAccountManager
@@ -116,6 +128,8 @@ private fun AudioSourceType.displayName(context: android.content.Context): Strin
         AudioSourceType.DEEZER -> context.getString(R.string.source_deezer)
         AudioSourceType.APPLE -> context.getString(R.string.source_apple_music)
         AudioSourceType.JIOSAAVN -> context.getString(R.string.source_jiosaavn)
+        AudioSourceType.SOUNDCLOUD -> context.getString(R.string.source_soundcloud)
+        AudioSourceType.SPOTIFY -> context.getString(R.string.source_spotify)
         AudioSourceType.YOUTUBE -> context.getString(R.string.source_youtube)
     }
 
@@ -128,6 +142,8 @@ private fun AudioSourceType.iconRes(): Int =
         AudioSourceType.APPLE -> R.drawable.ic_music
 
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
+        AudioSourceType.SOUNDCLOUD -> R.drawable.solar_music_note_2_linear
+        AudioSourceType.SPOTIFY -> R.drawable.spotify_icon
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
 
@@ -149,6 +165,15 @@ internal fun PlaybackSourceSections(
     val (jioSaavnEnabled, onJioSaavnEnabledChange) = rememberPreference(JioSaavnEnabledKey, false)
     val (saavnQuality, onSaavnQualityChange) =
         rememberEnumPreference(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320)
+    val (soundCloudEnabled, onSoundCloudEnabledChange) = rememberPreference(SoundCloudEnabledKey, false)
+    val (soundCloudQuality, onSoundCloudQualityChange) =
+        rememberEnumPreference(SoundCloudAudioQualityKey, SoundCloudAudioQuality.AAC_160)
+    val (soundCloudAuthToken, onSoundCloudAuthTokenChange) = rememberPreference(SoundCloudAuthTokenKey, "")
+    val (spotifyDirectEnabled, onSpotifyDirectEnabledChange) = rememberPreference(SpotifyDirectEnabledKey, false)
+    val (spotifyDirectQuality, onSpotifyDirectQualityChange) =
+        rememberEnumPreference(SpotifyDirectQualityKey, SpotifyDirectQuality.AAC_128)
+    val (spotifySpDc) = rememberPreference(SpotifySpDcKey, defaultValue = "")
+    val spotifyDirectLoggedIn = spotifySpDc.isNotBlank()
     val (defaultMetadataSource, onDefaultMetadataSourceChange) =
         rememberEnumPreference(DefaultMetadataSourceKey, MetadataSource.YOUTUBE)
     val (defaultSearchSource, onDefaultSearchSourceChange) =
@@ -235,6 +260,8 @@ internal fun PlaybackSourceSections(
             AudioSourceType.DEEZER -> deezerEnabled
             AudioSourceType.APPLE -> appleMusicEnabled
             AudioSourceType.JIOSAAVN -> jioSaavnEnabled
+            AudioSourceType.SOUNDCLOUD -> soundCloudEnabled
+            AudioSourceType.SPOTIFY -> spotifyDirectEnabled
             AudioSourceType.YOUTUBE -> true
         }
 
@@ -249,6 +276,8 @@ internal fun PlaybackSourceSections(
                 AudioSourceType.DEEZER -> if (!deezerEnabled) onDeezerEnabledChange(true)
                 AudioSourceType.APPLE -> if (!appleMusicEnabled) onAppleMusicEnabledChange(true)
                 AudioSourceType.JIOSAAVN -> if (!jioSaavnEnabled) onJioSaavnEnabledChange(true)
+                AudioSourceType.SOUNDCLOUD -> if (!soundCloudEnabled) onSoundCloudEnabledChange(true)
+                AudioSourceType.SPOTIFY -> if (!spotifyDirectEnabled) onSpotifyDirectEnabledChange(true)
                 AudioSourceType.YOUTUBE -> Unit
             }
         }
@@ -721,6 +750,151 @@ internal fun PlaybackSourceSections(
 
         item {
             SourceCheckRow(source = AudioSourceType.JIOSAAVN, positions = positions)
+        }
+    }
+
+    var showSoundCloudTokenDialog by rememberSaveable { mutableStateOf(false) }
+
+    PreferenceGroup(title = stringResource(R.string.soundcloud_specific)) {
+        item {
+            SwitchPreference(
+                modifier = positions.modifierFor("soundcloud_enable"),
+                title = { Text(stringResource(R.string.soundcloud_enable)) },
+                description = stringResource(R.string.soundcloud_enable_description),
+                icon = { Icon(painterResource(R.drawable.solar_music_note_2_linear), null) },
+                checked = soundCloudEnabled,
+                onCheckedChange = onSoundCloudEnabledChange,
+            )
+        }
+
+        item {
+            EnumListPreference(
+                modifier = positions.modifierFor("soundcloud_audio_quality"),
+                title = { Text(stringResource(R.string.soundcloud_audio_quality)) },
+                icon = { Icon(painterResource(R.drawable.play), null) },
+                selectedValue = soundCloudQuality,
+                onValueSelected = onSoundCloudQualityChange,
+                isEnabled = soundCloudEnabled,
+                valueText = { quality ->
+                    when (quality) {
+                        SoundCloudAudioQuality.MP3_128 -> stringResource(R.string.soundcloud_quality_mp3_128)
+                        SoundCloudAudioQuality.AAC_96 -> stringResource(R.string.soundcloud_quality_aac_96)
+                        SoundCloudAudioQuality.AAC_160 -> stringResource(R.string.soundcloud_quality_aac_160)
+                    }
+                },
+            )
+        }
+
+        item {
+            PreferenceEntry(
+                modifier = positions.modifierFor("soundcloud_auth_token"),
+                title = { Text(stringResource(R.string.soundcloud_auth_token_title)) },
+                description =
+                    if (isSoundCloudAuthConfigured(soundCloudAuthToken)) {
+                        stringResource(R.string.soundcloud_auth_configured)
+                    } else {
+                        stringResource(R.string.soundcloud_auth_not_configured)
+                    },
+                icon = { Icon(painterResource(R.drawable.key), null) },
+                onClick = { showSoundCloudTokenDialog = true },
+            )
+        }
+
+        item(visible = isSoundCloudAuthConfigured(soundCloudAuthToken)) {
+            PreferenceEntry(
+                modifier = positions.modifierFor("soundcloud_clear_auth"),
+                title = { Text(stringResource(R.string.soundcloud_clear_auth)) },
+                icon = { Icon(painterResource(R.drawable.logout), null) },
+                onClick = {
+                    onSoundCloudAuthTokenChange("")
+                    SoundCloudAudioProvider.invalidateClientId()
+                },
+            )
+        }
+
+        item {
+            SourceCheckRow(source = AudioSourceType.SOUNDCLOUD, positions = positions)
+        }
+    }
+
+    if (showSoundCloudTokenDialog) {
+        var tokenText by remember { mutableStateOf("") }
+        TextFieldDialog(
+            icon = { Icon(painterResource(R.drawable.key), null) },
+            title = { Text(stringResource(R.string.soundcloud_auth_token_title)) },
+            textFieldValue = tokenText,
+            onTextFieldValueChange = { tokenText = it },
+            placeholder = { Text(stringResource(R.string.soundcloud_auth_token_placeholder)) },
+            masked = true,
+            isInputValid = { normalizeSoundCloudAuthInput(it) != null },
+            onDone = { raw ->
+                normalizeSoundCloudAuthInput(raw)?.let { token ->
+                    onSoundCloudAuthTokenChange(token)
+                    SoundCloudAudioProvider.invalidateClientId()
+                }
+                showSoundCloudTokenDialog = false
+            },
+            onDismiss = { showSoundCloudTokenDialog = false },
+        )
+    }
+
+    PreferenceGroup(title = stringResource(R.string.spotify_direct_specific)) {
+        item {
+            SwitchPreference(
+                modifier = positions.modifierFor("spotify_direct_enable"),
+                title = { Text(stringResource(R.string.spotify_direct_enable)) },
+                description = stringResource(R.string.spotify_direct_enable_description),
+                icon = { Icon(painterResource(R.drawable.spotify_icon), null) },
+                checked = spotifyDirectEnabled,
+                onCheckedChange = onSpotifyDirectEnabledChange,
+            )
+        }
+
+        item {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.spotify_direct_experimental)) },
+                icon = {
+                    Icon(
+                        painterResource(R.drawable.solar_danger_circle_linear),
+                        null,
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                },
+                content = {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = stringResource(R.string.spotify_direct_warning),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                },
+            )
+        }
+
+        item(visible = !spotifyDirectLoggedIn) {
+            PreferenceEntry(
+                modifier = positions.modifierFor("spotify_direct_login_hint"),
+                title = { Text(stringResource(R.string.spotify_direct_login_hint)) },
+                icon = { Icon(painterResource(R.drawable.spotify_icon), null) },
+                onClick = { navController.navigate("settings/integration") },
+            )
+        }
+
+        item {
+            EnumListPreference(
+                modifier = positions.modifierFor("spotify_direct_quality"),
+                title = { Text(stringResource(R.string.spotify_direct_audio_quality)) },
+                icon = { Icon(painterResource(R.drawable.play), null) },
+                selectedValue = spotifyDirectQuality,
+                onValueSelected = onSpotifyDirectQualityChange,
+                isEnabled = spotifyDirectEnabled && spotifyDirectLoggedIn,
+                valueText = { quality ->
+                    when (quality) {
+                        SpotifyDirectQuality.AAC_128 -> stringResource(R.string.spotify_direct_quality_aac_128)
+                        SpotifyDirectQuality.AAC_128_DUAL -> stringResource(R.string.spotify_direct_quality_aac_128_dual)
+                    }
+                },
+            )
         }
     }
 }

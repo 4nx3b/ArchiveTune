@@ -1344,6 +1344,8 @@ enum class AudioSourceType {
     DEEZER,
     APPLE,
     JIOSAAVN,
+    SOUNDCLOUD,
+    SPOTIFY,
     YOUTUBE,
 }
 
@@ -1357,6 +1359,44 @@ val SongSourceDeezerTrackIdKey = stringPreferencesKey("songSourceDeezerTrackId")
 val SongSourceTidalTrackIdKey = stringPreferencesKey("songSourceTidalTrackId")
 
 val SongSourceQobuzBackupVideoIdKey = stringPreferencesKey("songSourceQobuzBackupVideoId")
+
+// --- SoundCloud source (MetroFusePlus port) ---
+
+val SoundCloudEnabledKey = booleanPreferencesKey("soundcloudEnabled")
+
+val SoundCloudAudioQualityKey = stringPreferencesKey("soundcloudAudioQuality")
+
+enum class SoundCloudAudioQuality {
+    MP3_128,
+    AAC_96,
+    AAC_160,
+}
+
+val SoundCloudAudioQualityOptions = listOf(
+    SoundCloudAudioQuality.MP3_128,
+    SoundCloudAudioQuality.AAC_96,
+    SoundCloudAudioQuality.AAC_160,
+)
+
+val SoundCloudAuthTokenKey = stringPreferencesKey("soundcloudAuthToken")
+
+// --- Spotify direct streaming (Stopify port, experimental) ---
+
+val SpotifyDirectEnabledKey = booleanPreferencesKey("spotifyDirectEnabled")
+
+val SpotifyDirectQualityKey = stringPreferencesKey("spotifyDirectQuality")
+
+enum class SpotifyDirectQuality {
+    AAC_128,
+    AAC_128_DUAL,
+}
+
+val SpotifyDirectQualityOptions = listOf(
+    SpotifyDirectQuality.AAC_128,
+    SpotifyDirectQuality.AAC_128_DUAL,
+)
+
+val SpotifyDeviceIdKey = stringPreferencesKey("spotifyDeviceId")
 
 val AudioSearchSourceKey = stringPreferencesKey("audioSearchSource")
 

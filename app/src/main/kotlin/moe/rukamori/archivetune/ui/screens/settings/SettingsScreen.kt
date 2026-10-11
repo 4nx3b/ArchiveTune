@@ -143,6 +143,8 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
             "tidal_audio_quality", "tidal_animated_covers", "tidal_manage_instances",
             "qobuz_enable", "qobuz_audio_quality", "qobuz_backup_enable", "qobuz_manage_instances",
             "deezer_enable", "deezer_audio_quality", "jiosaavn_enable", "jiosaavn_audio_quality",
+            "soundcloud_enable", "soundcloud_audio_quality", "soundcloud_auth_token",
+            "spotify_direct_enable", "spotify_direct_quality",
         )
         own(
             "canvas", "playback",

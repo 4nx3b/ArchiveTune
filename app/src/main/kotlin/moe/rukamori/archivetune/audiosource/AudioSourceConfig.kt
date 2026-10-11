@@ -259,6 +259,8 @@ object AudioSourceConfig {
             AudioSourceType.DEEZER,
             AudioSourceType.APPLE,
             AudioSourceType.JIOSAAVN,
+            AudioSourceType.SOUNDCLOUD,
+            AudioSourceType.SPOTIFY,
             AudioSourceType.YOUTUBE,
         )
 
