@@ -33,6 +33,8 @@ class SourceOrderTest {
                 AudioSourceType.DEEZER,
                 AudioSourceType.APPLE,
                 AudioSourceType.JIOSAAVN,
+                AudioSourceType.SOUNDCLOUD,
+                AudioSourceType.SPOTIFY,
                 AudioSourceType.YOUTUBE,
             ),
             merged,
@@ -55,6 +57,8 @@ class SourceOrderTest {
                 AudioSourceType.QOBUZ,
                 AudioSourceType.QOBUZ_BACKUP,
                 AudioSourceType.JIOSAAVN,
+                AudioSourceType.SOUNDCLOUD,
+                AudioSourceType.SPOTIFY,
                 AudioSourceType.YOUTUBE,
             ),
             merged,
@@ -70,6 +74,8 @@ class SourceOrderTest {
         assertTrue(AudioSourceType.DEEZER in reachable)
         assertTrue(AudioSourceType.APPLE in reachable)
         assertTrue(AudioSourceType.JIOSAAVN in reachable)
+        assertTrue(AudioSourceType.SOUNDCLOUD in reachable)
+        assertTrue(AudioSourceType.SPOTIFY in reachable)
     }
 
     @Test
@@ -88,7 +94,7 @@ class SourceOrderTest {
     fun completeOrderIsReturnedUnchanged() {
         // Every member of the default set present: the stored order round-trips
         // in the user's exact sequence.
-        val stored = "JIOSAAVN,DEEZER,APPLE,QOBUZ_BACKUP,QOBUZ,TIDAL,YOUTUBE"
+        val stored = "JIOSAAVN,DEEZER,APPLE,QOBUZ_BACKUP,QOBUZ,TIDAL,SOUNDCLOUD,SPOTIFY,YOUTUBE"
         val merged = AudioSourceConfig.parseOrder(stored)
 
         assertEquals(stored, merged.joinToString(",") { it.name })
