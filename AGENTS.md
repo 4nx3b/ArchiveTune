@@ -3,6 +3,23 @@
 Active development on `dev`, tracking `4nx3b/ArchiveTune@dev`. Any agent working
 here must preserve the invariants below.
 
+## Mandatory reading order (every task, before any coding)
+
+1. **`rules.md`** (repo root) — the repository owner's standing rules, in full.
+   The non-negotiables:
+   - **Never compile locally.** Push to `dev`, monitor the CI build for **7 minutes**
+     (`scripts/poll_ci_sha.sh <head-sha> 7`), and fix it if it fails.
+   - **Senior Engineer Mode + Strict Mode**: understand before changing, smallest
+     complete solution, zero regressions, evidence-driven verification, adversarial
+     self-review, closed-loop process (Inspect → Understand → Plan → Implement →
+     Integrate → Verify → Review).
+   - **Always maintain `AGENTS.md` and `worklog.md`. Always use English.**
+2. **`AGENTS.md`** (this file) — fork invariants, module layout, build/test contracts,
+   dependency gotchas.
+3. **`worklog.md`** — what previous tasks did; append an entry for the current task
+   before finishing (format: `Task ID` / `Agent` / `Task` / `Work Log` /
+   `Stage Summary`).
+
 ## Fork invariants — never break
 
 - **Tidal source**: `app/src/main/kotlin/moe/rukamori/archivetune/tidal/` (`TidalAudioProvider`, `TidalAccountManager`, `TidalInstanceHealthManager`, `TidalDns`, `TidalArtworkProvider`), Tidal settings/login UI, `utils/tidal/`; instance racing documented in `INSTANCE_RACING.md`. Live progressive-DASH streams use the `tidal-dash://` scheme routed in `MusicService`.
@@ -16,7 +33,7 @@ here must preserve the invariants below.
 
 ## Modules & submodules
 
-- Gradle modules: `:app :core :spotifycore :canvas :jiosaavn :lastfm :musixmatch :shazamkit :morideobfuscator :lyrics:*`.
+- Gradle modules: `:app :core :moriextractor :audio:decent-usb-audio-driver :spotifycore :canvas :jiosaavn :lastfm :musixmatch :shazamkit :morideobfuscator :lyrics:kugou :lyrics:lrclib :lyrics:betterlyrics :lyrics:unison :lyrics:youlyplus` (see `settings.gradle.kts`).
 - Submodules: `core` → **4nx3b/core** (NewPipeExtractor-based InnerTube client), `lyrics` → **4nx3b/lyrics**, `IconPack` → rukamori, `morideobfuscator` → rukamori. Commit + push inside a submodule first, then pin the gitlink; never leave a dirty or unpushed pointer.
 
 ## Build & test
