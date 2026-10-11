@@ -38,23 +38,25 @@ fun HomeAtmosphereBackground(
     subtle: Boolean = false,
 ) {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    // Dark mode wears the wash too now (2026-10-11: "there's no subtle
-    // gradient in dark mode like in light mode"): the home screen (non-subtle)
-    // gets a clearly visible gradient over the pure-black base, and the root
-    // subtle layer under every other page stays gentle but perceptible.
-    // Light mode keeps its exact original intensities.
+    // Dark mode wears a GENTLE wash (2026-10-11: "the gradient in dark mode
+    // is extremely heavy — decrease its intensity by a lot"): the full-strength
+    // stops that shipped first read as a heavy color filter over the whole
+    // page. The dark-mode alphas are now a fraction of the light-mode look and
+    // the radial spreads are contained to the light-mode radii, so the wash is
+    // a soft accent instead of a heavy tint. Light mode keeps its exact
+    // original intensities.
     val base = if (dark) Color.Black else MaterialTheme.colorScheme.surface
 
     val glow =
         when {
-            dark && subtle -> 0.26f
-            dark -> 0.34f
+            dark && subtle -> 0.05f
+            dark -> 0.10f
             else -> 0.12f
         }
     val topWashAlpha =
         when {
-            dark && subtle -> 0.15f
-            dark -> 0.18f
+            dark && subtle -> 0.03f
+            dark -> 0.05f
             subtle -> 0.16f
             else -> 0.5f
         }
@@ -79,19 +81,19 @@ fun HomeAtmosphereBackground(
                         Brush.radialGradient(
                             colors = listOf(violet.copy(alpha = glow), Color.Transparent),
                             center = Offset(w * 0.10f, h * 0.12f),
-                            radius = if (dark) w * 0.90f else w * 0.62f,
+                            radius = w * 0.62f,
                         )
                     val tealBrush =
                         Brush.radialGradient(
                             colors = listOf(teal.copy(alpha = glow * 0.8f), Color.Transparent),
                             center = Offset(w * 0.98f, h * 0.32f),
-                            radius = if (dark) w * 0.80f else w * 0.55f,
+                            radius = w * 0.55f,
                         )
                     val blueBrush =
                         Brush.radialGradient(
                             colors = listOf(blue.copy(alpha = glow * 0.85f), Color.Transparent),
                             center = Offset(w * 0.15f, h * 0.90f),
-                            radius = if (dark) w * 0.90f else w * 0.70f,
+                            radius = w * 0.70f,
                         )
                     val bottomShade =
                         Brush.verticalGradient(
@@ -99,8 +101,8 @@ fun HomeAtmosphereBackground(
                                 Color.Transparent,
                                 Color.Black.copy(
                                     alpha = when {
-                                        subtle && dark -> 0.28f
-                                        dark -> 0.30f
+                                        subtle && dark -> 0.06f
+                                        dark -> 0.10f
                                         else -> 0.05f
                                     },
                                 ),

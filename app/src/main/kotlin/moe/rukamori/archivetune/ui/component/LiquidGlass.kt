@@ -73,6 +73,7 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.shadow.Shadow
 import moe.rukamori.archivetune.constants.LIQUID_GLASS_ADAPTIVE_LUMINANCE_DEFAULT
 import moe.rukamori.archivetune.constants.LIQUID_GLASS_BACKDROP_VIBRANCY_DEFAULT
 import moe.rukamori.archivetune.constants.LIQUID_GLASS_BLUR_RADIUS_DEFAULT
@@ -481,6 +482,14 @@ fun Modifier.liquidGlass(
                     chromaticAberration = tuning.chromaticAberration && isDark,
                 )
             },
+            // The library attaches a DEFAULT drop shadow (black, 24dp blur,
+            // +4dp y-offset) to every drawBackdrop call unless it is explicitly
+            // disabled. That shadow is invisible on dark themes but renders as
+            // a black halo/border around glass pills in LIGHT mode — the
+            // "black border behind the settings pill" defect. Light mode gets
+            // no library shadow at all; dark mode keeps the default for its
+            // subtle depth cue over artwork (unchanged look).
+            shadow = { if (isDark) Shadow.Default else null },
             onDrawBackdrop = { drawBackdrop ->
                 drawBackdrop()
             },
