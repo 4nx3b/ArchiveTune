@@ -5294,3 +5294,20 @@ Work Log:
 Stage Summary:
 - dev @ (this commit): item 1 complete — Stopify pipeline refreshed with playback reporting (mute fix), Echo Music second method, Resolve method bottom-sheet picker.
 - Deliberate scope choices: Echo picks best available Vorbis/FLAC automatically (no new quality enum); Echo needs no playback reporting (desktop persona, like the extension itself); Stopify reporting only runs for Stopify-resolved items.
+
+---
+Task ID: 101
+Agent: Super Z (main agent, session web-60bd54af)
+
+Task: Items 5-8 of the 2026-10-11 ten-task round — Apple Music (flamingo) canvas lyrics/queue morph animation (scrambled layers / split canvas / start+end delays both directions), animate-static-artwork behind-controls parity, queue page progress-bar transparent sliver, and download lyrics+canvas integration.
+
+Work Log:
+- Flamingo flight rewrite (items 5+6): the album<->lyrics/queue canvas morph ran a sequential choreography (80ms alpha fade-in before the return flight, 420ms geometry, then a 180ms handoff fade sitting AFTER the motion) and its internal bottom fade (FlamingoSharpStageFadeBrush, DstIn) was driven by overlayArtworkReveal's 280ms animated lag, so early-flight frames carried a half-cut canvas. Now: return flights snap alpha to 1 instantly, the video->static-thumbnail handoff runs as a delayed tween concurrent with the final 180ms of approach and ends with the motion, and fadeStrength is bound directly to flight progress (stageFlightAlbumFade: full at the album rest position, gone by 25% travel, returns over the last quarter of the return) so the flying element is one fully composited piece for real canvas AND animate-static-artwork songs and can never render un-faded at the album rect behind the glass controls. FlamingoStageFlightFadeInMs removed.
+- Queue fade gap (item 7): the queue list's controls-visible DstIn mask ended 8dp ABOVE the measured controls overlay top, leaving a raw-background sliver right above the slider (the slider sits at the top of the controls box). transparentFromPx now extends 20dp INTO the controls zone so the list dissolves across it, matching the lyrics page.
+- Download extras (item 8): DownloadExtrasCoordinator runs when a download enters STATE_QUEUED — lyrics fetched via LyricsHelper.getLyricsWithProvider (the user's LyricsProviderOrderKey priority) and persisted with replaceLyricsIfAbsentOrNotFound, canvas resolved via resolveCanvasArtworkForPlayback (artwork-provider priority) which lands in CanvasArtworkPlaybackCache and downloads the video files to disk; both skipped in low-data mode. DownloadUtil injects LyricsHelper. AudioTagger.Metadata gains lyrics + canvasUrl (FieldKey.LYRICS / FieldKey.CUSTOM1, verified present in the pinned jaudiotagger 1.4.31 enum). ExportDownloadedSongsScreen.resolveExportMetadata embeds the stored lyrics and cached canvas url into every exported file by default.
+- AGENTS.md: downloads invariant added documenting the extras pipeline.
+
+Stage Summary:
+- Items 5, 6, 7 (shared flight/fade machinery) and 8 implemented.
+- CI for 48dd2bc8b (items 5-7) monitored; the 52f6668e3 build failure (EchoDecryptingDataSource String.toUri unresolved) was fixed in 48dd2bc8b.
+- Remaining verification limits: visual tasks 5-7 are verified by construction (single continuous tween, no sequential fades, progress-bound masks); device rendering confirmation pending user testing.

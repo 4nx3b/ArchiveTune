@@ -36,7 +36,8 @@ object AudioTagger {
         val composer: String? = null,
         val isrc: String? = null,
         val comment: String? = null,
-
+        val lyrics: String? = null,
+        val canvasUrl: String? = null,
         val artworkBytes: ByteArray? = null,
         val artworkMimeType: String? = null,
     )
@@ -60,6 +61,14 @@ object AudioTagger {
             metadata.composer?.takeIf(String::isNotBlank)?.let { tag.setField(FieldKey.COMPOSER, it) }
             metadata.isrc?.takeIf(String::isNotBlank)?.let { tag.setField(FieldKey.ISRC, it) }
             metadata.comment?.takeIf(String::isNotBlank)?.let { tag.setField(FieldKey.COMMENT, it) }
+            metadata.lyrics?.takeIf(String::isNotBlank)?.let { text ->
+                runCatching { tag.setField(FieldKey.LYRICS, text) }
+                    .onFailure { e -> Timber.w(e, "AudioTagger: failed to write lyrics (%d chars)", text.length) }
+            }
+            metadata.canvasUrl?.takeIf(String::isNotBlank)?.let { url ->
+                runCatching { tag.setField(FieldKey.CUSTOM1, url) }
+                    .onFailure { e -> Timber.w(e, "AudioTagger: failed to write canvas url") }
+            }
 
             metadata.artworkBytes?.let { writeArtworkSafely(tag, it, metadata.artworkMimeType) }
             audioFile.commit()
