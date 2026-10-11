@@ -314,7 +314,17 @@ If a genuine blocker prevents completion, explain the blocker and the precise re
 
 ---
 
-## Rule 3 — Documentation & Language Policy
+## Rule 3 — No Comment Blocks
+
+**Never write comment blocks.** Do not add `//` line comments or `/* */` block
+comments to code. Code must be self-explanatory through clear naming and
+structure. The ONLY allowed comment is the GPL-3.0 license header at the top of
+each file (which must not be removed or altered). When touching a file that
+still carries non-license comments, remove them in the same change.
+
+---
+
+## Rule 4 — Documentation & Language Policy
 
 **Always maintain `AGENTS.md` and `worklog.md`. Always use English.**
 
@@ -336,5 +346,5 @@ If a genuine blocker prevents completion, explain the blocker and the precise re
 - **Rule 2 in practice**: read `AGENTS.md` for fork invariants and module layout before
   touching code; check `worklog.md` (and `changelogs.md` for user-facing changes) for
   what previous tasks did.
-- **Rule 3 in practice**: append the worklog entry in the same commit (or the follow-up
+- **Rule 4 in practice**: append the worklog entry in the same commit (or the follow-up
   docs commit) as the work it describes — the established pattern in this repo.

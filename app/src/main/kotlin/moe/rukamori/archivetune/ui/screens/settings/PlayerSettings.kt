@@ -240,8 +240,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             defaultValue = AutomixPerformanceMode.BALANCED,
         )
 
-    // Canvas + artwork-preference state moved to CanvasSettingsScreen.
-
     val (artistSeparators, onArtistSeparatorsChange) =
         rememberPreference(
             ArtistSeparatorsKey,
@@ -586,9 +584,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            // Canvas settings live on their own sub-page now (canvas sources +
-            // resolvers + the procedural static-artwork motion ported from
-            // Sekai Tune) — this entry is the door.
             PreferenceGroup(
                 modifier = positions.modifierFor("archive_tune_canvas"),
                 title = stringResource(R.string.tidal_artwork),

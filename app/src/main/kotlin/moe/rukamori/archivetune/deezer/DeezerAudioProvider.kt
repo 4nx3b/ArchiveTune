@@ -44,10 +44,6 @@ object DeezerAudioProvider {
     private const val GATEWAY = "https://www.deezer.com/ajax/gw-light.php"
     private const val MEDIA_ENDPOINT = "https://media.deezer.com/v1/get_url"
 
-    // Anonymous dzmedia-style resolvers, ported from MetroFusePlus' DeezerAudioProvider. They
-    // answer the same get_url envelope as Deezer's media gateway but need no account on this
-    // device, so they are queried as the last resort after every account session and API
-    // instance failed. DEFAULT_RESOLVER_URL_128 only serves MP3_128.
     private const val DEFAULT_RESOLVER_URL = "https://yesitworkssomehow-funny-deeza-api-and-yeah.hf.space/get_url"
     private const val DEFAULT_RESOLVER_URL_128 = "https://api-number-2-poopo.onrender.com/get_url"
     private const val RENDER_RESOLVER_URL = "https://dzmedia-metrofuse.onrender.com/get_url"
@@ -271,18 +267,11 @@ object DeezerAudioProvider {
             return stream
         }
 
-        // Accounts first (they report the exact tier), then the API-instance tier, which serves
-        // already-decrypted audio from the instance's own accounts.
         resolveViaInstance(query)?.let { stream ->
             streamCache[cacheKey] = CachedStream(stream, System.currentTimeMillis() + STREAM_CACHE_MS)
             return stream
         }
 
-        // Last resort, ported from MetroFusePlus' DeezerAudioProvider: anonymous dzmedia-style
-        // resolvers. Only reached after every account session and API instance failed (or none
-        // are configured), so the account-backed paths above keep their exact behavior. The
-        // resolver returns a BF_CBC_STRIPE-ciphered CDN url, which must go through the same
-        // deezer:// Blowfish decryption as the account results.
         runCatching { matchTrackWithoutSession(query) }
             .onFailure { Timber.tag(TAG).w(it, "anonymous fallback match failed") }
             .getOrNull()
@@ -304,15 +293,9 @@ object DeezerAudioProvider {
         return null
     }
 
-    /**
-     * Resolves through a Deezer API instance. The recording is identified with Deezer's public
-     * catalogue (ISRC when the queue item carries one, otherwise a scored search), so no account
-     * is needed on this device; the instance receives only an ISRC or a public track id.
-     */
     private fun resolveViaInstance(query: Query): Resolved? {
         if (!DeezerInstances.hasInstances()) return null
-        // Resolves the pool feed (at most every 30 min) before any catalogue lookup, so a user with
-        // no reachable instance does not pay a public-API round trip on every track.
+
         if (DeezerInstances.instances().isEmpty()) return null
         val match: TrackMatching.Candidate?
         val isrc: String?
@@ -341,8 +324,7 @@ object DeezerAudioProvider {
         val stream = DeezerInstances.resolve(isrc = isrc, trackId = match.id) ?: return null
         lastResolvedTrackId = match.id
         return Resolved(
-            // Plain https: the instance already decrypted it, so it must NOT go through the
-            // deezer:// Blowfish data source.
+
             uri = stream.url,
             mimeType = if (stream.flac) MIME_FLAC else MIME_MPEG,
             codecs = if (stream.flac) "flac" else "mp3",
@@ -357,12 +339,6 @@ object DeezerAudioProvider {
         )
     }
 
-    /**
-     * Track matching for the anonymous resolver fallback, done without any gateway session:
-     * reuses a cached match from the account path when present, then resolves the ISRC on
-     * Deezer's public API, and finally scores the public search endpoint — mirroring
-     * [resolveViaInstance]'s catalogue lookup.
-     */
     private fun matchTrackWithoutSession(query: Query): TrackMatching.Candidate? {
         val key = query.cacheKey()
         val now = System.currentTimeMillis()
@@ -398,13 +374,6 @@ object DeezerAudioProvider {
         return candidate
     }
 
-    /**
-     * Last-resort anonymous resolver chain, ported from MetroFusePlus' DeezerAudioProvider.
-     * POSTs the matched track id to each dzmedia-style /get_url endpoint in order and returns
-     * the first valid stream wrapped for [streamCache]. The resolver order mirrors the
-     * reference resolve(): MP3_128 tries the dedicated 128 resolver first, every quality then
-     * goes through DEFAULT_RESOLVER_URL and finally RENDER_RESOLVER_URL.
-     */
     private fun anonymousResolverStream(
         trackId: String,
         format: String,
@@ -420,8 +389,7 @@ object DeezerAudioProvider {
                     .getOrNull() ?: continue
             Timber.tag(TAG).d("track %s resolved by anonymous resolver %s (%s)", trackId, resolverUrl, media.format)
             lastResolvedTrackId = trackId
-            // Built exactly like the account path: the resolver keeps the CDN url
-            // Blowfish-encrypted, so it rides the same deezer:// data source.
+
             val stream =
                 buildResolvedStream(
                     masterSecret = null,
@@ -432,8 +400,7 @@ object DeezerAudioProvider {
                     matchedAlbum = matchedAlbum,
                     matchedDurationMs = matchedDurationMs,
                 )
-            // Ported expiry handling: the CDN url dies at the envelope's `exp`, so cache the
-            // stream until then — but never past the regular stream cache window.
+
             val expiresAt =
                 minOf(media.expiresAtMs ?: Long.MAX_VALUE, System.currentTimeMillis() + STREAM_CACHE_MS)
             return CachedStream(stream, expiresAt)
@@ -448,15 +415,6 @@ object DeezerAudioProvider {
             add(RENDER_RESOLVER_URL)
         }.distinct()
 
-    /**
-     * One anonymous resolver round trip, ported from MetroFusePlus' requestResolverStream and
-     * parseMediaEnvelope. POSTs `{"formats":[format],"ids":[trackId],"fast":false}` and parses
-     * the get_url envelope `{"data":[{"media":[...]}]}` with the reference's selection rules:
-     * the media entry for the requested format (else the first entry), the source at index 1
-     * when present (else index 0), and only the BF_CBC_STRIPE cipher — its CDN url must stay
-     * encrypted for [DeezerCrypto]. Throws on HTTP errors and malformed JSON so the caller can
-     * fall through to the next resolver.
-     */
     private fun requestAnonymousUrl(
         resolverUrl: String,
         trackId: String,
@@ -481,7 +439,7 @@ object DeezerAudioProvider {
             val root = JSONObject(response.body?.string().orEmpty())
 
             val mediaArray = root.optJSONArray("data")?.optJSONObject(0)?.optJSONArray("media") ?: return null
-            // Reference selectMedia(): prefer the media entry for the requested format, else the first.
+
             val media =
                 (0 until mediaArray.length())
                     .mapNotNull { i -> mediaArray.optJSONObject(i) }
@@ -489,18 +447,15 @@ object DeezerAudioProvider {
                     ?: mediaArray.optJSONObject(0)
                     ?: return null
 
-            // Reference source selection: sources[1] (the fallback CDN) when present, else sources[0].
             val sources = media.optJSONArray("sources")
             val source = sources?.optJSONObject(1) ?: sources?.optJSONObject(0) ?: return null
             val url = source.optString("url").takeIf { it.isNotBlank() } ?: return null
 
-            // Only the Blowfish cipher is accepted; anything else cannot be decrypted locally.
             val cipherType = media.optJSONObject("cipher")?.optString("type").orEmpty()
             if (!cipherType.equals("BF_CBC_STRIPE", ignoreCase = true)) return null
 
             val servedFormat = media.optString("format").ifBlank { format }
-            // Reference expiry handling: honor the envelope's `exp` (unix seconds), keeping the
-            // entry usable for at least a minute from now.
+
             val expiresAtMs =
                 media.optLong("exp", 0L).takeIf { it > 0L }
                     ?.times(1000L)
@@ -567,8 +522,6 @@ object DeezerAudioProvider {
                 return@withContext stream
             }
 
-            // Anonymous resolver fallback (ported from MetroFusePlus) — same last-resort order
-            // as resolve(), tried after every account session failed.
             anonymousResolverStream(
                 trackId = trackId,
                 format = format,
@@ -783,9 +736,6 @@ object DeezerAudioProvider {
         val format: String,
         val contentLength: Long?,
 
-        // Resolver envelopes carry an `exp` unix timestamp for the CDN link (see
-        // requestAnonymousUrl); account responses leave it null and are cached for
-        // STREAM_CACHE_MS instead.
         val expiresAtMs: Long? = null,
     )
 

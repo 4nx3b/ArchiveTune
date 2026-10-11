@@ -264,21 +264,8 @@ class ThrottledLayerBackdrop internal constructor(
 
     internal var recordingInProgress by mutableStateOf(false)
 
-    /**
-     * Bumped by [requestRecord] and read inside the recorder node's draw phase,
-     * so a tick invalidates that single draw node — forcing the source layer to
-     * be re-recorded even when nothing in the Compose tree invalidated the draw
-     * (video frames rendered straight into a TextureView, or content that only
-     * animates inside a nested graphics layer, never reach the recorder on their
-     * own — that was the "popup blur is a frozen snapshot" bug).
-     */
     internal var recordTick by mutableStateOf(0)
 
-    /**
-     * Asks the backdrop to re-record its source layer on the next draw pass.
-     * Call this once per frame while a glass consumer is visible to keep the
-     * blur live (the node's own 32 ms throttle still caps the real work).
-     */
     fun requestRecord() {
         recordTick++
     }
@@ -381,8 +368,7 @@ private class ThrottledLayerBackdropNode(
     }
 
     override fun ContentDrawScope.draw() {
-        // Snapshot read in the draw phase: every requestRecord() bump invalidates
-        // this node's draw, which re-runs the (throttled) record below.
+
         @Suppress("UNUSED_VARIABLE") val tick = backdrop.recordTick
         val now = SystemClock.uptimeMillis()
         if (now - lastRecordUptimeMillis >= backdrop.minIntervalMillis) {
@@ -452,13 +438,7 @@ fun Modifier.liquidGlass(
     val tuning = LocalLiquidGlassTuning.current
 
     return remember(backdrop, shape, interactive, baseColor, blurRadius, isDark, scrim, tuning) {
-        // Light-mode lens diet: the full-height refraction band with depth
-        // darkening reads as a black rim around bright pills over the light
-        // home wash (pixel-verified: a ~8dp dark band hugging the shape edge,
-        // darkest at the bottom — invisible on dark themes). In light mode the
-        // band is halved, the displacement softened and the depth/aberration
-        // accents turned off, so the rim renders as a subtle highlight instead
-        // of a dark backing border. Dark mode keeps the exact tuned look.
+
         val lensScale = if (isDark) 1f else 0.5f
         val lensAmountScale = if (isDark) 1f else 0.6f
         this.drawBackdrop(
@@ -482,13 +462,7 @@ fun Modifier.liquidGlass(
                     chromaticAberration = tuning.chromaticAberration && isDark,
                 )
             },
-            // The library attaches a DEFAULT drop shadow (black, 24dp blur,
-            // +4dp y-offset) to every drawBackdrop call unless it is explicitly
-            // disabled. That shadow is invisible on dark themes but renders as
-            // a black halo/border around glass pills in LIGHT mode — the
-            // "black border behind the settings pill" defect. Light mode gets
-            // no library shadow at all; dark mode keeps the default for its
-            // subtle depth cue over artwork (unchanged look).
+
             shadow = { if (isDark) Shadow.Default else null },
             onDrawBackdrop = { drawBackdrop ->
                 drawBackdrop()
@@ -496,11 +470,7 @@ fun Modifier.liquidGlass(
             shape = { shape },
             onDrawBehind =
                 if (baseColor != Color.Unspecified) {
-                    // Shape-aware base: drawRect painted a full square behind
-                    // the (round) glass, so the square's corners stuck out around
-                    // circular pills — visible as a dark backing plate behind the
-                    // home settings button in light mode. Drawing the shape's
-                    // outline keeps the base inside the glass silhouette.
+
                     {
                         drawOutline(
                             outline = shape.createOutline(size, layoutDirection, this),
@@ -511,8 +481,7 @@ fun Modifier.liquidGlass(
                     null
                 },
             onDrawSurface = {
-                // Same shape-aware treatment for the tint layer — a square tint
-                // plate had the same corner artifact.
+
                 val surfaceOutline = shape.createOutline(size, layoutDirection, this)
                 if (scrim != null) {
                     drawOutline(
@@ -631,11 +600,7 @@ fun LiquidGlassIconButton(
     onClick: () -> Unit,
 ) {
     val resolvedTint = if (tint == Color.Unspecified) liquidGlassContentColor() else tint
-    // BitChord's nav-bar pattern: an opaque surface base sits UNDER the
-    // blurred backdrop sample. Wherever the sampled backdrop is empty or
-    // darkened by the lens band, the pill reads as a proper surface-tinted
-    // glass instead of exposing a black region behind it (visible in light
-    // mode over the bright home wash).
+
     val glassBase = MaterialTheme.colorScheme.surfaceContainerHigh
     LiquidGlassContainer(
         backdrop = backdrop,
@@ -670,7 +635,7 @@ fun LiquidGlassIconButton(
     onClick: () -> Unit,
 ) {
     val resolvedTint = if (tint == Color.Unspecified) liquidGlassContentColor() else tint
-    // Same surface base as the painter overload — see its comment.
+
     val glassBase = MaterialTheme.colorScheme.surfaceContainerHigh
     LiquidGlassContainer(
         backdrop = backdrop,

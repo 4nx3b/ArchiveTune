@@ -192,10 +192,7 @@ fun HomeScreen(
                     },
                 ),
     ) {
-        // The home screen keeps its ORIGINAL full-intensity atmosphere wash
-        // (light mode) while blur effects are on — the light-mode look was
-        // never meant to change. In dark mode this draws nothing and the
-        // root layer's subtle gradient shows through instead.
+
         if (!disableBlur) {
             HomeAtmosphereBackground()
         }

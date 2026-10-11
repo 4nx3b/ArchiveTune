@@ -112,8 +112,6 @@ import com.mocharealm.accompanist.lyrics.core.model.karaoke.KaraokeLine
 import com.mocharealm.accompanist.lyrics.core.model.karaoke.KaraokeSyllable
 import com.mocharealm.accompanist.lyrics.core.model.synced.SyncedLine
 import com.mocharealm.accompanist.lyrics.ui.composable.lyrics.KaraokeLyricsView
-import com.mocharealm.accompanist.lyrics.ui.composable.lyrics.LyricsAnchor
-import com.mocharealm.accompanist.lyrics.ui.composable.list.LyricsLazyListState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -174,11 +172,6 @@ import androidx.compose.runtime.setValue
 private const val LYRIC_SYNC_LEAD_MS = 120L
 private const val LRC_LEAD_MS = LYRIC_SYNC_LEAD_MS
 
-// Position publish throttle: the accompanist renderer fans every position
-// state write out to per-line timeline collectors, draw invalidations and
-// the follow driver. On 120Hz displays the whole pipeline halves when writes
-// are capped at >=10ms intervals while the karaoke sweep stays visually
-// ~60fps-smooth; large jumps (seeks) always publish immediately.
 private const val LYRICS_POSITION_PUBLISH_MIN_DELTA_MS = 10L
 private const val LYRICS_POSITION_SEEK_DELTA_MS = 250L
 
@@ -569,14 +562,6 @@ fun LyricsEnhanced(
     var lastManualScrollTime by remember { mutableLongStateOf(0L) }
 
     val listState = key(lyricsSessionKey, positionResetCounter, karaokeGeneration) { rememberLazyListState() }
-
-    // lyrics-ui 2.0.0-rc.2: the karaoke renderer drives its own scroll state
-    // (LyricsLazyListState), separate from the plain/plain-synced LazyListState.
-    // Keyed exactly like listState so a session/generation change swaps both.
-    val karaokeListState =
-        key(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
-            remember { LyricsLazyListState() }
-        }
 
     var awaitingFirstFocus by
         remember(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
@@ -1159,7 +1144,7 @@ fun LyricsEnhanced(
                                 )
                             } else {
                                 KaraokeLyricsView(
-                                    listState = karaokeListState,
+                                    listState = listState,
                                     lyrics = syncedLyrics,
                                     currentPosition = playbackSyncPosition,
                                     onLineClicked = { line ->
@@ -1182,23 +1167,13 @@ fun LyricsEnhanced(
                                     },
                                     textColor = textColor,
                                     normalLineTextStyle = normalTextStyle,
-                                    translationTextStyle = translationTextStyle,
                                     accompanimentLineTextStyle = accompanimentTextStyle,
                                     phoneticTextStyle = phoneticTextStyle,
                                     blendMode = BlendMode.SrcOver,
                                     useBlurEffect = lyricsLineBlur && !animationsDisabled,
                                     showTranslation = showTranslations,
                                     showPhonetic = showPhoneticLines,
-                                    anchor = LyricsAnchor.Fixed(lyricsViewportOffset),
-                                    // Library default (100dp): a tight 8dp window
-                                    // disposed and recomposed lyric rows every
-                                    // handful of scroll frames during the follow
-                                    // animation — the composition + raster churn
-                                    // read as persistent scroll jank ("enhanced
-                                    // lyrics still lag"). The wider window keeps
-                                    // neighbouring rows alive across line changes;
-                                    // the library's own bounded raster cache (24
-                                    // lines / 16MB) still caps memory.
+                                    offset = lyricsViewportOffset,
                                     keepAliveZone = 100.dp,
                                     modifier = Modifier.fillMaxSize(),
                                 )

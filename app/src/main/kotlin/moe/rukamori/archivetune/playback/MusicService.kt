@@ -626,8 +626,7 @@ class MusicService :
 
                 if (!isYouTubeMediaHost) {
                     if (request.url.queryParameter(SoundCloudAudioProvider.STREAM_MARKER_QUERY) != null) {
-                        // SoundCloud resolved stream: strip the marker params and
-                        // attach the browser playback headers the CDN expects.
+
                         val isApiStream =
                             request.url.queryParameter(SoundCloudAudioProvider.STREAM_SOURCE_QUERY) ==
                                 SoundCloudAudioProvider.STREAM_SOURCE_API
@@ -650,8 +649,7 @@ class MusicService :
                         return@addInterceptor chain.proceed(patched)
                     }
                     if (SoundCloudAudioProvider.isSoundCloudPlaybackUrl(request.url)) {
-                        // Unmarked SoundCloud CDN requests (HLS manifests/segments
-                        // reached without markers) still need the browser headers.
+
                         val patched =
                             SoundCloudAudioProvider.addPlaybackHeaders(
                                 request.newBuilder(),
@@ -663,7 +661,7 @@ class MusicService :
                         return@addInterceptor chain.proceed(patched)
                     }
                     if (host.endsWith("spotifycdn.com")) {
-                        // Spotify direct streams: the CDN expects the web-player origin.
+
                         val patched =
                             request
                                 .newBuilder()
@@ -9263,12 +9261,6 @@ class MusicService :
         return runCatching { SoundCloudAudioQuality.valueOf(stored) }.getOrDefault(SoundCloudAudioQuality.AAC_160)
     }
 
-    /**
-     * Spotify direct streaming (Stopify port). Requires the experimental source
-     * toggle (checked by the chain) AND a signed-in web session (sp_dc cookie).
-     * The stream is a Widevine-encrypted MP4 from Spotify's CDN; the DRM session
-     * comes from createMediaSourceFactory's provider.
-     */
     private fun resolveSpotifyStream(
         query: SourceQuery,
         trusted: Boolean,
@@ -9358,7 +9350,6 @@ class MusicService :
         return generated
     }
 
-    /** Web-player Bearer token for the streaming pipeline, refreshed when stale. */
     private suspend fun ensureSpotifyWebToken(): String? {
         val token = dataStore.get(SpotifyAccessTokenKey, "")
         val expiry = dataStore.get(SpotifyAccessTokenExpiresAtKey, 0L)
@@ -9438,8 +9429,7 @@ class MusicService :
 
     private fun resolveDeezerStream(query: SourceQuery): DirectStream? {
         if (!DeezerAudioProvider.hasBackends()) {
-            // No accounts/instances configured — the provider still has the
-            // anonymous dzmedia-style resolvers as a last resort, so continue.
+
             Timber.tag("MusicService").d("Deezer: no accounts/instances; trying anonymous resolvers")
         }
         val quality = parseDeezerAudioQuality()
@@ -10392,12 +10382,6 @@ class MusicService :
     @Volatile
     private var cachedSpotifyDrmManager: DrmSessionManager? = null
 
-    /**
-     * DRM session manager for Spotify direct streams. Attached to every media
-     * source while the experimental source is enabled — acquisition is driven
-     * by the content itself (only the CENC-encrypted Spotify files carry DRM
-     * init data), so unencrypted streams never open a session.
-     */
     private fun spotifyDrmManagerOrNull(): DrmSessionManager? {
         val enabled = runCatching { dataStore.get(SpotifyDirectEnabledKey, false) }.getOrDefault(false)
         if (!enabled) {
@@ -10415,7 +10399,7 @@ class MusicService :
                         ExoMediaDrm.Provider { uuid ->
                             val created =
                                 runCatching { FrameworkMediaDrm.newInstance(uuid) }.getOrNull()?.apply {
-                                    // Web-player streams are L3 content.
+
                                     runCatching { setPropertyString("securityLevel", "L3") }
                                         .recoverCatching { setPropertyString("securityLevel", "3") }
                                 }
@@ -10428,11 +10412,6 @@ class MusicService :
         return manager
     }
 
-    /**
-     * Widevine license callback for Spotify direct streams (Stopify port): the
-     * license server is Spotify's web-player audio endpoint and authenticates
-     * with the web session's Bearer + client tokens.
-     */
     private inner class SpotifyLicenseCallback : MediaDrmCallback {
         private val licenseUrl = "https://gae2-spclient.spotify.com/widevine-license/v1/audio/license"
 
@@ -11218,12 +11197,7 @@ class MusicService :
         floatDspProcessor: FloatDspProcessor,
         primary: Boolean = true,
     ): DefaultRenderersFactory {
-        // Dolby/FFmpeg decoder toggle (audiophile page): PREFER routes every
-        // format the ffmpeg extension supports (AC-4, DTS, ...) through the
-        // software decoder instead of the platform's; ON (the previous
-        // behavior) only falls back to it for formats the platform cannot
-        // decode at all. Read once at factory creation — decoder swaps need a
-        // player rebuild, so the toggle takes effect on playback restart.
+
         val dolbyFfmpegPreferred =
             runBlocking { dataStore.data.first()[DolbyFfmpegDecoderKey] ?: false }
         return object : DefaultRenderersFactory(this) {
@@ -11260,9 +11234,7 @@ class MusicService :
                     eventListener,
                     out,
                 )
-                // Honest verification, not a gimmick: log which audio renderers
-                // actually made it onto the player — the ffmpeg renderer's
-                // presence here is what makes Dolby AC-4 / DTS decodable.
+
                 val names = out.joinToString(", ") { it.javaClass.simpleName }
                 Timber.tag(TAG).i(
                     "Audio renderers ready (dolbyFfmpegPreferred=%s): %s",

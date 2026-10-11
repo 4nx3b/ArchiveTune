@@ -77,23 +77,11 @@ import androidx.datastore.preferences.core.edit
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.rememberPreference
 
-/** JWT-ish shape check: three base64url segments. Good enough to catch paste errors. */
 private fun looksLikeJwt(value: String): Boolean = value.matches(Regex("^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"))
 
-/**
- * Media-user-token shape: Apple's iTunes-store token is NOT a JWT — it is a
- * short version prefix (`0.`) followed by standard base64 (may contain `+`, `/`,
- * `=`), e.g. `0.Ap7VmmO+s4RlV4F…==`. A JWT is accepted too, so panel-pasted
- * tokens pass.
- */
 private fun looksLikeMediaUserToken(value: String): Boolean =
     looksLikeJwt(value) || value.matches(Regex("^0\\.[A-Za-z0-9+/=]{40,}$"))
 
-/**
- * Apple Music sign-in — the community source pool supplies a Media User Token when the user
- * has none of their own (see App's mediaUserTokenProvider fallback), so playback can engage
- * with zero setup. Signing in here simply guarantees access with the user's own account.
- */
 @Composable
 fun AppleMusicSettings(navController: NavController) {
     val scrollBehavior = appBarScrollBehavior()
@@ -148,9 +136,6 @@ fun AppleMusicSettings(navController: NavController) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            // One continuous pane like every other settings screen — the hand-rolled
-            // per-row Cards this screen used were the odd one out (Yuma treatment =
-            // grouped panes, not per-row cards).
             PreferenceGroup(title = stringResource(R.string.applemusic_settings)) {
                 item {
                     PreferenceEntry(
@@ -226,18 +211,15 @@ private fun TokenSheet(
     var showDev by rememberSaveable { mutableStateOf(false) }
 
     val mediaValid = looksLikeMediaUserToken(mediaToken.trim())
-    // Tolerate a "Bearer " prefix and stray whitespace on the pasted dev JWT.
+
     val devClean = devToken.trim().removePrefix("Bearer ").removePrefix("bearer ").trim()
     val devValid = devClean.isEmpty() || looksLikeJwt(devClean)
-    // Developer token is optional — the app ships a fallback web-player JWT and can scrape a fresh one.
-    // The user's Media User Token (0.Ap...) alone is enough to resolve ES/STM etc catalog via their account.
-    // If they pasted both (Media User Token + Bearer JWT) we store both.
+
     val canSave = mediaValid && devValid && mediaToken.trim().isNotBlank()
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
         Column(
-            // Scrollable: two long credential fields push the save row below the sheet fold
-            // otherwise, which reads as "the submit button disappeared".
+
             Modifier
                 .padding(16.dp)
                 .padding(bottom = 24.dp)

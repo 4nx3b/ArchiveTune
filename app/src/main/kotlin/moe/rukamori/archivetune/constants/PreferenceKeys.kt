@@ -59,12 +59,6 @@ val AppleMusicAnimatedArtworkKey = booleanPreferencesKey("appleMusicAnimatedArtw
 
 val CanvasResolverEndpointsKey = stringPreferencesKey("canvasResolverEndpoints")
 
-// Procedural artwork animation (ported from Sekai Tune): fluid on-device
-// motion applied to the static album art when no animated canvas video is
-// available.
-// Dolby/FFmpeg software decoder (audiophile page): EXTENSION_RENDERER_MODE_PREFER
-// routes every ffmpeg-supported format (Dolby AC-4, DTS, ...) through the
-// bundled extension instead of the platform decoders.
 val DolbyFfmpegDecoderKey = booleanPreferencesKey("dolbyFfmpegDecoder")
 
 val ProceduralArtworkEnabledKey = booleanPreferencesKey("proceduralArtworkEnabled")
@@ -626,10 +620,6 @@ val SmartTrimmerKey = booleanPreferencesKey("smartTrimmer")
 val MaxSongCacheSizeKey = intPreferencesKey("maxSongCacheSize")
 val MaxCanvasCacheSizeKey = intPreferencesKey("maxCanvasCacheSize")
 
-/**
- * Size limit for the music-video stream cache (MB; -1 = unlimited, 0 = off).
- * Replaying a video serves the cached stream instead of re-downloading it.
- */
 val MaxVideoCacheSizeKey = intPreferencesKey("maxVideoCacheSize")
 val StorageFolderIdKey = stringPreferencesKey("storageFolderId")
 val StorageFolderTreeUriKey = stringPreferencesKey("storageFolderTreeUri")
@@ -1115,7 +1105,6 @@ enum class OverscrollStyle {
 val OverscrollRubberBandTensionKey = floatPreferencesKey("overscrollRubberBandTension")
 val OverscrollBounceStiffnessKey = floatPreferencesKey("overscrollBounceStiffness")
 
-
 val ShowLyricsPlayerControlsKey = booleanPreferencesKey("showLyricsPlayerControls")
 val AutoHideLyricsPlayerControlsKey = booleanPreferencesKey("autoHideLyricsPlayerControls")
 
@@ -1360,8 +1349,6 @@ val SongSourceTidalTrackIdKey = stringPreferencesKey("songSourceTidalTrackId")
 
 val SongSourceQobuzBackupVideoIdKey = stringPreferencesKey("songSourceQobuzBackupVideoId")
 
-// --- SoundCloud source (MetroFusePlus port) ---
-
 val SoundCloudEnabledKey = booleanPreferencesKey("soundcloudEnabled")
 
 val SoundCloudAudioQualityKey = stringPreferencesKey("soundcloudAudioQuality")
@@ -1379,8 +1366,6 @@ val SoundCloudAudioQualityOptions = listOf(
 )
 
 val SoundCloudAuthTokenKey = stringPreferencesKey("soundcloudAuthToken")
-
-// --- Spotify direct streaming (Stopify port, experimental) ---
 
 val SpotifyDirectEnabledKey = booleanPreferencesKey("spotifyDirectEnabled")
 

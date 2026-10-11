@@ -41,8 +41,6 @@ object SpotifyWebStreamer {
     private const val CLIENT_VERSION = "harmony:4.80.0-3cdf02c91"
     private const val PLATFORM_IDENTIFIER = "web_player osx 10.15.7;chrome 155.0.0.0;desktop"
 
-    // Public web-player client token (shared by every web-player session; a
-    // fresh one is requested from clienttoken.spotify.com when possible).
     private const val FALLBACK_CLIENT_TOKEN =
         "AAGCCRiw7WlW3Oy33uN5L1dI2knSs986nqFaI1YTbq66MFLs0oeinjyYUbv2zo9+9kleXdls6EnujpM6OElxp5zJtj+0ZP9RU9I0ApWvFeXJwZRYmCVMWBngB3AN6Ux1imVm+8ImYf9OvVc3mJJBjxLH4S3k77qOsXB6EekBL9hZQgx8umkPOLZZEfolSOP8wURVuQX5sZjnwIfPmLf/8ydY/LeeqBGTvkyZwV4InPyVxMlOI7DQViCkvmXQ2ZkpQASm2NrJ40wdF+BcpIDZV0YA+czHR2bx2K+tTKIaNMa7GUTB/By4+ls8IO6TL4zLlLoKGWnXa8N0xzthzHW9B2zdsW/kTD7JttelP1GHt/1lDuiRvvqtp2WGx6ZeArHvStJTLeO+sZHGs6IxJBY="
 
@@ -80,10 +78,6 @@ object SpotifyWebStreamer {
     @Volatile
     private var cachedClientTokenAtMs = 0L
 
-    /**
-     * Token source set by MusicService at startup: returns a valid web-player
-     * Bearer token (refreshing it when necessary) or null when signed out.
-     */
     @Volatile
     var accessTokenProvider: (suspend () -> String?)? = null
 
@@ -377,10 +371,6 @@ object SpotifyWebStreamer {
             }.getOrDefault(false)
         }
 
-    /**
-     * Resolves a spotify track URI to a playable CDN url. Returns null when the
-     * pipeline fails (signed out, dealer/registration failure, no manifest).
-     */
     suspend fun resolveStreamUrl(
         trackUri: String,
         deviceId: String,
@@ -405,8 +395,7 @@ object SpotifyWebStreamer {
                 var accepted =
                     postJson(commandUrl, token, clientToken, payload) { code, _ -> code in 200..299 }
                 if (!accepted) {
-                    // 410/404: the virtual device or dealer session expired —
-                    // re-register once and retry the command.
+
                     activeWebSocket?.close(1000, "re-register")
                     activeWebSocket = null
                     dealerConnectionId = null

@@ -58,7 +58,6 @@ object SoundCloudAudioProvider {
         val durationMs: Long?,
     )
 
-    /** Public search metadata, used e.g. for source health checks. */
     data class SoundCloudTrackMetadata(
         val trackId: String,
         val title: String,
@@ -68,7 +67,6 @@ object SoundCloudAudioProvider {
         val durationMs: Long?,
     )
 
-    /** Internal resolved stream payload; converted to [DirectStream] at the [resolve] boundary. */
     private data class Resolved(
         val mediaUri: String,
         val trackId: String,
@@ -85,7 +83,6 @@ object SoundCloudAudioProvider {
         val expiresAtMs: Long,
     )
 
-    /** Thrown internally to signal retryable resolution failures; never escapes [resolve]. */
     class SoundCloudResolutionException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
     private data class MatchedTrack(
@@ -129,11 +126,6 @@ object SoundCloudAudioProvider {
 
     private val metadataMutex = Mutex()
 
-    /**
-     * Resolves [query] to a playable SoundCloud stream. Returns null (instead of throwing) when
-     * the source cannot resolve the track — no client ID could be scraped, no candidate matched,
-     * or no stream could be negotiated — so callers treat null as "source did not resolve".
-     */
     suspend fun resolve(
         query: Query,
         authToken: String = "",
@@ -170,11 +162,7 @@ object SoundCloudAudioProvider {
             trackCache[query.mediaId]
                 ?: lookupTrack(clientId)
                 ?: run {
-                    // searchTracks/resolveApiV2Track swallow HTTP errors internally, so a stale or
-                    // rate-limited client ID looks identical to "no match" here. Re-scrape once and
-                    // retry before giving up, mirroring the retry already done below for stream
-                    // resolution — otherwise search-matched (non-direct-URL) lookups, which is what
-                    // every non-SoundCloud frontend relies on, never recover from an expired client ID.
+
                     Timber.tag(TAG).i(
                         "SoundCloud track lookup empty for ${query.title}; re-scraping client ID and retrying",
                     )
@@ -349,7 +337,7 @@ object SoundCloudAudioProvider {
         var foundAppVersion = appVersionRegex.find(html)?.groups?.get(1)?.value
 
         if (foundClientId == null || foundAppVersion == null) {
-            // Fetch all JS bundles in parallel to drastically reduce load times
+
             val jsResponses = scriptUrls.map { scriptUrl ->
                 async(Dispatchers.IO) {
                     runCatching {
@@ -378,7 +366,7 @@ object SoundCloudAudioProvider {
 
         cachedClientId = foundClientId
         cachedAppVersion = foundAppVersion
-        metadataExpiresAt = System.currentTimeMillis() + 12 * 60 * 60 * 1000L // 12 hours
+        metadataExpiresAt = System.currentTimeMillis() + 12 * 60 * 60 * 1000L
 
         if (foundClientId == null) {
             Timber.tag(TAG).w("SoundCloud client-id scraping failed; stream resolution will fail")
@@ -410,9 +398,6 @@ object SoundCloudAudioProvider {
             return@coroutineScope selectBestTrack(allTracks, query)
         }
 
-        // Lenient fallback lookup (kept from the upstream waveform path): a wrong match here is
-        // cosmetic rather than wrong audio, so it tries every fallback term and pools results
-        // before giving up. Run all terms in parallel since they're independent HTTP calls.
         val termResults = terms.map { term -> async { searchTerm(term) } }.awaitAll()
         val allTracks = termResults.flatten().distinctBy { it.permalinkUrl }
         selectBestTrack(allTracks, query, forWaveform = true)
@@ -483,11 +468,7 @@ object SoundCloudAudioProvider {
         }
         val candidate = selectStreamCandidate(effectiveTrack.transcodings, quality) ?: return@withContext null
         if (candidate.isHls) {
-            // ArchiveTune resolves streams lazily at DataSpec level — the media
-            // source type is fixed at MediaItem creation (progressive), so an
-            // HLS playlist cannot be played through this pipeline. The selector
-            // below prefers progressive transcodings; reaching here means ONLY
-            // HLS exists for the track, so the source honestly does not resolve.
+
             Timber.tag(TAG).i(
                 "SoundCloud track %s offers only HLS transcodings; skipping (progressive playback only)",
                 track.trackId,
@@ -583,11 +564,7 @@ object SoundCloudAudioProvider {
 
         return candidates.maxWithOrNull(
             compareByDescending<StreamCandidate> {
-                // A progressive transcoding ALWAYS outranks an HLS one: the app
-                // resolves streams lazily (DataSpec URI swap) and cannot switch
-                // the already-created progressive media source to an HLS one,
-                // so an HLS pick would be unplayable. AAC quality tiers degrade
-                // to the progressive mp3 when no progressive AAC exists.
+
                 if (!it.isHls) 1_000 else 0
             }.thenByDescending {
                 val targetBitrate = when (quality) {
@@ -671,11 +648,6 @@ object SoundCloudAudioProvider {
             )
         }
 
-        // A lot of SoundCloud uploads (reposts, tracks uploaded under a username rather than the
-        // real artist) don't carry accurate artist/publisher metadata, which makes the strict
-        // artist requirement above reject an otherwise-correct match. Fall back to a looser pass
-        // keyed mainly on title + duration, with a tighter duration tolerance to compensate for
-        // dropping the artist check.
         val loose = selectBestTrackInternal(
             tracks = tracks,
             query = query,
@@ -694,12 +666,6 @@ object SoundCloudAudioProvider {
 
         if (!forWaveform) return null
 
-        // Lenient tier (upstream: waveform-only): a wrong pick here just means a slightly-off (or
-        // someone else's) seek bar shape, not wrong audio playing, so it accepts matches the
-        // strict audio-resolution tiers above would correctly reject — title-only matching, no
-        // artist requirement, a much wider duration tolerance, and remix/live/edit versions
-        // allowed through (dropping hasVersionMismatch, which selectBestTrackInternal doesn't
-        // check itself — see below).
         return selectBestTrackInternal(
             tracks = tracks,
             query = query,
@@ -869,11 +835,6 @@ object SoundCloudAudioProvider {
             return listOf(primaryTerm).filter { it.isNotBlank() }
         }
 
-        // Lenient fallback: try progressively looser terms so a mismatched artist credit, a
-        // parenthetical suffix, or an overly specific title doesn't leave the lookup with no
-        // result at all. Order matters — first hit wins if it scores, but pooling across all
-        // of these in findBestTrack means a later term can still surface a match the primary
-        // term's search results missed entirely.
         val titleOnly = title
         val titleNoParens = title
             .replace(Regex("""\[[^]]*]"""), " ")

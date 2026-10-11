@@ -58,7 +58,6 @@ import moe.rukamori.archivetune.ui.screens.settings.AndroidAutoSettings
 import moe.rukamori.archivetune.ui.screens.settings.AboutScreen
 import moe.rukamori.archivetune.ui.screens.settings.AccountSettings
 import moe.rukamori.archivetune.ui.screens.settings.AiIntegrationSettings
-import moe.rukamori.archivetune.ui.screens.ambient.AmbientModeScreen
 import moe.rukamori.archivetune.ui.screens.settings.AodCustomizedScreen
 import moe.rukamori.archivetune.ui.screens.settings.CanvasSettingsScreen
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceExtrasSettings
@@ -505,9 +504,6 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         AodCustomizedScreen(navController, scrollTo = it.savedStateHandle["scrollTo"])
-    }
-    composable("ambient_mode") {
-        AmbientModeScreen(navController)
     }
     composable("settings/appearance/palette_picker") {
         PalettePickerScreen(navController)

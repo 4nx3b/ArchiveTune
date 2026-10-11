@@ -138,11 +138,7 @@ fun LibraryScreen(navController: NavController) {
     val libraryTitleReveal = LocalLibraryTitleReveal.current
     val titleRevealScrollConnection =
         remember(libraryTitleReveal) {
-            // Deltas accumulate instead of gating on a single frame's size, so a
-            // slow upward scroll reveals the title just as reliably as a fast
-            // fling — a per-frame threshold only ever tripped on high-velocity
-            // scrolls, which is why the title used to stay invisible when
-            // scrolling up gently.
+
             var upAccumulator = 0f
             var downAccumulator = 0f
             object : NestedScrollConnection {
@@ -152,8 +148,7 @@ fun LibraryScreen(navController: NavController) {
                 ): Offset {
                     if (source != NestedScrollSource.UserInput) return Offset.Zero
                     when {
-                        // Scrolling further down the list: the large title
-                        // scrolls away with the content.
+
                         available.y < 0f -> {
                             upAccumulator = 0f
                             downAccumulator += available.y
@@ -162,8 +157,7 @@ fun LibraryScreen(navController: NavController) {
                                 downAccumulator = 0f
                             }
                         }
-                        // Scrolling back up: the large title re-reveals once a
-                        // meaningful stretch of upward travel has accumulated.
+
                         available.y > 0f -> {
                             downAccumulator = 0f
                             upAccumulator += available.y
@@ -185,7 +179,6 @@ fun LibraryScreen(navController: NavController) {
                 .let { m -> if (libraryHazeState != null) m.hazeSource(libraryHazeState) else m }
                 .nestedScroll(titleRevealScrollConnection),
     ) {
-        // Root-level subtle atmosphere gradient — see MainActivity.
 
         Column(
             modifier =

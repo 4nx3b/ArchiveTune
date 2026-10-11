@@ -672,9 +672,6 @@ fun CommentTogetherScreen(navController: NavController) {
                     )
                 }
 
-                // The typing indicator animates ABOVE the composer (not below
-                // it) so the bouncing avatars lead into the input row the same
-                // way modern chat apps reveal who is typing.
                 AnimatedVisibility(
                     visible = typingUsers.isNotEmpty(),
                     enter = expandVertically() + fadeIn(),

@@ -853,10 +853,7 @@ fun FloatingNavigationToolbar(
                                         chromaticAberration = glassTuning.chromaticAberration,
                                     )
                                 },
-                                // No library drop shadow in light mode: the default
-                                // black 24dp-blur shadow renders as a dark halo
-                                // around the floating tab pill on bright pages
-                                // (same defect as the home settings pill).
+
                                 shadow = { if (isDark) KyantShadow.Default else null },
                                 onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
                                 shape = { pillShape },

@@ -21,21 +21,6 @@ import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-/**
- * The Deezer "API / Instance" tier: self-hosted servers that hold their own Deezer accounts and
- * serve already-decrypted audio, so no ARL ever has to reach this device.
- *
- * Instances come from two places, user entries first:
- *  - the user's own list (Integration → Deezer → API instances);
- *  - the Source Pool's `/api/instances/deezer` feed, which lists contributed instances only after
- *    its liveness check passes (and only while "Use pool accounts" is on).
- *
- * Two community shapes are in the wild, and both are handled:
- *  - Monochrome's Deezer fallback: `GET {base}/stream/?isrc={isrc}` streams the recording;
- *  - Ultra MAX: `GET {base}/stream/{deezerTrackId}` streams the track.
- * The track id and ISRC come from Deezer's public catalogue API, which needs no account. The shape
- * that worked is remembered per instance so later resolves ask the right path first.
- */
 object DeezerInstances {
     private const val TAG = "DeezerInstances"
     private const val DISCOVERY_TTL_MS = 30 * 60 * 1000L
@@ -59,15 +44,12 @@ object DeezerInstances {
     @Volatile
     private var discoveredAt = 0L
 
-    /** "base" -> time it may be tried first again. */
     private val cooldownUntil = ConcurrentHashMap<String, Long>()
 
-    /** "base" -> the stream path shape that last worked there. */
     private val workingShape = ConcurrentHashMap<String, Shape>()
 
     private enum class Shape { ISRC, TRACK_ID }
 
-    /** A stream an instance agreed to serve, before it is mapped to the provider's own type. */
     data class Stream(
         val url: String,
         val flac: Boolean,
@@ -75,14 +57,12 @@ object DeezerInstances {
         val instance: String,
     )
 
-    /** Parses the settings text (one URL per line, commas also accepted) into normalized base URLs. */
     fun parse(raw: String): List<String> =
         raw
             .split('\n', '\r', ',', ' ')
             .mapNotNull(::normalize)
             .distinct()
 
-    /** Applies the user's own instance list. Cheap and idempotent. */
     fun setUserInstances(raw: String) {
         userInstances = parse(raw)
     }
@@ -92,15 +72,10 @@ object DeezerInstances {
         discoveredAt = 0L
     }
 
-    /**
-     * True when a resolve could reach at least one instance. Cheap, no network: counts user entries,
-     * cached pool entries, and a configured pool whose feed has not been fetched yet.
-     */
     fun hasInstances(): Boolean =
         userInstances.isNotEmpty() ||
             (PoolAccountManager.isPoolEnabled() && (discovered.isNotEmpty() || discoveredAt == 0L) && poolFeedUrl() != null)
 
-    /** User instances first, then pool ones; cooling-down instances sort last rather than vanish. */
     fun instances(): List<String> {
         val pool = if (PoolAccountManager.isPoolEnabled()) discoverIfStale() else emptyList()
         val merged = LinkedHashSet<String>().apply {
@@ -111,10 +86,6 @@ object DeezerInstances {
         return merged.sortedBy { (cooldownUntil[it] ?: 0L) > now }
     }
 
-    /**
-     * Asks each instance for the recording and returns the first that answers with audio. Blocking
-     * network I/O; never throws.
-     */
     fun resolve(
         isrc: String?,
         trackId: String?,
@@ -149,17 +120,12 @@ object DeezerInstances {
         return null
     }
 
-    /** Result of an instance health check, for the "Check source" diagnostic. */
     data class Health(
         val instance: String,
         val ok: Boolean,
         val detail: String,
     )
 
-    /**
-     * Reads the first instance's own liveness document (`GET {base}/health`, as the pool does).
-     * An explicit `ok:false`, or an accounts block with nothing available or cooling, is not live.
-     */
     fun checkFirst(): Health? {
         val base = instances().firstOrNull() ?: return null
         return runCatching {
@@ -180,11 +146,6 @@ object DeezerInstances {
         }.getOrElse { Health(base, false, it.message ?: it.javaClass.simpleName) }
     }
 
-    /**
-     * Opens [url] for its first bytes only and accepts it when they are FLAC or MP3. JSON error
-     * documents (dead accounts, forbidden origin, rate limit) are refused here, so playback never
-     * gets handed a URL that answers with text.
-     */
     private fun probe(
         url: String,
         base: String,
@@ -243,7 +204,6 @@ object DeezerInstances {
             .takeIf { it.isNotEmpty() }
             ?.let { "$it/api/instances/deezer" }
 
-    /** Fetches the pool's instance list at most every [DISCOVERY_TTL_MS]. Never throws. */
     private fun discoverIfStale(): List<String> {
         if (!PoolAccountManager.isPoolEnabled()) {
             invalidatePoolInstancesCache()
@@ -281,15 +241,13 @@ object DeezerInstances {
                 invalidatePoolInstancesCache()
                 return emptyList()
             }
-            // A failed fetch keeps the previous list: a transient error should not drop instances
-            // that were working a moment ago.
+
             if (result != null) discovered = result
             discoveredAt = System.currentTimeMillis()
             return discovered
         }
     }
 
-    /** The pool's `{ streaming, api }` shape; `streaming` first, both deduplicated. */
     private fun parseFeed(body: String): List<String> {
         val root = runCatching { JSONObject(body) }.getOrNull() ?: return emptyList()
         val out = LinkedHashSet<String>()

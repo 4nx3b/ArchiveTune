@@ -230,7 +230,7 @@ fun SearchScreen(
                         if (barState.backdrop != null) m.glassSource(barState.backdrop!!) else m
                     },
         ) {
-            // Root-level subtle atmosphere gradient — see MainActivity.
+
         }
 
         BoxWithConstraints(
@@ -424,10 +424,6 @@ private fun LiveSearchSuggestionsPanel(
         return
     }
 
-    // Recommendations render ABOVE the query completions: newly loaded
-    // summary sections prepend at the panel's top (always inside the visible
-    // window once the list clips) while the query rows the user is reading
-    // stay anchored right above the search bar instead of jumping upward.
     Box(
         modifier =
             Modifier
@@ -528,9 +524,6 @@ private fun LiveSearchSuggestionsPanel(
             }
         }
 
-        // Progressive haze fade over the panel's top edge while the list is
-        // scrolled — the same ultraThin progressive treatment the home header
-        // uses, so content dissolving off the top blurs into the background.
         if (hazeState != null && !disableBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val scrolledAway by remember {
                 derivedStateOf {
@@ -778,10 +771,7 @@ private fun SearchTabBottomChrome(
             )
             IconButton(
                 onClick = onVoiceSearch,
-                // Start padding shifts the mic RIGHT, away from the text field
-                // and toward the source picker (increasing the end padding
-                // instead moved it left — the picker is pinned to the row's
-                // right edge, so end padding only widens the mic-picker gap).
+
                 modifier = Modifier.padding(start = 10.dp, end = 4.dp),
             ) {
                 Icon(
@@ -791,9 +781,7 @@ private fun SearchTabBottomChrome(
                     modifier = Modifier.size(22.dp),
                 )
             }
-            // End padding nudges the source picker (the YouTube icon for the
-            // default YT Music provider) a bit to the left, away from the
-            // pill's right edge.
+
             Box(modifier = Modifier.padding(end = 6.dp)) {
                 SearchSourcePicker(
                     currentScope = SearchSource.ONLINE,

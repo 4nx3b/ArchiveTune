@@ -652,8 +652,7 @@ fun Thumbnail(
                                             modifier = Modifier.fillMaxSize(),
                                         )
                                     } else if (!isCurrentMusicVideo) {
-                                        // Fluid on-device motion for the static art when no
-                                        // animated canvas video exists (Sekai Tune port).
+
                                         ProceduralArtworkFallback(
                                             artworkUrl = displayUrl,
                                             isPlaying = isPlaying,
