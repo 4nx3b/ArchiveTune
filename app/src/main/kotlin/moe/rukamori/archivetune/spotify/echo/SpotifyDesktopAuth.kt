@@ -33,8 +33,12 @@ object SpotifyDesktopAuth {
     private const val TAG = "SpotifyDesktopAuth"
 
     private const val CLIENT_ID = "65b708073fc0480ea92a077233ca87bd"
+    private const val WEB_CLIENT_ID = "d8a5ed958d274c2e8ee717e6a4b0971d"
+    private const val WEB_USER_AGENT =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     private const val PLATFORM_HEADER = "Win32_x86_64"
     private const val DEFAULT_APP_VERSION = "1.2.66.510.gd0327113"
+    private const val VERSIONS_URL = "https://loadspot.pages.dev/versions.json"
     private const val DEVICE_AUTH_URL = "https://accounts.spotify.com/oauth2/device/authorize"
     private const val DEVICE_TOKEN_URL = "https://accounts.spotify.com/api/token"
     private const val DEVICE_RESOLVE_URL = "https://accounts.spotify.com/pair/api/resolve"
@@ -79,9 +83,39 @@ object SpotifyDesktopAuth {
     @Volatile
     private var clientTokenExpiresAtMs = 0L
 
-    fun appVersion(): String = DEFAULT_APP_VERSION
+    @Volatile
+    private var liveAppVersion: String? = null
 
-    fun userAgent(): String = "Spotify/${buildFromAppVersion(DEFAULT_APP_VERSION)} $PLATFORM_HEADER/0 (PC laptop)"
+    private val versionRefreshAttempted = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    fun appVersion(): String = liveAppVersion ?: DEFAULT_APP_VERSION
+
+    private fun maybeRefreshLiveVersion() {
+        if (!versionRefreshAttempted.compareAndSet(false, true)) return
+        runCatching {
+            val request =
+                Request
+                    .Builder()
+                    .url(VERSIONS_URL)
+                    .build()
+            baseClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use
+                val body = response.body?.string().orEmpty()
+                val matched =
+                    Regex("\"fullversion\"\\s*:\\s*\"([^\"]+)\"")
+                        .find(body)
+                        ?.groupValues
+                        ?.get(1)
+                        ?: return@use
+                if (matched.matches(Regex("\\d+\\.\\d+\\.\\d+\\.\\d+\\.g[0-9a-f]+"))) {
+                    liveAppVersion = matched
+                    Timber.tag(TAG).i("Desktop app version refreshed: %s", matched)
+                }
+            }
+        }
+    }
+
+    fun userAgent(): String = "Spotify/${buildFromAppVersion(appVersion())} $PLATFORM_HEADER/0 (PC laptop)"
 
     private fun buildFromAppVersion(version: String): String {
         val parts = version.split('.')
@@ -101,7 +135,11 @@ object SpotifyDesktopAuth {
         accessToken?.takeIf { System.currentTimeMillis() < tokenExpiresAtMs }?.let { return it }
         tokenMutex.withLock {
             accessToken?.takeIf { System.currentTimeMillis() < tokenExpiresAtMs }?.let { return it }
-            val fetched = withContext(Dispatchers.IO) { runCatching { authorizeDesktopDevice(spDc) }.getOrNull() } ?: return null
+            val fetched =
+                withContext(Dispatchers.IO) {
+                    maybeRefreshLiveVersion()
+                    runCatching { authorizeDesktopDevice(spDc) }.getOrNull()
+                } ?: return null
             accessToken = fetched
             tokenExpiresAtMs = System.currentTimeMillis() + 30L * 60 * 1000
             clientToken = null
@@ -122,23 +160,63 @@ object SpotifyDesktopAuth {
     }
 
     private fun fetchClientToken(spDc: String): String? {
+        maybeRefreshLiveVersion()
         val deviceId = SpotifyEchoResolver.deviceId()
+        if (postClientToken(
+                clientId = CLIENT_ID,
+                clientVersion = appVersion(),
+                deviceBrand = "Microsoft",
+                deviceModel = "PC",
+                os = "windows",
+                osVersion = "NT 10.0",
+                userAgent = userAgent(),
+                webPersona = false,
+            )
+        ) {
+            return clientToken
+        }
+        if (postClientToken(
+                clientId = WEB_CLIENT_ID,
+                clientVersion = appVersion(),
+                deviceBrand = "unknown",
+                deviceModel = "unknown",
+                os = "windows",
+                osVersion = "NT 10.0",
+                userAgent = WEB_USER_AGENT,
+                webPersona = true,
+            )
+        ) {
+            return clientToken
+        }
+        return null
+    }
+
+    private fun postClientToken(
+        clientId: String,
+        clientVersion: String,
+        deviceBrand: String,
+        deviceModel: String,
+        os: String,
+        osVersion: String,
+        userAgent: String,
+        webPersona: Boolean,
+    ): Boolean {
         val payload =
             JSONObject().apply {
                 put(
                     "client_data",
                     JSONObject().apply {
-                        put("client_version", DEFAULT_APP_VERSION)
-                        put("client_id", CLIENT_ID)
+                        put("client_version", clientVersion)
+                        put("client_id", clientId)
                         put(
                             "js_sdk_data",
                             JSONObject().apply {
-                                put("device_brand", "Microsoft")
-                                put("device_id", deviceId)
-                                put("device_model", "PC")
+                                put("device_brand", deviceBrand)
+                                put("device_id", SpotifyEchoResolver.deviceId())
+                                put("device_model", deviceModel)
                                 put("device_type", "computer")
-                                put("os", "windows")
-                                put("os_version", "NT 10.0")
+                                put("os", os)
+                                put("os_version", osVersion)
                             },
                         )
                     },
@@ -148,19 +226,32 @@ object SpotifyDesktopAuth {
             Request
                 .Builder()
                 .url(CLIENT_TOKEN_URL)
-                .header("User-Agent", userAgent())
-                .header("Accept-Language", "en")
-                .header("Accept", "application/json")
+                .apply {
+                    if (webPersona) {
+                        header("User-Agent", userAgent)
+                        header("Origin", "https://open.spotify.com")
+                        header("Referer", "https://open.spotify.com/")
+                    } else {
+                        header("User-Agent", userAgent)
+                        header("Accept-Language", "en")
+                    }
+                }.header("Accept", "application/json")
                 .header("content-type", "application/json")
                 .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
                 .build()
         baseClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                Timber.tag(TAG).w("Desktop client token request failed: HTTP %d", response.code)
-                return null
+                Timber.tag(TAG).w("Client token request failed: HTTP %d (persona=%s)", response.code, if (webPersona) "web" else "desktop")
+                return false
             }
             val body = JSONObject(response.body?.string().orEmpty())
-            return body.optJSONObject("granted_token")?.optString("token")?.takeIf { it.isNotBlank() }
+            val token = body.optJSONObject("granted_token")?.optString("token")?.takeIf { it.isNotBlank() }
+            if (token != null) {
+                clientToken = token
+                clientTokenExpiresAtMs = System.currentTimeMillis() + 20L * 60 * 60 * 1000
+                return true
+            }
+            return false
         }
     }
 

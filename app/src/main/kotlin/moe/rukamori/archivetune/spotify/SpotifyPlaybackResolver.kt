@@ -123,6 +123,7 @@ object SpotifyPlaybackResolver {
                     spotifyTrackId = track.id.takeIf(String::isNotBlank),
 
                     isrc = track.isrc,
+                    preferredSource = moe.rukamori.archivetune.constants.AudioSourceType.SPOTIFY.name,
                 )
 
             mutex.withLock {

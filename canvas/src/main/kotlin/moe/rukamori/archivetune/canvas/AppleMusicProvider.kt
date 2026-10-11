@@ -105,6 +105,7 @@ object AppleMusicProvider {
     private const val APPLE_MUSIC_WEB_HOME = "https://music.apple.com/"
     private const val AMP_BASE_URL = "https://amp-api.music.apple.com"
     private const val CACHE_TTL_MS = 1000L * 60 * 60 * 24
+    private const val US_STOREFRONT = "us"
 
     // Misses get a much shorter TTL than hits: a canvas that did not exist is
     // unlikely to appear mid-session, while retrying the same album over the
@@ -402,7 +403,10 @@ object AppleMusicProvider {
     ): CanvasArtwork? {
         val key = cacheKey("sa", album, artist, storefront)
         cache[key]?.takeIf { it.expiresAtMs > System.currentTimeMillis() }?.let { return it.value }
-        val result = searchAndFetchMotion(album, artist, album, storefront, "albums")
+        var result = searchAndFetchMotion(album, artist, album, storefront, "albums")
+        if (result == null && !storefront.equals(US_STOREFRONT, ignoreCase = true)) {
+            result = searchAndFetchMotion(album, artist, album, US_STOREFRONT, "albums", storefrontLocked = true)
+        }
         cache[key] =
             CacheEntry(
                 result,
@@ -424,7 +428,10 @@ object AppleMusicProvider {
         } else {
             cache[key]?.takeIf { it.expiresAtMs > System.currentTimeMillis() }?.let { return it.value }
         }
-        val result = searchAndFetchMotion(song, artist, album, storefront, "songs", forceRefresh)
+        var result = searchAndFetchMotion(song, artist, album, storefront, "songs", forceRefresh)
+        if (result == null && !storefront.equals(US_STOREFRONT, ignoreCase = true)) {
+            result = searchAndFetchMotion(song, artist, album, US_STOREFRONT, "songs", forceRefresh, storefrontLocked = true)
+        }
         cache[key] =
             CacheEntry(
                 result,
@@ -638,9 +645,17 @@ object AppleMusicProvider {
         storefront: String,
         type: String,
         forceRefresh: Boolean = false,
+        storefrontLocked: Boolean = false,
     ): CanvasArtwork? {
         return runCatching {
-            val effectiveStorefront = if (storefront == "us") resolveStorefront() else storefront
+            val effectiveStorefront =
+                if (storefrontLocked) {
+                    storefront
+                } else if (storefront == "us") {
+                    resolveStorefront()
+                } else {
+                    storefront
+                }
             Log.d("searching for $type: $term (album: $album) in $effectiveStorefront (requested $storefront)")
             var query = if (term.contains(artist, ignoreCase = true)) term else "$artist $term"
             if (!album.isNullOrBlank() && !query.contains(album, ignoreCase = true)) query = "$query $album"

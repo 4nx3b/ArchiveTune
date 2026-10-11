@@ -79,7 +79,6 @@ object SpotifyWebStreamer {
     private var dealerConnectionId: String? = null
     private var connectionIdDeferred: CompletableDeferred<String>? = null
     private var registeredDeviceId: String? = null
-    private var registeredDualFormat = false
 
     private val audioFileMap = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val pendingTrackResolutions = java.util.concurrent.ConcurrentHashMap<String, CompletableDeferred<String>>()
@@ -227,9 +226,8 @@ object SpotifyWebStreamer {
         token: String,
         clientToken: String,
         deviceId: String,
-        dualFormat: Boolean,
     ): Boolean {
-        if (registeredDeviceId == deviceId && dealerConnectionId != null && registeredDualFormat == dualFormat) {
+        if (registeredDeviceId == deviceId && dealerConnectionId != null) {
             return true
         }
         connectDealer(token)
@@ -260,11 +258,8 @@ object SpotifyWebStreamer {
                                 put(
                                     "manifest_formats",
                                     JSONArray().apply {
-                                        if (dualFormat) {
-                                            put("file_ids_mp4_dual")
-                                        } else {
-                                            put("file_ids_mp4")
-                                        }
+                                        put("file_ids_mp4")
+                                        put("file_ids_mp4_dual")
                                     },
                                 )
                                 put("supports_preferred_media_type", true)
@@ -294,7 +289,6 @@ object SpotifyWebStreamer {
             postJson(DEVICES_URL, token, clientToken, payload) { code, _ -> code in 200..299 }
         if (ok) {
             registeredDeviceId = deviceId
-            registeredDualFormat = dualFormat
         } else {
             Timber.tag(TAG).w("Device registration failed")
         }
@@ -386,7 +380,6 @@ object SpotifyWebStreamer {
     suspend fun resolveStreamUrl(
         trackUri: String,
         deviceId: String,
-        dualFormat: Boolean,
     ): String? {
         val token = token() ?: run {
             Timber.tag(TAG).d("No Spotify access token; direct streaming unavailable")
@@ -396,7 +389,7 @@ object SpotifyWebStreamer {
 
         var fileId = audioFileMap[trackUri]
         if (fileId == null) {
-            if (!ensureDeviceRegistered(token, clientToken, deviceId, dualFormat)) {
+            if (!ensureDeviceRegistered(token, clientToken, deviceId)) {
                 return null
             }
             val deferred = CompletableDeferred<String>()
@@ -413,7 +406,7 @@ object SpotifyWebStreamer {
                     dealerConnectionId = null
                     connectionIdDeferred = null
                     registeredDeviceId = null
-                    if (ensureDeviceRegistered(token, clientToken, deviceId, dualFormat)) {
+                    if (ensureDeviceRegistered(token, clientToken, deviceId)) {
                         accepted = postJson(commandUrl, token, clientToken, payload) { code, _ -> code in 200..299 }
                     }
                 }
@@ -466,7 +459,7 @@ object SpotifyWebStreamer {
 
     suspend fun ensureRegisteredDevice(deviceId: String): Boolean {
         val token = token() ?: return false
-        return ensureDeviceRegistered(token, clientToken(), deviceId, registeredDualFormat)
+        return ensureDeviceRegistered(token, clientToken(), deviceId)
     }
 
     suspend fun reportPlayback(
