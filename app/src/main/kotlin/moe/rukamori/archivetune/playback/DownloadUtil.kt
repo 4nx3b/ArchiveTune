@@ -132,6 +132,7 @@ class DownloadUtil
         val databaseProvider: DatabaseProvider,
         @DownloadCache val downloadCache: Cache,
         @PlayerCache val playerCache: Cache,
+        val lyricsHelper: moe.rukamori.archivetune.lyrics.LyricsHelper,
     ) {
         private val appContext: Context = context
 
@@ -551,6 +552,23 @@ class DownloadUtil
                             download: Download,
                             finalException: Exception?,
                         ) {
+                            if (download.state == Download.STATE_QUEUED) {
+                                val extrasSongId = DownloadSourceConfig.downloadIdToSongId(download.request.id)
+                                if (extrasSongId.isNotBlank()) {
+                                    downloadScope.launch {
+                                        runCatching {
+                                            moe.rukamori.archivetune.downloads.DownloadExtrasCoordinator.fetchExtrasForSong(
+                                                context = appContext,
+                                                database = database,
+                                                lyricsHelper = lyricsHelper,
+                                                mediaId = extrasSongId,
+                                            )
+                                        }.onFailure { e ->
+                                            Timber.tag("DownloadUtil").w(e, "download extras failed for %s", extrasSongId)
+                                        }
+                                    }
+                                }
+                            }
                             if (finalException != null || download.state == Download.STATE_FAILED) {
                                 val failedMediaId = DownloadSourceConfig.downloadIdToSongId(download.request.id)
                                 songUrlCache.keys.removeIf { it.startsWith("$failedMediaId:") }
