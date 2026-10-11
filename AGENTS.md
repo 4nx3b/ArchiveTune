@@ -34,6 +34,8 @@ here must preserve the invariants below.
 ## Modules & submodules
 
 - Gradle modules: `:app :core :moriextractor :audio:decent-usb-audio-driver :spotifycore :canvas :jiosaavn :lastfm :musixmatch :shazamkit :morideobfuscator :lyrics:kugou :lyrics:lrclib :lyrics:betterlyrics :lyrics:unison :lyrics:youlyplus` (see `settings.gradle.kts`).
+- Canvas settings live on their own sub-page: `settings/player/canvas` (`CanvasSettingsScreen`) — canvas sources, resolvers, the procedural static-artwork motion (`canvas/procedural/`, Sekai Tune port: Kawarp + Square Tunnel AGSL, audio-reactive) and artwork priority. Ambient mode: `ambient_mode` route (`ui/screens/ambient/`, Sekai Tune port), entered from Appearance → "Always-on & ambient" group.
+- Dolby/FFmpeg decoder (audiophile page): `media3-decoder-ffmpeg` resolves ONLY from the dmt-media3 maven repo via `exclusiveContent` in `settings.gradle.kts`; its transitive media3 artifacts are excluded in `app/build.gradle.kts` so the app's pinned media3 stays authoritative. `DolbyFfmpegDecoderKey` flips `EXTENSION_RENDERER_MODE_PREFER` in `MusicService.createRenderersFactory` (read once — restart playback to apply) and is mutually exclusive with bit-perfect, USB-exclusive and audio offload (both directions, enforced in `AudiophileSettings`).
 - Submodules: `core` → **4nx3b/core** (NewPipeExtractor-based InnerTube client), `lyrics` → **4nx3b/lyrics**, `IconPack` → rukamori, `morideobfuscator` → rukamori. Commit + push inside a submodule first, then pin the gitlink; never leave a dirty or unpushed pointer.
 
 ## Build & test
