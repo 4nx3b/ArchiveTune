@@ -10865,7 +10865,7 @@ class MusicService :
                 enableDecoderFallback: Boolean,
                 audioSink: androidx.media3.exoplayer.audio.AudioSink,
                 eventHandler: android.os.Handler,
-                eventListener: androidx.media3.exoplayer.audio.AudioRendererEventListener?,
+                eventListener: androidx.media3.exoplayer.audio.AudioRendererEventListener,
                 out: ArrayList<androidx.media3.exoplayer.Renderer>,
             ) {
                 super.buildAudioRenderers(

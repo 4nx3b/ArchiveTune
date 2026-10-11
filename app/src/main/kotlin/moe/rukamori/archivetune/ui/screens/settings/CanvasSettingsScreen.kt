@@ -13,6 +13,8 @@
 package moe.rukamori.archivetune.ui.screens.settings
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -23,7 +25,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -48,7 +49,6 @@ import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.ArtworkProviderOrderKey
 import moe.rukamori.archivetune.constants.CanvasAudioReactiveKey
-import moe.rukamori.archivetune.constants.CanvasResolverEndpoints
 import moe.rukamori.archivetune.constants.CanvasResolverEndpointsKey
 import moe.rukamori.archivetune.constants.ProceduralArtworkEnabledKey
 import moe.rukamori.archivetune.constants.ProceduralArtworkStyleKey
@@ -157,28 +157,19 @@ fun CanvasSettingsScreen(
                 .only(WindowInsetsSides.Bottom)
                 .asPaddingValues()
                 .calculateBottomPadding()
-        val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+        val scrollState = rememberScrollState()
         val positions = rememberPreferencePositions()
-        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, listState) }
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Box(modifier = Modifier.fillMaxSize()) {
-            LazyColumn(
-                state = listState,
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .hazeSource(headerHaze)
-                        .windowInsetsPadding(
-                            LocalPlayerAwareWindowInsets.current.only(
-                                WindowInsetsSides.Horizontal,
-                            ),
-                        )
-                        .then(positions.containerModifier()),
-                contentPadding =
-                    PaddingValues(
-                        top = paddingValues.calculateTopPadding(),
-                        bottom = playerAwareBottomPadding + 16.dp,
-                    ),
+            Column(
+                Modifier
+                    .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                    .then(positions.containerModifier())
+                    .verticalScroll(scrollState)
+                    .hazeSource(headerHaze)
+                    .padding(top = paddingValues.calculateTopPadding())
+                    .padding(bottom = playerAwareBottomPadding + 16.dp),
             ) {
                 PreferenceGroup(
                     modifier = positions.modifierFor("archive_tune_canvas"),
@@ -379,12 +370,7 @@ fun CanvasSettingsScreen(
                     }
                 }
 
-                item(
-                    key = "canvas_bottom_space",
-                    contentType = "spacer",
-                ) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
+                Spacer(modifier = Modifier.height(16.dp))
             }
 
             ScreenHeaderHaze(
