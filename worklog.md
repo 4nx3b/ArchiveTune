@@ -5349,3 +5349,18 @@ Work Log:
 Stage Summary:
 - Root causes identified and fixed for all four user reports; no visual redesigns, only the reported behaviors.
 - SoundCloud HLS + search-priority + memo paths are new code; device verification (audio audibility on Stopify, Echo key fetch, canvas visibility in non-US storefronts, morph smoothness) pending user testing; CI to verify compilation.
+
+---
+Task ID: 104
+Agent: Super Z (main agent, session web-60bd54af)
+
+Task: CI closure for the 2026-10-12 four-task round (commit b875e44a6).
+
+Work Log:
+- Pushed b875e44a6 to origin/dev and polled scripts/poll_ci_sha.sh through three windows (~25 min total; the serialized nightly queue was still draining the previous run).
+- FINAL STATE ALL GREEN (8/8 check-runs): check, build (compile+tests+lint), all five nightly APK variants (mobile arm64/x86_64/armeabi/universal, tv universal), create-nightly.
+- Canary 17.0.6735-b875e44a6 published as N202610112052.
+
+Stage Summary:
+- The four-task round is shipped on the canary channel at N202610112052: Stopify mute fix (both manifest formats, standard file preferred, no forced L3, real provisioning), Echo live-version + client-token fallback, 0 kbps chain fix, Tidal pool-account search tier, SoundCloud HLS playback + search-category source priority + result pills + notch insets, flamingo canvas US-storefront fallback + no-blank stage + appearance crossfade + flight alpha restore, and the resolution-storm memos.
+- Remaining user-side verification: on-device audio audibility (Stopify/Echo), canvas visibility in non-US storefronts, morph smoothness, and SoundCloud HLS-only tracks.
