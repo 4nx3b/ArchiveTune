@@ -253,6 +253,18 @@ import moe.rukamori.archivetune.constants.toFormatId
 import moe.rukamori.archivetune.constants.DeezerAudioQuality
 import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
+import moe.rukamori.archivetune.constants.SoundCloudAudioQualityKey
+import moe.rukamori.archivetune.constants.SoundCloudAudioQuality
+import moe.rukamori.archivetune.constants.SoundCloudEnabledKey
+import moe.rukamori.archivetune.constants.SoundCloudAuthTokenKey
+import moe.rukamori.archivetune.constants.SpotifyDirectEnabledKey
+import moe.rukamori.archivetune.constants.SpotifyDirectQualityKey
+import moe.rukamori.archivetune.constants.SpotifyDirectQuality
+import moe.rukamori.archivetune.constants.SpotifyDeviceIdKey
+import moe.rukamori.archivetune.constants.SpotifySpDcKey
+import moe.rukamori.archivetune.constants.SpotifySpKeyKey
+import moe.rukamori.archivetune.constants.SpotifyAccessTokenKey
+import moe.rukamori.archivetune.constants.SpotifyAccessTokenExpiresAtKey
 import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
 import moe.rukamori.archivetune.constants.SaavnAudioQuality
 import moe.rukamori.archivetune.constants.SaavnAudioQualityKey
@@ -276,6 +288,8 @@ import moe.rukamori.archivetune.audiosource.TitleMatch
 import moe.rukamori.archivetune.audiosource.pcmBitrateOrNull
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.applemusic.AppleMusicVirtualStream
+import moe.rukamori.archivetune.soundcloud.SoundCloudAudioProvider
+import moe.rukamori.archivetune.spotify.SpotifyWebStreamer
 import moe.rukamori.archivetune.constants.SongSourceOverrideKey
 import moe.rukamori.archivetune.constants.SongSourceQobuzBackupVideoIdKey
 import moe.rukamori.archivetune.constants.SongSourceQobuzTrackIdKey
@@ -407,6 +421,9 @@ import okhttp3.OkHttpClient
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import moe.rukamori.archivetune.spotify.Spotify as SpotifyCore
+import moe.rukamori.archivetune.spotify.SpotifyAuth
+import java.util.UUID
 import org.json.JSONObject
 import timber.log.Timber
 import java.io.EOFException
@@ -608,6 +625,54 @@ class MusicService :
                         host.endsWith("ytimg.com")
 
                 if (!isYouTubeMediaHost) {
+                    if (request.url.queryParameter(SoundCloudAudioProvider.STREAM_MARKER_QUERY) != null) {
+                        // SoundCloud resolved stream: strip the marker params and
+                        // attach the browser playback headers the CDN expects.
+                        val isApiStream =
+                            request.url.queryParameter(SoundCloudAudioProvider.STREAM_SOURCE_QUERY) ==
+                                SoundCloudAudioProvider.STREAM_SOURCE_API
+                        val isHlsStream =
+                            request.url.queryParameter(SoundCloudAudioProvider.STREAM_HLS_MARKER_QUERY) == "1"
+                        val cleanUrl =
+                            request.url
+                                .newBuilder()
+                                .removeAllQueryParameters(SoundCloudAudioProvider.STREAM_MARKER_QUERY)
+                                .removeAllQueryParameters(SoundCloudAudioProvider.STREAM_HLS_MARKER_QUERY)
+                                .removeAllQueryParameters(SoundCloudAudioProvider.STREAM_SOURCE_QUERY)
+                                .build()
+                        val patched =
+                            SoundCloudAudioProvider.addPlaybackHeaders(
+                                request.newBuilder().url(cleanUrl),
+                                request.header("Range") != null,
+                                isApiStream,
+                                isHlsStream,
+                            ).build()
+                        return@addInterceptor chain.proceed(patched)
+                    }
+                    if (SoundCloudAudioProvider.isSoundCloudPlaybackUrl(request.url)) {
+                        // Unmarked SoundCloud CDN requests (HLS manifests/segments
+                        // reached without markers) still need the browser headers.
+                        val patched =
+                            SoundCloudAudioProvider.addPlaybackHeaders(
+                                request.newBuilder(),
+                                request.header("Range") != null,
+                                isApiStream = false,
+                                isHlsStream = request.url.encodedPath.endsWith(".m3u8") ||
+                                    request.url.encodedPath.endsWith(".m4s"),
+                            ).build()
+                        return@addInterceptor chain.proceed(patched)
+                    }
+                    if (host.endsWith("spotifycdn.com")) {
+                        // Spotify direct streams: the CDN expects the web-player origin.
+                        val patched =
+                            request
+                                .newBuilder()
+                                .header("User-Agent", SpotifyWebStreamer.USER_AGENT)
+                                .header("Origin", "https://open.spotify.com")
+                                .header("Referer", "https://open.spotify.com/")
+                                .build()
+                        return@addInterceptor chain.proceed(patched)
+                    }
                     if (host.endsWith("kouzu.in") && !request.header("x-request-source").isNullOrEmpty()) {
                         return@addInterceptor chain.proceed(request)
                     }
@@ -1327,6 +1392,7 @@ class MusicService :
 
     override fun onCreate() {
         super.onCreate()
+        SpotifyWebStreamer.accessTokenProvider = { ensureSpotifyWebToken() }
         equalizerPlaybackController.attach(this)
         ensureScopesActive()
 
@@ -8064,6 +8130,8 @@ class MusicService :
         val directDeezerTrackId: String? = null,
 
         val directTidalTrackId: String? = null,
+
+        val spotifyTrackId: String? = null,
     )
 
     private fun sourceResolutionChain(): List<AudioSourceType> {
@@ -8076,6 +8144,8 @@ class MusicService :
                 AudioSourceType.DEEZER to dataStore.get(DeezerEnabledKey, false),
                 AudioSourceType.APPLE to dataStore.get(AppleMusicSourceEnabledKey, false),
                 AudioSourceType.JIOSAAVN to dataStore.get(JioSaavnEnabledKey, false),
+                AudioSourceType.SOUNDCLOUD to dataStore.get(SoundCloudEnabledKey, false),
+                AudioSourceType.SPOTIFY to dataStore.get(SpotifyDirectEnabledKey, false),
                 AudioSourceType.YOUTUBE to true,
             )
 
@@ -8096,6 +8166,8 @@ class MusicService :
             AudioSourceType.DEEZER -> dataStore.get(DeezerEnabledKey, false)
             AudioSourceType.APPLE -> dataStore.get(AppleMusicSourceEnabledKey, false)
             AudioSourceType.JIOSAAVN -> dataStore.get(JioSaavnEnabledKey, false)
+            AudioSourceType.SOUNDCLOUD -> dataStore.get(SoundCloudEnabledKey, false)
+            AudioSourceType.SPOTIFY -> dataStore.get(SpotifyDirectEnabledKey, false)
         }
 
     private fun buildSourceQuery(mediaId: String): SourceQuery? {
@@ -8156,6 +8228,7 @@ class MusicService :
             directQobuzBackupVideoId = directQobuzBackupVideoId,
             directDeezerTrackId = directDeezerTrackId,
             directTidalTrackId = directTidalTrackId,
+            spotifyTrackId = queuedMetadata?.spotifyTrackId?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -8561,6 +8634,12 @@ class MusicService :
                             trusted = overrideIsSourceOverride && override == AudioSourceType.APPLE,
                         )
                     AudioSourceType.JIOSAAVN -> resolveJioSaavnStream(query)
+                    AudioSourceType.SOUNDCLOUD -> resolveSoundCloudStream(query)
+                    AudioSourceType.SPOTIFY ->
+                        resolveSpotifyStream(
+                            query,
+                            trusted = overrideIsSourceOverride && override == AudioSourceType.SPOTIFY,
+                        )
                     AudioSourceType.YOUTUBE -> null
                 }
             if (stream == null) {
@@ -9147,6 +9226,204 @@ class MusicService :
         )
     }
 
+    private fun resolveSoundCloudStream(query: SourceQuery): DirectStream? {
+        val quality = parseSoundCloudAudioQuality()
+        val authToken =
+            runCatching { dataStore.get(SoundCloudAuthTokenKey, "") }.getOrDefault("")
+        Timber.tag("MusicService").d("SoundCloud resolve start | quality=%s", quality.name)
+        return runCatching {
+            runBlocking(Dispatchers.IO) {
+                SoundCloudAudioProvider.resolve(
+                    query =
+                        SoundCloudAudioProvider.Query(
+                            mediaId = query.mediaId,
+                            title = query.title,
+                            artists = query.artists,
+                            album = query.album,
+                            durationMs = query.durationMs,
+                        ),
+                    authToken = authToken,
+                    quality = quality,
+                )
+            }
+        }.onFailure { error ->
+            Timber.tag("MusicService").w(error, "SoundCloud resolution failed for %s", query.title)
+        }.getOrNull()?.also { stream ->
+            Timber.tag("MusicService").i(
+                "SoundCloud resolved \"%s\" [%s] matched=\"%s\"",
+                query.title,
+                stream.label,
+                stream.matchedTitle ?: "?",
+            )
+        }
+    }
+
+    private fun parseSoundCloudAudioQuality(): SoundCloudAudioQuality {
+        val stored = dataStore.get(SoundCloudAudioQualityKey, SoundCloudAudioQuality.AAC_160.name)
+        return runCatching { SoundCloudAudioQuality.valueOf(stored) }.getOrDefault(SoundCloudAudioQuality.AAC_160)
+    }
+
+    /**
+     * Spotify direct streaming (Stopify port). Requires the experimental source
+     * toggle (checked by the chain) AND a signed-in web session (sp_dc cookie).
+     * The stream is a Widevine-encrypted MP4 from Spotify's CDN; the DRM session
+     * comes from createMediaSourceFactory's provider.
+     */
+    private fun resolveSpotifyStream(
+        query: SourceQuery,
+        trusted: Boolean,
+    ): DirectStream? {
+        val spDc = runCatching { dataStore.get(SpotifySpDcKey, "") }.getOrDefault("")
+        if (spDc.isBlank()) {
+            Timber.tag("MusicService").d("Spotify direct skip: not signed in (no sp_dc)")
+            return null
+        }
+        val directTrackId = query.spotifyTrackId?.takeIf { it.isNotBlank() }
+        val matched: SpotifyMatch? =
+            if (directTrackId != null) {
+                SpotifyMatch(
+                    trackId = directTrackId,
+                    title = query.title,
+                    artist = query.artists.joinToString(", ").ifBlank { null },
+                    durationMs = query.durationMs,
+                )
+            } else {
+                runCatching {
+                    runBlocking(Dispatchers.IO) { searchSpotifyTrack(query) }
+                }.getOrNull()
+            }
+        if (matched == null) {
+            Timber.tag("MusicService").d("Spotify direct: no track match for \"%s\"", query.title)
+            return null
+        }
+        val quality = parseSpotifyDirectQuality()
+        val deviceId = ensureSpotifyDeviceId()
+        val cdnUrl =
+            runCatching {
+                runBlocking(Dispatchers.IO) {
+                    SpotifyWebStreamer.resolveStreamUrl(
+                        trackUri = "spotify:track:${matched.trackId}",
+                        deviceId = deviceId,
+                        dualFormat = quality == SpotifyDirectQuality.AAC_128_DUAL,
+                    )
+                }
+            }.onFailure { error ->
+                Timber.tag("MusicService").w(error, "Spotify direct stream resolution failed for \"%s\"", query.title)
+            }.getOrNull() ?: return null
+        Timber.tag("MusicService").i(
+            "Spotify direct resolved \"%s\" -> %s",
+            query.title,
+            cdnUrl.take(72),
+        )
+        return DirectStream(
+            uri = cdnUrl,
+            mimeType = "audio/mp4",
+            codecs = "mp4a.40.2",
+            contentLength = null,
+            label = if (quality == SpotifyDirectQuality.AAC_128_DUAL) {
+                "Spotify Direct AAC 128 (dual)"
+            } else {
+                "Spotify Direct AAC 128"
+            },
+            source = AudioSourceType.SPOTIFY,
+            matchedTitle = matched.title,
+            matchedArtist = matched.artist,
+            matchedAlbum = query.album,
+            matchedDurationMs = matched.durationMs,
+            trustedDirectId = directTrackId != null || trusted,
+            sampleRate = 44_100,
+            bitDepth = null,
+        )
+    }
+
+    private data class SpotifyMatch(
+        val trackId: String,
+        val title: String,
+        val artist: String?,
+        val durationMs: Long?,
+    )
+
+    private fun parseSpotifyDirectQuality(): SpotifyDirectQuality {
+        val stored = dataStore.get(SpotifyDirectQualityKey, SpotifyDirectQuality.AAC_128.name)
+        return runCatching { SpotifyDirectQuality.valueOf(stored) }.getOrDefault(SpotifyDirectQuality.AAC_128)
+    }
+
+    private fun ensureSpotifyDeviceId(): String {
+        val existing = runCatching { dataStore.get(SpotifyDeviceIdKey, "") }.getOrDefault("")
+        if (existing.length == 40) return existing
+        val generated = UUID.randomUUID().toString().replace("-", "") + "00000000"
+        runCatching {
+            runBlocking { dataStore.edit { prefs -> prefs[SpotifyDeviceIdKey] = generated } }
+        }
+        return generated
+    }
+
+    /** Web-player Bearer token for the streaming pipeline, refreshed when stale. */
+    private suspend fun ensureSpotifyWebToken(): String? {
+        val token = dataStore.get(SpotifyAccessTokenKey, "")
+        val expiry = dataStore.get(SpotifyAccessTokenExpiresAtKey, 0L)
+        if (token.isNotBlank() && expiry - 60_000L > System.currentTimeMillis()) {
+            SpotifyCore.accessToken = token
+            return token
+        }
+        val spDc = dataStore.get(SpotifySpDcKey, "")
+        if (spDc.isBlank()) return null
+        val spKey = dataStore.get(SpotifySpKeyKey, "")
+        val fresh = SpotifyAuth.fetchAccessToken(spDc, spKey).getOrNull() ?: return null
+        runCatching {
+            dataStore.edit { prefs ->
+                prefs[SpotifyAccessTokenKey] = fresh.accessToken
+                prefs[SpotifyAccessTokenExpiresAtKey] = fresh.accessTokenExpirationTimestampMs
+            }
+        }
+        SpotifyCore.accessToken = fresh.accessToken
+        return fresh.accessToken
+    }
+
+    private suspend fun searchSpotifyTrack(query: SourceQuery): SpotifyMatch? {
+        val token = ensureSpotifyWebToken() ?: return null
+        val term = buildString {
+            append(query.title)
+            if (query.artists.isNotEmpty()) append(" ").append(query.artists.joinToString(" "))
+        }
+        val result = SpotifyCore.search(term, listOf("track"), 10).getOrNull() ?: return null
+        var best: SpotifyMatch? = null
+        var bestScore = -1
+        for (track in result.tracks?.items.orEmpty()) {
+            if (track.id.isBlank()) continue
+            var score = 0
+            if (track.name.equals(query.title, ignoreCase = true)) {
+                score += 4
+            } else if (track.name.contains(query.title, ignoreCase = true)) {
+                score += 2
+            }
+            val artistNames = track.artists.map { it.name }
+            if (artistNames.any { wanted -> query.artists.any { wanted.equals(it, ignoreCase = true) } }) {
+                score += 3
+            }
+            val duration = track.durationMs.toLong()
+            if (query.durationMs != null && duration > 0) {
+                val delta = kotlin.math.abs(duration - query.durationMs)
+                score += when {
+                    delta <= 2_000 -> 3
+                    delta <= 5_000 -> 1
+                    delta > 15_000 -> -4
+                    else -> 0
+                }
+            }
+            if (score > bestScore) {
+                bestScore = score
+                best = SpotifyMatch(
+                    trackId = track.id,
+                    title = track.name,
+                    artist = artistNames.joinToString(", ").ifBlank { null },
+                    durationMs = duration.takeIf { it > 0 },
+                )
+            }
+        }
+        return best?.takeIf { bestScore >= 5 }
+    }
+
     private fun parseQobuzInstances(): List<String> =
         dataStore
             .get(QobuzInstancesKey, "")
@@ -9161,8 +9438,9 @@ class MusicService :
 
     private fun resolveDeezerStream(query: SourceQuery): DirectStream? {
         if (!DeezerAudioProvider.hasBackends()) {
-            Timber.tag("MusicService").d("Deezer skip: no manual or pooled accounts available")
-            return null
+            // No accounts/instances configured — the provider still has the
+            // anonymous dzmedia-style resolvers as a last resort, so continue.
+            Timber.tag("MusicService").d("Deezer: no accounts/instances; trying anonymous resolvers")
         }
         val quality = parseDeezerAudioQuality()
         Timber.tag("MusicService").d("Deezer resolve start | quality=%s", quality.name)
@@ -10015,6 +10293,8 @@ class MusicService :
             cacheKey.startsWith("deezer:") -> AudioSourceType.DEEZER
             cacheKey.startsWith("apple:") -> AudioSourceType.APPLE
             cacheKey.startsWith("jiosaavn:") -> AudioSourceType.JIOSAAVN
+            cacheKey.startsWith("soundcloud:") -> AudioSourceType.SOUNDCLOUD
+            cacheKey.startsWith("spotify:") -> AudioSourceType.SPOTIFY
             else -> AudioSourceType.YOUTUBE
         }
 
@@ -10026,6 +10306,8 @@ class MusicService :
             AudioSourceType.DEEZER -> "Deezer"
             AudioSourceType.APPLE -> "Apple Music"
             AudioSourceType.JIOSAAVN -> "JioSaavn"
+            AudioSourceType.SOUNDCLOUD -> "SoundCloud"
+            AudioSourceType.SPOTIFY -> "Spotify"
             AudioSourceType.YOUTUBE -> "YouTube Music"
         }
 
@@ -10100,9 +10382,109 @@ class MusicService :
                 val appleTrack = mediaItem.mediaId?.let { appleDrmTrackInfo[it] }
                 when {
                     appleTrack != null -> buildAppleDrmSessionManager(appleTrack) ?: DrmSessionManager.DRM_UNSUPPORTED
-                    else -> DrmSessionManager.DRM_UNSUPPORTED
+                    else -> spotifyDrmManagerOrNull() ?: DrmSessionManager.DRM_UNSUPPORTED
                 }
             }
+
+    @Volatile
+    private var cachedSpotifyDrmEnabled: Boolean = false
+
+    @Volatile
+    private var cachedSpotifyDrmManager: DrmSessionManager? = null
+
+    /**
+     * DRM session manager for Spotify direct streams. Attached to every media
+     * source while the experimental source is enabled — acquisition is driven
+     * by the content itself (only the CENC-encrypted Spotify files carry DRM
+     * init data), so unencrypted streams never open a session.
+     */
+    private fun spotifyDrmManagerOrNull(): DrmSessionManager? {
+        val enabled = runCatching { dataStore.get(SpotifyDirectEnabledKey, false) }.getOrDefault(false)
+        if (!enabled) {
+            cachedSpotifyDrmManager = null
+            cachedSpotifyDrmEnabled = false
+            return null
+        }
+        if (cachedSpotifyDrmEnabled && cachedSpotifyDrmManager != null) return cachedSpotifyDrmManager
+        val manager =
+            runCatching {
+                DefaultDrmSessionManager
+                    .Builder()
+                    .setUuidAndExoMediaDrmProvider(
+                        C.WIDEVINE_UUID,
+                        ExoMediaDrm.Provider { uuid ->
+                            val created =
+                                runCatching { FrameworkMediaDrm.newInstance(uuid) }.getOrNull()?.apply {
+                                    // Web-player streams are L3 content.
+                                    runCatching { setPropertyString("securityLevel", "L3") }
+                                        .recoverCatching { setPropertyString("securityLevel", "3") }
+                                }
+                            created ?: FrameworkMediaDrm.DEFAULT_PROVIDER.acquireExoMediaDrm(uuid)
+                        },
+                    ).build(SpotifyLicenseCallback())
+            }.getOrNull()
+        cachedSpotifyDrmEnabled = true
+        cachedSpotifyDrmManager = manager
+        return manager
+    }
+
+    /**
+     * Widevine license callback for Spotify direct streams (Stopify port): the
+     * license server is Spotify's web-player audio endpoint and authenticates
+     * with the web session's Bearer + client tokens.
+     */
+    private inner class SpotifyLicenseCallback : MediaDrmCallback {
+        private val licenseUrl = "https://gae2-spclient.spotify.com/widevine-license/v1/audio/license"
+
+        override fun executeProvisionRequest(
+            uuid: java.util.UUID,
+            request: ExoMediaDrm.ProvisionRequest,
+        ): MediaDrmCallback.Response {
+            val uri = android.net.Uri.parse(licenseUrl)
+            throw MediaDrmCallbackException(
+                DataSpec(uri),
+                uri,
+                emptyMap(),
+                0L,
+                java.io.IOException("Spotify DRM provisioning not supported"),
+            )
+        }
+
+        override fun executeKeyRequest(
+            uuid: java.util.UUID,
+            request: ExoMediaDrm.KeyRequest,
+        ): MediaDrmCallback.Response {
+            val token = runBlocking { ensureSpotifyWebToken() }
+            val clientToken = runBlocking { SpotifyWebStreamer.clientToken() }
+            val builder =
+                Request
+                    .Builder()
+                    .url(licenseUrl)
+                    .header("Content-Type", "application/octet-stream")
+                    .header("authorization", "Bearer $token")
+                    .header("client-token", clientToken)
+                    .header("app-platform", "WebPlayer")
+                    .header("spotify-app-version", "1.3.5.316.gd873ee9db135")
+                    .header("origin", "https://open.spotify.com")
+                    .header("referer", "https://open.spotify.com/")
+                    .header("User-Agent", SpotifyWebStreamer.USER_AGENT)
+                    .post(request.data.toRequestBody(null))
+            mediaOkHttpClient.newCall(builder.build()).execute().use { response ->
+                val bytes = response.body?.bytes()
+                if (!response.isSuccessful || bytes == null) {
+                    val uri = android.net.Uri.parse(licenseUrl)
+                    throw MediaDrmCallbackException(
+                        DataSpec(uri),
+                        uri,
+                        emptyMap(),
+                        0L,
+                        java.io.IOException("Spotify license request failed: HTTP ${response.code}"),
+                    )
+                }
+                return MediaDrmCallback.Response(bytes)
+            }
+        }
+    }
 
     private class AppleTrackDrmInfo(
         val adamId: String,

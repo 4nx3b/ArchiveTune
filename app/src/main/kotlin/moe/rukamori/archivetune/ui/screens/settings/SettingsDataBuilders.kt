@@ -108,6 +108,8 @@ import moe.rukamori.archivetune.constants.AodShowTimeLabelsKey
 import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
+import moe.rukamori.archivetune.constants.SoundCloudEnabledKey
+import moe.rukamori.archivetune.constants.SpotifyDirectEnabledKey
 import moe.rukamori.archivetune.constants.EnableDnsOverHttpsKey
 import moe.rukamori.archivetune.constants.EnableMusixmatchExperimentalKey
 import moe.rukamori.archivetune.constants.HideCachedCardKey
@@ -426,6 +428,11 @@ fun buildSettingsGroups(
                 SettingsChild("Deezer audio quality", "deezer_audio_quality", listOf("deezer quality", "deezer audio quality", "deezer flac")),
                 SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("jiosaavn", "jio saavn", "saavn", "enable jiosaavn", "indian music")) { SearchResultSwitch(JioSaavnEnabledKey, false) },
                 SettingsChild("JioSaavn audio quality", "jiosaavn_audio_quality", listOf("jiosaavn quality", "saavn quality", "jiosaavn audio quality")),
+                SettingsChild("Enable SoundCloud source", "soundcloud_enable", listOf("soundcloud", "enable soundcloud", "soundcloud source", "sc streaming")) { SearchResultSwitch(SoundCloudEnabledKey, false) },
+                SettingsChild("SoundCloud audio quality", "soundcloud_audio_quality", listOf("soundcloud quality", "soundcloud audio quality", "aac 160", "mp3 128")),
+                SettingsChild("SoundCloud OAuth token", "soundcloud_auth_token", listOf("soundcloud token", "soundcloud oauth", "soundcloud login", "soundcloud cookie")),
+                SettingsChild("Enable Spotify direct streaming", "spotify_direct_enable", listOf("spotify direct", "direct spotify", "spotify streaming", "spotify servers")) { SearchResultSwitch(SpotifyDirectEnabledKey, false) },
+                SettingsChild("Spotify direct quality", "spotify_direct_quality", listOf("spotify direct quality", "spotify bitrate", "spotify aac")),
             ),
         )
 

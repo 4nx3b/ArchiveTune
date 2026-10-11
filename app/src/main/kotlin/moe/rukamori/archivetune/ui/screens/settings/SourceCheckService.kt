@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.QobuzBackupEndpointsKey
+import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
@@ -19,6 +20,7 @@ import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzBackupProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
+import moe.rukamori.archivetune.soundcloud.SoundCloudAudioProvider
 import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.utils.PoolAccountManager
@@ -70,6 +72,8 @@ object SourceCheckService {
                     AudioSourceType.DEEZER -> checkDeezer(context)
                     AudioSourceType.APPLE -> checkAppleMusic()
                     AudioSourceType.JIOSAAVN -> checkJioSaavn()
+                    AudioSourceType.SOUNDCLOUD -> checkSoundCloud()
+                    AudioSourceType.SPOTIFY -> checkSpotifyDirect(context)
                     AudioSourceType.YOUTUBE -> checkYouTube()
                 }
             }
@@ -477,6 +481,47 @@ private data class CdnProbe(
                 summary = "Failed to reach JioSaavn: ${e.message ?: e.javaClass.simpleName}",
             )
         }
+    }
+
+    private suspend fun checkSoundCloud(): SourceCheckResult {
+        return runCatching {
+            val result = SoundCloudAudioProvider.searchMetadata("test", 3)
+            if (result.isEmpty()) {
+                SourceCheckResult(
+                    status = SourceCheckStatus.UNREACHABLE,
+                    summary = "SoundCloud returned no results for a probe query. The client id could not be " +
+                        "scraped from soundcloud.com — try again in a minute.",
+                )
+            } else {
+                SourceCheckResult(
+                    status = SourceCheckStatus.READY,
+                    summary = "SoundCloud is reachable and returned ${result.size} results for a probe query. " +
+                        "SoundCloud source is READY.",
+                )
+            }
+        }.getOrElse { e ->
+            SourceCheckResult(
+                status = SourceCheckStatus.UNREACHABLE,
+                summary = "Failed to reach SoundCloud: ${e.message ?: e.javaClass.simpleName}",
+            )
+        }
+    }
+
+    private suspend fun checkSpotifyDirect(context: Context): SourceCheckResult {
+        val spDc = runCatching { context.dataStore.data.first()[SpotifySpDcKey].orEmpty() }.getOrDefault("")
+        if (spDc.isBlank()) {
+            return SourceCheckResult(
+                status = SourceCheckStatus.NOT_CONFIGURED,
+                summary = "Spotify direct streaming requires a signed-in Spotify web session. " +
+                    "Sign in via Settings → Integrations → Spotify, then enable the source here.",
+            )
+        }
+        return SourceCheckResult(
+            status = SourceCheckStatus.READY,
+            summary = "Spotify web session (sp_dc) present — direct streaming can register its virtual " +
+                "device and resolve CDN streams on demand. This check makes no network call to Spotify, " +
+                "so playback viability is only confirmed during actual playback.",
+        )
     }
 
     private suspend fun checkYouTube(): SourceCheckResult {

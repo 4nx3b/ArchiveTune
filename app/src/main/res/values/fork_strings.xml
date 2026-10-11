@@ -30,6 +30,35 @@
     <string name="jiosaavn_credit">JioSaavn (via vivimusic)</string>
     <string name="jiosaavn_credit_description">Streaming powered by Vivi Music. Ported under GPL-3.0 from github.com/vivizzz007/vivi-music.</string>
 
+    <!-- SoundCloud source (MetroFusePlus port) + Spotify direct streaming (Stopify port).
+         Wired in ui/screens/settings/PlaybackSourceSections.kt. -->
+    <string name="source_soundcloud">SoundCloud</string>
+    <string name="soundcloud_specific">SoundCloud Streaming</string>
+    <string name="soundcloud_enable">Stream from SoundCloud</string>
+    <string name="soundcloud_enable_description">Match and play tracks directly from SoundCloud</string>
+    <string name="soundcloud_audio_quality">SoundCloud quality</string>
+    <string name="soundcloud_quality_mp3_128">MP3 128 kbps</string>
+    <string name="soundcloud_quality_aac_96">AAC 96 kbps</string>
+    <string name="soundcloud_quality_aac_160">AAC 160 kbps</string>
+    <string name="soundcloud_auth_token_title">SoundCloud OAuth token</string>
+    <string name="soundcloud_auth_token_placeholder">Paste oauth_token, access token, or a SoundCloud cookie header</string>
+    <string name="soundcloud_auth_configured">SoundCloud token saved</string>
+    <string name="soundcloud_auth_not_configured">No SoundCloud token saved</string>
+    <string name="soundcloud_clear_auth">Clear SoundCloud token</string>
+    <string name="soundcloud_web_login">Sign in on soundcloud.com</string>
+    <string name="soundcloud_web_login_description">Opens the SoundCloud website and saves your OAuth token for personalized resolution</string>
+
+    <string name="source_spotify">Spotify (direct)</string>
+    <string name="spotify_direct_specific">Spotify Direct Streaming</string>
+    <string name="spotify_direct_enable">Stream directly from Spotify</string>
+    <string name="spotify_direct_enable_description">Experimental: plays tracks straight from Spotify\'s servers after you sign in</string>
+    <string name="spotify_direct_experimental">Experimental</string>
+    <string name="spotify_direct_warning">May get your Spotify account banned. Use at your own risk.</string>
+    <string name="spotify_direct_audio_quality">Spotify direct quality</string>
+    <string name="spotify_direct_quality_aac_128">AAC 128 kbps</string>
+    <string name="spotify_direct_quality_aac_128_dual">AAC 128 kbps (dual channel)</string>
+    <string name="spotify_direct_login_hint">Sign in to Spotify first (Settings → Integrations → Spotify)</string>
+
     <!-- AI translation providers (DeepL / OpenRouter / Mistral) — ported from vivi-music under GPL-3.0. -->
     <string name="ai_translation_settings">Translation engine</string>
     <string name="deepl_api_key">DeepL API key</string>

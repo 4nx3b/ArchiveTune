@@ -1627,6 +1627,8 @@ internal fun providerDisplayName(source: AudioSourceType): String =
         AudioSourceType.DEEZER -> "Deezer (Lossless FLAC)"
         AudioSourceType.APPLE -> "Apple Music (Catalogue)"
         AudioSourceType.JIOSAAVN -> "JioSaavn (AAC)"
+        AudioSourceType.SOUNDCLOUD -> "SoundCloud"
+        AudioSourceType.SPOTIFY -> "Spotify Direct (AAC)"
         AudioSourceType.YOUTUBE -> "YouTube Music (Standard)"
     }
 
@@ -1638,6 +1640,8 @@ internal fun providerNote(source: AudioSourceType): String =
         AudioSourceType.DEEZER -> "Lossless resolver"
         AudioSourceType.APPLE -> "Metadata & lyrics tier"
         AudioSourceType.JIOSAAVN -> "AAC resolver"
+        AudioSourceType.SOUNDCLOUD -> "Public API resolver"
+        AudioSourceType.SPOTIFY -> "Web-player pipeline (experimental)"
         AudioSourceType.YOUTUBE -> "Ultimate zero-skip fallback"
     }
 

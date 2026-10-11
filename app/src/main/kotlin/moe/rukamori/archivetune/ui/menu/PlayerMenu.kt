@@ -96,6 +96,7 @@ import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.soundcloud.SoundCloudAudioProvider
 import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
@@ -1499,6 +1500,8 @@ private fun AudioSourceType.sourceLabelRes(): Int =
         AudioSourceType.DEEZER -> R.string.source_deezer
         AudioSourceType.APPLE -> R.string.source_apple_music
         AudioSourceType.JIOSAAVN -> R.string.source_jiosaavn
+        AudioSourceType.SOUNDCLOUD -> R.string.source_soundcloud
+        AudioSourceType.SPOTIFY -> R.string.source_spotify
         AudioSourceType.YOUTUBE -> R.string.source_youtube
     }
 
@@ -1511,6 +1514,8 @@ private fun AudioSourceType.sourceIconRes(): Int =
         AudioSourceType.APPLE -> R.drawable.provider_apple
 
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
+        AudioSourceType.SOUNDCLOUD -> R.drawable.solar_music_note_2_linear
+        AudioSourceType.SPOTIFY -> R.drawable.spotify_icon
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
 
@@ -1776,6 +1781,28 @@ private suspend fun searchOneSource(
                     }
             }
 
+            AudioSourceType.SOUNDCLOUD -> {
+                runCatching { SoundCloudAudioProvider.searchMetadata(query, limit) }
+                    .getOrDefault(emptyList())
+                    .map { track ->
+                        SourceSearchResult(
+                            source = AudioSourceType.SOUNDCLOUD,
+                            trackId = track.permalinkUrl,
+                            title = track.title,
+                            artist = track.artist,
+                            thumbnailUrl = track.artworkUrl,
+                            durationMs = track.durationMs,
+                            qualityLabel = aacLabel,
+                            songItem = null,
+                        )
+                    }
+            }
+
+            AudioSourceType.SPOTIFY -> {
+                // Spotify is catalog-only for in-app source search; direct
+                // streaming resolves per-song through the playback chain.
+                emptyList()
+            }
         }
     }
 
