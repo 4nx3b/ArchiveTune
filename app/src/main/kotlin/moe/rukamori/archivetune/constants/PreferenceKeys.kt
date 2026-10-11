@@ -1374,12 +1374,10 @@ val SpotifyDirectQualityKey = stringPreferencesKey("spotifyDirectQuality")
 
 enum class SpotifyDirectQuality {
     AAC_128,
-    AAC_128_DUAL,
 }
 
 val SpotifyDirectQualityOptions = listOf(
     SpotifyDirectQuality.AAC_128,
-    SpotifyDirectQuality.AAC_128_DUAL,
 )
 
 val SpotifyResolveMethodKey = stringPreferencesKey("spotifyResolveMethod")

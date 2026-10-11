@@ -7,6 +7,43 @@ reference with a complete chat suite, the settings app turns into
 grouped glass cards, and the liquid-glass system grows its own tuning
 page.
 
+## Fixes (17.0.1 batch)
+
+- Spotify direct streams are audible again: the Stopify pipeline was
+  registering the device with the dual-mono manifest only, so every
+  resolve landed on a file_ids_mp4_dual file that decodes to silence -
+  the device now registers both manifest formats and always prefers the
+  standard MP4 (upstream Stopify parity), the broken "AAC 128 (dual)"
+  quality option is gone, and the Widevine path drops its forced-L3
+  security level and learns real provisioning instead of throwing
+- Echo Music resolve works again: the desktop app version is refreshed
+  live from the version index (the stale one earned PlayPlay key HTTP
+  403s), the client token falls back to the web persona when the desktop
+  persona is rejected, and every request carries the app version header
+- The live audio-chain pill no longer shows 0 kbps for Spotify, SoundCloud
+  and Tidal AAC streams - resolvers now report their real bitrate and
+  label digits are parsed as a fallback
+- Tidal artwork/canvas lookups ride the community source pool: when no
+  private instances are configured the search falls through to
+  pool-account tokens before giving up, and pool accounts count as
+  "available" for the artwork fallback
+- SoundCloud stops falling back to YouTube: tracks that only offer HLS
+  transcodings (previously skipped outright) now play through a
+  progressive HLS data source, and SoundCloud search results pin their
+  exact track - searching inside a source category plays from that
+  source first, for SoundCloud, Spotify and Apple Music alike
+- SoundCloud search results get the category pill row, the glass search
+  bar and proper status-bar/notch insets like the other providers
+- Apple Music player canvases resolve far more reliably: the canvas
+  search retries the US catalog when your local storefront has no
+  editorial videos (the log showed every result scored 0 in "in"), the
+  static artwork stays on screen while the canvas and the next song's
+  artwork load (no more grey void), and the canvas morph keeps its
+  flight layer from getting stuck invisible after quick page toggles
+- Playback resolution is memoized for a few seconds per song - a broken
+  stream used to re-run the whole source chain at ~100 resolutions per
+  second with blocking database reads; the storm is gone
+
 ## Audio engines & bit-perfect
 
 - Tryptify and LastWave-native join the app as first-class audio engines:

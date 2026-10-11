@@ -25,6 +25,7 @@ data class DirectStream(
 
     val sampleRate: Int? = null,
     val bitDepth: Int? = null,
+    val bitrate: Int? = null,
 )
 
 fun DirectStream.pcmBitrateOrNull(channels: Int = 2): Int? {

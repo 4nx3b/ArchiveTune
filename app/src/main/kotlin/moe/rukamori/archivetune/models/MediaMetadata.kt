@@ -39,6 +39,10 @@ data class MediaMetadata(
     val isrc: String? = null,
 
     val suggestedBy: String? = null,
+
+    val preferredSource: String? = null,
+
+    val soundCloudUrl: String? = null,
 ) : Serializable {
     companion object {
         private const val serialVersionUID = 1L

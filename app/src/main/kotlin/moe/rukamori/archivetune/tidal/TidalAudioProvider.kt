@@ -17,6 +17,7 @@ import moe.rukamori.archivetune.audiosource.TrackMatching
 import moe.rukamori.archivetune.audiosource.rethrowIfAudioSourceCancelled
 import moe.rukamori.archivetune.audiosource.withAudioSourceAttemptDeadline
 import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.utils.PoolAccountManager
 import android.util.Base64
 import moe.rukamori.archivetune.constants.TidalAudioQuality
 import okhttp3.HttpUrl
@@ -1000,7 +1001,52 @@ object TidalAudioProvider {
     ): JSONArray? {
         if (term.isBlank()) return null
         searchTracksFromDirectApi(term, exactIsrc)?.takeIf { it.length() > 0 }?.let { return it }
+        searchTracksFromAccountPool(term)?.takeIf { it.length() > 0 }?.let { return it }
         return searchTracksFromTidalApi(term)
+    }
+
+    private fun searchTracksFromAccountPool(term: String): JSONArray? {
+        val accounts = PoolAccountManager.tidalAccounts()
+        if (accounts.isEmpty()) return null
+        val cacheKey = "pool:${term.lowercase(Locale.US)}"
+        val now = System.currentTimeMillis()
+        searchCache[cacheKey]?.takeIf { it.expiresAtMs > now }?.let { return it.results }
+        for (account in accounts) {
+            val url =
+                "$API_BASE_URL/search/tracks"
+                    .toHttpUrl()
+                    .newBuilder()
+                    .addQueryParameter("countryCode", account.countryCode?.takeIf { it.isNotBlank() } ?: COUNTRY_CODE)
+                    .addQueryParameter("locale", LOCALE)
+                    .addQueryParameter("deviceType", DEVICE_TYPE)
+                    .addQueryParameter("query", term)
+                    .addQueryParameter("limit", SEARCH_LIMIT.toString())
+                    .addQueryParameter("offset", "0")
+                    .build()
+            val request =
+                Request
+                    .Builder()
+                    .url(url)
+                    .get()
+                    .header("Accept", "application/json")
+                    .header("User-Agent", BROWSER_USER_AGENT)
+                    .header("Authorization", "Bearer ${account.token}")
+                    .build()
+            val results =
+                runCatching {
+                    client.newCall(request).withAudioSourceAttemptDeadline().execute().use { response ->
+                        if (!response.isSuccessful) return@use null
+                        val body = response.body?.string()?.takeIf { it.isNotBlank() } ?: return@use null
+                        JSONObject(body).optJSONArray("items")
+                    }
+                }.onFailure { it.rethrowIfAudioSourceCancelled() }.getOrNull()
+            if (results != null && results.length() > 0) {
+                searchCache[cacheKey] = CachedSearch(results, now + SEARCH_CACHE_MS)
+                PoolAccountManager.noteAccountSuccess("tidal", account.id)
+                return results
+            }
+        }
+        return null
     }
 
     private fun searchTracksFromDirectApi(

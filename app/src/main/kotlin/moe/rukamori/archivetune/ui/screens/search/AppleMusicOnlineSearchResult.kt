@@ -63,6 +63,7 @@ import moe.rukamori.archivetune.applemusic.AppleMusicSearchItem
 import moe.rukamori.archivetune.constants.SearchProvider
 import moe.rukamori.archivetune.constants.SearchSource
 import moe.rukamori.archivetune.constants.ListThumbnailSize
+import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadius
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
@@ -352,7 +353,13 @@ private fun AppleMusicSearchResultRow(
                                     AppleMusicPlaybackResolver.resolveTrack(item)
                                 }
                             if (song != null) {
-                                playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
+                                playerConnection.playQueue(
+                                    YouTubeQueue.radio(
+                                        song.toMediaMetadata().copy(
+                                            preferredSource = AudioSourceType.APPLE.name,
+                                        ),
+                                    ),
+                                )
                             } else {
                                 Toast.makeText(
                                     context,

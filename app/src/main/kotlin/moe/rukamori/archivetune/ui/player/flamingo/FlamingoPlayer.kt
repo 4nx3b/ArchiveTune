@@ -422,6 +422,12 @@ fun FlamingoPlayerContent(
         var canvasRendering by remember { mutableStateOf(false) }
         val canvasLoopSync = remember { CanvasLoopSync() }
 
+        val stageAppearance by animateFloatAsState(
+            targetValue = if (canvasVisualActive) 1f else 0f,
+            animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
+            label = "flamingo-stage-appearance",
+        )
+
         val canvasBackdropReveal by animateFloatAsState(
             targetValue = if (canvasVisualActive && canvasRendering) 1f else 0f,
             animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
@@ -537,6 +543,8 @@ fun FlamingoPlayerContent(
                             0f,
                             tween(FlamingoStageFlightMs, easing = FastOutSlowInEasing),
                         )
+                    } else if (canvasFlightAlpha.value < 0.999f) {
+                        canvasFlightAlpha.snapTo(1f)
                     }
                 }
                 stageBarSlotRect != null -> {
@@ -1264,6 +1272,7 @@ fun FlamingoPlayerContent(
                                                             videoShowing = videoShowing,
                                                             proceduralActive = proceduralStageActive,
                                                             overlayArtworkReveal = overlayArtworkReveal,
+                                                            stageAppearance = stageAppearance,
                                                             onStageRectPositioned = { stageAlbumRect = it },
                                                         )
                                                         AnimatedContent(
@@ -1490,7 +1499,7 @@ fun FlamingoPlayerContent(
                                                 FlamingoStageFlightCornerDp * stageFlightCornerT(t),
                                             )
                                             clip = true
-                                            alpha = canvasFlightAlpha.value
+                                            alpha = canvasFlightAlpha.value * stageAppearance
                                             compositingStrategy = CompositingStrategy.Offscreen
                                         },
                                 ) {
@@ -2284,6 +2293,7 @@ private fun ColumnScope.FlamingoAlbum(
     videoShowing: Boolean,
     proceduralActive: Boolean,
     overlayArtworkReveal: Float,
+    stageAppearance: Float = 1f,
     onStageRectPositioned: (Rect) -> Unit,
 ) {
     if (videoShowing) {
@@ -2327,7 +2337,42 @@ private fun ColumnScope.FlamingoAlbum(
                 .onGloballyPositioned { coords ->
                     onStageRectPositioned(coords.boundsInRoot())
                 },
-        )
+        ) {
+            if (stageAppearance < 0.999f) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(top = 20.dp)
+                        .padding(horizontal = 15.dp)
+                        .padding(bottom = 33.dp),
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    val staticScale = animateFloatAsState(
+                        targetValue = if (isPlaying()) 0f else 1f,
+                        animationSpec = if (isPlaying()) {
+                            remember("FlamingoAlbum_stageSpring") { SpringSpec(stiffness = 300f, dampingRatio = 1f, visibilityThreshold = 0.001f) }
+                        } else {
+                            remember("FlamingoAlbum_stageTween") { TweenSpec(durationMillis = 350, easing = EaseOutQuart) }
+                        },
+                        label = "flamingo-stage-static-scale",
+                    )
+                    val staticDp = (7 + (27 * staticScale.value)).dp
+                    ShadowImageWithCache(
+                        dataLambda = { artworkUrl },
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer {
+                                compositingStrategy = CompositingStrategy.ModulateAlpha
+                                alpha = 1f - stageAppearance
+                            }
+                            .padding(start = staticDp, end = staticDp, bottom = staticDp),
+                        imageQuality = ImageQuality.RAW,
+                        shadowOverlay = true,
+                    )
+                }
+            }
+        }
         return
     }
 
@@ -2387,6 +2432,16 @@ private fun FlamingoCanvasStage(
     var canvasFrameReady by remember(canvasPrimaryUrl, canvasFallbackUrl) {
         mutableStateOf(false)
     }
+    var settledArtworkUrl by remember { mutableStateOf<String?>(null) }
+    var incomingArtworkUrl by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(staticArtworkUrl) {
+        if (staticArtworkUrl.isNullOrBlank()) {
+            settledArtworkUrl = null
+            incomingArtworkUrl = null
+        } else if (staticArtworkUrl != settledArtworkUrl) {
+            incomingArtworkUrl = staticArtworkUrl
+        }
+    }
     val staticBaseAlpha by animateFloatAsState(
         targetValue = if (canvasFrameReady) 0f else 1f,
         animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing),
@@ -2407,11 +2462,26 @@ private fun FlamingoCanvasStage(
                 )
             },
     ) {
-        if (staticBaseAlpha > 0.01f) {
+        settledArtworkUrl?.let { url ->
             AsyncImage(
-                model = staticArtworkUrl,
+                model = url,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer { alpha = staticBaseAlpha },
+            )
+        }
+        incomingArtworkUrl?.let { url ->
+            AsyncImage(
+                model = url,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                onSuccess = {
+                    settledArtworkUrl = url
+                    incomingArtworkUrl = null
+                },
+                onError = { incomingArtworkUrl = null },
                 modifier = Modifier
                     .matchParentSize()
                     .graphicsLayer { alpha = staticBaseAlpha },
@@ -2423,7 +2493,10 @@ private fun FlamingoCanvasStage(
             isPlaying = isPlaying,
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
             loopSyncLeader = loopSyncLeader,
-            onPlaybackAvailabilityChange = onPlaybackAvailabilityChange,
+            onPlaybackAvailabilityChange = { available ->
+                if (!available) canvasFrameReady = false
+                onPlaybackAvailabilityChange(available)
+            },
             onFirstFrameRendered = { canvasFrameReady = true },
             refreshEpoch = refreshEpoch,
             modifier = Modifier.matchParentSize(),

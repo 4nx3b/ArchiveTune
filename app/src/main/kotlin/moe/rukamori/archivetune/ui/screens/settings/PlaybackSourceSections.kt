@@ -988,7 +988,6 @@ internal fun PlaybackSourceSections(
                 valueText = { quality ->
                     when (quality) {
                         SpotifyDirectQuality.AAC_128 -> stringResource(R.string.spotify_direct_quality_aac_128)
-                        SpotifyDirectQuality.AAC_128_DUAL -> stringResource(R.string.spotify_direct_quality_aac_128_dual)
                     }
                 },
             )

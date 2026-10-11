@@ -36,6 +36,8 @@ object SoundCloudAudioProvider {
     const val STREAM_HLS_MARKER_QUERY = "_archivetune_soundcloud_hls"
     const val STREAM_SOURCE_QUERY = "_archivetune_soundcloud_source"
     const val STREAM_SOURCE_API = "api"
+    const val HLS_SCHEME = "soundcloud-hls"
+    const val HLS_MIME_TYPE = "video/mp2t"
     const val BROWSER_USER_AGENT =
         "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36"
 
@@ -56,7 +58,16 @@ object SoundCloudAudioProvider {
         val artists: List<String>,
         val album: String?,
         val durationMs: Long?,
-    )
+        val directTrackUrl: String? = null,
+    ) {
+        val directUrl: String?
+            get() = directTrackUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                url.toHttpUrlOrNull()?.let { parsed ->
+                    val host = parsed.host.lowercase(Locale.US)
+                    if (host == "soundcloud.com" || host.endsWith(".soundcloud.com")) url else null
+                } ?: url.toSoundCloudUrlOrNull()
+            }
+    }
 
     data class SoundCloudTrackMetadata(
         val trackId: String,
@@ -146,12 +157,12 @@ object SoundCloudAudioProvider {
 
         suspend fun lookupTrack(id: String): MatchedTrack? = coroutineScope {
             val resolveTask = async {
-                query.mediaId.toSoundCloudUrlOrNull()?.let { url ->
+                (query.directUrl ?: query.mediaId.toSoundCloudUrlOrNull())?.let { url ->
                     resolveApiV2Track(url, id)
                 }
             }
             val findTask = async {
-                if (query.mediaId.toSoundCloudUrlOrNull() == null) {
+                if (query.directUrl == null && query.mediaId.toSoundCloudUrlOrNull() == null) {
                     findBestTrack(query, id)
                 } else null
             }
@@ -159,7 +170,7 @@ object SoundCloudAudioProvider {
         }
 
         val resolvedTrack: MatchedTrack =
-            trackCache[query.mediaId]
+            (if (query.directUrl == null) trackCache[query.mediaId] else null)
                 ?: lookupTrack(clientId)
                 ?: run {
 
@@ -467,25 +478,31 @@ object SoundCloudAudioProvider {
             track
         }
         val candidate = selectStreamCandidate(effectiveTrack.transcodings, quality) ?: return@withContext null
-        if (candidate.isHls) {
-
-            Timber.tag(TAG).i(
-                "SoundCloud track %s offers only HLS transcodings; skipping (progressive playback only)",
-                track.trackId,
-            )
-            return@withContext null
-        }
         val streamUrl = resolveTranscodingUrl(candidate, effectiveTrack.trackAuthorization, clientId) ?: return@withContext null
 
-        val mimeType = candidate.mimeType
-        val expiresAtMs = now + STREAM_CACHE_MS
+        val (mediaUri, mimeType) =
+            if (candidate.isHls) {
+                Timber.tag(TAG).i(
+                    "SoundCloud track %s resolved through HLS transcoding (progressive unavailable)",
+                    track.trackId,
+                )
+                hlsStreamUri(streamUrl) to HLS_MIME_TYPE
+            } else {
+                addStreamMarker(
+                    url = streamUrl,
+                    isHls = false,
+                    source = STREAM_SOURCE_API,
+                ) to candidate.mimeType
+            }
+
+        val codecs = if (candidate.isHls) {
+            if (candidate.mimeType.contains("aac") || candidate.mimeType.contains("mp4")) "mp4a.40.2" else "mp3"
+        } else {
+            candidate.mimeType.toCodecs()
+        }
 
         Resolved(
-            mediaUri = addStreamMarker(
-                url = streamUrl,
-                isHls = candidate.isHls,
-                source = STREAM_SOURCE_API,
-            ),
+            mediaUri = mediaUri,
             trackId = track.trackId,
             permalinkUrl = track.permalinkUrl,
             title = track.title,
@@ -493,12 +510,21 @@ object SoundCloudAudioProvider {
             artworkUrl = track.artworkUrl,
             durationMs = track.durationMs,
             mimeType = mimeType,
-            codecs = candidate.mimeType.toCodecs(),
+            codecs = codecs,
             bitrate = candidate.bitrate ?: DEFAULT_BITRATE,
             sampleRate = candidate.sampleRate ?: DEFAULT_SAMPLE_RATE,
             contentLength = null,
-            expiresAtMs = expiresAtMs,
+            expiresAtMs = now + STREAM_CACHE_MS,
         )
+    }
+
+    fun hlsStreamUri(playlistUrl: String): String {
+        val encoded =
+            android.util.Base64.encodeToString(
+                playlistUrl.toByteArray(Charsets.UTF_8),
+                android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING,
+            )
+        return "$HLS_SCHEME:$encoded"
     }
 
     private suspend fun fetchFullTrack(
@@ -892,6 +918,7 @@ object SoundCloudAudioProvider {
             uri = mediaUri,
             mimeType = when (mimeType) {
                 "audio/mpeg" -> "audio/mpeg"
+                HLS_MIME_TYPE -> HLS_MIME_TYPE
                 else -> "audio/mp4"
             },
             codecs = codecs,
@@ -902,7 +929,7 @@ object SoundCloudAudioProvider {
             matchedArtist = artist,
             matchedAlbum = null,
             matchedDurationMs = durationMs,
-            trustedDirectId = query.mediaId.toSoundCloudUrlOrNull() != null,
+            trustedDirectId = query.directUrl != null || query.mediaId.toSoundCloudUrlOrNull() != null,
             sampleRate = sampleRate,
             bitDepth = null,
         )

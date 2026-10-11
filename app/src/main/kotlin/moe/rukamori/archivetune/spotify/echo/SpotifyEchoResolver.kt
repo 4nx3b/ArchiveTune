@@ -166,6 +166,14 @@ object SpotifyEchoResolver {
     fun isFlac(format: Int): Boolean =
         format == SpotifyEchoProto.FORMAT_FLAC_FLAC || format == SpotifyEchoProto.FORMAT_FLAC_FLAC_24BIT
 
+    fun bitrateFor(format: Int): Int? =
+        when (format) {
+            SpotifyEchoProto.FORMAT_OGG_VORBIS_96 -> 96_000
+            SpotifyEchoProto.FORMAT_OGG_VORBIS_160 -> 160_000
+            SpotifyEchoProto.FORMAT_OGG_VORBIS_320 -> 320_000
+            else -> null
+        }
+
     private suspend fun fetchAudioFiles(
         token: String,
         clientToken: String?,
@@ -187,6 +195,7 @@ object SpotifyEchoResolver {
                         .header("Content-Type", "application/x-protobuf")
                         .header("User-Agent", SpotifyDesktopAuth.userAgent())
                         .header("App-Platform", "Win32_x86_64")
+                        .header("spotify-app-version", SpotifyDesktopAuth.appVersion())
                         .header("Accept-Language", "en")
                         .post(requestBytes.toRequestBody(PROTOBUF_MEDIA_TYPE))
                         .build()
@@ -247,6 +256,7 @@ object SpotifyEchoResolver {
                         .header("Accept", "application/json")
                         .header("User-Agent", SpotifyDesktopAuth.userAgent())
                         .header("App-Platform", "Win32_x86_64")
+                        .header("spotify-app-version", SpotifyDesktopAuth.appVersion())
                         .header("Accept-Language", "en")
                         .get()
                         .build()
@@ -289,6 +299,7 @@ object SpotifyEchoResolver {
                         .header("Accept", "application/x-protobuf")
                         .header("User-Agent", SpotifyDesktopAuth.userAgent())
                         .header("App-Platform", "Win32_x86_64")
+                        .header("spotify-app-version", SpotifyDesktopAuth.appVersion())
                         .header("Accept-Language", "en")
                         .post(SpotifyPlayPlayLicenseRequest.encode().toRequestBody(PROTOBUF_MEDIA_TYPE))
                         .build()

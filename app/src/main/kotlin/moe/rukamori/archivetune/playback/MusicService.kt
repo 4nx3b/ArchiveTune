@@ -258,10 +258,8 @@ import moe.rukamori.archivetune.constants.SoundCloudAudioQuality
 import moe.rukamori.archivetune.constants.SoundCloudEnabledKey
 import moe.rukamori.archivetune.constants.SoundCloudAuthTokenKey
 import moe.rukamori.archivetune.constants.SpotifyDirectEnabledKey
-import moe.rukamori.archivetune.constants.SpotifyDirectQualityKey
 import moe.rukamori.archivetune.constants.SpotifyResolveMethod
 import moe.rukamori.archivetune.constants.SpotifyResolveMethodKey
-import moe.rukamori.archivetune.constants.SpotifyDirectQuality
 import moe.rukamori.archivetune.constants.SpotifyDeviceIdKey
 import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.constants.SpotifySpKeyKey
@@ -1535,11 +1533,12 @@ class MusicService :
                     !preferences[TidalInstancesKey].isNullOrBlank() ||
                         TidalAudioProvider.defaultInstanceUrls.isNotEmpty()
                 val hasAccount = !preferences[TidalAccessTokenKey].isNullOrBlank()
+                val hasPoolAccounts = PoolAccountManager.tidalAccounts().isNotEmpty()
                 val providerOrder =
                     deserializeArtworkProviderOrder(preferences[ArtworkProviderOrderKey])
                 ArtworkSettings(
                     tidalArtworkEnabled = artworkEnabled,
-                    tidalAvailable = tidalEnabled && (hasInstances || hasAccount),
+                    tidalAvailable = tidalEnabled && (hasInstances || hasAccount || hasPoolAccounts),
                     providerOrder = providerOrder,
                 )
             }
@@ -7889,6 +7888,7 @@ class MusicService :
         val directFactory = createResolvedUpstreamDataSourceFactory()
         val telegramFactory = TelegramDataSource.Factory()
         val tidalProgressiveDashFactory = TidalProgressiveDashDataSource.Factory(mediaOkHttpClient)
+        val soundCloudHlsFactory = SoundCloudHlsDataSource.Factory(mediaOkHttpClient)
 
         val deezerFactory =
             CacheDataSource
@@ -7917,6 +7917,7 @@ class MusicService :
                 telegramFactory = telegramFactory,
                 deezerFactory = deezerFactory,
                 tidalProgressiveDashFactory = tidalProgressiveDashFactory,
+                soundCloudHlsFactory = soundCloudHlsFactory,
                 echoFactory = echoFactory,
             )
         }
@@ -7941,6 +7942,7 @@ class MusicService :
                     defaultFactory = youtubeMediaFactory,
                     deezerFactory = DeezerDecryptingDataSource.Factory(OkHttpDataSource.Factory(mediaOkHttpClient)),
                     tidalProgressiveDashFactory = TidalProgressiveDashDataSource.Factory(mediaOkHttpClient),
+                    soundCloudHlsFactory = SoundCloudHlsDataSource.Factory(mediaOkHttpClient),
                     echoFactory = EchoDecryptingDataSource.Factory(OkHttpDataSource.Factory(mediaOkHttpClient)),
                     extractorFactory = extractorMediaFactory,
                     shouldUseExtractorFactory = ::isExtractorPlaybackUri,
@@ -7949,7 +7951,7 @@ class MusicService :
 
         return ResolvingDataSource.Factory(routingFactory) { dataSpec ->
             val scheme = dataSpec.uri.scheme?.lowercase(Locale.US)
-            if (scheme == DeezerCrypto.SCHEME || scheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME || scheme == SpotifyEchoResolver.SCHEME) {
+            if (scheme == DeezerCrypto.SCHEME || scheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME || scheme == SpotifyEchoResolver.SCHEME || scheme == SoundCloudAudioProvider.HLS_SCHEME) {
                 dataSpec
             } else {
                 resolvePlaybackDataSpec(
@@ -8148,6 +8150,10 @@ class MusicService :
         val directTidalTrackId: String? = null,
 
         val spotifyTrackId: String? = null,
+
+        val preferredSource: String? = null,
+
+        val soundCloudUrl: String? = null,
     )
 
     private fun sourceResolutionChain(): List<AudioSourceType> {
@@ -8245,6 +8251,8 @@ class MusicService :
             directDeezerTrackId = directDeezerTrackId,
             directTidalTrackId = directTidalTrackId,
             spotifyTrackId = queuedMetadata?.spotifyTrackId?.takeIf { it.isNotBlank() },
+            preferredSource = queuedMetadata?.preferredSource?.takeIf { it.isNotBlank() },
+            soundCloudUrl = queuedMetadata?.soundCloudUrl?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -8510,6 +8518,18 @@ class MusicService :
             return null
         }
 
+        if (!isPrefetch) {
+            val memo = multiSourceMemoByMediaId[mediaId]
+            if (memo != null && memo.lowDataMode == lowDataModeActive && memo.expiresAtMs > System.currentTimeMillis()) {
+                return dataSpec
+                    .buildUpon()
+                    .setUri(memo.uri.toUri())
+                    .setKey(memo.cacheKey)
+                    .build()
+            }
+            multiSourceMemoByMediaId.remove(mediaId)
+        }
+
         if (isMusicVideoPlayback(mediaId)) {
             Timber.tag("MusicService").d("Multi-source skip: %s is a music video — audio pinned to the YouTube video source", mediaId)
             return null
@@ -8561,6 +8581,14 @@ class MusicService :
                     audioNormalizationFactorCache[mediaId] = 1f
                     recordResolvedSource(mediaId, source)
                     cached.stream.contentLength?.takeIf { it > 0L }?.let { contentLengthCache[cacheKey] = it }
+                    multiSourceMemoByMediaId[mediaId] =
+                        MultiSourceMemo(
+                            uri = cached.stream.uri,
+                            cacheKey = cacheKey,
+                            expiresAtMs = now + multiSourceMemoTtlMs,
+                            lowDataMode = lowDataModeActive,
+                        )
+                    trimResolutionMemos()
 
                     publishCurrentStreamInfo(
                         mediaId,
@@ -8633,10 +8661,24 @@ class MusicService :
         Timber.tag("MusicService").d("Source query built: title=\"%s\" artists=%s durationMs=%s", query.title, query.artists.joinToString("/"), query.durationMs?.toString() ?: "?")
 
         val overrideIsSourceOverride = (override != null && override != AudioSourceType.YOUTUBE) || isDirectPick
+        val preferredSourceType =
+            query.preferredSource
+                ?.let { stored -> runCatching { AudioSourceType.valueOf(stored) }.getOrNull() }
+                ?.takeIf { preferred -> preferred != AudioSourceType.YOUTUBE && chain.contains(preferred) }
+        val orderedChain =
+            if (preferredSourceType != null && !overrideIsSourceOverride) {
+                listOf(preferredSourceType) + chain.filter { it != preferredSourceType }
+            } else {
+                chain
+            }
+        if (preferredSourceType != null) {
+            Timber.tag("MusicService").d("Search-origin priority: %s tried first for %s", preferredSourceType.name, mediaId)
+        }
+
         var best: DirectStream? = null
         var bestSource: AudioSourceType? = null
         var bestScore = 0.0
-        for (source in chain) {
+        for (source in orderedChain) {
             Timber.tag("MusicService").d("Trying source: %s for \"%s\"", source.name, query.title)
             val stream: DirectStream? =
                 when (source) {
@@ -8734,6 +8776,7 @@ class MusicService :
 
         Timber.tag("MusicService").w("No lossless source cleared the metadata match gate for \"%s\"; falling back to YouTube", query.title)
         tidalActiveMediaIds.remove(mediaId)
+        multiSourceMemoByMediaId.remove(mediaId)
         return null
     }
 
@@ -9129,6 +9172,10 @@ class MusicService :
             mimeType = resolved.mimeType,
             codecs = resolved.codecs,
             contentLength = resolved.contentLength,
+            bitrate = when {
+                resolved.mimeType.contains("flac", true) -> null
+                else -> 320_000
+            },
             label = "Tidal ${resolved.label}",
             source = AudioSourceType.TIDAL,
             matchedTitle = resolved.matchedTitle,
@@ -9258,6 +9305,7 @@ class MusicService :
                             artists = query.artists,
                             album = query.album,
                             durationMs = query.durationMs,
+                            directTrackUrl = query.soundCloudUrl,
                         ),
                     authToken = authToken,
                     quality = quality,
@@ -9391,6 +9439,7 @@ class MusicService :
                     mimeType = if (isFlac) "audio/flac" else "audio/ogg",
                     codecs = if (isFlac) "flac" else "vorbis",
                     contentLength = null,
+                    bitrate = SpotifyEchoResolver.bitrateFor(echoStream.chosenFile.format),
                     label = "Spotify Echo ${SpotifyEchoResolver.formatLabel(echoStream.chosenFile.format)}",
                     source = AudioSourceType.SPOTIFY,
                     matchedTitle = matched.title,
@@ -9403,7 +9452,6 @@ class MusicService :
                 )
             }
         }
-        val quality = parseSpotifyDirectQuality()
         val deviceId = ensureSpotifyDeviceId()
         val cdnUrl =
             runCatching {
@@ -9411,7 +9459,6 @@ class MusicService :
                     SpotifyWebStreamer.resolveStreamUrl(
                         trackUri = trackUri,
                         deviceId = deviceId,
-                        dualFormat = quality == SpotifyDirectQuality.AAC_128_DUAL,
                     )
                 }
             }.onFailure { error ->
@@ -9428,11 +9475,8 @@ class MusicService :
             mimeType = "audio/mp4",
             codecs = "mp4a.40.2",
             contentLength = null,
-            label = if (quality == SpotifyDirectQuality.AAC_128_DUAL) {
-                "Spotify Direct AAC 128 (dual)"
-            } else {
-                "Spotify Direct AAC 128"
-            },
+            bitrate = 128_000,
+            label = "Spotify Direct AAC 128",
             source = AudioSourceType.SPOTIFY,
             matchedTitle = matched.title,
             matchedArtist = matched.artist,
@@ -9450,11 +9494,6 @@ class MusicService :
         val artist: String?,
         val durationMs: Long?,
     )
-
-    private fun parseSpotifyDirectQuality(): SpotifyDirectQuality {
-        val stored = dataStore.get(SpotifyDirectQualityKey, SpotifyDirectQuality.AAC_128.name)
-        return runCatching { SpotifyDirectQuality.valueOf(stored) }.getOrDefault(SpotifyDirectQuality.AAC_128)
-    }
 
     private fun ensureSpotifyDeviceId(): String {
         val existing = runCatching { dataStore.get(SpotifyDeviceIdKey, "") }.getOrDefault("")
@@ -9671,6 +9710,14 @@ class MusicService :
         stream: DirectStream,
     ): DataSpec {
         Timber.tag("MusicService").i("Using %s stream for %s: %s", stream.source, mediaId, stream.label)
+        multiSourceMemoByMediaId[mediaId] =
+            MultiSourceMemo(
+                uri = stream.uri,
+                cacheKey = sourceCacheKey(stream.source, mediaId),
+                expiresAtMs = System.currentTimeMillis() + multiSourceMemoTtlMs,
+                lowDataMode = isLowDataModeActive(),
+            )
+        trimResolutionMemos()
         publishCurrentStreamInfo(
             mediaId,
             CurrentStreamInfo(
@@ -9703,11 +9750,30 @@ class MusicService :
     private fun deriveStreamProtocol(uri: String): String {
         val lower = uri.substringBefore('?').lowercase()
         return when {
+            lower.startsWith("soundcloud-hls:") -> "HTTPS HLS Stream"
             lower.endsWith(".m3u8") || lower.contains(".m3u8/") || lower.contains("/hls/") ->
                 "HTTPS HLS Stream"
             lower.startsWith("http") -> "HTTPS Progressive Stream"
             else -> "Local File"
         }
+    }
+
+    private fun labelBitrateOrNull(label: String): Int? {
+        if (label.contains("LOSSLESS") || label.contains("FLAC") || label.contains("HI_RES") || label.contains("MASTER") || label.contains("MQA")) {
+            return null
+        }
+        val normalized = label.lowercase()
+        for (marker in listOf("kbps", "kb/s")) {
+            val idx = normalized.lastIndexOf(marker)
+            if (idx > 0) {
+                val digits = normalized.substring(0, idx).takeLastWhile { it.isDigit() }
+                val value = digits.toIntOrNull() ?: continue
+                if (value in 16..6000) return value * 1000
+            }
+        }
+        val bare = Regex("\\b(\\d{2,4})(?!\\s*-?bit)\\b").findAll(normalized).mapNotNull { it.groupValues[1].toIntOrNull() }
+        val candidate = bare.firstOrNull { it in 32..512 && it !in 1900..2100 } ?: return null
+        return candidate * 1000
     }
 
     private fun persistDirectStreamFormat(
@@ -9728,13 +9794,15 @@ class MusicService :
                 else -> null
             }
         val knownContentLength = stream.contentLength?.takeIf { it > 0L }
+        val labelBitrate = labelBitrateOrNull(label)
         val bitrate =
-            measuredBitrate(knownContentLength, stream.matchedDurationMs)
+            stream.bitrate?.takeIf { it > 0 }
+                ?: measuredBitrate(knownContentLength, stream.matchedDurationMs)
+                ?: labelBitrate
                 ?: stream.pcmBitrateOrNull()
                 ?: when {
                     label.contains("HI_RES") || label.contains("MASTER") || label.contains("MQA") -> 2_304_000
                     label.contains("LOSSLESS") || codecs.contains("flac", true) || codecs.contains("alac", true) -> 1_411_000
-                    label.contains("HIGH") -> 320_000
                     else -> 0
                 }
         val formatEntity =
@@ -9831,6 +9899,39 @@ class MusicService :
         AudioSourceType.entries.forEach { source ->
             directStreamCache.remove(sourceCacheKey(source, mediaId))
         }
+        multiSourceMemoByMediaId.remove(mediaId)
+        formatMemoByMediaId.remove(mediaId)
+    }
+
+    private class MultiSourceMemo(
+        val uri: String,
+        val cacheKey: String,
+        val expiresAtMs: Long,
+        val lowDataMode: Boolean,
+    )
+
+    private class FormatMemo(
+        val storedFormat: FormatEntity?,
+        val knownContentLength: Long?,
+        val expiresAtMs: Long,
+    )
+
+    private val multiSourceMemoByMediaId = ConcurrentHashMap<String, MultiSourceMemo>()
+
+    private val formatMemoByMediaId = ConcurrentHashMap<String, FormatMemo>()
+
+    private val multiSourceMemoTtlMs = 3_000L
+
+    private val formatMemoTtlMs = 2_000L
+
+    private fun trimResolutionMemos() {
+        val now = System.currentTimeMillis()
+        if (formatMemoByMediaId.size > 128) {
+            formatMemoByMediaId.entries.removeIf { it.value.expiresAtMs <= now }
+        }
+        if (multiSourceMemoByMediaId.size > 128) {
+            multiSourceMemoByMediaId.entries.removeIf { it.value.expiresAtMs <= now }
+        }
     }
 
     private fun hasFreshDirectStream(mediaId: String): Boolean {
@@ -9864,25 +9965,35 @@ class MusicService :
         }
         val mediaId = dataSpec.key ?: return dataSpec
         val lowDataModeActive = isLowDataModeActive()
-        val storedFormat =
-            runBlocking(Dispatchers.IO) {
-                database.format(mediaId).first()
+        val memoNow = System.currentTimeMillis()
+        val formatMemo = formatMemoByMediaId[mediaId]?.takeIf { it.expiresAtMs > memoNow }
+        val storedFormat: FormatEntity?
+        val knownContentLength: Long?
+        if (formatMemo != null) {
+            storedFormat = formatMemo.storedFormat
+            knownContentLength = formatMemo.knownContentLength
+        } else {
+            storedFormat =
+                runBlocking(Dispatchers.IO) {
+                    database.format(mediaId).first()
+                }
+            storedFormat?.let { format ->
+                audioNormalizationFactorCache[mediaId] = resolveAudioNormalizationFactor(mediaId, storedFormat, normalizeAudio = true)
             }
-        storedFormat?.let { format ->
-            audioNormalizationFactorCache[mediaId] = resolveAudioNormalizationFactor(mediaId, storedFormat, normalizeAudio = true)
+            knownContentLength =
+                contentLengthCache[mediaId] ?: storedFormat?.contentLength?.takeIf { it > 0L } ?: runCatching {
+                    downloadCache
+                        .getContentMetadata(mediaId)
+                        .get(ContentMetadata.KEY_CONTENT_LENGTH, -1L)
+                }.getOrNull()?.takeIf { it > 0L } ?: runCatching {
+                    playerCache
+                        .getContentMetadata(mediaId)
+                        .get(ContentMetadata.KEY_CONTENT_LENGTH, -1L)
+                }.getOrNull()?.takeIf { it > 0L }
+            knownContentLength?.takeIf { it > 0L }?.let { contentLengthCache[mediaId] = it }
+            formatMemoByMediaId[mediaId] = FormatMemo(storedFormat, knownContentLength, memoNow + formatMemoTtlMs)
+            trimResolutionMemos()
         }
-        val knownContentLength =
-            contentLengthCache[mediaId] ?: storedFormat?.contentLength?.takeIf { it > 0L } ?: runCatching {
-                downloadCache
-                    .getContentMetadata(mediaId)
-                    .get(ContentMetadata.KEY_CONTENT_LENGTH, -1L)
-            }.getOrNull()?.takeIf { it > 0L } ?: runCatching {
-                playerCache
-                    .getContentMetadata(mediaId)
-                    .get(ContentMetadata.KEY_CONTENT_LENGTH, -1L)
-            }.getOrNull()?.takeIf { it > 0L }
-
-        knownContentLength?.takeIf { it > 0L }?.let { contentLengthCache[mediaId] = it }
 
         @Suppress("unused") val tidalApplies = !lowDataModeActive && tidalSourceApplies(mediaId)
         val allowPlayerCacheShortCircuit = true
@@ -10466,6 +10577,7 @@ class MusicService :
             normalizedScheme == "telegram" ||
             normalizedScheme == DeezerCrypto.SCHEME ||
             normalizedScheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME ||
+            normalizedScheme == SoundCloudAudioProvider.HLS_SCHEME ||
             normalizedScheme == "http" ||
             normalizedScheme == "https"
     }
@@ -10513,15 +10625,7 @@ class MusicService :
                     .Builder()
                     .setUuidAndExoMediaDrmProvider(
                         C.WIDEVINE_UUID,
-                        ExoMediaDrm.Provider { uuid ->
-                            val created =
-                                runCatching { FrameworkMediaDrm.newInstance(uuid) }.getOrNull()?.apply {
-
-                                    runCatching { setPropertyString("securityLevel", "L3") }
-                                        .recoverCatching { setPropertyString("securityLevel", "3") }
-                                }
-                            created ?: FrameworkMediaDrm.DEFAULT_PROVIDER.acquireExoMediaDrm(uuid)
-                        },
+                        FrameworkMediaDrm.DEFAULT_PROVIDER,
                     ).build(SpotifyLicenseCallback())
             }.getOrNull()
         cachedSpotifyDrmEnabled = true
@@ -10531,19 +10635,26 @@ class MusicService :
 
     private inner class SpotifyLicenseCallback : MediaDrmCallback {
         private val licenseUrl = "https://gae2-spclient.spotify.com/widevine-license/v1/audio/license"
+        private val provisionUrl = "https://www.googleapis.com/chromewidevine/ondemand/provision"
 
         override fun executeProvisionRequest(
             uuid: java.util.UUID,
             request: ExoMediaDrm.ProvisionRequest,
         ): MediaDrmCallback.Response {
-            val uri = android.net.Uri.parse(licenseUrl)
-            throw MediaDrmCallbackException(
-                DataSpec(uri),
-                uri,
-                emptyMap(),
-                0L,
-                java.io.IOException("Spotify DRM provisioning not supported"),
-            )
+            val body = request.data
+            val builder =
+                Request
+                    .Builder()
+                    .url(provisionUrl)
+                    .header("Content-Type", "application/octet-stream")
+                    .post(body.toRequestBody(null))
+            mediaOkHttpClient.newCall(builder.build()).execute().use { response ->
+                val bytes = response.body?.bytes()
+                if (!response.isSuccessful || bytes == null) {
+                    throw java.io.IOException("Spotify DRM provisioning failed: HTTP ${response.code}")
+                }
+                return MediaDrmCallback.Response(bytes)
+            }
         }
 
         override fun executeKeyRequest(
@@ -10688,6 +10799,7 @@ class MusicService :
         private val telegramFactory: DataSource.Factory,
         private val deezerFactory: DataSource.Factory,
         private val tidalProgressiveDashFactory: DataSource.Factory,
+        private val soundCloudHlsFactory: DataSource.Factory,
         private val echoFactory: DataSource.Factory,
     ) : DataSource {
         private val transferListeners = mutableListOf<TransferListener>()
@@ -10707,6 +10819,8 @@ class MusicService :
                     deezerFactory
                 } else if (normalizedScheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME) {
                     tidalProgressiveDashFactory
+                } else if (normalizedScheme == SoundCloudAudioProvider.HLS_SCHEME) {
+                    soundCloudHlsFactory
                 } else if (normalizedScheme == SpotifyEchoResolver.SCHEME) {
                     echoFactory
                 } else if (
@@ -10744,6 +10858,7 @@ class MusicService :
         private val defaultFactory: DataSource.Factory,
         private val deezerFactory: DataSource.Factory,
         private val tidalProgressiveDashFactory: DataSource.Factory,
+        private val soundCloudHlsFactory: DataSource.Factory,
         private val echoFactory: DataSource.Factory,
         private val extractorFactory: DataSource.Factory,
         private val shouldUseExtractorFactory: (Uri) -> Boolean,
@@ -10765,6 +10880,7 @@ class MusicService :
                     when (scheme) {
                         DeezerCrypto.SCHEME -> deezerFactory
                         TidalAudioProvider.PROGRESSIVE_DASH_SCHEME -> tidalProgressiveDashFactory
+                        SoundCloudAudioProvider.HLS_SCHEME -> soundCloudHlsFactory
                         SpotifyEchoResolver.SCHEME -> echoFactory
                         else -> defaultFactory
                     }
