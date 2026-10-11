@@ -58,6 +58,26 @@ val AlbumCanvasEnabledKey = booleanPreferencesKey("albumCanvasEnabled")
 val AppleMusicAnimatedArtworkKey = booleanPreferencesKey("appleMusicAnimatedArtwork")
 
 val CanvasResolverEndpointsKey = stringPreferencesKey("canvasResolverEndpoints")
+
+// Procedural artwork animation (ported from Sekai Tune): fluid on-device
+// motion applied to the static album art when no animated canvas video is
+// available.
+val ProceduralArtworkEnabledKey = booleanPreferencesKey("proceduralArtworkEnabled")
+val ProceduralArtworkStyleKey = stringPreferencesKey("proceduralArtworkStyle")
+val CanvasAudioReactiveKey = booleanPreferencesKey("canvasAudioReactive")
+
+enum class ProceduralCanvasStyle {
+    KAWARP,
+    SQUARE_TUNNEL,
+    ;
+
+    companion object {
+        fun fromPreference(value: String?): ProceduralCanvasStyle {
+            return entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: KAWARP
+        }
+    }
+}
+
 val ThumbnailCornerRadiusKey = floatPreferencesKey("thumbnailCornerRadius")
 val CropThumbnailToSquareKey = booleanPreferencesKey("cropThumbnailToSquare")
 

@@ -92,6 +92,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
+import moe.rukamori.archivetune.canvas.procedural.ProceduralArtworkFallback
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
@@ -647,6 +648,14 @@ fun Thumbnail(
                                         CanvasArtworkPlayer(
                                             primaryUrl = primaryCanvasUrl,
                                             fallbackUrl = fallbackCanvasUrl,
+                                            isPlaying = isPlaying,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    } else if (!isCurrentMusicVideo) {
+                                        // Fluid on-device motion for the static art when no
+                                        // animated canvas video exists (Sekai Tune port).
+                                        ProceduralArtworkFallback(
+                                            artworkUrl = displayUrl,
                                             isPlaying = isPlaying,
                                             modifier = Modifier.fillMaxSize(),
                                         )

@@ -211,6 +211,7 @@ import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
+import moe.rukamori.archivetune.canvas.procedural.ProceduralArtworkFallback
 import moe.rukamori.archivetune.ui.player.CanvasLoopSync
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
@@ -2516,6 +2517,15 @@ private fun ColumnScope.FlamingoAlbum(
                     .then(modifier),
                 imageQuality = ImageQuality.RAW,
                 shadowOverlay = true,
+            )
+            // Fluid on-device motion for the static art (Sekai Tune port) —
+            // rides the same animated inset as the artwork beneath it.
+            ProceduralArtworkFallback(
+                artworkUrl = artworkUrl,
+                isPlaying = isPlaying(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = dp, end = dp, bottom = dp),
             )
         }
     }

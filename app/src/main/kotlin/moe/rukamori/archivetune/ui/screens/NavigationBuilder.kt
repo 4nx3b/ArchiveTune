@@ -58,7 +58,9 @@ import moe.rukamori.archivetune.ui.screens.settings.AndroidAutoSettings
 import moe.rukamori.archivetune.ui.screens.settings.AboutScreen
 import moe.rukamori.archivetune.ui.screens.settings.AccountSettings
 import moe.rukamori.archivetune.ui.screens.settings.AiIntegrationSettings
+import moe.rukamori.archivetune.ui.screens.ambient.AmbientModeScreen
 import moe.rukamori.archivetune.ui.screens.settings.AodCustomizedScreen
+import moe.rukamori.archivetune.ui.screens.settings.CanvasSettingsScreen
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceExtrasSettings
 import moe.rukamori.archivetune.ui.screens.settings.NavigationBarSettings
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceSettings
@@ -504,6 +506,9 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         AodCustomizedScreen(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
+    composable("ambient_mode") {
+        AmbientModeScreen(navController)
+    }
     composable("settings/appearance/palette_picker") {
         PalettePickerScreen(navController)
     }
@@ -554,6 +559,12 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         LiquidGlassSettings(navController, it.savedStateHandle["scrollTo"])
+    }
+    composable(
+        route = "settings/player/canvas?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        CanvasSettingsScreen(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable(
         route = "settings/player/audiophile?scrollTo={scrollTo}",

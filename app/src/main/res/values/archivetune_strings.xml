@@ -1071,4 +1071,25 @@
     <string name="output_conversion">Sample-rate conversion</string>
     <string name="output_no_conversion">None — matches the output route</string>
     <string name="media_info_title">Track info</string>
+
+    <!-- Canvas settings sub-page (playback) -->
+    <string name="canvas_settings_title">Canvas</string>
+    <string name="canvas_settings_entry_desc">Canvas sources, resolvers and artwork motion</string>
+    <string name="procedural_artwork_group_title">Animate static album art</string>
+    <string name="procedural_artwork_title">Animate static album art</string>
+    <string name="procedural_artwork_desc">Apply fluid on-device motion to the album art when no animated canvas video is available</string>
+    <string name="procedural_artwork_style">Motion style</string>
+    <string name="procedural_artwork_style_desc">Kawarp — smooth harmonic fluid UV wave distortion; Square Tunnel — mirrored geometric square corridor visualizer</string>
+    <string name="procedural_style_kawarp">Kawarp — fluid wave</string>
+    <string name="procedural_style_square_tunnel">Square Tunnel — corridor</string>
+    <string name="canvas_audio_reactive_title">Audio-reactive animation</string>
+    <string name="canvas_audio_reactive_desc">Modulate the procedural motion subtly with low-frequency music bass beats. Requires microphone permission; falls back to time-only motion when unavailable</string>
+    <string name="experimental_tag">(Experimental)</string>
+    <string name="artwork_priority_group_title">Artwork</string>
+
+    <!-- Ambient mode (Sekai Tune port) -->
+    <string name="aod_ambient_group_title">Always-on &amp; ambient</string>
+    <string name="ambient_mode_title">Ambient mode</string>
+    <string name="ambient_mode_desc">Full-screen ambient glow driven by the current song\'s palette</string>
+    <string name="ambient_mode_hint">Swipe left or right to change track</string>
 </resources>
