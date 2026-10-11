@@ -290,8 +290,23 @@ private val FlamingoLandscapeRightScrim =
     )
 
 private const val FlamingoLyricsContentDeferMs = 600L
-private const val FlamingoLyricsContentDeferCanvasMs = 300L
+// Canvas songs: the lyrics start fading in WHILE the video stage is still
+// flying toward the bar slot (the reference behaviour the user approved in
+// the task-91 frame forensics — 'lyrics visible as a faint ghost DURING the
+// flight, fully settled shortly after it lands'). The old 300ms defer left
+// a dead window where the video had already departed but no content had
+// arrived — the reported 'large empty dark-teal region'.
+private const val FlamingoLyricsContentDeferCanvasMs = 120L
+// Keep the lyrics composed through the page's exit fade so the text fades
+// out instead of being ripped out mid-fade by lyricsContentReady = false.
+private const val FlamingoLyricsExitHoldMs = 240L
 private const val FlamingoPageMorphHoldMs = 420L
+
+// Backdrop behind the queue page's bottom controls: rows scrolling under
+// the controls fade into the page instead of showing through the previously
+// fully transparent controls block.
+private val FlamingoQueueControlsScrimColor = Color.Black
+private const val FlamingoQueueControlsScrimAlpha = 0.72f
 
 // Alpha-mask stops for the queue list's vertical edge fade (cached, never
 // rebuilt per draw).
@@ -617,16 +632,23 @@ fun FlamingoPlayerContent(
                 )
                 lyricsContentReady = true
             } else {
+                // Hold the content through the exit fade (see constant note):
+                // the AnimatedVisibility fadeOut below is what the user should
+                // see, not an instant text removal.
+                delay(FlamingoLyricsExitHoldMs)
                 lyricsContentReady = false
             }
         }
 
         val alphaAnim = remember { Animatable(0f) }
         LaunchedEffect(nowPage) {
-            val targetAlpha = if (nowPage == FlamingoPage.Lyric) 1f else 0f
-            scope.launch {
-                alphaAnim.animateTo(targetAlpha)
-            }
+            // Snapped, never animated: the lyrics Column already fades through
+            // the AnimatedVisibility transition, and multiplying two animated
+            // alphas (fadeIn x alphaAnim) compounded the curve — 0.5 x 0.5 =
+            // 0.25 at the midpoint — which read exactly as the faint, ghosted
+            // text reported during the switch. alphaAnim stays as the boolean
+            // 'lyrics visible' signal for the translation-button gate below.
+            alphaAnim.snapTo(if (nowPage == FlamingoPage.Lyric) 1f else 0f)
         }
 
         val baseArtworkUrl = mediaMetadata.thumbnailUrl?.highRes()
@@ -1049,15 +1071,14 @@ fun FlamingoPlayerContent(
                         FlamingoWrapper {
                             AnimatedVisibility(
                                 visible = nowPage == FlamingoPage.Lyric,
-                                enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
-                                exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
+                                enter = fadeIn(tween(260, easing = FastOutSlowInEasing)),
+                                exit = fadeOut(tween(200, easing = FastOutSlowInEasing)),
                             ) {
                                 Column(
                                     Modifier
                                         .fillMaxSize()
                                         .graphicsLayer {
                                             compositingStrategy = CompositingStrategy.ModulateAlpha
-                                            this.alpha = alphaAnim.value
                                         },
                                 ) {
                                     Spacer(modifier = Modifier.height(topInset + 104.dp))
@@ -1357,14 +1378,19 @@ fun FlamingoPlayerContent(
                             AnimatedContent(
                                 targetState = nowPage,
                                 transitionSpec = {
+                                    // Asymmetric crossfade: the outgoing page clears in 240ms while
+                                    // the incoming ramps over 420ms. The old symmetric 600ms pair hit
+                                    // ~50% alpha on BOTH layers at the midpoint, exposing the raw
+                                    // background through the dip — the 'blank/dark region before the
+                                    // incoming content settles' in the reported recording.
                                     fadeIn(
                                         tween(
-                                            durationMillis = 600,
+                                            durationMillis = 420,
                                             easing = FastOutSlowInEasing,
                                         ),
                                     ) togetherWith fadeOut(
                                         tween(
-                                            durationMillis = 600,
+                                            durationMillis = 240,
                                             easing = FastOutSlowInEasing,
                                         ),
                                     )
@@ -1664,7 +1690,38 @@ fun FlamingoPlayerContent(
                                                 targetHeight = { (it / 1.4).toInt() },
                                             ),
                                         ) {
-                                            FlamingoWrapper {
+                                            // Explicit Box: the scrim must stack BEHIND the controls
+                                            // content (the translation row + FlamingoPlayerControl).
+                                            Box(modifier = Modifier.fillMaxWidth()) {
+                                                // Queue-page controls backdrop: the controls block used
+                                                // to be fully transparent over the queue list, so rows
+                                                // scrolled straight through the seekbar/buttons and read
+                                                // as clutter behind them. A soft vertical scrim (clear at
+                                                // the block's top edge, solid behind the controls) fades
+                                                // the rows into the page instead. Lyrics and album pages
+                                                // keep the fully transparent controls.
+                                                if (nowPageLambda.value == FlamingoPage.PlayingList) {
+                                                    Box(
+                                                        modifier =
+                                                            Modifier
+                                                                .matchParentSize()
+                                                                .drawWithCache {
+                                                                    val scrim =
+                                                                        Brush.verticalGradient(
+                                                                            listOf(
+                                                                                Color.Transparent,
+                                                                                FlamingoQueueControlsScrimColor.copy(
+                                                                                    alpha = FlamingoQueueControlsScrimAlpha,
+                                                                                ),
+                                                                                FlamingoQueueControlsScrimColor.copy(
+                                                                                    alpha = FlamingoQueueControlsScrimAlpha,
+                                                                                ),
+                                                                            ),
+                                                                        )
+                                                                    onDrawBehind { drawRect(scrim) }
+                                                                },
+                                                    )
+                                                }
                                                 if (nowPage == FlamingoPage.Lyric) {
                                                 Row(
                                                     Modifier
