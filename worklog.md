@@ -5200,3 +5200,27 @@ Stage Summary:
 - dev @ 3b138b559: batches 1 fix + 2 + 3 pushed; nightly CI monitoring in progress (batch 1's build failure was the toolbar Shadow import ambiguity, fixed in batch 3's push).
 - All 7 items implemented: SoundCloud source, Deezer anonymous resolvers, Spotify direct (experimental + ban warning), canvas shared-bounds morph + queue/lyrics controls parity, light-mode glass halo, dark gradient diet + settings exclusion, compact nav on settings, lyrics keep-alive fix.
 - Known deliberate divergences: SoundCloud HLS-only tracks don't resolve (progressive-only pipeline — documented in-code); Spotify source search returns empty in the per-song source picker (catalog-only by design); song.link matching not ported (no platform URL in Query).
+
+---
+Task ID: 96
+Agent: Super Z (main agent, session web-60bd54af)
+
+Task: Fix the startup crash introduced by the task-95 canary (build 3b138b559) — user-reported "app crashes on start" with an on-device crashlog (NPE in an R8-obfuscated stack, thrown from MainActivity during the first measure pass).
+
+Work Log:
+- Crashlog triage: NPE 'java.lang.String r8.gv9.a()' on a null receiver at MainActivity.z, inside a Compose measure/subcompose chain; build hash matched canary commit 3b138b559.
+- Pulled the exact shipped arm64 canary APK from the nightly artifacts (run 38143446156, versionCode 6722) and decompiled it (androguard + jadx + baksmali from Maven):
+  - gv9 = Screens, cv9/fv9/dv9 = Screens$Home/$Search/$Library, gv9.a() = Screens.getRoute().
+  - The dex carries no LineNumberTable for MainActivity; ART's "(Unknown Source:1133)" is the dex PC in CODE UNITS — offset 2266, which is the iterator loop behind MainActivity ~line 1262 `navigationItems.map(Screens::route) + "settings"` — the NPE receiver is a NULL ELEMENT of Screens.MainScreens.
+  - gv9.<clinit> (the R8-promoted companion lists MainScreens/TvMainScreens = listOf(Home, Search, Library)) reads cv9.g/fv9.g/dv9.g — a class-init cycle with the object subclasses.
+- Root cause: the atmosphere-route check added in 1c6754bfe (`atmosphereRoute == Screens.Home.route || ...`) is the FIRST-ever touch of the Screens family at startup, and it touches a SUBCLASS object. JVM superclass-first init runs Screens.<clinit> reentrantly while Home.INSTANCE is still null → MainScreens = [null, Search, Library] forever → the first map over the list NPEs on every launch.
+- Proof: standalone JVM repro (workspace scripts/repro/ScreensInitRepro.java) reproduces the exact poison — eager companion list yields [null, Search, Library] + NPE at first dereference; lazy list yields [Home, Search, Library] in every touch order (ScreensInitFixed.java).
+- Scanned the whole app for other companion-initializer-references-object-subclass patterns: Screens.kt was the only real instance (MusicServiceWidgetUpdater/Attribution/GenreKeyword are constructors/strings — safe).
+- Fix 1 (561e9b364): Screens.MainScreens/TvMainScreens are now `by lazy { listOf(...) }` — the companion <clinit> no longer reads subclass statics, so no touch order can poison the lists; API unchanged; in-source comment regression-guards against reverting to eager.
+- Fix 2 (same commit): SourceOrderTest expectations updated for the SOUNDCLOUD/SPOTIFY DEFAULT_ORDER entries from 3b138b559 (this was the red "Build Pull Request" on HEAD 4aa1026ef — 3 failing tests with hardcoded pre-SoundCloud orders; the task-95 worklog claim that the test was DEFAULT_ORDER-driven was wrong for 3 of the 9 tests). Verified all 9 test expectations against the actual parseOrder merge logic with a simulation before pushing.
+- CI for 561e9b364: check SUCCESS, build (compile + tests + lint) SUCCESS — the previously-failing "Build, Test and Lint" step is green, full 5-variant nightly APK matrix SUCCESS, create-nightly SUCCESS; canary release N202610111417 published targeting 561e9b364.
+
+Stage Summary:
+- dev @ 561e9b364: startup crash root-caused, fixed, and shipped to the canary channel (N202610111417); PR-check workflow restored to green after the task-95 test regressions were corrected.
+- The crash was NOT in the sources port itself — it was the atmosphere-gradient route check (task 95, item 5) flipping the Screens class-init order; the sources-port code is untouched and unaffected.
+- User action: update to canary N202610111417 (or later) to get the fix; the app should launch normally with all task-95 features intact.
