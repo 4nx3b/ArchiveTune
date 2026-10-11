@@ -39,6 +39,15 @@ private const val DefaultRubberBandConstant = 0.55f
 private const val DefaultBounceStiffness = 247f
 private const val FallbackContainerPx = 2000f
 
+// Sub-half-pixel pulls are visually settled: reporting isInProgress for the
+// spring's microscopic tail kept the scrollable in its "motion in progress"
+// state for 1-3 extra seconds after the visible bounce ended, during which
+// every tap under the list was consumed as a scroll interruption and read as
+// "the app ignores touch until the overscroll settles". The settle spring
+// keeps animating to true zero in the background; it just no longer blocks
+// interaction once the band is back to sub-pixel.
+private const val InProgressPullThresholdPx = 0.5f
+
 // Release velocity is damped and clamped before it is injected into the
 // bounce-back spring. The full leftover fling velocity (up to 10000 px/s
 // before) stretched the band by close to a thousand extra pixels and made the
@@ -82,7 +91,8 @@ private class IosOverscrollEffect(
     private var settleJobY: Job? = null
 
     override val isInProgress: Boolean
-        get() = rawPullX.floatValue != 0f || rawPullY.floatValue != 0f
+        get() = abs(rawPullX.floatValue) > InProgressPullThresholdPx ||
+            abs(rawPullY.floatValue) > InProgressPullThresholdPx
 
     private fun cancelSettles() {
         settleJobX?.cancel()
@@ -133,7 +143,14 @@ private class IosOverscrollEffect(
     ) {
         val consumed = performFling(velocity)
         val leftover = velocity - consumed
-        if (!isInProgress && leftover == Velocity.Zero) return
+        if (!isInProgress && leftover == Velocity.Zero) {
+            // Sub-threshold residue (settle tail snapped early, interrupted
+            // settle, etc.): clear it so no invisible pull lingers in the
+            // translation.
+            if (rawPullX.floatValue != 0f) rawPullX.floatValue = 0f
+            if (rawPullY.floatValue != 0f) rawPullY.floatValue = 0f
+            return
+        }
 
         cancelSettles()
         settleJobX = scope.launch { settle(rawPullX, leftover.x) }
@@ -167,10 +184,14 @@ private class IosOverscrollEffect(
                 spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
                     stiffness = bounceStiffness.coerceIn(30f, 2000f),
+                    visibilityThreshold = InProgressPullThresholdPx / 2f,
                 ),
         ) { value, _ ->
             pull.floatValue = value
         }
+        // Snap the sub-threshold tail straight to zero: no residual motion,
+        // no isInProgress flicker, nothing left for the next gesture to pay down.
+        if (pull.floatValue != 0f) pull.floatValue = 0f
     }
 
     override val node: DelegatableNode =

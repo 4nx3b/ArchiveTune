@@ -451,6 +451,15 @@ fun Modifier.liquidGlass(
     val tuning = LocalLiquidGlassTuning.current
 
     return remember(backdrop, shape, interactive, baseColor, blurRadius, isDark, scrim, tuning) {
+        // Light-mode lens diet: the full-height refraction band with depth
+        // darkening reads as a black rim around bright pills over the light
+        // home wash (pixel-verified: a ~8dp dark band hugging the shape edge,
+        // darkest at the bottom — invisible on dark themes). In light mode the
+        // band is halved, the displacement softened and the depth/aberration
+        // accents turned off, so the rim renders as a subtle highlight instead
+        // of a dark backing border. Dark mode keeps the exact tuned look.
+        val lensScale = if (isDark) 1f else 0.5f
+        val lensAmountScale = if (isDark) 1f else 0.6f
         this.drawBackdrop(
             backdrop = backdrop,
             effects = {
@@ -466,10 +475,10 @@ fun Modifier.liquidGlass(
                 )
 
                 lens(
-                    refractionHeight = (28f * tuning.refractionHeightFactor).dp.toPx(),
-                    refractionAmount = size.minDimension * (tuning.refractionAmountFactor / 3.2f),
-                    depthEffect = tuning.depth3D,
-                    chromaticAberration = tuning.chromaticAberration,
+                    refractionHeight = (28f * lensScale * tuning.refractionHeightFactor).dp.toPx(),
+                    refractionAmount = size.minDimension * (tuning.refractionAmountFactor / 3.2f) * lensAmountScale,
+                    depthEffect = tuning.depth3D && isDark,
+                    chromaticAberration = tuning.chromaticAberration && isDark,
                 )
             },
             onDrawBackdrop = { drawBackdrop ->
