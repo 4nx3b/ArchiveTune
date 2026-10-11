@@ -281,10 +281,11 @@ private const val FlamingoPageMorphHoldMs = 420L
 
 private const val FlamingoStageFlightMs = 420
 private const val FlamingoStageFlightHandoffMs = 180
-private const val FlamingoStageFlightFadeInMs = 80
 private val FlamingoStageFlightCornerDp = 5.dp
 
 private fun stageFlightCornerT(progress: Float): Float = ((progress - 0.75f) / 0.25f).coerceIn(0f, 1f)
+
+private fun stageFlightAlbumFade(progress: Float): Float = (1f - progress / 0.25f).coerceIn(0f, 1f)
 
 private class FlamingoAdaptiveCornerShape(
     private val smallRadius: Dp,
@@ -531,10 +532,7 @@ fun FlamingoPlayerContent(
             when {
                 nowPage == FlamingoPage.Album -> {
                     if (canvasFlightAnim.value > 0.0005f) {
-                        canvasFlightAlpha.animateTo(
-                            1f,
-                            tween(FlamingoStageFlightFadeInMs, easing = FastOutSlowInEasing),
-                        )
+                        canvasFlightAlpha.snapTo(1f)
                         canvasFlightAnim.animateTo(
                             0f,
                             tween(FlamingoStageFlightMs, easing = FastOutSlowInEasing),
@@ -542,18 +540,22 @@ fun FlamingoPlayerContent(
                     }
                 }
                 stageBarSlotRect != null -> {
-                    canvasFlightAlpha.animateTo(
-                        1f,
-                        tween(FlamingoStageFlightFadeInMs, easing = FastOutSlowInEasing),
-                    )
+                    val handoff =
+                        launch {
+                            canvasFlightAlpha.animateTo(
+                                0f,
+                                tween(
+                                    durationMillis = FlamingoStageFlightHandoffMs,
+                                    delayMillis = (FlamingoStageFlightMs - FlamingoStageFlightHandoffMs).coerceAtLeast(0),
+                                    easing = FastOutSlowInEasing,
+                                ),
+                            )
+                        }
                     canvasFlightAnim.animateTo(
                         1f,
                         tween(FlamingoStageFlightMs, easing = FastOutSlowInEasing),
                     )
-                    canvasFlightAlpha.animateTo(
-                        0f,
-                        tween(FlamingoStageFlightHandoffMs, easing = FastOutSlowInEasing),
-                    )
+                    handoff.cancel()
                 }
             }
         }
@@ -1500,7 +1502,7 @@ fun FlamingoPlayerContent(
                                             loopSyncLeader = canvasLoopSync,
                                             onPlaybackAvailabilityChange = { canvasRendering = it },
                                             refreshEpoch = orientationRefreshEpoch,
-                                            fadeStrength = { 1f - overlayArtworkReveal },
+                                            fadeStrength = { stageFlightAlbumFade(canvasFlightAnim.value) },
                                             staticArtworkUrl = artworkUrl,
                                             modifier = Modifier.fillMaxSize(),
                                         )
@@ -1508,7 +1510,7 @@ fun FlamingoPlayerContent(
                                         FlamingoProceduralStage(
                                             artworkUrl = artworkUrl,
                                             isPlaying = isPlayingStatusLambda.value,
-                                            fadeStrength = { 1f - overlayArtworkReveal },
+                                            fadeStrength = { stageFlightAlbumFade(canvasFlightAnim.value) },
                                             modifier = Modifier.fillMaxSize(),
                                         )
                                     }
@@ -2981,7 +2983,7 @@ private fun FlamingoPlayingList(
                                 if (controlsVisible()) {
                                     val fadeBandPx = 56.dp.toPx()
                                     val transparentFromPx =
-                                        (size.height - bottomOverlayPx() - 8.dp.toPx())
+                                        (size.height - bottomOverlayPx() + 20.dp.toPx())
                                             .coerceAtLeast(topFadePx + fadeBandPx)
                                     val fadeStartPx = transparentFromPx - fadeBandPx
                                     Brush.verticalGradient(

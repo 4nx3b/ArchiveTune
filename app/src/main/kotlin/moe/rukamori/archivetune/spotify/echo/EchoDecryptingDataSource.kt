@@ -76,7 +76,7 @@ internal class EchoDecryptingDataSource(
             source.open(
                 dataSpec
                     .buildUpon()
-                    .setUri(ref.cdnUrls.first().toUri())
+                    .setUri(Uri.parse(ref.cdnUrls.first()))
                     .setPosition(alignedPosition)
                     .setLength(upstreamLength)
                     .build(),
