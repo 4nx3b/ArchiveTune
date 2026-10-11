@@ -128,6 +128,7 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.shadow.Shadow
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sign
@@ -852,6 +853,11 @@ fun FloatingNavigationToolbar(
                                         chromaticAberration = glassTuning.chromaticAberration,
                                     )
                                 },
+                                // No library drop shadow in light mode: the default
+                                // black 24dp-blur shadow renders as a dark halo
+                                // around the floating tab pill on bright pages
+                                // (same defect as the home settings pill).
+                                shadow = { if (isDark) Shadow.Default else null },
                                 onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
                                 shape = { pillShape },
 

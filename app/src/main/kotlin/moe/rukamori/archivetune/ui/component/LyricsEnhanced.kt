@@ -1190,7 +1190,16 @@ fun LyricsEnhanced(
                                     showTranslation = showTranslations,
                                     showPhonetic = showPhoneticLines,
                                     anchor = LyricsAnchor.Fixed(lyricsViewportOffset),
-                                    keepAliveZone = 8.dp,
+                                    // Library default (100dp): a tight 8dp window
+                                    // disposed and recomposed lyric rows every
+                                    // handful of scroll frames during the follow
+                                    // animation — the composition + raster churn
+                                    // read as persistent scroll jank ("enhanced
+                                    // lyrics still lag"). The wider window keeps
+                                    // neighbouring rows alive across line changes;
+                                    // the library's own bounded raster cache (24
+                                    // lines / 16MB) still caps memory.
+                                    keepAliveZone = 100.dp,
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }

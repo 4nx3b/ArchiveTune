@@ -324,6 +324,7 @@ import moe.rukamori.archivetune.ui.component.NavigationBarBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.shadow.Shadow
 import moe.rukamori.archivetune.ui.component.ProfileMenuDialog
 import moe.rukamori.archivetune.ui.component.ProfileMenuItem
 import moe.rukamori.archivetune.ui.component.AutoResizeText
@@ -1158,19 +1159,24 @@ class MainActivity : ComponentActivity() {
                     val bottomInset = with(density) { windowsInsets.getBottom(density).toDp() }
                     val bottomInsetDp = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
 
-                    // The subtle atmosphere gradient rides under every page in
-                    // DARK mode, while "Disable blur effects" is off — a gentle
-                    // version of the wash the home screen wears in light mode.
-                    // Pure dark keeps its pitch-black base (the gradient paints
-                    // its own black surface base over the boosted glow stops) —
-                    // the flat-black override used to swallow the gradient
-                    // entirely. LIGHT mode is untouched: its home screen keeps
-                    // its own full-intensity wash and every other page stays a
-                    // flat surface, exactly as before.
+                    // The subtle atmosphere gradient rides only under the three
+                    // main tabs (home / search / library) in DARK mode, while
+                    // "Disable blur effects" is off — every other page (settings
+                    // and all sub-pages) keeps the flat surface. The wash is tuned
+                    // GENTLE: the earlier full-strength stops read as an extremely
+                    // heavy gradient. LIGHT mode is untouched: its home screen keeps
+                    // its own full-intensity wash and every other page stays a flat
+                    // surface, exactly as before.
                     val (disableBlurForAtmosphere) = rememberPreference(DisableBlurKey, false)
                     val darkAtmosphereTheme =
                         MaterialTheme.colorScheme.surface.luminance() < 0.5f
-                    if (disableBlurForAtmosphere || !darkAtmosphereTheme) {
+                    val navBackStackEntryForAtmosphere by navController.currentBackStackEntryAsState()
+                    val atmosphereRoute = navBackStackEntryForAtmosphere?.destination?.route
+                    val atmosphereEligibleRoute =
+                        atmosphereRoute == Screens.Home.route ||
+                            atmosphereRoute == Screens.Search.route ||
+                            atmosphereRoute == Screens.Library.route
+                    if (disableBlurForAtmosphere || !darkAtmosphereTheme || !atmosphereEligibleRoute) {
                         Box(
                             modifier =
                                 Modifier
@@ -2452,6 +2458,8 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                         if (canRailLiquidGlass && liquidGlassBackdrop != null) {
+                                            val railGlassDark =
+                                                MaterialTheme.colorScheme.surface.luminance() < 0.5f
                                             Box(
                                                 modifier =
                                                     Modifier
@@ -2461,6 +2469,13 @@ class MainActivity : ComponentActivity() {
                                                             effects = {
                                                                 colorControls(saturation = 1.7f)
                                                                 blur(4f.dp.toPx())
+                                                            },
+                                                            // Full-bleed rail glass: the library's default
+                                                            // black drop shadow would bleed a dark halo
+                                                            // past the rail edges in light mode — disabled
+                                                            // there, kept for the dark-theme depth cue.
+                                                            shadow = {
+                                                                if (railGlassDark) Shadow.Default else null
                                                             },
                                                             onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
                                                             shape = { RectangleShape },
@@ -3267,7 +3282,20 @@ class MainActivity : ComponentActivity() {
                                         }
                                         }
 
-                                        if (shouldShowNavigationBar || !playerBottomSheetState.isDismissed) {
+                                        // The compact circles must also render on
+                                        // non-main routes (settings and every
+                                        // sub-page) when the bottom UI is in its
+                                        // compact state — the old gate required the
+                                        // full navigation bar OR a visible miniplayer,
+                                        // which left the bottom of every settings
+                                        // page completely empty in ALWAYS_COMPACT
+                                        // mode (or after an ADAPTIVE scroll) with no
+                                        // miniplayer present.
+                                        if (
+                                            shouldShowNavigationBar ||
+                                            !playerBottomSheetState.isDismissed ||
+                                            bottomUiCompactFractionState.value > 0.01f
+                                        ) {
                                             val compactRowVisible by remember {
                                                 derivedStateOf {
                                                     bottomUiCompactFractionState.value *
