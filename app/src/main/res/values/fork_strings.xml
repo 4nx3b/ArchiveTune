@@ -57,6 +57,10 @@
     <string name="spotify_direct_audio_quality">Spotify direct quality</string>
     <string name="spotify_direct_quality_aac_128">AAC 128 kbps</string>
     <string name="spotify_direct_quality_aac_128_dual">AAC 128 kbps (dual channel)</string>
+    <string name="spotify_resolve_method">Resolve method</string>
+    <string name="spotify_resolve_method_desc">How Spotify tracks are turned into playable streams</string>
+    <string name="spotify_resolve_method_stopify">Stopify</string>
+    <string name="spotify_resolve_method_echo">Echo Music</string>
     <string name="spotify_direct_login_hint">Sign in to Spotify first (Settings → Integrations → Spotify)</string>
     <string name="spotify_direct_signed_in_desc">Web session active — direct streaming uses this account</string>
     <string name="search_source_soundcloud">SoundCloud</string>

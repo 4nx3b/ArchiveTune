@@ -77,6 +77,8 @@ import moe.rukamori.archivetune.constants.SoundCloudEnabledKey
 import moe.rukamori.archivetune.constants.SpotifyDirectEnabledKey
 import moe.rukamori.archivetune.constants.SpotifyDirectQuality
 import moe.rukamori.archivetune.constants.SpotifyDirectQualityKey
+import moe.rukamori.archivetune.constants.SpotifyResolveMethod
+import moe.rukamori.archivetune.constants.SpotifyResolveMethodKey
 import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
@@ -176,6 +178,8 @@ internal fun PlaybackSourceSections(
     val (spotifyDirectEnabled, onSpotifyDirectEnabledChange) = rememberPreference(SpotifyDirectEnabledKey, false)
     val (spotifyDirectQuality, onSpotifyDirectQualityChange) =
         rememberEnumPreference(SpotifyDirectQualityKey, SpotifyDirectQuality.AAC_128)
+    val (spotifyResolveMethod, onSpotifyResolveMethodChange) =
+        rememberEnumPreference(SpotifyResolveMethodKey, SpotifyResolveMethod.STOPIFY)
     val (spotifySpDc) = rememberPreference(SpotifySpDcKey, defaultValue = "")
     val spotifyDirectLoggedIn = spotifySpDc.isNotBlank()
     val (defaultMetadataSource, onDefaultMetadataSourceChange) =
@@ -985,6 +989,24 @@ internal fun PlaybackSourceSections(
                     when (quality) {
                         SpotifyDirectQuality.AAC_128 -> stringResource(R.string.spotify_direct_quality_aac_128)
                         SpotifyDirectQuality.AAC_128_DUAL -> stringResource(R.string.spotify_direct_quality_aac_128_dual)
+                    }
+                },
+            )
+        }
+
+        item {
+            EnumListPreference(
+                modifier = positions.modifierFor("spotify_resolve_method"),
+                title = { Text(stringResource(R.string.spotify_resolve_method)) },
+                description = stringResource(R.string.spotify_resolve_method_desc),
+                icon = { Icon(painterResource(R.drawable.music_note), null) },
+                selectedValue = spotifyResolveMethod,
+                onValueSelected = onSpotifyResolveMethodChange,
+                isEnabled = spotifyDirectEnabled && spotifyDirectLoggedIn,
+                valueText = { method ->
+                    when (method) {
+                        SpotifyResolveMethod.STOPIFY -> stringResource(R.string.spotify_resolve_method_stopify)
+                        SpotifyResolveMethod.ECHO -> stringResource(R.string.spotify_resolve_method_echo)
                     }
                 },
             )

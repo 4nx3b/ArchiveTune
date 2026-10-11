@@ -1382,6 +1382,18 @@ val SpotifyDirectQualityOptions = listOf(
     SpotifyDirectQuality.AAC_128_DUAL,
 )
 
+val SpotifyResolveMethodKey = stringPreferencesKey("spotifyResolveMethod")
+
+enum class SpotifyResolveMethod {
+    STOPIFY,
+    ECHO,
+}
+
+val SpotifyResolveMethodOptions = listOf(
+    SpotifyResolveMethod.STOPIFY,
+    SpotifyResolveMethod.ECHO,
+)
+
 val SpotifyDeviceIdKey = stringPreferencesKey("spotifyDeviceId")
 
 val AudioSearchSourceKey = stringPreferencesKey("audioSearchSource")

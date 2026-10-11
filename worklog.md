@@ -5276,3 +5276,21 @@ Work Log:
 
 Stage Summary:
 - Pushed on top of f5a950891; CI monitored per Rule 1 (outcome recorded below in the next entry).
+
+---
+Task ID: 100
+Agent: Super Z (main agent, session web-60bd54af)
+
+Task: Item 1 of the 2026-10-11 ten-task round — update the Spotify stream resolve code (Stopify upstream refresh), fix the muted-audio bug, add the echo-spotify-extension method as a second streaming path, and add a "Resolve method" option below the Spotify source with a bottom-sheet picker.
+
+Work Log:
+- CI repair first (task 99, e1be32fe5): the 9 compile errors from f5a950891 fixed (roundToInt import, toMediaMetadata import path, no_results_found string, nullable SongItem.duration, SearchProvider SOUNDCLOUD branch); build job green; the tv-universal nightly failure was an artifact-upload ETIMEDOUT flake, re-run requested.
+- Mute fix: root cause is the missing web-player playback reporting. Stopify's reportPlaybackToApi (track-playback/v1/devices/{id}/state PUT on both hosts + melody/v1/msg/batch jssdk_playback_start/connect_command/stats + connect-state play sync) is what keeps Spotify serving unmuted files; our port had none of it. Ported it into SpotifyWebStreamer.reportPlayback (local-history parts dropped) plus ensureRegisteredDevice; MusicService gains updateSpotifyPlaybackReporting driven from onMediaItemTransition — start report on first playing tick, progress report at >= 30s, finish report in a NonCancellable finally when the last position is within 2s of the end, exactly mirroring Stopify's MainActivity call sites.
+- Echo Music method (spotify/echo/ package, ported from echo-spotify-extension): SpotifyDesktopAuth (sp_dc -> desktop token via the accounts.spotify.com device pairing flow + desktop client token), SpotifyEchoProto (hand-rolled minimal protobuf codec for BatchedEntityRequest/BatchedExtensionResponse/Track/AudioFilesExtension per the wire schema in the extension's proto files), SpotifyPlayPlay{Leaves,Pipeline,LicenseRequest,RecordDecoder} (mechanical port, comment-stripped per Rule 3, verified byte-identical to the reference modulo renames), SpotifyEchoResolver (extended-metadata audio file list with restricted-track relinking -> storage-resolve CDN urls -> PlayPlay key; picks Vorbis 320 -> FLAC -> 160 -> FLAC 24-bit -> 96), EchoDecryptingDataSource (Media3 DataSource, AES-128-CTR with the 72e0...93 IV, Ogg payloads skip the 0xA7 Spotify custom header which matches librespot's SPOTIFY_OGG_HEADER_END Subfile behavior, 16-byte absolute block grid, per-block counter re-derivation — modeled on DeezerDecryptingDataSource and cached through playerCache the same way).
+- Integration: echo-spotify:// scheme routed in SchemeRoutingDataSource + ResolvedSchemeRoutingDataSource + the ResolvingDataSource pass-through; resolveSpotifyStream gains the Echo branch (falls back to the Stopify pipeline when Echo fails); evictDirectStreamCache also invalidates the Echo track cache; the Echo resolve has a 10-minute TTL cache for preload+play dedupe.
+- Resolve method option: SpotifyResolveMethod enum + SpotifyResolveMethodKey; EnumListPreference (the app's standard bottom-sheet picker) below the quality entry in the Spotify Direct Streaming group on the Sources page, enabled when signed in; source check now reports desktop-pairing viability when Echo is selected.
+- AGENTS.md: Spotify invariant rewritten for the two resolve methods; stale ambient-mode line corrected.
+
+Stage Summary:
+- dev @ (this commit): item 1 complete — Stopify pipeline refreshed with playback reporting (mute fix), Echo Music second method, Resolve method bottom-sheet picker.
+- Deliberate scope choices: Echo picks best available Vorbis/FLAC automatically (no new quality enum); Echo needs no playback reporting (desktop persona, like the extension itself); Stopify reporting only runs for Stopify-resolved items.

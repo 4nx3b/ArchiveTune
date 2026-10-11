@@ -50,6 +50,18 @@ object SpotifyWebStreamer {
     private const val CLIENT_TOKEN_URL = "https://clienttoken.spotify.com/v1/clienttoken"
     private const val JS_SDK_CLIENT_ID = "d8a5ed958d274c2e8ee717e6a4b0971d"
 
+    private val TRACK_PLAYBACK_STATE_URLS =
+        listOf(
+            "https://gae2-spclient.spotify.com/track-playback/v1/devices/{device}/state",
+            "https://spclient.wg.spotify.com/track-playback/v1/devices/{device}/state",
+        )
+
+    private val MELODY_BATCH_URLS =
+        listOf(
+            "https://gae2-spclient.spotify.com/melody/v1/msg/batch",
+            "https://spclient.wg.spotify.com/melody/v1/msg/batch",
+        )
+
     private const val CONNECTION_ID_TIMEOUT_MS = 6_000L
     private const val MANIFEST_TIMEOUT_MS = 4_000L
     private const val CLIENT_TOKEN_TTL_MS = 24L * 60 * 60 * 1000
@@ -450,5 +462,254 @@ object SpotifyWebStreamer {
                     json.optJSONArray("cdnurl")?.optString(0)?.takeIf { it.isNotBlank() }
                 }
             }.getOrNull()
+        }
+
+    suspend fun ensureRegisteredDevice(deviceId: String): Boolean {
+        val token = token() ?: return false
+        return ensureDeviceRegistered(token, clientToken(), deviceId, registeredDualFormat)
+    }
+
+    suspend fun reportPlayback(
+        trackUri: String,
+        deviceId: String,
+        positionMs: Long,
+        durationMs: Long,
+        isFinished: Boolean,
+    ) {
+        val token = token() ?: return
+        val clientToken = clientToken()
+        val fileId = audioFileMap[trackUri].orEmpty()
+        val trackDuration = if (durationMs > 0) durationMs else 203_105L
+        val reportedPosition = when {
+            isFinished -> trackDuration
+            positionMs > 0 -> positionMs
+            else -> 1002L
+        }
+        runCatching {
+            ensureRegisteredDevice(deviceId)
+        }
+        val statePayload =
+            JSONObject().apply {
+                put("seq_num", if (isFinished || positionMs >= 30_000L) 6 else 4)
+                put(
+                    "state_ref",
+                    JSONObject().apply {
+                        put("state_machine_id", "ChTYh8P7GXEaL9SXQ9jMrnbW_sLlYQ")
+                        put("state_id", "4afaf822d8624b5fb4d2f9ffe5b1fe79")
+                        put("paused", false)
+                    },
+                )
+                put(
+                    "sub_state",
+                    JSONObject().apply {
+                        put("playback_speed", 1)
+                        put("position", reportedPosition)
+                        put("duration", trackDuration)
+                        put("media_type", "AUDIO")
+                        put("bitrate", 128000)
+                        put("audio_quality", "HIGH")
+                        put("format", 10)
+                        put("is_video_on", false)
+                    },
+                )
+                put("previous_position", reportedPosition)
+                put("debug_source", if (isFinished) "track_done" else if (positionMs >= 30_000L) "playback_progress" else "started_playing")
+            }
+        for (stateUrl in TRACK_PLAYBACK_STATE_URLS) {
+            runCatching {
+                putPlain(
+                    url = stateUrl.replace("{device}", deviceId),
+                    token = token,
+                    clientToken = clientToken,
+                    payload = statePayload,
+                    contentType = "application/json",
+                    method = "PUT",
+                )
+            }.onFailure { Timber.tag(TAG).w(it, "track-playback state report failed") }
+        }
+        if (!isFinished && positionMs < 5_000L) {
+            runCatching {
+                postJson(playCommandUrl(deviceId), token, clientToken, buildPlayPayload(trackUri)) { code, _ -> code in 200..299 }
+            }
+        }
+        val playbackId = UUID.randomUUID().toString().replace("-", "")
+        val sessionId = System.currentTimeMillis().toString()
+        val melodyPayloads = mutableListOf<JSONObject>()
+        if (!isFinished && positionMs < 30_000L) {
+            melodyPayloads +=
+                JSONObject().apply {
+                    put(
+                        "messages",
+                        JSONArray().apply {
+                            put(
+                                JSONObject().apply {
+                                    put("type", "jssdk_playback_start")
+                                    put(
+                                        "message",
+                                        JSONObject().apply {
+                                            put("play_track", trackUri)
+                                            put("file_id", fileId)
+                                            put("playback_id", playbackId)
+                                            put("session_id", sessionId)
+                                            put("ms_start_position", positionMs)
+                                            put("initially_paused", false)
+                                            put("client_id", "")
+                                            put("correlation_id", "")
+                                            put("feature_identifier", "")
+                                        },
+                                    )
+                                },
+                            )
+                        },
+                    )
+                    put("sdk_id", "harmony:4.80.0")
+                    put("platform", PLATFORM_IDENTIFIER)
+                    put("client_version", "0.0.0")
+                }
+            melodyPayloads +=
+                JSONObject().apply {
+                    put(
+                        "messages",
+                        JSONArray().apply {
+                            put(
+                                JSONObject().apply {
+                                    put("type", "jssdk_connect_command")
+                                    put(
+                                        "message",
+                                        JSONObject().apply {
+                                            put("command_id", playbackId)
+                                            put("command_type", "play")
+                                            put("target_device_brand", "spotify")
+                                            put("target_device_model", "web_player")
+                                            put("target_device_id", deviceId)
+                                            put("result", "success")
+                                            put("http_status_code", 200)
+                                        },
+                                    )
+                                },
+                            )
+                        },
+                    )
+                    put("sdk_id", "harmony:4.80.0-3cdf02c91")
+                    put("platform", PLATFORM_IDENTIFIER)
+                    put("client_version", "0.0.0")
+                }
+        } else {
+            val playedMs = if (isFinished) trackDuration else positionMs.coerceAtLeast(30_000L)
+            val now = System.currentTimeMillis()
+            melodyPayloads +=
+                JSONObject().apply {
+                    put(
+                        "messages",
+                        JSONArray().apply {
+                            put(
+                                JSONObject().apply {
+                                    put("type", "jssdk_playback_stats")
+                                    put(
+                                        "message",
+                                        JSONObject().apply {
+                                            put("play_track", trackUri)
+                                            put("file_id", fileId)
+                                            put("playback_id", playbackId)
+                                            put("session_id", sessionId)
+                                            put("internal_play_id", "1")
+                                            put("start_time", now - playedMs)
+                                            put("end_time", now)
+                                            put("ms_played", playedMs)
+                                            put("ms_nominal_played", playedMs)
+                                            put("ms_file_duration", trackDuration)
+                                            put("ms_actual_duration", trackDuration)
+                                            put("ms_metadata_duration", trackDuration)
+                                            put("ms_start_position", 0)
+                                            put("ms_end_position", reportedPosition)
+                                            put("reason_start", "playbtn")
+                                            put("reason_end", if (isFinished) "trackdone" else "endplay")
+                                            put("initially_paused", false)
+                                            put("had_error", false)
+                                            put("sequence_id", 0)
+                                            put("client_id", "")
+                                            put("correlation_id", "")
+                                            put("urls_json", "{\"version\":\"1.0.0\",\"urls\":[]}")
+                                            put("manifest_id", fileId)
+                                            put("memory_cached", false)
+                                            put("persistent_cached", false)
+                                            put("audio_format", "")
+                                            put("video_format", "")
+                                            put("protected", false)
+                                            put("key_system", "")
+                                            put("key_system_impl", "")
+                                            put("external_start_time", 0)
+                                            put("ms_played_per_surface", JSONObject())
+                                            put("ms_played_visible", 0)
+                                            put("n_stalls", 0)
+                                            put("n_rendition_upgrade", 0)
+                                            put("n_rendition_downgrade", 0)
+                                            put("bps_bandwidth_max", 0)
+                                            put("bps_bandwidth_min", 0)
+                                            put("bps_bandwidth_avg", 0)
+                                            put("n_seekback", 0)
+                                            put("n_seekforward", 0)
+                                            put("start_bitrate", 0)
+                                            put("time_weighted_bitrate", 0)
+                                            put("n_warnings", 0)
+                                            put("n_navigator_offline", 0)
+                                            put("n_dropped_video_frames", 0)
+                                            put("n_total_video_frames", 0)
+                                            put("resolution_max", 0)
+                                            put("resolution_min", 0)
+                                            put("total_bytes", 0)
+                                            put("strategy", "")
+                                            put("ms_played_per_audio_format", JSONObject())
+                                            put("ms_played_per_video_format", JSONObject())
+                                        },
+                                    )
+                                },
+                            )
+                        },
+                    )
+                    put("sdk_id", "overture:4.80.0")
+                    put("platform", "Partner spotify desktop")
+                    put("client_version", SPOTIFY_APP_VERSION)
+                }
+        }
+        for (melodyUrl in MELODY_BATCH_URLS) {
+            for (payload in melodyPayloads) {
+                runCatching {
+                    putPlain(melodyUrl, token, clientToken, payload, contentType = "text/plain;charset=UTF-8", method = "POST")
+                }.onFailure { Timber.tag(TAG).w(it, "melody batch report failed") }
+            }
+        }
+    }
+
+    private suspend fun putPlain(
+        url: String,
+        token: String,
+        clientToken: String,
+        payload: JSONObject,
+        contentType: String,
+        method: String,
+    ): Boolean =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val body = payload.toString().toRequestBody(contentType.toMediaType())
+                val request =
+                    Request
+                        .Builder()
+                        .url(url)
+                        .header("authorization", "Bearer $token")
+                        .header("client-token", clientToken)
+                        .header("content-type", contentType)
+                        .header("app-platform", APP_PLATFORM)
+                        .header("spotify-app-version", SPOTIFY_APP_VERSION)
+                        .header("origin", "https://open.spotify.com")
+                        .header("referer", "https://open.spotify.com/")
+                        .header("user-agent", USER_AGENT)
+                        .method(method, body)
+                        .build()
+                client.newCall(request).execute().use { response ->
+                    Timber.tag(TAG).d("playback report %s -> HTTP %d", url.take(64), response.code)
+                    response.isSuccessful
+                }
+            }.getOrDefault(false)
         }
 }
