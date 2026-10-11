@@ -131,6 +131,13 @@ fun OnlineSearchResult(
         )
         return
     }
+    if (viewModel.searchProvider == SearchProvider.SOUNDCLOUD) {
+        SoundCloudOnlineSearchResult(
+            navController = navController,
+            query = viewModel.query,
+        )
+        return
+    }
 
     val coroutineScope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()

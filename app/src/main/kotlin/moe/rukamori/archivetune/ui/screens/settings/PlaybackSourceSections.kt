@@ -107,6 +107,10 @@ import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.soundcloud.SoundCloudAudioProvider
+import moe.rukamori.archivetune.spotify.SpotifyAccountViewModel
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import moe.rukamori.archivetune.utils.soundcloud.isSoundCloudAuthConfigured
 import moe.rukamori.archivetune.utils.soundcloud.normalizeSoundCloudAuthInput
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -754,6 +758,16 @@ internal fun PlaybackSourceSections(
     }
 
     var showSoundCloudTokenDialog by rememberSaveable { mutableStateOf(false) }
+    var showSoundCloudWebLogin by rememberSaveable { mutableStateOf(false) }
+    var showSpotifyLogin by rememberSaveable { mutableStateOf(false) }
+    val spotifyAccountViewModel: SpotifyAccountViewModel = hiltViewModel()
+    val spotifyState by spotifyAccountViewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(spotifyState.isAuthenticated) {
+        if (spotifyState.isAuthenticated) {
+            showSpotifyLogin = false
+        }
+    }
 
     PreferenceGroup(title = stringResource(R.string.soundcloud_specific)) {
         item {
@@ -782,6 +796,16 @@ internal fun PlaybackSourceSections(
                         SoundCloudAudioQuality.AAC_160 -> stringResource(R.string.soundcloud_quality_aac_160)
                     }
                 },
+            )
+        }
+
+        item {
+            PreferenceEntry(
+                modifier = positions.modifierFor("soundcloud_web_login"),
+                title = { Text(stringResource(R.string.soundcloud_web_login)) },
+                description = stringResource(R.string.soundcloud_web_login_description),
+                icon = { Icon(painterResource(R.drawable.language), null) },
+                onClick = { showSoundCloudWebLogin = true },
             )
         }
 
@@ -838,6 +862,33 @@ internal fun PlaybackSourceSections(
         )
     }
 
+    if (showSoundCloudWebLogin) {
+        SoundCloudLoginSheet(
+            onDismiss = { showSoundCloudWebLogin = false },
+            onTokenCaptured = { token ->
+                onSoundCloudAuthTokenChange(token)
+                SoundCloudAudioProvider.invalidateClientId()
+            },
+        )
+    }
+
+    if (showSpotifyLogin) {
+        SpotifyLoginSheet(
+            onDismiss = { showSpotifyLogin = false },
+            onCookiesCaptured = { spDc, spKey ->
+                showSpotifyLogin = false
+                spotifyAccountViewModel.connectWithCookies(spDc = spDc, spKey = spKey)
+            },
+        )
+    }
+
+    spotifyState.errorMessage?.let { error ->
+        SpotifyErrorDialog(
+            message = error,
+            onDismiss = spotifyAccountViewModel::dismissError,
+        )
+    }
+
     PreferenceGroup(title = stringResource(R.string.spotify_direct_specific)) {
         item {
             SwitchPreference(
@@ -871,12 +922,53 @@ internal fun PlaybackSourceSections(
             )
         }
 
-        item(visible = !spotifyDirectLoggedIn) {
+        item {
+            if (!spotifyState.isAuthenticated) {
+                PreferenceEntry(
+                    modifier = positions.modifierFor("spotify_direct_login"),
+                    title = { Text(stringResource(R.string.spotify_connect)) },
+                    description = stringResource(R.string.spotify_not_connected),
+                    icon = { Icon(painterResource(R.drawable.spotify_icon), null) },
+                    trailingContent = {
+                        AnimatedVisibility(visible = spotifyState.isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
+                    },
+                    onClick = { showSpotifyLogin = true },
+                    isEnabled = !spotifyState.isLoading,
+                )
+            } else {
+                PreferenceEntry(
+                    modifier = positions.modifierFor("spotify_direct_login"),
+                    title = {
+                        Text(
+                            text =
+                                if (spotifyState.accountName.isNotBlank()) {
+                                    stringResource(R.string.spotify_connected_as, spotifyState.accountName)
+                                } else {
+                                    stringResource(R.string.spotify_account)
+                                },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    description = stringResource(R.string.spotify_direct_signed_in_desc),
+                    icon = { SpotifyAccountIcon(avatarUrl = spotifyState.accountAvatarUrl) },
+                    isEnabled = false,
+                )
+            }
+        }
+
+        item(visible = spotifyState.isAuthenticated) {
             PreferenceEntry(
-                modifier = positions.modifierFor("spotify_direct_login_hint"),
-                title = { Text(stringResource(R.string.spotify_direct_login_hint)) },
-                icon = { Icon(painterResource(R.drawable.spotify_icon), null) },
-                onClick = { navController.navigate("settings/integration") },
+                modifier = positions.modifierFor("spotify_direct_logout"),
+                title = { Text(stringResource(R.string.action_logout)) },
+                icon = { Icon(painterResource(R.drawable.logout), null) },
+                onClick = { spotifyAccountViewModel.logout() },
+                isEnabled = !spotifyState.isLoading,
             )
         }
 
@@ -895,6 +987,10 @@ internal fun PlaybackSourceSections(
                     }
                 },
             )
+        }
+
+        item {
+            SourceCheckRow(source = AudioSourceType.SPOTIFY, positions = positions)
         }
     }
 }

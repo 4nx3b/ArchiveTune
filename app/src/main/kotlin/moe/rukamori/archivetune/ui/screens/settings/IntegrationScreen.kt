@@ -28,7 +28,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -113,7 +112,6 @@ fun IntegrationScreen(
 
     val spotifyState by spotifyAccountViewModel.uiState.collectAsStateWithLifecycle()
     val (showSpotifyPlaylists, onShowSpotifyPlaylistsChange) = rememberPreference(ShowSpotifyPlaylistsKey, false)
-    var showSpotifyLogin by rememberSaveable { mutableStateOf(false) }
 
     var showCrossServiceImport by remember { mutableStateOf(false) }
     var showPoolApiKeyEditor by remember { mutableStateOf(false) }
@@ -123,12 +121,6 @@ fun IntegrationScreen(
     var poolRefreshMessage by remember { mutableStateOf<String?>(null) }
     val poolScope = rememberCoroutineScope()
     val poolContext = LocalContext.current
-
-    LaunchedEffect(spotifyState.isAuthenticated) {
-        if (spotifyState.isAuthenticated) {
-            showSpotifyLogin = false
-        }
-    }
 
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
@@ -296,13 +288,11 @@ fun IntegrationScreen(
                         .then(positions.modifierFor("spotify")),
                 title = stringResource(R.string.external_sources),
             ) {
-                spotifyAccountPreferences(
+                spotifyLibraryPreferences(
                     state = spotifyState,
                     showPlaylists = showSpotifyPlaylists,
-                    onConnectClick = { showSpotifyLogin = true },
                     onShowPlaylistsChange = onShowSpotifyPlaylistsChange,
                     onReloadClick = spotifyAccountViewModel::reloadPlaylists,
-                    onLogoutClick = { spotifyAccountViewModel.logout() },
                 )
             }
 
@@ -505,23 +495,6 @@ fun IntegrationScreen(
             extraContent = {
                 InfoLabel(text = stringResource(R.string.pool_api_key_help))
             },
-        )
-    }
-
-    if (showSpotifyLogin) {
-        SpotifyLoginSheet(
-            onDismiss = { showSpotifyLogin = false },
-            onCookiesCaptured = { spDc, spKey ->
-                showSpotifyLogin = false
-                spotifyAccountViewModel.connectWithCookies(spDc = spDc, spKey = spKey)
-            },
-        )
-    }
-
-    spotifyState.errorMessage?.let { error ->
-        SpotifyErrorDialog(
-            message = error,
-            onDismiss = spotifyAccountViewModel::dismissError,
         )
     }
 }
