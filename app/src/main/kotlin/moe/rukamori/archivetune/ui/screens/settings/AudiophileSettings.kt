@@ -130,9 +130,6 @@ fun AudiophileSettings(
             defaultValue = false,
         )
 
-    // Classpath probe — the real availability signal for the bundled FFmpeg
-    // decoder extension (Dolby AC-4, DTS, ...). When absent (unexpected ABI,
-    // stripped build) the toggle renders disabled instead of pretending.
     val ffmpegExtensionAvailable =
         remember {
             runCatching {
@@ -159,11 +156,6 @@ fun AudiophileSettings(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // Dolby/FFmpeg decoder mutual exclusion: software decode outputs PCM, so
-    // bit-perfect passthrough, USB-exclusive output and audio offload are
-    // mutually exclusive with it. Turning the decoder on clears those, and
-    // turning any of them on clears the decoder — both directions, per the
-    // audiophile contract.
     val onDolbyFfmpegDecoderChangeWithExclusions: (Boolean) -> Unit = { enabled ->
         if (enabled) {
             scope.launch {

@@ -1159,14 +1159,6 @@ class MainActivity : ComponentActivity() {
                     val bottomInset = with(density) { windowsInsets.getBottom(density).toDp() }
                     val bottomInsetDp = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
 
-                    // The subtle atmosphere gradient rides only under the three
-                    // main tabs (home / search / library) in DARK mode, while
-                    // "Disable blur effects" is off — every other page (settings
-                    // and all sub-pages) keeps the flat surface. The wash is tuned
-                    // GENTLE: the earlier full-strength stops read as an extremely
-                    // heavy gradient. LIGHT mode is untouched: its home screen keeps
-                    // its own full-intensity wash and every other page stays a flat
-                    // surface, exactly as before.
                     val (disableBlurForAtmosphere) = rememberPreference(DisableBlurKey, false)
                     val darkAtmosphereTheme =
                         MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -2470,10 +2462,7 @@ class MainActivity : ComponentActivity() {
                                                                 colorControls(saturation = 1.7f)
                                                                 blur(4f.dp.toPx())
                                                             },
-                                                            // Full-bleed rail glass: the library's default
-                                                            // black drop shadow would bleed a dark halo
-                                                            // past the rail edges in light mode — disabled
-                                                            // there, kept for the dark-theme depth cue.
+
                                                             shadow = {
                                                                 if (railGlassDark) Shadow.Default else null
                                                             },
@@ -2515,9 +2504,7 @@ class MainActivity : ComponentActivity() {
                                         val isSearchRoute = navBackStackEntry?.destination?.route == Screens.Search.route
 
                                         LaunchedEffect(isLibraryRoute) {
-                                            // The "Library" large title is visible whenever the
-                                            // tab is entered from scratch; it then scrolls away on
-                                            // downward scrolling and re-reveals on upward scrolling.
+
                                             libraryTitleRevealState.value = isLibraryRoute
                                         }
                                         val libraryTitleRevealed by libraryTitleRevealState
@@ -2755,12 +2742,7 @@ class MainActivity : ComponentActivity() {
                                                     } else if (isSearchRoute) {
                                                         Box(modifier = Modifier.fillMaxWidth())
                                                     } else {
-                                                        // Sub-screens carry their own headers — the main bar's
-                                                        // title slot renders nothing there. The ArchiveTune logo
-                                                        // used to compose here and flash for a split second at
-                                                        // the top-left whenever a library chip navigated into a
-                                                        // playlist/Spotify page before the destination's own
-                                                        // header covered it.
+
                                                         Box(modifier = Modifier.fillMaxWidth())
                                                     }
                                                 },
@@ -3282,15 +3264,6 @@ class MainActivity : ComponentActivity() {
                                         }
                                         }
 
-                                        // The compact circles must also render on
-                                        // non-main routes (settings and every
-                                        // sub-page) when the bottom UI is in its
-                                        // compact state — the old gate required the
-                                        // full navigation bar OR a visible miniplayer,
-                                        // which left the bottom of every settings
-                                        // page completely empty in ALWAYS_COMPACT
-                                        // mode (or after an ADAPTIVE scroll) with no
-                                        // miniplayer present.
                                         if (
                                             shouldShowNavigationBar ||
                                             !playerBottomSheetState.isDismissed ||

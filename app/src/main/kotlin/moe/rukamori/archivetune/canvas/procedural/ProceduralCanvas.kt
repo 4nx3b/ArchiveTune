@@ -54,20 +54,8 @@ import moe.rukamori.archivetune.constants.ProceduralCanvasStyle
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 
-/**
- * Tuned audio-reactive amplitude scaling factor for Kawarp displacement.
- */
 const val KAWARP_AUDIO_REACTIVE_INTENSITY: Float = 1.80f
 
-/**
- * AGSL (Android Graphics Shading Language) source implementing the "Kawarp"
- * fluid UV warp distortion effect.
- *
- * Uses isotropic normalization by min(width, height) to ensure that harmonic wave
- * frequencies and physical pixel displacements remain uniform and distortion-free across
- * all aspect ratios (e.g. 1:1 square mini-player vs portrait Now Playing screen).
- * Applies center-anchored breathing zoom to prevent edge clamping artifacts.
- */
 const val KAWARP_AGSL_SHADER: String = """
     uniform shader image;
     uniform float2 resolution;
@@ -108,23 +96,8 @@ const val KAWARP_AGSL_SHADER: String = """
     }
 """
 
-/**
- * Tuned audio-reactive amplitude scaling factor for Square Tunnel flight speed advance.
- */
 const val TUNNEL_AUDIO_REACTIVE_INTENSITY: Float = 1.40f
 
-/**
- * AGSL (Android Graphics Shading Language) source implementing the mirrored square-tunnel effect.
- *
- * Mathematics:
- * - Isotropic coordinate normalization centered at (0, 0) divided by min(resolution.x, resolution.y)
- * - Polar angle: theta = atan(y, x)
- * - Radial distance via 8th-order Minkowski p-norm: r = pow(pow(abs(x), 8) + pow(abs(y), 8), 1/8)
- * - Depth UV: u = (0.3 / r) + (0.2 * time * speed)
- * - Angle UV: v = 0.5 + (theta / PI)
- * - Mirrored-repeat wrapping: mirroredCoord = 1.0 - abs(fract(uv * 0.5) * 2.0 - 1.0)
- * - Radial center vignette: smoothstep blend towards extracted dominant/muted album art color
- */
 const val SQUARE_TUNNEL_AGSL_SHADER: String = """
     uniform shader image;
     uniform float2 resolution;
@@ -165,10 +138,6 @@ const val SQUARE_TUNNEL_AGSL_SHADER: String = """
     }
 """
 
-/**
- * Checks whether the current device environment supports hardware-accelerated AGSL runtime shaders.
- * Requires Android 13+ (API 33, Tiramisu) and a non-low-RAM device profile.
- */
 fun isProceduralShaderSupported(context: Context): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
         return false
@@ -177,9 +146,6 @@ fun isProceduralShaderSupported(context: Context): Boolean {
     return activityManager?.isLowRamDevice != true
 }
 
-/**
- * Pure evaluation overload for testing device capability branching.
- */
 fun isProceduralShaderSupported(sdkInt: Int, isLowRamDevice: Boolean): Boolean {
     return sdkInt >= Build.VERSION_CODES.TIRAMISU && !isLowRamDevice
 }
@@ -202,10 +168,6 @@ private fun rememberShaderTime(isPlaying: Boolean): Float {
     return time
 }
 
-/**
- * Composable that applies the Kawarp AGSL fluid distortion shader to a static album art [Bitmap].
- * Only active on API 33+ devices.
- */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
 fun ProceduralShaderCanvas(
@@ -250,10 +212,6 @@ fun ProceduralShaderCanvas(
     }
 }
 
-/**
- * Composable that applies the Square Tunnel AGSL shader to a static album art [Bitmap].
- * Only active on API 33+ devices.
- */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
 fun SquareTunnelShaderCanvas(
@@ -303,10 +261,6 @@ fun SquareTunnelShaderCanvas(
     }
 }
 
-/**
- * Extracts a dark dominant or muted swatch from [bitmap] to use as the center vignette vanishing point color.
- * Uses a lightweight cached palette extraction.
- */
 fun extractTunnelCenterColor(bitmap: Bitmap): FloatArray {
     return try {
         val palette = androidx.palette.graphics.Palette.from(bitmap)
@@ -333,10 +287,6 @@ fun extractTunnelCenterColor(bitmap: Bitmap): FloatArray {
     }
 }
 
-/**
- * Unified procedural canvas entry point that selects the AGSL shader path on API 33+ or
- * falls back to [KenBurnsCanvas] on pre-API 33 or low-RAM devices.
- */
 @Composable
 fun ProceduralCanvas(
     bitmap: Bitmap,
@@ -378,14 +328,6 @@ fun ProceduralCanvas(
     }
 }
 
-/**
- * Player-facing overlay: fluid on-device motion applied to the static album
- * art when no animated canvas video is available. Reads its own preferences
- * (enable toggle, style, audio-reactive), loads a software bitmap of the
- * artwork through Coil and fades the shader layer in over the existing
- * static art. Zero-cost no-op when the feature is off or the artwork fails
- * to load — the underlying artwork stays exactly as it renders today.
- */
 @Composable
 fun ProceduralArtworkFallback(
     artworkUrl: String?,

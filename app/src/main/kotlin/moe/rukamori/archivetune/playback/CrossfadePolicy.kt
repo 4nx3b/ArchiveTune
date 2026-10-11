@@ -22,13 +22,6 @@ object CrossfadePolicy {
         return sin(clamped.toDouble() * (PI / 2.0)).toFloat()
     }
 
-    /**
-     * Automix blends fade the incoming track in noticeably slower than the
-     * equal-power curve: squaring the sine keeps the next song nearly silent
-     * for the first stretch of the overlap and eases it in gradually, exactly
-     * the "start fading in slowly, once the outgoing track is going silent"
-     * behaviour.
-     */
     fun gentleIncomingGain(progress: Float): Float {
         val base = incomingGain(progress)
         return base * base

@@ -1470,11 +1470,6 @@ fun BottomSheetPlayer(
             }
         }
 
-        // Prefetch the upcoming songs' artwork so a skip lands straight on the
-        // real thumbnail instead of a placeholder: the next three artworks are
-        // kept warm in the memory/disk caches (spending more bandwidth up
-        // front for an instant swap), and the player styles no longer render
-        // any generic placeholder while a request is in flight.
         LaunchedEffect(queueWindows, currentWindowIndex, lowDataModeActive) {
             if (lowDataModeActive) return@LaunchedEffect
             val upcoming = queueWindows.drop(currentWindowIndex + 1).take(3)
@@ -2846,13 +2841,6 @@ fun BottomSheetPlayer(
             }
         }
 
-        // Physical rotation to landscape while a music video plays enters the
-        // fullscreen video presentation — the same one the video overlay's own
-        // fullscreen button opens — and rotating back to portrait leaves it.
-        // The overlay is told to follow the sensor (not lock landscape) so the
-        // configuration actually flips back and this effect can dismiss it;
-        // fullscreen entered through the button keeps the locked-landscape
-        // behaviour it always had.
         val videoFullscreenByRotation = remember { mutableStateOf(false) }
         val currentDeviceOrientation = LocalConfiguration.current.orientation
         LaunchedEffect(currentDeviceOrientation, videoState) {

@@ -29,13 +29,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 
-/**
- * Ken Burns procedural fallback canvas for pre-API 33 or low-RAM devices.
- *
- * Applies a slow, continuous pan and zoom loop (scale 1.0 -> 1.15 -> 1.0 with subtle
- * translation drift) using Compose [Modifier.graphicsLayer] and infinite animations.
- * Completely hardware-shader free and lightweight.
- */
 @Composable
 fun KenBurnsCanvas(
     bitmap: Bitmap,
@@ -44,7 +37,6 @@ fun KenBurnsCanvas(
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "KenBurnsCanvasTransition")
 
-    // Slow scale loop between 1.0f and 1.15f
     val scale by infiniteTransition.animateFloat(
         initialValue = 1.0f,
         targetValue = 1.15f,
@@ -55,7 +47,6 @@ fun KenBurnsCanvas(
         label = "KenBurnsScale",
     )
 
-    // Subtle horizontal translation drift
     val translationFractionX by infiniteTransition.animateFloat(
         initialValue = -0.03f,
         targetValue = 0.03f,
@@ -66,7 +57,6 @@ fun KenBurnsCanvas(
         label = "KenBurnsTranslateX",
     )
 
-    // Subtle vertical translation drift
     val translationFractionY by infiniteTransition.animateFloat(
         initialValue = 0.02f,
         targetValue = -0.02f,

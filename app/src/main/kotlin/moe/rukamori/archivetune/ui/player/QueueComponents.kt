@@ -1192,10 +1192,6 @@ fun QueueCollapsedContentV9(
     }
 }
 
-/**
- * Segmented item shapes for V10 Connected GroupedButton.
- * Cached singletons to prevent allocations on recomposition hot paths.
- */
 private val EditorialGroupedFirstShape =
     RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp, topEnd = 6.dp, bottomEnd = 6.dp)
 private val EditorialGroupedMiddleShape = RoundedCornerShape(6.dp)
@@ -1260,12 +1256,6 @@ private fun RowScope.EditorialSegmentedButton(
     }
 }
 
-/**
- * V10 Design Style collapsed queue content.
- * 5-slot connected grouped segmented bar:
- * [ Shuffle ] [ Repeat ] [ Queue ] [ Like ] [ Add to Playlist ]
- * Safe for Android 16 (SDK 36) - no Surface(onClick) or M3 ToggleButton.
- */
 @Composable
 fun QueueCollapsedContentV10(
     showCodecOnPlayer: Boolean,
@@ -1323,7 +1313,7 @@ fun QueueCollapsedContentV10(
                         bottom = 18.dp,
                     ),
         ) {
-            // 1. Queue (expand action) - leftmost
+
             EditorialSegmentedButton(
                 onClick = onExpandQueue,
                 accent = accent,
@@ -1333,7 +1323,7 @@ fun QueueCollapsedContentV10(
                 contentDescription = stringResource(R.string.queue),
                 enableHapticFeedback = enableHapticFeedback,
             )
-            // 2. Shuffle (toggle)
+
             EditorialSegmentedButton(
                 onClick = onShuffleClick,
                 accent = accent,
@@ -1344,7 +1334,7 @@ fun QueueCollapsedContentV10(
                 contentDescription = stringResource(if (shuffleModeEnabled) R.string.action_shuffle_on else R.string.action_shuffle_off),
                 enableHapticFeedback = enableHapticFeedback,
             )
-            // 3. Repeat (toggle)
+
             EditorialSegmentedButton(
                 onClick = onRepeatModeClick,
                 accent = accent,
@@ -1362,7 +1352,7 @@ fun QueueCollapsedContentV10(
                     ),
                 enableHapticFeedback = enableHapticFeedback,
             )
-            // 4. Like (toggle)
+
             EditorialSegmentedButton(
                 onClick = onToggleLike,
                 accent = accent,
@@ -1373,7 +1363,7 @@ fun QueueCollapsedContentV10(
                 contentDescription = stringResource(if (currentSongLiked) R.string.action_remove_like else R.string.action_like),
                 enableHapticFeedback = enableHapticFeedback,
             )
-            // 5. Add to Playlist (action) - rightmost
+
             EditorialSegmentedButton(
                 onClick = onAddToPlaylistClick,
                 accent = accent,

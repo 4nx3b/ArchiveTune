@@ -427,9 +427,6 @@ fun LyricsProvidersSettings(
             }
         }
 
-        // The same transparent top haze the home page and the other settings
-        // pages render — content scrolling under the centred title now frosts
-        // over instead of sliding underneath it plainly.
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,

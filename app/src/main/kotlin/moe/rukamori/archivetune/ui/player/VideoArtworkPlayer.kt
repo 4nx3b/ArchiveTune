@@ -380,10 +380,6 @@ fun rememberVideoArtworkState(
 
     val okHttpClient = remember { videoStreamHttpClient() }
 
-    // Music-video streams run through the dedicated video cache so a replay
-    // serves the cached bytes instead of re-downloading the whole stream; the
-    // size limit lives in Storage settings. 0 disables it (streams bypass the
-    // cache entirely); -1 means unlimited.
     val (maxVideoCacheSize) = rememberPreference(MaxVideoCacheSizeKey, defaultValue = 512)
     val videoCacheEnabled = maxVideoCacheSize != 0
     val videoCache =
@@ -1049,11 +1045,7 @@ fun rememberVideoArtworkState(
                     state.streamUrl != null &&
                     updatedMainAudioReady
                 ) {
-                    // The player was only PAUSED on ON_STOP (never stopped), so
-                    // the buffered stream and position survive the background
-                    // trip: re-anchor silently to wherever the music advanced
-                    // to while backgrounded and resume — no re-prepare and no
-                    // visible BUFFERING round-trip on return.
+
                     if (state.isVideoReady) {
                         val mainPos = currentPosition()
                         val videoPos = exoPlayer.currentPosition
@@ -1066,12 +1058,7 @@ fun rememberVideoArtworkState(
                     exoPlayer.setVideoPlayback(shouldPlay)
                 }
                 if (event == Lifecycle.Event.ON_STOP) {
-                    // PAUSE only — stop() would discard the buffered stream and
-                    // reset the position to zero, forcing a full re-prepare and
-                    // the "video buffers for no reason after returning to the
-                    // app" double round-trip (re-prepare + sync watchdog hard
-                    // resync). The TextureView's surface is detached by the
-                    // window system itself when the activity stops.
+
                     runCatching { exoPlayer.pause() }
                 }
             }

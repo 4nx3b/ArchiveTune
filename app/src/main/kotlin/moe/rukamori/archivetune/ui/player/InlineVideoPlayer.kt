@@ -468,10 +468,6 @@ fun FullscreenVideoOverlay(
 
         val originalBrightness = window?.attributes?.screenBrightness
 
-        // Rotation-entered fullscreen follows the sensor both ways (rotating
-        // back to portrait flips the configuration and the caller dismisses
-        // the overlay); button-entered fullscreen locks landscape like a
-        // video app's fullscreen toggle.
         activity?.requestedOrientation =
             if (followSensorOrientation) {
                 ActivityInfo.SCREEN_ORIENTATION_SENSOR

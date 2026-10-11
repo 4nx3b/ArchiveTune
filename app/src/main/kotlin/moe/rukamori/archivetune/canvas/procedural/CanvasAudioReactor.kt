@@ -28,10 +28,6 @@ import kotlinx.coroutines.isActive
 import moe.rukamori.archivetune.LocalPlayerConnection
 import kotlin.math.hypot
 
-/**
- * Pure helper to extract normalized bass energy (0.0 to 1.0) from raw Visualizer FFT bytes.
- * Visualizer FFT layout: fft[0]=DC, fft[1]=Nyquist, (fft[2k], fft[2k+1]) = (real, imag) of bin k.
- */
 fun extractBassEnergyFromFft(fft: ByteArray, captureSize: Int = 256): Float {
     if (fft.isEmpty()) return 0f
     var bassSum = 0f
@@ -49,13 +45,10 @@ fun extractBassEnergyFromFft(fft: ByteArray, captureSize: Int = 256): Float {
     }
     if (count == 0) return 0f
     val rawBass = bassSum / count.toFloat()
-    // Normalize raw magnitude (typical byte amplitude 4..54) to [0.0, 1.0]
+
     return ((rawBass - 4f) / 50f).coerceIn(0f, 1f)
 }
 
-/**
- * Applies asymmetric exponential moving average for punchy attack and smooth release.
- */
 fun smoothBassEnergy(current: Float, target: Float): Float {
     return if (target > current) {
         current * 0.4f + target * 0.6f
@@ -64,13 +57,6 @@ fun smoothBassEnergy(current: Float, target: Float): Float {
     }
 }
 
-/**
- * Extracts smoothed low-frequency bass energy from the active audio session using
- * Android's built-in [Visualizer] FFT capture mode.
- *
- * Designed to be zero-cost when disabled (no Visualizer instance allocated).
- * Gracefully catches all OEM / permission exceptions and falls back to 0.0f (no crash).
- */
 @Composable
 fun rememberBassEnergy(
     audioSessionId: Int = 0,
@@ -103,7 +89,6 @@ fun rememberBassEnergy(
                 playerConnection?.localPlayer?.audioSessionId ?: 0
             }
 
-        // Wait / poll briefly until the player assigns a valid audioSessionId > 0
         var attempts = 0
         while (isActive && activeSessionId <= 0 && attempts < 50) {
             delay(100)
@@ -134,7 +119,6 @@ fun rememberBassEnergy(
             val captureSize = 256.coerceIn(captureRange[0], captureRange[1])
             viz.captureSize = captureSize
 
-            // Bound capture rate to <= 30 Hz for battery efficiency
             val rate = Visualizer.getMaxCaptureRate().coerceAtMost(30_000)
 
             viz.setDataCaptureListener(
@@ -144,7 +128,7 @@ fun rememberBassEnergy(
                         waveform: ByteArray?,
                         samplingRate: Int,
                     ) {
-                        // Waveform capture not needed; FFT is used
+
                     }
 
                     override fun onFftDataCapture(
@@ -159,8 +143,8 @@ fun rememberBassEnergy(
                     }
                 },
                 rate,
-                false, // waveform
-                true, // fft
+                false,
+                true,
             )
 
             viz.enabled = true
@@ -178,8 +162,7 @@ fun rememberBassEnergy(
                 bassEnergyState.floatValue = 0f
             }
         } catch (_: Throwable) {
-            // Visualizer could not be initialized on this session / OEM —
-            // fall back to time-only animation.
+
             bassEnergyState.floatValue = 0f
         }
     }

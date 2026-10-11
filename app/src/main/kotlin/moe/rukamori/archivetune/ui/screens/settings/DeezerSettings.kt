@@ -109,8 +109,7 @@ fun DeezerSettings(
                 val arl = raw.trim().removePrefix("arl=").trim()
                 verifyingArl = true
                 scope.launch {
-                    // Same verification the WebView flow uses: an anonymous or expired ARL still
-                    // answers HTTP 200, so only a real USER_ID counts as signed in.
+
                     val info = withContext(Dispatchers.IO) { DeezerAudioProvider.verifyArl(arl) }
                     verifyingArl = false
                     if (info == null) {
@@ -228,11 +227,9 @@ fun DeezerSettings(
                             description = stringResource(R.string.deezer_signed_in_as, accountName),
                             icon = { Icon(painterResource(R.drawable.logout), null) },
                             onClick = {
-                                // Push immediately so playback stops using the account without waiting for
-                                // the App-level collector (mirrors both sign-in paths).
+
                                 DeezerAudioProvider.setManualArl("", false)
-                                // Clearing the ARL is what actually signs out; App.kt's collector observes it
-                                // and drops the provider's session. Name/premium are display state only.
+
                                 onArlChange("")
                                 onAccountNameChange("")
                                 onPremiumChange(false)

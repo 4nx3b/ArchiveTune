@@ -39,22 +39,8 @@ private const val DefaultRubberBandConstant = 0.55f
 private const val DefaultBounceStiffness = 247f
 private const val FallbackContainerPx = 2000f
 
-// Sub-half-pixel pulls are visually settled: reporting isInProgress for the
-// spring's microscopic tail kept the scrollable in its "motion in progress"
-// state for 1-3 extra seconds after the visible bounce ended, during which
-// every tap under the list was consumed as a scroll interruption and read as
-// "the app ignores touch until the overscroll settles". The settle spring
-// keeps animating to true zero in the background; it just no longer blocks
-// interaction once the band is back to sub-pixel.
 private const val InProgressPullThresholdPx = 0.5f
 
-// Release velocity is damped and clamped before it is injected into the
-// bounce-back spring. The full leftover fling velocity (up to 10000 px/s
-// before) stretched the band by close to a thousand extra pixels and made the
-// settle crawl for one to two seconds — during which a grab had to walk the
-// huge pull all the way back before the list scrolled, reading exactly as
-// "the app ignores touch until the overscroll settles". UIKit transfers only a
-// heavily damped fraction of the release velocity into the bounce.
 private const val BounceVelocityTransferFactor = 0.2f
 private const val MaxBounceVelocity = 3000f
 
@@ -81,12 +67,6 @@ private class IosOverscrollEffect(
     private var containerWidthPx = 0f
     private var containerHeightPx = 0f
 
-    // Settle animations for the bounce-back, one per axis. They run on the
-    // factory-provided scope (independent of the fling dispatch), so
-    // applyToFling returns as soon as the list's own fling finishes — the
-    // scrollable's mutation is released immediately and a new finger drag
-    // never queues behind the bounce. A new user drag CANCELS the settles
-    // (see applyToScroll): the finger grabs the rubber band wherever it is.
     private var settleJobX: Job? = null
     private var settleJobY: Job? = null
 
@@ -107,10 +87,7 @@ private class IosOverscrollEffect(
         performScroll: (Offset) -> Offset,
     ): Offset {
         if (source == NestedScrollSource.UserInput) {
-            // The finger grabs the rubber band where it is right now: stop the
-            // running settle immediately so it stops fighting the drag. The
-            // pull keeps its current value and payDown below walks it back
-            // under the finger, exactly like UIKit.
+
             cancelSettles()
         }
         val paidX = payDown(rawPullX, delta.x)
@@ -144,9 +121,7 @@ private class IosOverscrollEffect(
         val consumed = performFling(velocity)
         val leftover = velocity - consumed
         if (!isInProgress && leftover == Velocity.Zero) {
-            // Sub-threshold residue (settle tail snapped early, interrupted
-            // settle, etc.): clear it so no invisible pull lingers in the
-            // translation.
+
             if (rawPullX.floatValue != 0f) rawPullX.floatValue = 0f
             if (rawPullY.floatValue != 0f) rawPullY.floatValue = 0f
             return
@@ -168,11 +143,7 @@ private class IosOverscrollEffect(
 
     private suspend fun settle(pull: MutableFloatState, leftoverVelocity: Float) {
         if (pull.floatValue == 0f && leftoverVelocity == 0f) return
-        // The user's bounce-back-speed setting is always honoured (the old
-        // fast-fling hardcode made the slider look dead: every noticeable
-        // bounce comes from a fling, and those always took the hardcoded
-        // stiffness). Release velocity is damped + clamped — see the
-        // BounceVelocityTransferFactor note above.
+
         val velocity =
             (leftoverVelocity * BounceVelocityTransferFactor)
                 .coerceIn(-MaxBounceVelocity, MaxBounceVelocity)
@@ -189,8 +160,7 @@ private class IosOverscrollEffect(
         ) { value, _ ->
             pull.floatValue = value
         }
-        // Snap the sub-threshold tail straight to zero: no residual motion,
-        // no isInProgress flicker, nothing left for the next gesture to pay down.
+
         if (pull.floatValue != 0f) pull.floatValue = 0f
     }
 
@@ -203,8 +173,7 @@ private class IosOverscrollEffect(
                 containerHeightPx = height
             },
             onDetachedFromHierarchy = {
-                // The scrollable left composition mid-bounce: stop animating a
-                // pull nobody renders anymore and reset the band.
+
                 cancelSettles()
                 rawPullX.floatValue = 0f
                 rawPullY.floatValue = 0f

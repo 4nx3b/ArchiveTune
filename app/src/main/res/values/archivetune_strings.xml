@@ -1088,10 +1088,7 @@
     <string name="artwork_priority_group_title">Artwork</string>
 
     <!-- Ambient mode (Sekai Tune port) -->
-    <string name="aod_ambient_group_title">Always-on &amp; ambient</string>
-    <string name="ambient_mode_title">Ambient mode</string>
-    <string name="ambient_mode_desc">Full-screen ambient glow driven by the current song\'s palette</string>
-    <string name="ambient_mode_hint">Swipe left or right to change track</string>
+    <string name="aod_ambient_group_title">Always-on display</string>
 
     <!-- Dolby / FFmpeg decoder (dmt port) -->
     <string name="dolby_ffmpeg_decoder">Dolby decoder (FFmpeg)</string>

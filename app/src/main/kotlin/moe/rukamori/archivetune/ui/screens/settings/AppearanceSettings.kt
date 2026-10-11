@@ -991,8 +991,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
             }
 
-            // Dedicated group: AOD customisation + Ambient mode together —
-            // the group itself has no sub-page of its own.
             PreferenceGroup(
                 modifier = positions.modifierFor("aod_ambient_group"),
                 title = stringResource(R.string.aod_ambient_group_title),
@@ -1007,21 +1005,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         )
                     }
                 }
-
-                item {
-                    Column(modifier = positions.modifierFor("ambient_mode")) {
-                        PreferenceEntry(
-                            title = { Text(stringResource(R.string.ambient_mode_title)) },
-                            description = stringResource(R.string.ambient_mode_desc),
-                            icon = { Icon(painterResource(R.drawable.player_bedtime), null) },
-                            onClick = { navController.navigate("ambient_mode") },
-                        )
-                    }
-                }
             }
 
-            // The player-style items that used to share the AOD's group card
-            // get their own group so the card chrome stays intact.
             PreferenceGroup(
                 modifier = positions.modifierFor("player_style_group"),
                 title = stringResource(R.string.player_buttons_style),

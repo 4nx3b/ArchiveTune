@@ -343,11 +343,7 @@ fun ShadowImageWithCache(
                 model = request,
                 contentDescription = contentDescription.toString(),
                 contentScale = ContentScale.Crop,
-                // No placeholder/error/fallback painter: on a skip the artwork
-                // slot stays empty for the network round-trip instead of
-                // flashing a generic anime artwork, and the next songs'
-                // thumbnails are prefetched so the real art is usually already
-                // cached.
+
                 modifier = Modifier
                     .fillMaxSize(),
             )

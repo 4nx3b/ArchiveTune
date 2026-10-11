@@ -5,13 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * ArchiveTune (2026)
- * © Rukamori — github.com/rukamori
- * GPL-3.0 License | Contributors: see git history
- * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
- */
-
 package moe.rukamori.archivetune.ui.screens.settings
 
 import android.annotation.SuppressLint
@@ -39,22 +32,6 @@ const val APPLE_MUSIC_LOGIN_ROUTE = "settings/applemusic/login"
 
 private const val LOGIN_URL = "https://music.apple.com/login"
 
-/**
- * Reads both Apple Music tokens out of the signed-in web player.
- *
- * A cookie probe cannot do this: MusicKit keeps the Music User Token out of the cookie jar, so the
- * token is never visible to a cookie scan. Both tokens are however readable from the live MusicKit
- * instance, and the user token is additionally mirrored into localStorage under a
- * `media-user-token` key, so the scan covers the case where the instance is not reachable on the
- * current page.
- *
- * Polls because MusicKit initialises asynchronously and the user token only appears after the
- * Apple ID flow completes — there is no event to hook. Gives up after ~2 minutes so a page that
- * never signs in does not poll for the lifetime of the screen.
- *
- * Evaluated through evaluateJavascript(): a "javascript:" URL is a document-load API, so the poll
- * would not start until the page had arrived, and it re-enters onPageFinished.
- */
 private const val APPLE_HOOK_JS = """
 (function () {
   if (window.__atAppleHook) return;
@@ -98,16 +75,14 @@ private const val APPLE_HOOK_JS = """
 fun AppleMusicLoginScreen(navController: NavController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    // The poll fires repeatedly; only the first delivery may save and navigate.
+
     val handled = remember { AtomicBoolean(false) }
 
     AuthWebViewScreen(
         navController = navController,
         title = stringResource(R.string.applemusic_login),
         subtitle = stringResource(R.string.applemusic_login_subtitle),
-        // The injected poll is a live 500 ms timer, and it would otherwise keep running — with the
-        // renderer, the MusicKit instance and the JavaScript interface behind it — for up to two
-        // minutes after the user has closed the sheet. Releasing the WebView tears all of it down.
+
         onRelease = { it.releaseAuthWebView("AppleAuth") },
         factory = { ctx ->
             WebView(ctx).apply {
@@ -136,9 +111,7 @@ fun AppleMusicLoginScreen(navController: NavController) {
                             userToken: String?,
                             devToken: String?,
                         ) {
-                            // The user token is what gates sign-in; the developer token is a bonus
-                            // when MusicKit was reachable, and the settings page can still scrape
-                            // its own if this page could not supply one.
+
                             val user = userToken?.trim().orEmpty()
                             if (!user.startsWith("0.")) return
                             if (!handled.compareAndSet(false, true)) return
@@ -157,8 +130,7 @@ fun AppleMusicLoginScreen(navController: NavController) {
 
                         @JavascriptInterface
                         fun onGaveUp() {
-                            // The poll has no event to hook, so a page that never signs in simply
-                            // stops. Say so, or the screen looks like it is still working.
+
                             if (handled.get()) return
                             scope.launch {
                                 Toast

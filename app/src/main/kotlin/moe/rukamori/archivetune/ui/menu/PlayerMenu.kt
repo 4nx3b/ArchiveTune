@@ -1799,8 +1799,7 @@ private suspend fun searchOneSource(
             }
 
             AudioSourceType.SPOTIFY -> {
-                // Spotify is catalog-only for in-app source search; direct
-                // streaming resolves per-song through the playback chain.
+
                 emptyList()
             }
         }

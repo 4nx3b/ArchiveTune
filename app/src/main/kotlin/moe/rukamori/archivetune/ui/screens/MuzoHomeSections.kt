@@ -38,13 +38,7 @@ fun HomeAtmosphereBackground(
     subtle: Boolean = false,
 ) {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    // Dark mode wears a GENTLE wash (2026-10-11: "the gradient in dark mode
-    // is extremely heavy — decrease its intensity by a lot"): the full-strength
-    // stops that shipped first read as a heavy color filter over the whole
-    // page. The dark-mode alphas are now a fraction of the light-mode look and
-    // the radial spreads are contained to the light-mode radii, so the wash is
-    // a soft accent instead of a heavy tint. Light mode keeps its exact
-    // original intensities.
+
     val base = if (dark) Color.Black else MaterialTheme.colorScheme.surface
 
     val glow =
