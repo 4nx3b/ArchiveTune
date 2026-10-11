@@ -5139,3 +5139,21 @@ Work Log:
 
 Stage Summary:
 - dev @ 960d5105c: all three items complete and CI-green; canary shipped.
+
+---
+Task ID: 93
+Agent: Super Z (main agent, session web-60bd54af)
+Task: Repository setup — codify the owner's standing agent rules as rules.md, wire it into the AGENTS.md reading order, and refresh the AGENTS.md module list
+
+Work Log:
+- Fresh clone of 4nx3b/ArchiveTune; checked out dev (was at 960d5105c, task 92's CI-green head, clean tree).
+- Inspected the CI layout before writing anything: build.yml no longer runs on dev pushes (main + dispatch only); nightly.yml builds the canary matrix + create-nightly on every dev push (serialized, no cancel-in-progress, docs-only pushes included — the decide step only skips when HEAD matches the last nightly's target commitish); poll_ci_sha.sh exists for exactly the push-and-monitor loop.
+- Created rules.md (repo root) with the owner's standing rules verbatim: Rule 1 (never compile locally; push to dev; monitor the build 7 minutes; fix on failure), Rule 2 (Senior Engineer Mode, sections 1-10 + Final priority, plus STRICT MODE quality gates A-J), Rule 3 (always maintain AGENTS.md and worklog.md; always use English). Added a short operational-notes section mapping Rule 1 to nightly.yml + scripts/poll_ci_sha.sh <sha> 7 so future agents know the concrete mechanism.
+- AGENTS.md: added a "Mandatory reading order" section at the top (rules.md → AGENTS.md invariants → worklog.md) naming the three non-negotiables; refreshed the Gradle module list against settings.gradle.kts (added :moriextractor, :audio:decent-usb-audio-driver, and the explicit lyrics: modules in place of the stale shorthand).
+- Committed 070c32944 (2 files, +358/-1): rules.md new, AGENTS.md pointer + module list.
+- This worklog entry committed separately per the established docs(worklog) pattern.
+
+Stage Summary:
+- rules.md now exists at the repo root and is wired as the first mandatory read in AGENTS.md; module list corrected.
+- Docs-only change — no code touched, zero regression surface.
+- Next: push both commits to origin/dev and monitor the nightly CI run for 7 minutes per Rule 1 (poll_ci_sha.sh on the pushed head SHA).
