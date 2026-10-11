@@ -152,6 +152,7 @@ import moe.rukamori.archivetune.constants.SongSourceTidalTrackIdKey
 import moe.rukamori.archivetune.constants.TryptifyAudioProcessingKey
 import moe.rukamori.archivetune.constants.UsbExclusiveAudioKey
 import moe.rukamori.archivetune.constants.BitPerfectOutputKey
+import moe.rukamori.archivetune.constants.DolbyFfmpegDecoderKey
 import moe.rukamori.archivetune.constants.BitPerfectNativeRateKey
 import moe.rukamori.archivetune.constants.BIT_PERFECT_OUTPUT_DEFAULT
 import moe.rukamori.archivetune.constants.BIT_PERFECT_NATIVE_RATE_DEFAULT
@@ -10834,13 +10835,58 @@ class MusicService :
         transitionFilter: AutoMixFilterProcessor,
         floatDspProcessor: FloatDspProcessor,
         primary: Boolean = true,
-    ) =
-        object : DefaultRenderersFactory(this) {
+    ): DefaultRenderersFactory {
+        // Dolby/FFmpeg decoder toggle (audiophile page): PREFER routes every
+        // format the ffmpeg extension supports (AC-4, DTS, ...) through the
+        // software decoder instead of the platform's; ON (the previous
+        // behavior) only falls back to it for formats the platform cannot
+        // decode at all. Read once at factory creation — decoder swaps need a
+        // player rebuild, so the toggle takes effect on playback restart.
+        val dolbyFfmpegPreferred =
+            runBlocking { dataStore.data.first()[DolbyFfmpegDecoderKey] ?: false }
+        return object : DefaultRenderersFactory(this) {
             init {
                 setEnableDecoderFallback(true)
-                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                setExtensionRendererMode(
+                    if (dolbyFfmpegPreferred) {
+                        DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+                    } else {
+                        DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+                    },
+                )
 
                 setEnableAudioFloatOutput(true)
+            }
+
+            override fun buildAudioRenderers(
+                context: Context,
+                extensionRendererMode: Int,
+                mediaCodecSelector: androidx.media3.exoplayer.mediacodec.MediaCodecSelector,
+                enableDecoderFallback: Boolean,
+                audioSink: androidx.media3.exoplayer.audio.AudioSink,
+                eventHandler: android.os.Handler,
+                eventListener: androidx.media3.exoplayer.audio.AudioRendererEventListener?,
+                out: ArrayList<androidx.media3.exoplayer.Renderer>,
+            ) {
+                super.buildAudioRenderers(
+                    context,
+                    extensionRendererMode,
+                    mediaCodecSelector,
+                    enableDecoderFallback,
+                    audioSink,
+                    eventHandler,
+                    eventListener,
+                    out,
+                )
+                // Honest verification, not a gimmick: log which audio renderers
+                // actually made it onto the player — the ffmpeg renderer's
+                // presence here is what makes Dolby AC-4 / DTS decodable.
+                val names = out.joinToString(", ") { it.javaClass.simpleName }
+                Timber.tag(TAG).i(
+                    "Audio renderers ready (dolbyFfmpegPreferred=%s): %s",
+                    dolbyFfmpegPreferred,
+                    names,
+                )
             }
 
             override fun buildAudioSink(
@@ -10969,6 +11015,7 @@ class MusicService :
                 )
             }
         }
+    }
 
     override fun onPlaybackStatsReady(
         eventTime: AnalyticsListener.EventTime,

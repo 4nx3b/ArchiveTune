@@ -515,6 +515,14 @@ dependencies {
     implementation(libs.media3.okhttp)
     implementation("androidx.media3:media3-ui:${libs.versions.media3.get()}")
     implementation("androidx.media3:media3-ui-compose:${libs.versions.media3.get()}")
+    // FFmpeg decoder extension (Dolby AC-4, DTS, ...): transitive media3
+    // artifacts from the dmt fork are excluded — the app's pinned media3
+    // stack provides those classes and stays authoritative.
+    implementation(libs.media3.decoder.ffmpeg) {
+        exclude(group = "androidx.media3", module = "media3-decoder")
+        exclude(group = "androidx.media3", module = "media3-common")
+        exclude(group = "androidx.media3", module = "media3-exoplayer")
+    }
     add("gmsImplementation", libs.media3.cast)
     add("gmsImplementation", libs.mediarouter)
     implementation(libs.squigglyslider)

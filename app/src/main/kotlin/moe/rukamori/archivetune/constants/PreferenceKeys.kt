@@ -62,6 +62,11 @@ val CanvasResolverEndpointsKey = stringPreferencesKey("canvasResolverEndpoints")
 // Procedural artwork animation (ported from Sekai Tune): fluid on-device
 // motion applied to the static album art when no animated canvas video is
 // available.
+// Dolby/FFmpeg software decoder (audiophile page): EXTENSION_RENDERER_MODE_PREFER
+// routes every ffmpeg-supported format (Dolby AC-4, DTS, ...) through the
+// bundled extension instead of the platform decoders.
+val DolbyFfmpegDecoderKey = booleanPreferencesKey("dolbyFfmpegDecoder")
+
 val ProceduralArtworkEnabledKey = booleanPreferencesKey("proceduralArtworkEnabled")
 val ProceduralArtworkStyleKey = stringPreferencesKey("proceduralArtworkStyle")
 val CanvasAudioReactiveKey = booleanPreferencesKey("canvasAudioReactive")
