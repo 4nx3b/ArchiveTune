@@ -1092,4 +1092,10 @@
     <string name="ambient_mode_title">Ambient mode</string>
     <string name="ambient_mode_desc">Full-screen ambient glow driven by the current song\'s palette</string>
     <string name="ambient_mode_hint">Swipe left or right to change track</string>
+
+    <!-- Dolby / FFmpeg decoder (dmt port) -->
+    <string name="dolby_ffmpeg_decoder">Dolby decoder (FFmpeg)</string>
+    <string name="dolby_ffmpeg_decoder_desc">Decode Dolby AC-4, DTS and other formats the platform decoders lack through the bundled FFmpeg extension. Mutually exclusive with bit-perfect output, USB-exclusive audio and audio offload</string>
+    <string name="dolby_ffmpeg_decoder_unavailable">The bundled FFmpeg decoder extension is not available on this device</string>
+    <string name="dolby_ffmpeg_decoder_active_note">Active after playback restarts. The player log lists every audio renderer — FfmpegAudioRenderer present means it is really decoding, not a placeholder</string>
 </resources>

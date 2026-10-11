@@ -73,6 +73,23 @@ dependencyResolutionManagement {
                 includeGroup("com.github.maxrave-dev.BravePipeExtractor")
             }
         }
+        // Media3 FFmpeg decoder extension (Dolby AC-4, DTS and other formats
+        // the platform decoders lack), prebuilt by the dmt project
+        // (github.com/imjyotiraditya/dmt-media3 — official androidx.media3
+        // ffmpeg module built with native libs). Scoped to ONLY the ffmpeg
+        // artifact: every other media3 module keeps resolving from
+        // Google Maven / the GCS mirror at the app's pinned version.
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = "DmtMedia3"
+                    setUrl("https://raw.githubusercontent.com/imjyotiraditya/dmt-media3/maven/maven")
+                }
+            }
+            filter {
+                includeModule("androidx.media3", "media3-decoder-ffmpeg")
+            }
+        }
     }
 }
 

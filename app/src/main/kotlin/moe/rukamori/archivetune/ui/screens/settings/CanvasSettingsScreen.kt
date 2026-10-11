@@ -58,10 +58,15 @@ import moe.rukamori.archivetune.constants.TidalArtworkFallbackEnabledKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
 import moe.rukamori.archivetune.constants.deserializeArtworkProviderOrder
 import moe.rukamori.archivetune.ui.component.EnumListPreference
+import moe.rukamori.archivetune.ui.component.PreferenceEntry
+import moe.rukamori.archivetune.ui.component.PreferenceGroup
+import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.CanvasResolverEndpoints
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 

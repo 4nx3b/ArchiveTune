@@ -29,6 +29,7 @@ import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.SpotifyCanvasKey
 import moe.rukamori.archivetune.constants.ProceduralArtworkEnabledKey
 import moe.rukamori.archivetune.constants.CanvasAudioReactiveKey
+import moe.rukamori.archivetune.constants.DolbyFfmpegDecoderKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.FloatDspEnabledKey
@@ -404,6 +405,7 @@ fun buildSettingsGroups(
                 SettingsChild("Check source", "check_source", listOf("check source", "source health", "test source", "source diagnostics", "verify source", "source status")),
 
                 SettingsChild("Audiophile", "audiophile", listOf("audiophile", "dsp", "engine", "tryptify", "lastwave", "float", "usb exclusive", "bit perfect", "dac", "autoeq")),
+                SettingsChild("Dolby decoder (FFmpeg)", "dolby_ffmpeg_decoder", listOf("dolby", "ffmpeg", "ac-4", "ac4", "dts", "software decoder", "decoder extension")) { SearchResultSwitch(DolbyFfmpegDecoderKey, false) },
                 SettingsChild("Bit-Perfect Output", "bit_perfect_output", listOf("bit perfect", "bitperfect", "native output", "direct playback", "pcm24", "pcm32", "sample rate", "native rate")) { SearchResultSwitch(BitPerfectOutputKey, false) },
                 SettingsChild("Native Sample Rate", "bit_perfect_native_rate", listOf("native sample rate", "source rate", "resampling", "rate matching")) { SearchResultSwitch(BitPerfectNativeRateKey, true) },
                 SettingsChild("32-bit float DSP", "float_dsp", listOf("dsp", "float", "32-bit", "limiter", "dither", "lossless dsp", "bit perfect")) { SearchResultSwitch(FloatDspEnabledKey, false) },

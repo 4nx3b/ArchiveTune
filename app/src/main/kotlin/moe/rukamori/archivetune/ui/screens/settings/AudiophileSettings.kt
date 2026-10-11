@@ -11,6 +11,7 @@ import moe.rukamori.archivetune.constants.BIT_PERFECT_NATIVE_RATE_DEFAULT
 import moe.rukamori.archivetune.constants.BIT_PERFECT_OUTPUT_DEFAULT
 import moe.rukamori.archivetune.constants.BitPerfectNativeRateKey
 import moe.rukamori.archivetune.constants.BitPerfectOutputKey
+import moe.rukamori.archivetune.constants.DolbyFfmpegDecoderKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.ReplayGainModeKey
 import moe.rukamori.archivetune.constants.ReplayGainMode
@@ -57,6 +58,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.launch
+import androidx.datastore.preferences.core.edit
+import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
@@ -121,6 +124,21 @@ fun AudiophileSettings(
             LastwaveAudioProcessingKey,
             defaultValue = false,
         )
+    val (dolbyFfmpegDecoder, onDolbyFfmpegDecoderChange) =
+        rememberPreference(
+            DolbyFfmpegDecoderKey,
+            defaultValue = false,
+        )
+
+    // Classpath probe — the real availability signal for the bundled FFmpeg
+    // decoder extension (Dolby AC-4, DTS, ...). When absent (unexpected ABI,
+    // stripped build) the toggle renders disabled instead of pretending.
+    val ffmpegExtensionAvailable =
+        remember {
+            runCatching {
+                Class.forName("androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer")
+            }.isSuccess
+        }
 
     val (_, onAudioOffloadChange) =
         rememberPreference(
@@ -140,6 +158,32 @@ fun AudiophileSettings(
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // Dolby/FFmpeg decoder mutual exclusion: software decode outputs PCM, so
+    // bit-perfect passthrough, USB-exclusive output and audio offload are
+    // mutually exclusive with it. Turning the decoder on clears those, and
+    // turning any of them on clears the decoder — both directions, per the
+    // audiophile contract.
+    val onDolbyFfmpegDecoderChangeWithExclusions: (Boolean) -> Unit = { enabled ->
+        if (enabled) {
+            scope.launch {
+                context.dataStore.edit { prefs ->
+                    prefs[BitPerfectOutputKey] = false
+                    prefs[UsbExclusiveAudioKey] = false
+                    prefs[AudioOffload] = false
+                    prefs[DolbyFfmpegDecoderKey] = true
+                }
+            }
+        } else {
+            onDolbyFfmpegDecoderChange(false)
+        }
+    }
+    val onBitPerfectChangeWithExclusion: (Boolean) -> Unit = { enabled ->
+        if (enabled && dolbyFfmpegDecoder) {
+            onDolbyFfmpegDecoderChange(false)
+        }
+        onBitPerfectChange(enabled)
+    }
     val tryptifyPrefs =
         remember(context) {
             tf.monochrome.android.data.preferences.PreferencesManager(context)
@@ -238,13 +282,45 @@ fun AudiophileSettings(
             ) {
                 PreferenceGroup(title = stringResource(R.string.audiophile_engines_group)) {
                     item {
+                        Column(modifier = positions.modifierFor("dolby_ffmpeg_decoder")) {
+                            SwitchPreference(
+                                title = { Text(stringResource(R.string.dolby_ffmpeg_decoder)) },
+                                description =
+                                    if (ffmpegExtensionAvailable) {
+                                        stringResource(R.string.dolby_ffmpeg_decoder_desc)
+                                    } else {
+                                        stringResource(R.string.dolby_ffmpeg_decoder_unavailable)
+                                    },
+                                icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                                checked = dolbyFfmpegDecoder && ffmpegExtensionAvailable,
+                                onCheckedChange = onDolbyFfmpegDecoderChangeWithExclusions,
+                                isEnabled = ffmpegExtensionAvailable,
+                            )
+                            if (dolbyFfmpegDecoder && ffmpegExtensionAvailable) {
+                                Text(
+                                    text = stringResource(R.string.dolby_ffmpeg_decoder_active_note),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier =
+                                        Modifier.padding(
+                                            start = 56.dp,
+                                            top = 4.dp,
+                                            end = 16.dp,
+                                            bottom = 4.dp,
+                                        ),
+                                )
+                            }
+                        }
+                    }
+
+                    item {
                         Column(modifier = positions.modifierFor("bit_perfect_output")) {
                             SwitchPreference(
                                 title = { Text(stringResource(R.string.bit_perfect_output)) },
                                 description = stringResource(R.string.bit_perfect_output_desc),
                                 icon = { Icon(painterResource(R.drawable.solar_headphones), null) },
                                 checked = bitPerfect,
-                                onCheckedChange = onBitPerfectChange,
+                                onCheckedChange = onBitPerfectChangeWithExclusion,
                             )
 
                             if (bitPerfect) {
@@ -419,6 +495,9 @@ fun AudiophileSettings(
                                 icon = { Icon(painterResource(R.drawable.solar_volume_up_linear), null) },
                                 checked = usbExclusiveAudio,
                                 onCheckedChange = { enabled ->
+                                    if (enabled && dolbyFfmpegDecoder) {
+                                        onDolbyFfmpegDecoderChange(false)
+                                    }
                                     onUsbExclusiveAudioChange(enabled)
                                     if (enabled) {
                                         onAudioOffloadChange(false)
