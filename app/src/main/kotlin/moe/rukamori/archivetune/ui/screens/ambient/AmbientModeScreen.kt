@@ -265,7 +265,7 @@ fun AmbientModeScreen(navController: NavController) {
                             Icon(
                                 painter =
                                     painterResource(
-                                        if (isPlaying) R.drawable.ic_pause_white else R.drawable.ic_play_white,
+                                        if (isPlaying) R.drawable.pause else R.drawable.play,
                                     ),
                                 contentDescription = null,
                                 tint = Color.White,
