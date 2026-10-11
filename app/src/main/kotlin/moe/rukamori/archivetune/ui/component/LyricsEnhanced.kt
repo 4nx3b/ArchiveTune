@@ -174,6 +174,14 @@ import androidx.compose.runtime.setValue
 private const val LYRIC_SYNC_LEAD_MS = 120L
 private const val LRC_LEAD_MS = LYRIC_SYNC_LEAD_MS
 
+// Position publish throttle: the accompanist renderer fans every position
+// state write out to per-line timeline collectors, draw invalidations and
+// the follow driver. On 120Hz displays the whole pipeline halves when writes
+// are capped at >=10ms intervals while the karaoke sweep stays visually
+// ~60fps-smooth; large jumps (seeks) always publish immediately.
+private const val LYRICS_POSITION_PUBLISH_MIN_DELTA_MS = 10L
+private const val LYRICS_POSITION_SEEK_DELTA_MS = 250L
+
 private const val TTML_LEAD_MS = 0L
 private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 0L
 private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L
@@ -612,6 +620,18 @@ fun LyricsEnhanced(
         var cachedLineIdx = -1
         var cachedCurrentLineStart = Int.MIN_VALUE
         var cachedNextLineStart = Int.MAX_VALUE
+        var lastPublishedPositionMs = playbackPositionMs.longValue
+
+        fun publishPosition(nextPosition: Long) {
+            val delta = nextPosition - lastPublishedPositionMs
+            if (delta >= LYRICS_POSITION_PUBLISH_MIN_DELTA_MS || delta <= -LYRICS_POSITION_SEEK_DELTA_MS || delta < 0) {
+                lastPublishedPositionMs = nextPosition
+                if (playbackPositionMs.longValue != nextPosition) {
+                    playbackPositionMs.longValue = nextPosition
+                }
+            }
+        }
+
         while (isActive) {
             val sliderPosition = latestSliderPositionProvider.value()
             val isSliderActive = sliderPosition != null
@@ -633,9 +653,7 @@ fun LyricsEnhanced(
             if (sliderPosition != null || !player.isPlaying || animationsDisabled) {
                 anchorPlayerPositionMs = rawPosition
                 anchorFrameNanos = 0L
-                if (playbackPositionMs.longValue != rawPosition) {
-                    playbackPositionMs.longValue = rawPosition
-                }
+                publishPosition(rawPosition)
                 effectivePositionMs =
                     (rawPosition + latestLyricsSyncOffset.value.toLong() +
                         latestLeadMs.value + LYRIC_VISUAL_TUNING_OFFSET_MS)
@@ -673,9 +691,7 @@ fun LyricsEnhanced(
                         }
                     }.coerceAtLeast(0L)
 
-                if (playbackPositionMs.longValue != nextPosition) {
-                    playbackPositionMs.longValue = nextPosition
-                }
+                publishPosition(nextPosition)
                 effectivePositionMs =
                     (nextPosition + latestLyricsSyncOffset.value.toLong() +
                         latestLeadMs.value + LYRIC_VISUAL_TUNING_OFFSET_MS)
