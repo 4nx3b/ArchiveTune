@@ -259,6 +259,8 @@ import moe.rukamori.archivetune.constants.SoundCloudEnabledKey
 import moe.rukamori.archivetune.constants.SoundCloudAuthTokenKey
 import moe.rukamori.archivetune.constants.SpotifyDirectEnabledKey
 import moe.rukamori.archivetune.constants.SpotifyDirectQualityKey
+import moe.rukamori.archivetune.constants.SpotifyResolveMethod
+import moe.rukamori.archivetune.constants.SpotifyResolveMethodKey
 import moe.rukamori.archivetune.constants.SpotifyDirectQuality
 import moe.rukamori.archivetune.constants.SpotifyDeviceIdKey
 import moe.rukamori.archivetune.constants.SpotifySpDcKey
@@ -290,6 +292,8 @@ import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.applemusic.AppleMusicVirtualStream
 import moe.rukamori.archivetune.soundcloud.SoundCloudAudioProvider
 import moe.rukamori.archivetune.spotify.SpotifyWebStreamer
+import moe.rukamori.archivetune.spotify.echo.EchoDecryptingDataSource
+import moe.rukamori.archivetune.spotify.echo.SpotifyEchoResolver
 import moe.rukamori.archivetune.constants.SongSourceOverrideKey
 import moe.rukamori.archivetune.constants.SongSourceQobuzBackupVideoIdKey
 import moe.rukamori.archivetune.constants.SongSourceQobuzTrackIdKey
@@ -6726,6 +6730,8 @@ class MusicService :
         initialBufferRecoveryAttemptedMediaId = null
         updateInitialBufferRecovery(player.playbackState)
 
+        updateSpotifyPlaybackReporting()
+
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK &&
             isCrossfading &&
             !crossfadeHandoffInProgress
@@ -7894,6 +7900,16 @@ class MusicService :
                     CacheDataSink.Factory().setCache(playerCache).setFragmentSize(C.LENGTH_UNSET.toLong()),
                 ).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
 
+        val echoFactory =
+            CacheDataSource
+                .Factory()
+                .setCache(playerCache)
+                .setUpstreamDataSourceFactory(
+                    EchoDecryptingDataSource.Factory(OkHttpDataSource.Factory(mediaOkHttpClient)),
+                ).setCacheWriteDataSinkFactory(
+                    CacheDataSink.Factory().setCache(playerCache).setFragmentSize(C.LENGTH_UNSET.toLong()),
+                ).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+
         return DataSource.Factory {
             SchemeRoutingDataSource(
                 cachedFactory = cachedFactory,
@@ -7901,6 +7917,7 @@ class MusicService :
                 telegramFactory = telegramFactory,
                 deezerFactory = deezerFactory,
                 tidalProgressiveDashFactory = tidalProgressiveDashFactory,
+                echoFactory = echoFactory,
             )
         }
     }
@@ -7924,6 +7941,7 @@ class MusicService :
                     defaultFactory = youtubeMediaFactory,
                     deezerFactory = DeezerDecryptingDataSource.Factory(OkHttpDataSource.Factory(mediaOkHttpClient)),
                     tidalProgressiveDashFactory = TidalProgressiveDashDataSource.Factory(mediaOkHttpClient),
+                    echoFactory = EchoDecryptingDataSource.Factory(OkHttpDataSource.Factory(mediaOkHttpClient)),
                     extractorFactory = extractorMediaFactory,
                     shouldUseExtractorFactory = ::isExtractorPlaybackUri,
                 )
@@ -7931,7 +7949,7 @@ class MusicService :
 
         return ResolvingDataSource.Factory(routingFactory) { dataSpec ->
             val scheme = dataSpec.uri.scheme?.lowercase(Locale.US)
-            if (scheme == DeezerCrypto.SCHEME || scheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME) {
+            if (scheme == DeezerCrypto.SCHEME || scheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME || scheme == SpotifyEchoResolver.SCHEME) {
                 dataSpec
             } else {
                 resolvePlaybackDataSpec(
@@ -8635,6 +8653,7 @@ class MusicService :
                     AudioSourceType.SOUNDCLOUD -> resolveSoundCloudStream(query)
                     AudioSourceType.SPOTIFY ->
                         resolveSpotifyStream(
+                            mediaId,
                             query,
                             trusted = overrideIsSourceOverride && override == AudioSourceType.SPOTIFY,
                         )
@@ -9261,7 +9280,60 @@ class MusicService :
         return runCatching { SoundCloudAudioQuality.valueOf(stored) }.getOrDefault(SoundCloudAudioQuality.AAC_160)
     }
 
+    private class SpotifyReportContext(
+        val trackUri: String,
+        val method: SpotifyResolveMethod,
+    )
+
+    private val spotifyDirectReportByMediaId = ConcurrentHashMap<String, SpotifyReportContext>()
+
+    private var spotifyReportJob: Job? = null
+
+    private fun updateSpotifyPlaybackReporting() {
+        spotifyReportJob?.cancel()
+        spotifyReportJob = null
+        val activeIds = player.mediaItems.map { it.mediaId }.toSet()
+        spotifyDirectReportByMediaId.keys.retainAll(activeIds)
+        val mediaId = player.currentMediaItem?.mediaId ?: return
+        val context = spotifyDirectReportByMediaId[mediaId] ?: return
+        if (context.method != SpotifyResolveMethod.STOPIFY) return
+        val trackUri = context.trackUri
+        spotifyReportJob =
+            scope.launch(SilentHandler) {
+                val deviceId = ensureSpotifyDeviceId()
+                var startReported = false
+                var progressReported = false
+                var lastPosition = 0L
+                var lastDuration = 0L
+                try {
+                    while (true) {
+                        if (player.isPlaying) {
+                            val pos = player.currentPosition.coerceAtLeast(0L)
+                            val dur = player.duration
+                            if (dur > 0) lastDuration = dur
+                            lastPosition = pos
+                            if (!startReported) {
+                                startReported = true
+                                runCatching { SpotifyWebStreamer.reportPlayback(trackUri, deviceId, 0L, lastDuration, false) }
+                            } else if (!progressReported && pos >= 30_000L) {
+                                progressReported = true
+                                runCatching { SpotifyWebStreamer.reportPlayback(trackUri, deviceId, pos, lastDuration, false) }
+                            }
+                        }
+                        delay(500)
+                    }
+                } finally {
+                    if (startReported && lastDuration > 0 && lastPosition >= lastDuration - 2_000L) {
+                        withContext(kotlinx.coroutines.NonCancellable) {
+                            runCatching { SpotifyWebStreamer.reportPlayback(trackUri, deviceId, lastPosition, lastDuration, true) }
+                        }
+                    }
+                }
+            }
+    }
+
     private fun resolveSpotifyStream(
+        mediaId: String,
         query: SourceQuery,
         trusted: Boolean,
     ): DirectStream? {
@@ -9288,13 +9360,56 @@ class MusicService :
             Timber.tag("MusicService").d("Spotify direct: no track match for \"%s\"", query.title)
             return null
         }
+        val trackUri = "spotify:track:${matched.trackId}"
+        val resolveMethod =
+            runCatching { dataStore.get(SpotifyResolveMethodKey, SpotifyResolveMethod.STOPIFY.name) }
+                .getOrDefault(SpotifyResolveMethod.STOPIFY.name)
+                .let { stored -> runCatching { SpotifyResolveMethod.valueOf(stored) }.getOrDefault(SpotifyResolveMethod.STOPIFY) }
+        if (resolveMethod == SpotifyResolveMethod.ECHO) {
+            val echoStream =
+                runCatching {
+                    runBlocking(Dispatchers.IO) {
+                        SpotifyEchoResolver.resolve(spDc, matched.trackId, matched.durationMs)
+                    }
+                }.onFailure { error ->
+                    Timber.tag("MusicService").w(error, "Spotify Echo resolution failed for \"%s\"", query.title)
+                }.getOrNull()
+            if (echoStream == null) {
+                Timber.tag("MusicService").w("Spotify Echo: falling back to Stopify pipeline for \"%s\"", query.title)
+            } else {
+                spotifyDirectReportByMediaId[mediaId] = SpotifyReportContext(trackUri, SpotifyResolveMethod.ECHO)
+                Timber.tag("MusicService").i(
+                    "Spotify Echo resolved \"%s\" -> %s %s",
+                    query.title,
+                    echoStream.chosenFile.formatName,
+                    echoStream.chosenFile.fileIdHex,
+                )
+                val echoUri = SpotifyEchoResolver.streamUriFor(echoStream).toString()
+                val isFlac = SpotifyEchoResolver.isFlac(echoStream.chosenFile.format)
+                return DirectStream(
+                    uri = echoUri,
+                    mimeType = if (isFlac) "audio/flac" else "audio/ogg",
+                    codecs = if (isFlac) "flac" else "vorbis",
+                    contentLength = null,
+                    label = "Spotify Echo ${SpotifyEchoResolver.formatLabel(echoStream.chosenFile.format)}",
+                    source = AudioSourceType.SPOTIFY,
+                    matchedTitle = matched.title,
+                    matchedArtist = matched.artist,
+                    matchedAlbum = query.album,
+                    matchedDurationMs = matched.durationMs,
+                    trustedDirectId = directTrackId != null || trusted,
+                    sampleRate = 44_100,
+                    bitDepth = null,
+                )
+            }
+        }
         val quality = parseSpotifyDirectQuality()
         val deviceId = ensureSpotifyDeviceId()
         val cdnUrl =
             runCatching {
                 runBlocking(Dispatchers.IO) {
                     SpotifyWebStreamer.resolveStreamUrl(
-                        trackUri = "spotify:track:${matched.trackId}",
+                        trackUri = trackUri,
                         deviceId = deviceId,
                         dualFormat = quality == SpotifyDirectQuality.AAC_128_DUAL,
                     )
@@ -9302,6 +9417,7 @@ class MusicService :
             }.onFailure { error ->
                 Timber.tag("MusicService").w(error, "Spotify direct stream resolution failed for \"%s\"", query.title)
             }.getOrNull() ?: return null
+        spotifyDirectReportByMediaId[mediaId] = SpotifyReportContext(trackUri, SpotifyResolveMethod.STOPIFY)
         Timber.tag("MusicService").i(
             "Spotify direct resolved \"%s\" -> %s",
             query.title,
@@ -9711,6 +9827,7 @@ class MusicService :
         }
 
     private fun evictDirectStreamCache(mediaId: String) {
+        spotifyDirectReportByMediaId.remove(mediaId)?.let { SpotifyEchoResolver.invalidateTrack(it.trackUri) }
         AudioSourceType.entries.forEach { source ->
             directStreamCache.remove(sourceCacheKey(source, mediaId))
         }
@@ -10571,6 +10688,7 @@ class MusicService :
         private val telegramFactory: DataSource.Factory,
         private val deezerFactory: DataSource.Factory,
         private val tidalProgressiveDashFactory: DataSource.Factory,
+        private val echoFactory: DataSource.Factory,
     ) : DataSource {
         private val transferListeners = mutableListOf<TransferListener>()
         private var delegate: DataSource? = null
@@ -10589,6 +10707,8 @@ class MusicService :
                     deezerFactory
                 } else if (normalizedScheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME) {
                     tidalProgressiveDashFactory
+                } else if (normalizedScheme == SpotifyEchoResolver.SCHEME) {
+                    echoFactory
                 } else if (
                     normalizedScheme == "content" ||
                     normalizedScheme == "file" ||
@@ -10624,7 +10744,7 @@ class MusicService :
         private val defaultFactory: DataSource.Factory,
         private val deezerFactory: DataSource.Factory,
         private val tidalProgressiveDashFactory: DataSource.Factory,
-
+        private val echoFactory: DataSource.Factory,
         private val extractorFactory: DataSource.Factory,
         private val shouldUseExtractorFactory: (Uri) -> Boolean,
     ) : DataSource {
@@ -10645,6 +10765,7 @@ class MusicService :
                     when (scheme) {
                         DeezerCrypto.SCHEME -> deezerFactory
                         TidalAudioProvider.PROGRESSIVE_DASH_SCHEME -> tidalProgressiveDashFactory
+                        SpotifyEchoResolver.SCHEME -> echoFactory
                         else -> defaultFactory
                     }
                 }

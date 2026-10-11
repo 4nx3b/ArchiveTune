@@ -12,6 +12,9 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.QobuzBackupEndpointsKey
 import moe.rukamori.archivetune.constants.SpotifySpDcKey
+import moe.rukamori.archivetune.constants.SpotifyResolveMethod
+import moe.rukamori.archivetune.constants.SpotifyResolveMethodKey
+import moe.rukamori.archivetune.spotify.echo.SpotifyDesktopAuth
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
@@ -515,6 +518,29 @@ private data class CdnProbe(
                 summary = "Spotify direct streaming requires a signed-in Spotify web session. " +
                     "Sign in below the Spotify source toggle, then enable the source.",
             )
+        }
+        val method =
+            runCatching { context.dataStore.data.first()[SpotifyResolveMethodKey] }
+                .getOrNull()
+                ?.let { stored -> runCatching { SpotifyResolveMethod.valueOf(stored) }.getOrNull() }
+                ?: SpotifyResolveMethod.STOPIFY
+        if (method == SpotifyResolveMethod.ECHO) {
+            val token = SpotifyDesktopAuth.desktopToken(spDc)
+            return if (token != null) {
+                SourceCheckResult(
+                    status = SourceCheckStatus.READY,
+                    summary = "Echo Music resolve method active — the desktop device pairing succeeded " +
+                        "and the account token is valid, so extended-metadata, storage-resolve and " +
+                        "PlayPlay key requests can go through.",
+                )
+            } else {
+                SourceCheckResult(
+                    status = SourceCheckStatus.UNREACHABLE,
+                    summary = "Echo Music resolve method selected, but the desktop device pairing failed. " +
+                        "Playback will fall back to the Stopify pipeline. Try signing out and back in " +
+                        "below the Spotify source toggle.",
+                )
+            }
         }
         return SourceCheckResult(
             status = SourceCheckStatus.READY,
