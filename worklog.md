@@ -5417,3 +5417,18 @@ Stage Summary:
 - Spotify DRM provisioning is byte-for-byte media3-standard; forced L3 is gone per the documented invariant.
 - SoundCloud thumbnails 100px -> 500px everywhere; Spotify search rows pick the widest source, and played-track artwork upgrades to 640px through the getAlbum GQL when the pool token is REST-rate-limited.
 - Verification: brace balance and reference checks done by hand; compilation via CI per Rule 1 (no local builds).
+
+---
+Task ID: 108
+Agent: Super Z (main agent, session web-60bd54af)
+
+Task: CI closure for the 2026-10-12 resume round (commit 4d183f803).
+
+Work Log:
+- Pushed 4d183f803 to origin/dev and polled scripts/poll_ci_sha.sh through three windows (~23 min; the serialized nightly queue was still draining when the first window ended).
+- FINAL STATE ALL GREEN (8/8 check-runs): check, build (compile+tests+lint), all five nightly APK variants (mobile arm64/x86_64/armeabi/universal, tv universal), create-nightly.
+- Canary 17.0.6740-4d183f803 published as N202610120354.
+
+Stage Summary:
+- The resume round is shipped on the canary channel at N202610120354: the completed upstream canvas-flight port (stage geometry + morph state machine + slot-rect wiring), media3-parity Spotify DRM provisioning (no forced L3), SoundCloud 500px artwork, and widest-source/640px Spotify artwork.
+- Remaining user-side verification: on-device canvas position + morph feel, Spotify audibility on the rooted device (provisioning should now succeed), thumbnail sharpness in Spotify/SoundCloud search lists and the player artwork.
