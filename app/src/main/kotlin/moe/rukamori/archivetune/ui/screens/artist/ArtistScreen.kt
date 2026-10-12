@@ -1843,7 +1843,10 @@ private fun ArtistOverflowDropdown(
                         colorControls(saturation = glassTuning.saturation)
                         blur((20f * glassTuning.blurFactor).dp.toPx())
                         lens(
-                            refractionHeight = (16f * glassTuning.refractionHeightFactor).dp.toPx(),
+                            refractionHeight = minOf(
+                                (16f * glassTuning.refractionHeightFactor).dp.toPx(),
+                                size.minDimension / 2f,
+                            ),
                             refractionAmount = (40f * glassTuning.refractionAmountFactor).dp.toPx(),
                             depthEffect = glassTuning.depth3D,
                             chromaticAberration = glassTuning.chromaticAberration,

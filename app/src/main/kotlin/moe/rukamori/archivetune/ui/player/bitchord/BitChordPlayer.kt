@@ -350,6 +350,8 @@ fun BitChordPlayerContent(
     currentFormat: FormatEntity?,
     canvasPrimaryUrl: String? = null,
     canvasFallbackUrl: String? = null,
+    externalBackRequests: androidx.compose.runtime.MutableIntState? = null,
+    onStylePageOpenChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -360,6 +362,13 @@ fun BitChordPlayerContent(
 
     val automixOn by AutoMixUiState.enabled.collectAsStateWithLifecycle()
     val automixAnalysis by AutoMixUiState.analysis.collectAsStateWithLifecycle()
+    val automixTransitionWindow by AutoMixUiState.transitionWindow.collectAsStateWithLifecycle()
+    val crossfadeMixing by playerConnection.service.crossfadeMixing.collectAsStateWithLifecycle()
+    val automixMixing by AutoMixUiState.mixing.collectAsStateWithLifecycle()
+    val sliderMixing = crossfadeMixing || automixMixing
+    val sliderTransitionWindow = remember(automixTransitionWindow) {
+        automixTransitionWindow?.let { it.startFraction..it.endFraction }
+    }
 
     val reduceAnimations = LocalAnimationsDisabled.current
 
@@ -455,6 +464,21 @@ fun BitChordPlayerContent(
             queueOpen = false
         } else {
             lyricsOpen = false
+        }
+    }
+    LaunchedEffect(state.isCollapsed) {
+        if (state.isCollapsed && (lyricsOpen || queueOpen)) {
+            queueOpen = false
+            lyricsOpen = false
+        }
+    }
+    val bitchordStylePageOpen = lyricsOpen || queueOpen
+    LaunchedEffect(bitchordStylePageOpen) { onStylePageOpenChange(bitchordStylePageOpen) }
+    val externalBackEpoch = externalBackRequests?.intValue ?: 0
+    LaunchedEffect(externalBackEpoch) {
+        if (externalBackEpoch > 0) {
+            if (queueOpen) queueOpen = false
+            if (lyricsOpen) lyricsOpen = false
         }
     }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -1216,6 +1240,8 @@ fun BitChordPlayerContent(
                     onSeekFraction(scrubValue)
                     scrubbing = false
                 },
+                mixing = sliderMixing,
+                transitionWindow = sliderTransitionWindow,
             )
             Box(
                 modifier = Modifier

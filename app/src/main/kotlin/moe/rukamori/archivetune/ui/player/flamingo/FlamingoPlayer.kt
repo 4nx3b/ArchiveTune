@@ -169,9 +169,11 @@ import java.time.LocalDateTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.runtime.snapshots.snapshotFlow
 import androidx.compose.ui.draw.drawWithContent
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
@@ -231,6 +233,11 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.media3.ui.AspectRatioFrameLayout
 import coil3.compose.AsyncImage
 import sh.calvin.reorderable.ReorderableItem
@@ -279,8 +286,6 @@ private const val FlamingoLyricsContentDeferCanvasMs = 300L
 private const val FlamingoLyricsExitHoldMs = 240L
 private const val FlamingoPageMorphHoldMs = 420L
 private const val FlamingoStageSurfaceRetireMs = 420L
-private const val FlamingoQueueContentDeferMs = 260L
-private const val FlamingoQueueExitHoldMs = 320L
 
 private class FlamingoAdaptiveCornerShape(
     private val smallRadius: Dp,
@@ -369,6 +374,7 @@ fun FlamingoPlayerContent(
     lyricsSyncOffset: Int = 0,
     onLyricsSyncOffsetChange: (Int) -> Unit = {},
     onLyricsVisibilityChange: (Boolean) -> Unit = {},
+    externalBackRequests: androidx.compose.runtime.MutableIntState? = null,
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
     orientationRefreshEpoch: Int = 0,
@@ -437,10 +443,6 @@ fun FlamingoPlayerContent(
             mutableStateOf(if (landscape) FlamingoPage.Lyric else FlamingoPage.Album)
         }
 
-        LaunchedEffect(mediaMetadata.id, landscape) {
-            nowPage = if (landscape) FlamingoPage.Lyric else FlamingoPage.Album
-        }
-
         LaunchedEffect(landscape) {
             showControl.value = !landscape
         }
@@ -458,6 +460,15 @@ fun FlamingoPlayerContent(
             pageMorphRunning = true
             delay(FlamingoPageMorphHoldMs)
             pageMorphRunning = false
+        }
+
+        LaunchedEffect(mediaMetadata.id, landscape) {
+            if (landscape) {
+                if (nowPage != FlamingoPage.Lyric) nowPage = FlamingoPage.Lyric
+            } else {
+                snapshotFlow { pageMorphRunning }.first { !it }
+                if (nowPage != FlamingoPage.Album) nowPage = FlamingoPage.Album
+            }
         }
 
         val overlayArtworkReveal by animateFloatAsState(
@@ -492,15 +503,15 @@ fun FlamingoPlayerContent(
                 canvasStageSurfaceActive = true
             }
         }
-        var queueContentReady by remember { mutableStateOf(false) }
-        LaunchedEffect(nowPage) {
-            if (nowPage == FlamingoPage.PlayingList) {
-                queueContentReady = false
-                delay(FlamingoQueueContentDeferMs)
-                queueContentReady = true
-            } else {
-                delay(FlamingoQueueExitHoldMs)
-                queueContentReady = false
+        LaunchedEffect(state.isCollapsed) {
+            if (state.isCollapsed && nowPage != FlamingoPage.Album) {
+                nowPage = if (landscape) FlamingoPage.Lyric else FlamingoPage.Album
+            }
+        }
+        val externalBackEpoch = externalBackRequests?.intValue ?: 0
+        LaunchedEffect(externalBackEpoch) {
+            if (externalBackEpoch > 0 && nowPage != FlamingoPage.Album) {
+                nowPage = FlamingoPage.Album
             }
         }
         val canvasSurfacesAlpha by animateFloatAsState(
@@ -1392,21 +1403,19 @@ fun FlamingoPlayerContent(
                                     .fillMaxSize()
                                     .clickable(enabled = false, onClick = {}),
                             ) {
-                                if (queueContentReady) {
-                                    FlamingoPlayingList(
-                                        playerConnection = playerConnection,
-                                        queueWindows = queueWindows,
-                                        currentWindowIndex = currentWindowIndex,
-                                        shuffleModeEnabled = shuffleModeEnabled,
-                                        repeatMode = repeatMode,
-                                        bottomOverlayPx = { controlsOverlayHeightPx },
-                                        controlsVisible = { showControlLambda.value },
-                                        onControlsPoke = {
-                                            if (!showControlLambda.value) showControl.value = true
-                                            lastClickTime.longValue = System.currentTimeMillis()
-                                        },
-                                    )
-                                }
+                                FlamingoPlayingList(
+                                    playerConnection = playerConnection,
+                                    queueWindows = queueWindows,
+                                    currentWindowIndex = currentWindowIndex,
+                                    shuffleModeEnabled = shuffleModeEnabled,
+                                    repeatMode = repeatMode,
+                                    bottomOverlayPx = { controlsOverlayHeightPx },
+                                    controlsVisible = { showControlLambda.value },
+                                    onControlsPoke = {
+                                        if (!showControlLambda.value) showControl.value = true
+                                        lastClickTime.longValue = System.currentTimeMillis()
+                                    },
+                                )
                             }
                         }
                     }
@@ -2564,11 +2573,17 @@ private fun FlamingoPlayingList(
     val localPlayer = playerConnection.localPlayer
     val density = LocalDensity.current
 
+    val controlsRevealFraction by animateFloatAsState(
+        targetValue = if (controlsVisible()) 1f else 0f,
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        label = "flamingoQueueControlsReveal",
+    )
+
     Spacer(modifier = Modifier.height(12.dp))
 
     val upNextCount = (queueWindows.size - currentWindowIndex - 1).coerceAtLeast(0)
 
-    val bottomContentPadding = with(density) { bottomOverlayPx().toDp() }
+    val bottomContentPadding = with(density) { (bottomOverlayPx() * controlsRevealFraction).toDp() }
 
     Column(
         modifier = Modifier
@@ -2752,7 +2767,12 @@ private fun FlamingoPlayingList(
                 initialFirstVisibleItemScrollOffset = 0,
             )
 
-            val mutableQueueWindows = remember { mutableStateListOf<Timeline.Window>() }
+            val mutableQueueWindows =
+                remember {
+                    mutableStateListOf<Timeline.Window>().apply {
+                        addAll(queueWindows.drop(currentWindowIndex + 1))
+                    }
+                }
 
             val currentPlayingUid =
                 remember(currentWindowIndex, queueWindows) {
@@ -2811,7 +2831,7 @@ private fun FlamingoPlayingList(
 
             LaunchedEffect(currentWindowIndex, queueWindows) {
                 if (!state.isScrollInProgress && !reorderableState.isAnyItemDragging) {
-                    runCatching { state.animateScrollToItem(currentDisplayIndex) }
+                    runCatching { state.scrollToItem(currentDisplayIndex) }
                 }
             }
 
@@ -2899,27 +2919,20 @@ private fun FlamingoPlayingList(
                         }
                         .drawWithCache {
                             val topFadePx = (size.height * 0.06f).coerceAtLeast(24.dp.toPx())
+                            val fadeBandPx = 56.dp.toPx()
+                            val overlayPx = bottomOverlayPx() * controlsRevealFraction
+                            val transparentFromPx =
+                                (size.height - overlayPx + 20.dp.toPx() * controlsRevealFraction)
+                                    .coerceAtLeast(topFadePx + fadeBandPx)
+                            val fadeStartPx = transparentFromPx - fadeBandPx
                             val fadeBrush =
-                                if (controlsVisible()) {
-                                    val fadeBandPx = 56.dp.toPx()
-                                    val transparentFromPx =
-                                        (size.height - bottomOverlayPx() + 20.dp.toPx())
-                                            .coerceAtLeast(topFadePx + fadeBandPx)
-                                    val fadeStartPx = transparentFromPx - fadeBandPx
-                                    Brush.verticalGradient(
-                                        0f to Color.Transparent,
-                                        topFadePx / size.height to Color.Black,
-                                        fadeStartPx / size.height to Color.Black,
-                                        transparentFromPx / size.height to Color.Transparent,
-                                        1f to Color.Transparent,
-                                    )
-                                } else {
-                                    Brush.verticalGradient(
-                                        0f to Color.Transparent,
-                                        topFadePx / size.height to Color.Black,
-                                        1f to Color.Black,
-                                    )
-                                }
+                                Brush.verticalGradient(
+                                    0f to Color.Transparent,
+                                    topFadePx / size.height to Color.Black,
+                                    fadeStartPx / size.height to Color.Black,
+                                    transparentFromPx / size.height to Color.Transparent,
+                                    1f to Color.Transparent,
+                                )
                             onDrawWithContent {
                                 drawContent()
                                 drawRect(
@@ -3779,6 +3792,9 @@ private fun FlamingoPlayerControl(
         mutableLongStateOf(0L)
     }
     val context = LocalContext.current
+    val crossfadeMixing by playerConnection.service.crossfadeMixing.collectAsStateWithLifecycle()
+    val automixMixing by moe.rukamori.archivetune.playback.automix.AutoMixUiState.mixing.collectAsStateWithLifecycle()
+    val sliderMixing = crossfadeMixing || automixMixing
     val playedTime = rememberSaveable(key = "FlamingoPlayerControl_playedTime") { mutableStateOf("0:00") }
     val remainingTime =
         rememberSaveable(key = "FlamingoPlayerControl_remainingTime") { mutableStateOf("-0:00") }
@@ -3882,6 +3898,7 @@ private fun FlamingoPlayerControl(
                                     0f
                                 },
                                 height = 7.dp + 4.dp * sliderEngage,
+                                mixing = sliderMixing,
                             )
                         },
                     )
@@ -4225,49 +4242,114 @@ private fun FlamingoTrack(
     activeFraction: Float,
     modifier: Modifier = Modifier,
     height: Dp,
+    mixing: Boolean = false,
 ) = FlamingoWrapper {
     val inactiveTrackColor = Color.White.copy(alpha = 0.5f)
     val activeTrackColor = Color.White
-    Canvas(
+    val fillFactor by animateFloatAsState(
+        targetValue = if (mixing) 0f else 1f,
+        animationSpec = tween(durationMillis = FlamingoMixMorphMs, easing = FastOutSlowInEasing),
+        label = "flamingoSeekFillFactor",
+    )
+    Box(
         modifier
             .fillMaxWidth()
             .height(height),
     ) {
-        val isRtl = layoutDirection == LayoutDirection.Rtl
-        val sliderLeft = Offset(0f, center.y)
-        val sliderRight = Offset(size.width, center.y)
-        val sliderStart = if (isRtl) sliderRight else sliderLeft
-        val sliderEnd = if (isRtl) sliderLeft else sliderRight
-        val trackStrokeWidth = height.toPx()
+        Canvas(
+            Modifier
+                .fillMaxWidth()
+                .height(height),
+        ) {
+            val isRtl = layoutDirection == LayoutDirection.Rtl
+            val sliderLeft = Offset(0f, center.y)
+            val sliderRight = Offset(size.width, center.y)
+            val sliderStart = if (isRtl) sliderRight else sliderLeft
+            val sliderEnd = if (isRtl) sliderLeft else sliderRight
+            val trackStrokeWidth = height.toPx()
 
+            drawRoundRect(
+                color = inactiveTrackColor,
+                topLeft = Offset(0f, center.y - trackStrokeWidth / 2f),
+                size = Size(size.width, trackStrokeWidth),
+                cornerRadius = CornerRadius(trackStrokeWidth / 2f),
+            )
+            val sliderValueEnd = Offset(
+                sliderStart.x +
+                    (sliderEnd.x - sliderStart.x) * activeFraction * fillFactor,
+                center.y,
+            )
+
+            val sliderValueStart = Offset(
+                sliderStart.x +
+                    (sliderEnd.x - sliderStart.x) * 0f,
+                center.y,
+            )
+
+            val activeLeft = minOf(sliderValueStart.x, sliderValueEnd.x)
+            val activeWidth = kotlin.math.abs(sliderValueEnd.x - sliderValueStart.x)
+            if (activeWidth > 0f) {
+                drawRoundRect(
+                    color = activeTrackColor,
+                    topLeft = Offset(activeLeft, center.y - trackStrokeWidth / 2f),
+                    size = Size(activeWidth, trackStrokeWidth),
+                    cornerRadius = CornerRadius(trackStrokeWidth / 2f),
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = mixing,
+            enter = fadeIn(tween(durationMillis = FlamingoMixMorphMs, easing = FastOutSlowInEasing)) +
+                scaleIn(
+                    animationSpec = tween(durationMillis = FlamingoMixMorphMs, easing = FastOutSlowInEasing),
+                    initialScale = 0f,
+                    transformOrigin = TransformOrigin(0f, 0.5f),
+                ),
+            exit = fadeOut(tween(durationMillis = FlamingoMixMorphMs, easing = FastOutSlowInEasing)),
+        ) {
+            FlamingoMixSheen(height = height, color = activeTrackColor)
+        }
+    }
+}
+
+@Composable
+private fun FlamingoMixSheen(height: Dp, color: Color) {
+    val transition = rememberInfiniteTransition(label = "flamingoMixSheen")
+    val phase by transition.animateFloat(
+        initialValue = -FlamingoSheenBandFraction,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = FlamingoSheenPeriodMs, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "flamingoMixSheenPhase",
+    )
+    Canvas(
+        Modifier
+            .fillMaxWidth()
+            .height(height),
+    ) {
+        val band = size.width * FlamingoSheenBandFraction
+        val x = phase * size.width
         drawRoundRect(
-            color = inactiveTrackColor,
-            topLeft = Offset(0f, center.y - trackStrokeWidth / 2f),
-            size = Size(size.width, trackStrokeWidth),
-            cornerRadius = CornerRadius(trackStrokeWidth / 2f),
-        )
-        val sliderValueEnd = Offset(
-            sliderStart.x +
-                (sliderEnd.x - sliderStart.x) * activeFraction,
-            center.y,
-        )
-
-        val sliderValueStart = Offset(
-            sliderStart.x +
-                (sliderEnd.x - sliderStart.x) * 0f,
-            center.y,
-        )
-
-        val activeLeft = minOf(sliderValueStart.x, sliderValueEnd.x)
-        val activeWidth = kotlin.math.abs(sliderValueEnd.x - sliderValueStart.x)
-        drawRoundRect(
-            color = activeTrackColor,
-            topLeft = Offset(activeLeft, center.y - trackStrokeWidth / 2f),
-            size = Size(activeWidth, trackStrokeWidth),
-            cornerRadius = CornerRadius(trackStrokeWidth / 2f),
+            brush = Brush.horizontalGradient(
+                colorStops = arrayOf(
+                    0f to Color.Transparent,
+                    0.5f to color,
+                    1f to Color.Transparent,
+                ),
+                startX = x,
+                endX = x + band,
+            ),
+            size = Size(size.width, size.height),
+            cornerRadius = CornerRadius(size.height / 2f),
         )
     }
 }
+
+private const val FlamingoMixMorphMs = 450
+private const val FlamingoSheenBandFraction = 0.34f
+private const val FlamingoSheenPeriodMs = 1000
 
 @Composable
 private fun FlamingoQualityIndicator(
@@ -4286,7 +4368,7 @@ private fun FlamingoQualityIndicator(
     val qualityLabel =
         remember(currentFormat) {
             when {
-                isHiRes -> "Hi-Res"
+                isHiRes -> "Hi-Res Lossless"
                 isLossless -> null
                 else -> currentFormat.codecLabel()
             }

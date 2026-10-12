@@ -112,9 +112,6 @@ internal suspend fun resolveCanvasArtworkForPlayback(
             }
             return cachedArtwork
         }
-        withContext(Dispatchers.IO) {
-            CanvasArtworkPlaybackCache.remove(mediaId)
-        }
     }
 
     if (!allowNetwork || mediaId.isBlank()) {

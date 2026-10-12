@@ -421,6 +421,7 @@ class DownloadUtil
                                 )
                             }.getOrNull()
                         if (resolved != null) {
+                            purgeStaleCacheSpansForStreamChange(requestKey, resolved.contentLength)
                             persistSourceFormatEntity(
                                 mediaId = mediaId,
                                 mimeType = resolved.mimeType,
@@ -436,6 +437,10 @@ class DownloadUtil
                                 ).build()
                         }
                     }
+                    throw java.io.IOException(
+                        "$targetSource stream resolution failed for $mediaId; failing the source-keyed download " +
+                            "instead of caching a different stream under the same key",
+                    )
                 }
 
                 if (requestKey == mediaId) {
@@ -760,6 +765,48 @@ class DownloadUtil
             return if (fetched) ytDownloadKey else null
         }
 
+        private fun purgeStaleCacheSpansForStreamChange(
+            cacheKey: String,
+            contentLength: Long?,
+        ) {
+            if (contentLength == null || contentLength <= 0L) return
+            val cachedLength =
+                runCatching {
+                    downloadCache
+                        .getContentMetadata(cacheKey)
+                        .get(androidx.media3.datasource.cache.ContentMetadata.KEY_CONTENT_LENGTH, -1L)
+                }.getOrDefault(-1L)
+            if (cachedLength > 0L && cachedLength != contentLength) {
+                Timber
+                    .tag("DownloadUtil")
+                    .w(
+                        "purging stale cache %s: stored %d bytes vs resolved %d bytes (stream changed)",
+                        cacheKey,
+                        cachedLength,
+                        contentLength,
+                    )
+                runCatching { downloadCache.removeResource(cacheKey) }
+                runCatching { playerCache.removeResource(cacheKey) }
+                return
+            }
+            val cachedBytes =
+                runCatching {
+                    downloadCache.getCachedSpans(cacheKey).sumOf { it.length }
+                }.getOrDefault(0L)
+            if (cachedBytes > contentLength) {
+                Timber
+                    .tag("DownloadUtil")
+                    .w(
+                        "purging overlong cache %s: %d cached bytes exceed resolved %d bytes",
+                        cacheKey,
+                        cachedBytes,
+                        contentLength,
+                    )
+                runCatching { downloadCache.removeResource(cacheKey) }
+                runCatching { playerCache.removeResource(cacheKey) }
+            }
+        }
+
         private fun expectedDownloadLengthFor(
             key: String,
             mediaId: String,
@@ -795,6 +842,17 @@ class DownloadUtil
                     val contentLength = knownContentLength
                         ?: response.header("Content-Length")?.toLongOrNull()
                         ?: -1L
+
+                    if (contentLength > 0L) {
+                        val cachedMetadataLength = runCatching {
+                            playerCache
+                                .getContentMetadata(cacheKey)
+                                .get(androidx.media3.datasource.cache.ContentMetadata.KEY_CONTENT_LENGTH, -1L)
+                        }.getOrDefault(-1L)
+                        if (cachedMetadataLength > 0L && cachedMetadataLength != contentLength) {
+                            runCatching { playerCache.removeResource(cacheKey) }
+                        }
+                    }
 
                     val dataSpec = DataSpec.Builder()
                         .setUri(url.toUri())
@@ -883,9 +941,12 @@ class DownloadUtil
                     contentLength = resolved.contentLength,
                 )
 
+                val preferredKey = DownloadSourceConfig.downloadCacheKey(source, mediaId)
+                purgeStaleCacheSpansForStreamChange(preferredKey, resolved.contentLength)
+
                 return dataSpec.buildUpon()
                     .setUri(resolved.uri.toUri())
-                    .setKey(DownloadSourceConfig.downloadCacheKey(source, mediaId))
+                    .setKey(preferredKey)
 
                     .setHttpRequestHeaders(dataSpec.httpRequestHeaders + requiredHeadersFor(resolved.uri))
                     .build()
@@ -1195,7 +1256,7 @@ class DownloadUtil
             private const val MAX_DOWNLOAD_HTTP_REQUESTS_PER_HOST = 96
             private const val DOWNLOAD_CONNECTION_KEEP_ALIVE_MINUTES = 10L
 
-            internal const val DOWNLOAD_WRITE_BUFFER_SIZE = 16 * 1024 * 1024
+            internal const val DOWNLOAD_WRITE_BUFFER_SIZE = 1024 * 1024
 
             internal const val DOWNLOAD_FRAGMENT_SIZE = 128L * 1024 * 1024
 

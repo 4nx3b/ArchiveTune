@@ -165,6 +165,8 @@ fun SimpMusicPlayerContent(
     currentFormat: FormatEntity?,
     onSeek: (Long) -> Unit,
     onSeekFinished: () -> Unit,
+    externalBackRequests: androidx.compose.runtime.MutableIntState? = null,
+    onStylePageOpenChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -196,6 +198,22 @@ fun SimpMusicPlayerContent(
     var lyricsFullscreenOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(mediaMetadata.id) { lyricsFullscreenOpen = false }
     BackHandler(enabled = lyricsFullscreenOpen) { lyricsFullscreenOpen = false }
+
+    LaunchedEffect(state.isCollapsed) {
+        if (state.isCollapsed && (queueOpen || lyricsFullscreenOpen)) {
+            queueOpen = false
+            lyricsFullscreenOpen = false
+        }
+    }
+    val simpmusicStylePageOpen = queueOpen || lyricsFullscreenOpen
+    LaunchedEffect(simpmusicStylePageOpen) { onStylePageOpenChange(simpmusicStylePageOpen) }
+    val externalBackEpoch = externalBackRequests?.intValue ?: 0
+    LaunchedEffect(externalBackEpoch) {
+        if (externalBackEpoch > 0) {
+            if (lyricsFullscreenOpen) lyricsFullscreenOpen = false
+            if (queueOpen) queueOpen = false
+        }
+    }
 
     var topBarHeight by remember { mutableStateOf(0.dp) }
     var infoHeight by remember { mutableStateOf(0.dp) }

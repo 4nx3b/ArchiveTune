@@ -475,6 +475,9 @@ class MusicService :
     lateinit var database: MusicDatabase
 
     @Inject
+    lateinit var recommendationRepository: moe.rukamori.archivetune.recommendation.RecommendationRepository
+
+    @Inject
     lateinit var lyricsHelper: LyricsHelper
 
     @Inject
@@ -794,6 +797,9 @@ class MusicService :
     private var currentHistoryRemoteRegistered = false
     private var currentHistoryImmediateAttempted = false
     private var currentHistorySessionQueued = false
+    private var currentHistoryStartedAtWallMs: Long = 0L
+    private var currentHistoryDurationMs: Long = 0L
+    private val lastRecSignalAtMs = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private var historyThresholdJob: Job? = null
     private val pendingHistoryFinalizations = mutableMapOf<String, MutableList<PendingHistoryFinalization>>()
     private val historyRecordingJobs = ConcurrentHashMap<Long, kotlinx.coroutines.Deferred<ImmediateHistoryResult>>()
@@ -859,7 +865,13 @@ class MusicService :
     private var secondaryCrossfadeTarget: CrossfadeTarget? = null
     private var crossfadeConsecutiveFailures = 0
     private var crossfadeFailureMediaId: String? = null
-    private var isCrossfading = false
+    private val _crossfadeMixing = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val crossfadeMixing: kotlinx.coroutines.flow.StateFlow<Boolean> = _crossfadeMixing
+    private var isCrossfading: Boolean
+        get() = _crossfadeMixing.value
+        set(value) {
+            _crossfadeMixing.value = value
+        }
     private var crossfadeHandoffInProgress = false
     private var crossfadeBaseVolume = 1f
     private var crossfadeIncomingBaseVolume = 1f
@@ -1339,6 +1351,36 @@ class MusicService :
             state != Player.STATE_ENDED
     }
 
+    private var lastSessionActivityAlbumRoute: String? = null
+
+    private fun updateSessionActivityDeepLink(metadata: moe.rukamori.archivetune.models.MediaMetadata?) {
+        if (BuildConfig.DEVICE == "automotive") return
+        if (!this::mediaSession.isInitialized) return
+        val albumId = metadata?.album?.id?.takeIf { it.isNotBlank() }
+        val route = albumId?.let { "album/$it" }
+        if (route == lastSessionActivityAlbumRoute) return
+        lastSessionActivityAlbumRoute = route
+        val intent =
+            Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                if (route != null) {
+                    putExtra("navigate_to", route)
+                }
+            }
+        runCatching {
+            mediaSession.setSessionActivity(
+                PendingIntent.getActivity(
+                    this,
+                    SessionActivityDeepLinkRequestCode,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                ),
+            )
+        }.onFailure {
+            Timber.tag(TAG).w(it, "failed to update session activity deep link")
+        }
+    }
+
     private fun stopForegroundAndSelf() {
         cancelIdleStop()
         runCatching {
@@ -1636,6 +1678,12 @@ class MusicService :
         )
 
         addSession(mediaSession)
+
+        scope.launch {
+            currentMediaMetadata.collect { metadata ->
+                updateSessionActivityDeepLink(metadata)
+            }
+        }
 
         updateNotification()
         scope.launch {
@@ -5778,6 +5826,18 @@ class MusicService :
                         }
                     } ?: return@launch
 
+                runCatching {
+                    recommendationRepository.recordFeedback(
+                        songId = song.id,
+                        artistId = mediaMetadata.artists.firstOrNull()?.id,
+                        kind = if (song.liked) {
+                            moe.rukamori.archivetune.recommendation.RecFeedbackKind.LIKE
+                        } else {
+                            moe.rukamori.archivetune.recommendation.RecFeedbackKind.DISLIKE
+                        },
+                    )
+                }
+
                 syncUtils.likeSong(song)
 
                 if (!song.isLocal && dataStore.get(AutoDownloadOnLikeKey, false) && song.liked) {
@@ -6368,6 +6428,8 @@ class MusicService :
             return
         }
 
+        recordRecommendationSignalForOutgoingSession()
+
         historyThresholdJob?.cancel()
         historyThresholdJob = null
         flushCurrentHistoryPlayedTime()
@@ -6381,8 +6443,48 @@ class MusicService :
         currentHistoryRemoteRegistered = false
         currentHistoryImmediateAttempted = false
         currentHistorySessionQueued = false
+        currentHistoryStartedAtWallMs = System.currentTimeMillis()
+        currentHistoryDurationMs = player.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: 0L
 
         updateHistoryTrackingPlaybackState()
+    }
+
+    private fun recordRecommendationSignalForOutgoingSession() {
+        val mediaId = currentHistoryMediaId ?: return
+        val listenedMs = currentHistoryPlayedMs()
+        if (listenedMs < 1_000L) return
+        val durationMs = currentHistoryDurationMs
+        val startedAtMs =
+            if (currentHistoryStartedAtWallMs > 0L) {
+                currentHistoryStartedAtWallMs
+            } else {
+                System.currentTimeMillis() - listenedMs
+            }
+        val leftAtRatio =
+            if (durationMs > 0L) {
+                (listenedMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
+        val completed = durationMs > 0L && listenedMs >= durationMs * 9 / 10
+        val now = System.currentTimeMillis()
+        val lastSignalAt = lastRecSignalAtMs[mediaId]
+        val replay = lastSignalAt != null && now - lastSignalAt < 6L * 60 * 60 * 1000
+        lastRecSignalAtMs[mediaId] = now
+        val snapshot =
+            moe.rukamori.archivetune.recommendation.RecPlaybackSignalSnapshot(
+                songId = mediaId,
+                startedAtMs = startedAtMs,
+                listenedMs = listenedMs,
+                durationMs = durationMs,
+                completed = completed,
+                leftAtRatio = leftAtRatio,
+                replay = replay,
+            )
+        scope.launch(SilentHandler) {
+            runCatching { recommendationRepository.recordPlaybackSignal(snapshot) }
+                .onFailure { Timber.tag(TAG).w(it, "recommendation signal recording failed") }
+        }
     }
 
     private fun updateHistoryTrackingPlaybackState() {
@@ -10589,8 +10691,9 @@ class MusicService :
             normalizedScheme == "android.resource" ||
             normalizedScheme == "telegram"
     }
-    private fun createMediaSourceFactory() =
-        DefaultMediaSourceFactory(
+    private fun createMediaSourceFactory(): DefaultMediaSourceFactory {
+        var playerSpotifyDrmManager: DrmSessionManager? = null
+        return DefaultMediaSourceFactory(
             createDataSourceFactory(),
             DefaultExtractorsFactory()
 
@@ -10601,37 +10704,31 @@ class MusicService :
                 val appleTrack = mediaItem.mediaId?.let { appleDrmTrackInfo[it] }
                 when {
                     appleTrack != null -> buildAppleDrmSessionManager(appleTrack) ?: DrmSessionManager.DRM_UNSUPPORTED
-                    else -> spotifyDrmManagerOrNull() ?: DrmSessionManager.DRM_UNSUPPORTED
+                    else -> {
+                        val spotifyDirectEnabled =
+                            runCatching { dataStore.get(SpotifyDirectEnabledKey, false) }.getOrDefault(false)
+                        if (!spotifyDirectEnabled) {
+                            DrmSessionManager.DRM_UNSUPPORTED
+                        } else {
+                            playerSpotifyDrmManager
+                                ?: buildSpotifyDrmManagerOrNull()
+                                    ?.also { playerSpotifyDrmManager = it }
+                                ?: DrmSessionManager.DRM_UNSUPPORTED
+                        }
+                    }
                 }
             }
-
-    @Volatile
-    private var cachedSpotifyDrmEnabled: Boolean = false
-
-    @Volatile
-    private var cachedSpotifyDrmManager: DrmSessionManager? = null
-
-    private fun spotifyDrmManagerOrNull(): DrmSessionManager? {
-        val enabled = runCatching { dataStore.get(SpotifyDirectEnabledKey, false) }.getOrDefault(false)
-        if (!enabled) {
-            cachedSpotifyDrmManager = null
-            cachedSpotifyDrmEnabled = false
-            return null
-        }
-        if (cachedSpotifyDrmEnabled && cachedSpotifyDrmManager != null) return cachedSpotifyDrmManager
-        val manager =
-            runCatching {
-                DefaultDrmSessionManager
-                    .Builder()
-                    .setUuidAndExoMediaDrmProvider(
-                        C.WIDEVINE_UUID,
-                        FrameworkMediaDrm.DEFAULT_PROVIDER,
-                    ).build(SpotifyLicenseCallback())
-            }.getOrNull()
-        cachedSpotifyDrmEnabled = true
-        cachedSpotifyDrmManager = manager
-        return manager
     }
+
+    private fun buildSpotifyDrmManagerOrNull(): DrmSessionManager? =
+        runCatching {
+            DefaultDrmSessionManager
+                .Builder()
+                .setUuidAndExoMediaDrmProvider(
+                    C.WIDEVINE_UUID,
+                    FrameworkMediaDrm.DEFAULT_PROVIDER,
+                ).build(SpotifyLicenseCallback())
+        }.getOrNull()
 
     private inner class SpotifyLicenseCallback : MediaDrmCallback {
         private val licenseUrl = "https://gae2-spclient.spotify.com/widevine-license/v1/audio/license"
@@ -12300,6 +12397,7 @@ class MusicService :
         const val EXTRA_MEDIA_NOTIFICATION_DELETE_INTENT =
             "moe.rukamori.archivetune.extra.MEDIA_NOTIFICATION_DELETE_INTENT"
         const val NOTIFICATION_ID = 888
+        private const val SessionActivityDeepLinkRequestCode = 889
         const val ERROR_CODE_NO_STREAM = 1000001
         const val CHUNK_LENGTH = 8 * 1024 * 1024L
         val RETRYABLE_STREAM_RESPONSE_CODES = setOf(403, 404, 410, 416)

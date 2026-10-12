@@ -2062,4 +2062,28 @@
     <string name="hide_romanization">Hide Romanization</string>
     <string name="flamingo_settings_volume_bar">Show volume bar</string>
     <string name="flamingo_settings_volume_bar_desc">Display the hardware volume slider in the player</string>
+
+    <string name="rec_recommended_for_you">Recommended for You</string>
+    <string name="rec_discover_new_music">Discover New Music</string>
+    <string name="rec_similar_sounds">Similar Sounds</string>
+    <string name="rec_reason_top_artist">Because you listen to %1$s</string>
+    <string name="rec_reason_liked_artist">From artists you like, like %1$s</string>
+    <string name="rec_reason_similar">Similar to what is playing</string>
+    <string name="rec_reason_same_album">From the album you are playing</string>
+    <string name="rec_reason_forgotten">A favorite you have not played in a while</string>
+    <string name="rec_reason_discovery">Something you have not played yet</string>
+    <string name="rec_reason_keep_listening">Keep listening to artists you played this week</string>
+    <string name="rec_more_like_this">More like this</string>
+    <string name="rec_not_for_me">Not for me</string>
+    <string name="rec_dismiss">Dismiss suggestion</string>
+    <string name="rec_exclude_artist">Don\'t suggest this artist</string>
+    <string name="rec_discovery_hint">Describe the music you want to find</string>
+    <string name="rec_discovery_title">Ask for music</string>
+    <string name="rec_settings_title">Smart recommendations</string>
+    <string name="rec_settings_description">Personalized rows are built on this device from your listening history, likes and playlists. Nothing is uploaded.</string>
+    <string name="rec_recency_weight_title">Favor recent listening</string>
+    <string name="rec_recency_weight_description">How strongly recent plays influence recommendations</string>
+    <string name="rec_clear_history_title">Clear recommendation history</string>
+    <string name="rec_clear_history_description">Deletes the on-device listening signals and feedback used for recommendations</string>
+    <string name="rec_cold_start_hint">Play and like a few songs to get personalized recommendations</string>
 </resources>

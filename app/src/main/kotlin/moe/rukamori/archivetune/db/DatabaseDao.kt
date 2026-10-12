@@ -2239,4 +2239,70 @@ interface DatabaseDao {
             addTagToPlaylist(playlistId, tagId)
         }
     }
+
+    @Insert
+    suspend fun insertRecPlaybackSignal(signal: entities.RecPlaybackSignalEntity)
+
+    @Query("DELETE FROM rec_playback_signal WHERE startedAtMs < :beforeMs")
+    suspend fun trimRecPlaybackSignals(beforeMs: Long)
+
+    @Query("DELETE FROM rec_playback_signal")
+    suspend fun clearRecPlaybackSignals()
+
+    @Query("SELECT * FROM rec_playback_signal WHERE startedAtMs >= :fromMs ORDER BY startedAtMs DESC")
+    suspend fun recPlaybackSignalsSince(fromMs: Long): List<entities.RecPlaybackSignalEntity>
+
+    @Insert
+    suspend fun insertRecFeedback(feedback: entities.RecFeedbackEntity)
+
+    @Query("DELETE FROM rec_feedback WHERE targetSongId = :songId AND kind = :kind")
+    suspend fun removeRecFeedbackForSong(
+        songId: String,
+        kind: String,
+    )
+
+    @Query("DELETE FROM rec_feedback WHERE targetArtistId = :artistId AND kind = :kind")
+    suspend fun removeRecFeedbackForArtist(
+        artistId: String,
+        kind: String,
+    )
+
+    @Query("DELETE FROM rec_feedback")
+    suspend fun clearRecFeedback()
+
+    @Query("SELECT * FROM rec_feedback ORDER BY createdAtMs DESC")
+    suspend fun allRecFeedback(): List<entities.RecFeedbackEntity>
+
+    @Query(
+        """
+        SELECT songId,
+               COUNT(1) AS playCount,
+               SUM(playTime) AS totalListenedMs,
+               MAX(timestamp) AS lastPlayedAtMs
+        FROM event
+        GROUP BY songId
+        """,
+    )
+    suspend fun recEventAggregates(): List<RecEventAggregate>
+
+    data class RecEventAggregate(
+        val songId: String,
+        val playCount: Int,
+        val totalListenedMs: Long,
+        val lastPlayedAtMs: Long,
+    )
+
+    @Query(
+        """
+        SELECT songId, COUNT(1) AS playlistAddCount
+        FROM playlist_song_map
+        GROUP BY songId
+        """,
+    )
+    suspend fun recPlaylistAddCounts(): List<RecPlaylistAddAggregate>
+
+    data class RecPlaylistAddAggregate(
+        val songId: String,
+        val playlistAddCount: Int,
+    )
 }
