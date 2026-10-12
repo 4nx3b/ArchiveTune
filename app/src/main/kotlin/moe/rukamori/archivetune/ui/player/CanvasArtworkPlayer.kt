@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.LocalContext
@@ -43,7 +42,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.compose.ContentFrame
+import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.delay
@@ -511,26 +510,19 @@ fun CanvasArtworkPlayer(
     if (effectiveContentVisible) {
         if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM && aspect != null && aspect > 0f) {
             Box(modifier = modifier.clipToBounds()) {
-                ContentFrame(
+                PlayerSurface(
                     player = exoPlayer,
                     surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-                    contentScale = resizeMode.toContentScale(),
-                    keepContentOnReset = false,
-                    shutter = {},
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .alpha(alpha)
-                            .canvasCoverLayout(aspect),
+                    modifier = Modifier
+                        .matchParentSize()
+                        .alpha(alpha)
+                        .canvasCoverLayout(aspect),
                 )
             }
         } else {
-            ContentFrame(
+            PlayerSurface(
                 player = exoPlayer,
                 surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-                contentScale = resizeMode.toContentScale(),
-                keepContentOnReset = false,
-                shutter = {},
                 modifier = modifier.alpha(alpha),
             )
         }
@@ -569,20 +561,6 @@ private fun Modifier.canvasCoverLayout(videoAspect: Float): Modifier =
                 )
             }
         }
-    }
-
-private fun Int.toContentScale(): ContentScale =
-    when (this) {
-        AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> ContentScale.Crop
-
-        AspectRatioFrameLayout.RESIZE_MODE_FILL -> ContentScale.FillBounds
-
-        AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH,
-        AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT,
-        AspectRatioFrameLayout.RESIZE_MODE_FIT,
-        -> ContentScale.Fit
-
-        else -> ContentScale.Fit
     }
 
 private fun ExoPlayer.setCanvasPlayback(isPlaying: Boolean) {

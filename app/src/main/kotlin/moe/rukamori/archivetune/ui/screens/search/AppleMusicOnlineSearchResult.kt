@@ -170,7 +170,12 @@ internal fun AppleMusicOnlineSearchResult(
                             .padding(top = systemBarsTopPadding + 4.dp),
                     ) {
                         header()
-                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
                             CircularProgressIndicator()
                         }
                     }
