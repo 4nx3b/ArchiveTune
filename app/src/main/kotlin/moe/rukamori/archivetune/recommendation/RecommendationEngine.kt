@@ -7,7 +7,7 @@
 
 package moe.rukamori.archivetune.recommendation
 
-import kotlin.math.exp2
+import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.log2
 
@@ -393,11 +393,11 @@ object RecommendationEngine {
         val ageDays = ((nowMs - lastPlayedAtMs).coerceAtLeast(0L)) / 86_400_000f
         if (!ageDays.isFinite()) return 0f
         val halvings = ageDays / halfLifeDays.coerceAtLeast(0.5f)
-        return exp2(-halvings).coerceIn(0f, 1f)
+        return exp(-halvings * 0.6931472f).coerceIn(0f, 1f)
     }
 
     internal fun stableHash(id: String): Int {
-        var hash = 0x811c9dc5
+        var hash = 0x811c9dc5.toInt()
         id.forEach { char ->
             hash = hash xor char.code
             hash = hash * 0x01000193

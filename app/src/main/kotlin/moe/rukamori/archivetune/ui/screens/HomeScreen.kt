@@ -130,7 +130,7 @@ fun HomeScreen(
         recommendationViewModel.onAction(
             moe.rukamori.archivetune.recommendation.RecommendationAction.ContextChanged(
                 songId = mediaMetadata?.id,
-                artistIds = mediaMetadata?.artists?.map { it.id }.orEmpty(),
+                artistIds = mediaMetadata?.artists?.mapNotNull { it.id }.orEmpty(),
                 albumId = mediaMetadata?.album?.id,
             ),
         )
@@ -259,6 +259,10 @@ fun HomeScreen(
                     scope = scope,
                     lazyListState = lazyListState,
                     onAction = viewModel::onAction,
+                    recUiState = recUiState,
+                    recsEnabled = recsEnabled,
+                    onPlayRecQueue = onPlayRecQueue,
+                    recommendationViewModel = recommendationViewModel,
                 )
             }
         }
@@ -334,6 +338,10 @@ private fun HomeContent(
     scope: CoroutineScope,
     lazyListState: androidx.compose.foundation.lazy.LazyListState,
     onAction: (HomeAction) -> Unit,
+    recUiState: moe.rukamori.archivetune.recommendation.RecommendationUiState,
+    recsEnabled: Boolean,
+    onPlayRecQueue: (List<moe.rukamori.archivetune.db.entities.Song>, Int) -> Unit,
+    recommendationViewModel: moe.rukamori.archivetune.recommendation.RecommendationViewModel,
     modifier: Modifier = Modifier,
 ) {
     val remoteQuickPicks =
