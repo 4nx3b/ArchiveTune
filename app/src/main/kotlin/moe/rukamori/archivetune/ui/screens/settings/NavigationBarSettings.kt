@@ -220,6 +220,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
 
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+    val glassSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -319,20 +320,19 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 }
 
                 item {
-                    val supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                     SwitchPreference(
                         modifier = positions.modifierFor("liquid_glass_nav_bar"),
                         title = { Text(stringResource(R.string.liquid_glass_nav_bar)) },
                         description =
                             when {
-                                !supported -> stringResource(R.string.liquid_glass_effects_unsupported)
+                                !glassSupported -> stringResource(R.string.liquid_glass_effects_unsupported)
                                 !liquidGlassEnabled -> stringResource(R.string.liquid_glass_nav_bar_disabled)
                                 else -> stringResource(R.string.liquid_glass_nav_bar_desc)
                             },
                         icon = { Icon(painterResource(R.drawable.blur_on), null) },
                         checked = liquidGlassNavBarEnabled,
 
-                        isEnabled = liquidGlassEnabled && supported,
+                        isEnabled = liquidGlassEnabled && glassSupported,
                         onCheckedChange = onLiquidGlassNavBarChange,
                     )
                 }
@@ -355,7 +355,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         description = stringResource(R.string.sukisu_liquid_glass_nav_bar_desc),
                         icon = { Icon(painterResource(R.drawable.blur_on), null) },
                         checked = sukisuLiquidGlassNavBar,
-                        isEnabled = liquidGlassEnabled && supported,
+                        isEnabled = liquidGlassEnabled && glassSupported,
                         onCheckedChange = onSukisuNavBarChange,
                     )
                 }

@@ -289,7 +289,7 @@ fun SukisuLiquidNavBar(
                                 effects = {
                                     padding = maxOf(padding, 40.dp.toPx())
                                     vibrancy()
-                                    blur(4.dp.toPx(), 4.dp.toPx())
+                                    blur(4.dp.toPx())
                                     lens(
                                         refractionHeight = 24.dp.toPx(),
                                         refractionAmount = 24.dp.toPx(),
@@ -358,7 +358,7 @@ fun SukisuLiquidNavBar(
                         shape = { pillShape },
                         effects = {
                             vibrancy()
-                            blur(4.dp.toPx(), 4.dp.toPx())
+                            blur(4.dp.toPx())
                             lens(
                                 refractionHeight = 24.dp.toPx(),
                                 refractionAmount = 24.dp.toPx(),
@@ -409,7 +409,7 @@ fun SukisuLiquidNavBar(
                                     refractionHeight = 10.dp.toPx() * progress,
                                     refractionAmount = 14.dp.toPx() * progress,
                                     depthEffect = true,
-                                    chromaticAberration = 0.5f,
+                                    chromaticAberration = true,
                                 )
                             },
                             highlight = {
