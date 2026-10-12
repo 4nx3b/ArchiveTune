@@ -66,7 +66,7 @@ import android.os.Build
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.ui.layout.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.ExperimentalMaterial3Api

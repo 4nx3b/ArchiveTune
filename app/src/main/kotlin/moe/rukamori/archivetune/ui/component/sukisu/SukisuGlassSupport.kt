@@ -17,7 +17,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Offset.Companion.VisibilityThreshold
+import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.spring
 import androidx.compose.runtime.Composable
@@ -34,11 +34,11 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ShaderBrush
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.util.fastCoerceIn
 import com.kyant.backdrop.RuntimeShader
+import com.kyant.backdrop.asComposeShader
 import com.kyant.backdrop.isRuntimeShaderSupported
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -140,12 +140,12 @@ class SukisuInteractiveHighlight(
                 if (shader != null) {
                     shader.apply {
                         setFloatUniform("size", size.width, size.height)
-                        setColorUniform("color", spotColor.toArgb())
+                        setColorUniform("color", spotColor)
                         setFloatUniform("radius", radius)
                         setFloatUniform("position", spotX, spotY)
                     }
                     drawRect(
-                        ShaderBrush(shader),
+                        ShaderBrush(shader.asComposeShader()),
                         blendMode = BlendMode.Plus,
                     )
                 } else {
