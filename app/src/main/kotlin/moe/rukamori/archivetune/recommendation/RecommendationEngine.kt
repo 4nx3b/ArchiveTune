@@ -158,7 +158,6 @@ object RecommendationEngine {
 
         val matched = songs.filter { song ->
             if (!song.libraryAvailable) return@filter false
-            if (song.songId == context.currentSongId) return@filter false
             if (filters.requireNovel && song.playCount > 0) return@filter false
             if (filters.requireLikedArtistSeed && song.artistIds.none { it in likedArtistIds }) return@filter false
 
