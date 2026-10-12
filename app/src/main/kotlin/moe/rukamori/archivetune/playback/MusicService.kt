@@ -10611,6 +10611,47 @@ class MusicService :
     @Volatile
     private var cachedSpotifyDrmManager: DrmSessionManager? = null
 
+    @Volatile
+    private var spotifyWidevineNeedsL3: Boolean? = null
+
+    private fun spotifyWidevinePrefersL3(): Boolean {
+        spotifyWidevineNeedsL3?.let { return it }
+        val needsL3 =
+            runCatching {
+                val frameworkDrm = android.media.MediaDrm(C.WIDEVINE_UUID)
+                try {
+                    val sessionId = frameworkDrm.openSession()
+                    frameworkDrm.closeSession(sessionId)
+                    false
+                } finally {
+                    if (Build.VERSION.SDK_INT >= 28) {
+                        runCatching { frameworkDrm.close() }
+                    }
+                }
+            }.isFailure
+        spotifyWidevineNeedsL3 = needsL3
+        if (needsL3) {
+            Timber.tag("MusicService").w(
+                "Default Widevine stack cannot open sessions on this device; using forced L3 for Spotify DRM",
+            )
+        }
+        return needsL3
+    }
+
+    private fun spotifyExoMediaDrmProvider(): ExoMediaDrm.Provider =
+        if (spotifyWidevinePrefersL3()) {
+            ExoMediaDrm.Provider { uuid ->
+                FrameworkMediaDrm
+                    .newInstance(uuid)
+                    .apply {
+                        runCatching { setPropertyString("securityLevel", "L3") }
+                            .recoverCatching { setPropertyString("securityLevel", "3") }
+                    }
+            }
+        } else {
+            FrameworkMediaDrm.DEFAULT_PROVIDER
+        }
+
     private fun spotifyDrmManagerOrNull(): DrmSessionManager? {
         val enabled = runCatching { dataStore.get(SpotifyDirectEnabledKey, false) }.getOrDefault(false)
         if (!enabled) {
@@ -10625,7 +10666,7 @@ class MusicService :
                     .Builder()
                     .setUuidAndExoMediaDrmProvider(
                         C.WIDEVINE_UUID,
-                        FrameworkMediaDrm.DEFAULT_PROVIDER,
+                        spotifyExoMediaDrmProvider(),
                     ).build(SpotifyLicenseCallback())
             }.getOrNull()
         cachedSpotifyDrmEnabled = true
@@ -10635,22 +10676,37 @@ class MusicService :
 
     private inner class SpotifyLicenseCallback : MediaDrmCallback {
         private val licenseUrl = "https://gae2-spclient.spotify.com/widevine-license/v1/audio/license"
-        private val provisionUrl = "https://www.googleapis.com/chromewidevine/ondemand/provision"
 
         override fun executeProvisionRequest(
             uuid: java.util.UUID,
             request: ExoMediaDrm.ProvisionRequest,
         ): MediaDrmCallback.Response {
-            val body = request.data
+            val signedRequest =
+                android.util.Base64.encodeToString(request.data, android.util.Base64.DEFAULT)
+            val base =
+                request.defaultUrl
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "https://www.googleapis.com/chromewidevine/ondemand/provision"
+            val provisionUrl =
+                if (base.contains('?')) {
+                    "$base&signedRequest=$signedRequest"
+                } else {
+                    "$base?signedRequest=$signedRequest"
+                }
             val builder =
                 Request
                     .Builder()
                     .url(provisionUrl)
-                    .header("Content-Type", "application/octet-stream")
-                    .post(body.toRequestBody(null))
+                    .header("User-Agent", SpotifyWebStreamer.USER_AGENT)
+                    .post(ByteArray(0).toRequestBody(null))
             mediaOkHttpClient.newCall(builder.build()).execute().use { response ->
                 val bytes = response.body?.bytes()
                 if (!response.isSuccessful || bytes == null) {
+                    Timber.tag("MusicService").w(
+                        "Spotify DRM provisioning failed: HTTP %d for %s",
+                        response.code,
+                        provisionUrl,
+                    )
                     throw java.io.IOException("Spotify DRM provisioning failed: HTTP ${response.code}")
                 }
                 return MediaDrmCallback.Response(bytes)

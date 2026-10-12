@@ -154,7 +154,12 @@ internal fun SoundCloudOnlineSearchResult(
                             .padding(top = systemBarsTopPadding + 4.dp),
                     ) {
                         header()
-                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
                             CircularProgressIndicator()
                         }
                     }
@@ -378,7 +383,18 @@ private suspend fun resolveSoundCloudTrackToMetadata(
             }
             score
         } ?: return null
+    val soundCloudDurationSec = track.durationMs?.let { (it / 1000).toInt() }?.takeIf { it > 0 }
     return best.toMediaMetadata().copy(
+        title = track.title,
+        artists = listOf(
+            MediaMetadata.Artist(
+                id = null,
+                name = track.artist,
+            ),
+        ),
+        duration = soundCloudDurationSec ?: (best.duration ?: -1),
+        thumbnailUrl = track.artworkUrl ?: best.thumbnailUrl,
+        album = null,
         preferredSource = AudioSourceType.SOUNDCLOUD.name,
         soundCloudUrl = track.permalinkUrl,
     )
