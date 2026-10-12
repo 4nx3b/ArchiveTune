@@ -278,6 +278,9 @@ private const val FlamingoLyricsContentDeferCanvasMs = 300L
 
 private const val FlamingoLyricsExitHoldMs = 240L
 private const val FlamingoPageMorphHoldMs = 420L
+private const val FlamingoStageSurfaceRetireMs = 420L
+private const val FlamingoQueueContentDeferMs = 260L
+private const val FlamingoQueueExitHoldMs = 320L
 
 private class FlamingoAdaptiveCornerShape(
     private val smallRadius: Dp,
@@ -478,6 +481,26 @@ fun FlamingoPlayerContent(
             } else {
                 canvasSurfacesPlaying = true
                 canvasSurfacesVisible = true
+            }
+        }
+        var canvasStageSurfaceActive by remember { mutableStateOf(true) }
+        LaunchedEffect(nowPage) {
+            if (nowPage != FlamingoPage.Album) {
+                delay(FlamingoStageSurfaceRetireMs)
+                canvasStageSurfaceActive = false
+            } else {
+                canvasStageSurfaceActive = true
+            }
+        }
+        var queueContentReady by remember { mutableStateOf(false) }
+        LaunchedEffect(nowPage) {
+            if (nowPage == FlamingoPage.PlayingList) {
+                queueContentReady = false
+                delay(FlamingoQueueContentDeferMs)
+                queueContentReady = true
+            } else {
+                delay(FlamingoQueueExitHoldMs)
+                queueContentReady = false
             }
         }
         val canvasSurfacesAlpha by animateFloatAsState(
@@ -741,6 +764,7 @@ fun FlamingoPlayerContent(
                                 modifier = Modifier.fillMaxSize(),
                                 nowPage = { nowPageLambda.value },
                                 backgroundEffect = backgroundEffect,
+                                motionSuspended = { pageMorphRunning },
                             )
 
                             if (!landscape && !videoShowing && canvasVisualActive) {
@@ -1171,6 +1195,7 @@ fun FlamingoPlayerContent(
                                                     staticArtworkUrl = artworkUrl,
                                                     loopSyncLeader = canvasLoopSync,
                                                     refreshEpoch = orientationRefreshEpoch,
+                                                    surfaceVisible = canvasStageSurfaceActive,
                                                     modifier = Modifier
                                                         .fillMaxWidth()
                                                         .then(albumSharedBounds),
@@ -1367,19 +1392,21 @@ fun FlamingoPlayerContent(
                                     .fillMaxSize()
                                     .clickable(enabled = false, onClick = {}),
                             ) {
-                                FlamingoPlayingList(
-                                    playerConnection = playerConnection,
-                                    queueWindows = queueWindows,
-                                    currentWindowIndex = currentWindowIndex,
-                                    shuffleModeEnabled = shuffleModeEnabled,
-                                    repeatMode = repeatMode,
-                                    bottomOverlayPx = { controlsOverlayHeightPx },
-                                    controlsVisible = { showControlLambda.value },
-                                    onControlsPoke = {
-                                        if (!showControlLambda.value) showControl.value = true
-                                        lastClickTime.longValue = System.currentTimeMillis()
-                                    },
-                                )
+                                if (queueContentReady) {
+                                    FlamingoPlayingList(
+                                        playerConnection = playerConnection,
+                                        queueWindows = queueWindows,
+                                        currentWindowIndex = currentWindowIndex,
+                                        shuffleModeEnabled = shuffleModeEnabled,
+                                        repeatMode = repeatMode,
+                                        bottomOverlayPx = { controlsOverlayHeightPx },
+                                        controlsVisible = { showControlLambda.value },
+                                        onControlsPoke = {
+                                            if (!showControlLambda.value) showControl.value = true
+                                            lastClickTime.longValue = System.currentTimeMillis()
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -2243,6 +2270,7 @@ private fun FlamingoCanvasStage(
     staticArtworkUrl: String?,
     loopSyncLeader: CanvasLoopSync? = null,
     refreshEpoch: Int = 0,
+    surfaceVisible: Boolean = true,
     modifier: Modifier = Modifier,
     proceduralContent: (@Composable () -> Unit)? = null,
 ) {
@@ -2319,6 +2347,7 @@ private fun FlamingoCanvasStage(
                 isPlaying = isPlaying,
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                 loopSyncLeader = loopSyncLeader,
+                visible = surfaceVisible,
                 onPlaybackAvailabilityChange = { available ->
                     if (!available) {
                         canvasFrameReady = false

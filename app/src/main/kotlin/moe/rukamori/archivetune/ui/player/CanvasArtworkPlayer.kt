@@ -34,6 +34,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -45,6 +46,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import dagger.hilt.android.EntryPointAccessors
+import android.content.Context
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import moe.rukamori.archivetune.di.CanvasCacheEntryPoint
@@ -80,6 +82,77 @@ class CanvasLoopSync {
 
     @Volatile
     var leaderPositionMs: Long = Long.MIN_VALUE
+}
+
+private val CanvasPlaybackHttpClient: OkHttpClient by lazy {
+    OkHttpClient
+        .Builder()
+        .proxy(YouTube.streamOkHttpProxy)
+        .addInterceptor { chain ->
+            val request = chain.request()
+            val host = request.url.host
+            val isYouTubeMediaHost =
+                host.endsWith("googlevideo.com") ||
+                    host.endsWith("googleusercontent.com") ||
+                    host.endsWith("youtube.com") ||
+                    host.endsWith("youtube-nocookie.com") ||
+                    host.endsWith("ytimg.com")
+
+            if (!isYouTubeMediaHost) {
+                return@addInterceptor chain.proceed(
+                    request
+                        .newBuilder()
+                        .header("User-Agent", CanvasPlaybackUserAgent)
+                        .build(),
+                )
+            }
+
+            val requestProfile = StreamClientUtils.resolveRequestProfile(request.url)
+            chain.proceed(
+                StreamClientUtils
+                    .applyRequestProfile(
+                        request.newBuilder(),
+                        requestProfile,
+                    ).build(),
+            )
+        }.build()
+}
+
+private class CanvasPlaybackFactories(
+    val mediaSourceFactory: DefaultMediaSourceFactory,
+    val renderersFactory: DefaultRenderersFactory,
+)
+
+private object CanvasPlaybackFactoriesHolder {
+    @Volatile
+    private var instance: CanvasPlaybackFactories? = null
+
+    fun obtain(
+        context: Context,
+        playerCache: Cache,
+    ): CanvasPlaybackFactories = instance ?: synchronized(this) {
+        instance ?: create(context.applicationContext, playerCache).also { instance = it }
+    }
+
+    private fun create(
+        context: Context,
+        playerCache: Cache,
+    ): CanvasPlaybackFactories {
+        val upstreamFactory =
+            DefaultDataSource.Factory(
+                context,
+                OkHttpDataSource.Factory(CanvasPlaybackHttpClient),
+            )
+        val cacheFactory =
+            CacheDataSource.Factory()
+                .setCache(playerCache)
+                .setUpstreamDataSourceFactory(upstreamFactory)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        return CanvasPlaybackFactories(
+            mediaSourceFactory = DefaultMediaSourceFactory(cacheFactory),
+            renderersFactory = DefaultRenderersFactory(context).setEnableDecoderFallback(true),
+        )
+    }
 }
 
 @Composable
@@ -134,41 +207,6 @@ fun CanvasArtworkPlayer(
     }
     val effectiveContentVisible = contentVisible && !surfaceCycleActive
 
-    val okHttpClient =
-        remember {
-            OkHttpClient
-                .Builder()
-                .proxy(YouTube.streamOkHttpProxy)
-                .addInterceptor { chain ->
-                    val request = chain.request()
-                    val host = request.url.host
-                    val isYouTubeMediaHost =
-                        host.endsWith("googlevideo.com") ||
-                            host.endsWith("googleusercontent.com") ||
-                            host.endsWith("youtube.com") ||
-                            host.endsWith("youtube-nocookie.com") ||
-                            host.endsWith("ytimg.com")
-
-                    if (!isYouTubeMediaHost) {
-                        return@addInterceptor chain.proceed(
-                            request
-                                .newBuilder()
-                                .header("User-Agent", CanvasPlaybackUserAgent)
-                                .build(),
-                        )
-                    }
-
-                    val requestProfile = StreamClientUtils.resolveRequestProfile(request.url)
-                    chain.proceed(
-                        StreamClientUtils
-                            .applyRequestProfile(
-                                request.newBuilder(),
-                                requestProfile,
-                            ).build(),
-                    )
-                }.build()
-        }
-
     val playerCache =
         remember {
             val entryPoint =
@@ -178,24 +216,11 @@ fun CanvasArtworkPlayer(
                 )
             entryPoint.playerCache()
         }
-    val mediaSourceFactory =
-        remember(okHttpClient, playerCache) {
-            val upstreamFactory =
-                DefaultDataSource.Factory(
-                    context,
-                    OkHttpDataSource.Factory(okHttpClient),
-                )
-            val cacheFactory =
-                CacheDataSource.Factory()
-                    .setCache(playerCache)
-                    .setUpstreamDataSourceFactory(upstreamFactory)
-                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-            DefaultMediaSourceFactory(cacheFactory)
-        }
-    val renderersFactory =
-        remember(context) {
-            DefaultRenderersFactory(context).setEnableDecoderFallback(true)
-        }
+    val canvasFactories = remember(playerCache) {
+        CanvasPlaybackFactoriesHolder.obtain(context, playerCache)
+    }
+    val mediaSourceFactory = canvasFactories.mediaSourceFactory
+    val renderersFactory = canvasFactories.renderersFactory
     val exoPlayer =
         remember(mediaSourceFactory, renderersFactory, maxVideoEdgePx) {
             val trackSelector =
