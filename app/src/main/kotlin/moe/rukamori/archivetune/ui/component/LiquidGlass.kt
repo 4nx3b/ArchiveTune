@@ -456,7 +456,10 @@ fun Modifier.liquidGlass(
                 )
 
                 lens(
-                    refractionHeight = (28f * lensScale * tuning.refractionHeightFactor).dp.toPx(),
+                    refractionHeight = minOf(
+                        (28f * lensScale * tuning.refractionHeightFactor).dp.toPx(),
+                        size.minDimension / 2f,
+                    ),
                     refractionAmount = size.minDimension * (tuning.refractionAmountFactor / 3.2f) * lensAmountScale,
                     depthEffect = tuning.depth3D && isDark,
                     chromaticAberration = tuning.chromaticAberration && isDark,

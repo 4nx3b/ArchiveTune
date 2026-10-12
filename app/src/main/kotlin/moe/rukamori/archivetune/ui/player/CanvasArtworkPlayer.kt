@@ -531,8 +531,24 @@ fun CanvasArtworkPlayer(
         label = "canvasAlpha",
     )
 
+    val surfaceRetireAlpha by animateFloatAsState(
+        targetValue = if (effectiveContentVisible) 1f else 0f,
+        animationSpec = tween(durationMillis = 150),
+        label = "canvasSurfaceRetireAlpha",
+    )
+    var surfaceStructureReleased by remember { mutableStateOf(false) }
+    LaunchedEffect(effectiveContentVisible) {
+        if (effectiveContentVisible) {
+            surfaceStructureReleased = false
+        } else {
+            delay(CanvasSurfaceRetireFadeMs)
+            surfaceStructureReleased = true
+        }
+    }
+    val surfaceAlpha = alpha * surfaceRetireAlpha
+
     val aspect = videoDisplayAspectRatio
-    if (effectiveContentVisible) {
+    if (effectiveContentVisible || !surfaceStructureReleased) {
         if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM && aspect != null && aspect > 0f) {
             Box(modifier = modifier.clipToBounds()) {
                 PlayerSurface(
@@ -540,7 +556,7 @@ fun CanvasArtworkPlayer(
                     surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
                     modifier = Modifier
                         .matchParentSize()
-                        .alpha(alpha)
+                        .alpha(surfaceAlpha)
                         .canvasCoverLayout(aspect),
                 )
             }
@@ -548,7 +564,7 @@ fun CanvasArtworkPlayer(
             PlayerSurface(
                 player = exoPlayer,
                 surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-                modifier = modifier.alpha(alpha),
+                modifier = modifier.alpha(surfaceAlpha),
             )
         }
     }
@@ -599,5 +615,6 @@ private fun ExoPlayer.setCanvasPlayback(isPlaying: Boolean) {
 }
 
 private const val CanvasPlaybackLogTag = "CanvasPlayback"
+private const val CanvasSurfaceRetireFadeMs = 150L
 private const val CanvasPlaybackUserAgent =
     "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36"

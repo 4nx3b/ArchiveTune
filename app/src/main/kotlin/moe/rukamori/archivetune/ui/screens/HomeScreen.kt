@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -35,6 +36,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -49,6 +51,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -112,6 +115,7 @@ fun HomeScreen(
     headerScrollConnection: NestedScrollConnection? = null,
     listState: LazyListState? = null,
     viewModel: HomeViewModel = hiltViewModel(),
+    recommendationViewModel: moe.rukamori.archivetune.recommendation.RecommendationViewModel = hiltViewModel(),
 ) {
     val playerConnection = LocalPlayerConnection.current
     val menuState = LocalMenuState.current
@@ -120,9 +124,32 @@ fun HomeScreen(
     val screenState by viewModel.screenState.collectAsStateWithLifecycle()
     val isPlaying = playerConnection?.isPlaying?.collectAsStateWithLifecycle()?.value ?: false
     val mediaMetadata = playerConnection?.mediaMetadata?.collectAsStateWithLifecycle()?.value
+    val recUiState by recommendationViewModel.uiState.collectAsStateWithLifecycle()
+    val recsEnabled by recommendationViewModel.enabled.collectAsStateWithLifecycle()
+    LaunchedEffect(mediaMetadata?.id, mediaMetadata?.album?.id, mediaMetadata?.artists?.size) {
+        recommendationViewModel.onAction(
+            moe.rukamori.archivetune.recommendation.RecommendationAction.ContextChanged(
+                songId = mediaMetadata?.id,
+                artistIds = mediaMetadata?.artists?.map { it.id }.orEmpty(),
+                albumId = mediaMetadata?.album?.id,
+            ),
+        )
+    }
     var pendingQueue by remember { mutableStateOf<Queue?>(null) }
     val onPlayQueue: (Queue) -> Unit = { queue ->
         if (playerConnection == null) pendingQueue = queue else playerConnection.playQueue(queue)
+    }
+    val recQueueTitle = stringResource(R.string.rec_recommended_for_you)
+    val onPlayRecQueue: (List<moe.rukamori.archivetune.db.entities.Song>, Int) -> Unit = { songs, index ->
+        if (songs.isNotEmpty()) {
+            onPlayQueue(
+                moe.rukamori.archivetune.playback.queues.ListQueue(
+                    title = recQueueTitle,
+                    items = songs.map { it.toMediaItem() },
+                    startIndex = index,
+                ),
+            )
+        }
     }
     LaunchedEffect(playerConnection, pendingQueue) {
         val connection = playerConnection ?: return@LaunchedEffect
@@ -485,6 +512,141 @@ private fun HomeContent(
                                 menuState = menuState,
                                 scope = scope,
                                 modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
+
+                    if (recsEnabled && recUiState.recsState.personalized.isNotEmpty()) {
+                        item(
+                            key = "home_recommended_for_you",
+                            contentType = "media_shelf",
+                        ) {
+                            moe.rukamori.archivetune.recommendation.RecommendationShelf(
+                                title = stringResource(R.string.rec_recommended_for_you),
+                                items = recUiState.recsState.personalized,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                onPlayQueue = onPlayRecQueue,
+                                onFeedback = { feedback -> recommendationViewModel.onAction(feedback) },
+                                menuState = menuState,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
+
+                    if (recsEnabled) {
+                        item(key = "home_rec_discovery_entry", contentType = "rec_discovery_entry") {
+                            var showRecDiscoveryDialog by remember { mutableStateOf(false) }
+                            if (showRecDiscoveryDialog) {
+                                moe.rukamori.archivetune.ui.component.TextFieldDialog(
+                                    icon = {
+                                        Icon(painterResource(R.drawable.search), null)
+                                    },
+                                    title = { Text(stringResource(R.string.rec_discovery_title)) },
+                                    placeholder = { Text(stringResource(R.string.rec_discovery_hint)) },
+                                    onDone = { query ->
+                                        showRecDiscoveryDialog = false
+                                        recommendationViewModel.onAction(
+                                            moe.rukamori.archivetune.recommendation.RecommendationAction.Discover(query),
+                                        )
+                                    },
+                                    onDismiss = { showRecDiscoveryDialog = false },
+                                )
+                            }
+                            androidx.compose.material3.ListItem(
+                                headlineContent = { Text(stringResource(R.string.rec_discovery_title)) },
+                                supportingContent = { Text(stringResource(R.string.rec_discovery_hint)) },
+                                leadingContent = { Icon(painterResource(R.drawable.search), null) },
+                                modifier = Modifier
+                                    .padding(horizontal = 8.dp)
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                                    .clickable { showRecDiscoveryDialog = true }
+                                    .animateItem(),
+                            )
+                            Spacer(Modifier.height(8.dp))
+                        }
+                    }
+
+                    if (recsEnabled && recUiState.discoveryResults.isNotEmpty()) {
+                        item(
+                            key = "home_rec_discovery_results",
+                            contentType = "media_shelf",
+                        ) {
+                            moe.rukamori.archivetune.recommendation.RecommendationShelf(
+                                title = stringResource(R.string.rec_discovery_title),
+                                items = recUiState.discoveryResults,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                onPlayQueue = onPlayRecQueue,
+                                onFeedback = { feedback -> recommendationViewModel.onAction(feedback) },
+                                menuState = menuState,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
+
+                    if (recsEnabled && recUiState.discoveryLoading) {
+                        item(key = "home_rec_discovery_loading", contentType = "rec_hint") {
+                            Text(
+                                text = stringResource(R.string.loading),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .animateItem(),
+                            )
+                        }
+                    }
+
+                    if (recsEnabled && recUiState.recsState.discover.isNotEmpty()) {
+                        item(
+                            key = "home_discover_new_music",
+                            contentType = "media_shelf",
+                        ) {
+                            moe.rukamori.archivetune.recommendation.RecommendationShelf(
+                                title = stringResource(R.string.rec_discover_new_music),
+                                items = recUiState.recsState.discover,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                onPlayQueue = onPlayRecQueue,
+                                onFeedback = { feedback -> recommendationViewModel.onAction(feedback) },
+                                menuState = menuState,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
+
+                    if (recsEnabled && recUiState.recsState.similarSounds.isNotEmpty()) {
+                        item(
+                            key = "home_similar_sounds",
+                            contentType = "media_shelf",
+                        ) {
+                            moe.rukamori.archivetune.recommendation.RecommendationShelf(
+                                title = stringResource(R.string.rec_similar_sounds),
+                                items = recUiState.recsState.similarSounds,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                onPlayQueue = onPlayRecQueue,
+                                onFeedback = { feedback -> recommendationViewModel.onAction(feedback) },
+                                menuState = menuState,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
+
+                    if (recsEnabled &&
+                        recUiState.recsState.coldStart &&
+                        recUiState.recsState.personalized.isEmpty() &&
+                        recUiState.recsState.discover.isEmpty()
+                    ) {
+                        item(key = "home_recs_cold_start", contentType = "rec_hint") {
+                            Text(
+                                text = stringResource(R.string.rec_cold_start_hint),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .animateItem(),
                             )
                         }
                     }

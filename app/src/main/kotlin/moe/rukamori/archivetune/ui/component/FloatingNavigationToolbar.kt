@@ -847,7 +847,10 @@ fun FloatingNavigationToolbar(
                                     colorControls(saturation = glassTuning.saturation)
                                     blur((4f * glassTuning.blurFactor).dp.toPx())
                                     lens(
-                                        refractionHeight = (28f * glassTuning.refractionHeightFactor).dp.toPx(),
+                                        refractionHeight = minOf(
+                                            (28f * glassTuning.refractionHeightFactor).dp.toPx(),
+                                            size.minDimension / 2f,
+                                        ),
                                         refractionAmount = size.minDimension * (glassTuning.refractionAmountFactor / 3.2f),
                                         depthEffect = glassTuning.depth3D,
                                         chromaticAberration = glassTuning.chromaticAberration,

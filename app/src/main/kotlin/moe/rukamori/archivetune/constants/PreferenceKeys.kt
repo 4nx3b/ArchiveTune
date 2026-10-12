@@ -1606,3 +1606,7 @@ enum class VideoAspectRatio {
 }
 
 val VideoAspectRatioKey = stringPreferencesKey("videoAspectRatio")
+
+val RecommendationsEnabledKey = booleanPreferencesKey("recommendationsEnabled")
+
+val RecommendationRecencyWeightKey = floatPreferencesKey("recommendationRecencyWeight")

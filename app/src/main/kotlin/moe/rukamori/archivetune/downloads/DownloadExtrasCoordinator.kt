@@ -15,6 +15,9 @@
 package moe.rukamori.archivetune.downloads
 
 import android.content.Context
+import coil3.imageLoader
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -50,6 +53,41 @@ object DownloadExtrasCoordinator {
             if (!lowData) {
                 fetchLyrics(database, lyricsHelper, mediaId, metadata)
                 fetchCanvas(context, mediaId, metadata)
+                prefetchArtwork(context, database, mediaId, metadata)
+            }
+        }
+    }
+
+    private suspend fun prefetchArtwork(
+        context: Context,
+        database: MusicDatabase,
+        mediaId: String,
+        metadata: moe.rukamori.archivetune.models.MediaMetadata,
+    ) {
+        val urls = buildSet {
+            metadata.thumbnailUrl?.takeIf(String::isNotBlank)?.let(::add)
+            runCatching {
+                database.getSongByIdBlocking(mediaId)?.album?.thumbnailUrl
+            }.getOrNull()?.takeIf(String::isNotBlank)?.let(::add)
+        }
+        if (urls.isEmpty()) return
+        val loader = context.imageLoader
+        for (url in urls) {
+            runCatching {
+                val request =
+                    ImageRequest
+                        .Builder(context)
+                        .data(url)
+                        .memoryCacheKey(url)
+                        .diskCacheKey(url)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .networkCachePolicy(CachePolicy.ENABLED)
+                        .build()
+                loader.execute(request)
+            }.onSuccess {
+                Timber.tag(TAG).d("Artwork prefetched for download %s", url)
+            }.onFailure { e ->
+                Timber.tag(TAG).w(e, "Artwork prefetch failed for download %s", url)
             }
         }
     }

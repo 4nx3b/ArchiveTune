@@ -1761,50 +1761,6 @@ object Spotify {
             ArtistTopTracksResponse(tracks = tracks)
         }
 
-    suspend fun artistRelatedArtists(artistId: String): Result<List<SpotifyArtist>> =
-        runCatching {
-            val vars =
-                buildJsonObject {
-                    put("uri", "spotify:artist:$artistId")
-                    put("locale", "")
-                }
-
-            val response =
-                graphqlPost(
-                    operationName = "queryArtistOverview",
-                    variables = vars,
-                )
-
-            val artistData =
-                response.obj("data")?.obj("artistUnion")
-                    ?: throw SpotifyException(500, "Invalid queryArtistOverview response")
-
-            val relatedItems =
-                artistData
-                    .obj("relatedContent")
-                    ?.obj("relatedArtists")
-                    ?.arr("items")
-                    ?: JsonArray(emptyList())
-
-            relatedItems.mapNotNull { elem ->
-                val uri = elem.jsonObject.str("uri") ?: return@mapNotNull null
-                val id = uri.substringAfterLast(":")
-                val name = elem.jsonObject.obj("profile")?.str("name") ?: return@mapNotNull null
-                val images =
-                    parseGqlImages(
-                        elem.jsonObject
-                            .obj("visuals")
-                            ?.obj("avatarImage")
-                            ?.arr("sources"),
-                    )
-                SpotifyArtist(id = id, name = name, images = images, uri = uri)
-            }
-        }
-
-    suspend fun relatedArtists(artistId: String): Result<RelatedArtistsResponse> =
-        runCatching {
-            authenticatedGet("artists/$artistId/related-artists")
-        }
 
     fun isAuthenticated(): Boolean = accessToken != null
 }
@@ -1812,11 +1768,6 @@ object Spotify {
 @kotlinx.serialization.Serializable
 data class ArtistTopTracksResponse(
     val tracks: List<SpotifyTrack> = emptyList(),
-)
-
-@kotlinx.serialization.Serializable
-data class RelatedArtistsResponse(
-    val artists: List<SpotifyArtist> = emptyList(),
 )
 
 @kotlinx.serialization.Serializable

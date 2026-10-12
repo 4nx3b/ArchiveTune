@@ -404,6 +404,8 @@ fun ContentSettings(
             }
 
         }
+
+        RecommendationSettingsGroup(positions = positions)
     }
 
         ScreenHeaderHaze(
@@ -630,4 +632,75 @@ private fun SponsorBlockApiUrlDialog(
         onDone = confirmValue,
         onDismiss = onDismiss,
     )
+}
+
+@Composable
+private fun RecommendationSettingsGroup(positions: PreferencePositions) {
+    val recommendationViewModel: moe.rukamori.archivetune.recommendation.RecommendationViewModel = hiltViewModel()
+    val (recsEnabled, onRecsEnabledPreferenceChange) = rememberPreference(
+        moe.rukamori.archivetune.constants.RecommendationsEnabledKey,
+        defaultValue = true,
+    )
+    val (recencyWeight, onRecencyWeightChange) = rememberPreference(
+        moe.rukamori.archivetune.constants.RecommendationRecencyWeightKey,
+        defaultValue = 0.5f,
+    )
+
+    PreferenceGroup(
+        modifier = positions.modifierFor("smart_recommendations"),
+        title = stringResource(R.string.rec_settings_title),
+    ) {
+        item {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.rec_settings_title)) },
+                description = stringResource(R.string.rec_settings_description),
+                icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
+                checked = recsEnabled,
+                onCheckedChange = { enabled ->
+                    onRecsEnabledPreferenceChange(enabled)
+                    recommendationViewModel.onAction(
+                        moe.rukamori.archivetune.recommendation.RecommendationAction.Refresh,
+                    )
+                },
+            )
+        }
+        item {
+            Column {
+                Text(
+                    text = stringResource(R.string.rec_recency_weight_title),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(start = 16.dp, top = 8.dp),
+                )
+                Text(
+                    text = stringResource(R.string.rec_recency_weight_description),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp),
+                )
+                androidx.compose.material3.Slider(
+                    value = recencyWeight,
+                    onValueChange = onRecencyWeightChange,
+                    valueRange = 0f..1f,
+                    enabled = recsEnabled,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp),
+                )
+            }
+        }
+        item {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.rec_clear_history_title)) },
+                description = stringResource(R.string.rec_clear_history_description),
+                icon = { Icon(painterResource(R.drawable.delete), null) },
+                onClick = {
+                    recommendationViewModel.onAction(
+                        moe.rukamori.archivetune.recommendation.RecommendationAction.ClearHistory,
+                    )
+                },
+                isEnabled = recsEnabled,
+            )
+        }
+    }
 }

@@ -565,6 +565,10 @@ fun BottomSheetPlayer(
 
     var spatialFlowLyricsOpen by remember { mutableStateOf(false) }
     var spatialFlowQueueOpen by remember { mutableStateOf(false) }
+    val stylePageBackRequests = remember { mutableIntStateOf(0) }
+    var simpmusicStylePageOpen by remember { mutableStateOf(false) }
+    var tiktokStylePageOpen by remember { mutableStateOf(false) }
+    var bitchordStylePageOpen by remember { mutableStateOf(false) }
     var duration by rememberSaveable(mediaMetadata?.id) {
         mutableLongStateOf(playerConnection.player.duration)
     }
@@ -1093,6 +1097,13 @@ fun BottomSheetPlayer(
 
     if (!aodModeEnabled) {
         val rootOverlayActive = LocalRootOverlayActive.current
+        val anyStylePageOverlayOpen =
+            isAppleMusicInlineLyricsOpen ||
+                spatialFlowLyricsOpen ||
+                spatialFlowQueueOpen ||
+                simpmusicStylePageOpen ||
+                tiktokStylePageOpen ||
+                bitchordStylePageOpen
         BackHandler(
             enabled =
                 (queueSheetState.isExpandedOrExpanding ||
@@ -1100,6 +1111,7 @@ fun BottomSheetPlayer(
         ) {
             when {
                 isInlineLyricsOpen && state.isExpandedOrExpanding -> isInlineLyricsOpen = false
+                anyStylePageOverlayOpen && state.isExpandedOrExpanding -> stylePageBackRequests.intValue++
                 queueSheetState.isExpandedOrExpanding -> queueSheetState.collapseSoft()
                 state.isExpandedOrExpanding -> state.collapseSoft()
             }
@@ -1674,6 +1686,8 @@ fun BottomSheetPlayer(
                             currentFormat = currentFormat,
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
+                            externalBackRequests = stylePageBackRequests,
+                            onStylePageOpenChange = { bitchordStylePageOpen = it },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -1701,6 +1715,8 @@ fun BottomSheetPlayer(
 
                             canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
                             canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
+                            externalBackRequests = stylePageBackRequests,
+                            onStylePageOpenChange = { tiktokStylePageOpen = it },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2021,6 +2037,7 @@ fun BottomSheetPlayer(
                             onQueueExpandedChange = { expanded ->
                                 spatialFlowQueueOpen = expanded
                             },
+                            externalBackRequests = stylePageBackRequests,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2082,6 +2099,8 @@ fun BottomSheetPlayer(
                             currentFormat = currentFormat,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
+                            externalBackRequests = stylePageBackRequests,
+                            onStylePageOpenChange = { simpmusicStylePageOpen = it },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2119,6 +2138,7 @@ fun BottomSheetPlayer(
                             lyricsSyncOffset = lyricsSyncOffset,
                             onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                             onLyricsVisibilityChange = { isAppleMusicInlineLyricsOpen = it },
+                            externalBackRequests = stylePageBackRequests,
                             landscape = true,
                             orientationRefreshEpoch = orientationRefreshEpoch,
                             modifier =
@@ -2207,6 +2227,8 @@ fun BottomSheetPlayer(
                             currentFormat = currentFormat,
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
+                            externalBackRequests = stylePageBackRequests,
+                            onStylePageOpenChange = { bitchordStylePageOpen = it },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2234,6 +2256,8 @@ fun BottomSheetPlayer(
 
                             canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
                             canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
+                            externalBackRequests = stylePageBackRequests,
+                            onStylePageOpenChange = { tiktokStylePageOpen = it },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2553,6 +2577,7 @@ fun BottomSheetPlayer(
                             onQueueExpandedChange = { expanded ->
                                 spatialFlowQueueOpen = expanded
                             },
+                            externalBackRequests = stylePageBackRequests,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2614,6 +2639,8 @@ fun BottomSheetPlayer(
                             currentFormat = currentFormat,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
+                            externalBackRequests = stylePageBackRequests,
+                            onStylePageOpenChange = { simpmusicStylePageOpen = it },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2651,6 +2678,7 @@ fun BottomSheetPlayer(
                             lyricsSyncOffset = lyricsSyncOffset,
                             onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                             onLyricsVisibilityChange = { isAppleMusicInlineLyricsOpen = it },
+                            externalBackRequests = stylePageBackRequests,
                             orientationRefreshEpoch = orientationRefreshEpoch,
 
                             modifier =

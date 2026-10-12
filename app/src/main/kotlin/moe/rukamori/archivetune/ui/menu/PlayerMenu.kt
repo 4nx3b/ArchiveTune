@@ -841,7 +841,7 @@ fun PlayerMenu(
                             if (
                                 !isLocalMedia &&
                                 isQueueTrigger != true &&
-                                (hasCanvasArtwork || songCanvasDisabledForCurrent) &&
+                                (hasCanvasArtwork || canvasAvailable || songCanvasDisabledForCurrent) &&
                                 playerDesignStyle != PlayerDesignStyle.V5
                             ) {
                                 add(

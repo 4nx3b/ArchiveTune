@@ -177,6 +177,7 @@ fun SpatialFlowPlayerContent(
     onPagerArtworkActiveChange: ((Boolean) -> Unit)? = null,
     onLyricsOpenChange: ((Boolean) -> Unit)? = null,
     onQueueExpandedChange: ((Boolean) -> Unit)? = null,
+    externalBackRequests: androidx.compose.runtime.MutableIntState? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -318,6 +319,20 @@ fun SpatialFlowPlayerContent(
             lyricsModeEnabled = false
         } else if (queueExpanded) {
             queueExpanded = false
+        }
+    }
+
+    LaunchedEffect(state.isCollapsed) {
+        if (state.isCollapsed && (lyricsModeEnabled || queueExpanded)) {
+            lyricsModeEnabled = false
+            queueExpanded = false
+        }
+    }
+    val externalBackEpoch = externalBackRequests?.intValue ?: 0
+    LaunchedEffect(externalBackEpoch) {
+        if (externalBackEpoch > 0) {
+            if (lyricsModeEnabled) lyricsModeEnabled = false
+            if (queueExpanded) queueExpanded = false
         }
     }
 
