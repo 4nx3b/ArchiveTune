@@ -5450,3 +5450,18 @@ Stage Summary:
 - The canvas morph is now structurally upstream's: one shared-element system, no parallel animation state, the canvas inside the morphing bounds both directions, reverse (bar artwork tap) on the same spring.
 - The moving blur now has Flamingo's actual ken-burns character (zoom+pan between random rects, accelerate-decelerate) at the fork's pace.
 - Verification: brace/paren balance + dangling-symbol greps clean, unused-import scan clean; compilation via CI per Rule 1 (no local builds).
+
+---
+Task ID: 110
+Agent: Super Z (main agent, session web-60bd54af)
+
+Task: CI closure for the 2026-10-12 canvas round (commit 4db8fbf8b).
+
+Work Log:
+- Pushed 4db8fbf8b to origin/dev and polled scripts/poll_ci_sha.sh through four windows (~30 min; the serialized nightly queue drained the previous run first).
+- FINAL STATE ALL GREEN (8/8 check-runs): check, build (compile+tests+lint), all five nightly APK variants (mobile arm64/x86_64/armeabi/universal, tv universal), create-nightly.
+- Canary 17.0.6742-4db8fbf8b published as N202610120955.
+
+Stage Summary:
+- Shipped on the canary channel at N202610120955: the upstream-parity canvas morph (canvas inside the shared element, no custom flight, 600ms cross-fades, 0.62 fadeBottom) and the Flamingo KenBurnsView moving-blur port at the fork's 3.5-11s pace.
+- Remaining user-side verification: on-device feel of the queue/lyrics morph + reverse (bar artwork tap), and the ken-burns character of the moving blur.
