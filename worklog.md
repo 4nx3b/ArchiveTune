@@ -5483,3 +5483,17 @@ Work Log:
 Stage Summary:
 - All three reported defects fixed at the root: the sink-switch flush closes the 1004 path for every source; the raw-text version guard stops remixes masquerading as originals in the multi-source probe; the canvas surface retirement, queue defer, ken-burns suspension/cap, and canvas factory memo remove the morph-end artifact and the lyrics/return jank without visual redesigns.
 - Verification: brace/paren balance and dangling-symbol checks clean; no local builds per Rule 1 — CI to compile.
+---
+Task ID: 112
+Agent: Super Z (main agent, session web-60bd54af)
+
+Task: CI closure for the 2026-10-12 three-report round (commit badbd44c2).
+
+Work Log:
+- Pushed badbd44c2 to origin/dev and polled scripts/poll_ci_sha.sh through six windows (~25 min).
+- FINAL STATE ALL GREEN (8/8 check-runs): check, build (compile+tests+lint), all five nightly APK variants (mobile arm64/x86_64/armeabi/universal, tv universal), create-nightly.
+- Canary 17.0.6744-badbd44c2 published as N202610121424.
+
+Stage Summary:
+- Shipped on the canary channel at N202610121424: the audio-sink route-switch flush (the 1004 "Unexpected runtime error" on skip), the SoundCloud raw-text version guard (cross-catalogue remix/original mismatch), and the Flamingo canvas morph + lyrics performance set (surface retirement, queue defer, ken-burns suspension/cap, canvas factory memo).
+- Remaining user-side verification: skip stability across sources without force-stop, morph cleanliness at both ends for canvas songs, lyrics open/scroll/return smoothness (word-synced), and correct original-audio playback after a SoundCloud remix in the same session.
