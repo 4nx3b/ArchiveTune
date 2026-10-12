@@ -1602,6 +1602,45 @@ object Spotify {
         )
     }
 
+    suspend fun highResTrackArtwork(track: SpotifyTrack): String? {
+        val albumImages = track.album?.images.orEmpty()
+        val widest = albumImages.maxByOrNull { it.width ?: 0 }
+        val widestUrl = widest?.url?.takeIf(String::isNotBlank)
+        if (widest != null && (widest.width ?: 0) >= 480) return widestUrl
+        val albumId = track.album?.id?.takeIf(String::isNotBlank) ?: return widestUrl
+        val upgraded =
+            try {
+                val vars =
+                    buildJsonObject {
+                        put("uri", "spotify:album:$albumId")
+                        put("locale", "")
+                        put("offset", 0)
+                        put("limit", 1)
+                    }
+                val response =
+                    graphqlPost(
+                        operationName = "getAlbum",
+                        variables = vars,
+                    )
+                response.obj("data")?.obj("albumUnion")?.obj("coverArt")?.arr("sources")
+                    ?.mapNotNull { source ->
+                        val obj = source.jsonObject
+                        obj.str("url")?.let { url ->
+                            SpotifyImage(
+                                url = url,
+                                width = obj.int("width"),
+                                height = obj.int("height"),
+                            )
+                        }
+                    }?.maxByOrNull { it.width ?: 0 }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                null
+            }
+        return upgraded?.url?.takeIf(String::isNotBlank) ?: widestUrl
+    }
+
     suspend fun album(albumId: String): Result<SpotifyAlbum> =
         runCatching {
             val vars =
