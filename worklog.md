@@ -5544,3 +5544,10 @@ Work Log:
 
 Stage Summary:
 - All five tasks implemented; verification via CI per Rule 1 (no local builds). On-device checks pending: home page without the prompt, canvas-free morphs into lyrics/queue, back closing style pages across collapse/re-expand cycles in all six ported styles, the new About page on light/dark + pre-Tiramisu devices, predictive back on 13+/14+ (gesture preview + cancel spring), and the SukiSU bar (refraction, tilt highlight, drag highlight, spotlight).
+
+Work Log (continued, Task ID 115):
+- Round one (ab86c6a1c) failed compile: 14 errors — kyant API mismatches (blur takes a single radius + TileMode, lens chromaticAberration is Boolean, setColorUniform takes a Compose Color, ShaderBrush needs asComposeShader), the VisibilityThreshold extension import path, LocalLayoutDirection living in ui.platform not ui.layout, a duplicate Composable import, the `supported` val scoped inside another settings item, and the BackAnimationStyle import in BottomSheet.
+- Fixed all fourteen in 68a0712fa (import repair) + 1b00a04da (signature/scope repairs); re-polled CI.
+
+Stage Summary:
+- CI ALL GREEN (8/8 check-runs) at 1b00a04da on dev: check, build (compile+tests+lint), all five nightly APK variants, create-nightly. On-device verification of the five deliverables pending user testing.
