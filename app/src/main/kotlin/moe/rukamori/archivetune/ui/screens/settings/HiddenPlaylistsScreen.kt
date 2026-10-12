@@ -55,6 +55,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.PlaylistSortType
 import moe.rukamori.archivetune.db.entities.Playlist
 import moe.rukamori.archivetune.spotify.SpotifyLibraryViewModel
+import moe.rukamori.archivetune.spotify.SpotifyMapper
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.ui.component.AppleMusicStyleAccentColor
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
@@ -261,7 +262,7 @@ private fun HiddenSpotifyPlaylistCard(
                 .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val coverUrl = playlist.images.firstOrNull()?.url
+        val coverUrl = SpotifyMapper.getPlaylistThumbnail(playlist)
         if (coverUrl != null) {
             AsyncImage(
                 model = coverUrl,

@@ -462,7 +462,7 @@ class SpotifyLibraryRepository
                                 )
                             },
                         duration = if (best.durationMs > 0) best.durationMs / 1000 else metadata.duration,
-                        thumbnailUrl = SpotifyMapper.getTrackThumbnail(best) ?: metadata.thumbnailUrl,
+                        thumbnailUrl = Spotify.highResTrackArtwork(best) ?: metadata.thumbnailUrl,
                         album =
                             best.album?.let { album ->
                                 MediaMetadata.Album(id = album.id, title = album.name)

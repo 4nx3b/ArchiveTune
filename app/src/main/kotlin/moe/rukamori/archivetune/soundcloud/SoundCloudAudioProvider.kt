@@ -886,7 +886,7 @@ object SoundCloudAudioProvider {
         val artist = artistNames.firstOrNull() ?: "Unknown Artist"
         val permalinkUrl = stringOrNull("permalink_url") ?: return null
         val durationMs = longOrNull("full_duration") ?: longOrNull("duration")
-        val artworkUrl = stringOrNull("artwork_url")
+        val artworkUrl = stringOrNull("artwork_url")?.let(::highResArtworkUrl)
         return MatchedTrack(
             trackId = trackId,
             title = title,
@@ -898,6 +898,13 @@ object SoundCloudAudioProvider {
             trackAuthorization = stringOrNull("track_authorization"),
             transcodings = optJSONObject("media")?.optJSONArray("transcodings"),
         )
+    }
+
+    private fun highResArtworkUrl(url: String): String {
+        val marker = "-large."
+        val index = url.lastIndexOf(marker)
+        if (index < 0) return url
+        return url.substring(0, index) + "-t500x500." + url.substring(index + marker.length)
     }
 
     private fun MatchedTrack.toTrackMetadata(): SoundCloudTrackMetadata =
