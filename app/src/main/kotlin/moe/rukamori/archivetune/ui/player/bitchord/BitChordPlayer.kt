@@ -466,8 +466,8 @@ fun BitChordPlayerContent(
             lyricsOpen = false
         }
     }
-    LaunchedEffect(state.isCollapsed) {
-        if (state.isCollapsed && (lyricsOpen || queueOpen)) {
+    LaunchedEffect(state.isExpandedOrExpanding) {
+        if (!state.isExpandedOrExpanding && (lyricsOpen || queueOpen)) {
             queueOpen = false
             lyricsOpen = false
         }

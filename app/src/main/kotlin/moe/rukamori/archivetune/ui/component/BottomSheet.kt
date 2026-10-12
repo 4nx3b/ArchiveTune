@@ -7,7 +7,6 @@
 
 package moe.rukamori.archivetune.ui.component
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.AnimationVector1D
@@ -91,6 +90,8 @@ fun BottomSheet(
         } else {
             null
         }
+    val predictiveBack = rememberPredictiveSheetBackState()
+    val predictiveBackStyle = LocalBackAnimationStyle.current == BackAnimationStyle.PREDICTIVE
     Box(
         modifier =
             modifier
@@ -105,6 +106,16 @@ fun BottomSheet(
                     val takeOver =
                         navbarHiddenOffset?.invoke()?.coerceAtLeast(0f) ?: 0f
                     translationY = y + takeOver * (1f - state.progress.coerceIn(0f, 1f))
+
+                    if (predictiveBackStyle) {
+                        val p = predictiveBack.progress.value
+                        if (p > 0f) {
+                            val scale = 1f - 0.08f * p
+                            scaleX = scale
+                            scaleY = scale
+                            alpha = 1f - 0.25f * p
+                        }
+                    }
                 }.bottomSheetDraggable(state, onDismiss)
                 .then(
                     if (morphShape != null) {
@@ -138,7 +149,11 @@ fun BottomSheet(
                 ),
     ) {
         if (state.isExpandedOrExpanding && backHandlerEnabled && !LocalRootOverlayActive.current) {
-            BackHandler(onBack = state::collapseSoft)
+            PredictiveStyleBackHandler(
+                backState = predictiveBack,
+                enabled = true,
+                onBack = state::collapseSoft,
+            )
         }
 
         if (sharedLayer != null) {

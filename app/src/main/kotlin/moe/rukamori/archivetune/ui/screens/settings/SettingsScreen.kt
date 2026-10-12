@@ -468,7 +468,6 @@ fun SettingsScreen(
                     onBackLongClick = navController::backToMain,
                     placeholder = stringResource(R.string.search_settings),
                     bottomPadding = playerAwareBottomPadding,
-                    lazyListState = listState,
                     activationTick = searchActivationTick,
                     trailing = {
                         if (searchQuery.isNotEmpty()) {

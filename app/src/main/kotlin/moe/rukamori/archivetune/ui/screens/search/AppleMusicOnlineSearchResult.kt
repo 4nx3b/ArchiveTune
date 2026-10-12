@@ -295,7 +295,6 @@ internal fun AppleMusicOnlineSearchResult(
             onBackLongClick = { navController.backToMain() },
             placeholder = stringResource(R.string.search_source_apple_music),
             bottomPadding = playerAwareBottomPadding,
-            lazyListState = lazyListState,
             trailing = {
                 SearchSourcePicker(
                     currentScope = SearchSource.ONLINE,

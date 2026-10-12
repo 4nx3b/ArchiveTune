@@ -140,59 +140,6 @@ object RecommendationEngine {
         return dedupeCandidates(candidates, config.candidateLimit)
     }
 
-    fun generateDiscoveryCandidates(
-        songs: List<RecSongStats>,
-        artists: List<RecArtistStats>,
-        filters: DiscoveryFilters,
-        config: RecEngineConfig,
-    ): List<Candidate> {
-        if (songs.isEmpty()) return emptyList()
-        val artistNameToId = HashMap<String, String>()
-        artists.forEach { artistNameToId[normalizeKey(it.artistName)] = it.artistId }
-
-        val seedArtistIds = filters.seedArtistNames.mapNotNull { seed ->
-            artistNameToId[normalizeKey(seed)]
-        }.toSet()
-
-        val likedArtistIds = artists.filter { it.likedSongCount > 0 }.map { it.artistId }.toSet()
-
-        val matched = songs.filter { song ->
-            if (!song.libraryAvailable) return@filter false
-            if (filters.requireNovel && song.playCount > 0) return@filter false
-            if (filters.requireLikedArtistSeed && song.artistIds.none { it in likedArtistIds }) return@filter false
-
-            val haystack = buildString {
-                append(song.title)
-                song.artistNames.forEach {
-                    append(' ')
-                    append(it)
-                }
-                song.albumTitle?.let {
-                    append(' ')
-                    append(it)
-                }
-            }
-            val normalizedHaystack = normalizeKey(haystack)
-            if (filters.excludeKeywords.any { keyword -> normalizedHaystack.contains(normalizeKey(keyword)) }) {
-                return@filter false
-            }
-            val matchesSeedArtists = seedArtistIds.isEmpty() || song.artistIds.any { it in seedArtistIds }
-            val matchesKeywords =
-                filters.keywords.isEmpty() ||
-                    filters.keywords.all { keyword -> normalizedHaystack.contains(normalizeKey(keyword)) }
-            if (!matchesSeedArtists && !matchesKeywords) return@filter false
-            true
-        }
-
-        return matched.take(config.candidateLimit).map { song ->
-            Candidate(
-                stats = song,
-                reason = RecReason.DISCOVERY_KEYWORD,
-                reasonSeed = filters.seedArtistNames.firstOrNull(),
-            )
-        }
-    }
-
     fun rank(
         candidates: List<Candidate>,
         songs: List<RecSongStats>,
@@ -407,7 +354,4 @@ object RecommendationEngine {
         }
         return hash and 0x7fffffff
     }
-
-    private fun normalizeKey(value: String): String =
-        value.lowercase().replace(Regex("\\s+"), " ").trim()
 }

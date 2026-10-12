@@ -90,15 +90,6 @@ data class RecEngineConfig(
     val maxAgeDays: Int = 180,
 )
 
-@Immutable
-data class DiscoveryFilters(
-    val keywords: List<String> = emptyList(),
-    val seedArtistNames: List<String> = emptyList(),
-    val excludeKeywords: List<String> = emptyList(),
-    val requireNovel: Boolean = false,
-    val requireLikedArtistSeed: Boolean = false,
-)
-
 enum class RecReason {
     TOP_ARTIST,
     SAME_ARTIST_AS_CONTEXT,

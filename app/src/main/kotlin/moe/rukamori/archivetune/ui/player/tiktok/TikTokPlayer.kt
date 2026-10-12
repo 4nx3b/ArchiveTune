@@ -272,8 +272,8 @@ fun TikTokPlayerContent(
 
     BackHandler(enabled = queueOpen) { queueOpen = false }
 
-    LaunchedEffect(state.isExpanded) {
-        if (!state.isExpanded) {
+    LaunchedEffect(state.isExpandedOrExpanding) {
+        if (!state.isExpandedOrExpanding) {
             if (immersive) immersive = false
             if (lyricsOpen) lyricsOpen = false
             if (queueOpen) queueOpen = false

@@ -138,26 +138,6 @@ class RecommendationRepository
                 )
             }
 
-        suspend fun discoverWithFilters(filters: DiscoveryFilters): List<RankedRecommendation> =
-            withContext(computeDispatcher) {
-                val input = loadInput()
-                if (input.songs.isEmpty()) return@withContext emptyList()
-                val config = RecEngineConfig(
-                    recencyWeight = withContext(ioDispatcher) { recencyWeight.first() },
-                )
-                val candidates =
-                    RecommendationEngine.generateDiscoveryCandidates(input.songs, input.artists, filters, config)
-                RecommendationEngine.rank(
-                    candidates = candidates,
-                    songs = input.songs,
-                    artists = input.artists,
-                    feedback = input.feedback,
-                    recentlyRecommended = recentlyRecommended.value,
-                    context = RecContext(),
-                    config = config,
-                )
-            }
-
         suspend fun recordFeedback(
             songId: String?,
             artistId: String?,

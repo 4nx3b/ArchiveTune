@@ -1095,15 +1095,19 @@ fun BottomSheetPlayer(
             }
         }
 
-    if (!aodModeEnabled) {
-        val rootOverlayActive = LocalRootOverlayActive.current
-        val anyStylePageOverlayOpen =
+    val anyStylePageOverlayOpen by remember {
+        derivedStateOf {
             isAppleMusicInlineLyricsOpen ||
                 spatialFlowLyricsOpen ||
                 spatialFlowQueueOpen ||
                 simpmusicStylePageOpen ||
                 tiktokStylePageOpen ||
                 bitchordStylePageOpen
+        }
+    }
+
+    if (!aodModeEnabled) {
+        val rootOverlayActive = LocalRootOverlayActive.current
         BackHandler(
             enabled =
                 (queueSheetState.isExpandedOrExpanding ||
@@ -1335,7 +1339,7 @@ fun BottomSheetPlayer(
         onDismiss = {
             playerConnection.service.stopAndClearPlayback(clearPersistentState = true)
         },
-        backHandlerEnabled = !aodModeEnabled && !isInlineLyricsOpen,
+        backHandlerEnabled = !aodModeEnabled && !isInlineLyricsOpen && !anyStylePageOverlayOpen,
         keepContentAlive = true,
         morphMode = playerDesignStyle == PlayerDesignStyle.SPATIALFLOW,
         navbarHiddenOffset = navbarHiddenOffset,

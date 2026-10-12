@@ -13,7 +13,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -21,32 +20,58 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import dev.chrisbanes.haze.hazeSource
-import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
-import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
-import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Badge
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
+import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop as kyantLayerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.isRuntimeShaderSupported
+import kotlinx.coroutines.flow.onEach
+import moe.rukamori.archivetune.ui.screens.settings.about.SukisuAboutBackground
+import android.os.Build
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.ui.layout.LocalLayoutDirection
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Badge
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
@@ -147,119 +172,140 @@ private fun AboutScreenContent(
     onRetryDependencyLicenses: () -> Unit,
 ) {
     val listState = rememberLazyListState()
-
-    Scaffold(
-
-        modifier = Modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    FrostedHeaderPill(plain = true) {
-                        IconButton(
-                            onClick = onNavigateUp,
-                            onLongClick = onNavigateHome,
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.arrow_back),
-                                contentDescription = stringResource(R.string.back_button_desc),
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.about),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    }
-                },
-                actions = {},
-                colors =
-                    TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent,
-                        scrolledContainerColor = Color.Transparent,
-                    ),
-            )
-        },
-    ) { innerPadding ->
-        val playerAwareBottomPadding =
-            LocalPlayerAwareWindowInsets.current
-                .only(WindowInsetsSides.Bottom)
-                .asPaddingValues()
-                .calculateBottomPadding()
-        val playerAwareInsets =
-            LocalPlayerAwareWindowInsets.current.only(
-                WindowInsetsSides.Horizontal,
-            )
-
-        val headerHaze = rememberScreenHeaderHaze()
-        val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
-
-        Box(modifier = Modifier.fillMaxSize()) {
-        when (state) {
-            AboutScreenState.Loading -> {
-                AboutLoadingContent(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .padding(innerPadding)
-                            .windowInsetsPadding(playerAwareInsets),
-                )
-            }
-
-            AboutScreenState.Empty -> {
-                AboutMessageContent(
-                    message = stringResource(R.string.no_results_found),
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .padding(innerPadding)
-                            .windowInsetsPadding(playerAwareInsets),
-                )
-            }
-
-            is AboutScreenState.Error -> {
-                AboutMessageContent(
-                    message = stringResource(state.messageResId),
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .padding(innerPadding)
-                            .windowInsetsPadding(playerAwareInsets),
-                )
-            }
-
-            is AboutScreenState.Success -> {
-                AboutSuccessContent(
-                    model = state.model,
-                    onOpenUri = onOpenUri,
-                    onRetryContributors = onRetryContributors,
-                    onOpenTranslationContributors = onOpenTranslationContributors,
-                    onOpenDependencyLicenses = onOpenDependencyLicenses,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .windowInsetsPadding(playerAwareInsets)
-
-                            .hazeSource(headerHaze),
-                    contentPadding =
-                        PaddingValues(
-                            top = innerPadding.calculateTopPadding() + AboutSpacing.xs,
-                            bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
-                        ),
-                    listState = listState,
-                )
+    var logoHeightPx by remember { mutableIntStateOf(0) }
+    val scrollProgress by remember {
+        derivedStateOf {
+            if (logoHeightPx <= 0) {
+                0f
+            } else {
+                val index = listState.firstVisibleItemIndex
+                val offset = listState.firstVisibleItemScrollOffset
+                if (index > 0) 1f else (offset.toFloat() / logoHeightPx).coerceIn(0f, 1f)
             }
         }
+    }
 
-            ScreenHeaderHaze(
-                hazeState = headerHaze,
-                systemBarsTopPadding = systemBarsTopPadding,
-                scrolled = listState.canScrollBackward,
-            )
+    val playerAwareBottomPadding =
+        LocalPlayerAwareWindowInsets.current
+            .only(WindowInsetsSides.Bottom)
+            .asPaddingValues()
+            .calculateBottomPadding()
+    val playerAwareInsets =
+        LocalPlayerAwareWindowInsets.current.only(
+            WindowInsetsSides.Horizontal,
+        )
+
+    val aboutGlassBackdrop = rememberLayerBackdrop()
+    val glassCapable =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            isRuntimeShaderSupported()
+
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(playerAwareInsets),
+    ) {
+        SukisuAboutBackground(
+            modifier = Modifier.fillMaxSize(),
+            bgModifier =
+                if (glassCapable) {
+                    Modifier.kyantLayerBackdrop(aboutGlassBackdrop)
+                } else {
+                    Modifier
+                },
+            alpha = { 1f - scrollProgress },
+            surface = MaterialTheme.colorScheme.surface,
+        ) { }
+
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = Color.Transparent,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = stringResource(R.string.about),
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            color =
+                                MaterialTheme.colorScheme.onBackground.copy(
+                                    alpha = ((scrollProgress - 0.35f) / 0.65f).coerceIn(0f, 1f),
+                                ),
+                        )
+                    },
+                    navigationIcon = {
+                        FrostedHeaderPill(plain = true) {
+                            IconButton(
+                                onClick = onNavigateUp,
+                                onLongClick = onNavigateHome,
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.arrow_back),
+                                    contentDescription = stringResource(R.string.back_button_desc),
+                                )
+                            }
+                        }
+                    },
+                    actions = {},
+                    colors =
+                        TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            scrolledContainerColor = Color.Transparent,
+                        ),
+                )
+            },
+        ) { innerPadding ->
+            when (state) {
+                AboutScreenState.Loading -> {
+                    AboutLoadingContent(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .padding(innerPadding),
+                    )
+                }
+
+                AboutScreenState.Empty -> {
+                    AboutMessageContent(
+                        message = stringResource(R.string.no_results_found),
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .padding(innerPadding),
+                    )
+                }
+
+                is AboutScreenState.Error -> {
+                    AboutMessageContent(
+                        message = stringResource(state.messageResId),
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .padding(innerPadding),
+                    )
+                }
+
+                is AboutScreenState.Success -> {
+                    AboutSuccessContent(
+                        model = state.model,
+                        onOpenUri = onOpenUri,
+                        onRetryContributors = onRetryContributors,
+                        onOpenTranslationContributors = onOpenTranslationContributors,
+                        onOpenDependencyLicenses = onOpenDependencyLicenses,
+                        glassBackdrop = if (glassCapable) aboutGlassBackdrop else null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding =
+                            PaddingValues(
+                                top = innerPadding.calculateTopPadding() + AboutSpacing.xs,
+                                bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
+                            ),
+                        listState = listState,
+                        onLogoHeightChanged = { logoHeightPx = it },
+                    )
+                }
+            }
         }
     }
 
@@ -683,6 +729,7 @@ private fun DependencyLicenseListItem(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AboutSuccessContent(
     model: AboutUiModel,
@@ -690,82 +737,246 @@ private fun AboutSuccessContent(
     onRetryContributors: () -> Unit,
     onOpenTranslationContributors: () -> Unit,
     onOpenDependencyLicenses: () -> Unit,
+    glassBackdrop: LayerBackdrop?,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues,
     listState: LazyListState,
+    onLogoHeightChanged: (Int) -> Unit,
 ) {
     val leadDevelopers = model.leadDevelopers
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
 
-    LazyColumn(
-        state = listState,
-        modifier = modifier,
-        contentPadding = contentPadding,
-        verticalArrangement = Arrangement.spacedBy(AboutSpacing.sm),
-    ) {
-        item(key = "identity", contentType = "about_identity") {
-            AboutContentContainer {
-                AboutIdentityCard(
-                    model = model,
-                    onOpenUri = onOpenUri,
-                    modifier = Modifier.fillMaxWidth(),
+    var logoHeightDp by remember { mutableStateOf(300.dp) }
+    var logoAreaY by remember { mutableFloatStateOf(0f) }
+    var iconY by remember { mutableFloatStateOf(0f) }
+    var projectNameY by remember { mutableFloatStateOf(0f) }
+    var versionCodeY by remember { mutableFloatStateOf(0f) }
+
+    var iconProgress by remember { mutableFloatStateOf(0f) }
+    var projectNameProgress by remember { mutableFloatStateOf(0f) }
+    var versionCodeProgress by remember { mutableFloatStateOf(0f) }
+    var initialLogoAreaY by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemScrollOffset }
+            .onEach { offset ->
+                if (listState.firstVisibleItemIndex > 0) {
+                    if (iconProgress != 1f) iconProgress = 1f
+                    if (projectNameProgress != 1f) projectNameProgress = 1f
+                    if (versionCodeProgress != 1f) versionCodeProgress = 1f
+                    return@onEach
+                }
+
+                if (initialLogoAreaY == 0f && logoAreaY > 0f) {
+                    initialLogoAreaY = logoAreaY
+                }
+                val refLogoAreaY = if (initialLogoAreaY > 0f) initialLogoAreaY else logoAreaY
+
+                val stage1TotalLength = (refLogoAreaY - versionCodeY).coerceAtLeast(1f)
+                val stage2TotalLength = (versionCodeY - projectNameY).coerceAtLeast(1f)
+                val stage3TotalLength = (projectNameY - iconY).coerceAtLeast(1f)
+
+                val versionCodeDelay = stage1TotalLength * 0.5f
+                versionCodeProgress =
+                    ((offset.toFloat() - versionCodeDelay) / (stage1TotalLength - versionCodeDelay).coerceAtLeast(1f))
+                        .coerceIn(0f, 1f)
+                projectNameProgress =
+                    ((offset.toFloat() - stage1TotalLength) / stage2TotalLength)
+                        .coerceIn(0f, 1f)
+                iconProgress =
+                    ((offset.toFloat() - stage1TotalLength - stage2TotalLength) / stage3TotalLength)
+                        .coerceIn(0f, 1f)
+            }
+            .collect { }
+    }
+
+    val horizontalContentPadding =
+        PaddingValues(
+            start = contentPadding.calculateStartPadding(layoutDirection),
+            end = contentPadding.calculateEndPadding(layoutDirection),
+        )
+
+    Box(modifier = modifier) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = contentPadding,
+            verticalArrangement = Arrangement.spacedBy(AboutSpacing.sm),
+        ) {
+            item(key = "logoSpacer", contentType = "about_logo_spacer") {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(
+                            logoHeightDp + 52.dp + contentPadding.calculateTopPadding() + 126.dp,
+                        )
+                        .onSizeChanged { size -> onLogoHeightChanged(size.height) }
+                        .onGloballyPositioned { coordinates ->
+                            val y = coordinates.positionInWindow().y
+                            val size = coordinates.size
+                            logoAreaY = y + size.height
+                        },
                 )
+            }
+
+            item(key = "links", contentType = "about_links") {
+                AboutContentContainer(horizontalPadding = horizontalContentPadding) {
+                    AboutLinksCard(
+                        links = model.primaryLinks,
+                        onOpenUri = onOpenUri,
+                        glassBackdrop = glassBackdrop,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
+            item(key = "project_information", contentType = "about_actions") {
+                AboutContentContainer(horizontalPadding = horizontalContentPadding) {
+                    AboutProjectInformationSection(
+                        onOpenTranslationContributors = onOpenTranslationContributors,
+                        onOpenDependencyLicenses = onOpenDependencyLicenses,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
+            item(key = "lead_developer", contentType = "about_team_section") {
+                AboutContentContainer(horizontalPadding = horizontalContentPadding) {
+                    TeamMemberSection(
+                        title = stringResource(R.string.about_lead_developer),
+                        members = leadDevelopers,
+                        onOpenUri = onOpenUri,
+                        prominentFirstItem = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
+            item(key = "team", contentType = "about_team_section") {
+                AboutContentContainer(horizontalPadding = horizontalContentPadding) {
+                    TeamMemberSection(
+                        title = stringResource(R.string.about_archive_tune_team),
+                        members = model.collaborators,
+                        onOpenUri = onOpenUri,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
+            item(key = "respecters", contentType = "about_team_section") {
+                AboutContentContainer(horizontalPadding = horizontalContentPadding) {
+                    TeamMemberSection(
+                        title = stringResource(R.string.about_respecter),
+                        members = model.respecters,
+                        onOpenUri = onOpenUri,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
+            item(key = "contributors", contentType = "about_contributors") {
+                AboutContentContainer(horizontalPadding = horizontalContentPadding) {
+                    ContributorsSection(
+                        state = model.contributorsState,
+                        readMoreUrl = model.contributorsReadMoreUrl,
+                        onOpenProfile = onOpenUri,
+                        onRetry = onRetryContributors,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         }
 
-        item(key = "project_information", contentType = "about_actions") {
-            AboutContentContainer {
-                AboutProjectInformationSection(
-                    onOpenTranslationContributors = onOpenTranslationContributors,
-                    onOpenDependencyLicenses = onOpenDependencyLicenses,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        top = contentPadding.calculateTopPadding() + 52.dp,
+                        start = horizontalContentPadding.calculateStartPadding(layoutDirection),
+                        end = horizontalContentPadding.calculateEndPadding(layoutDirection),
+                    )
+                    .onSizeChanged { size ->
+                        with(density) { logoHeightDp = size.height.toDp() }
+                    },
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier =
+                    Modifier
+                        .size(112.dp)
+                        .clipToBounds()
+                        .graphicsLayer {
+                            alpha = 1 - iconProgress
+                            scaleX = 1 - (iconProgress * 0.05f)
+                            scaleY = 1 - (iconProgress * 0.05f)
+                        }
+                        .onGloballyPositioned { coordinates ->
+                            if (iconY != 0f) return@onGloballyPositioned
+                            val y = coordinates.positionInWindow().y
+                            val size = coordinates.size
+                            iconY = y + size.height
+                        },
+            ) {
+                SurfaceAppIcon(modifier = Modifier.size(112.dp), iconSize = 80.dp)
             }
-        }
-
-        item(key = "lead_developer", contentType = "about_team_section") {
-            AboutContentContainer {
-                TeamMemberSection(
-                    title = stringResource(R.string.about_lead_developer),
-                    members = leadDevelopers,
-                    onOpenUri = onOpenUri,
-                    prominentFirstItem = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+            Text(
+                text = stringResource(model.appNameResId),
+                color = MaterialTheme.colorScheme.onBackground,
+                fontWeight = FontWeight.Bold,
+                fontSize = 35.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier =
+                    Modifier
+                        .padding(top = 12.dp, bottom = 5.dp)
+                        .onGloballyPositioned { coordinates ->
+                            if (projectNameY != 0f) return@onGloballyPositioned
+                            val y = coordinates.positionInWindow().y
+                            val size = coordinates.size
+                            projectNameY = y + size.height
+                        }
+                        .graphicsLayer {
+                            alpha = 1 - projectNameProgress
+                            scaleX = 1 - (projectNameProgress * 0.05f)
+                            scaleY = 1 - (projectNameProgress * 0.05f)
+                        },
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(AboutSpacing.xs, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(AboutSpacing.xs),
+                modifier =
+                    Modifier
+                        .onGloballyPositioned { coordinates ->
+                            if (versionCodeY != 0f) return@onGloballyPositioned
+                            val y = coordinates.positionInWindow().y
+                            val size = coordinates.size
+                            versionCodeY = y + size.height
+                        },
+            ) {
+                AboutMetadataBadge(text = model.versionName)
+                model.buildHash?.let { buildHash ->
+                    AboutMetadataBadge(text = buildHash)
+                }
+                AboutMetadataBadge(text = model.buildVariant)
             }
-        }
-
-        item(key = "team", contentType = "about_team_section") {
-            AboutContentContainer {
-                TeamMemberSection(
-                    title = stringResource(R.string.about_archive_tune_team),
-                    members = model.collaborators,
-                    onOpenUri = onOpenUri,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-
-        item(key = "respecters", contentType = "about_team_section") {
-            AboutContentContainer {
-                TeamMemberSection(
-                    title = stringResource(R.string.about_respecter),
-                    members = model.respecters,
-                    onOpenUri = onOpenUri,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-
-        item(key = "contributors", contentType = "about_contributors") {
-            AboutContentContainer {
-                ContributorsSection(
-                    state = model.contributorsState,
-                    readMoreUrl = model.contributorsReadMoreUrl,
-                    onOpenProfile = onOpenUri,
-                    onRetry = onRetryContributors,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+            Text(
+                text = stringResource(R.string.about),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            alpha = 1 - versionCodeProgress
+                            scaleX = 1 - (versionCodeProgress * 0.05f)
+                            scaleY = 1 - (versionCodeProgress * 0.05f)
+                        },
+            )
         }
     }
 }
@@ -773,13 +984,21 @@ private fun AboutSuccessContent(
 @Composable
 private fun AboutContentContainer(
     modifier: Modifier = Modifier,
+    horizontalPadding: PaddingValues = PaddingValues(),
     content: @Composable () -> Unit,
 ) {
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(horizontal = SettingsDimensions.ScreenHorizontalPadding),
+                .padding(
+                    start = SettingsDimensions.ScreenHorizontalPadding.coerceAtLeast(
+                        horizontalPadding.calculateStartPadding(LocalLayoutDirection.current),
+                    ),
+                    end = SettingsDimensions.ScreenHorizontalPadding.coerceAtLeast(
+                        horizontalPadding.calculateEndPadding(LocalLayoutDirection.current),
+                    ),
+                ),
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -793,104 +1012,79 @@ private fun AboutContentContainer(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AboutIdentityCard(
-    model: AboutUiModel,
+private fun AboutLinksCard(
+    links: AboutLinkCollection,
     onOpenUri: (String) -> Unit,
+    glassBackdrop: LayerBackdrop?,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.extraLarge,
-        colors =
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            if (maxWidth >= AboutDimensions.HorizontalHeroBreakpoint) {
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(AboutSpacing.md),
-                    horizontalArrangement = Arrangement.spacedBy(AboutSpacing.md),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    AboutIdentity(
-                        model = model,
-                        horizontalAlignment = Alignment.Start,
-                        modifier = Modifier.weight(1f),
-                    )
-                    LinkChipRow(
-                        links = model.primaryLinks,
-                        onOpenUri = onOpenUri,
-                        horizontalArrangement = Arrangement.spacedBy(AboutSpacing.xs, Alignment.End),
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            } else {
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(AboutSpacing.md),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(AboutSpacing.md),
-                ) {
-                    AboutIdentity(
-                        model = model,
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    LinkChipRow(
-                        links = model.primaryLinks,
-                        onOpenUri = onOpenUri,
-                        horizontalArrangement = Arrangement.spacedBy(AboutSpacing.xs, Alignment.CenterHorizontally),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun AboutIdentity(
-    model: AboutUiModel,
-    horizontalAlignment: Alignment.Horizontal,
-    modifier: Modifier = Modifier,
-) {
+    val cardShape = RoundedCornerShape(16.dp)
+    val fallbackColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.88f)
+    val glassOverlayColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.55f)
     Column(
-        modifier = modifier,
-        horizontalAlignment = horizontalAlignment,
-        verticalArrangement = Arrangement.spacedBy(AboutSpacing.sm),
+        modifier =
+            modifier
+                .then(
+                    if (glassBackdrop != null) {
+                        Modifier.drawBackdrop(
+                            backdrop = glassBackdrop,
+                            shape = { cardShape },
+                            effects = {
+                                colorControls(saturation = 1.05f)
+                                blur(24f)
+                            },
+                            onDrawSurface = {
+                                drawOutline(
+                                    outline = cardShape.createOutline(size, layoutDirection, this),
+                                    color = glassOverlayColor,
+                                )
+                            },
+                        )
+                    } else {
+                        Modifier
+                            .clip(cardShape)
+                            .background(fallbackColor)
+                    },
+                )
+                .padding(vertical = AboutSpacing.xs),
     ) {
-        SurfaceAppIcon()
-        Text(
-            text = stringResource(model.appNameResId),
-            style = MaterialTheme.typography.headlineSmallEmphasized,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(AboutSpacing.xs, horizontalAlignment),
-            verticalArrangement = Arrangement.spacedBy(AboutSpacing.xs),
-        ) {
-            AboutMetadataBadge(text = model.versionName)
-            model.buildHash?.let { buildHash ->
-                AboutMetadataBadge(text = buildHash)
+        repeat(links.size) { index ->
+            val link = links[index]
+            val onClick = remember(link.url, onOpenUri) { { onOpenUri(link.url) } }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(AboutSpacing.sm),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onClick)
+                        .padding(horizontal = AboutSpacing.md, vertical = 14.dp),
+            ) {
+                AboutLeadingIcon(iconResId = link.iconResId)
+                Text(
+                    text = stringResource(link.labelResId),
+                    style = MaterialTheme.typography.bodyLargeEmphasized,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    painter = painterResource(R.drawable.arrow_forward),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            AboutMetadataBadge(text = model.buildVariant)
         }
     }
 }
 
 @Composable
-private fun SurfaceAppIcon(modifier: Modifier = Modifier) {
+private fun SurfaceAppIcon(
+    modifier: Modifier = Modifier,
+    iconSize: Dp = 64.dp,
+) {
     androidx.compose.material3.Surface(
         modifier = modifier,
         shape = CircleShape,
@@ -906,7 +1100,7 @@ private fun SurfaceAppIcon(modifier: Modifier = Modifier) {
             modifier =
                 Modifier
                     .padding(AboutSpacing.sm)
-                    .size(64.dp),
+                    .size(iconSize),
         )
     }
 }
@@ -927,44 +1121,6 @@ private fun AboutMetadataBadge(
             maxLines = 1,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
         )
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun LinkChipRow(
-    links: AboutLinkCollection,
-    onOpenUri: (String) -> Unit,
-    horizontalArrangement: Arrangement.Horizontal,
-    modifier: Modifier = Modifier,
-) {
-    FlowRow(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = horizontalArrangement,
-        verticalArrangement = Arrangement.spacedBy(AboutSpacing.xs),
-    ) {
-        repeat(links.size) { index ->
-            val link = links[index]
-            val onClick = remember(link.url, onOpenUri) { { onOpenUri(link.url) } }
-
-            AssistChip(
-                onClick = onClick,
-                leadingIcon = {
-                    Icon(
-                        painter = painterResource(link.iconResId),
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                },
-                label = {
-                    Text(
-                        text = stringResource(link.labelResId),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-            )
-        }
     }
 }
 

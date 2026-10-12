@@ -286,6 +286,7 @@ private const val FlamingoLyricsContentDeferCanvasMs = 300L
 private const val FlamingoLyricsExitHoldMs = 240L
 private const val FlamingoPageMorphHoldMs = 420L
 private const val FlamingoStageSurfaceRetireMs = 420L
+private const val FlamingoStageCanvasExitFadeMs = 180
 
 private class FlamingoAdaptiveCornerShape(
     private val smallRadius: Dp,
@@ -503,8 +504,16 @@ fun FlamingoPlayerContent(
                 canvasStageSurfaceActive = true
             }
         }
-        LaunchedEffect(state.isCollapsed) {
-            if (state.isCollapsed && nowPage != FlamingoPage.Album) {
+        val stageCanvasPageAlpha by animateFloatAsState(
+            targetValue = if (nowPage == FlamingoPage.Album) 1f else 0f,
+            animationSpec = tween(
+                durationMillis = FlamingoStageCanvasExitFadeMs,
+                easing = FastOutSlowInEasing,
+            ),
+            label = "flamingo-stage-canvas-page-alpha",
+        )
+        LaunchedEffect(state.isExpandedOrExpanding) {
+            if (!state.isExpandedOrExpanding && nowPage != FlamingoPage.Album) {
                 nowPage = if (landscape) FlamingoPage.Lyric else FlamingoPage.Album
             }
         }
@@ -1207,6 +1216,7 @@ fun FlamingoPlayerContent(
                                                     loopSyncLeader = canvasLoopSync,
                                                     refreshEpoch = orientationRefreshEpoch,
                                                     surfaceVisible = canvasStageSurfaceActive,
+                                                    videoVisualAlpha = stageCanvasPageAlpha,
                                                     modifier = Modifier
                                                         .fillMaxWidth()
                                                         .then(albumSharedBounds),
@@ -2280,6 +2290,7 @@ private fun FlamingoCanvasStage(
     loopSyncLeader: CanvasLoopSync? = null,
     refreshEpoch: Int = 0,
     surfaceVisible: Boolean = true,
+    videoVisualAlpha: Float = 1f,
     modifier: Modifier = Modifier,
     proceduralContent: (@Composable () -> Unit)? = null,
 ) {
@@ -2301,6 +2312,7 @@ private fun FlamingoCanvasStage(
         animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing),
         label = "flamingo-canvas-static-base",
     )
+    val staticRevealAlpha = maxOf(staticBaseAlpha, 1f - videoVisualAlpha)
 
     Box(
         modifier = modifier
@@ -2332,7 +2344,7 @@ private fun FlamingoCanvasStage(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .matchParentSize()
-                        .graphicsLayer { alpha = staticBaseAlpha },
+                        .graphicsLayer { alpha = staticRevealAlpha },
                 )
             }
             incomingArtworkUrl?.let { url ->
@@ -2347,7 +2359,7 @@ private fun FlamingoCanvasStage(
                     onError = { incomingArtworkUrl = null },
                     modifier = Modifier
                         .matchParentSize()
-                        .graphicsLayer { alpha = staticBaseAlpha },
+                        .graphicsLayer { alpha = staticRevealAlpha },
                 )
             }
             CanvasArtworkPlayer(
@@ -2357,6 +2369,7 @@ private fun FlamingoCanvasStage(
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                 loopSyncLeader = loopSyncLeader,
                 visible = surfaceVisible,
+                videoAlpha = videoVisualAlpha,
                 onPlaybackAvailabilityChange = { available ->
                     if (!available) {
                         canvasFrameReady = false

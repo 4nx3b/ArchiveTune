@@ -340,7 +340,6 @@ internal fun SoundCloudOnlineSearchResult(
             onBackLongClick = { navController.backToMain() },
             placeholder = stringResource(R.string.search_source_soundcloud),
             bottomPadding = playerAwareBottomPadding,
-            lazyListState = lazyListState,
         )
     }
 }
