@@ -377,13 +377,13 @@ class RecommendationEngineTest {
             listOf(
                 song("kw_match", plays = 0),
                 song("kw_miss", plays = 0),
-                song("kw_excluded", plays = 0),
+                song("kw_excluded", artistId = "seeded", plays = 0),
                 song("kw_seed_match", artistId = "seeded", plays = 0),
             )
         val artists = listOf(artist("seeded", plays = 0), artist("ar_kw_match", plays = 0))
         val filters =
             DiscoveryFilters(
-                keywords = listOf("Song kw"),
+                keywords = listOf("kw_match"),
                 excludeKeywords = listOf("excluded"),
                 seedArtistNames = listOf("Artist seeded"),
             )

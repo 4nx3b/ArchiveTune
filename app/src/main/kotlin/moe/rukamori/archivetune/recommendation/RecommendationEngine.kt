@@ -158,9 +158,9 @@ object RecommendationEngine {
 
         val matched = songs.filter { song ->
             if (!song.libraryAvailable) return@filter false
+            if (song.songId == context.currentSongId) return@filter false
             if (filters.requireNovel && song.playCount > 0) return@filter false
             if (filters.requireLikedArtistSeed && song.artistIds.none { it in likedArtistIds }) return@filter false
-            if (seedArtistIds.isNotEmpty() && song.artistIds.none { it in seedArtistIds }) return@filter false
 
             val haystack = buildString {
                 append(song.title)
@@ -174,10 +174,14 @@ object RecommendationEngine {
                 }
             }
             val normalizedHaystack = normalizeKey(haystack)
-            val keywordMiss = filters.keywords.any { keyword -> normalizedHaystack.contains(normalizeKey(keyword)).not() }
-            if (keywordMiss) return@filter false
-            val excluded = filters.excludeKeywords.any { keyword -> normalizedHaystack.contains(normalizeKey(keyword)) }
-            if (excluded) return@filter false
+            if (filters.excludeKeywords.any { keyword -> normalizedHaystack.contains(normalizeKey(keyword)) }) {
+                return@filter false
+            }
+            val matchesSeedArtists = seedArtistIds.isEmpty() || song.artistIds.any { it in seedArtistIds }
+            val matchesKeywords =
+                filters.keywords.isEmpty() ||
+                    filters.keywords.all { keyword -> normalizedHaystack.contains(normalizeKey(keyword)) }
+            if (!matchesSeedArtists && !matchesKeywords) return@filter false
             true
         }
 
@@ -243,6 +247,7 @@ object RecommendationEngine {
         val scored = candidates.mapNotNull { candidate ->
             val song = candidate.stats
             if (!song.libraryAvailable) return@mapNotNull null
+            if (song.songId == context.currentSongId) return@mapNotNull null
             if (song.songId in excludedSongs || song.songId in dislikedSongs) return@mapNotNull null
             if (song.artistIds.any { it in excludedArtists }) return@mapNotNull null
             dismissedSongs[song.songId]?.let { dismissedAt ->
@@ -277,7 +282,6 @@ object RecommendationEngine {
 
             val contextBoost =
                 when {
-                    context.currentSongId != null && song.songId == context.currentSongId -> -10f
                     song.artistIds.any { it in context.currentArtistIds } -> 0.6f
                     song.albumId != null && song.albumId == context.currentAlbumId -> 0.5f
                     else -> 0f
