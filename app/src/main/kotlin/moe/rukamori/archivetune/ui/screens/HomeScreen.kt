@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -36,7 +35,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -51,7 +49,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -538,70 +535,6 @@ private fun HomeContent(
                                 onFeedback = { feedback -> recommendationViewModel.onAction(feedback) },
                                 menuState = menuState,
                                 modifier = Modifier.animateItem(),
-                            )
-                        }
-                    }
-
-                    if (recsEnabled) {
-                        item(key = "home_rec_discovery_entry", contentType = "rec_discovery_entry") {
-                            var showRecDiscoveryDialog by remember { mutableStateOf(false) }
-                            if (showRecDiscoveryDialog) {
-                                moe.rukamori.archivetune.ui.component.TextFieldDialog(
-                                    icon = {
-                                        Icon(painterResource(R.drawable.search), null)
-                                    },
-                                    title = { Text(stringResource(R.string.rec_discovery_title)) },
-                                    placeholder = { Text(stringResource(R.string.rec_discovery_hint)) },
-                                    onDone = { query ->
-                                        showRecDiscoveryDialog = false
-                                        recommendationViewModel.onAction(
-                                            moe.rukamori.archivetune.recommendation.RecommendationAction.Discover(query),
-                                        )
-                                    },
-                                    onDismiss = { showRecDiscoveryDialog = false },
-                                )
-                            }
-                            androidx.compose.material3.ListItem(
-                                headlineContent = { Text(stringResource(R.string.rec_discovery_title)) },
-                                supportingContent = { Text(stringResource(R.string.rec_discovery_hint)) },
-                                leadingContent = { Icon(painterResource(R.drawable.search), null) },
-                                modifier = Modifier
-                                    .padding(horizontal = 8.dp)
-                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
-                                    .clickable { showRecDiscoveryDialog = true }
-                                    .animateItem(),
-                            )
-                            Spacer(Modifier.height(8.dp))
-                        }
-                    }
-
-                    if (recsEnabled && recUiState.discoveryResults.isNotEmpty()) {
-                        item(
-                            key = "home_rec_discovery_results",
-                            contentType = "media_shelf",
-                        ) {
-                            moe.rukamori.archivetune.recommendation.RecommendationShelf(
-                                title = stringResource(R.string.rec_discovery_title),
-                                items = recUiState.discoveryResults,
-                                mediaMetadata = mediaMetadata,
-                                isPlaying = isPlaying,
-                                onPlayQueue = onPlayRecQueue,
-                                onFeedback = { feedback -> recommendationViewModel.onAction(feedback) },
-                                menuState = menuState,
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                    }
-
-                    if (recsEnabled && recUiState.discoveryLoading) {
-                        item(key = "home_rec_discovery_loading", contentType = "rec_hint") {
-                            Text(
-                                text = stringResource(R.string.loading),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp)
-                                    .animateItem(),
                             )
                         }
                     }

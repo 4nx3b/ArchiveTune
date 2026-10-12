@@ -9,7 +9,6 @@
 
 package moe.rukamori.archivetune.ui.component
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -133,15 +132,20 @@ fun BottomSheetMenu(
         }
     }
 
-    BackHandler(enabled = state.dialogContent != null) {
-        state.dismissDialog()
-    }
+    val menuPredictiveBack = rememberPredictiveSheetBackState()
+    PredictiveStyleBackHandler(
+        backState = menuPredictiveBack,
+        enabled = state.dialogContent != null,
+        onBack = state::dismissDialog,
+    )
 
     if (!renderState) return
 
-    BackHandler(enabled = renderState) {
-        state.isVisible = false
-    }
+    PredictiveStyleBackHandler(
+        backState = menuPredictiveBack,
+        enabled = renderState,
+        onBack = { state.isVisible = false },
+    )
 
     val alpha = enterProgress.value
 

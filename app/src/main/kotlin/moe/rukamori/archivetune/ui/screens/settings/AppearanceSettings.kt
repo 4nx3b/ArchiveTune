@@ -87,7 +87,8 @@ import moe.rukamori.archivetune.constants.GridItemSize
 import moe.rukamori.archivetune.constants.GridItemsSizeKey
 import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
 import moe.rukamori.archivetune.constants.HideScrollbarKey
-import moe.rukamori.archivetune.constants.HideSearchChromeWhileScrollingKey
+import moe.rukamori.archivetune.constants.BackAnimationStyle
+import moe.rukamori.archivetune.constants.BackAnimationStyleKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.MinimalHomeModeKey
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
@@ -272,8 +273,11 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         )
     val (hideScrollbar, onHideScrollbarChange) =
         rememberPreference(HideScrollbarKey, defaultValue = false)
-    val (hideSearchChromeWhileScrolling, onHideSearchChromeWhileScrollingChange) =
-        rememberPreference(HideSearchChromeWhileScrollingKey, defaultValue = false)
+    val (backAnimationStyle, onBackAnimationStyleChange) =
+        rememberEnumPreference(
+            BackAnimationStyleKey,
+            defaultValue = BackAnimationStyle.DEFAULT,
+        )
     val (minimalHomeMode, onMinimalHomeModeChange) =
         rememberPreference(MinimalHomeModeKey, defaultValue = false)
 
@@ -1121,14 +1125,20 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
-                    SwitchPreference(
-                        modifier = positions.modifierFor("hide_search_chrome_while_scrolling"),
-                        title = { Text(stringResource(R.string.hide_search_chrome_while_scrolling)) },
-                        description = stringResource(R.string.hide_search_chrome_while_scrolling_desc),
-                        icon = { Icon(painterResource(R.drawable.search_off), null) },
-                        checked = hideSearchChromeWhileScrolling,
-                        onCheckedChange = onHideSearchChromeWhileScrollingChange,
-                    )
+                    Column(modifier = positions.modifierFor("back_animation_style")) {
+                        EnumListPreference(
+                            title = { Text(stringResource(R.string.back_animation_style)) },
+                            icon = { Icon(painterResource(R.drawable.arrow_back), null) },
+                            selectedValue = backAnimationStyle,
+                            onValueSelected = onBackAnimationStyleChange,
+                            valueText = {
+                                when (it) {
+                                    BackAnimationStyle.DEFAULT -> stringResource(R.string.back_animation_style_default)
+                                    BackAnimationStyle.PREDICTIVE -> stringResource(R.string.back_animation_style_predictive)
+                                }
+                            },
+                        )
+                    }
                 }
 
             }
@@ -1155,8 +1165,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         }
 }
 }
-
-private const val DEFAULT_REFRESH_RATE_REQUEST = 0f
 
 @Composable
 private fun SliderStyleOptionCard(

@@ -322,8 +322,8 @@ fun SpatialFlowPlayerContent(
         }
     }
 
-    LaunchedEffect(state.isCollapsed) {
-        if (state.isCollapsed && (lyricsModeEnabled || queueExpanded)) {
+    LaunchedEffect(state.isExpandedOrExpanding) {
+        if (!state.isExpandedOrExpanding && (lyricsModeEnabled || queueExpanded)) {
             lyricsModeEnabled = false
             queueExpanded = false
         }

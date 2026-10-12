@@ -165,6 +165,8 @@ fun CanvasArtworkPlayer(
 
     visible: Boolean = true,
 
+    videoAlpha: Float = 1f,
+
     maxVideoEdgePx: Int? = null,
 
     onPlaybackAvailabilityChange: ((available: Boolean) -> Unit)? = null,
@@ -545,7 +547,7 @@ fun CanvasArtworkPlayer(
             surfaceStructureReleased = true
         }
     }
-    val surfaceAlpha = alpha * surfaceRetireAlpha
+    val surfaceAlpha = alpha * surfaceRetireAlpha * videoAlpha
 
     val aspect = videoDisplayAspectRatio
     if (effectiveContentVisible || !surfaceStructureReleased) {
@@ -561,11 +563,15 @@ fun CanvasArtworkPlayer(
                 )
             }
         } else {
-            PlayerSurface(
-                player = exoPlayer,
-                surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-                modifier = modifier.alpha(surfaceAlpha),
-            )
+            Box(modifier = modifier.clipToBounds()) {
+                PlayerSurface(
+                    player = exoPlayer,
+                    surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .alpha(surfaceAlpha),
+                )
+            }
         }
     }
 }

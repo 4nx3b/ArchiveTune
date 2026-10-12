@@ -7,13 +7,13 @@
 
 package moe.rukamori.archivetune.ui.component
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -87,9 +87,12 @@ fun BottomSheetPage(
     val coroutineScope = rememberCoroutineScope()
     var dragOffset by remember { mutableFloatStateOf(0f) }
 
-    BackHandler(enabled = state.isVisible) {
-        state.dismiss()
-    }
+    val predictiveBack = rememberPredictiveSheetBackState()
+    PredictiveStyleBackHandler(
+        backState = predictiveBack,
+        enabled = state.isVisible,
+        onBack = state::dismiss,
+    )
 
     AnimatedVisibility(
         visible = state.isVisible,
@@ -120,7 +123,16 @@ fun BottomSheetPage(
                 targetOffsetY = { it },
                 animationSpec = tween(300),
             ),
-        modifier = modifier,
+        modifier =
+            modifier.graphicsLayer {
+                val p = predictiveBack.progress.value
+                if (p > 0f) {
+                    val scale = 1f - 0.06f * p
+                    scaleX = scale
+                    scaleY = scale
+                    alpha = 1f - 0.3f * p
+                }
+            },
     ) {
         Column(
             modifier =

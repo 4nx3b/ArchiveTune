@@ -140,6 +140,7 @@ val MiniPlayerBackgroundStyleKey = stringPreferencesKey("miniPlayerBackgroundSty
 val LiquidGlassEnabledKey = booleanPreferencesKey("liquidGlassEnabled")
 val LiquidGlassNavBarEnabledKey = booleanPreferencesKey("liquidGlassNavBarEnabled")
 val NavigationBarBitchordKey = booleanPreferencesKey("navigationBarBitchord")
+val SukisuLiquidGlassNavBarKey = booleanPreferencesKey("sukisuLiquidGlassNavBar")
 
 enum class LiquidGlassIntensity { SUBTLE, STANDARD, VIVID }
 
@@ -1076,7 +1077,6 @@ const val NAVIGATION_BAR_CORNER_RADIUS_DEFAULT = 28f
 
 val HideScrollbarKey = booleanPreferencesKey("hideScrollbar")
 
-val HideSearchChromeWhileScrollingKey = booleanPreferencesKey("hideSearchChromeWhileScrolling")
 
 val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")
 val PlayerCustomBlurKey = floatPreferencesKey("playerCustomBlur")
@@ -1104,6 +1104,10 @@ enum class OverscrollStyle {
 
 val OverscrollRubberBandTensionKey = floatPreferencesKey("overscrollRubberBandTension")
 val OverscrollBounceStiffnessKey = floatPreferencesKey("overscrollBounceStiffness")
+
+val BackAnimationStyleKey = stringPreferencesKey("backAnimationStyle")
+
+enum class BackAnimationStyle { DEFAULT, PREDICTIVE }
 
 val ShowLyricsPlayerControlsKey = booleanPreferencesKey("showLyricsPlayerControls")
 val AutoHideLyricsPlayerControlsKey = booleanPreferencesKey("autoHideLyricsPlayerControls")

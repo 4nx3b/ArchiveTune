@@ -199,8 +199,8 @@ fun SimpMusicPlayerContent(
     LaunchedEffect(mediaMetadata.id) { lyricsFullscreenOpen = false }
     BackHandler(enabled = lyricsFullscreenOpen) { lyricsFullscreenOpen = false }
 
-    LaunchedEffect(state.isCollapsed) {
-        if (state.isCollapsed && (queueOpen || lyricsFullscreenOpen)) {
+    LaunchedEffect(state.isExpandedOrExpanding) {
+        if (!state.isExpandedOrExpanding && (queueOpen || lyricsFullscreenOpen)) {
             queueOpen = false
             lyricsFullscreenOpen = false
         }

@@ -83,6 +83,7 @@ import moe.rukamori.archivetune.constants.NavigationBarCompactBehaviorKey
 import moe.rukamori.archivetune.constants.NavigationBarCornerRadiusKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
 import moe.rukamori.archivetune.constants.NavigationBarBitchordKey
+import moe.rukamori.archivetune.constants.SukisuLiquidGlassNavBarKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.LiquidGlassNavBarEnabledKey
 import moe.rukamori.archivetune.ui.component.NavigationBarGlassGlowKey
@@ -138,6 +139,8 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
 
     val (navigationBarBitchord, onNavigationBarBitchordChange) =
         rememberPreference(NavigationBarBitchordKey, defaultValue = false)
+    val (sukisuLiquidGlassNavBar, onSukisuLiquidGlassNavBarChange) =
+        rememberPreference(SukisuLiquidGlassNavBarKey, defaultValue = false)
 
     val onFrostedBlurChange: (Boolean) -> Unit = { checked ->
         onNavigationBarFrostedBlurChange(checked)
@@ -145,6 +148,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
             if (navigationBarTintFrostedBlur) onNavigationBarTintFrostedBlurChange(false)
             if (navigationBarBitchord) onNavigationBarBitchordChange(false)
             if (liquidGlassNavBarEnabled) onLiquidGlassNavBarEnabledChange(false)
+            if (sukisuLiquidGlassNavBar) onSukisuLiquidGlassNavBarChange(false)
         }
     }
     val onTintFrostedBlurChange: (Boolean) -> Unit = { checked ->
@@ -153,6 +157,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
             if (navigationBarFrostedBlur) onNavigationBarFrostedBlurChange(false)
             if (navigationBarBitchord) onNavigationBarBitchordChange(false)
             if (liquidGlassNavBarEnabled) onLiquidGlassNavBarEnabledChange(false)
+            if (sukisuLiquidGlassNavBar) onSukisuLiquidGlassNavBarChange(false)
         }
     }
     val onLiquidGlassNavBarChange: (Boolean) -> Unit = { checked ->
@@ -161,6 +166,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
             if (navigationBarFrostedBlur) onNavigationBarFrostedBlurChange(false)
             if (navigationBarTintFrostedBlur) onNavigationBarTintFrostedBlurChange(false)
             if (navigationBarBitchord) onNavigationBarBitchordChange(false)
+            if (sukisuLiquidGlassNavBar) onSukisuLiquidGlassNavBarChange(false)
         }
     }
     val onBitchordChange: (Boolean) -> Unit = { checked ->
@@ -168,6 +174,16 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
         if (checked) {
             if (navigationBarFrostedBlur) onNavigationBarFrostedBlurChange(false)
             if (navigationBarTintFrostedBlur) onNavigationBarTintFrostedBlurChange(false)
+            if (liquidGlassNavBarEnabled) onLiquidGlassNavBarEnabledChange(false)
+            if (sukisuLiquidGlassNavBar) onSukisuLiquidGlassNavBarChange(false)
+        }
+    }
+    val onSukisuNavBarChange: (Boolean) -> Unit = { checked ->
+        onSukisuLiquidGlassNavBarChange(checked)
+        if (checked) {
+            if (navigationBarFrostedBlur) onNavigationBarFrostedBlurChange(false)
+            if (navigationBarTintFrostedBlur) onNavigationBarTintFrostedBlurChange(false)
+            if (navigationBarBitchord) onNavigationBarBitchordChange(false)
             if (liquidGlassNavBarEnabled) onLiquidGlassNavBarEnabledChange(false)
         }
     }
@@ -329,6 +345,18 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         icon = { Icon(painterResource(R.drawable.grid_view), null) },
                         checked = navigationBarBitchord,
                         onCheckedChange = onBitchordChange,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("sukisu_liquid_glass_nav_bar"),
+                        title = { Text(stringResource(R.string.sukisu_liquid_glass_nav_bar)) },
+                        description = stringResource(R.string.sukisu_liquid_glass_nav_bar_desc),
+                        icon = { Icon(painterResource(R.drawable.blur_on), null) },
+                        checked = sukisuLiquidGlassNavBar,
+                        isEnabled = liquidGlassEnabled && supported,
+                        onCheckedChange = onSukisuNavBarChange,
                     )
                 }
 

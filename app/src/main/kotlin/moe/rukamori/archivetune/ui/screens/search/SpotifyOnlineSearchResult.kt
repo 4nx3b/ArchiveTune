@@ -307,7 +307,6 @@ internal fun SpotifyOnlineSearchResult(
             onBackLongClick = { navController.backToMain() },
             placeholder = stringResource(R.string.search_source_spotify),
             bottomPadding = playerAwareBottomPadding,
-            lazyListState = lazyListState,
             trailing = {
                 SearchSourcePicker(
                     currentScope = SearchSource.ONLINE,

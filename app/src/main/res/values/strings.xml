@@ -564,6 +564,8 @@
     <string name="navigation_bar_frosted_blur">Frosted navigation bar</string>
     <string name="navigation_bar_bitchord">Enable BitChord Navigation bar</string>
     <string name="navigation_bar_bitchord_desc">The BitChord frosted-pill navigation bar: travelling stretch-squash selection pill, icon bounce and drag-to-switch. Turns the other navigation bar styles off.</string>
+    <string name="sukisu_liquid_glass_nav_bar">SukiSU liquid glass navigation bar</string>
+    <string name="sukisu_liquid_glass_nav_bar_desc">The SukiSU-Ultra floating glass bar: refraction lens, specular highlight that follows device tilt, press spotlight and drag highlight with accent-tinted tabs. Turns the other navigation bar styles off.</string>
     <string name="navigation_bar_frosted_blur_desc">Apply a frosted blur behind the navigation bar</string>
     <string name="navigation_bar_frosted_blur_unsupported">Frosted navigation bar is not supported on Android versions below 12</string>
     <string name="hide_navigation_bar_labels">Hide labels in navigation bar</string>
@@ -1708,6 +1710,9 @@
     <string name="home_recently_played">Recently Played</string>
     <string name="navigation_bar_tint_frosted_blur">Tint navigation bar</string>
     <string name="navigation_bar_tint_frosted_blur_desc">Navigation bar tinted with the accent color — light pastel in light mode, deep tinted dark in dark mode — with always-readable labels (turns off the neutral frosted option)</string>
+    <string name="back_animation_style">Back animation style</string>
+    <string name="back_animation_style_default">Default</string>
+    <string name="back_animation_style_predictive">Predictive back gesture</string>
     <string name="navigation_bar_settings_title">Navigation bar</string>
     <string name="navigation_bar_settings_subtitle">Style, frosted blur, labels, dimensions</string>
     <string name="navigation_bar_compact_behavior">Mini player and bar behavior</string>
@@ -1735,8 +1740,6 @@
     <string name="navigation_bar_reset_dimensions">Reset dimensions to default</string>
     <string name="hide_scrollbar">Hide scrollbar</string>
     <string name="hide_scrollbar_desc">Hide scrollbars across the whole app</string>
-    <string name="hide_search_chrome_while_scrolling">Hide search bar and category pills while scrolling</string>
-    <string name="hide_search_chrome_while_scrolling_desc">Slide the search bar and filter pills away while results are scrolling, and bring them back when the list settles</string>
     <string name="fork_warning_unofficial">This is an unofficial Fork of Archivetune and is only made for my personal use. If you run into any issues i probably would never fix them unless it\'s serious</string>
     <string name="enable_tidal_lyrics">Enable Tidal lyrics</string>
     <string name="enable_deezer_lyrics">Enable Deezer lyrics</string>
@@ -2077,8 +2080,6 @@
     <string name="rec_not_for_me">Not for me</string>
     <string name="rec_dismiss">Dismiss suggestion</string>
     <string name="rec_exclude_artist">Don\'t suggest this artist</string>
-    <string name="rec_discovery_hint">Describe the music you want to find</string>
-    <string name="rec_discovery_title">Ask for music</string>
     <string name="rec_settings_title">Smart recommendations</string>
     <string name="rec_settings_description">Personalized rows are built on this device from your listening history, likes and playlists. Nothing is uploaded.</string>
     <string name="rec_recency_weight_title">Favor recent listening</string>

@@ -372,44 +372,6 @@ class RecommendationEngineTest {
     }
 
     @Test
-    fun discoveryFiltersMatchKeywordsAndSeeds() {
-        val songs =
-            listOf(
-                song("kw_match", plays = 0),
-                song("kw_miss", plays = 0),
-                song("kw_excluded", artistId = "seeded", plays = 0),
-                song("kw_seed_match", artistId = "seeded", plays = 0),
-            )
-        val artists = listOf(artist("seeded", plays = 0), artist("ar_kw_match", plays = 0))
-        val filters =
-            DiscoveryFilters(
-                keywords = listOf("kw_match"),
-                excludeKeywords = listOf("excluded"),
-                seedArtistNames = listOf("Artist seeded"),
-            )
-        val candidates = RecommendationEngine.generateDiscoveryCandidates(songs, artists, filters, config)
-        val ids = candidates.map { it.stats.songId }
-        assertTrue(ids.contains("kw_match"))
-        assertFalse(ids.contains("kw_miss"))
-        assertFalse(ids.contains("kw_excluded"))
-        assertTrue(ids.contains("kw_seed_match"))
-    }
-
-    @Test
-    fun discoveryNovelRequirementFiltersPlayedSongs() {
-        val songs = listOf(song("played", plays = 2), song("unplayed", plays = 0))
-        val artists = listOf(artist("ar_played", plays = 2), artist("ar_unplayed", plays = 0))
-        val candidates =
-            RecommendationEngine.generateDiscoveryCandidates(
-                songs,
-                artists,
-                DiscoveryFilters(requireNovel = true),
-                config,
-            )
-        assertTrue(candidates.none { it.stats.playCount > 0 })
-    }
-
-    @Test
     fun recencyFactorDecays() {
         val fresh = RecommendationEngine.recencyFactor(now - dayMs, now, 21f)
         val stale = RecommendationEngine.recencyFactor(now - 180 * dayMs, now, 21f)

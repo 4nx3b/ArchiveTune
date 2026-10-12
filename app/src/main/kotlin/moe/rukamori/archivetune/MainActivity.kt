@@ -1023,10 +1023,18 @@ class MainActivity : ComponentActivity() {
                 moe.rukamori.archivetune.constants.NavigationBarBitchordKey,
                 defaultValue = false,
             )
+            val sukisuLiquidGlassNavBar by rememberPreference(
+                moe.rukamori.archivetune.constants.SukisuLiquidGlassNavBarKey,
+                defaultValue = false,
+            )
 
             val liquidGlassTuning = rememberLiquidGlassTuning()
 
             val overscrollStyle by rememberEnumPreference(OverscrollStyleKey, defaultValue = OverscrollStyle.IOS_RUBBER_BAND)
+            val backAnimationStylePref by rememberEnumPreference(
+                moe.rukamori.archivetune.constants.BackAnimationStyleKey,
+                defaultValue = moe.rukamori.archivetune.constants.BackAnimationStyle.DEFAULT,
+            )
             val overscrollTension by rememberPreference(OverscrollRubberBandTensionKey, defaultValue = 0.55f)
             val overscrollStiffness by rememberPreference(OverscrollBounceStiffnessKey, defaultValue = 247f)
             val noOverscrollFactory = remember { NoOverscrollFactory() }
@@ -2275,6 +2283,7 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop provides menuGlassBackdrop,
                         moe.rukamori.archivetune.ui.component.LocalLiquidGlassTuning provides liquidGlassTuning,
                         moe.rukamori.archivetune.ui.component.LocalBottomUiCompactFraction provides bottomUiCompactFractionState,
+                        moe.rukamori.archivetune.ui.component.LocalBackAnimationStyle provides backAnimationStylePref,
                         moe.rukamori.archivetune.ui.player.LocalRootOverlayActive provides rootOverlayActive,
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
@@ -3232,6 +3241,30 @@ class MainActivity : ComponentActivity() {
                                                             ),
                                                     frostedBackdrop = navBarFrostedBackdrop,
                                                     liquidGlassBackdrop = liquidGlassBackdrop,
+                                                )
+                                            } else if (
+                                                sukisuLiquidGlassNavBar &&
+                                                liquidGlassEnabled &&
+                                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                                            ) {
+                                                moe.rukamori.archivetune.ui.component.sukisu.SukisuLiquidNavBar(
+                                                    items = navigationItems,
+                                                    backdrop = liquidGlassBackdrop,
+                                                    modifier =
+                                                        Modifier
+                                                            .align(Alignment.BottomCenter)
+                                                            .padding(
+                                                                start = 28.dp,
+                                                                end = 28.dp,
+                                                                bottom = bottomInset + floatingBarsBottomPadding,
+                                                            ),
+                                                    isSelected = { screen ->
+                                                        navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } ==
+                                                            true
+                                                    },
+                                                    onItemClick = { screen, isSelected ->
+                                                        handlePrimaryNavigationClick(screen, isSelected)
+                                                    },
                                                 )
                                             } else {
                                             FloatingNavigationToolbar(
