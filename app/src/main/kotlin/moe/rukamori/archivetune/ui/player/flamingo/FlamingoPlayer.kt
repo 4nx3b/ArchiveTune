@@ -9,9 +9,11 @@
  *
  * Layout: album page (artwork 0.595 of height + title row + action buttons),
  * in-page state machine Album / Lyric / PlayingList with a shared-element
- * artwork morph into the compact PlayingBar header, cross-fade page transitions
- * (300ms), queue overlay fade at 114dp, auto-hiding controls (2500ms on the
- * lyrics page), 19.5/18.5sp title typography, and the floating-light background.
+ * artwork morph into the compact PlayingBar header (non-bouncy spring,
+ * 600ms cross-fades, canvas rendered inside the shared bounds like the
+ * upstream AppleMusicPlayer), queue overlay fade at 114dp, auto-hiding
+ * controls (2500ms on the lyrics page), 19.5/18.5sp title typography, and
+ * the floating-light background.
  */
 
 package moe.rukamori.archivetune.ui.player.flamingo
@@ -164,16 +166,12 @@ import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.ui.player.LocalLyricsScrollListener
 import java.time.LocalDateTime
-import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.util.lerp
 import androidx.compose.ui.draw.drawWithContent
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
@@ -247,22 +245,13 @@ private const val ShareAlbumKey = "flamingoAlbum"
 private val QueueRowHeight = 64.dp
 private val QueueDraggingItemShape = RoundedCornerShape(0.dp)
 
-private const val FlamingoSharpStageFadeStart = 0.50f
+private const val FlamingoSharpStageFadeStart = 0.62f
 private const val FlamingoCanvasBackdropUpscale = 6f
 private const val FlamingoCanvasBackdropOverscan = 1.10f
 private val FlamingoCanvasBackdropBlurRadius = 288.dp
 private const val FlamingoCanvasBackdropMaxVideoEdgePx = 480
 
 private const val FlamingoCanvasPageFadeMs = 650
-
-private const val FlamingoCanvasFlightMs = 600
-private val FlamingoCanvasFlightCornerDp = 5.dp
-private const val FlamingoCanvasFlightAlphaInMs = 300
-
-private fun canvasFlightCornerT(progress: Float): Float =
-    ((progress - 0.75f) / 0.25f).coerceIn(0f, 1f)
-
-private const val FlamingoCanvasFlightHandoffMs = 280
 
 private val FlamingoCanvasScrimBrush =
     Brush.verticalGradient(
@@ -426,15 +415,10 @@ fun FlamingoPlayerContent(
         val canvasDensity = LocalDensity.current
         var titleTopInRootY by remember { mutableStateOf<Float?>(null) }
         var backgroundTopY by remember { mutableStateOf(0f) }
-        var backgroundLeftX by remember { mutableStateOf(0f) }
-        var backgroundSizePx by remember { mutableStateOf(IntSize.Zero) }
         val sharpStageHeight: Dp? =
             titleTopInRootY?.let { top ->
                 with(canvasDensity) { (top - backgroundTopY).coerceAtLeast(0f).toDp() }
             }
-        val sharpStageHeightPx: Float =
-            titleTopInRootY?.let { top -> (top - backgroundTopY).coerceAtLeast(0f) }
-                ?: backgroundSizePx.height * 0.55f
 
         var controlsOverlayHeightPx by remember { mutableStateOf(0f) }
 
@@ -509,46 +493,6 @@ fun FlamingoPlayerContent(
         val proceduralStageActive =
             !canvasVisualActive && !videoShowing && !landscape && proceduralArtworkEnabled
         val stageVisualActive = (canvasVisualActive || proceduralStageActive) && !landscape
-
-        val canvasStageOnAlbum = !landscape && nowPage == FlamingoPage.Album
-        var canvasStageSurfaceVisible by remember { mutableStateOf(true) }
-        val canvasFlightAnim = remember { Animatable(0f) }
-        val canvasStageAlphaAnim = remember { Animatable(1f) }
-        var canvasFlightSlotRect by remember { mutableStateOf<Rect?>(null) }
-
-        LaunchedEffect(mediaMetadata.id, stageVisualActive) {
-            if (stageVisualActive && nowPage == FlamingoPage.Album) {
-                canvasFlightAnim.snapTo(0f)
-                canvasStageAlphaAnim.snapTo(1f)
-            }
-        }
-
-        LaunchedEffect(canvasStageOnAlbum) {
-            if (canvasStageOnAlbum) {
-                canvasStageSurfaceVisible = true
-                launch {
-                    canvasStageAlphaAnim.animateTo(
-                        1f,
-                        tween(durationMillis = FlamingoCanvasFlightAlphaInMs, easing = FastOutSlowInEasing),
-                    )
-                }
-                canvasFlightAnim.animateTo(
-                    0f,
-                    tween(durationMillis = FlamingoCanvasFlightMs, easing = FastOutSlowInEasing),
-                )
-            } else {
-                canvasFlightAnim.animateTo(
-                    1f,
-                    tween(durationMillis = FlamingoCanvasFlightMs, easing = FastOutSlowInEasing),
-                )
-                canvasStageAlphaAnim.animateTo(
-                    0f,
-                    tween(durationMillis = FlamingoCanvasFlightHandoffMs, easing = FastOutSlowInEasing),
-                )
-                delay(FlamingoCanvasFlightHandoffMs.toLong())
-                canvasStageSurfaceVisible = false
-            }
-        }
 
         BackHandler(enabled = nowPage != FlamingoPage.Album) {
             nowPage = FlamingoPage.Album
@@ -789,8 +733,6 @@ fun FlamingoPlayerContent(
                                 .fillMaxSize()
                                 .onGloballyPositioned {
                                     backgroundTopY = it.positionInRoot().y
-                                    backgroundLeftX = it.positionInRoot().x
-                                    backgroundSizePx = it.size
                                 },
                         ) {
                             FlamingoFloatingLight(
@@ -859,140 +801,6 @@ fun FlamingoPlayerContent(
                                             .background(FlamingoCanvasScrimBrush),
                                 )
 
-                            }
-
-                            if (!landscape && !videoShowing && stageVisualActive) {
-                                FlamingoCanvasStage(
-                                    canvasPrimaryUrl = canvasPrimaryUrl,
-                                    canvasFallbackUrl = canvasFallbackUrl,
-                                    isPlaying = isPlayingStatusLambda.value && canvasSurfacesPlaying,
-                                    onFrameAvailable = { canvasRendering = it },
-                                    stageHeight = sharpStageHeight,
-                                    fadeStrength = { (1f - canvasFlightAnim.value * 2.5f).coerceIn(0f, 1f) },
-                                    staticArtworkUrl = artworkUrl,
-                                    surfacesAlpha = canvasStageAlphaAnim.value,
-                                    surfacesVisible = canvasStageSurfaceVisible,
-                                    loopSyncLeader = canvasLoopSync,
-                                    refreshEpoch = orientationRefreshEpoch,
-                                    modifier = canvasFlightSlotRect?.let { slot ->
-                                        Modifier
-                                            .offset {
-                                                val eased = canvasFlightAnim.value
-                                                IntOffset(
-                                                    lerp(0f, slot.left - backgroundLeftX, eased).roundToInt(),
-                                                    lerp(0f, slot.top - backgroundTopY, eased).roundToInt(),
-                                                )
-                                            }
-                                            .layout { measurable, _ ->
-                                                val eased = canvasFlightAnim.value
-                                                val w = lerp(
-                                                    backgroundSizePx.width.toFloat(),
-                                                    slot.width,
-                                                    eased,
-                                                )
-                                                val h = lerp(sharpStageHeightPx, slot.height, eased)
-                                                val placeable =
-                                                    measurable.measure(
-                                                        Constraints.fixed(
-                                                            w.roundToInt().coerceAtLeast(1),
-                                                            h.roundToInt().coerceAtLeast(1),
-                                                        ),
-                                                    )
-                                                layout(placeable.width, placeable.height) {
-                                                    placeable.place(0, 0)
-                                                }
-                                            }
-                                            .graphicsLayer {
-                                                shape = RoundedCornerShape(
-                                                    FlamingoCanvasFlightCornerDp * canvasFlightCornerT(canvasFlightAnim.value),
-                                                )
-                                                clip = true
-                                            }
-                                    } ?: Modifier,
-                                    proceduralContent = if (canvasVisualActive) {
-                                        null
-                                    } else {
-                                        {
-                                            FlamingoProceduralStage(
-                                                artworkUrl = artworkUrl,
-                                                isPlaying = isPlayingStatusLambda.value,
-                                                modifier = Modifier.matchParentSize(),
-                                            )
-                                        }
-                                    },
-                                )
-
-                                val canvasFlightProgress = canvasFlightAnim.value
-                                val canvasFlightOverlayAlpha = 1f - canvasStageAlphaAnim.value
-                                if ((canvasFlightProgress > 0.005f || canvasFlightOverlayAlpha > 0.005f) &&
-                                    canvasFlightSlotRect != null
-                                ) {
-                                    AsyncImage(
-                                        model = artworkUrl,
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Crop,
-                                        modifier =
-                                            Modifier
-                                            .offset {
-                                                val slot = canvasFlightSlotRect
-                                                val eased = canvasFlightAnim.value
-                                                val x =
-                                                    if (slot != null) {
-                                                        lerp(0f, slot.left - backgroundLeftX, eased)
-                                                    } else {
-                                                        0f
-                                                    }
-                                                val y =
-                                                    if (slot != null) {
-                                                        lerp(0f, slot.top - backgroundTopY, eased)
-                                                    } else {
-                                                        0f
-                                                    }
-                                                IntOffset(x.roundToInt(), y.roundToInt())
-                                            }
-                                            .layout { measurable, _ ->
-                                                val slot = canvasFlightSlotRect
-                                                val eased = canvasFlightAnim.value
-                                                val w =
-                                                    if (slot != null) {
-                                                        lerp(
-                                                            backgroundSizePx.width.toFloat(),
-                                                            slot.width,
-                                                            eased,
-                                                        )
-                                                    } else {
-                                                        backgroundSizePx.width.toFloat()
-                                                    }
-                                                val h =
-                                                    if (slot != null) {
-                                                        lerp(
-                                                            sharpStageHeightPx,
-                                                            slot.height,
-                                                            eased,
-                                                        )
-                                                    } else {
-                                                        sharpStageHeightPx
-                                                    }
-                                                val placeable =
-                                                    measurable.measure(
-                                                        Constraints.fixed(
-                                                            w.roundToInt().coerceAtLeast(1),
-                                                            h.roundToInt().coerceAtLeast(1),
-                                                        ),
-                                                    )
-                                                layout(placeable.width, placeable.height) {
-                                                    placeable.place(0, 0)
-                                                }
-                                            }
-                                            .graphicsLayer {
-                                                alpha = canvasFlightOverlayAlpha
-                                                shape = RoundedCornerShape(
-                                                    FlamingoCanvasFlightCornerDp * canvasFlightCornerT(canvasFlightAnim.value),
-                                                )
-                                                clip = true
-                                            },
-                                    )
-                                }
                             }
                         }
                     }
@@ -1311,12 +1119,12 @@ fun FlamingoPlayerContent(
 
                                     fadeIn(
                                         tween(
-                                            durationMillis = 420,
+                                            durationMillis = 600,
                                             easing = FastOutSlowInEasing,
                                         ),
                                     ) togetherWith fadeOut(
                                         tween(
-                                            durationMillis = 240,
+                                            durationMillis = 600,
                                             easing = FastOutSlowInEasing,
                                         ),
                                     )
@@ -1326,42 +1134,59 @@ fun FlamingoPlayerContent(
                             ) { page ->
                                 val pageBoundsScope = this@AnimatedContent
 
-                                val albumOverlayShape = FlamingoAlbumOverlayShape
                                 val albumSharedBounds =
-                                    if (stageVisualActive) {
-                                        Modifier
-                                    } else {
-                                        Modifier.sharedBounds(
-                                            sharedContentState = rememberSharedContentState(key = ShareAlbumKey),
-                                            animatedVisibilityScope = pageBoundsScope,
-                                            clipInOverlayDuringTransition = OverlayClip(albumOverlayShape),
-                                            boundsTransform = BoundsTransform { _, _ ->
-                                                spring(
-                                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                                    stiffness = Spring.StiffnessMediumLow,
-                                                )
-                                            },
-                                        )
-                                    }
+                                    Modifier.sharedBounds(
+                                        sharedContentState = rememberSharedContentState(key = ShareAlbumKey),
+                                        animatedVisibilityScope = pageBoundsScope,
+                                        clipInOverlayDuringTransition = OverlayClip(FlamingoAlbumOverlayShape),
+                                        boundsTransform = BoundsTransform { _, _ ->
+                                            spring(
+                                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                                stiffness = Spring.StiffnessMediumLow,
+                                            )
+                                        },
+                                    )
                                 val barSharedBounds =
-                                    if (stageVisualActive) {
-                                        Modifier
-                                    } else {
-                                        Modifier.sharedBounds(
-                                            sharedContentState = rememberSharedContentState(key = ShareAlbumKey),
-                                            animatedVisibilityScope = pageBoundsScope,
-                                            clipInOverlayDuringTransition = OverlayClip(FlamingoAlbumOverlayShape),
-                                            boundsTransform = BoundsTransform { _, _ ->
-                                                spring(
-                                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                                    stiffness = Spring.StiffnessMediumLow,
-                                                )
-                                            },
-                                        )
-                                    }
+                                    Modifier.sharedBounds(
+                                        sharedContentState = rememberSharedContentState(key = ShareAlbumKey),
+                                        animatedVisibilityScope = pageBoundsScope,
+                                        clipInOverlayDuringTransition = OverlayClip(FlamingoAlbumOverlayShape),
+                                        boundsTransform = BoundsTransform { _, _ ->
+                                            spring(
+                                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                                stiffness = Spring.StiffnessMediumLow,
+                                            )
+                                        },
+                                    )
                                 when (page) {
                                     FlamingoPage.Album ->
                                         Box(Modifier.fillMaxSize()) {
+                                            if (stageVisualActive) {
+                                                FlamingoCanvasStage(
+                                                    canvasPrimaryUrl = canvasPrimaryUrl,
+                                                    canvasFallbackUrl = canvasFallbackUrl,
+                                                    isPlaying = isPlayingStatusLambda.value,
+                                                    onFrameAvailable = { canvasRendering = it },
+                                                    stageHeight = sharpStageHeight,
+                                                    staticArtworkUrl = artworkUrl,
+                                                    loopSyncLeader = canvasLoopSync,
+                                                    refreshEpoch = orientationRefreshEpoch,
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .then(albumSharedBounds),
+                                                    proceduralContent = if (canvasVisualActive) {
+                                                        null
+                                                    } else {
+                                                        {
+                                                            FlamingoProceduralStage(
+                                                                artworkUrl = artworkUrl,
+                                                                isPlaying = isPlayingStatusLambda.value,
+                                                                modifier = Modifier.matchParentSize(),
+                                                            )
+                                                        }
+                                                    },
+                                                )
+                                            }
                                             Column(
                                                 Modifier
                                                     .fillMaxSize()
@@ -1472,7 +1297,6 @@ fun FlamingoPlayerContent(
                                                     onMorePositioned = { moreIconBounds = it },
                                                     onArtistClick = { artistPickerOpen = true },
                                                     playerMenuOpen = showAnchoredLyricsMenu,
-                                                    onArtworkPositioned = { canvasFlightSlotRect = it },
                                                 )
                                             }
                                         }
@@ -1499,7 +1323,6 @@ fun FlamingoPlayerContent(
                                                     onMorePositioned = { moreIconBounds = it },
                                                     onArtistClick = { artistPickerOpen = true },
                                                     playerMenuOpen = showAnchoredLyricsMenu,
-                                                    onArtworkPositioned = { canvasFlightSlotRect = it },
                                                 )
                                             }
                                         }
@@ -2420,9 +2243,6 @@ private fun FlamingoCanvasStage(
     staticArtworkUrl: String?,
     loopSyncLeader: CanvasLoopSync? = null,
     refreshEpoch: Int = 0,
-    fadeStrength: () -> Float = { 1f },
-    surfacesAlpha: Float = 1f,
-    surfacesVisible: Boolean = true,
     modifier: Modifier = Modifier,
     proceduralContent: (@Composable () -> Unit)? = null,
 ) {
@@ -2456,14 +2276,12 @@ private fun FlamingoCanvasStage(
             )
             .graphicsLayer {
                 compositingStrategy = CompositingStrategy.Offscreen
-                alpha = surfacesAlpha
             }
             .drawWithContent {
                 drawContent()
                 drawRect(
                     brush = FlamingoSharpStageFadeBrush,
                     blendMode = BlendMode.DstIn,
-                    alpha = fadeStrength(),
                 )
             },
     ) {
@@ -2499,7 +2317,6 @@ private fun FlamingoCanvasStage(
                 primaryUrl = canvasPrimaryUrl,
                 fallbackUrl = canvasFallbackUrl,
                 isPlaying = isPlaying,
-                visible = surfacesVisible,
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                 loopSyncLeader = loopSyncLeader,
                 onPlaybackAvailabilityChange = { available ->
@@ -3664,7 +3481,6 @@ private fun FlamingoPlayingBar(
     onMorePositioned: (Rect) -> Unit,
     onArtistClick: () -> Unit = {},
     playerMenuOpen: Boolean = false,
-    onArtworkPositioned: ((Rect) -> Unit)? = null,
 ) = FlamingoWrapper {
     val context = LocalContext.current
     Row(
@@ -3681,9 +3497,6 @@ private fun FlamingoPlayingBar(
             contentDescription = null,
             modifier = modifier
                 .size(69.dp)
-                .onGloballyPositioned { coords ->
-                    onArtworkPositioned?.invoke(coords.boundsInRoot())
-                }
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
