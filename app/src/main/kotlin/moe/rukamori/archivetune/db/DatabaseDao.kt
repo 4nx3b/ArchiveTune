@@ -48,6 +48,8 @@ import moe.rukamori.archivetune.db.entities.PlayCountEntity
 import moe.rukamori.archivetune.db.entities.PlaylistSong
 import moe.rukamori.archivetune.db.entities.PlaylistSongMap
 import moe.rukamori.archivetune.db.entities.PlaylistTagMap
+import moe.rukamori.archivetune.db.entities.RecFeedbackEntity
+import moe.rukamori.archivetune.db.entities.RecPlaybackSignalEntity
 import moe.rukamori.archivetune.db.entities.RelatedSongMap
 import moe.rukamori.archivetune.db.entities.SearchHistory
 import moe.rukamori.archivetune.db.entities.SetVideoIdEntity
@@ -2241,7 +2243,7 @@ interface DatabaseDao {
     }
 
     @Insert
-    suspend fun insertRecPlaybackSignal(signal: entities.RecPlaybackSignalEntity)
+    suspend fun insertRecPlaybackSignal(signal: RecPlaybackSignalEntity)
 
     @Query("DELETE FROM rec_playback_signal WHERE startedAtMs < :beforeMs")
     suspend fun trimRecPlaybackSignals(beforeMs: Long)
@@ -2250,10 +2252,10 @@ interface DatabaseDao {
     suspend fun clearRecPlaybackSignals()
 
     @Query("SELECT * FROM rec_playback_signal WHERE startedAtMs >= :fromMs ORDER BY startedAtMs DESC")
-    suspend fun recPlaybackSignalsSince(fromMs: Long): List<entities.RecPlaybackSignalEntity>
+    suspend fun recPlaybackSignalsSince(fromMs: Long): List<RecPlaybackSignalEntity>
 
     @Insert
-    suspend fun insertRecFeedback(feedback: entities.RecFeedbackEntity)
+    suspend fun insertRecFeedback(feedback: RecFeedbackEntity)
 
     @Query("DELETE FROM rec_feedback WHERE targetSongId = :songId AND kind = :kind")
     suspend fun removeRecFeedbackForSong(
@@ -2271,7 +2273,7 @@ interface DatabaseDao {
     suspend fun clearRecFeedback()
 
     @Query("SELECT * FROM rec_feedback ORDER BY createdAtMs DESC")
-    suspend fun allRecFeedback(): List<entities.RecFeedbackEntity>
+    suspend fun allRecFeedback(): List<RecFeedbackEntity>
 
     @Query(
         """
@@ -2285,13 +2287,6 @@ interface DatabaseDao {
     )
     suspend fun recEventAggregates(): List<RecEventAggregate>
 
-    data class RecEventAggregate(
-        val songId: String,
-        val playCount: Int,
-        val totalListenedMs: Long,
-        val lastPlayedAtMs: Long,
-    )
-
     @Query(
         """
         SELECT songId, COUNT(1) AS playlistAddCount
@@ -2300,9 +2295,16 @@ interface DatabaseDao {
         """,
     )
     suspend fun recPlaylistAddCounts(): List<RecPlaylistAddAggregate>
-
-    data class RecPlaylistAddAggregate(
-        val songId: String,
-        val playlistAddCount: Int,
-    )
 }
+
+data class RecEventAggregate(
+    val songId: String,
+    val playCount: Int,
+    val totalListenedMs: Long,
+    val lastPlayedAtMs: Long,
+)
+
+data class RecPlaylistAddAggregate(
+    val songId: String,
+    val playlistAddCount: Int,
+)
