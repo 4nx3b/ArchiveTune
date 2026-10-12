@@ -393,7 +393,7 @@ private suspend fun resolveSoundCloudTrackToMetadata(
             ),
         ),
         duration = soundCloudDurationSec ?: (best.duration ?: -1),
-        thumbnailUrl = track.artworkUrl ?: best.thumbnailUrl,
+        thumbnailUrl = track.artworkUrl ?: best.thumbnail,
         album = null,
         preferredSource = AudioSourceType.SOUNDCLOUD.name,
         soundCloudUrl = track.permalinkUrl,
