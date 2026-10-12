@@ -10,6 +10,7 @@
 package moe.rukamori.archivetune.ui.screens.search
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
