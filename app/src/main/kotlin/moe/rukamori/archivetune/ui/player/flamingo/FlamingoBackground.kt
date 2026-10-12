@@ -75,6 +75,7 @@ object FlamingoPage {
 private const val FlamingoKenBurnsMinRectFactor = 0.75f
 private const val FlamingoKenBurnsMinTransitionMs = 3_500f
 private const val FlamingoKenBurnsMaxTransitionMs = 11_000f
+private const val FlamingoKenBurnsWriteMinIntervalMs = 15L
 
 @Composable
 fun FlamingoFloatingLight(
@@ -83,6 +84,7 @@ fun FlamingoFloatingLight(
     isPlaying: () -> Boolean,
     nowPage: () -> String,
     backgroundEffect: Boolean,
+    motionSuspended: () -> Boolean = { false },
 ) {
     val context = LocalContext.current
 
@@ -143,6 +145,7 @@ fun FlamingoFloatingLight(
                 FlamingoKenBurnsImage(
                     bitmap = bitmap,
                     isPlaying = isPlaying,
+                    motionSuspended = motionSuspended,
                     modifier = modifier.then(baseBlackBackground),
                 )
             } else {
@@ -268,6 +271,7 @@ private fun flamingoKenBurnsRandomRect(
 private fun FlamingoKenBurnsImage(
     bitmap: Bitmap,
     isPlaying: () -> Boolean,
+    motionSuspended: () -> Boolean = { false },
     modifier: Modifier = Modifier,
 ) {
     val image = remember(bitmap) { bitmap.asImageBitmap() }
@@ -304,10 +308,12 @@ private fun FlamingoKenBurnsImage(
             kenBurns.elapsedMs = 0f
             currentRect = kenBurns.transition?.interpolate(0f)
             var lastFrameMs = 0L
+            var lastWriteMs = 0L
             while (true) {
-                if (!isPlaying()) {
-                    snapshotFlow { isPlaying() }.first { it }
+                if (!isPlaying() || motionSuspended()) {
+                    snapshotFlow { isPlaying() && !motionSuspended() }.first { it }
                     lastFrameMs = 0L
+                    lastWriteMs = 0L
                     continue
                 }
                 withFrameNanos { nanos ->
@@ -316,6 +322,7 @@ private fun FlamingoKenBurnsImage(
                         kenBurns.elapsedMs += nowMs - lastFrameMs
                         val transition = kenBurns.transition
                         if (transition != null) {
+                            var transitionRolledOver = false
                             if (kenBurns.elapsedMs >= transition.durationMs) {
                                 kenBurns.transition = FlamingoKenBurnsTransition(
                                     src = transition.dst,
@@ -329,8 +336,15 @@ private fun FlamingoKenBurnsImage(
                                     durationMs = flamingoKenBurnsDurationMs(random),
                                 )
                                 kenBurns.elapsedMs = 0f
+                                transitionRolledOver = true
                             }
-                            currentRect = kenBurns.transition?.interpolate(kenBurns.elapsedMs)
+                            if (transitionRolledOver ||
+                                lastWriteMs == 0L ||
+                                nowMs - lastWriteMs >= FlamingoKenBurnsWriteMinIntervalMs
+                            ) {
+                                currentRect = kenBurns.transition?.interpolate(kenBurns.elapsedMs)
+                                lastWriteMs = nowMs
+                            }
                         }
                     }
                     lastFrameMs = nowMs

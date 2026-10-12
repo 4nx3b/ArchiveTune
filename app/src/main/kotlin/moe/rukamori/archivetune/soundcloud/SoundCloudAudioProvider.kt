@@ -714,6 +714,8 @@ object SoundCloudAudioProvider {
         val wantedArtists = query.artists.map { it.normalized() }.filter { it.isNotBlank() }
         val wantedAlbum = query.album.normalized()
         val wantedDescriptorText = listOf(wantedTitle, wantedAlbum).joinToString(" ")
+        val wantedRawDescriptorText =
+            listOf(query.title, query.album.orEmpty(), query.artists.joinToString(" ")).joinToString(" ")
         val wantedDurationMs = query.durationMs?.takeIf { it > 0L }
         val wantedTitleTokens = significantTokens(wantedTitle)
 
@@ -730,7 +732,14 @@ object SoundCloudAudioProvider {
                 .map { it.normalized() }
                 .filter { it.isNotBlank() }
             val candidateDescriptorText = listOf(candidateTitle, candidateArtists.joinToString(" ")).joinToString(" ")
+            val candidateRawDescriptorText =
+                listOf(
+                    track.title,
+                    track.artist,
+                    track.artistNames.joinToString(" "),
+                ).joinToString(" ")
 
+            if (!allowVersionMismatch && hasVersionMismatch(wantedRawDescriptorText, candidateRawDescriptorText)) continue
             if (!allowVersionMismatch && hasVersionMismatch(wantedDescriptorText, candidateDescriptorText)) continue
 
             val candidateTokens = significantTokens(candidateTitle)
@@ -1003,9 +1012,16 @@ object SoundCloudAudioProvider {
             "remastered",
             "sped up",
             "slowed",
+            "bootleg",
+            "mix",
+            "cover",
+            "vip",
+            "extended",
         )
-        val queryHasVersion = versionTokens.any { query.contains(it) }
-        val candidateHasVersion = versionTokens.any { candidateTitle.contains(it) }
+        val queryLower = query.lowercase(Locale.US)
+        val candidateLower = candidateTitle.lowercase(Locale.US)
+        val queryHasVersion = versionTokens.any { queryLower.contains(it) }
+        val candidateHasVersion = versionTokens.any { candidateLower.contains(it) }
         return candidateHasVersion && !queryHasVersion
     }
 
