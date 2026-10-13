@@ -194,7 +194,6 @@ private const val SMOOTH_PLAYBACK_DRIFT_CORRECTION = 0.55f
 
 private const val LYRIC_FOCUS_SCROLL_DURATION_MS = 280
 
-/** [scrollLyricIntoFocus] target sentinels: user takeover, and index-not-yet-published. */
 private const val LYRIC_FOCUS_TARGET_MANUAL = -2
 private const val LYRIC_FOCUS_TARGET_PENDING = -1
 
@@ -793,12 +792,6 @@ fun LyricsEnhanced(
                     return@collectLatest
                 }
                 if (target == LYRIC_FOCUS_TARGET_PENDING) {
-                    // The position loop has not published an index yet — keep the pre-focus
-                    // content hidden and DO NOT burn the first focus: the old behaviour cleared
-                    // awaitingFirstFocus on this emission, which faded the list in at its initial
-                    // scroll position and only then animated to the active line (the "first active
-                    // line cut off on open" report). The LYRIC_FIRST_FOCUS_TIMEOUT_MS guard still
-                    // releases the content if no line ever becomes active (e.g. long intro).
                     return@collectLatest
                 }
 

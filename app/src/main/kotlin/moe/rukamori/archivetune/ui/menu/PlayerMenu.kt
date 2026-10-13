@@ -148,6 +148,8 @@ import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.audiosource.SongSourceOverride
 import moe.rukamori.archivetune.audiosource.SongCanvasDisabled
 import moe.rukamori.archivetune.constants.AudioSourceOrderKey
+import moe.rukamori.archivetune.constants.TidalAudioQuality
+import moe.rukamori.archivetune.constants.TidalAudioQualityKey
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.SongSourceOverrideKey
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -1553,6 +1555,7 @@ private fun sourceQualityDetail(
     source: AudioSourceType,
     durationMs: Long?,
     deezerLossless: Boolean,
+    tidalQuality: TidalAudioQuality = TidalAudioQuality.FLAC,
 ): String? {
     val khz: String?
     val depth: String?
@@ -1562,9 +1565,18 @@ private fun sourceQualityDetail(
         AudioSourceType.YOUTUBE -> {
             khz = null; depth = null; nominalKbps = 256; upTo = false
         }
-        AudioSourceType.TIDAL -> {
-            khz = "44.1 kHz"; depth = "16-bit"; nominalKbps = 1000; upTo = false
-        }
+        AudioSourceType.TIDAL ->
+            when (tidalQuality) {
+                TidalAudioQuality.AAC_320 -> {
+                    khz = null; depth = null; nominalKbps = 320; upTo = false
+                }
+                TidalAudioQuality.FLAC -> {
+                    khz = "44.1 kHz"; depth = "16-bit"; nominalKbps = 1000; upTo = false
+                }
+                TidalAudioQuality.HI_RES_LOSSLESS -> {
+                    khz = "192 kHz"; depth = "24-bit"; nominalKbps = 2500; upTo = true
+                }
+            }
         AudioSourceType.QOBUZ -> {
             khz = "192 kHz"; depth = "24-bit"; nominalKbps = 2500; upTo = true
         }
@@ -1857,6 +1869,11 @@ private fun SongSourceDialog(
         }
 
     val (sourceOrderRaw, _) = rememberPreference(AudioSourceOrderKey, "")
+    val (tidalQualityRaw, _) = rememberPreference(TidalAudioQualityKey, TidalAudioQuality.FLAC.name)
+    val tidalQualityPref =
+        remember(tidalQualityRaw) {
+            runCatching { TidalAudioQuality.valueOf(tidalQualityRaw) }.getOrDefault(TidalAudioQuality.FLAC)
+        }
     val sourceOrder =
         remember(sourceOrderRaw) {
             AudioSourceConfig.parseOrder(sourceOrderRaw.ifBlank { null })
@@ -1958,7 +1975,7 @@ private fun SongSourceDialog(
     }
 
     val results =
-        remember(resultsBySource, sourceFilter, searchableSources) {
+        remember(resultsBySource, sourceFilter, searchableSources, tidalQualityPref) {
             searchableSources
                 .flatMap { source -> resultsBySource[source].orEmpty() }
                 .filter { sourceFilter == null || it.source == sourceFilter }
@@ -1968,6 +1985,7 @@ private fun SongSourceDialog(
                             source = result.source,
                             durationMs = result.durationMs,
                             deezerLossless = deezerLabel == losslessLabel,
+                            tidalQuality = tidalQualityPref,
                         ),
                     )
                 }

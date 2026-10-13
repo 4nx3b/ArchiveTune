@@ -41,39 +41,14 @@ import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import timber.log.Timber
 
-/**
- * Service-side counterpart of the Compose video pipeline (ui/player/VideoArtworkPlayer.kt).
- *
- * The Compose pipeline only reacts to a media change through recomposition — and the Recomposer
- * is frame-parked while the app is in the background, so when the queue advances from an
- * audio-only song to a music video with the app backgrounded, the UI-side video state kept its
- * stale videoId: the video never loaded, the audio hold never engaged, and the first foreground
- * recomposition started the whole load then (pause, long loading indicator, late resume).
- *
- * This coordinator closes that hole: on every [Player.onMediaItemTransition] that lands on a
- * music video while the UI is backgrounded it (1) pauses the main audio (the hold — audio must
- * not start before the video is loaded), (2) resolves the video stream through the SAME
- * resolution chain and info cache the UI player uses, (3) prepares a surface-less headless
- * ExoPlayer so the stream is validated and its first segments land in the shared video cache,
- * and (4) releases the hold as soon as the preload reaches READY (or a timeout/failure gives up
- * and lets the audio run).
- *
- * When the UI comes back to the foreground, the Compose pipeline's LaunchedEffect(videoId)
- * claims the hold via [claimUiTakeover]: the preloader releases WITHOUT resuming and hands over
- * its wasPlaying flag, so the UI's own first-frame hold seamlessly continues from the same
- * paused state — no double resume, no audio blip, and the UI player re-resolves from the warm
- * info cache.
- */
+
 object VideoBackgroundPreloader {
     private const val TAG = "VideoPreload"
 
-    /** Total wall-clock budget for resolution + buffering before the hold gives up. */
     private const val HOLD_TIMEOUT_MS = 12_000L
 
     private const val POLL_INTERVAL_MS = 250L
 
-    /** Grace window after foregrounding for the Compose pipeline to claim the hold before the
-     * preloader resumes the audio itself (so a leaked pause can never outlive the load). */
     private const val UI_CLAIM_GRACE_MS = 3_000L
 
     private const val VIDEO_MIN_BUFFER_MS = 15_000
@@ -106,12 +81,7 @@ object VideoBackgroundPreloader {
         this.isUiForeground = isUiForeground
     }
 
-    /**
-     * Called from the service on every media item transition. [metadata] is the new item's
-     * MediaMetadata (isMusicVideo), [videoPlaybackEnabled] mirrors the EnableVideoPlaybackKey
-     * preference the UI pipeline gates on. REPEAT transitions are ignored — the item did not
-     * change, so the (possibly background-frozen) UI pipeline still owns that video id.
-     */
+
     fun onMediaItemChanged(
         player: Player,
         mediaId: String?,
@@ -128,8 +98,6 @@ object VideoBackgroundPreloader {
                 !mediaId.isLocalMediaId()
 
         if (!mediaIsVideo || !videoPlaybackEnabled) {
-            // Not ours to handle: drop any active hold (resuming if we initiated the pause) and
-            // stop preloading.
             releaseHold(resume = wasPlayingBeforeHold)
             cancelPreload()
             return
@@ -137,13 +105,10 @@ object VideoBackgroundPreloader {
 
         if (heldMediaId == mediaId) return // already holding for this item
 
-        // A different item took over: release any previous hold without resuming (the previous
-        // item is gone — resuming it is meaningless) and start fresh.
         releaseHold(resume = false)
         cancelPreload()
 
         if (isUiForeground()) {
-            // The UI pipeline is alive and will run its own hold + load on recomposition.
             return
         }
 
@@ -198,14 +163,9 @@ object VideoBackgroundPreloader {
                     var foregroundSinceMs = 0L
                     loop@ while (true) {
                         if (heldMediaId != mediaId) {
-                            // Claimed by the UI or superseded — nothing left to do.
                             return@launch
                         }
                         if (isUiForeground()) {
-                            // The UI pipeline is recomposing and should claim the hold through
-                            // claimUiTakeover within the grace window; if it never does (video
-                            // pipeline cannot engage), resume ourselves so the audio can never
-                            // stay silently paused.
                             if (foregroundSinceMs == 0L) {
                                 foregroundSinceMs = SystemClock.elapsedRealtime()
                                 Timber.tag(TAG).d("UI foregrounded while preloading $mediaId — waiting for the claim")
@@ -244,12 +204,7 @@ object VideoBackgroundPreloader {
             }
     }
 
-    /**
-     * The UI pipeline (rememberVideoArtworkState's LaunchedEffect(videoId)) calls this on its
-     * first run for a video id: if the preloader is holding the main audio for that id, the hold
-     * is released WITHOUT resuming and the method returns whether the audio was playing when the
-     * preloader paused it — the UI's own first-frame hold then owns pause/resume seamlessly.
-     */
+
     fun claimUiTakeover(mediaId: String): Boolean {
         val claimed = heldMediaId
         if (claimed == null || claimed != mediaId) return false
@@ -343,7 +298,7 @@ object VideoBackgroundPreloader {
         return player
     }
 
-    /** Called from the service's onDestroy. */
+
     fun onServiceDestroyed() {
         releaseHold(resume = false)
         cancelPreload()

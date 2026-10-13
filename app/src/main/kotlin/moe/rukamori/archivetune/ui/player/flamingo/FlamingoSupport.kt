@@ -363,8 +363,6 @@ fun ShadowImageWithCache(
 
 @Stable
 object FlamingoHaptics {
-    /** The in-app "Vibration" toggle gates these hardcoded Vibrator calls too — they used to fire
-     * regardless of the preference (only Compose's performHapticFeedback call sites were gated). */
     private fun hapticsEnabled(): Boolean =
         PreferenceStore.get(EnableHapticFeedbackKey) ?: true
 

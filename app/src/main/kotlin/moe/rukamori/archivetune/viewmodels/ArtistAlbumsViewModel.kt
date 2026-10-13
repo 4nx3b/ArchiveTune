@@ -25,7 +25,6 @@ class ArtistAlbumsViewModel
     ) : ViewModel() {
         val artistId = savedStateHandle.get<String>("artistId")!!
 
-        /** The artist id from the route — stable at first composition (the DB artist flow starts null). */
         val routeArtistId: String = artistId
         val artist =
             database

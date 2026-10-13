@@ -555,9 +555,6 @@ class App :
         lateinit var instance: App
             private set
 
-        /** True while at least one activity is started — drives the service-side video preloader
-         * (the Compose video pipeline cannot react to song changes while backgrounded because the
-         * Recomposer is frame-parked, so the service must own the background hold + preload). */
         @Volatile
         var isUiForeground: Boolean = false
             private set
