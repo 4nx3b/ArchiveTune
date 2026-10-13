@@ -11,7 +11,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -19,7 +18,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -207,20 +205,24 @@ fun ArtistPageAmbientBackdrop(
             BackdropTonePalette.fromColorsLight(
                 colors = ambientSource.orEmpty(),
                 fallbackColor = surfaceColor.toArgb(),
+                darkTheme = darkTheme,
             )
         }
-    val sourceTier = if (canvasAmbientColors != null) 2 else if (artistArtworkColors != null) 1 else 0
-    var lastSeenSourceTier by remember { mutableStateOf(sourceTier) }
-    val paletteAnimationSpec =
-        if (sourceTier != lastSeenSourceTier) {
-            snap<Color>()
-        } else {
-            tween<Color>(ARTIST_SHARED_AMBIENT_CROSSFADE_MS)
-        }
-    val animatedTop by animateColorAsState(ambientPalette.top, paletteAnimationSpec, label = "artistSubAmbientTop")
-    val animatedMid by animateColorAsState(ambientPalette.mid, paletteAnimationSpec, label = "artistSubAmbientMid")
-    val animatedBottom by animateColorAsState(ambientPalette.bottom, paletteAnimationSpec, label = "artistSubAmbientBottom")
-    SideEffect { lastSeenSourceTier = sourceTier }
+    val animatedTop by animateColorAsState(
+        targetValue = ambientPalette.top,
+        animationSpec = tween(durationMillis = ARTIST_SHARED_AMBIENT_CROSSFADE_MS),
+        label = "artistSubAmbientTop",
+    )
+    val animatedMid by animateColorAsState(
+        targetValue = ambientPalette.mid,
+        animationSpec = tween(durationMillis = ARTIST_SHARED_AMBIENT_CROSSFADE_MS),
+        label = "artistSubAmbientMid",
+    )
+    val animatedBottom by animateColorAsState(
+        targetValue = ambientPalette.bottom,
+        animationSpec = tween(durationMillis = ARTIST_SHARED_AMBIENT_CROSSFADE_MS),
+        label = "artistSubAmbientBottom",
+    )
 
     Box(
         modifier =
@@ -319,6 +321,7 @@ fun AmbientArtworkBackdrop(
             BackdropTonePalette.fromColorsLight(
                 colors = extractedColors.orEmpty(),
                 fallbackColor = surfaceColor.toArgb(),
+                darkTheme = darkTheme,
             )
         }
     val animatedTop by animateColorAsState(

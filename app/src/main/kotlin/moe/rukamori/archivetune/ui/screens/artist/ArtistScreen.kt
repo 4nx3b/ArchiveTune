@@ -327,12 +327,6 @@ fun ArtistScreen(
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
     val surfaceColor = MaterialTheme.colorScheme.surface
     val isDarkTheme = surfaceColor.luminance() <= 0.5f
-    val heroContentColor =
-        if (surfaceColor.luminance() > 0.5f) {
-            MaterialTheme.colorScheme.onSurface
-        } else {
-            Color.White
-        }
     val thumbnail = artistPage?.artist?.thumbnail ?: libraryArtist?.artist?.thumbnailUrl
 
     val transparentAppBar by remember {
@@ -552,6 +546,7 @@ fun ArtistScreen(
             BackdropTonePalette.fromColorsLight(
                 colors = ambientSource.orEmpty(),
                 fallbackColor = surfaceColor.toArgb(),
+                darkTheme = isDarkTheme,
             )
         }
     val animatedAmbientTop by animateColorAsState(
@@ -574,19 +569,21 @@ fun ArtistScreen(
     val releaseCardContainer = ambientReleaseBase.copy(alpha = 0.50f)
 
     val staticReleasePalette =
-        remember(artistArtworkColors, surfaceColor) {
+        remember(artistArtworkColors, surfaceColor, isDarkTheme) {
             BackdropTonePalette.fromColorsLight(
                 colors = artistArtworkColors.orEmpty(),
                 fallbackColor = surfaceColor.toArgb(),
+                darkTheme = isDarkTheme,
             )
         }
     val staticReleaseBase = lerp(staticReleasePalette.mid, staticReleasePalette.bottom, 0.45f)
-    val releaseCardContent =
+    val heroContentColor =
         if (staticReleaseBase.luminance() > 0.5f) {
             MaterialTheme.colorScheme.onSurface
         } else {
             Color.White
         }
+    val releaseCardContent = heroContentColor
     val releaseCardMutedContent = releaseCardContent.copy(alpha = 0.72f)
     val releaseCardAccent =
         if (staticReleaseBase.luminance() > 0.5f) {
@@ -886,7 +883,7 @@ fun ArtistScreen(
                                 ArtistHeroTranslucentCircle(
                                     iconRes = R.drawable.share,
                                     contentDescription = stringResource(R.string.share),
-                                    contentColor = heroContentColor,
+                                    contentColor = Color.White,
                                     enabled = true,
                                     onClick = { viewModel.onAction(ArtistAction.Share) },
                                 )
@@ -895,7 +892,7 @@ fun ArtistScreen(
                                     contentDescription = stringResource(
                                         if (isSubscribed) R.string.subscribed else R.string.subscribe,
                                     ),
-                                    contentColor = heroContentColor,
+                                    contentColor = Color.White,
                                     enabled = true,
                                     tint = if (isSubscribed) MaterialTheme.colorScheme.primary else null,
                                     onClick = toggleArtistSubscription,
@@ -1567,6 +1564,8 @@ fun ArtistScreen(
         )
 
         if (glassHeaderActive && (artistPage != null || showLocal)) {
+            val heroGlassContentColor =
+                if (heroVisible || isDarkTheme) Color.White else liquidGlassContentColor()
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 modifier =
@@ -1589,14 +1588,14 @@ fun ArtistScreen(
                     Icon(
                         painter = painterResource(R.drawable.arrow_back),
                         contentDescription = null,
-                        tint = liquidGlassContentColor(),
+                        tint = heroGlassContentColor,
                         modifier = Modifier.size(20.dp),
                     )
                     Text(
                         text = stringResource(R.string.home),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
-                        color = liquidGlassContentColor(),
+                        color = heroGlassContentColor,
                     )
                 }
             }
@@ -1612,6 +1611,7 @@ fun ArtistScreen(
                     backdrop = artworkBackdrop,
                     painter = painterResource(R.drawable.solar_share_linear),
                     contentDescription = stringResource(R.string.share),
+                    tint = heroGlassContentColor,
                     modifier = Modifier.size(48.dp),
                     onClick = { viewModel.onAction(ArtistAction.Share) },
                 )
@@ -1637,7 +1637,7 @@ fun ArtistScreen(
                         if (libraryArtist?.artist?.bookmarkedAt != null) {
                             MaterialTheme.colorScheme.primary
                         } else {
-                            Color.Unspecified
+                            heroGlassContentColor
                         },
                     modifier = Modifier.size(48.dp),
                     onClick = toggleArtistSubscription,
@@ -1646,6 +1646,7 @@ fun ArtistScreen(
                     backdrop = artworkBackdrop,
                     painter = painterResource(R.drawable.solar_more_circle_linear),
                     contentDescription = stringResource(R.string.more_options),
+                    tint = heroGlassContentColor,
                     modifier =
                         Modifier
                             .size(48.dp)
