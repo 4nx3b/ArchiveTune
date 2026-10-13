@@ -35,7 +35,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -97,6 +96,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
@@ -226,7 +226,7 @@ private fun AboutScreenContent(
                         Modifier
                             .fillMaxWidth()
                             .windowInsetsPadding(WindowInsets.statusBars)
-                            .height(AboutTopBarHeight),
+                            .height(AboutDimensions.TopBarHeight),
                 ) {
                     if (glassCapable && scrollProgress > 0.99f) {
                         Box(
@@ -1031,7 +1031,7 @@ private fun AboutGlassCard(
                                     drawRect(AboutGlassDarkShade, blendMode = BlendMode.Darken)
                                 } else {
                                     drawRect(AboutGlassLightTint, blendMode = BlendMode.Overlay)
-                                    drawRect(AboutGlassLightShade, blendMode = BlendMode.HardLight)
+                                    drawRect(AboutGlassLightShade, blendMode = BlendMode.Overlay)
                                 }
                             },
                         )
