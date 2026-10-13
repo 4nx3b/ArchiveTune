@@ -5564,3 +5564,10 @@ Work Log:
 
 Stage Summary:
 - All three reports fixed at the root: predictive back now reaches the player sheet (and the NavHost's own predictive pop-scrubbing is no longer starved by the sheet handlers), the lyrics/queue canvas backdrop is a baked bitmap twin that cannot tear during morphs, and the SukiSU bar is touchable and dimensionally identical to the normal liquid-glass navbar. Balance/reference checks clean on all six touched files; no comments introduced (Rule 3). Verification via CI per Rule 1; on-device checks pending.
+
+Work Log (continued, Task ID 116):
+- Round one (3a3f10e85) failed compile: 4 errors — isSystemInDarkTheme imported from material3 (it lives in androidx.compose.foundation), Modifier.Node.invalidateDraw needing the androidx.compose.ui.node extension import, and the back-target derivedStateOf reading LocalRootOverlayActive.current (CompositionLocal reads are @Composable-only, not allowed inside derivedStateOf).
+- Fixed all four in 0a9c8f6ff: foundation import, invalidateDraw import, and the back target is now computed as a plain composition-time when over the same state inputs (every input is already a state read that recomposes Player, so the SideEffect publish stays fresh).
+
+Stage Summary:
+- CI ALL GREEN (8/8 check-runs) at 0a9c8f6ff on dev: check, build (compile+tests+lint), all five nightly APK variants, create-nightly. Canary published as N202610130210 (17.0.6747-0a9c8f6ff). On-device verification pending: predictive back on the player sheet (scale-away + cancel spring) and pushed screens (NavHost scrubbing), canvas morphs into lyrics/queue with no lines, and the SukiSU bar (touch, dimensions, refraction, drag).
