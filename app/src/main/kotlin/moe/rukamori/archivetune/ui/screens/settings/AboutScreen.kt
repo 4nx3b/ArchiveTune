@@ -61,7 +61,6 @@ import android.os.Build
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -85,7 +84,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -100,8 +98,12 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
@@ -193,7 +195,8 @@ private fun AboutScreenContent(
         )
 
     val aboutGlassBackdrop = rememberLayerBackdrop()
-    val aboutBarBackdrop = rememberLayerBackdrop()
+    val headerHaze = rememberScreenHeaderHaze()
+    val statusBarTop = LocalStableSystemBarsTopPadding.current
     val glassCapable =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             isRuntimeShaderSupported()
@@ -204,18 +207,6 @@ private fun AboutScreenContent(
                 .fillMaxSize()
                 .windowInsetsPadding(playerAwareInsets),
     ) {
-        SukisuAboutBackground(
-            modifier = Modifier.fillMaxSize(),
-            bgModifier =
-                if (glassCapable) {
-                    Modifier.kyantLayerBackdrop(aboutGlassBackdrop)
-                } else {
-                    Modifier
-                },
-            alpha = { 1f - scrollProgress },
-            surface = MaterialTheme.colorScheme.surface,
-        ) { }
-
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = Color.Transparent,
@@ -225,21 +216,9 @@ private fun AboutScreenContent(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .windowInsetsPadding(WindowInsets.statusBars)
+                            .padding(top = statusBarTop)
                             .height(AboutDimensions.TopBarHeight),
                 ) {
-                    if (glassCapable && scrollProgress > 0.99f) {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .matchParentSize()
-                                    .drawBackdrop(
-                                        backdrop = aboutBarBackdrop,
-                                        shape = { RectangleShape },
-                                        effects = { blur(28f) },
-                                    ),
-                        )
-                    }
                     Row(
                         modifier =
                             Modifier
@@ -274,14 +253,22 @@ private fun AboutScreenContent(
         ) { innerPadding ->
             Box(
                 modifier =
-                    if (glassCapable) {
-                        Modifier
-                            .fillMaxSize()
-                            .kyantLayerBackdrop(aboutBarBackdrop)
-                    } else {
-                        Modifier.fillMaxSize()
-                    },
+                    Modifier
+                        .fillMaxSize()
+                        .hazeSource(headerHaze),
             ) {
+                SukisuAboutBackground(
+                    modifier = Modifier.fillMaxSize(),
+                    bgModifier =
+                        if (glassCapable) {
+                            Modifier.kyantLayerBackdrop(aboutGlassBackdrop)
+                        } else {
+                            Modifier
+                        },
+                    alpha = { 1f },
+                    surface = MaterialTheme.colorScheme.surface,
+                ) { }
+
                 when (state) {
                     AboutScreenState.Loading -> {
                         AboutLoadingContent(
@@ -332,6 +319,11 @@ private fun AboutScreenContent(
                     }
                 }
             }
+            ScreenHeaderHaze(
+                hazeState = headerHaze,
+                systemBarsTopPadding = statusBarTop,
+                scrolled = listState.canScrollBackward,
+            )
         }
     }
 

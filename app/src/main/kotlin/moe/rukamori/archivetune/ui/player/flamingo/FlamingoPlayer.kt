@@ -271,6 +271,7 @@ private const val FlamingoCanvasBackdropOverscan = 1.10f
 private val FlamingoCanvasBackdropBlurRadius = 288.dp
 private const val FlamingoCanvasBackdropMaxVideoEdgePx = 480
 private const val FlamingoCanvasSnapshotIntervalMs = 50L
+private const val FlamingoCanvasBakeRetryCooldownMs = 2_000L
 private const val FlamingoCanvasBackdropBakeMaxRadiusPx = 48f
 
 private fun Modifier.canvasSnapshotSource(
@@ -495,11 +496,10 @@ fun FlamingoPlayerContent(
             !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
         val canvasVisualActive = canvasActive && !videoShowing && !isPreS
 
-        var canvasTwinReady by remember(canvasPrimaryUrl, canvasFallbackUrl) { mutableStateOf(false) }
         val canvasLoopSync = remember { CanvasLoopSync() }
 
         val canvasBackdropReveal by animateFloatAsState(
-            targetValue = if (canvasVisualActive && canvasTwinReady) 1f else 0f,
+            targetValue = if (canvasVisualActive && !landscape) 1f else 0f,
             animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
             label = "flamingo-canvas-backdrop-reveal",
         )
@@ -893,9 +893,7 @@ fun FlamingoPlayerContent(
                                     twinBakeFailures = 0
                                     while (isActive) {
                                         if (twinBakeFailures >= 5) {
-                                            blurredTwinBitmap = null
-                                            delay(FlamingoCanvasSnapshotIntervalMs)
-                                            continue
+                                            delay(FlamingoCanvasBakeRetryCooldownMs)
                                         }
                                         val layer = twinSnapshotLayer
                                         if (layer.size.width >= 8 && layer.size.height >= 8) {
@@ -988,12 +986,6 @@ fun FlamingoPlayerContent(
                                                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                                                 maxVideoEdgePx = FlamingoCanvasBackdropMaxVideoEdgePx,
                                                 loopSyncFollower = canvasLoopSync,
-                                                onFirstFrameRendered = { canvasTwinReady = true },
-                                                onPlaybackAvailabilityChange = { available ->
-                                                    if (!available) {
-                                                        canvasTwinReady = false
-                                                    }
-                                                },
                                                 modifier =
                                                     Modifier
                                                         .fillMaxWidth(1f / FlamingoCanvasBackdropUpscale)
