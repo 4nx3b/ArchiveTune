@@ -37,6 +37,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -150,10 +152,15 @@ fun ArtistItemsScreen(
 
     val artist by viewModel.artist.collectAsStateWithLifecycle()
 
+    val listScrolling by remember {
+        derivedStateOf { lazyListState.isScrollInProgress || lazyGridState.isScrollInProgress }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
-        ArtistAmbientBackdrop(
-            artistId = artist?.id,
+        ArtistPageAmbientBackdrop(
+            artistId = viewModel.routeArtistId,
             artworkUrl = artist?.thumbnailUrl,
+            listScrolling = listScrolling,
         )
 
         if (itemsPage == null) {

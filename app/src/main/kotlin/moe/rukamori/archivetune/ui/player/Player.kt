@@ -1187,6 +1187,10 @@ fun BottomSheetPlayer(
         videoPlaybackFailed = false
     }
 
+    val videoSheetSurfaceActive by remember(state) {
+        derivedStateOf { state.progress > 0.5f || state.isExpandedOrExpanding }
+    }
+
     val videoState =
         rememberVideoArtworkStateOrNull(
             videoId = videoMediaId,
@@ -1213,6 +1217,8 @@ fun BottomSheetPlayer(
             isMainAudioBuffering = playbackState == STATE_BUFFERING,
 
             mainAudioReady = playbackState == STATE_READY,
+
+            sheetSurfaceActive = videoSheetSurfaceActive,
         )
 
     CompositionLocalProvider(

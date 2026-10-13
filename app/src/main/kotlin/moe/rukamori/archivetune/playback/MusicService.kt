@@ -146,6 +146,7 @@ import moe.rukamori.archivetune.cast.CastPlaybackRepositoryLocator
 import moe.rukamori.archivetune.cast.CastScreenState
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
+import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
 import moe.rukamori.archivetune.constants.FloatDspEnabledKey
 import moe.rukamori.archivetune.constants.LastwaveAudioProcessingKey
 import moe.rukamori.archivetune.constants.SongSourceTidalTrackIdKey
@@ -2150,6 +2151,10 @@ class MusicService :
                 networkConnectivity = connectivityObserver,
                 lyricsHelper = lyricsHelper,
             )
+
+        moe.rukamori.archivetune.playback.VideoBackgroundPreloader.initialize(this) {
+            moe.rukamori.archivetune.App.isUiForeground
+        }
 
         dataStore.data
             .map(::readEqSettingsFromPrefs)
@@ -5444,6 +5449,29 @@ class MusicService :
         localPlayer.setShuffleOrder(DefaultShuffleOrder(shuffledIndices, System.currentTimeMillis()))
     }
 
+    /**
+     * Mid-playback shuffle-enable order: keeps the linear prefix the listener has already played
+     * (shuffle was just OFF — the queue was advancing linearly), then shuffles ONLY the still-
+     * upcoming remainder. The old re-randomization of the whole queue pulled already-played songs
+     * back into the up-next, so tapping shuffle in a queue page "played different songs" than the
+     * ones it showed. Initial queue loads with shuffle enabled keep [applyCurrentFirstShuffleOrder].
+     */
+    private fun applyPlayedPrefixPreservingShuffleOrder() {
+        val count = player.mediaItemCount
+        if (count <= 1) return
+        val timeline = player.currentTimeline
+        if (timeline.isEmpty) return
+        val currentIndex = player.currentMediaItemIndex.coerceIn(0, count - 1)
+
+        val order = IntArray(count) { it }
+        val upcoming = (currentIndex + 1 until count).toMutableList()
+        if (upcoming.size > 1) upcoming.shuffle()
+        upcoming.forEachIndexed { offset, windowIndex ->
+            order[currentIndex + 1 + offset] = windowIndex
+        }
+        localPlayer.setShuffleOrder(DefaultShuffleOrder(order, System.currentTimeMillis()))
+    }
+
     private fun buildPlayNextShuffleOrder(
         currentIndex: Int,
         insertionIndex: Int,
@@ -6818,6 +6846,14 @@ class MusicService :
         super.onMediaItemTransition(mediaItem, reason)
         mediaItem?.metadata?.let { queuedMetadataByMediaId[mediaItem.mediaId] = it }
 
+        moe.rukamori.archivetune.playback.VideoBackgroundPreloader.onMediaItemChanged(
+            player = player,
+            mediaId = mediaItem?.mediaId,
+            metadata = mediaItem?.metadata,
+            videoPlaybackEnabled = dataStore.get(EnableVideoPlaybackKey, true),
+            reason = reason,
+        )
+
         crossfadeConsecutiveFailures = 0
         crossfadeFailureMediaId = null
         lastBitPerfectWireReprepareKey = null
@@ -7410,7 +7446,7 @@ class MusicService :
     override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
         updateNotification()
         if (shuffleModeEnabled) {
-            applyCurrentFirstShuffleOrder()
+            applyPlayedPrefixPreservingShuffleOrder()
         }
 
         scope.launch {
@@ -12187,6 +12223,7 @@ class MusicService :
         }
         lyricsPreloadManager?.destroy()
         lyricsPreloadManager = null
+        moe.rukamori.archivetune.playback.VideoBackgroundPreloader.onServiceDestroyed()
         abandonAudioFocus()
         try {
             releaseAudioEffects()

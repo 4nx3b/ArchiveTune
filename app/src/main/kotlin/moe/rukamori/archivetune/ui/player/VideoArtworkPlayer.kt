@@ -142,6 +142,7 @@ private fun maxVideoHeightFor(preferredHeight: Int?): Int = VideoQualityPreferen
 
 private const val VideoReadyHoldTimeoutMs = 10000L
 private const val VideoFirstFrameKickIntervalMs = 2500L
+private const val VideoFirstFrameKickMaxAttempts = 12
 
 private const val VideoClientAttemptTimeoutMs = 8000L
 
@@ -248,7 +249,7 @@ private val VideoStreamHttpClient by lazy {
         }.build()
 }
 
-private fun videoStreamHttpClient(): OkHttpClient = VideoStreamHttpClient
+internal fun videoStreamHttpClient(): OkHttpClient = VideoStreamHttpClient
 
 @Stable
 class VideoArtworkState internal constructor(
@@ -364,6 +365,7 @@ fun rememberVideoArtworkState(
     onRequestResumeMain: () -> Unit,
     isMainAudioBuffering: Boolean = false,
     mainAudioReady: Boolean = false,
+    sheetSurfaceActive: Boolean = true,
 ): VideoArtworkState {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -378,6 +380,7 @@ fun rememberVideoArtworkState(
     val updatedHoldAudioUntilVideoReady by rememberUpdatedState(holdAudioUntilVideoReady)
     val updatedIsMainAudioBuffering by rememberUpdatedState(isMainAudioBuffering)
     val updatedMainAudioReady by rememberUpdatedState(mainAudioReady)
+    val updatedSheetSurfaceActive by rememberUpdatedState(sheetSurfaceActive)
 
     val okHttpClient = remember { videoStreamHttpClient() }
 
@@ -471,11 +474,11 @@ fun rememberVideoArtworkState(
     var videoRecoveryAttempts by remember { mutableStateOf(0) }
     var videoRecoveryRequests by remember { mutableIntStateOf(0) }
 
-    fun beginAudioHold() {
+    fun beginAudioHold(resumeOverride: Boolean = false) {
         if (!updatedHoldAudioUntilVideoReady) return
         if (awaitingVideoReady) return
         awaitingVideoReady = true
-        resumeAudioAfterVideoReady = shouldPlay
+        resumeAudioAfterVideoReady = shouldPlay || resumeOverride
 
         if (shouldPlay) updatedOnRequestPauseMain()
         Timber
@@ -577,7 +580,14 @@ fun rememberVideoArtworkState(
         videoRecoveryAttempts = 0
         videoRecoveryRequests = 0
 
-        beginAudioHold()
+        // If the service-side background preloader was holding the main audio for this video
+        // (song changed while the app was backgrounded), take over its hold silently: it
+        // releases without resuming and hands us its wasPlaying so the first-frame resume
+        // restores what the listener actually had playing.
+        val backgroundHoldWasPlaying =
+            moe.rukamori.archivetune.playback.VideoBackgroundPreloader.claimUiTakeover(videoId)
+
+        beginAudioHold(resumeOverride = backgroundHoldWasPlaying)
 
         val resolved =
             withContext(Dispatchers.IO) {
@@ -751,7 +761,15 @@ fun rememberVideoArtworkState(
     LaunchedEffect(state.streamUrl) {
         if (state.streamUrl == null) return@LaunchedEffect
         delay(VideoReadyHoldTimeoutMs)
-        while (awaitingVideoReady && !state.isVideoReady && !state.hasPlaybackFailed) {
+        var kicks = 0
+        while (!state.isVideoReady && !state.hasPlaybackFailed) {
+            if (kicks >= VideoFirstFrameKickMaxAttempts) {
+                Timber
+                    .tag(VideoPlaybackLogTag)
+                    .w("Video never rendered a first frame after $kicks kicks — falling back to artwork")
+                declareVideoFailure("first frame never rendered")
+                break
+            }
             if (exoPlayer.playbackState == Player.STATE_READY && exoPlayer.playerError == null) {
                 Timber
                     .tag(VideoPlaybackLogTag)
@@ -760,8 +778,22 @@ fun rememberVideoArtworkState(
                     )
                 exoPlayer.seekTo(exoPlayer.currentPosition)
                 state.lastSeekAtMs = SystemClock.elapsedRealtime()
+                kicks++
             }
             delay(VideoFirstFrameKickIntervalMs)
+        }
+    }
+
+    LaunchedEffect(updatedSheetSurfaceActive) {
+        // The renderable surface appearing (player sheet expanding) is the moment a buffered-but-
+        // never-rendered video can finally draw: kick a position reset right away instead of
+        // waiting for the watchdog cadence above.
+        if (!updatedSheetSurfaceActive) return@LaunchedEffect
+        if (state.hasPlaybackFailed || state.isVideoReady) return@LaunchedEffect
+        if (exoPlayer.playerError != null) return@LaunchedEffect
+        if (exoPlayer.playbackState == Player.STATE_READY) {
+            exoPlayer.seekTo(exoPlayer.currentPosition)
+            state.lastSeekAtMs = SystemClock.elapsedRealtime()
         }
     }
 
@@ -1195,12 +1227,24 @@ fun rememberVideoArtworkState(
                             state.bufferingStartedAtMs = 0L
                             state.bufferingRecoveries = 0
 
+                            if (awaitingVideoReady && !updatedSheetSurfaceActive()) {
+                                // Buffered with no renderable surface on screen (player sheet
+                                // collapsed / miniplayer): the video IS loaded — release the audio
+                                // hold now instead of spinning the loading state forever waiting
+                                // for a first frame nothing can display. The surface renders (and
+                                // onRenderedFirstFrame fires) as soon as the sheet expands.
+                                Timber
+                                    .tag(VideoPlaybackLogTag)
+                                    .d("Video buffered without an on-screen surface — releasing the audio hold")
+                                releaseAudioHold(resumeMainAudio = true)
+                            }
+
                             val effectiveShouldPlay =
                                 shouldPlay ||
                                     (state.isResyncing && state.wasPlayingBeforeResync) ||
                                     (state.isChangingQuality && state.wasPlayingBeforeQualityChange) ||
                                     resumeAudioAfterVideoReady
-                            if (effectiveShouldPlay && !state.hasPlaybackFailed &&
+                            if (effectiveShouldPlay && !awaitingVideoReady && !state.hasPlaybackFailed &&
                                 exoPlayer.playerError == null
                             ) {
                                 val resumeMainAudio =
@@ -1257,6 +1301,7 @@ fun rememberVideoArtworkStateOrNull(
     onRequestResumeMain: () -> Unit,
     isMainAudioBuffering: Boolean = false,
     mainAudioReady: Boolean = false,
+    sheetSurfaceActive: Boolean = true,
 ): VideoArtworkState? {
     return if (videoId.isNullOrBlank()) {
         onPlaybackFailed()
@@ -1275,6 +1320,7 @@ fun rememberVideoArtworkStateOrNull(
             onRequestResumeMain = onRequestResumeMain,
             isMainAudioBuffering = isMainAudioBuffering,
             mainAudioReady = mainAudioReady,
+            sheetSurfaceActive = sheetSurfaceActive,
         )
     }
 }
@@ -1539,7 +1585,7 @@ private suspend fun resolveVideoStreamUrlViaSimpMusic(
     )
 }
 
-private suspend fun resolveVideoStreamUrl(
+internal suspend fun resolveVideoStreamUrl(
     videoId: String,
     preferredHeight: Int?,
 ): VideoStreamInfo? {

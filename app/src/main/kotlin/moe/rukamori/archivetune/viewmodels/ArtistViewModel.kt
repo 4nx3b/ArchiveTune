@@ -39,6 +39,7 @@ import moe.rukamori.archivetune.artist.ObserveArtistBlockedUseCase
 import moe.rukamori.archivetune.artist.SetArtistBlockedUseCase
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
+import moe.rukamori.archivetune.ui.screens.artist.ArtistCanvasArtworkCache
 import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.HideVideoKey
@@ -245,6 +246,7 @@ class ArtistViewModel
                 }.getOrNull()
             if (artistCanvas != null) {
                 canvasArtwork.value = artistCanvas
+                ArtistCanvasArtworkCache.put(artistId, artistCanvas)
                 return
             }
 
@@ -266,6 +268,9 @@ class ArtistViewModel
                     )
                 }.getOrNull()
             canvasArtwork.value = artwork
+            if (artwork != null) {
+                ArtistCanvasArtworkCache.put(artistId, artwork)
+            }
         }
 
         private fun toggleBlocked() {

@@ -7,6 +7,7 @@
 
 package moe.rukamori.archivetune
 
+import android.app.Activity
 import android.app.ActivityManager
 import android.app.Application
 import android.content.Context
@@ -133,6 +134,7 @@ class App :
         }
         YtDlpJavaScriptRuntime.initialize(this)
         BotGuardTokenGenerator.initialize(this)
+        registerActivityLifecycleCallbacks(activityLifecycleCallbacks)
 
         moe.rukamori.archivetune.echo.utils.cipher.CipherDeobfuscator.initialize(this)
         PreferenceStore.start(this)
@@ -552,6 +554,46 @@ class App :
     companion object {
         lateinit var instance: App
             private set
+
+        /** True while at least one activity is started — drives the service-side video preloader
+         * (the Compose video pipeline cannot react to song changes while backgrounded because the
+         * Recomposer is frame-parked, so the service must own the background hold + preload). */
+        @Volatile
+        var isUiForeground: Boolean = false
+            private set
+
+        private var startedActivityCount = 0
+
+        private val activityLifecycleCallbacks =
+            object : Application.ActivityLifecycleCallbacks {
+                override fun onActivityStarted(activity: Activity) {
+                    startedActivityCount++
+                    if (startedActivityCount == 1) isUiForeground = true
+                }
+
+                override fun onActivityStopped(activity: Activity) {
+                    startedActivityCount = (startedActivityCount - 1).coerceAtLeast(0)
+                    if (startedActivityCount == 0) isUiForeground = false
+                }
+
+                override fun onActivityCreated(
+                    activity: Activity,
+                    savedInstanceState: android.os.Bundle?,
+                ) {
+                }
+
+                override fun onActivitySaveInstanceState(
+                    activity: Activity,
+                    outState: android.os.Bundle,
+                ) {
+                }
+
+                override fun onActivityResumed(activity: Activity) {}
+
+                override fun onActivityPaused(activity: Activity) {}
+
+                override fun onActivityDestroyed(activity: Activity) {}
+            }
 
         fun forgetAccount(
             context: Context,
