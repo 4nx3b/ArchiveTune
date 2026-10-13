@@ -4429,9 +4429,9 @@ private fun FlamingoVolumeSlider(
     }
 }
 
-@Composable
 private val FlamingoTrackBackingColor = Color(0x1A000000)
 
+@Composable
 private fun FlamingoTrack(
     activeFraction: Float,
     modifier: Modifier = Modifier,
