@@ -19,6 +19,8 @@
 package moe.rukamori.archivetune.ui.player.flamingo
 
 import android.Manifest
+import android.graphics.Bitmap
+import android.os.SystemClock
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
@@ -54,6 +56,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
@@ -133,12 +136,20 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -148,6 +159,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.toIntSize
 import androidx.compose.ui.zIndex
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -208,6 +220,7 @@ import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
+import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
@@ -215,7 +228,6 @@ import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
 import moe.rukamori.archivetune.canvas.procedural.ProceduralArtworkFallback
 import moe.rukamori.archivetune.constants.ProceduralArtworkEnabledKey
 import moe.rukamori.archivetune.ui.player.CanvasLoopSync
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -257,6 +269,68 @@ private const val FlamingoCanvasBackdropUpscale = 6f
 private const val FlamingoCanvasBackdropOverscan = 1.10f
 private val FlamingoCanvasBackdropBlurRadius = 288.dp
 private const val FlamingoCanvasBackdropMaxVideoEdgePx = 480
+private const val FlamingoCanvasSnapshotIntervalMs = 50L
+private const val FlamingoCanvasBackdropBakeMaxRadiusPx = 48f
+
+private fun Modifier.canvasSnapshotSource(
+    graphicsLayer: androidx.compose.ui.graphics.layer.GraphicsLayer,
+    minIntervalMillis: Long,
+): Modifier = this then CanvasSnapshotSourceElement(graphicsLayer, minIntervalMillis)
+
+private class CanvasSnapshotSourceElement(
+    val graphicsLayer: androidx.compose.ui.graphics.layer.GraphicsLayer,
+    val minIntervalMillis: Long,
+) : ModifierNodeElement<CanvasSnapshotSourceNode>() {
+    override fun create() = CanvasSnapshotSourceNode(graphicsLayer, minIntervalMillis)
+
+    override fun update(node: CanvasSnapshotSourceNode) {
+        if (node.graphicsLayer !== graphicsLayer || node.minIntervalMillis != minIntervalMillis) {
+            node.graphicsLayer = graphicsLayer
+            node.minIntervalMillis = minIntervalMillis
+            node.lastRecordUptimeMillis = 0L
+        }
+        node.invalidateDraw()
+    }
+
+    override fun equals(other: Any?): Boolean =
+        other is CanvasSnapshotSourceElement &&
+            other.graphicsLayer === graphicsLayer &&
+            other.minIntervalMillis == minIntervalMillis
+
+    override fun hashCode(): Int =
+        graphicsLayer.hashCode() * 31 + minIntervalMillis.hashCode()
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "canvasSnapshotSource"
+        properties["minIntervalMillis"] = minIntervalMillis
+    }
+}
+
+private class CanvasSnapshotSourceNode(
+    var graphicsLayer: androidx.compose.ui.graphics.layer.GraphicsLayer,
+    var minIntervalMillis: Long,
+) : DrawModifierNode, Modifier.Node() {
+    var lastRecordUptimeMillis = 0L
+
+    var isRecording = false
+
+    override fun ContentDrawScope.draw() {
+        val now = SystemClock.uptimeMillis()
+        if (!isRecording && now - lastRecordUptimeMillis >= minIntervalMillis) {
+            lastRecordUptimeMillis = now
+            isRecording = true
+            try {
+                runCatching {
+                    graphicsLayer.record(size.toIntSize()) {
+                        this@draw.drawContent()
+                    }
+                }
+            } finally {
+                isRecording = false
+            }
+        }
+    }
+}
 
 private const val FlamingoCanvasPageFadeMs = 650
 
@@ -796,6 +870,76 @@ fun FlamingoPlayerContent(
                                 val frostFraction =
                                     (1f - FlamingoSharpStageFadeStart * stageFraction).coerceIn(0.2f, 1f)
 
+                                val twinSnapshotLayer = rememberGraphicsLayer()
+                                var blurredTwinBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+                                var twinBakeFailures by remember { mutableStateOf(0) }
+                                val twinBackdropHealthy = twinBakeFailures < 5
+                                val twinSnapshotBlurRadiusPx =
+                                    with(LocalDensity.current) {
+                                        (FlamingoCanvasBackdropBlurRadius / FlamingoCanvasBackdropUpscale).toPx()
+                                    }
+                                LaunchedEffect(canvasPrimaryUrl, canvasFallbackUrl) {
+                                    blurredTwinBitmap = null
+                                    twinBakeFailures = 0
+                                    while (isActive) {
+                                        if (twinBakeFailures >= 5) {
+                                            blurredTwinBitmap = null
+                                            delay(FlamingoCanvasSnapshotIntervalMs)
+                                            continue
+                                        }
+                                        val layer = twinSnapshotLayer
+                                        if (layer.size.width >= 8 && layer.size.height >= 8) {
+                                            withFrameNanos { }
+                                            val snapshot =
+                                                runCatching {
+                                                    layer.toImageBitmap().asAndroidBitmap()
+                                                }.getOrNull()
+                                            if (snapshot != null) {
+                                                val baked =
+                                                    withContext(Dispatchers.Default) {
+                                                        runCatching {
+                                                            val bakeRadius =
+                                                                twinSnapshotBlurRadiusPx
+                                                                    .coerceAtMost(FlamingoCanvasBackdropBakeMaxRadiusPx)
+                                                            val downscale =
+                                                                if (bakeRadius < twinSnapshotBlurRadiusPx) {
+                                                                    (twinSnapshotBlurRadiusPx / bakeRadius)
+                                                                } else {
+                                                                    1f
+                                                                }
+                                                            val scaled =
+                                                                if (downscale > 1.01f) {
+                                                                    val w =
+                                                                        (snapshot.width / downscale)
+                                                                            .toInt()
+                                                                            .coerceAtLeast(1)
+                                                                    val h =
+                                                                        (snapshot.height / downscale)
+                                                                            .toInt()
+                                                                            .coerceAtLeast(1)
+                                                                    Bitmap.createScaledBitmap(snapshot, w, h, true)
+                                                                } else {
+                                                                    snapshot
+                                                                }
+                                                            ImageBlurUtils
+                                                                .blur(scaled, bakeRadius)
+                                                                .asImageBitmap()
+                                                        }.getOrNull()
+                                                    }
+                                                if (baked != null) {
+                                                    twinBakeFailures = 0
+                                                    blurredTwinBitmap = baked
+                                                } else {
+                                                    twinBakeFailures++
+                                                }
+                                            } else {
+                                                twinBakeFailures++
+                                            }
+                                        }
+                                        delay(FlamingoCanvasSnapshotIntervalMs)
+                                    }
+                                }
+
                                 Box(
                                     modifier =
                                         Modifier
@@ -818,20 +962,36 @@ fun FlamingoPlayerContent(
                                                 },
                                         contentAlignment = Alignment.Center,
                                     ) {
-                                        CanvasArtworkPlayer(
-                                            primaryUrl = canvasPrimaryUrl,
-                                            fallbackUrl = canvasFallbackUrl,
-                                            isPlaying = isPlayingStatusLambda.value && canvasSurfacesPlaying,
-                                            visible = canvasSurfacesVisible,
-                                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                                            maxVideoEdgePx = FlamingoCanvasBackdropMaxVideoEdgePx,
-                                            loopSyncFollower = canvasLoopSync,
-                                            modifier =
-                                                Modifier
-                                                    .fillMaxWidth(1f / FlamingoCanvasBackdropUpscale)
-                                                    .fillMaxHeight(1f / FlamingoCanvasBackdropUpscale)
-                                                    .blur(FlamingoCanvasBackdropBlurRadius / FlamingoCanvasBackdropUpscale),
-                                        )
+                                        if (twinBackdropHealthy) {
+                                            CanvasArtworkPlayer(
+                                                primaryUrl = canvasPrimaryUrl,
+                                                fallbackUrl = canvasFallbackUrl,
+                                                isPlaying = isPlayingStatusLambda.value && canvasSurfacesPlaying,
+                                                visible = canvasSurfacesVisible,
+                                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                                                maxVideoEdgePx = FlamingoCanvasBackdropMaxVideoEdgePx,
+                                                loopSyncFollower = canvasLoopSync,
+                                                modifier =
+                                                    Modifier
+                                                        .fillMaxWidth(1f / FlamingoCanvasBackdropUpscale)
+                                                        .fillMaxHeight(1f / FlamingoCanvasBackdropUpscale)
+                                                        .canvasSnapshotSource(
+                                                            twinSnapshotLayer,
+                                                            FlamingoCanvasSnapshotIntervalMs,
+                                                        ),
+                                            )
+                                        }
+                                        blurredTwinBitmap?.let { baked ->
+                                            Image(
+                                                bitmap = baked,
+                                                contentDescription = null,
+                                                contentScale = ContentScale.FillBounds,
+                                                modifier =
+                                                    Modifier
+                                                        .fillMaxWidth(1f / FlamingoCanvasBackdropUpscale)
+                                                        .fillMaxHeight(1f / FlamingoCanvasBackdropUpscale),
+                                            )
+                                        }
                                     }
                                 }
 

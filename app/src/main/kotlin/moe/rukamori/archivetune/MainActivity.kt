@@ -334,6 +334,10 @@ import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MarkdownText
 import moe.rukamori.archivetune.ui.component.NetworkStatusBanner
+import moe.rukamori.archivetune.ui.component.PlayerBackController
+import moe.rukamori.archivetune.ui.component.PlayerBackTarget
+import moe.rukamori.archivetune.ui.component.PredictiveStyleBackHandler
+import moe.rukamori.archivetune.ui.component.rememberPredictiveSheetBackState
 import moe.rukamori.archivetune.ui.component.StarDialog
 import moe.rukamori.archivetune.ui.component.TopSearch
 import moe.rukamori.archivetune.ui.component.SearchSourcePicker
@@ -1629,6 +1633,9 @@ class MainActivity : ComponentActivity() {
                                     MiniPlayerHeight,
                             expandedBound = maxHeight,
                         )
+
+                    val playerBackController = remember { PlayerBackController() }
+                    val playerSheetPredictiveBack = rememberPredictiveSheetBackState()
 
                     val playerBackground by rememberEnumPreference(
                         key = PlayerBackgroundStyleKey,
@@ -3153,6 +3160,8 @@ class MainActivity : ComponentActivity() {
                                                 compactFractionState = bottomUiCompactFractionState,
                                                 compactHorizontalPadding = navBarHorizontalPadding,
                                                 compactReserveEndControl = compactSearchCircleVisible,
+                                                backController = playerBackController,
+                                                predictiveBackState = playerSheetPredictiveBack,
                                                 navbarHiddenOffset = {
                                                     if (shouldShowNavigationBar && !useRail) {
                                                         val hideFraction =
@@ -3254,8 +3263,8 @@ class MainActivity : ComponentActivity() {
                                                         Modifier
                                                             .align(Alignment.BottomCenter)
                                                             .padding(
-                                                                start = 28.dp,
-                                                                end = 28.dp,
+                                                                start = navBarHorizontalPadding,
+                                                                end = navBarHorizontalPadding,
                                                                 bottom = bottomInset + floatingBarsBottomPadding,
                                                             ),
                                                     isSelected = { screen ->
@@ -3517,14 +3526,16 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        PredictiveStyleBackHandler(
+                            backState = playerSheetPredictiveBack,
+                            enabled = playerBackController.backTarget == PlayerBackTarget.SHEET,
+                            onBack = playerBottomSheetState::collapseSoft,
+                        )
+
                         BackHandler(
-                            enabled =
-                                playerBottomSheetState.isExpanded &&
-                                    !isPlayerLyricsFullScreen &&
-                                    !aodModeEnabled &&
-                                    !rootOverlayActive,
+                            enabled = playerBackController.backTarget == PlayerBackTarget.SUB_PAGE,
                         ) {
-                            playerBottomSheetState.collapseSoft()
+                            playerBackController.routeBack()
                         }
 
                         BottomSheetMenu(

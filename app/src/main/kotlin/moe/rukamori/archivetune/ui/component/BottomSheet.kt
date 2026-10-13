@@ -77,6 +77,7 @@ fun BottomSheet(
     onCollapsedContentClick: (() -> Unit)? = null,
     navbarHiddenOffset: (() -> Float)? = null,
     sharedLayer: (@Composable BoxScope.() -> Unit)? = null,
+    predictiveBackState: PredictiveSheetBackState? = null,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -91,7 +92,7 @@ fun BottomSheet(
         } else {
             null
         }
-    val predictiveBack = rememberPredictiveSheetBackState()
+    val predictiveBack = predictiveBackState ?: rememberPredictiveSheetBackState()
     val predictiveBackStyle = LocalBackAnimationStyle.current == BackAnimationStyle.PREDICTIVE
     Box(
         modifier =

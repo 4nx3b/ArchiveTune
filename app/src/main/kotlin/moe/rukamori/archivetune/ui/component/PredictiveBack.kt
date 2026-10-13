@@ -31,6 +31,15 @@ import moe.rukamori.archivetune.constants.BackAnimationStyle
 
 val LocalBackAnimationStyle = staticCompositionLocalOf { BackAnimationStyle.DEFAULT }
 
+enum class PlayerBackTarget { NONE, SHEET, SUB_PAGE }
+
+@Stable
+class PlayerBackController {
+    var backTarget by mutableStateOf(PlayerBackTarget.NONE)
+
+    var routeBack: () -> Unit = {}
+}
+
 @Stable
 class PredictiveSheetBackState {
     val progress: Animatable<Float, AnimationVector1D> = Animatable(0f)

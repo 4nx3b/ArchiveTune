@@ -86,6 +86,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -221,6 +222,9 @@ import moe.rukamori.archivetune.ui.component.DISMISSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.EXPANDED_ANCHOR
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.PlayerBackController
+import moe.rukamori.archivetune.ui.component.PlayerBackTarget
+import moe.rukamori.archivetune.ui.component.PredictiveSheetBackState
 import moe.rukamori.archivetune.ui.lottie.ArchiveTuneLottie
 import moe.rukamori.archivetune.ui.lottie.ArchiveTuneLottieAnimation
 import moe.rukamori.archivetune.ui.component.rememberBottomSheetState
@@ -376,6 +380,8 @@ fun BottomSheetPlayer(
     compactHorizontalPadding: Dp = 16.dp,
     compactReserveEndControl: Boolean = true,
     navbarHiddenOffset: (() -> Float)? = null,
+    backController: PlayerBackController? = null,
+    predictiveBackState: PredictiveSheetBackState? = null,
 ) {
     val context = LocalContext.current
     val menuState = LocalMenuState.current
@@ -1122,6 +1128,33 @@ fun BottomSheetPlayer(
         }
     }
 
+    if (backController != null) {
+        val publishedBackTarget by remember {
+            derivedStateOf {
+                val rootOverlayActive = LocalRootOverlayActive.current
+                when {
+                    rootOverlayActive -> PlayerBackTarget.NONE
+                    aodModeEnabled -> PlayerBackTarget.NONE
+                    !state.isExpandedOrExpanding && !queueSheetState.isExpandedOrExpanding -> PlayerBackTarget.NONE
+                    queueSheetState.isExpandedOrExpanding -> PlayerBackTarget.SUB_PAGE
+                    isInlineLyricsOpen || isAppleMusicInlineLyricsOpen || anyStylePageOverlayOpen -> PlayerBackTarget.SUB_PAGE
+                    else -> PlayerBackTarget.SHEET
+                }
+            }
+        }
+        SideEffect {
+            backController.backTarget = publishedBackTarget
+            backController.routeBack = {
+                when {
+                    isInlineLyricsOpen && state.isExpandedOrExpanding -> isInlineLyricsOpen = false
+                    anyStylePageOverlayOpen && state.isExpandedOrExpanding -> stylePageBackRequests.intValue++
+                    queueSheetState.isExpandedOrExpanding -> queueSheetState.collapseSoft()
+                    state.isExpandedOrExpanding -> state.collapseSoft()
+                }
+            }
+        }
+    }
+
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(state.isExpanded) {
@@ -1343,6 +1376,7 @@ fun BottomSheetPlayer(
         keepContentAlive = true,
         morphMode = playerDesignStyle == PlayerDesignStyle.SPATIALFLOW,
         navbarHiddenOffset = navbarHiddenOffset,
+        predictiveBackState = predictiveBackState,
         sharedLayer =
             if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
                 {
