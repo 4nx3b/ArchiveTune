@@ -146,14 +146,10 @@ fun LibrarySpotifyPlaylistsScreen(
     val surfaceColor = MaterialTheme.colorScheme.surface
     val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
 
-    BackHandler {
-        try {
-            if (!navController.popBackStack()) {
-                navController.navigate("library") { launchSingleTop = true }
-            }
-        } catch (_: Exception) {
+    if (navController.previousBackStackEntry == null) {
+        BackHandler {
             try {
-                if (!navController.navigateUp()) {
+                if (!navController.popBackStack()) {
                     navController.navigate("library") { launchSingleTop = true }
                 }
             } catch (_: Exception) {

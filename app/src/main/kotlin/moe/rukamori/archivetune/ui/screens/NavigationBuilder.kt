@@ -17,6 +17,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -56,6 +60,7 @@ import moe.rukamori.archivetune.ui.screens.podcast.PodcastRoute
 import moe.rukamori.archivetune.ui.screens.podcast.PodcastScreen
 import moe.rukamori.archivetune.ui.screens.settings.AndroidAutoSettings
 import moe.rukamori.archivetune.ui.screens.settings.AboutScreen
+import moe.rukamori.archivetune.ui.screens.settings.about.LocalSukisuBgRenderActive
 import moe.rukamori.archivetune.ui.screens.settings.AccountSettings
 import moe.rukamori.archivetune.ui.screens.settings.AiIntegrationSettings
 import moe.rukamori.archivetune.ui.screens.settings.AodCustomizedScreen
@@ -743,7 +748,14 @@ fun NavGraphBuilder.navigationBuilder(
         ChangelogScreen(navController, channel = channel)
     }
     composable("settings/about") {
-        AboutScreen(navController)
+        val aboutNavTransitionRunning by remember {
+            derivedStateOf { transition.isRunning && transition.targetState != transition.currentState }
+        }
+        CompositionLocalProvider(
+            LocalSukisuBgRenderActive provides { !aboutNavTransitionRunning },
+        ) {
+            AboutScreen(navController)
+        }
     }
     composable(PO_TOKEN_ROUTE) {
         PoTokenScreen(navController)

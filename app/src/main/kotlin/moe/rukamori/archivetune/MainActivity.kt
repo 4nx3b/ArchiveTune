@@ -1649,6 +1649,19 @@ class MainActivity : ComponentActivity() {
                     val playerBackController = remember { PlayerBackController() }
                     val playerSheetPredictiveBack = rememberPredictiveSheetBackState()
 
+                    androidx.compose.runtime.LaunchedEffect(pendingExpandPlayerSheet) {
+                        if (!pendingExpandPlayerSheet) return@LaunchedEffect
+                        if (playerConnection == null) {
+                            kotlinx.coroutines.delay(150L)
+                            if (playerConnection == null) {
+                                pendingExpandPlayerSheet = false
+                                return@LaunchedEffect
+                            }
+                        }
+                        pendingExpandPlayerSheet = false
+                        runCatching { playerBottomSheetState.expandSoft() }
+                    }
+
                     val playerBackground by rememberEnumPreference(
                         key = PlayerBackgroundStyleKey,
                         defaultValue = PlayerBackgroundStyle.DEFAULT,
@@ -3715,6 +3728,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var pendingExpandPlayerSheet by androidx.compose.runtime.mutableStateOf(false)
+
     private fun isBackupUri(uri: Uri?): Boolean {
         if (uri == null) return false
         val path = uri.lastPathSegment?.lowercase(Locale.US)
@@ -3726,6 +3741,11 @@ class MainActivity : ComponentActivity() {
         navController: NavHostController,
     ) {
         if (intent == null) return
+        if (intent.getBooleanExtra("expand_player", false)) {
+            pendingExpandPlayerSheet = true
+            intent.removeExtra("expand_player")
+            return
+        }
         intent.getStringExtra("navigate_to")?.takeIf { it.isNotBlank() }?.let { route ->
             navController.navigate(route) {
                 launchSingleTop = true

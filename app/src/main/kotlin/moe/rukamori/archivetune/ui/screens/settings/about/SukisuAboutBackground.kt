@@ -39,11 +39,14 @@ import com.kyant.backdrop.asComposeShader
 import com.kyant.backdrop.isRuntimeShaderSupported
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.sin
+
+val LocalSukisuBgRenderActive = androidx.compose.runtime.staticCompositionLocalOf<() -> Boolean> { { true } }
 
 internal class SukisuBgConfig(
     val points: FloatArray,
@@ -338,6 +341,7 @@ private class SukisuBgElement(
     val playing: Boolean,
     val colorStage: () -> Float,
     val alpha: () -> Float,
+    val renderActive: () -> Boolean,
 ) : ModifierNodeElement<SukisuBgNode>() {
     override fun create(): SukisuBgNode =
         SukisuBgNode(
@@ -348,6 +352,7 @@ private class SukisuBgElement(
             playing = playing,
             colorStage = colorStage,
             alpha = alpha,
+            renderActive = renderActive,
         )
 
     override fun update(node: SukisuBgNode) {
@@ -359,6 +364,7 @@ private class SukisuBgElement(
             playing = playing,
             colorStage = colorStage,
             alpha = alpha,
+            renderActive = renderActive,
         )
     }
 
@@ -394,6 +400,7 @@ private class SukisuBgNode(
     private var playing: Boolean,
     private var colorStage: () -> Float,
     private var alpha: () -> Float,
+    private var renderActive: () -> Boolean,
 ) : Modifier.Node(), DrawModifierNode {
     private var animationJob: Job? = null
     private var animTime = 0f
@@ -416,6 +423,7 @@ private class SukisuBgNode(
         playing: Boolean,
         colorStage: () -> Float,
         alpha: () -> Float,
+        renderActive: () -> Boolean,
     ) {
         this.painter = painter
         this.preset = preset
@@ -423,6 +431,7 @@ private class SukisuBgNode(
         this.isFullSize = isFullSize
         this.colorStage = colorStage
         this.alpha = alpha
+        this.renderActive = renderActive
 
         if (this.playing != playing) {
             this.playing = playing
@@ -449,7 +458,9 @@ private class SukisuBgNode(
                     if (now - lastEmit < minDeltaNanos) continue
                     lastEmit = now
                     animTime = startOffset + (now - origin) / 1_000_000_000f
-                    invalidateDraw()
+                    if (renderActive()) {
+                        invalidateDraw()
+                    }
                 }
             }
     }
@@ -482,6 +493,7 @@ fun SukisuAboutBackground(
     bgModifier: Modifier = Modifier,
     isFullSize: Boolean = true,
     alpha: () -> Float = { 1f },
+    renderActive: () -> Boolean = LocalSukisuBgRenderActive.current,
     surface: Color,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -499,6 +511,7 @@ fun SukisuAboutBackground(
         var targetStage = floor(colorStage.value) + 1f
         while (isActive) {
             delay((preset.colorInterpPeriod * 500).toLong())
+            androidx.compose.runtime.snapshotFlow { renderActive() }.first { it }
             colorStage.animateTo(
                 targetValue = targetStage,
                 animationSpec = spring(dampingRatio = 0.9f, stiffness = 35f),
@@ -520,6 +533,7 @@ fun SukisuAboutBackground(
                         playing = true,
                         colorStage = { colorStage.value },
                         alpha = alpha,
+                        renderActive = renderActive,
                     ),
         )
         content()

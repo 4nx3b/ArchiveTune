@@ -197,6 +197,7 @@ import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.FlamingoBackgroundEffectKey
 import moe.rukamori.archivetune.constants.FlamingoShowVolumeBarKey
+import moe.rukamori.archivetune.constants.FlamingoHideSlideBarKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity
@@ -895,6 +896,10 @@ fun FlamingoPlayerContent(
                                         if (twinBakeFailures >= 5) {
                                             delay(FlamingoCanvasBakeRetryCooldownMs)
                                         }
+                                        if (pageMorphRunning) {
+                                            delay(FlamingoCanvasSnapshotIntervalMs)
+                                            continue
+                                        }
                                         val layer = twinSnapshotLayer
                                         if (layer.size.width >= 8 && layer.size.height >= 8) {
                                             withFrameNanos { }
@@ -1552,23 +1557,26 @@ fun FlamingoPlayerContent(
                     }
 
 
-                    FlamingoWrapper {
-                        Column(Modifier.fillMaxWidth()) {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = topInset + 20.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
+                    val (hideSlideBar) = rememberPreference(FlamingoHideSlideBarKey, defaultValue = false)
+                    if (!hideSlideBar) {
+                        FlamingoWrapper {
+                            Column(Modifier.fillMaxWidth()) {
                                 Box(
                                     Modifier
-                                        .overlayEffect()
-                                        .size(
-                                            width = 32.dp,
-                                            height = 4.5.dp,
-                                        )
-                                        .background(Color(0x4DFFFFFF), RoundedCornerShape(2.25.dp)),
-                                )
+                                        .fillMaxWidth()
+                                        .padding(top = topInset + 20.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Box(
+                                        Modifier
+                                            .overlayEffect()
+                                            .size(
+                                                width = 32.dp,
+                                                height = 4.5.dp,
+                                            )
+                                            .background(Color(0x4DFFFFFF), RoundedCornerShape(2.25.dp)),
+                                    )
+                                }
                             }
                         }
                     }
@@ -4422,6 +4430,8 @@ private fun FlamingoVolumeSlider(
 }
 
 @Composable
+private val FlamingoTrackBackingColor = Color(0x1A000000)
+
 private fun FlamingoTrack(
     activeFraction: Float,
     modifier: Modifier = Modifier,
@@ -4452,6 +4462,12 @@ private fun FlamingoTrack(
             val sliderEnd = if (isRtl) sliderLeft else sliderRight
             val trackStrokeWidth = height.toPx()
 
+            drawRoundRect(
+                color = FlamingoTrackBackingColor,
+                topLeft = Offset(0f, center.y - trackStrokeWidth / 2f),
+                size = Size(size.width, trackStrokeWidth),
+                cornerRadius = CornerRadius(trackStrokeWidth / 2f),
+            )
             drawRoundRect(
                 color = inactiveTrackColor,
                 topLeft = Offset(0f, center.y - trackStrokeWidth / 2f),

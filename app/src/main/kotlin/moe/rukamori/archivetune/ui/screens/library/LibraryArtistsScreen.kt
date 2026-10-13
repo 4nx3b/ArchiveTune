@@ -134,14 +134,10 @@ fun LibraryArtistsScreen(
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
-    BackHandler {
-        try {
-            if (!navController.popBackStack()) {
-                navController.navigate("library") { launchSingleTop = true }
-            }
-        } catch (_: Exception) {
+    if (navController.previousBackStackEntry == null) {
+        BackHandler {
             try {
-                if (!navController.navigateUp()) {
+                if (!navController.popBackStack()) {
                     navController.navigate("library") { launchSingleTop = true }
                 }
             } catch (_: Exception) {

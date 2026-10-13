@@ -51,6 +51,7 @@
     <string name="filter_albums">Albums</string>
     <string name="filter_artists">Artists</string>
     <string name="filter_playlists">Playlists</string>
+    <string name="soundcloud_verified_artist">Verified artist</string>
     <string name="filter_community_playlists">Community playlists</string>
     <string name="filter_featured_playlists">Featured playlists</string>
     <string name="filter_podcasts">Podcasts</string>
@@ -2065,6 +2066,8 @@
     <string name="hide_romanization">Hide Romanization</string>
     <string name="flamingo_settings_volume_bar">Show volume bar</string>
     <string name="flamingo_settings_volume_bar_desc">Display the hardware volume slider in the player</string>
+    <string name="flamingo_settings_hide_slide_bar">Hide slide bar</string>
+    <string name="flamingo_settings_hide_slide_bar_desc">Hide the drag bar on top of the artwork in the Apple Music player</string>
 
     <string name="rec_recommended_for_you">Recommended for You</string>
     <string name="rec_discover_new_music">Discover New Music</string>

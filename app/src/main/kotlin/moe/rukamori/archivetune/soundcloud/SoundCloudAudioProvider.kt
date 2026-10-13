@@ -267,6 +267,101 @@ object SoundCloudAudioProvider {
         }
     }
 
+    data class SoundCloudUserResult(
+        val userId: String,
+        val username: String,
+        val avatarUrl: String?,
+        val permalinkUrl: String,
+        val trackCount: Int?,
+        val isVerified: Boolean,
+    )
+
+    data class SoundCloudPlaylistResult(
+        val playlistId: String,
+        val title: String,
+        val artworkUrl: String?,
+        val permalinkUrl: String,
+        val trackCount: Int,
+        val isAlbum: Boolean,
+        val tracks: List<SoundCloudTrackMetadata>,
+    )
+
+    suspend fun searchUsers(
+        term: String,
+        limit: Int = SEARCH_LIMIT,
+        clientId: String? = null,
+    ): List<SoundCloudUserResult> = withContext(Dispatchers.IO) {
+        if (term.isBlank()) return@withContext emptyList()
+
+        val effectiveClientId = clientId ?: getClientId()
+        if (effectiveClientId.isBlank()) return@withContext emptyList()
+
+        val results = searchCollection("search/users", term, effectiveClientId, limit) ?: return@withContext emptyList()
+        buildList {
+            for (index in 0 until results.length()) {
+                val obj = results.optJSONObject(index) ?: continue
+                if (!obj.optString("kind").equals("user", ignoreCase = true)) continue
+                val userId = obj.stringOrNull("id") ?: continue
+                val username = obj.stringOrNull("username") ?: continue
+                val permalinkUrl = obj.stringOrNull("permalink_url") ?: continue
+                add(
+                    SoundCloudUserResult(
+                        userId = userId,
+                        username = username,
+                        avatarUrl = obj.stringOrNull("avatar_url")?.let(::highResArtworkUrl),
+                        permalinkUrl = permalinkUrl,
+                        trackCount = obj.intOrNull("track_count"),
+                        isVerified = obj.optBoolean("verified", false),
+                    ),
+                )
+            }
+        }
+    }
+
+    suspend fun searchPlaylists(
+        term: String,
+        limit: Int = SEARCH_LIMIT,
+        clientId: String? = null,
+    ): List<SoundCloudPlaylistResult> = withContext(Dispatchers.IO) {
+        if (term.isBlank()) return@withContext emptyList()
+
+        val effectiveClientId = clientId ?: getClientId()
+        if (effectiveClientId.isBlank()) return@withContext emptyList()
+
+        val results = searchCollection("search/playlists", term, effectiveClientId, limit) ?: return@withContext emptyList()
+        buildList {
+            for (index in 0 until results.length()) {
+                val obj = results.optJSONObject(index) ?: continue
+                val kind = obj.optString("kind")
+                if (!kind.equals("playlist", ignoreCase = true) && !kind.equals("system-playlist", ignoreCase = true)) continue
+                val playlistId = obj.stringOrNull("id") ?: continue
+                val title = obj.stringOrNull("title") ?: continue
+                val permalinkUrl = obj.stringOrNull("permalink_url") ?: continue
+                val embeddedTracks =
+                    buildList {
+                        val tracksArray = obj.optJSONArray("tracks") ?: return@buildList
+                        for (trackIndex in 0 until tracksArray.length()) {
+                            val trackObj = tracksArray.optJSONObject(trackIndex) ?: continue
+                            if (!trackObj.optString("kind").equals("track", ignoreCase = true)) continue
+                            if (!trackObj.optBoolean("streamable", true)) continue
+                            trackObj.toMatchedTrack()?.toTrackMetadata()?.let(::add)
+                        }
+                    }
+                add(
+                    SoundCloudPlaylistResult(
+                        playlistId = playlistId,
+                        title = title,
+                        artworkUrl = obj.stringOrNull("artwork_url")?.let(::highResArtworkUrl),
+                        permalinkUrl = permalinkUrl,
+                        trackCount = obj.intOrNull("track_count") ?: embeddedTracks.size,
+                        isAlbum = obj.optBoolean("is_album", false),
+                        tracks = embeddedTracks,
+                    ),
+                )
+            }
+        }
+    }
+
     suspend fun searchMetadata(
         term: String,
         limit: Int = SEARCH_LIMIT,
@@ -418,8 +513,15 @@ object SoundCloudAudioProvider {
         term: String,
         clientId: String,
         limit: Int = SEARCH_LIMIT,
+    ): JSONArray? = searchCollection("search/tracks", term, clientId, limit)
+
+    private suspend fun searchCollection(
+        path: String,
+        term: String,
+        clientId: String,
+        limit: Int,
     ): JSONArray? = withContext(Dispatchers.IO) {
-        val url = "$API_BASE_URL/search/tracks".toHttpUrlOrNull()
+        val url = "$API_BASE_URL/$path".toHttpUrlOrNull()
             ?.newBuilder()
             ?.addQueryParameter("q", term)
             ?.addQueryParameter("limit", limit.coerceIn(1, 50).toString())

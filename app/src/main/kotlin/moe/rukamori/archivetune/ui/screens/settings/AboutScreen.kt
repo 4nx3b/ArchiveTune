@@ -67,6 +67,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
@@ -622,7 +623,7 @@ private fun TranslationContributorListItem(
 ) {
     AboutGlassRow(
         modifier = modifier,
-        minHeight = if (contributors == null) 64.dp else 76.dp,
+        minHeight = if (contributors == null) 52.dp else 64.dp,
         leading = {
             AboutLeadingIcon(iconResId = R.drawable.language)
         },
@@ -690,7 +691,7 @@ private fun DependencyLicenseListItem(
 ) {
     AboutGlassRow(
         modifier = modifier,
-        minHeight = 76.dp,
+        minHeight = 64.dp,
         leading = {
             AboutLeadingIcon(iconResId = R.drawable.info)
         },
@@ -796,7 +797,7 @@ private fun AboutSuccessContent(
             state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = contentPadding,
-            verticalArrangement = Arrangement.spacedBy(AboutSpacing.sm),
+            verticalArrangement = Arrangement.spacedBy(AboutSpacing.xs),
         ) {
             item(key = "logoSpacer", contentType = "about_logo_spacer") {
                 Box(
@@ -819,15 +820,6 @@ private fun AboutSuccessContent(
                     AboutLinksCard(
                         links = model.primaryLinks,
                         onOpenUri = onOpenUri,
-                        glassBackdrop = glassBackdrop,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-
-            item(key = "project_information", contentType = "about_actions") {
-                AboutContentContainer(horizontalPadding = horizontalContentPadding) {
-                    AboutProjectInformationSection(
                         onOpenTranslationContributors = onOpenTranslationContributors,
                         onOpenDependencyLicenses = onOpenDependencyLicenses,
                         glassBackdrop = glassBackdrop,
@@ -1042,6 +1034,8 @@ private fun AboutGlassCard(
 private fun AboutLinksCard(
     links: AboutLinkCollection,
     onOpenUri: (String) -> Unit,
+    onOpenTranslationContributors: () -> Unit,
+    onOpenDependencyLicenses: () -> Unit,
     glassBackdrop: LayerBackdrop?,
     modifier: Modifier = Modifier,
 ) {
@@ -1049,10 +1043,13 @@ private fun AboutLinksCard(
         glassBackdrop = glassBackdrop,
         modifier = modifier,
     ) {
-        Column(modifier = Modifier.padding(vertical = AboutSpacing.xs)) {
+        Column(modifier = Modifier.padding(vertical = AboutSpacing.xxs)) {
             repeat(links.size) { index ->
                 val link = links[index]
                 val onClick = remember(link.url, onOpenUri) { { onOpenUri(link.url) } }
+                if (index > 0) {
+                    AboutRowDivider()
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(AboutSpacing.sm),
@@ -1060,7 +1057,7 @@ private fun AboutLinksCard(
                         Modifier
                             .fillMaxWidth()
                             .clickable(onClick = onClick)
-                            .padding(horizontal = AboutSpacing.md, vertical = 14.dp),
+                            .padding(horizontal = AboutSpacing.md, vertical = 9.dp),
                 ) {
                     AboutLeadingIcon(iconResId = link.iconResId)
                     Text(
@@ -1078,8 +1075,65 @@ private fun AboutLinksCard(
                     )
                 }
             }
+            AboutRowDivider()
+            AboutInfoRow(
+                iconResId = R.drawable.translate,
+                label = stringResource(R.string.about_contributor_translation),
+                onClick = onOpenTranslationContributors,
+            )
+            AboutRowDivider()
+            AboutInfoRow(
+                iconResId = R.drawable.info,
+                label = stringResource(R.string.about_license),
+                onClick = onOpenDependencyLicenses,
+            )
         }
     }
+}
+
+@Composable
+private fun AboutInfoRow(
+    iconResId: Int,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AboutSpacing.sm),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = AboutSpacing.md, vertical = 9.dp),
+    ) {
+        AboutLeadingIcon(iconResId = iconResId)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLargeEmphasized,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            painter = painterResource(R.drawable.arrow_forward),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun AboutRowDivider() {
+    HorizontalDivider(
+        modifier =
+            Modifier.padding(
+                start = AboutDimensions.RowDividerStartInset,
+                end = AboutSpacing.md,
+            ),
+        thickness = 0.5.dp,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+    )
 }
 
 @Composable
@@ -1111,7 +1165,7 @@ private fun SurfaceAppIcon(
 private fun AboutGlassRow(
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
-    minHeight: Dp = 64.dp,
+    minHeight: Dp = 52.dp,
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
     supporting: (@Composable () -> Unit)? = null,
@@ -1125,7 +1179,7 @@ private fun AboutGlassRow(
                 .fillMaxWidth()
                 .heightIn(min = minHeight)
                 .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-                .padding(horizontal = AboutSpacing.md, vertical = 12.dp),
+                .padding(horizontal = AboutSpacing.md, vertical = 8.dp),
     ) {
         leading?.invoke()
         Column(modifier = Modifier.weight(1f)) {
@@ -1133,58 +1187,6 @@ private fun AboutGlassRow(
             supporting?.invoke()
         }
         trailing?.invoke()
-    }
-}
-
-@Composable
-private fun AboutProjectInformationSection(
-    onOpenTranslationContributors: () -> Unit,
-    onOpenDependencyLicenses: () -> Unit,
-    glassBackdrop: LayerBackdrop?,
-    modifier: Modifier = Modifier,
-) {
-    AboutGlassCard(
-        glassBackdrop = glassBackdrop,
-        modifier = modifier,
-    ) {
-        AboutGlassRow(
-            onClick = onOpenTranslationContributors,
-            leading = { AboutLeadingIcon(iconResId = R.drawable.translate) },
-            trailing = {
-                Icon(
-                    painter = painterResource(R.drawable.arrow_forward),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            },
-        ) {
-            Text(
-                text = stringResource(R.string.about_contributor_translation),
-                style = MaterialTheme.typography.bodyLargeEmphasized,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        AboutGlassRow(
-            onClick = onOpenDependencyLicenses,
-            leading = { AboutLeadingIcon(iconResId = R.drawable.info) },
-            trailing = {
-                Icon(
-                    painter = painterResource(R.drawable.arrow_forward),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            },
-        ) {
-            Text(
-                text = stringResource(R.string.about_license),
-                style = MaterialTheme.typography.bodyLargeEmphasized,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
     }
 }
 
@@ -1199,17 +1201,20 @@ private fun TeamMemberSection(
 ) {
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(AboutSpacing.xs),
+        verticalArrangement = Arrangement.spacedBy(AboutSpacing.xxs),
     ) {
         AboutSectionHeader(title = title)
         AboutGlassCard(glassBackdrop = glassBackdrop) {
-            Column(modifier = Modifier.padding(vertical = AboutSpacing.xs)) {
+            Column(modifier = Modifier.padding(vertical = AboutSpacing.xxs)) {
                 repeat(members.size) { index ->
+                    if (index > 0) {
+                        AboutRowDivider()
+                    }
                     TeamMemberListItem(
                         member = members[index],
                         onOpenUri = onOpenUri,
-                        avatarSize = if (prominentFirstItem && index == 0) 64.dp else 52.dp,
-                        minHeight = if (prominentFirstItem && index == 0) 96.dp else 80.dp,
+                        avatarSize = if (prominentFirstItem && index == 0) 56.dp else 44.dp,
+                        minHeight = if (prominentFirstItem && index == 0) 76.dp else 60.dp,
                     )
                 }
             }
@@ -1426,9 +1431,12 @@ private fun ContributorList(
         glassBackdrop = glassBackdrop,
         modifier = modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(vertical = AboutSpacing.xs)) {
+        Column(modifier = Modifier.padding(vertical = AboutSpacing.xxs)) {
             repeat(contributors.size) { index ->
                 val contributor = contributors[index]
+                if (index > 0) {
+                    AboutRowDivider()
+                }
                 ContributorListItem(
                     login = contributor.login,
                     avatarUrl = contributor.avatarUrl,
@@ -1436,6 +1444,7 @@ private fun ContributorList(
                     onOpenProfile = onOpenProfile,
                 )
             }
+            AboutRowDivider()
             ContributorReadMoreListItem(
                 readMoreUrl = readMoreUrl,
                 onOpenProfile = onOpenProfile,
@@ -1457,14 +1466,14 @@ private fun ContributorListItem(
     AboutGlassRow(
         onClick = onClick,
         modifier = modifier,
-        minHeight = 72.dp,
+        minHeight = 56.dp,
         leading = {
             AsyncImage(
                 model = avatarUrl,
                 contentDescription = login,
                 modifier =
                     Modifier
-                        .size(44.dp)
+                        .size(40.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest),
             )
@@ -1491,7 +1500,7 @@ private fun ContributorReadMoreListItem(
     AboutGlassRow(
         onClick = onClick,
         modifier = modifier,
-        minHeight = 72.dp,
+        minHeight = 56.dp,
         leading = {
             AboutLeadingIcon(iconResId = R.drawable.add_circle)
         },
@@ -1529,7 +1538,7 @@ private fun AboutLeadingIcon(
             contentDescription = null,
             modifier =
                 Modifier
-                    .padding(AboutSpacing.sm)
+                    .padding(9.dp)
                     .size(20.dp),
         )
     }
@@ -1541,6 +1550,7 @@ private object AboutDimensions {
     val HorizontalHeroBreakpoint = 600.dp
     val DialogListPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
     val TopBarHeight = 64.dp
+    val RowDividerStartInset = 76.dp
 }
 
 private object AboutSpacing {

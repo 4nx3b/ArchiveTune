@@ -117,10 +117,7 @@ class UsbBitPerfectOutput(
             val supported = bitPerfectModes.firstOrNull { sameFormat(it.format, pcm) }
                 ?: bitPerfectModes.firstOrNull { candidate ->
                     candidate.format?.let { fmt ->
-                        fmt.sampleRate == pcm.sampleRate &&
-                            encodingBits(fmt.encoding).let { bits ->
-                                bits >= 24 || (bits == 16 && sourceBits in 0..16)
-                            }
+                        fmt.sampleRate == pcm.sampleRate && fmt.encoding == pcm.encoding
                     } == true
                 }
             if (supported == null) {

@@ -1008,6 +1008,7 @@ enum class PlayerDesignStyle {
 }
 
 val FlamingoShowVolumeBarKey = booleanPreferencesKey("flamingoNowPlayingShowVolumeBar")
+val FlamingoHideSlideBarKey = booleanPreferencesKey("flamingoNowPlayingHideSlideBar")
 val FlamingoBackgroundEffectKey = booleanPreferencesKey("flamingoNowPlayingBackgroundEffect")
 
 enum class PlayerBackgroundStyle {
@@ -1048,6 +1049,7 @@ val NavigationBarFrostedBlurKey = booleanPreferencesKey("navigationBarFrostedBlu
 
 val NavigationBarTintFrostedBlurKey = booleanPreferencesKey("navigationBarTintFrostedBlur")
 val HideNavigationBarLabelsKey = booleanPreferencesKey("hideNavigationBarLabels")
+val AddToPlaylistSortKey = stringPreferencesKey("addToPlaylistSort")
 
 enum class NavigationBarCompactBehavior {
     ADAPTIVE,

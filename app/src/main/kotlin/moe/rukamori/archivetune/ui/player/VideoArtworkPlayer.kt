@@ -141,6 +141,7 @@ private const val VideoStuckBufferingTimeoutMs = 8000L
 private fun maxVideoHeightFor(preferredHeight: Int?): Int = VideoQualityPreference.ceilingFor(preferredHeight)
 
 private const val VideoReadyHoldTimeoutMs = 10000L
+private const val VideoFirstFrameKickIntervalMs = 2500L
 
 private const val VideoClientAttemptTimeoutMs = 8000L
 
@@ -750,10 +751,17 @@ fun rememberVideoArtworkState(
     LaunchedEffect(state.streamUrl) {
         if (state.streamUrl == null) return@LaunchedEffect
         delay(VideoReadyHoldTimeoutMs)
-        if (awaitingVideoReady && !state.isVideoReady) {
-            Timber
-                .tag(VideoPlaybackLogTag)
-                .w("Video first frame still pending after ${VideoReadyHoldTimeoutMs}ms — audio stays held until it arrives")
+        while (awaitingVideoReady && !state.isVideoReady && !state.hasPlaybackFailed) {
+            if (exoPlayer.playbackState == Player.STATE_READY && exoPlayer.playerError == null) {
+                Timber
+                    .tag(VideoPlaybackLogTag)
+                    .w(
+                        "Video first frame still pending while READY — kicking a position reset to force the render (backgrounded start recovery)",
+                    )
+                exoPlayer.seekTo(exoPlayer.currentPosition)
+                state.lastSeekAtMs = SystemClock.elapsedRealtime()
+            }
+            delay(VideoFirstFrameKickIntervalMs)
         }
     }
 
@@ -1042,20 +1050,26 @@ fun rememberVideoArtworkState(
                     (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) &&
                     !state.hasPlaybackFailed &&
                     exoPlayer.playerError == null &&
-                    state.streamUrl != null &&
-                    updatedMainAudioReady
+                    state.streamUrl != null
                 ) {
-
-                    if (state.isVideoReady) {
-                        val mainPos = currentPosition()
-                        val videoPos = exoPlayer.currentPosition
-                        if (mainPos > 0 && kotlin.math.abs(videoPos - mainPos) > VideoSoftSeekDriftThresholdMs) {
-                            exoPlayer.seekTo(mainPos)
-                            state.lastSeekAtMs = SystemClock.elapsedRealtime()
-                            state.lastSurfaceReanchorAtMs = state.lastSeekAtMs
-                        }
+                    if (awaitingVideoReady && !state.isVideoReady &&
+                        exoPlayer.playbackState == Player.STATE_READY
+                    ) {
+                        exoPlayer.seekTo(exoPlayer.currentPosition)
+                        state.lastSeekAtMs = SystemClock.elapsedRealtime()
                     }
-                    exoPlayer.setVideoPlayback(shouldPlay)
+                    if (updatedMainAudioReady) {
+                        if (state.isVideoReady) {
+                            val mainPos = currentPosition()
+                            val videoPos = exoPlayer.currentPosition
+                            if (mainPos > 0 && kotlin.math.abs(videoPos - mainPos) > VideoSoftSeekDriftThresholdMs) {
+                                exoPlayer.seekTo(mainPos)
+                                state.lastSeekAtMs = SystemClock.elapsedRealtime()
+                                state.lastSurfaceReanchorAtMs = state.lastSeekAtMs
+                            }
+                        }
+                        exoPlayer.setVideoPlayback(shouldPlay)
+                    }
                 }
                 if (event == Lifecycle.Event.ON_STOP) {
 

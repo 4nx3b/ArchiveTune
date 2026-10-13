@@ -78,6 +78,7 @@ import moe.rukamori.archivetune.constants.CustomFontUriKey
 import moe.rukamori.archivetune.constants.DarkModeKey
 import moe.rukamori.archivetune.constants.FlamingoBackgroundEffectKey
 import moe.rukamori.archivetune.constants.FlamingoShowVolumeBarKey
+import moe.rukamori.archivetune.constants.FlamingoHideSlideBarKey
 import moe.rukamori.archivetune.constants.DefaultOpenTabKey
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
@@ -167,6 +168,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(FlamingoBackgroundEffectKey, defaultValue = false)
     val (flamingoShowVolumeBar, onFlamingoShowVolumeBarChange) =
         rememberPreference(FlamingoShowVolumeBarKey, defaultValue = true)
+    val (flamingoHideSlideBar, onFlamingoHideSlideBarChange) =
+        rememberPreference(FlamingoHideSlideBarKey, defaultValue = false)
     val (_, onAppleMusicExperienceChange) =
         rememberPreference(
             AppleMusicExperienceKey,
@@ -797,6 +800,14 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                 icon = { Icon(painterResource(R.drawable.flamingo_np_volume), null) },
                                 checked = flamingoShowVolumeBar,
                                 onCheckedChange = onFlamingoShowVolumeBarChange,
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            SwitchPreference(
+                                title = { Text(stringResource(R.string.flamingo_settings_hide_slide_bar)) },
+                                description = stringResource(R.string.flamingo_settings_hide_slide_bar_desc),
+                                icon = { Icon(painterResource(R.drawable.flamingo_np_more), null) },
+                                checked = flamingoHideSlideBar,
+                                onCheckedChange = onFlamingoHideSlideBarChange,
                             )
                         }
                     }
