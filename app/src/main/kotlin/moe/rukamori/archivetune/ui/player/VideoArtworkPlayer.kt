@@ -470,6 +470,7 @@ fun rememberVideoArtworkState(
 
     var lastLoadedStreamUrl by remember { mutableStateOf<String?>(null) }
     var lastLoadedCaptionTrack by remember { mutableStateOf<PlayerResponse.CaptionTrack?>(null) }
+    var appInForeground by remember { mutableStateOf(true) }
 
     var videoRecoveryAttempts by remember { mutableStateOf(0) }
     var videoRecoveryRequests by remember { mutableIntStateOf(0) }
@@ -759,6 +760,10 @@ fun rememberVideoArtworkState(
         delay(VideoReadyHoldTimeoutMs)
         var kicks = 0
         while (!state.isVideoReady && !state.hasPlaybackFailed) {
+            if (!updatedSheetSurfaceActive || !appInForeground) {
+                delay(500)
+                continue
+            }
             if (kicks >= VideoFirstFrameKickMaxAttempts) {
                 Timber
                     .tag(VideoPlaybackLogTag)
@@ -1071,6 +1076,13 @@ fun rememberVideoArtworkState(
     DisposableEffect(exoPlayer, lifecycleOwner) {
         val observer =
             LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) {
+                    appInForeground = true
+                }
+                if (event == Lifecycle.Event.ON_STOP) {
+                    appInForeground = false
+                    runCatching { exoPlayer.pause() }
+                }
                 if (
                     (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) &&
                     !state.hasPlaybackFailed &&
@@ -1095,10 +1107,6 @@ fun rememberVideoArtworkState(
                         }
                         exoPlayer.setVideoPlayback(shouldPlay)
                     }
-                }
-                if (event == Lifecycle.Event.ON_STOP) {
-
-                    runCatching { exoPlayer.pause() }
                 }
             }
         lifecycleOwner.lifecycle.addObserver(observer)

@@ -32,8 +32,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.MaxVideoCacheSizeKey
+import moe.rukamori.archivetune.constants.VideoQualityPreferredHeightKey
 import moe.rukamori.archivetune.di.VideoCacheEntryPoint
 import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.ui.player.VideoQualityPreference
 import moe.rukamori.archivetune.ui.player.resolveVideoStreamUrl
 import moe.rukamori.archivetune.ui.player.videoStreamHttpClient
 import moe.rukamori.archivetune.utils.dataStore
@@ -132,7 +134,14 @@ object VideoBackgroundPreloader {
                     val context = appContext ?: return@launch
                     val resolved =
                         withContext(Dispatchers.IO) {
-                            runCatching { resolveVideoStreamUrl(mediaId, preferredHeight = null) }
+                            val preferredHeight =
+                                VideoQualityPreference.toPreferredHeight(
+                                    context.dataStore.get(
+                                        VideoQualityPreferredHeightKey,
+                                        VideoQualityPreference.HIGH_QUALITY,
+                                    ),
+                                )
+                            runCatching { resolveVideoStreamUrl(mediaId, preferredHeight) }
                                 .getOrElse { error ->
                                     if (error is kotlinx.coroutines.CancellationException) throw error
                                     Timber.tag(TAG).w(error, "Background video resolution failed for $mediaId")
