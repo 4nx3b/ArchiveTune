@@ -1117,9 +1117,11 @@ fun BottomSheetPlayer(
         BackHandler(
             enabled =
                 (queueSheetState.isExpandedOrExpanding ||
-                    state.isExpandedOrExpanding) && !rootOverlayActive,
+                    state.isExpandedOrExpanding ||
+                    bottomSheetPageState.isVisible) && !rootOverlayActive,
         ) {
             when {
+                bottomSheetPageState.isVisible -> bottomSheetPageState.dismiss()
                 isInlineLyricsOpen && state.isExpandedOrExpanding -> isInlineLyricsOpen = false
                 anyStylePageOverlayOpen && state.isExpandedOrExpanding -> stylePageBackRequests.intValue++
                 queueSheetState.isExpandedOrExpanding -> queueSheetState.collapseSoft()
@@ -1130,12 +1132,14 @@ fun BottomSheetPlayer(
 
     if (backController != null) {
         val backRootOverlayActive = LocalRootOverlayActive.current
+        val detailsPageVisible = bottomSheetPageState.isVisible
         val publishedBackTarget =
             when {
                 backRootOverlayActive -> PlayerBackTarget.NONE
                 aodModeEnabled -> PlayerBackTarget.NONE
                 !state.isExpandedOrExpanding && !queueSheetState.isExpandedOrExpanding -> PlayerBackTarget.NONE
                 queueSheetState.isExpandedOrExpanding -> PlayerBackTarget.SUB_PAGE
+                detailsPageVisible -> PlayerBackTarget.SUB_PAGE
                 isInlineLyricsOpen || isAppleMusicInlineLyricsOpen || anyStylePageOverlayOpen -> PlayerBackTarget.SUB_PAGE
                 else -> PlayerBackTarget.SHEET
             }
@@ -1143,6 +1147,7 @@ fun BottomSheetPlayer(
             backController.backTarget = publishedBackTarget
             backController.routeBack = {
                 when {
+                    detailsPageVisible && bottomSheetPageState.isVisible -> bottomSheetPageState.dismiss()
                     isInlineLyricsOpen && state.isExpandedOrExpanding -> isInlineLyricsOpen = false
                     anyStylePageOverlayOpen && state.isExpandedOrExpanding -> stylePageBackRequests.intValue++
                     queueSheetState.isExpandedOrExpanding -> queueSheetState.collapseSoft()

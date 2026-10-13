@@ -38,12 +38,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -142,6 +136,7 @@ import moe.rukamori.archivetune.viewmodels.AlbumUiState
 import moe.rukamori.archivetune.viewmodels.AlbumViewModel
 import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.artist.AmbientArtworkBackdrop
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -278,6 +273,11 @@ fun AlbumScreen(
                 .fillMaxSize()
                 .background(surfaceColor),
     ) {
+        AmbientArtworkBackdrop(
+            mediaId = "album:${albumWithSongs?.album?.id.orEmpty()}",
+            artworkUrl = albumWithSongs?.album?.thumbnailUrl,
+        )
+
         LazyColumn(
             modifier =
                 (if (liquidGlassHeaderActive) {
@@ -884,24 +884,6 @@ fun AlbumScreen(
             }
         }
 
-        val pinnedActionsAlbum = albumWithSongs
-        if (pinnedActionsAlbum?.songs?.isNotEmpty() == true) {
-            PinnedAlbumActionsRow(
-                visible = showTopBarTitle && !selection,
-                backdrop = artworkBackdrop.takeIf { glassHeaderActive },
-                onPlay = { playerConnection.playQueue(LocalAlbumRadio(pinnedActionsAlbum)) },
-                onShuffle = {
-                    playerConnection.playQueue(
-                        LocalAlbumRadio(pinnedActionsAlbum.copy(songs = pinnedActionsAlbum.songs.shuffled())),
-                    )
-                },
-                modifier =
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = systemBarsTopPadding + 60.dp),
-            )
-        }
-
         if (!liquidGlassHeaderActive) {
         val topAppBarColors =
             if (transparentAppBar) {
@@ -1045,76 +1027,3 @@ fun AlbumScreen(
 
 private const val MediaDetailMetadataSeparator = "  •  "
 
-@Composable
-private fun PinnedAlbumActionsRow(
-    visible: Boolean,
-    backdrop: Backdrop?,
-    onPlay: () -> Unit,
-    onShuffle: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(180)) + expandVertically(tween(180)),
-        exit = fadeOut(tween(160)) + shrinkVertically(tween(160)),
-        modifier = modifier,
-    ) {
-        if (backdrop != null) {
-            LiquidGlassActionPill(
-                backdrop = backdrop,
-                interactive = true,
-                modifier = Modifier.padding(horizontal = 12.dp),
-            ) {
-                androidx.compose.material3.IconButton(
-                    onClick = onShuffle,
-                    modifier = Modifier.size(48.dp),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.shuffle),
-                        contentDescription = stringResource(R.string.shuffle),
-                        tint = liquidGlassContentColor(),
-                    )
-                }
-                androidx.compose.material3.IconButton(
-                    onClick = onPlay,
-                    modifier = Modifier.size(48.dp),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.play),
-                        contentDescription = stringResource(R.string.play),
-                        tint = liquidGlassContentColor(),
-                    )
-                }
-            }
-        } else {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
-                tonalElevation = 3.dp,
-                shadowElevation = 6.dp,
-                modifier = Modifier.padding(horizontal = 12.dp),
-            ) {
-                Row {
-                    androidx.compose.material3.IconButton(
-                        onClick = onShuffle,
-                        modifier = Modifier.size(48.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.shuffle),
-                            contentDescription = stringResource(R.string.shuffle),
-                        )
-                    }
-                    androidx.compose.material3.IconButton(
-                        onClick = onPlay,
-                        modifier = Modifier.size(48.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.play),
-                            contentDescription = stringResource(R.string.play),
-                        )
-                    }
-                }
-            }
-        }
-    }
-}

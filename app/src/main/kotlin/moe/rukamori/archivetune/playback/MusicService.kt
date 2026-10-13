@@ -1351,21 +1351,17 @@ class MusicService :
             state != Player.STATE_ENDED
     }
 
-    private var lastSessionActivityAlbumRoute: String? = null
+    private var sessionActivityIntentPublished = false
 
     private fun updateSessionActivityDeepLink(metadata: moe.rukamori.archivetune.models.MediaMetadata?) {
         if (BuildConfig.DEVICE == "automotive") return
         if (!this::mediaSession.isInitialized) return
-        val albumId = metadata?.album?.id?.takeIf { it.isNotBlank() }
-        val route = albumId?.let { "album/$it" }
-        if (route == lastSessionActivityAlbumRoute) return
-        lastSessionActivityAlbumRoute = route
+        if (sessionActivityIntentPublished) return
+        sessionActivityIntentPublished = true
         val intent =
             Intent(this, MainActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                if (route != null) {
-                    putExtra("navigate_to", route)
-                }
+                putExtra("expand_player", true)
             }
         runCatching {
             mediaSession.setSessionActivity(
@@ -11085,11 +11081,37 @@ class MusicService :
                 ?: return
             val sourceBits = status.sourceBitDepth.takeIf { it > 0 }
             val device = currentRoutedOutputDevice() ?: return
+            val wireWillBeFloat =
+                tryptifyAudioProcessing ||
+                    lastwaveAudioProcessing ||
+                    primaryFloatDspProcessor.engaged ||
+                    status.decodedEncoding == C.ENCODING_PCM_24BIT ||
+                    status.decodedEncoding == C.ENCODING_PCM_32BIT ||
+                    status.decodedEncoding == C.ENCODING_PCM_FLOAT
+            val wireEncoding =
+                if (wireWillBeFloat) {
+                    android.media.AudioFormat.ENCODING_PCM_FLOAT
+                } else {
+                    android.media.AudioFormat.ENCODING_PCM_16BIT
+                }
+            if (lastMixerWireEncoding != null && lastMixerWireEncoding != wireEncoding && bitPerfectNeedsRouteReprepare()) {
+                Timber
+                    .tag(TAG)
+                    .w(
+                        "Bit-perfect wire encoding changed %s -> %s — re-preparing so the track matches the mixer",
+                        if (lastMixerWireEncoding == android.media.AudioFormat.ENCODING_PCM_FLOAT) "float" else "pcm16",
+                        if (wireEncoding == android.media.AudioFormat.ENCODING_PCM_FLOAT) "float" else "pcm16",
+                    )
+                scope.launch(Dispatchers.Main) {
+                    runCatching { repreparePlayerForAudioRouteChange() }
+                }
+            }
+            lastMixerWireEncoding = wireEncoding
             mixerBitPerfectOutput.setDevice(device)
             mixerBitPerfectOutput.setSourceBits(sourceBits)
             mixerBitPerfectOutput.setFormat(
                 android.media.AudioFormat.Builder()
-                    .setEncoding(android.media.AudioFormat.ENCODING_PCM_FLOAT)
+                    .setEncoding(wireEncoding)
                     .setSampleRate(rate)
                     .setChannelMask(android.media.AudioFormat.CHANNEL_OUT_STEREO)
                     .build(),
@@ -11179,6 +11201,7 @@ class MusicService :
                 tryptifyAudioProcessing,
                 lastwaveAudioProcessing,
             )
+            refreshMixerBitPerfectRoute()
         }
     }
 
@@ -11221,6 +11244,9 @@ class MusicService :
 
     @Volatile
     private var lastBitPerfectWireReprepareKey: String? = null
+
+    @Volatile
+    private var lastMixerWireEncoding: Int? = null
 
     private fun maybeReprepareForBitPerfectWireMismatch() {
         val sourceRate = BitPerfectRuntime.status.sourceSampleRate

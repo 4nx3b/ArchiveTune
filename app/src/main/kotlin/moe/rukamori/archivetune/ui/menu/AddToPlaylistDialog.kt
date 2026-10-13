@@ -90,6 +90,8 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.InnerTubeCookieKey
+import moe.rukamori.archivetune.constants.AddToPlaylistSortKey
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.db.entities.Playlist
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
@@ -216,7 +218,7 @@ fun AddToPlaylistDialog(
     val playlistPlayCounts by database.playlistPlayCounts().collectAsStateWithLifecycle(initialValue = emptyList())
     val (innerTubeCookie) = rememberPreference(InnerTubeCookieKey, "")
     val isLoggedIn = remember(innerTubeCookie) { hasYouTubeLoginCookie(innerTubeCookie) }
-    var sortOption by rememberSaveable { mutableStateOf(AddToPlaylistSortOption.RECENTLY_CREATED) }
+    var sortOption by rememberEnumPreference(AddToPlaylistSortKey, AddToPlaylistSortOption.RECENTLY_CREATED)
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showSearchField by rememberSaveable { mutableStateOf(false) }
     val availablePlaylists =
@@ -285,7 +287,6 @@ fun AddToPlaylistDialog(
             duplicateSongsMap = emptyMap()
             searchQuery = ""
             showSearchField = false
-            sortOption = AddToPlaylistSortOption.RECENTLY_CREATED
         }
     }
 

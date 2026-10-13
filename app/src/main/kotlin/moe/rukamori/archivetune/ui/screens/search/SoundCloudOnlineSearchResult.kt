@@ -10,6 +10,7 @@ package moe.rukamori.archivetune.ui.screens.search
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -50,6 +51,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import moe.rukamori.archivetune.extensions.toMediaItem
+import moe.rukamori.archivetune.playback.queues.ListQueue
+import moe.rukamori.archivetune.playback.PlayerConnection
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -66,12 +71,15 @@ import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.soundcloud.SoundCloudAudioProvider
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
+import moe.rukamori.archivetune.utils.joinByBullet
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.utils.backToMain
 
 private enum class SoundCloudSearchFilter {
     ALL,
     TRACKS,
+    ARTISTS,
+    ALBUMS,
 }
 
 @Composable
@@ -88,27 +96,35 @@ internal fun SoundCloudOnlineSearchResult(
         ?: remember { mutableStateOf(false) }
 
     var tracks by remember(query) { mutableStateOf<List<SoundCloudAudioProvider.SoundCloudTrackMetadata>>(emptyList()) }
+    var users by remember(query) { mutableStateOf<List<SoundCloudAudioProvider.SoundCloudUserResult>>(emptyList()) }
+    var playlists by remember(query) { mutableStateOf<List<SoundCloudAudioProvider.SoundCloudPlaylistResult>>(emptyList()) }
     var loading by remember(query) { mutableStateOf(true) }
     var resolvingIds by remember { mutableStateOf(setOf<String>()) }
     var filter by rememberSaveable { mutableStateOf(SoundCloudSearchFilter.ALL) }
     var fieldQuery by rememberSaveable(query) { mutableStateOf(query) }
     val lazyListState = rememberLazyListState()
 
-    val visibleTracks =
-        remember(tracks, filter) {
-            when (filter) {
-                SoundCloudSearchFilter.ALL -> tracks
-                SoundCloudSearchFilter.TRACKS -> tracks
-            }
+    val albums =
+        remember(playlists) {
+            val albumOnly = playlists.filter { it.isAlbum }
+            if (albumOnly.size >= 3) albumOnly else playlists
         }
 
     LaunchedEffect(query) {
         loading = true
-        val results =
+        val (trackResults, userResults, playlistResults) =
             withContext(Dispatchers.IO) {
-                runCatching { SoundCloudAudioProvider.searchMetadata(query, 30) }.getOrDefault(emptyList())
+                val trackResults =
+                    async { runCatching { SoundCloudAudioProvider.searchMetadata(query, 30) }.getOrDefault(emptyList()) }
+                val userResults =
+                    async { runCatching { SoundCloudAudioProvider.searchUsers(query, 20) }.getOrDefault(emptyList()) }
+                val playlistResults =
+                    async { runCatching { SoundCloudAudioProvider.searchPlaylists(query, 20) }.getOrDefault(emptyList()) }
+                Triple(trackResults.await(), userResults.await(), playlistResults.await())
             }
-        tracks = results
+        tracks = trackResults
+        users = userResults
+        playlists = playlistResults
         loading = false
     }
 
@@ -131,6 +147,8 @@ internal fun SoundCloudOnlineSearchResult(
                         listOf(
                             SoundCloudSearchFilter.ALL to stringResource(R.string.filter_all),
                             SoundCloudSearchFilter.TRACKS to stringResource(R.string.filter_songs),
+                            SoundCloudSearchFilter.ARTISTS to stringResource(R.string.filter_artists),
+                            SoundCloudSearchFilter.ALBUMS to stringResource(R.string.filter_albums),
                         ),
                     currentValue = filter,
                     onValueUpdate = { filter = it },
@@ -144,6 +162,7 @@ internal fun SoundCloudOnlineSearchResult(
             modifier =
                 Modifier
                     .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface)
                     .searchResultsBarSource(barState),
         ) {
             when {
@@ -207,8 +226,44 @@ internal fun SoundCloudOnlineSearchResult(
                                 )
                             }
                         }
+                        if (filter == SoundCloudSearchFilter.ARTISTS) {
+                            itemsIndexed(
+                                items = users,
+                                key = { _, user -> "sc_user_${user.userId}" },
+                                contentType = { _, _ -> SoundCloudAudioProvider.SoundCloudUserResult::class },
+                            ) { _, user ->
+                                SoundCloudArtistRow(user = user)
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                                )
+                            }
+                        }
+                        if (filter == SoundCloudSearchFilter.ALBUMS) {
+                            itemsIndexed(
+                                items = albums,
+                                key = { _, playlist -> "sc_playlist_${playlist.playlistId}" },
+                                contentType = { _, _ -> SoundCloudAudioProvider.SoundCloudPlaylistResult::class },
+                            ) { _, playlist ->
+                                SoundCloudPlaylistRow(
+                                    playlist = playlist,
+                                    playerConnection = playerConnection,
+                                    coroutineScope = coroutineScope,
+                                    onResolvingChange = { id, active ->
+                                        resolvingIds =
+                                            if (active) {
+                                                resolvingIds + id
+                                            } else {
+                                                resolvingIds - id
+                                            }
+                                    },
+                                )
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                                )
+                            }
+                        }
                         itemsIndexed(
-                            items = visibleTracks,
+                            items = tracks,
                             key = { _, track -> track.trackId },
                             contentType = { _, _ -> SoundCloudAudioProvider.SoundCloudTrackMetadata::class },
                         ) { _, track ->
@@ -340,6 +395,189 @@ internal fun SoundCloudOnlineSearchResult(
             onBackLongClick = { navController.backToMain() },
             placeholder = stringResource(R.string.search_source_soundcloud),
             bottomPadding = playerAwareBottomPadding,
+        )
+    }
+}
+
+@Composable
+private fun SoundCloudArtistRow(user: SoundCloudAudioProvider.SoundCloudUserResult) {
+    val context = LocalContext.current
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable {
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(user.permalinkUrl),
+                            ),
+                        )
+                    }
+                },
+    ) {
+        ItemThumbnail(
+            thumbnailUrl = user.avatarUrl,
+            isActive = false,
+            isPlaying = false,
+            shape = androidx.compose.foundation.shape.CircleShape,
+            placeholderIconRes = R.drawable.artist,
+            modifier =
+                Modifier
+                    .padding(start = 12.dp)
+                    .size(48.dp),
+        )
+        Column(
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .padding(vertical = 8.dp, horizontal = 12.dp),
+        ) {
+            Text(
+                text = user.username,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = joinByBullet(
+                    user.trackCount?.takeIf { it > 0 }?.let { count -> "$count tracks" },
+                    if (user.isVerified) stringResource(R.string.soundcloud_verified_artist) else null,
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Icon(
+            painter = painterResource(R.drawable.search),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier =
+                Modifier
+                    .padding(end = 16.dp)
+                    .size(18.dp),
+        )
+    }
+}
+
+@Composable
+private fun SoundCloudPlaylistRow(
+    playlist: SoundCloudAudioProvider.SoundCloudPlaylistResult,
+    playerConnection: PlayerConnection?,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    onResolvingChange: (String, Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    var resolving by remember(playlist.playlistId) { mutableStateOf(false) }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable {
+                    if (!resolving) {
+                        if (playlist.tracks.isNotEmpty() && playerConnection != null) {
+                            resolving = true
+                            onResolvingChange(playlist.playlistId, true)
+                            coroutineScope.launch {
+                                try {
+                                    val resolved =
+                                        withContext(Dispatchers.IO) {
+                                            playlist.tracks.mapNotNull { resolveSoundCloudTrackToMetadata(it) }
+                                        }
+                                    if (resolved.isNotEmpty()) {
+                                        playerConnection.playQueue(
+                                            ListQueue(
+                                                title = playlist.title,
+                                                items = resolved.map { it.toMediaItem() },
+                                            ),
+                                        )
+                                    } else {
+                                        openSoundCloudExternal(context, playlist.permalinkUrl)
+                                    }
+                                } finally {
+                                    resolving = false
+                                    onResolvingChange(playlist.playlistId, false)
+                                }
+                            }
+                        } else {
+                            openSoundCloudExternal(context, playlist.permalinkUrl)
+                        }
+                    }
+                },
+    ) {
+        ItemThumbnail(
+            thumbnailUrl = playlist.artworkUrl,
+            isActive = false,
+            isPlaying = false,
+            shape = RoundedCornerShape(8.dp),
+            placeholderIconRes = R.drawable.album,
+            modifier =
+                Modifier
+                    .padding(start = 12.dp)
+                    .size(48.dp),
+        )
+        Column(
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .padding(vertical = 8.dp, horizontal = 12.dp),
+        ) {
+            Text(
+                text = playlist.title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = joinByBullet(
+                    if (playlist.isAlbum) stringResource(R.string.filter_albums) else stringResource(R.string.filter_playlists),
+                    "${playlist.trackCount} tracks",
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (resolving) {
+            CircularProgressIndicator(
+                modifier =
+                    Modifier
+                        .padding(end = 16.dp)
+                        .size(18.dp),
+                strokeWidth = 2.dp,
+            )
+        } else {
+            Icon(
+                painter = painterResource(R.drawable.solar_music_note_2_linear),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier =
+                    Modifier
+                        .padding(end = 16.dp)
+                        .size(18.dp),
+            )
+        }
+    }
+}
+
+private fun openSoundCloudExternal(
+    context: android.content.Context,
+    url: String,
+) {
+    runCatching {
+        context.startActivity(
+            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)),
         )
     }
 }

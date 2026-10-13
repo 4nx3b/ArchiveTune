@@ -202,7 +202,7 @@ fun AutoPlaylistScreen(
             selection = false
             wrappedSongs.forEach { it.isSelected = false }
         }
-    } else {
+    } else if (navController.previousBackStackEntry == null) {
         BackHandler {
             try {
                 if (!navController.popBackStack()) {
@@ -211,12 +211,6 @@ fun AutoPlaylistScreen(
                     }
                 }
             } catch (_: Exception) {
-                try {
-                    if (!navController.navigateUp()) {
-                        navController.navigate("library") { launchSingleTop = true }
-                    }
-                } catch (_: Exception) {
-                }
             }
         }
     }

@@ -265,14 +265,10 @@ fun ArtistScreen(
     val playerSheetOverlayActive = LocalPlayerSheetOverlayActive.current
     val isArtistBlocked = (blockState as? ArtistBlockState.Success)?.isBlocked == true
 
-    BackHandler {
-        try {
-            if (!navController.popBackStack()) {
-                navController.navigate("library") { launchSingleTop = true }
-            }
-        } catch (_: Exception) {
+    if (navController.previousBackStackEntry == null) {
+        BackHandler {
             try {
-                if (!navController.navigateUp()) {
+                if (!navController.popBackStack()) {
                     navController.navigate("library") { launchSingleTop = true }
                 }
             } catch (_: Exception) {
@@ -532,15 +528,21 @@ fun ArtistScreen(
         }
     }
 
-    var artistArtworkColors by remember { mutableStateOf<List<Color>?>(null) }
+    var artistArtworkColors by remember {
+        mutableStateOf<List<Color>?>(ArtistAmbientSnapshotCache.get("artist:${viewModel.artistId}", isDarkTheme))
+    }
     LaunchedEffect(thumbnail, isDarkTheme) {
-        artistArtworkColors =
+        val extracted =
             extractAmbientArtworkColors(
                 context = context,
                 mediaId = "artist:${viewModel.artistId}",
                 artworkUrl = thumbnail,
                 darkTheme = isDarkTheme,
             )
+        if (extracted != null) {
+            ArtistAmbientSnapshotCache.put("artist:${viewModel.artistId}", isDarkTheme, extracted)
+        }
+        artistArtworkColors = extracted ?: artistArtworkColors
     }
 
     val ambientSource = canvasAmbientColors ?: artistArtworkColors

@@ -39,9 +39,47 @@ import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.ui.theme.BackdropTonePalette
 import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 
+object ArtistAmbientSnapshotCache {
+    private const val MAX_ENTRIES = 24
+
+    private val cache = LinkedHashMap<String, List<Color>>(16, 0.75f, true)
+
+    @Synchronized
+    fun get(
+        mediaId: String,
+        darkTheme: Boolean,
+    ): List<Color>? = cache["$mediaId|$darkTheme"]
+
+    @Synchronized
+    fun put(
+        mediaId: String,
+        darkTheme: Boolean,
+        colors: List<Color>,
+    ) {
+        cache["$mediaId|$darkTheme"] = colors
+        while (cache.size > MAX_ENTRIES) {
+            val eldest = cache.keys.firstOrNull() ?: break
+            cache.remove(eldest)
+        }
+    }
+}
+
 @Composable
 fun ArtistAmbientBackdrop(
     artistId: String?,
+    artworkUrl: String?,
+    modifier: Modifier = Modifier,
+) {
+    AmbientArtworkBackdrop(
+        mediaId = "artist:${artistId.orEmpty()}",
+        artworkUrl = artworkUrl,
+        modifier = modifier,
+    )
+}
+
+@Composable
+fun AmbientArtworkBackdrop(
+    mediaId: String,
     artworkUrl: String?,
     modifier: Modifier = Modifier,
 ) {
@@ -49,15 +87,21 @@ fun ArtistAmbientBackdrop(
     val surfaceColor = androidx.compose.material3.MaterialTheme.colorScheme.surface
     val darkTheme = surfaceColor.luminance() < 0.5f
 
-    var artistArtworkColors by remember { mutableStateOf<List<Color>?>(null) }
-    LaunchedEffect(artistId, artworkUrl, darkTheme) {
-        artistArtworkColors =
+    var artistArtworkColors by remember(mediaId, darkTheme) {
+        mutableStateOf(ArtistAmbientSnapshotCache.get(mediaId, darkTheme))
+    }
+    LaunchedEffect(mediaId, artworkUrl, darkTheme) {
+        val extracted =
             extractArtistAmbientColors(
                 context = context,
-                mediaId = "artist:${artistId.orEmpty()}",
+                mediaId = mediaId,
                 artworkUrl = artworkUrl,
                 darkTheme = darkTheme,
             )
+        if (extracted != null) {
+            ArtistAmbientSnapshotCache.put(mediaId, darkTheme, extracted)
+        }
+        artistArtworkColors = extracted ?: artistArtworkColors
     }
 
     val ambientPalette =
