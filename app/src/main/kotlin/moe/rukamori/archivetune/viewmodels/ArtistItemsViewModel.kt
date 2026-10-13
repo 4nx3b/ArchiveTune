@@ -42,9 +42,7 @@ class ArtistItemsViewModel
         savedStateHandle: SavedStateHandle,
     ) : ViewModel() {
         private val browseId = savedStateHandle.get<String>("browseId")!!
-
-        /** The artist id from the route — stable at first composition (the DB artist flow starts null). */
-        val routeArtistId: String = browseId
+        val routeArtistId: String = savedStateHandle.get<String>("artistId") ?: browseId
         private val params =
             savedStateHandle
                 .get<String>("params")
@@ -61,7 +59,7 @@ class ArtistItemsViewModel
 
         val artist =
             database
-                .artist(browseId)
+                .artist(routeArtistId)
                 .stateIn(viewModelScope, SharingStarted.Lazily, null)
 
         init {

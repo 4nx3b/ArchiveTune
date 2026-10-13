@@ -410,6 +410,7 @@ object TidalAudioProvider {
         val codecs: String,
         val bitrate: Int,
         val sampleRate: Int?,
+        val bitDepth: Int? = null,
         val contentLength: Long?,
         val expiresAtMs: Long,
         val losslessDowngradedBitrateKbps: Int? = null,
@@ -518,6 +519,7 @@ object TidalAudioProvider {
         val mimeType: String,
         val codecs: String,
         val sampleRate: Int?,
+        val bitDepth: Int? = null,
         val bitrate: Int?,
         val expiryUrl: String?,
         val isDash: Boolean,
@@ -1626,7 +1628,13 @@ object TidalAudioProvider {
             val sampleRate = dataSampleRate
                 ?: manifest.sampleRate
                 ?: normalizeSampleRate(track.sampleRate?.toDouble())
+            val bitDepth = dataBitDepth ?: manifest.bitDepth
             val bitrate = manifest.bitrate ?: estimateBitrate(streamMetadata.contentLength, effectiveDurationMs)
+            val resolvedContentLength =
+                streamMetadata.contentLength
+                    ?: localFile?.length()?.takeIf { it > 0L }
+                    ?: bitrate?.takeIf { it > 0 }
+                        ?.let { bps -> effectiveDurationMs?.takeIf { it > 0 }?.let { bps * it / 8_000L } }
             validateLikelyFullTrack(track, effectiveDurationMs, streamMetadata.contentLength)
             val resolvedLabel = when {
                 isAtmosManifest -> "TIDAL Atmos"
@@ -1649,7 +1657,8 @@ object TidalAudioProvider {
                 codecs = resolvedCodecs,
                 bitrate = bitrate ?: if (isLosslessDowngrade) 320_000 else 0,
                 sampleRate = sampleRate,
-                contentLength = streamMetadata.contentLength,
+                bitDepth = bitDepth,
+                contentLength = resolvedContentLength,
                 expiresAtMs = (progressiveDashFile ?: localFile ?: liveManifestFile)?.let { now + STREAM_CACHE_MS }
                     ?: extractExpiryMs(manifest.expiryUrl ?: manifest.url, now),
                 losslessDowngradedBitrateKbps = losslessDowngradedBitrateKbps,
@@ -1730,6 +1739,9 @@ object TidalAudioProvider {
                     mimeType = manifest.mimeType,
                     codecs = manifest.codecs,
                     contentLength = null,
+                    sampleRate = manifest.sampleRate,
+                    bitDepth = manifest.bitDepth,
+                    bitrate = manifest.bitrate,
                     label = "account $quality",
                     source = AudioSourceType.TIDAL,
                 )
@@ -1745,6 +1757,9 @@ object TidalAudioProvider {
                     mimeType = AUDIO_FLAC_MIME_TYPE,
                     codecs = manifest.codecs.takeIf { it.isNotBlank() } ?: "flac",
                     contentLength = null,
+                    sampleRate = manifest.sampleRate,
+                    bitDepth = manifest.bitDepth,
+                    bitrate = manifest.bitrate,
                     label = "account $quality",
                     source = AudioSourceType.TIDAL,
                 )
@@ -1761,6 +1776,9 @@ object TidalAudioProvider {
                 mimeType = if (isFlacOut) AUDIO_FLAC_MIME_TYPE else manifest.mimeType,
                 codecs = if (isFlacOut) "flac" else manifest.codecs,
                 contentLength = localFile.length().takeIf { it > 0L },
+                sampleRate = manifest.sampleRate,
+                bitDepth = manifest.bitDepth,
+                bitrate = manifest.bitrate,
                 label = "account $quality",
                 source = AudioSourceType.TIDAL,
             )
@@ -1800,6 +1818,7 @@ object TidalAudioProvider {
             val codecs = root.stringOrNull("codecs") ?: if (rawMimeType.contains("flac", ignoreCase = true)) "flac" else "mp4a.40.2"
             val mimeType = rawMimeType.coerceDirectPlaybackMimeType(directUrl)
             val sampleRate = normalizeSampleRate(root.doubleOrNull("sampleRate"))
+            val bitDepth = root.longOrNull("bitDepth")?.toInt()
             val bitrate = root.longOrNull("bitrate")?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt()
                 ?: root.longOrNull("bandwidth")?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt()
             return ParsedManifest(
@@ -1807,6 +1826,7 @@ object TidalAudioProvider {
                 mimeType = mimeType,
                 codecs = codecs,
                 sampleRate = sampleRate,
+                bitDepth = bitDepth,
                 bitrate = bitrate,
                 expiryUrl = directUrl,
                 isDash = false,
@@ -1838,6 +1858,7 @@ object TidalAudioProvider {
         val codecs = firstXmlAttr(text, "codecs").ifBlank { "flac" }
         val representationMime = firstXmlAttr(text, "mimeType")
         val sampleRate = firstXmlAttr(text, "audioSamplingRate").toIntOrNull()
+        val bitDepth = firstXmlAttr(text, "bitDepth").toIntOrNull()
         val bandwidth = xmlAttrValues(text, "bandwidth").maxOrNull()
         val segmentUrls = extractDashSegmentUrls(text)
         val firstSegmentUrl = HTTP_URL_REGEX
@@ -1849,6 +1870,7 @@ object TidalAudioProvider {
             mimeType = representationMime.ifBlank { declaredMimeType ?: "audio/mp4" },
             codecs = codecs,
             sampleRate = sampleRate,
+            bitDepth = bitDepth,
             bitrate = bandwidth,
             expiryUrl = firstSegmentUrl,
             isDash = true,

@@ -580,10 +580,6 @@ fun rememberVideoArtworkState(
         videoRecoveryAttempts = 0
         videoRecoveryRequests = 0
 
-        // If the service-side background preloader was holding the main audio for this video
-        // (song changed while the app was backgrounded), take over its hold silently: it
-        // releases without resuming and hands us its wasPlaying so the first-frame resume
-        // restores what the listener actually had playing.
         val backgroundHoldWasPlaying =
             moe.rukamori.archivetune.playback.VideoBackgroundPreloader.claimUiTakeover(videoId)
 
@@ -785,9 +781,6 @@ fun rememberVideoArtworkState(
     }
 
     LaunchedEffect(updatedSheetSurfaceActive) {
-        // The renderable surface appearing (player sheet expanding) is the moment a buffered-but-
-        // never-rendered video can finally draw: kick a position reset right away instead of
-        // waiting for the watchdog cadence above.
         if (!updatedSheetSurfaceActive) return@LaunchedEffect
         if (state.hasPlaybackFailed || state.isVideoReady) return@LaunchedEffect
         if (exoPlayer.playerError != null) return@LaunchedEffect
@@ -1228,11 +1221,6 @@ fun rememberVideoArtworkState(
                             state.bufferingRecoveries = 0
 
                             if (awaitingVideoReady && !updatedSheetSurfaceActive) {
-                                // Buffered with no renderable surface on screen (player sheet
-                                // collapsed / miniplayer): the video IS loaded — release the audio
-                                // hold now instead of spinning the loading state forever waiting
-                                // for a first frame nothing can display. The surface renders (and
-                                // onRenderedFirstFrame fires) as soon as the sheet expands.
                                 Timber
                                     .tag(VideoPlaybackLogTag)
                                     .d("Video buffered without an on-screen surface — releasing the audio hold")

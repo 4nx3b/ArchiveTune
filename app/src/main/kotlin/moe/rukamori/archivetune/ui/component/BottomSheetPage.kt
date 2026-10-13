@@ -38,6 +38,7 @@ import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.ShapeDefaults
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
@@ -86,11 +87,12 @@ fun BottomSheetPage(
     val focusManager = LocalFocusManager.current
     val coroutineScope = rememberCoroutineScope()
     var dragOffset by remember { mutableFloatStateOf(0f) }
+    var sheetContentOnScreen by remember { mutableStateOf(false) }
 
     val predictiveBack = rememberPredictiveSheetBackState()
     PredictiveStyleBackHandler(
         backState = predictiveBack,
-        enabled = state.isVisible,
+        enabled = state.isVisible || sheetContentOnScreen,
         onBack = state::dismiss,
     )
 
@@ -134,6 +136,10 @@ fun BottomSheetPage(
                 }
             },
     ) {
+        DisposableEffect(Unit) {
+            sheetContentOnScreen = true
+            onDispose { sheetContentOnScreen = false }
+        }
         Column(
             modifier =
                 Modifier

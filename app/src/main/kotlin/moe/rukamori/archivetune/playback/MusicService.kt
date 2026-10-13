@@ -5449,13 +5449,7 @@ class MusicService :
         localPlayer.setShuffleOrder(DefaultShuffleOrder(shuffledIndices, System.currentTimeMillis()))
     }
 
-    /**
-     * Mid-playback shuffle-enable order: keeps the linear prefix the listener has already played
-     * (shuffle was just OFF — the queue was advancing linearly), then shuffles ONLY the still-
-     * upcoming remainder. The old re-randomization of the whole queue pulled already-played songs
-     * back into the up-next, so tapping shuffle in a queue page "played different songs" than the
-     * ones it showed. Initial queue loads with shuffle enabled keep [applyCurrentFirstShuffleOrder].
-     */
+
     private fun applyPlayedPrefixPreservingShuffleOrder() {
         val count = player.mediaItemCount
         if (count <= 1) return
@@ -8715,6 +8709,7 @@ class MusicService :
                     audioNormalizationFactorCache[mediaId] = 1f
                     recordResolvedSource(mediaId, source)
                     cached.stream.contentLength?.takeIf { it > 0L }?.let { contentLengthCache[cacheKey] = it }
+                    persistDirectStreamFormat(mediaId, cached.stream)
                     multiSourceMemoByMediaId[mediaId] =
                         MultiSourceMemo(
                             uri = cached.stream.uri,
@@ -9306,6 +9301,8 @@ class MusicService :
             mimeType = resolved.mimeType,
             codecs = resolved.codecs,
             contentLength = resolved.contentLength,
+            sampleRate = resolved.sampleRate,
+            bitDepth = resolved.bitDepth,
             bitrate = when {
                 resolved.mimeType.contains("flac", true) -> null
                 else -> 320_000
@@ -9929,8 +9926,23 @@ class MusicService :
             }
         val knownContentLength = stream.contentLength?.takeIf { it > 0L }
         val labelBitrate = labelBitrateOrNull(label)
+        val losslessContainer =
+            codecs.contains("flac", true) ||
+                codecs.contains("alac", true) ||
+                mime.contains("flac", true) ||
+                label.contains("LOSSLESS") ||
+                label.contains("HI_RES") ||
+                label.contains("MASTER") ||
+                label.contains("MQA")
+        val pcmBitrate =
+            if (losslessContainer) {
+                stream.pcmBitrateOrNull()
+            } else {
+                null
+            }
         val bitrate =
-            stream.bitrate?.takeIf { it > 0 }
+            pcmBitrate
+                ?: stream.bitrate?.takeIf { it > 0 }
                 ?: measuredBitrate(knownContentLength, stream.matchedDurationMs)
                 ?: labelBitrate
                 ?: stream.pcmBitrateOrNull()

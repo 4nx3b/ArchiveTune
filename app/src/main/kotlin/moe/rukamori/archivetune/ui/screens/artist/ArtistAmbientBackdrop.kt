@@ -11,6 +11,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -46,6 +47,7 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
@@ -84,15 +86,8 @@ object ArtistAmbientSnapshotCache {
     }
 }
 
-/**
- * Process-wide bridge for the artist page's resolved canvas artwork: the main artist page writes
- * the (artistId, CanvasArtwork) pair when its own resolution completes and every artist sub-page
- * reads it synchronously, so the sub-page backdrop follows the same moving canvas source the main
- * page shows — without re-running the Apple Music / top-song resolution chain.
- */
 object ArtistCanvasArtworkCache {
-    @Volatile
-    private var entry: Pair<String, CanvasArtwork>? = null
+    private var entry by mutableStateOf<Pair<String, CanvasArtwork>?>(null)
 
     fun put(
         artistId: String,
@@ -108,18 +103,6 @@ object ArtistCanvasArtworkCache {
     }
 }
 
-/**
- * The shared artist sub-page ambient backdrop — a port of the main artist page's backdrop model
- * (ArtistScreen.kt): the moving canvas's live palette when the artist has one (sampled from a
- * hidden, decode-capped CanvasArtworkPlayer through the same GraphicsLayer record loop), falling
- * back to the artist thumbnail's extracted palette, both rendered through
- * [BackdropTonePalette.fromColorsLight] with the same 1200ms crossfade.
- *
- * The [artistId] MUST be the route-provided id (stable at first composition, NOT the async
- * database artist) so the [ArtistAmbientSnapshotCache] is read synchronously on the first frame —
- * a late-arriving id re-keys the state and crossfades from the surface fallback, which was the
- * sub-page backdrop colour "stutter" on every open.
- */
 @Composable
 fun ArtistPageAmbientBackdrop(
     artistId: String,
@@ -133,7 +116,7 @@ fun ArtistPageAmbientBackdrop(
 
     val artistCanvasEnabled by rememberPreference(key = AlbumCanvasEnabledKey, defaultValue = true)
     val lowDataMode = context.isLowDataModeActive()
-    val canvasArtwork = remember(artistId) { ArtistCanvasArtworkCache.get(artistId) }
+    val canvasArtwork = ArtistCanvasArtworkCache.get(artistId)
     val heroCanvasPrimaryUrl =
         (canvasArtwork?.animated ?: canvasArtwork?.videoUrl)?.takeIf { artistCanvasEnabled && !lowDataMode }
     val heroCanvasFallbackUrl =
@@ -226,21 +209,24 @@ fun ArtistPageAmbientBackdrop(
                 fallbackColor = surfaceColor.toArgb(),
             )
         }
-    val animatedTop by animateColorAsState(
-        targetValue = ambientPalette.top,
-        animationSpec = tween(durationMillis = ARTIST_SHARED_AMBIENT_CROSSFADE_MS),
-        label = "artistSubAmbientTop",
-    )
-    val animatedMid by animateColorAsState(
-        targetValue = ambientPalette.mid,
-        animationSpec = tween(durationMillis = ARTIST_SHARED_AMBIENT_CROSSFADE_MS),
-        label = "artistSubAmbientMid",
-    )
-    val animatedBottom by animateColorAsState(
-        targetValue = ambientPalette.bottom,
-        animationSpec = tween(durationMillis = ARTIST_SHARED_AMBIENT_CROSSFADE_MS),
-        label = "artistSubAmbientBottom",
-    )
+    val sourceTier = if (canvasAmbientColors != null) 2 else if (artistArtworkColors != null) 1 else 0
+    var lastAppliedSourceTier by remember { mutableStateOf(sourceTier) }
+    val animatedTop = remember { Animatable(ambientPalette.top) }
+    val animatedMid = remember { Animatable(ambientPalette.mid) }
+    val animatedBottom = remember { Animatable(ambientPalette.bottom) }
+    LaunchedEffect(ambientPalette) {
+        val snap = sourceTier != lastAppliedSourceTier
+        lastAppliedSourceTier = sourceTier
+        if (snap) {
+            animatedTop.snapTo(ambientPalette.top)
+            animatedMid.snapTo(ambientPalette.mid)
+            animatedBottom.snapTo(ambientPalette.bottom)
+        } else {
+            launch { animatedTop.animateTo(ambientPalette.top, tween(ARTIST_SHARED_AMBIENT_CROSSFADE_MS)) }
+            launch { animatedMid.animateTo(ambientPalette.mid, tween(ARTIST_SHARED_AMBIENT_CROSSFADE_MS)) }
+            launch { animatedBottom.animateTo(ambientPalette.bottom, tween(ARTIST_SHARED_AMBIENT_CROSSFADE_MS)) }
+        }
+    }
 
     Box(
         modifier =
@@ -249,9 +235,6 @@ fun ArtistPageAmbientBackdrop(
                 .background(surfaceColor),
     ) {
         if (heroCanvasPresent) {
-            // Hidden sampling stage: the canvas video renders in a small box fully covered by the
-            // opaque gradient above it — the GraphicsLayer record captures its colours while the
-            // user never sees the raw video. This mirrors the main artist page's hero sampler.
             Box(
                 modifier =
                     Modifier
@@ -309,11 +292,6 @@ fun ArtistPageAmbientBackdrop(
     }
 }
 
-/**
- * Generic static ambient backdrop keyed by any mediaId (e.g. "album:<id>" on the album page) —
- * thumbnail palette extraction only, no canvas following. Artist sub-pages use
- * [ArtistPageAmbientBackdrop] instead.
- */
 @Composable
 fun AmbientArtworkBackdrop(
     mediaId: String,

@@ -224,7 +224,6 @@ private class HapticDevice private constructor(
                 }
             }
             runCatching { resolver.registerContentObserver(uri, false, observer) }
-            // The in-app "Vibration" toggle gates these haptics too, not just the system setting.
             return { enabled.get() && (PreferenceStore.get(EnableHapticFeedbackKey) ?: true) }
         }
     }

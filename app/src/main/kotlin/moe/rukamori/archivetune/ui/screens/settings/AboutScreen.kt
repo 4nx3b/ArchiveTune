@@ -1570,12 +1570,6 @@ private val AboutGlassDarkShade = Color(0x1A9C9C9C)
 private val AboutGlassLightTint = Color(0x340034F9)
 private val AboutGlassLightShade = Color(0xB3FFFFFF)
 
-/**
- * The moving gradient follows the hero logo's on-screen presence: fully visible while the logo is
- * on screen, fading out as it scrolls away (gone by the time the logo has fully left), so the
- * scrolled page rests on the plain surface colour and only carries the gradient where the logo
- * gives it context.
- */
 private fun sukisuBackgroundAlpha(scrollProgress: Float): Float =
     ((1f - scrollProgress) / 0.75f).coerceIn(0f, 1f)
 

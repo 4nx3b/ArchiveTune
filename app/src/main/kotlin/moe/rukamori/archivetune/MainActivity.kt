@@ -1444,10 +1444,13 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(
                         navBackStackEntry?.destination?.route,
                         navigationBarCompactBehavior,
+                        isYearInMusicScreen,
                     ) {
                         isBottomUiCompact =
-                            navigationBarCompactBehavior == NavigationBarCompactBehavior.ALWAYS_COMPACT
+                            navigationBarCompactBehavior == NavigationBarCompactBehavior.ALWAYS_COMPACT &&
+                                !isYearInMusicScreen
                     }
+                    val yearInMusicScreenUpdated = rememberUpdatedState(isYearInMusicScreen)
                     val navBarScrollDensity = LocalDensity.current
                     val navBarHideScrollThresholdPx = with(navBarScrollDensity) { 14.dp.toPx() }
                     val navBarScrollHideConnection =
@@ -1459,7 +1462,8 @@ class MainActivity : ComponentActivity() {
                                     source: NestedScrollSource,
                                 ): Offset {
                                     if (source == NestedScrollSource.UserInput &&
-                                        navigationBarCompactBehavior == NavigationBarCompactBehavior.ADAPTIVE
+                                        navigationBarCompactBehavior == NavigationBarCompactBehavior.ADAPTIVE &&
+                                        !yearInMusicScreenUpdated.value
                                     ) {
                                         if (consumed.y < -navBarHideScrollThresholdPx) {
                                             isBottomUiCompact = true
