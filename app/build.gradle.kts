@@ -213,6 +213,14 @@ android {
                 ).trim()
         buildConfigField("String", "NIGHTLY_BUILD_HASH", "\"$nightlyBuildHash\"")
 
+        val nightlyTag =
+            (
+                localProperties.getProperty("NIGHTLY_TAG")
+                    ?: System.getenv("NIGHTLY_TAG")
+                    ?: ""
+                ).trim()
+        buildConfigField("String", "NIGHTLY_TAG", "\"$nightlyTag\"")
+
         val isNightlyBuild =
             (System.getenv("IS_NIGHTLY_BUILD") ?: localProperties.getProperty("IS_NIGHTLY_BUILD") ?: "")
                 .trim()

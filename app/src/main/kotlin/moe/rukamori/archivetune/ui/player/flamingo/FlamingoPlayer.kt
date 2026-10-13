@@ -354,6 +354,13 @@ private val FlamingoSharpStageFadeBrush =
         1f to Color.Transparent,
     )
 
+private val FlamingoBandTopFeatherBrush =
+    Brush.verticalGradient(
+        0f to Color.Transparent,
+        0.16f to Color.Black,
+        1f to Color.Black,
+    )
+
 private const val FlamingoLyricsContentDeferMs = 600L
 
 private const val FlamingoLyricsContentDeferCanvasMs = 300L
@@ -488,11 +495,11 @@ fun FlamingoPlayerContent(
             !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
         val canvasVisualActive = canvasActive && !videoShowing && !isPreS
 
-        var canvasRendering by remember { mutableStateOf(false) }
+        var canvasTwinReady by remember(canvasPrimaryUrl, canvasFallbackUrl) { mutableStateOf(false) }
         val canvasLoopSync = remember { CanvasLoopSync() }
 
         val canvasBackdropReveal by animateFloatAsState(
-            targetValue = if (canvasVisualActive && canvasRendering) 1f else 0f,
+            targetValue = if (canvasVisualActive && canvasTwinReady) 1f else 0f,
             animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
             label = "flamingo-canvas-backdrop-reveal",
         )
@@ -557,18 +564,28 @@ fun FlamingoPlayerContent(
             (nowPage == FlamingoPage.Lyric || nowPage == FlamingoPage.PlayingList) &&
                 !landscape
         var canvasSurfacesPlaying by remember { mutableStateOf(true) }
-        var canvasSurfacesVisible by remember { mutableStateOf(true) }
         LaunchedEffect(pageTakesBackdrop) {
             if (pageTakesBackdrop) {
                 canvasSurfacesPlaying = true
-                canvasSurfacesVisible = true
                 delay(FlamingoCanvasPageFadeMs.toLong())
                 canvasSurfacesPlaying = false
-                canvasSurfacesVisible = false
             } else {
                 canvasSurfacesPlaying = true
-                canvasSurfacesVisible = true
             }
+        }
+        val canvasSurfacesAlpha = remember { Animatable(1f) }
+        LaunchedEffect(pageTakesBackdrop) {
+            canvasSurfacesAlpha.animateTo(
+                targetValue = if (pageTakesBackdrop) 0f else 1f,
+                animationSpec = tween(
+                    durationMillis = if (pageTakesBackdrop) {
+                        FlamingoStageSurfaceRetireMs.toInt()
+                    } else {
+                        FlamingoCanvasPageFadeMs
+                    },
+                    easing = FastOutSlowInEasing,
+                ),
+            )
         }
         var canvasStageSurfaceActive by remember { mutableStateOf(true) }
         LaunchedEffect(nowPage) {
@@ -598,14 +615,6 @@ fun FlamingoPlayerContent(
                 nowPage = FlamingoPage.Album
             }
         }
-        val canvasSurfacesAlpha by animateFloatAsState(
-            targetValue = if (pageTakesBackdrop) 0f else 1f,
-            animationSpec = tween(
-                durationMillis = FlamingoCanvasPageFadeMs,
-                easing = FastOutSlowInEasing,
-            ),
-            label = "flamingo-canvas-surfaces-fade",
-        )
 
         val (proceduralArtworkEnabled) = rememberPreference(ProceduralArtworkEnabledKey, defaultValue = false)
         val proceduralStageActive =
@@ -948,7 +957,15 @@ fun FlamingoPlayerContent(
                                             .fillMaxWidth()
                                             .fillMaxHeight(frostFraction)
                                             .graphicsLayer {
-                                                alpha = canvasSurfacesAlpha * canvasBackdropReveal
+                                                compositingStrategy = CompositingStrategy.Offscreen
+                                                alpha = canvasSurfacesAlpha.value * canvasBackdropReveal
+                                            }
+                                            .drawWithContent {
+                                                drawContent()
+                                                drawRect(
+                                                    brush = FlamingoBandTopFeatherBrush,
+                                                    blendMode = BlendMode.DstIn,
+                                                )
                                             },
                                 ) {
                                     Box(
@@ -968,10 +985,15 @@ fun FlamingoPlayerContent(
                                                 primaryUrl = canvasPrimaryUrl,
                                                 fallbackUrl = canvasFallbackUrl,
                                                 isPlaying = isPlayingStatusLambda.value && canvasSurfacesPlaying,
-                                                visible = canvasSurfacesVisible,
                                                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                                                 maxVideoEdgePx = FlamingoCanvasBackdropMaxVideoEdgePx,
                                                 loopSyncFollower = canvasLoopSync,
+                                                onFirstFrameRendered = { canvasTwinReady = true },
+                                                onPlaybackAvailabilityChange = { available ->
+                                                    if (!available) {
+                                                        canvasTwinReady = false
+                                                    }
+                                                },
                                                 modifier =
                                                     Modifier
                                                         .fillMaxWidth(1f / FlamingoCanvasBackdropUpscale)
@@ -1001,7 +1023,7 @@ fun FlamingoPlayerContent(
                                         Modifier
                                             .matchParentSize()
                                             .graphicsLayer {
-                                                alpha = canvasSurfacesAlpha * canvasBackdropReveal
+                                                alpha = canvasSurfacesAlpha.value * canvasBackdropReveal
                                             }
                                             .background(FlamingoCanvasScrimBrush),
                                 )
@@ -1371,7 +1393,6 @@ fun FlamingoPlayerContent(
                                                     canvasPrimaryUrl = canvasPrimaryUrl,
                                                     canvasFallbackUrl = canvasFallbackUrl,
                                                     isPlaying = isPlayingStatusLambda.value,
-                                                    onFrameAvailable = { canvasRendering = it },
                                                     stageHeight = sharpStageHeight,
                                                     staticArtworkUrl = artworkUrl,
                                                     loopSyncLeader = canvasLoopSync,
@@ -2445,7 +2466,6 @@ private fun FlamingoCanvasStage(
     canvasPrimaryUrl: String?,
     canvasFallbackUrl: String?,
     isPlaying: Boolean,
-    onFrameAvailable: (Boolean) -> Unit,
     stageHeight: Dp?,
     staticArtworkUrl: String?,
     loopSyncLeader: CanvasLoopSync? = null,
@@ -2534,12 +2554,10 @@ private fun FlamingoCanvasStage(
                 onPlaybackAvailabilityChange = { available ->
                     if (!available) {
                         canvasFrameReady = false
-                        onFrameAvailable(false)
                     }
                 },
                 onFirstFrameRendered = {
                     canvasFrameReady = true
-                    onFrameAvailable(true)
                 },
                 refreshEpoch = refreshEpoch,
                 modifier = Modifier.matchParentSize(),

@@ -34,6 +34,7 @@ import moe.rukamori.archivetune.about.FetchAboutContributorsUseCase
 import moe.rukamori.archivetune.about.FetchAboutDependencyLicensesUseCase
 import moe.rukamori.archivetune.about.FetchAboutTranslationContributorsUseCase
 import moe.rukamori.archivetune.currentBuildHash
+import moe.rukamori.archivetune.displayVersionName
 import javax.inject.Inject
 
 sealed interface AboutScreenState {
@@ -406,7 +407,7 @@ class AboutViewModel
         private fun buildUiModel(): AboutUiModel =
             AboutUiModel(
                 appNameResId = R.string.app_name,
-                versionName = BuildConfig.VERSION_NAME,
+                versionName = displayVersionName(),
                 buildHash = currentBuildHash,
                 buildVariant = if (BuildConfig.DEBUG) DebugBuildBadge else BuildConfig.ARCHITECTURE.uppercase(),
                 primaryLinks =

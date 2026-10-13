@@ -84,7 +84,6 @@ import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.highlight.HighlightStyle
 import com.kyant.backdrop.shadow.Shadow as KyantShadow
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.FloatingNavigationBarMaxWidth
@@ -184,7 +183,7 @@ fun SukisuLiquidNavBar(
                         currentIndex = targetIndex
                         val screen = itemsUpdated.value.getOrNull(targetIndex)
                         if (screen != null) {
-                            onItemClickUpdated.value(screen, true)
+                            onItemClickUpdated.value(screen, false)
                         }
                     }
                     updateValue(targetIndex.toFloat())
@@ -210,20 +209,26 @@ fun SukisuLiquidNavBar(
         if (index !in 0 until tabsCount) return
         if (currentIndex != index) {
             currentIndex = index
-            onItemClickUpdated.value(itemsUpdated.value[index], true)
+            onItemClickUpdated.value(itemsUpdated.value[index], false)
         }
         dampedDragAnimation.animateToValue(index.toFloat())
     }
 
     LaunchedEffect(dampedDragAnimation) {
+        var initial = true
         snapshotFlow {
             val list = itemsUpdated.value
             list.indexOfFirst { isSelectedUpdated.value(it) }
-        }.drop(1).collect { idx ->
+        }.collect { idx ->
             if (idx >= 0 && idx < tabsCount && idx != currentIndex) {
                 currentIndex = idx
-                dampedDragAnimation.animateToValue(idx.toFloat())
+                if (initial) {
+                    dampedDragAnimation.updateValue(idx.toFloat())
+                } else {
+                    dampedDragAnimation.animateToValue(idx.toFloat())
+                }
             }
+            initial = false
         }
     }
 
