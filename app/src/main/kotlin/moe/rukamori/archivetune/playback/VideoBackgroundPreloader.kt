@@ -13,9 +13,8 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
-import androidx.media3.common.util MimeTypes
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
@@ -34,6 +33,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.MaxVideoCacheSizeKey
 import moe.rukamori.archivetune.di.VideoCacheEntryPoint
+import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.player.resolveVideoStreamUrl
 import moe.rukamori.archivetune.ui.player.videoStreamHttpClient
 import moe.rukamori.archivetune.utils.dataStore
