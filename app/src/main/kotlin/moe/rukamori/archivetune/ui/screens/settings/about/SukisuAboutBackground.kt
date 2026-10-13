@@ -321,6 +321,7 @@ private fun Modifier.sukisuBgEffectDraw(
     playing: Boolean,
     colorStage: () -> Float,
     alpha: () -> Float,
+    renderActive: () -> Boolean,
 ): Modifier =
     this then
         SukisuBgElement(
@@ -331,6 +332,7 @@ private fun Modifier.sukisuBgEffectDraw(
             playing = playing,
             colorStage = colorStage,
             alpha = alpha,
+            renderActive = renderActive,
         )
 
 private class SukisuBgElement(
