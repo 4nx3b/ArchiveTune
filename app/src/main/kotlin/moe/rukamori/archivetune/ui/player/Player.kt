@@ -1129,19 +1129,16 @@ fun BottomSheetPlayer(
     }
 
     if (backController != null) {
-        val publishedBackTarget by remember {
-            derivedStateOf {
-                val rootOverlayActive = LocalRootOverlayActive.current
-                when {
-                    rootOverlayActive -> PlayerBackTarget.NONE
-                    aodModeEnabled -> PlayerBackTarget.NONE
-                    !state.isExpandedOrExpanding && !queueSheetState.isExpandedOrExpanding -> PlayerBackTarget.NONE
-                    queueSheetState.isExpandedOrExpanding -> PlayerBackTarget.SUB_PAGE
-                    isInlineLyricsOpen || isAppleMusicInlineLyricsOpen || anyStylePageOverlayOpen -> PlayerBackTarget.SUB_PAGE
-                    else -> PlayerBackTarget.SHEET
-                }
+        val backRootOverlayActive = LocalRootOverlayActive.current
+        val publishedBackTarget =
+            when {
+                backRootOverlayActive -> PlayerBackTarget.NONE
+                aodModeEnabled -> PlayerBackTarget.NONE
+                !state.isExpandedOrExpanding && !queueSheetState.isExpandedOrExpanding -> PlayerBackTarget.NONE
+                queueSheetState.isExpandedOrExpanding -> PlayerBackTarget.SUB_PAGE
+                isInlineLyricsOpen || isAppleMusicInlineLyricsOpen || anyStylePageOverlayOpen -> PlayerBackTarget.SUB_PAGE
+                else -> PlayerBackTarget.SHEET
             }
-        }
         SideEffect {
             backController.backTarget = publishedBackTarget
             backController.routeBack = {
