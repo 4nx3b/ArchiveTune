@@ -52,6 +52,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
@@ -214,6 +216,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.aod.ACTION_AOD_MODE
 import moe.rukamori.archivetune.constants.AppBarHeight
+import moe.rukamori.archivetune.constants.BackAnimationStyle
 import moe.rukamori.archivetune.constants.PlayerHeaderGlassFadeRamp
 import moe.rukamori.archivetune.constants.SheetOverlayEpsilon
 import moe.rukamori.archivetune.constants.OverscrollStyle
@@ -3419,6 +3422,14 @@ class MainActivity : ComponentActivity() {
                                     enterTransition = {
                                         if (disableAnimations) {
                                             fadeIn(tween(0))
+                                        } else if (
+                                            backAnimationStylePref == BackAnimationStyle.PREDICTIVE &&
+                                            targetState.destination.route !in topLevelScreens
+                                        ) {
+                                            slideInHorizontally(
+                                                animationSpec = tween(360, easing = FastOutSlowInEasing),
+                                                initialOffsetX = { it },
+                                            ) + fadeIn(tween(240, delayMillis = 40, easing = FastOutSlowInEasing))
                                         } else {
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
@@ -3430,6 +3441,14 @@ class MainActivity : ComponentActivity() {
                                     exitTransition = {
                                         if (disableAnimations) {
                                             fadeOut(tween(0))
+                                        } else if (
+                                            backAnimationStylePref == BackAnimationStyle.PREDICTIVE &&
+                                            targetState.destination.route !in topLevelScreens
+                                        ) {
+                                            slideOutHorizontally(
+                                                animationSpec = tween(360, easing = FastOutSlowInEasing),
+                                                targetOffsetX = { -it / 3 },
+                                            ) + fadeOut(tween(200, easing = LinearOutSlowInEasing))
                                         } else {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
@@ -3437,6 +3456,11 @@ class MainActivity : ComponentActivity() {
                                     popEnterTransition = {
                                         if (disableAnimations) {
                                             fadeIn(tween(0))
+                                        } else if (backAnimationStylePref == BackAnimationStyle.PREDICTIVE) {
+                                            slideInHorizontally(
+                                                animationSpec = tween(360, easing = FastOutSlowInEasing),
+                                                initialOffsetX = { -it / 3 },
+                                            ) + fadeIn(tween(240, delayMillis = 40, easing = FastOutSlowInEasing))
                                         } else {
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
@@ -3448,6 +3472,14 @@ class MainActivity : ComponentActivity() {
                                     popExitTransition = {
                                         if (disableAnimations) {
                                             fadeOut(tween(0))
+                                        } else if (
+                                            backAnimationStylePref == BackAnimationStyle.PREDICTIVE &&
+                                            initialState.destination.route !in topLevelScreens
+                                        ) {
+                                            slideOutHorizontally(
+                                                animationSpec = tween(360, easing = FastOutSlowInEasing),
+                                                targetOffsetX = { it },
+                                            ) + fadeOut(tween(280, easing = LinearOutSlowInEasing))
                                         } else {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
