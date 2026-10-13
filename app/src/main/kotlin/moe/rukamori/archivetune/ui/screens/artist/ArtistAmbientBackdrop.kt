@@ -12,6 +12,7 @@ import android.graphics.Bitmap
 import android.os.SystemClock
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -33,6 +34,7 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.colorspace.ColorSpaces
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
@@ -211,9 +213,9 @@ fun ArtistPageAmbientBackdrop(
         }
     val sourceTier = if (canvasAmbientColors != null) 2 else if (artistArtworkColors != null) 1 else 0
     var lastAppliedSourceTier by remember { mutableStateOf(sourceTier) }
-    val animatedTop = remember { Animatable(ambientPalette.top) }
-    val animatedMid = remember { Animatable(ambientPalette.mid) }
-    val animatedBottom = remember { Animatable(ambientPalette.bottom) }
+    val animatedTop = remember { Animatable(ambientPalette.top, Color.VectorConverter(ColorSpaces.Srgb)) }
+    val animatedMid = remember { Animatable(ambientPalette.mid, Color.VectorConverter(ColorSpaces.Srgb)) }
+    val animatedBottom = remember { Animatable(ambientPalette.bottom, Color.VectorConverter(ColorSpaces.Srgb)) }
     LaunchedEffect(ambientPalette) {
         val snap = sourceTier != lastAppliedSourceTier
         lastAppliedSourceTier = sourceTier
@@ -283,9 +285,9 @@ fun ArtistPageAmbientBackdrop(
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            0f to animatedTop,
-                            0.5f to animatedMid,
-                            1f to animatedBottom,
+                            0f to animatedTop.value,
+                            0.5f to animatedMid.value,
+                            1f to animatedBottom.value,
                         ),
                     ),
         )
