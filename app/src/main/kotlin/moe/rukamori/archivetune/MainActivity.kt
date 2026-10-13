@@ -1513,8 +1513,17 @@ class MainActivity : ComponentActivity() {
                                 route == "settings"
                         } == true
 
+                    val compactSearchCircleHidden =
+                        remember(navBackStackEntry?.destination?.route) {
+                            val route = navBackStackEntry?.destination?.route ?: ""
+                            route == "settings/about" ||
+                                route == "settings/misc" ||
+                                route == "settings/update"
+                        }
+
                     val compactSearchCircleVisible =
                         navBackStackEntry?.destination?.route?.startsWith("artist/") != true &&
+                            !compactSearchCircleHidden &&
                             (compactRouteHasInPageSearch || !compactLeftCircleIsLibrary || navBackStackEntry?.destination?.route == "home")
 
                     val navigationBarGlassGlow by rememberPreference(
