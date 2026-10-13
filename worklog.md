@@ -5626,3 +5626,18 @@ Work Log:
 
 Stage Summary:
 - All thirteen reports addressed at the root on dev: About scrolls (fewer blur surfaces + transition-gated AGSL), predictive back works on playlists and scrubs without heavy-page jank, the album pill is gone, sub-pages and album pages carry instant thumbnail-inspired backdrops, the add-to-playlist sort persists, the slide bar is hideable, back dismisses the Details sheet, lyrics open on the right line, canvas morphs shed their snapshot work, backgrounded video starts recover, the slider never blends, provider searches don't flicker, SoundCloud searches artists/albums, bit-perfect no longer buzzes on lossy, the output engine is Oboe-native, and notifications open the player. Verification via CI per Rule 1; on-device checks pending (all items are user-visible fixes that need confirmation on the next canary).
+---
+Task ID: 120
+Agent: Super Z (main agent, session web-60bd54af)
+
+Task: 2026-10-14 compile repair closure — the thirteen-report round (task 119, aa0d98c73) failed CI (`compileGmsMobileUniversalDebugKotlin`, 5 Kotlin errors); a repair was started in the previous session and interrupted by the context running out. Resume, finish, verify and close the round.
+
+Work Log:
+- Pulled the failed run's logs (Build Pull Request #1038, run 38427896828): exactly 5 frontend errors — (1) `@Composable` not applicable to the top-level `FlamingoTrackBackingColor` property (FlamingoPlayer.kt:4432), (2)+(3) `FlamingoTrack` invoking composables while unannotated (:4435/:4440 cascade), (4) `SukisuBgElement` call missing the required `renderActive` argument (SukisuAboutBackground.kt:333), (5) `sukisuBgEffectDraw` call site passing a `renderActive` parameter the modifier extension didn't declare (:536).
+- Root cause: task 119 committed the render-gating feature with the parameter threaded everywhere EXCEPT the intermediate `Modifier.sukisuBgEffectDraw` extension, and left the `@Composable` annotation on the slider-backing color property instead of the `FlamingoTrack` function it belongs to (the "slider backing" work).
+- The interrupted session's working tree already carried the minimal repair; adversarially verified it against the error list and the surrounding code: `FlamingoWrapper` is `@Composable` (FlamingoSupport.kt:64) so `FlamingoTrack = FlamingoWrapper { ... }` requires the annotation, and the `renderActive` chain is now complete end-to-end (`SukisuAboutBackground` composable → `sukisuBgEffectDraw` → `SukisuBgElement.create/update` → `SukisuBgNode` 60fps loop gate at `if (renderActive()) invalidateDraw()`).
+- Verified nothing else was at risk before pushing: the failed log shows `buildCMakeDebug[arm64-v8a|x86_64]` SUCCEEDED before the Kotlin failure (the Oboe port is compile-verified), task 119 touched no test sources, and no test in `app/src/test/` references any task-119-changed API (SoundCloud/AddToPlaylist/UsbBitPerfect greps clean). The submodule "modified content" entries are filemode-only noise (100644→100755, 0 insertions/deletions) — gitlinks unchanged, nothing to commit.
+- Committed the two files as 6ed0f8bdc and pushed to dev; polled CI per Rule 1.
+
+Stage Summary:
+- CI ALL GREEN (8/8) at 6ed0f8bdc: `build` (Build Pull Request), `check`, all five nightly APK matrix legs and `create-nightly`. Canary N202610131632 (17.0.6762-6ed0f8bdc) published 2026-10-13 16:52 UTC — the broken aa0d98c73 never shipped in a canary, so the full thirteen-report round reaches devices only now. On-device verification of all thirteen fixes pending user testing on N202610131632.
