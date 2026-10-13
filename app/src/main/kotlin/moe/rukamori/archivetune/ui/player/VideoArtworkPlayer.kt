@@ -1227,7 +1227,7 @@ fun rememberVideoArtworkState(
                             state.bufferingStartedAtMs = 0L
                             state.bufferingRecoveries = 0
 
-                            if (awaitingVideoReady && !updatedSheetSurfaceActive()) {
+                            if (awaitingVideoReady && !updatedSheetSurfaceActive) {
                                 // Buffered with no renderable surface on screen (player sheet
                                 // collapsed / miniplayer): the video IS loaded — release the audio
                                 // hold now instead of spinning the loading state forever waiting
