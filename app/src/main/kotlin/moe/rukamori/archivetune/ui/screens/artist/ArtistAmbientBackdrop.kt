@@ -11,8 +11,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -20,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,7 +34,6 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.graphics.colorspace.ColorSpaces
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
@@ -49,7 +48,6 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
@@ -212,23 +210,17 @@ fun ArtistPageAmbientBackdrop(
             )
         }
     val sourceTier = if (canvasAmbientColors != null) 2 else if (artistArtworkColors != null) 1 else 0
-    var lastAppliedSourceTier by remember { mutableStateOf(sourceTier) }
-    val animatedTop = remember { Animatable(ambientPalette.top, Color.VectorConverter(ColorSpaces.Srgb)) }
-    val animatedMid = remember { Animatable(ambientPalette.mid, Color.VectorConverter(ColorSpaces.Srgb)) }
-    val animatedBottom = remember { Animatable(ambientPalette.bottom, Color.VectorConverter(ColorSpaces.Srgb)) }
-    LaunchedEffect(ambientPalette) {
-        val snap = sourceTier != lastAppliedSourceTier
-        lastAppliedSourceTier = sourceTier
-        if (snap) {
-            animatedTop.snapTo(ambientPalette.top)
-            animatedMid.snapTo(ambientPalette.mid)
-            animatedBottom.snapTo(ambientPalette.bottom)
+    var lastSeenSourceTier by remember { mutableStateOf(sourceTier) }
+    val paletteAnimationSpec =
+        if (sourceTier != lastSeenSourceTier) {
+            snap<Color>()
         } else {
-            launch { animatedTop.animateTo(ambientPalette.top, tween(ARTIST_SHARED_AMBIENT_CROSSFADE_MS)) }
-            launch { animatedMid.animateTo(ambientPalette.mid, tween(ARTIST_SHARED_AMBIENT_CROSSFADE_MS)) }
-            launch { animatedBottom.animateTo(ambientPalette.bottom, tween(ARTIST_SHARED_AMBIENT_CROSSFADE_MS)) }
+            tween<Color>(ARTIST_SHARED_AMBIENT_CROSSFADE_MS)
         }
-    }
+    val animatedTop by animateColorAsState(ambientPalette.top, paletteAnimationSpec, label = "artistSubAmbientTop")
+    val animatedMid by animateColorAsState(ambientPalette.mid, paletteAnimationSpec, label = "artistSubAmbientMid")
+    val animatedBottom by animateColorAsState(ambientPalette.bottom, paletteAnimationSpec, label = "artistSubAmbientBottom")
+    SideEffect { lastSeenSourceTier = sourceTier }
 
     Box(
         modifier =
@@ -285,9 +277,9 @@ fun ArtistPageAmbientBackdrop(
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            0f to animatedTop.value,
-                            0.5f to animatedMid.value,
-                            1f to animatedBottom.value,
+                            0f to animatedTop,
+                            0.5f to animatedMid,
+                            1f to animatedBottom,
                         ),
                     ),
         )
