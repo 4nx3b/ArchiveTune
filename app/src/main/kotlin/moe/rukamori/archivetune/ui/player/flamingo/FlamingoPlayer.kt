@@ -1043,7 +1043,7 @@ fun FlamingoPlayerContent(
                                             compositingStrategy = CompositingStrategy.ModulateAlpha
                                         },
                                 ) {
-                                    Spacer(modifier = Modifier.height(topInset + 104.dp))
+                                    Spacer(modifier = Modifier.height(topInset + 114.dp))
 
                                     if (lyricsContentReady) {
                                         val isAiTranslated =
@@ -4429,7 +4429,7 @@ private fun FlamingoVolumeSlider(
     }
 }
 
-private val FlamingoTrackBackingColor = Color(0x1A000000)
+private val FlamingoTrackBackingColor = Color(0x4D000000)
 
 @Composable
 private fun FlamingoTrack(
@@ -4438,7 +4438,7 @@ private fun FlamingoTrack(
     height: Dp,
     mixing: Boolean = false,
 ) = FlamingoWrapper {
-    val inactiveTrackColor = Color.White.copy(alpha = 0.5f)
+    val inactiveTrackColor = Color.White.copy(alpha = 0.35f)
     val activeTrackColor = Color.White
     val fillFactor by animateFloatAsState(
         targetValue = if (mixing) 0f else 1f,

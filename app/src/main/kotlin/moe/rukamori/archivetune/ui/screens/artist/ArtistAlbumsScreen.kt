@@ -129,9 +129,10 @@ fun ArtistAlbumsScreen(
     Box(
         modifier = Modifier.fillMaxSize(),
     ) {
-        ArtistAmbientBackdrop(
-            artistId = viewModel.artistId,
+        ArtistPageAmbientBackdrop(
+            artistId = viewModel.routeArtistId,
             artworkUrl = artist?.artist?.thumbnailUrl,
+            listScrolling = lazyGridState.isScrollInProgress,
         )
 
         LazyVerticalGrid(

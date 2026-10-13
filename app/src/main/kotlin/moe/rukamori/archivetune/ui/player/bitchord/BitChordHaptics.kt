@@ -20,6 +20,8 @@ import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
+import moe.rukamori.archivetune.utils.PreferenceStore
 import java.util.concurrent.atomic.AtomicBoolean
 
 enum class Haptic {
@@ -222,7 +224,8 @@ private class HapticDevice private constructor(
                 }
             }
             runCatching { resolver.registerContentObserver(uri, false, observer) }
-            return { enabled.get() }
+            // The in-app "Vibration" toggle gates these haptics too, not just the system setting.
+            return { enabled.get() && (PreferenceStore.get(EnableHapticFeedbackKey) ?: true) }
         }
     }
 }

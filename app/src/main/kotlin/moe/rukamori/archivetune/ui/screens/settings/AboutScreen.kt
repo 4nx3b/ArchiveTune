@@ -56,6 +56,7 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.isRuntimeShaderSupported
 import kotlinx.coroutines.flow.onEach
+import moe.rukamori.archivetune.ui.screens.settings.about.LocalSukisuBgRenderActive
 import moe.rukamori.archivetune.ui.screens.settings.about.SukisuAboutBackground
 import android.os.Build
 import androidx.compose.foundation.layout.height
@@ -198,6 +199,7 @@ private fun AboutScreenContent(
     val aboutGlassBackdrop = rememberLayerBackdrop()
     val headerHaze = rememberScreenHeaderHaze()
     val statusBarTop = LocalStableSystemBarsTopPadding.current
+    val navTransitionRenderActive = LocalSukisuBgRenderActive.current
     val glassCapable =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             isRuntimeShaderSupported()
@@ -266,7 +268,10 @@ private fun AboutScreenContent(
                         } else {
                             Modifier
                         },
-                    alpha = { 1f },
+                    alpha = { sukisuBackgroundAlpha(scrollProgress) },
+                    renderActive = {
+                        navTransitionRenderActive() && sukisuBackgroundAlpha(scrollProgress) > 0.01f
+                    },
                     surface = MaterialTheme.colorScheme.surface,
                 ) { }
 
@@ -1564,4 +1569,13 @@ private val AboutGlassDarkTint = Color(0x4DA9A9A9)
 private val AboutGlassDarkShade = Color(0x1A9C9C9C)
 private val AboutGlassLightTint = Color(0x340034F9)
 private val AboutGlassLightShade = Color(0xB3FFFFFF)
+
+/**
+ * The moving gradient follows the hero logo's on-screen presence: fully visible while the logo is
+ * on screen, fading out as it scrolls away (gone by the time the logo has fully left), so the
+ * scrolled page rests on the plain surface colour and only carries the gradient where the logo
+ * gives it context.
+ */
+private fun sukisuBackgroundAlpha(scrollProgress: Float): Float =
+    ((1f - scrollProgress) / 0.75f).coerceIn(0f, 1f)
 

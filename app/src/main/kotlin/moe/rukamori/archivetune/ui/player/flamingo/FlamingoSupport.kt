@@ -58,6 +58,8 @@ import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.request.crossfade
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
+import moe.rukamori.archivetune.utils.PreferenceStore
 import kotlin.math.sqrt
 
 @Composable
@@ -361,10 +363,16 @@ fun ShadowImageWithCache(
 
 @Stable
 object FlamingoHaptics {
+    /** The in-app "Vibration" toggle gates these hardcoded Vibrator calls too — they used to fire
+     * regardless of the preference (only Compose's performHapticFeedback call sites were gated). */
+    private fun hapticsEnabled(): Boolean =
+        PreferenceStore.get(EnableHapticFeedbackKey) ?: true
+
     private fun vibrator(context: Context): Vibrator =
         context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
 
     fun click(context: Context) {
+        if (!hapticsEnabled()) return
         val vibrator = vibrator(context)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             vibrator.vibrate(
@@ -379,6 +387,7 @@ object FlamingoHaptics {
     }
 
     fun longClick(context: Context) {
+        if (!hapticsEnabled()) return
         val vibrator = vibrator(context)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             vibrator.vibrate(
@@ -393,6 +402,7 @@ object FlamingoHaptics {
     }
 
     fun doubleClick(context: Context) {
+        if (!hapticsEnabled()) return
         val vibrator = vibrator(context)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             vibrator.vibrate(

@@ -35,6 +35,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -103,6 +105,7 @@ fun ArtistSongsScreen(
     val artist by viewModel.artist.collectAsStateWithLifecycle()
     val songs by viewModel.songs.collectAsStateWithLifecycle()
     val lazyListState = rememberLazyListState()
+    val listScrolling by remember { derivedStateOf { lazyListState.isScrollInProgress } }
 
     val glassHeader = rememberGlassScreenHeader()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
@@ -123,9 +126,10 @@ fun ArtistSongsScreen(
     Box(
         modifier = Modifier.fillMaxSize(),
     ) {
-        ArtistAmbientBackdrop(
-            artistId = artist?.id,
+        ArtistPageAmbientBackdrop(
+            artistId = viewModel.routeArtistId,
             artworkUrl = artist?.thumbnailUrl,
+            listScrolling = listScrolling,
         )
 
         LazyColumn(
