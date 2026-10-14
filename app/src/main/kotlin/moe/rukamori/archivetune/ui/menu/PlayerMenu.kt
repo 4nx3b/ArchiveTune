@@ -1158,7 +1158,7 @@ fun PlayerMenu(
                                             )
                                         },
                                         title = stringResource(R.string.open_with_downloader),
-                                        onClick = {
+                                        onClick = openWithDownloader@{
                                             onDismiss()
                                             val url = "https://music.youtube.com/watch?v=${mediaMetadata.id}"
                                             if (externalDownloaderPackage.isBlank()) {
@@ -1168,7 +1168,7 @@ fun PlayerMenu(
                                                         context.getString(R.string.external_downloader_not_configured),
                                                         Toast.LENGTH_LONG,
                                                     ).show()
-                                                return@onClick
+                                                return@openWithDownloader
                                             }
                                             val intent =
                                                 android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
