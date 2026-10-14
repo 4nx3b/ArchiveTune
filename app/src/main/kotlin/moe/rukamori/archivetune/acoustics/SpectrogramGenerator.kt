@@ -29,6 +29,7 @@ import kotlin.math.log10
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -174,7 +175,7 @@ private suspend fun downloadYouTubeAudioForAudit(
                         val buffer = ByteArray(64 * 1024)
                         var total = 0L
                         while (true) {
-                            ensureActive()
+                            currentCoroutineContext().ensureActive()
                             val read = input.read(buffer)
                             if (read < 0) break
                             total += read
