@@ -774,7 +774,7 @@ fun FlamingoPlayerContent(
             if (nowPageLambda.value == FlamingoPage.Lyric) {
                 showAnchoredLyricsMenu = true
             } else {
-                menuState.show {
+                menuState.showImmersive {
                     PlayerMenu(
                         mediaMetadata = mediaMetadata,
                         navController = navController,

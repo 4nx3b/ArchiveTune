@@ -2106,4 +2106,5 @@
     <string name="acoustic_run_again">Run audit again</string>
     <string name="acoustic_try_again">Try again</string>
     <string name="acoustic_disclaimer">※ Acoustic features are decoded on demand and analyzed locally. Silent passages or certain classic masters may cause slight inaccuracies — results are for reference only.</string>
+    <string name="acoustic_local_only_warning">Only works for downloaded local songs</string>
 </resources>

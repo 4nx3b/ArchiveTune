@@ -62,6 +62,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.AudioOffload
+import moe.rukamori.archivetune.constants.DolbyFfmpegDecoderKey
 import moe.rukamori.archivetune.constants.UsbExclusiveAudioKey
 import moe.rukamori.archivetune.constants.AutomixEnabledKey
 import moe.rukamori.archivetune.constants.AutomixPerformanceMode
@@ -156,6 +157,11 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
     val (_, onUsbExclusiveAudioChange) =
         rememberPreference(
             UsbExclusiveAudioKey,
+            defaultValue = false,
+        )
+    val (_, onDolbyFfmpegDecoderChange) =
+        rememberPreference(
+            DolbyFfmpegDecoderKey,
             defaultValue = false,
         )
     val (seekExtraSeconds, onSeekExtraSeconds) =
@@ -418,6 +424,14 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                                     onAudioOffloadChange(false)
 
                                     onAutomixEnabledChange(false)
+
+                                    // USB-exclusive engages only without crossfade
+                                    // (MusicService seeds `usbExclusiveRequested =
+                                    // usbExclusive && !crossfade && !automix && !offload`),
+                                    // and the Dolby FFmpeg decode path is mutually
+                                    // exclusive with it — clear both directions here.
+                                    onUsbExclusiveAudioChange(false)
+                                    onDolbyFfmpegDecoderChange(false)
                                 }
                                 onCrossfadeEnabledChange(enabled)
                             },
@@ -461,6 +475,9 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                                     onAudioOffloadChange(false)
 
                                     onCrossfadeEnabledChange(false)
+
+                                    onUsbExclusiveAudioChange(false)
+                                    onDolbyFfmpegDecoderChange(false)
                                 }
                                 onAutomixEnabledChange(enabled)
                             },
@@ -514,6 +531,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                                 onCrossfadeEnabledChange(false)
                                 onAutomixEnabledChange(false)
                                 onUsbExclusiveAudioChange(false)
+                                onDolbyFfmpegDecoderChange(false)
                             }
                         },
                     )
