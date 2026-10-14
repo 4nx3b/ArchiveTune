@@ -8567,6 +8567,7 @@ class MusicService :
             playbackUrlCache.remove(mediaId)
             YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
             tidalActiveMediaIds.remove(mediaId)
+            multiSourceMemoByMediaId.remove(mediaId)
 
             evictDirectStreamCache(mediaId)
 

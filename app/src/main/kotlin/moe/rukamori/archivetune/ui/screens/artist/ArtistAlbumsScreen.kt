@@ -134,7 +134,8 @@ fun ArtistAlbumsScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .let { m -> if (glassHeader.backdrop != null) m.glassSource(glassHeader.backdrop) else m },
+                    .let { m -> if (glassHeader.backdrop != null) m.glassSource(glassHeader.backdrop) else m }
+                    .hazeSource(glassHeader.haze),
         ) {
             ArtistPageAmbientBackdrop(
                 artistId = viewModel.routeArtistId,
@@ -146,7 +147,6 @@ fun ArtistAlbumsScreen(
                 state = lazyGridState,
                 columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
                 contentPadding = gridContentPadding,
-                modifier = Modifier.hazeSource(glassHeader.haze),
             ) {
                 item(
                     key = "header",

@@ -45,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +62,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -124,18 +126,22 @@ fun AcousticAuditSection(
         }
         state = AcousticAuditUiState.Running(0f)
         scope.launch {
+            val throttledProgress: (Float) -> Unit = { progress ->
+                val last = (state as? AcousticAuditUiState.Running)?.progress ?: 0f
+                if (progress >= 1f || progress - last >= 0.005f) {
+                    state = AcousticAuditUiState.Running(progress)
+                }
+            }
             val resolved =
                 source
-                    ?: resolveAcousticAuditSource(context, videoId, downloadUtil)
+                    ?: resolveAcousticAuditSource(context, videoId, downloadUtil, throttledProgress)
                         .also { source = it }
             if (resolved == null) {
                 state = AcousticAuditUiState.Unavailable
                 return@launch
             }
             val result =
-                SpectrogramGenerator.generate(context, resolved) { progress ->
-                    state = AcousticAuditUiState.Running(progress)
-                }
+                SpectrogramGenerator.generate(context, resolved, throttledProgress)
             state =
                 if (result != null) {
                     AcousticAuditUiState.Done(result)
@@ -471,9 +477,10 @@ private fun AcousticSpectrogramCanvas(
         reveal.snapTo(0f)
         reveal.animateTo(1f, tween(1200, easing = FastOutSlowInEasing))
     }
+    val cutoffLineVisible by remember { derivedStateOf { reveal.value >= 0.995f } }
     val cutoffLineAlpha by
         animateFloatAsState(
-            targetValue = if (reveal.value >= 0.995f) 1f else 0f,
+            targetValue = if (cutoffLineVisible) 1f else 0f,
             animationSpec = tween(420, easing = FastOutSlowInEasing),
             label = "acousticCutoffLineAlpha",
         )
@@ -500,8 +507,8 @@ private fun AcousticSpectrogramCanvas(
                     .fillMaxSize()
                     .clipToBounds()
                     .drawWithCache {
-                        val progress = reveal.value
                         onDrawWithContent {
+                            val progress = reveal.value
                             clipRect(0f, 0f, size.width * progress, size.height) {
                                 this@onDrawWithContent.drawContent()
                             }
@@ -518,18 +525,20 @@ private fun AcousticSpectrogramCanvas(
                     },
         )
 
-        val axisAlpha = (reveal.value * 1.6f).coerceIn(0f, 1f)
         Column(
             verticalArrangement = Arrangement.SpaceBetween,
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .graphicsLayer {
+                        alpha = (reveal.value * 1.6f).coerceIn(0f, 1f)
+                    },
         ) {
-            AcousticAxisRow(label = "%.0f kHz".format(nyquistKHz), alpha = axisAlpha)
-            AcousticAxisRow(label = "%.0f kHz".format(nyquistKHz * 2 / 3), alpha = axisAlpha)
-            AcousticAxisRow(label = "%.0f kHz".format(nyquistKHz / 3), alpha = axisAlpha)
-            AcousticAxisRow(label = "0 kHz", alpha = axisAlpha)
+            AcousticAxisRow(label = "%.0f kHz".format(nyquistKHz))
+            AcousticAxisRow(label = "%.0f kHz".format(nyquistKHz * 2 / 3))
+            AcousticAxisRow(label = "%.0f kHz".format(nyquistKHz / 3))
+            AcousticAxisRow(label = "0 kHz")
         }
 
         if (cutoffLineAlpha > 0f && nyquistKHz > 0f && cutoffKHz > 0f) {
@@ -574,7 +583,6 @@ private fun AcousticSpectrogramCanvas(
 @Composable
 private fun AcousticAxisRow(
     label: String,
-    alpha: Float,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -583,7 +591,7 @@ private fun AcousticAxisRow(
     ) {
         Text(
             text = label,
-            color = Color.White.copy(alpha = 0.5f * alpha),
+            color = Color.White.copy(alpha = 0.5f),
             fontSize = 10.sp,
         )
         Box(
@@ -591,7 +599,7 @@ private fun AcousticAxisRow(
                 Modifier
                     .weight(1f)
                     .height(1.dp)
-                    .background(Color.White.copy(alpha = 0.15f * alpha)),
+                    .background(Color.White.copy(alpha = 0.15f)),
         )
     }
 }

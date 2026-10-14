@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -41,6 +42,7 @@ import moe.rukamori.archivetune.innertube.models.filterVideo
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.reportException
+import java.time.LocalDateTime
 import javax.inject.Inject
 
 @HiltViewModel
@@ -173,6 +175,7 @@ class OnlinePlaylistViewModel
                         _playlistSongs.value = visibleSongs
                         continuation = playlistPage.songsContinuation ?: playlistPage.continuation
                         prefetchViewCounts(visibleSongs.map { song -> song.id })
+                        persistMissingPlaylistCover(playlistPage)
                     }.onFailure { throwable ->
                         _error.value = throwable.message ?: "Failed to load playlist"
                         reportException(throwable)
@@ -183,6 +186,23 @@ class OnlinePlaylistViewModel
                 } else {
                     _isRefreshing.value = false
                 }
+            }
+        }
+
+        private suspend fun persistMissingPlaylistCover(playlistPage: moe.rukamori.archivetune.innertube.pages.PlaylistPage) {
+            runCatching {
+                val existing = database.playlistByBrowseId(playlistId).firstOrNull()?.playlist ?: return
+                if (!existing.thumbnailUrl.isNullOrBlank() || existing.hasCustomCover) return
+                val coverUrl =
+                    playlistPage.playlist.thumbnail
+                        ?: playlistPage.songs.firstOrNull()?.thumbnail
+                if (coverUrl.isNullOrBlank()) return
+                database.update(
+                    existing.copy(
+                        thumbnailUrl = coverUrl,
+                        lastUpdateTime = LocalDateTime.now(),
+                    ),
+                )
             }
         }
 

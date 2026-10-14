@@ -164,7 +164,8 @@ fun ArtistItemsScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .let { m -> if (glassHeader.backdrop != null) m.glassSource(glassHeader.backdrop) else m },
+                    .let { m -> if (glassHeader.backdrop != null) m.glassSource(glassHeader.backdrop) else m }
+                    .hazeSource(glassHeader.haze),
         ) {
             if (!viewModel.songsSection) {
                 ArtistPageAmbientBackdrop(
@@ -186,7 +187,6 @@ fun ArtistItemsScreen(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .hazeSource(glassHeader.haze)
                             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current),
                 ) {
                     repeat(8) {
@@ -197,7 +197,6 @@ fun ArtistItemsScreen(
             LazyColumn(
                 state = lazyListState,
                 contentPadding = contentPadding,
-                modifier = Modifier.fillMaxSize().hazeSource(glassHeader.haze),
             ) {
                 items(
                     items = itemsPage?.items.orEmpty().distinctBy { it.id },
@@ -329,7 +328,6 @@ fun ArtistItemsScreen(
                 state = lazyGridState,
                 columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
                 contentPadding = contentPadding,
-                modifier = Modifier.fillMaxSize().hazeSource(glassHeader.haze),
             ) {
                 items(
                     items = itemsPage?.items.orEmpty().distinctBy { it.id },

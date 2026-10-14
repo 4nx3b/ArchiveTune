@@ -1925,10 +1925,9 @@ interface DatabaseDao {
                 name = playlistItem.title,
                 browseId = playlistItem.id,
                 thumbnailUrl =
-                    if (playlistEntity.hasLocalCustomCover) {
-                        playlistEntity.thumbnailUrl
-                    } else {
-                        playlistItem.thumbnail
+                    when {
+                        playlistEntity.hasCustomCover -> playlistEntity.thumbnailUrl
+                        else -> playlistItem.thumbnail ?: playlistEntity.thumbnailUrl
                     },
                 isEditable = playlistItem.isEditable,
                 remoteSongCount = playlistItem.songCountText?.let { Regex("""\d+""").find(it)?.value?.toIntOrNull() },

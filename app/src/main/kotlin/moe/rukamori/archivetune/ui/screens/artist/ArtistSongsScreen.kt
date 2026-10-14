@@ -131,18 +131,19 @@ fun ArtistSongsScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .let { m -> if (glassHeader.backdrop != null) m.glassSource(glassHeader.backdrop) else m },
+                    .let { m -> if (glassHeader.backdrop != null) m.glassSource(glassHeader.backdrop) else m }
+                    .hazeSource(glassHeader.haze),
         ) {
             ArtistPageAmbientBackdrop(
                 artistId = viewModel.routeArtistId,
                 artworkUrl = artist?.thumbnailUrl,
                 listScrolling = listScrolling,
+                useCanvasAmbient = false,
             )
 
             LazyColumn(
                 state = lazyListState,
                 contentPadding = listContentPadding,
-                modifier = Modifier.hazeSource(glassHeader.haze),
             ) {
                 item(
                     key = "header",

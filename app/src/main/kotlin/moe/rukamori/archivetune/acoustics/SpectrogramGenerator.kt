@@ -32,10 +32,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.constants.DownloadSourceConfig
 import moe.rukamori.archivetune.playback.DownloadUtil
-import moe.rukamori.archivetune.ui.player.resolveVideoStreamUrl
+import moe.rukamori.archivetune.simpstream.SimpMusicPlayer
 import moe.rukamori.archivetune.utils.isLocalMediaId
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 sealed interface AcousticAuditSource {
     data class Local(
@@ -44,10 +47,6 @@ sealed interface AcousticAuditSource {
 
     data class Cached(
         val file: File,
-    ) : AcousticAuditSource
-
-    data class Remote(
-        val url: String,
     ) : AcousticAuditSource
 }
 
@@ -77,6 +76,7 @@ suspend fun resolveAcousticAuditSource(
     context: Context,
     songId: String,
     downloadUtil: DownloadUtil,
+    onProgress: (Float) -> Unit = {},
 ): AcousticAuditSource? =
     withContext(Dispatchers.IO) {
         if (songId.isBlank()) return@withContext null
@@ -121,13 +121,107 @@ suspend fun resolveAcousticAuditSource(
         }
 
         if (YouTubeId.matches(songId)) {
-            val stream = runCatching { resolveVideoStreamUrl(songId, null) }.getOrNull()
-            stream?.streamUrl?.takeIf { it.startsWith("http") }
-                ?.let { return@withContext AcousticAuditSource.Remote(it) }
+            val tempFile =
+                withTimeoutOrNull(ACOUSTIC_STREAM_RESOLVE_TIMEOUT_MS) {
+                    downloadYouTubeAudioForAudit(context, songId, onProgress)
+                }
+            tempFile?.let { return@withContext AcousticAuditSource.Cached(it) }
         }
 
         null
     }
+
+private suspend fun downloadYouTubeAudioForAudit(
+    context: Context,
+    videoId: String,
+    onProgress: (Float) -> Unit,
+): File? {
+    val streamUrl = resolveYouTubeAudioStreamUrl(videoId) ?: return null
+    val tempDir = File(context.cacheDir, "acoustic_audit_tmp").apply { mkdirs() }
+    val tempFile = File(tempDir, "yt_stream_${videoId.hashCode()}.audit")
+    if (tempFile.exists()) runCatching { tempFile.delete() }
+
+    val client =
+        OkHttpClient
+            .Builder()
+            .callTimeout(ACOUSTIC_STREAM_DOWNLOAD_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+    val response =
+        runCatching {
+            client
+                .newCall(
+                    Request
+                        .Builder()
+                        .url(streamUrl)
+                        .build(),
+                ).execute()
+        }.getOrNull() ?: return null
+
+    response.use { httpResponse ->
+        if (!httpResponse.isSuccessful) {
+            runCatching { tempFile.delete() }
+            return null
+        }
+        val body = httpResponse.body ?: run {
+            runCatching { tempFile.delete() }
+            return null
+        }
+        val copied =
+            runCatching {
+                body.byteStream().use { input ->
+                    FileOutputStream(tempFile).use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        var total = 0L
+                        while (true) {
+                            ensureActive()
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            total += read
+                            if (total > ACOUSTIC_STREAM_DOWNLOAD_CAP_BYTES) break
+                            output.write(buffer, 0, read)
+                            onProgress(
+                                (ACOUSTIC_DOWNLOAD_PROGRESS_SPAN * total / ACOUSTIC_STREAM_DOWNLOAD_CAP_BYTES)
+                                    .coerceAtMost(ACOUSTIC_DOWNLOAD_PROGRESS_SPAN),
+                            )
+                        }
+                    }
+                }
+            }
+        if (copied.isFailure) {
+            runCatching { tempFile.delete() }
+            return null
+        }
+    }
+
+    if (tempFile.length() < 256L * 1024L) {
+        runCatching { tempFile.delete() }
+        return null
+    }
+    return tempFile
+}
+
+private suspend fun resolveYouTubeAudioStreamUrl(videoId: String): String? {
+    val response =
+        runCatching { SimpMusicPlayer.player(videoId = videoId).getOrNull()?.second }
+            .getOrNull() ?: return null
+    val audioFormats =
+        (
+            response.streamingData?.formats.orEmpty() +
+                response.streamingData?.adaptiveFormats.orEmpty()
+        ).filter { format ->
+            format.mimeType.startsWith("audio/") && !format.url.isNullOrBlank()
+        }
+    val preferred =
+        audioFormats.firstOrNull { it.mimeType.startsWith("audio/mp4") }
+            ?: audioFormats.maxByOrNull { it.bitrate }
+    return preferred?.url
+}
+
+private const val ACOUSTIC_STREAM_RESOLVE_TIMEOUT_MS = 120_000L
+private const val ACOUSTIC_STREAM_DOWNLOAD_TIMEOUT_MS = 90_000L
+private const val ACOUSTIC_STREAM_DOWNLOAD_CAP_BYTES = 48L * 1024 * 1024
+private const val ACOUSTIC_DOWNLOAD_PROGRESS_SPAN = 0.30f
 
 object SpectrogramGenerator {
     private const val TARGET_SECONDS = 20
@@ -239,7 +333,6 @@ object SpectrogramGenerator {
                 when (source) {
                     is AcousticAuditSource.Local -> extractor.setDataSource(context, source.uri, null)
                     is AcousticAuditSource.Cached -> extractor.setDataSource(source.file.absolutePath)
-                    is AcousticAuditSource.Remote -> extractor.setDataSource(source.url)
                 }
             }.isSuccess
         if (!opened) {
@@ -368,7 +461,7 @@ object SpectrogramGenerator {
                     if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                         isOutputEOS = true
                     }
-                    onProgress((0.3f * totalSamplesDecoded / targetSamples).coerceAtMost(0.3f))
+                    onProgress(ACOUSTIC_DOWNLOAD_PROGRESS_SPAN + 0.05f * totalSamplesDecoded / targetSamples)
                 }
             }
         } catch (_: Exception) {
