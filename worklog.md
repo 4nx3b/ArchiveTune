@@ -5728,3 +5728,16 @@ Work Log:
 
 Stage Summary:
 - All six reports fixed at the root on dev: the album page (and the three artist sub-pages) no longer paint the opaque black header band on scroll; Singles/EPs headers lost the arrow while rows still slide; the acoustic audit downloads and analyzes a real audio stream for streamed songs (bounded, cancellable, with visible download progress) and its reveal/axis/sweep animations are pure draw-phase; online playlist thumbnails persist in the DB and custom covers survive sync while still uploading to YouTube; the all-songs backdrop is the artist-thumbnail palette; queue row taps in Apple Music and BitChord styles play the exact tapped track with shuffle on; and the source peeker plays the exact Qobuz variant the user picks. CI status: pending push (this commit). On-device verification pending user testing.
+
+---
+Task ID: 126 (closure)
+Agent: Super Z (main agent, session web-60bd54af)
+
+Task: Task 126 CI closure record.
+
+Work Log:
+- Round one (22fe29e2e) failed the `build` job on a single compile error — the acoustic download loop's bare `ensureActive()` inside `runCatching` has no CoroutineScope receiver. Repaired at 061ebaaf7 with `currentCoroutineContext().ensureActive()` (the FFT loop's bare call is fine — it sits inside `withContext`'s scope).
+- Re-polled CI on 061ebaaf747fe486fc76f0dbebc7e5dcefedceab: ALL GREEN, 8/8 (build, check, all five nightly APK jobs, create-nightly).
+
+Stage Summary:
+- Task 126 complete on dev: all six reports fixed at the root. CI ALL GREEN (8/8) at 061ebaaf7; canary N202610141420 (17.0.6778-061ebaaf7). On-device verification pending user testing.
