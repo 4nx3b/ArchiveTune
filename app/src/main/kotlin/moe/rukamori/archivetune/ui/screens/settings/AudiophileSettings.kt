@@ -171,8 +171,16 @@ fun AudiophileSettings(
         }
     }
     val onBitPerfectChangeWithExclusion: (Boolean) -> Unit = { enabled ->
-        if (enabled && dolbyFfmpegDecoder) {
-            onDolbyFfmpegDecoderChange(false)
+        if (enabled) {
+            // Bit-perfect bypass only engages while no engine or DSP runs
+            // (BitPerfectRuntime: `bypass = requested && !engineOrDspEngaged`), and
+            // normalization/ReplayGain are software gain that voids the unity-gain
+            // path — so enabling bit-perfect clears every incompatible toggle.
+            if (dolbyFfmpegDecoder) onDolbyFfmpegDecoderChange(false)
+            if (tryptifyAudioProcessing) onTryptifyAudioProcessingChange(false)
+            if (lastwaveAudioProcessing) onLastwaveAudioProcessingChange(false)
+            if (floatDsp) onFloatDspChange(false)
+            if (audioNormalization) onAudioNormalizationChange(false)
         }
         onBitPerfectChange(enabled)
     }
@@ -334,7 +342,15 @@ fun AudiophileSettings(
                                 description = stringResource(R.string.float_dsp_desc),
                                 icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                                 checked = floatDsp,
-                                onCheckedChange = onFloatDspChange,
+                                onCheckedChange = { enabled ->
+                                    if (enabled && bitPerfect) {
+                                        // Float DSP engages the processor chain that
+                                        // disengages the bit-perfect bypass — they
+                                        // cannot both be active.
+                                        onBitPerfectChange(false)
+                                    }
+                                    onFloatDspChange(enabled)
+                                },
                             )
                         }
                     }
@@ -347,10 +363,16 @@ fun AudiophileSettings(
                                 icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                                 checked = tryptifyAudioProcessing,
                                 onCheckedChange = { enabled ->
-                                    onTryptifyAudioProcessingChange(enabled)
                                     if (enabled) {
                                         onLastwaveAudioProcessingChange(false)
+                                        if (bitPerfect) {
+                                            // Engine routing replaces the stock DSP
+                                            // path and disengages the bit-perfect
+                                            // bypass (engineOrDspEngaged).
+                                            onBitPerfectChange(false)
+                                        }
                                     }
+                                    onTryptifyAudioProcessingChange(enabled)
                                 },
                             )
                         }
@@ -364,10 +386,13 @@ fun AudiophileSettings(
                                 icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                                 checked = lastwaveAudioProcessing,
                                 onCheckedChange = { enabled ->
-                                    onLastwaveAudioProcessingChange(enabled)
                                     if (enabled) {
                                         onTryptifyAudioProcessingChange(false)
+                                        if (bitPerfect) {
+                                            onBitPerfectChange(false)
+                                        }
                                     }
+                                    onLastwaveAudioProcessingChange(enabled)
                                 },
                             )
                         }
@@ -509,7 +534,15 @@ fun AudiophileSettings(
                                 title = { Text(stringResource(R.string.audio_normalization)) },
                                 icon = { Icon(painterResource(R.drawable.solar_volume), null) },
                                 checked = audioNormalization,
-                                onCheckedChange = onAudioNormalizationChange,
+                                onCheckedChange = { enabled ->
+                                    if (enabled && bitPerfect) {
+                                        // Normalization is a software gain factor; the
+                                        // service forces unity gain while bit-perfect is
+                                        // verified, so the two are mutually exclusive.
+                                        onBitPerfectChange(false)
+                                    }
+                                    onAudioNormalizationChange(enabled)
+                                },
                             )
                         }
                     }

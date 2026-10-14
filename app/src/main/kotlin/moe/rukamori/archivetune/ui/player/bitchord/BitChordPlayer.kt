@@ -1086,7 +1086,7 @@ fun BitChordPlayerContent(
                         icon = Icons.Rounded.MoreHoriz,
                         contentDescription = "More",
                         onClick = {
-                            menuState.show {
+                            menuState.showImmersive {
                                 PlayerMenu(
                                     mediaMetadata = mediaMetadata,
                                     navController = navController,

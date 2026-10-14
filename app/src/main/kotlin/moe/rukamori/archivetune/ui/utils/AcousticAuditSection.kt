@@ -102,6 +102,10 @@ private val AcousticVerdictUpscaledColor = Color(0xFFEF6C00)
 private val AcousticVerdictFakeColor = Color(0xFFC62828)
 private val AcousticSpectrogramBackdrop = Color(0xFF0A0A1E)
 
+private val AcousticWarningIconTint = Color(0xFFF0B25A)
+
+private val AcousticWarningTint = Color(0x1AF0B25A)
+
 @Composable
 fun AcousticAuditSection(
     videoId: String,
@@ -165,6 +169,29 @@ fun AcousticAuditSection(
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
+            )
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(AcousticWarningTint)
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.solar_danger_circle_linear),
+                contentDescription = null,
+                tint = AcousticWarningIconTint,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                text = stringResource(R.string.acoustic_local_only_warning),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
