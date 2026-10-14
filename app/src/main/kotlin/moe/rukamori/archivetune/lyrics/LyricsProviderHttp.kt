@@ -220,7 +220,8 @@ internal object LyricsPayload {
 
     private fun isTtmlDocument(value: String): Boolean {
         val trimmed = value.trimStart()
-        return trimmed.startsWith("<tt", ignoreCase = true) ||
+        if (trimmed.startsWith("<tt", ignoreCase = true)) return true
+        return trimmed.startsWith("<") &&
             trimmed.contains("http://www.w3.org/ns/ttml", ignoreCase = true)
     }
 

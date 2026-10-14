@@ -62,6 +62,7 @@ fun AppleMusicPlaylistHero(
     canvasFallbackUrl: String? = null,
     canvasIsPlaying: Boolean = false,
     canvasVisible: Boolean = true,
+    scrimColor: Color? = null,
     modifier: Modifier = Modifier,
 ) {
     if (canvasPrimaryUrl.isNullOrBlank() && canvasFallbackUrl.isNullOrBlank()) {
@@ -79,6 +80,8 @@ fun AppleMusicPlaylistHero(
         )
         return
     }
+
+    val scrimBase = scrimColor ?: MaterialTheme.colorScheme.surface
 
     Box(
         modifier =
@@ -100,9 +103,9 @@ fun AppleMusicPlaylistHero(
                     .matchParentSize()
                     .background(
                         Brush.verticalGradient(
-                            0f to MaterialTheme.colorScheme.surface.copy(alpha = 0.60f),
-                            0.55f to MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-                            1f to MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                            0f to scrimBase.copy(alpha = 0.60f),
+                            0.55f to scrimBase.copy(alpha = 0.72f),
+                            1f to scrimBase.copy(alpha = 0.90f),
                         ),
                     ),
         )

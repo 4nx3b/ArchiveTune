@@ -8,6 +8,7 @@
 package moe.rukamori.archivetune.ui.screens.artist
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -32,6 +33,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
@@ -157,11 +159,20 @@ fun ArtistItemsScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        ArtistPageAmbientBackdrop(
-            artistId = viewModel.routeArtistId,
-            artworkUrl = artist?.thumbnailUrl,
-            listScrolling = listScrolling,
-        )
+        if (!viewModel.songsSection) {
+            ArtistPageAmbientBackdrop(
+                artistId = viewModel.routeArtistId,
+                artworkUrl = artist?.thumbnailUrl,
+                listScrolling = listScrolling,
+            )
+        } else {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surface),
+            )
+        }
 
         if (itemsPage == null) {
             ShimmerHost(

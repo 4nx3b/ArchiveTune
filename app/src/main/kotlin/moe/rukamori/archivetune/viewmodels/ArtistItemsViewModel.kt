@@ -43,6 +43,8 @@ class ArtistItemsViewModel
     ) : ViewModel() {
         private val browseId = savedStateHandle.get<String>("browseId")!!
         val routeArtistId: String = savedStateHandle.get<String>("artistId") ?: browseId
+        val songsSection: Boolean =
+            savedStateHandle.get<String>("songs")?.equals("true", ignoreCase = true) == true
         private val params =
             savedStateHandle
                 .get<String>("params")

@@ -1627,7 +1627,13 @@ fun SwipeToSongBox(
                         translationX = offset.value
                     }
                     .fillMaxWidth()
-                    .background(resolvedContentBackgroundColor),
+                    .then(
+                        if (offset.value != 0f) {
+                            Modifier.background(resolvedContentBackgroundColor)
+                        } else {
+                            Modifier
+                        },
+                    ),
             content = content,
         )
     }

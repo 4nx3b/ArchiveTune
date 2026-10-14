@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -101,6 +102,81 @@ object ArtistCanvasArtworkCache {
     }
 }
 
+@Stable
+class AmbientGradientColors(
+    val top: Color,
+    val mid: Color,
+    val bottom: Color,
+)
+
+@Composable
+fun rememberArtworkAmbientColors(
+    mediaId: String,
+    artworkUrl: String?,
+): List<Color>? {
+    val context = LocalContext.current
+    val surfaceColor = androidx.compose.material3.MaterialTheme.colorScheme.surface
+    val darkTheme = surfaceColor.luminance() < 0.5f
+
+    var extractedColors by remember(mediaId, darkTheme) {
+        mutableStateOf(ArtistAmbientSnapshotCache.get(mediaId, darkTheme))
+    }
+    LaunchedEffect(mediaId, artworkUrl, darkTheme) {
+        if (artworkUrl.isNullOrBlank()) return@LaunchedEffect
+        if (extractedColors != null) return@LaunchedEffect
+        val extracted =
+            extractArtistAmbientColors(
+                context = context,
+                mediaId = mediaId,
+                artworkUrl = artworkUrl,
+                darkTheme = darkTheme,
+            )
+        if (extracted != null) {
+            ArtistAmbientSnapshotCache.put(mediaId, darkTheme, extracted)
+            extractedColors = extracted
+        }
+    }
+    return extractedColors
+}
+
+@Composable
+fun rememberArtworkAmbientGradientColors(colors: List<Color>?): AmbientGradientColors {
+    val surfaceColor = androidx.compose.material3.MaterialTheme.colorScheme.surface
+    val darkTheme = surfaceColor.luminance() < 0.5f
+    val palette =
+        remember(colors, surfaceColor, darkTheme) {
+            if (colors.isNullOrEmpty()) {
+                BackdropTonePalette(
+                    top = surfaceColor,
+                    mid = surfaceColor,
+                    bottom = surfaceColor,
+                )
+            } else {
+                BackdropTonePalette.fromColorsLight(
+                    colors = colors,
+                    fallbackColor = surfaceColor.toArgb(),
+                    darkTheme = darkTheme,
+                )
+            }
+        }
+    val animatedTop by animateColorAsState(
+        targetValue = palette.top,
+        animationSpec = tween(durationMillis = ARTIST_SHARED_AMBIENT_CROSSFADE_MS),
+        label = "artworkAmbientTop",
+    )
+    val animatedMid by animateColorAsState(
+        targetValue = palette.mid,
+        animationSpec = tween(durationMillis = ARTIST_SHARED_AMBIENT_CROSSFADE_MS),
+        label = "artworkAmbientMid",
+    )
+    val animatedBottom by animateColorAsState(
+        targetValue = palette.bottom,
+        animationSpec = tween(durationMillis = ARTIST_SHARED_AMBIENT_CROSSFADE_MS),
+        label = "artworkAmbientBottom",
+    )
+    return AmbientGradientColors(animatedTop, animatedMid, animatedBottom)
+}
+
 @Composable
 fun ArtistPageAmbientBackdrop(
     artistId: String,
@@ -110,7 +186,6 @@ fun ArtistPageAmbientBackdrop(
 ) {
     val context = LocalContext.current
     val surfaceColor = androidx.compose.material3.MaterialTheme.colorScheme.surface
-    val darkTheme = surfaceColor.luminance() < 0.5f
 
     val artistCanvasEnabled by rememberPreference(key = AlbumCanvasEnabledKey, defaultValue = true)
     val lowDataMode = context.isLowDataModeActive()
@@ -180,33 +255,25 @@ fun ArtistPageAmbientBackdrop(
         }
     }
 
-    var artistArtworkColors by remember(artistId, darkTheme) {
-        mutableStateOf(ArtistAmbientSnapshotCache.get("artist:$artistId", darkTheme))
-    }
-    LaunchedEffect(artistId, artworkUrl, darkTheme) {
-        if (artworkUrl.isNullOrBlank()) return@LaunchedEffect
-        val extracted =
-            extractArtistAmbientColors(
-                context = context,
-                mediaId = "artist:$artistId",
-                artworkUrl = artworkUrl,
-                darkTheme = darkTheme,
-            )
-        if (extracted != null) {
-            ArtistAmbientSnapshotCache.put("artist:$artistId", darkTheme, extracted)
-        }
-        artistArtworkColors = extracted ?: artistArtworkColors
-    }
-
+    val artistArtworkColors = rememberArtworkAmbientColors("artist:$artistId", artworkUrl)
     val ambientSource = canvasAmbientColors ?: artistArtworkColors
 
+    val darkTheme = surfaceColor.luminance() < 0.5f
     val ambientPalette =
-        remember(ambientSource, surfaceColor) {
-            BackdropTonePalette.fromColorsLight(
-                colors = ambientSource.orEmpty(),
-                fallbackColor = surfaceColor.toArgb(),
-                darkTheme = darkTheme,
-            )
+        remember(ambientSource, surfaceColor, darkTheme) {
+            if (ambientSource == null) {
+                BackdropTonePalette(
+                    top = surfaceColor,
+                    mid = surfaceColor,
+                    bottom = surfaceColor,
+                )
+            } else {
+                BackdropTonePalette.fromColorsLight(
+                    colors = ambientSource,
+                    fallbackColor = surfaceColor.toArgb(),
+                    darkTheme = darkTheme,
+                )
+            }
         }
     val animatedTop by animateColorAsState(
         targetValue = ambientPalette.top,
@@ -288,71 +355,7 @@ fun ArtistPageAmbientBackdrop(
     }
 }
 
-@Composable
-fun AmbientArtworkBackdrop(
-    mediaId: String,
-    artworkUrl: String?,
-    modifier: Modifier = Modifier,
-) {
-    val context = LocalContext.current
-    val surfaceColor = androidx.compose.material3.MaterialTheme.colorScheme.surface
-    val darkTheme = surfaceColor.luminance() < 0.5f
 
-    var extractedColors by remember(mediaId, darkTheme) {
-        mutableStateOf(ArtistAmbientSnapshotCache.get(mediaId, darkTheme))
-    }
-    LaunchedEffect(mediaId, artworkUrl, darkTheme) {
-        if (artworkUrl.isNullOrBlank()) return@LaunchedEffect
-        val extracted =
-            extractArtistAmbientColors(
-                context = context,
-                mediaId = mediaId,
-                artworkUrl = artworkUrl,
-                darkTheme = darkTheme,
-            )
-        if (extracted != null) {
-            ArtistAmbientSnapshotCache.put(mediaId, darkTheme, extracted)
-        }
-        extractedColors = extracted ?: extractedColors
-    }
-
-    val ambientPalette =
-        remember(extractedColors, surfaceColor) {
-            BackdropTonePalette.fromColorsLight(
-                colors = extractedColors.orEmpty(),
-                fallbackColor = surfaceColor.toArgb(),
-                darkTheme = darkTheme,
-            )
-        }
-    val animatedTop by animateColorAsState(
-        targetValue = ambientPalette.top,
-        animationSpec = tween(durationMillis = ARTIST_SHARED_AMBIENT_CROSSFADE_MS),
-        label = "ambientArtworkTop",
-    )
-    val animatedMid by animateColorAsState(
-        targetValue = ambientPalette.mid,
-        animationSpec = tween(durationMillis = ARTIST_SHARED_AMBIENT_CROSSFADE_MS),
-        label = "ambientArtworkMid",
-    )
-    val animatedBottom by animateColorAsState(
-        targetValue = ambientPalette.bottom,
-        animationSpec = tween(durationMillis = ARTIST_SHARED_AMBIENT_CROSSFADE_MS),
-        label = "ambientArtworkBottom",
-    )
-
-    Box(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to animatedTop,
-                        0.5f to animatedMid,
-                        1f to animatedBottom,
-                    ),
-                ),
-    )
-}
 
 private val SUBPAGE_CANVAS_SAMPLE_STAGE_SIZE = 128.dp
 private const val SUBPAGE_CANVAS_SAMPLE_MAX_VIDEO_EDGE_PX = 256

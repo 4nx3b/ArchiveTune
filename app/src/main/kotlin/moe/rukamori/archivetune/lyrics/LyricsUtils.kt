@@ -742,7 +742,7 @@ object LyricsUtils {
                 .replace(INVISIBLE_CHARS_REGEX, "")
                 .trim { it.isWhitespace() || it == NBSP }
 
-        val unwrapped = stripCodeFence(raw)
+        val unwrapped = unwrapJsonEnvelope(stripCodeFence(raw))
         val normalized =
             if (isEscapedTtml(unwrapped)) {
                 unwrapped
@@ -756,6 +756,14 @@ object LyricsUtils {
             }
 
         return normalized.trim { it.isWhitespace() || it == NBSP }
+    }
+
+    private fun unwrapJsonEnvelope(value: String): String {
+        val first = value.firstOrNull() ?: return value
+        if (first != '{' && first != '[') return value
+        val inner = LyricsPayload.unwrap(value) ?: return value
+        if (inner == value) return value
+        return inner
     }
 
     fun displayLyricsText(lyrics: String): String {
