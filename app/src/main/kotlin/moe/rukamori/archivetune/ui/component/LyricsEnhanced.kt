@@ -29,8 +29,6 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -163,7 +161,6 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.reportException
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import androidx.compose.runtime.getValue
@@ -179,27 +176,18 @@ private const val TTML_LEAD_MS = 0L
 private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 0L
 private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L
 private const val MANUAL_SCROLL_DEBOUNCE_MS = 50L
-private const val LYRIC_FOCUS_TOP_ANCHOR_RATIO = 0.08f
-
-private const val LYRIC_FOCUS_TOP_GUARD_RATIO = 0.04f
-private const val LYRIC_FOCUS_BOTTOM_GUARD_RATIO = 0.30f
-private const val LYRIC_FOCUS_MIN_SCROLL_PX = 6
-
-private const val LYRIC_FOCUS_INSTANT_SCROLL_RATIO = 0.40f
-private const val LYRIC_FOCUS_ANIMATED_DISTANCE = 4
-private const val LYRIC_FOCUS_LAYOUT_SETTLE_FRAMES = 4
+private const val LYRIC_FIRST_FOCUS_SETTLE_FRAMES = 42
+private const val LYRIC_FIRST_FOCUS_EMPTY_FRAMES = 6
 private const val SMOOTH_PLAYBACK_MAX_FORWARD_DRIFT_MS = 80L
 private const val SMOOTH_PLAYBACK_MAX_BACKWARD_DRIFT_MS = 180L
 private const val SMOOTH_PLAYBACK_DRIFT_CORRECTION = 0.55f
-
-private const val LYRIC_FOCUS_SCROLL_DURATION_MS = 280
 
 private const val LYRIC_FOCUS_TARGET_MANUAL = -2
 private const val LYRIC_FOCUS_TARGET_PENDING = -1
 
 private const val LYRIC_FIRST_FOCUS_FADE_MS = 200
 
-private const val LYRIC_FIRST_FOCUS_TIMEOUT_MS = 400L
+private const val LYRIC_FIRST_FOCUS_TIMEOUT_MS = 900L
 
 private const val MIN_KARAOKE_SYLLABLE_DURATION_MS = 1
 
@@ -770,11 +758,7 @@ fun LyricsEnhanced(
         }
 
         snapshotFlow { latestSyncedLyricsForScroll.value.lines.isNotEmpty() }.first { it }
-        snapshotFlow {
-            listState.layoutInfo.viewportEndOffset > listState.layoutInfo.viewportStartOffset
-        }.first { it }
 
-        var forceNextScroll = true
         snapshotFlow {
             if (isManualScrolling || isSelectionModeActive) {
                 LYRIC_FOCUS_TARGET_MANUAL
@@ -785,26 +769,13 @@ fun LyricsEnhanced(
             }
         }.distinctUntilChanged()
             .collectLatest { target ->
-                if (target == LYRIC_FOCUS_TARGET_MANUAL) {
-                    forceNextScroll = true
-
+                if (target == LYRIC_FOCUS_TARGET_MANUAL || target == LYRIC_FOCUS_TARGET_PENDING) {
+                    return@collectLatest
+                }
+                if (awaitingFirstFocus) {
+                    listState.awaitKaraokeFirstFocus(target)
                     awaitingFirstFocus = false
-                    return@collectLatest
                 }
-                if (target == LYRIC_FOCUS_TARGET_PENDING) {
-                    return@collectLatest
-                }
-
-                val index = target
-                val isFirstFocus = awaitingFirstFocus
-                listState.scrollLyricIntoFocus(
-                    index = index,
-                    animateToNearbyItem = !forceNextScroll,
-                    force = forceNextScroll,
-                    snap = isFirstFocus,
-                )
-                forceNextScroll = false
-                if (isFirstFocus) awaitingFirstFocus = false
             }
     }
 
@@ -1588,62 +1559,20 @@ private fun LyricsSelectionLineItem(
     }
 }
 
-private suspend fun LazyListState.scrollLyricIntoFocus(
-    index: Int,
-    animateToNearbyItem: Boolean,
-    force: Boolean,
-
-    snap: Boolean = false,
-) {
-    val itemCount = layoutInfo.totalItemsCount
-    if (itemCount == 0) return
-
-    val targetIndex = index.coerceIn(0, itemCount - 1)
-    var itemInfo = layoutInfo.visibleItemsInfo.firstOrNull { item -> item.index == targetIndex }
-    if (itemInfo == null) {
-        val distance = abs(targetIndex - firstVisibleItemIndex)
-        if (!snap && animateToNearbyItem && distance <= LYRIC_FOCUS_ANIMATED_DISTANCE) {
-            animateScrollToItem(targetIndex)
+private suspend fun LazyListState.awaitKaraokeFirstFocus(index: Int) {
+    var framesAwaited = 0
+    var emptyFrames = 0
+    while (framesAwaited < LYRIC_FIRST_FOCUS_SETTLE_FRAMES) {
+        withFrameNanos { }
+        framesAwaited++
+        if (layoutInfo.totalItemsCount == 0) {
+            emptyFrames++
+            if (emptyFrames >= LYRIC_FIRST_FOCUS_EMPTY_FRAMES) return
         } else {
-            scrollToItem(targetIndex)
-        }
-        var layoutSettled = false
-        var framesAwaited = 0
-        while (!layoutSettled && framesAwaited < LYRIC_FOCUS_LAYOUT_SETTLE_FRAMES) {
-            withFrameNanos { }
-            framesAwaited++
-            itemInfo = layoutInfo.visibleItemsInfo.firstOrNull { item -> item.index == targetIndex }
-            layoutSettled = itemInfo != null && layoutInfo.viewportEndOffset > layoutInfo.viewportStartOffset
-        }
-    }
-
-    itemInfo ?: return
-
-    val viewportStart = layoutInfo.viewportStartOffset
-    val viewportEnd = layoutInfo.viewportEndOffset
-    val viewportHeight = viewportEnd - viewportStart
-    if (viewportHeight <= 0) return
-
-    val itemFocusPoint = itemInfo.offset
-    val topGuard = viewportStart + (viewportHeight * LYRIC_FOCUS_TOP_GUARD_RATIO).roundToInt()
-    val bottomGuard = viewportEnd - (viewportHeight * LYRIC_FOCUS_BOTTOM_GUARD_RATIO).roundToInt()
-    if (!force && itemFocusPoint in topGuard..bottomGuard) return
-
-    val targetFocusPoint = viewportStart + (viewportHeight * LYRIC_FOCUS_TOP_ANCHOR_RATIO).roundToInt()
-    val scrollDelta = itemFocusPoint - targetFocusPoint
-    if (abs(scrollDelta) > LYRIC_FOCUS_MIN_SCROLL_PX) {
-        val instantThreshold = (viewportHeight * LYRIC_FOCUS_INSTANT_SCROLL_RATIO).roundToInt()
-        if (snap || (abs(scrollDelta) <= instantThreshold && !force)) {
-            scrollBy(scrollDelta.toFloat())
-        } else {
-            animateScrollBy(
-                value = scrollDelta.toFloat(),
-                animationSpec =
-                    tween(
-                        durationMillis = LYRIC_FOCUS_SCROLL_DURATION_MS,
-                        easing = FastOutSlowInEasing,
-                    ),
-            )
+            emptyFrames = 0
+            val itemInfo =
+                layoutInfo.visibleItemsInfo.firstOrNull { item -> item.index == index }
+            if (itemInfo != null && !isScrollInProgress) return
         }
     }
 }

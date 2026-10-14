@@ -64,8 +64,9 @@ import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.ui.component.HideOnScrollFAB
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.screens.GlassScreenHeaderOverlay
-import moe.rukamori.archivetune.ui.screens.glassHeaderSource
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
@@ -126,97 +127,69 @@ fun ArtistSongsScreen(
     Box(
         modifier = Modifier.fillMaxSize(),
     ) {
-        ArtistPageAmbientBackdrop(
-            artistId = viewModel.routeArtistId,
-            artworkUrl = artist?.thumbnailUrl,
-            listScrolling = listScrolling,
-        )
-
-        LazyColumn(
-            state = lazyListState,
-            contentPadding = listContentPadding,
-            modifier = Modifier.glassHeaderSource(glassHeader),
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .let { m -> if (glassHeader.backdrop != null) m.glassSource(glassHeader.backdrop) else m },
         ) {
-            item(
-                key = "header",
-                contentType = CONTENT_TYPE_HEADER,
+            ArtistPageAmbientBackdrop(
+                artistId = viewModel.routeArtistId,
+                artworkUrl = artist?.thumbnailUrl,
+                listScrolling = listScrolling,
+            )
+
+            LazyColumn(
+                state = lazyListState,
+                contentPadding = listContentPadding,
+                modifier = Modifier.hazeSource(glassHeader.haze),
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                item(
+                    key = "header",
+                    contentType = CONTENT_TYPE_HEADER,
                 ) {
-                    SortHeader(
-                        sortType = sortType,
-                        sortDescending = sortDescending,
-                        onSortTypeChange = onSortTypeChange,
-                        onSortDescendingChange = onSortDescendingChange,
-                        sortTypeText = { sortType ->
-                            when (sortType) {
-                                ArtistSongSortType.CREATE_DATE -> R.string.sort_by_create_date
-                                ArtistSongSortType.NAME -> R.string.sort_by_name
-                                ArtistSongSortType.PLAY_TIME -> R.string.sort_by_play_time
-                            }
-                        },
-                    )
-
-                    Spacer(Modifier.weight(1f))
-
-                    Text(
-                        text = pluralStringResource(R.plurals.n_song, songs.size, songs.size),
-                        style = MaterialTheme.typography.titleSmall,
-
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            itemsIndexed(
-                items = songs,
-                key = { _, item -> item.id },
-            ) { index, song ->
-                SongListItem(
-                    song = song,
-                    showInLibraryIcon = true,
-                    isActive = song.id == mediaMetadata?.id,
-                    isPlaying = isPlaying,
-                    activeContainerBackdrop = true,
-                    trailingContent = {
-                        IconButton(
-                            onClick = {
-                                menuState.show {
-                                    SongMenu(
-                                        originalSong = song,
-                                        navController = navController,
-                                        onDismiss = menuState::dismiss,
-                                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    ) {
+                        SortHeader(
+                            sortType = sortType,
+                            sortDescending = sortDescending,
+                            onSortTypeChange = onSortTypeChange,
+                            onSortDescendingChange = onSortDescendingChange,
+                            sortTypeText = { sortType ->
+                                when (sortType) {
+                                    ArtistSongSortType.CREATE_DATE -> R.string.sort_by_create_date
+                                    ArtistSongSortType.NAME -> R.string.sort_by_name
+                                    ArtistSongSortType.PLAY_TIME -> R.string.sort_by_play_time
                                 }
                             },
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.more_vert),
-                                contentDescription = null,
-                            )
-                        }
-                    },
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .combinedClickable(
+                        )
+
+                        Spacer(Modifier.weight(1f))
+
+                        Text(
+                            text = pluralStringResource(R.plurals.n_song, songs.size, songs.size),
+                            style = MaterialTheme.typography.titleSmall,
+
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                itemsIndexed(
+                    items = songs,
+                    key = { _, item -> item.id },
+                ) { index, song ->
+                    SongListItem(
+                        song = song,
+                        showInLibraryIcon = true,
+                        isActive = song.id == mediaMetadata?.id,
+                        isPlaying = isPlaying,
+                        activeContainerBackdrop = true,
+                        trailingContent = {
+                            IconButton(
                                 onClick = {
-                                    if (song.id == mediaMetadata?.id) {
-                                        playerConnection.player.togglePlayPause()
-                                    } else {
-                                        playerConnection.playQueue(
-                                            ListQueue(
-                                                title = context.getString(R.string.queue_all_songs),
-                                                items = songs.map { it.toMediaItem() },
-                                                startIndex = index,
-                                            ),
-                                        )
-                                    }
-                                },
-                                onLongClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     menuState.show {
                                         SongMenu(
                                             originalSong = song,
@@ -225,8 +198,43 @@ fun ArtistSongsScreen(
                                         )
                                     }
                                 },
-                            ).animateItem(),
-                )
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.more_vert),
+                                    contentDescription = null,
+                                )
+                            }
+                        },
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(
+                                    onClick = {
+                                        if (song.id == mediaMetadata?.id) {
+                                            playerConnection.player.togglePlayPause()
+                                        } else {
+                                            playerConnection.playQueue(
+                                                ListQueue(
+                                                    title = context.getString(R.string.queue_all_songs),
+                                                    items = songs.map { it.toMediaItem() },
+                                                    startIndex = index,
+                                                ),
+                                            )
+                                        }
+                                    },
+                                    onLongClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        menuState.show {
+                                            SongMenu(
+                                                originalSong = song,
+                                                navController = navController,
+                                                onDismiss = menuState::dismiss,
+                                            )
+                                        }
+                                    },
+                                ).animateItem(),
+                    )
+                }
             }
         }
 

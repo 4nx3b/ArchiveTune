@@ -827,6 +827,11 @@ fun ShowMediaInfo(videoId: String) {
                                     outputStats = outputStats,
                                     sourceSampleRate = currentFormat?.sampleRate,
                                 )
+
+                                AcousticAuditSection(
+                                    videoId = videoId,
+                                    modifier = Modifier.padding(top = 2.dp),
+                                )
                             }
 
                             MediaInfoTab.Numbers -> {
