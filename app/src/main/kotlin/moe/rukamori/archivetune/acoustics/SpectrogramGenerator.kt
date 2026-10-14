@@ -54,6 +54,7 @@ sealed interface AcousticAuditSource {
 fun AcousticAuditSource.release() {
     if (this is AcousticAuditSource.Cached) {
         runCatching { file.delete() }
+        runCatching { file.parentFile?.takeIf { it.name == "acoustic_audit_tmp" }?.deleteRecursively() }
     }
 }
 
@@ -73,6 +74,21 @@ data class AcousticAuditResult(
 
 private val YouTubeId = Regex("^[A-Za-z0-9_-]{11}$")
 
+private class QuantizedProgress(
+    private val onProgress: (Float) -> Unit,
+) {
+    private var lastEmitted = -1f
+
+    fun publish(value: Float) {
+        val clamped = value.coerceIn(0f, 1f)
+        val quantized = (clamped * 200f).toInt() / 200f
+        if (quantized != lastEmitted) {
+            lastEmitted = quantized
+            onProgress(quantized)
+        }
+    }
+}
+
 suspend fun resolveAcousticAuditSource(
     context: Context,
     songId: String,
@@ -80,8 +96,11 @@ suspend fun resolveAcousticAuditSource(
     onProgress: (Float) -> Unit = {},
 ): AcousticAuditSource? =
     withContext(Dispatchers.IO) {
+        val progress = QuantizedProgress(onProgress)
+        progress.publish(0.02f)
         if (songId.isBlank()) return@withContext null
         if (songId.isLocalMediaId()) {
+            progress.publish(0.28f)
             return@withContext AcousticAuditSource.Local(songId.toUri())
         }
 
@@ -107,15 +126,21 @@ suspend fun resolveAcousticAuditSource(
             if (!completed && spanEnd < 512L * 1024L) continue
             val tempDir = File(context.cacheDir, "acoustic_audit_tmp").apply { mkdirs() }
             val tempFile = File(tempDir, "${songId.hashCode()}_${key.hashCode()}.audit")
+            val totalSpanBytes = spans.sumOf { it.length }.coerceAtLeast(1L)
             val materialized =
                 runCatching {
                     FileOutputStream(tempFile).use { output ->
+                        var copied = 0L
                         spans.forEach { span ->
+                            currentCoroutineContext().ensureActive()
                             FileInputStream(span.file).use { input -> input.copyTo(output) }
+                            copied += span.length
+                            progress.publish(0.02f + 0.26f * (copied.toFloat() / totalSpanBytes.toFloat()))
                         }
                     }
                 }.isSuccess
             if (materialized && tempFile.length() > 0L) {
+                progress.publish(0.28f)
                 return@withContext AcousticAuditSource.Cached(tempFile)
             }
             runCatching { tempFile.delete() }
@@ -124,7 +149,7 @@ suspend fun resolveAcousticAuditSource(
         if (YouTubeId.matches(songId)) {
             val tempFile =
                 withTimeoutOrNull(ACOUSTIC_STREAM_RESOLVE_TIMEOUT_MS) {
-                    downloadYouTubeAudioForAudit(context, songId, onProgress)
+                    downloadYouTubeAudioForAudit(context, songId, progress::publish)
                 }
             tempFile?.let { return@withContext AcousticAuditSource.Cached(it) }
         }
@@ -231,6 +256,9 @@ object SpectrogramGenerator {
     private const val MIN_DB = -100f
     private const val MAX_DB = 0f
     private const val ACTIVE_THRESHOLD_DB = -65f
+    private const val DECODE_DEADLINE_MS = 45_000L
+    private const val DECODE_STALL_ITERATIONS = 250
+    private const val CODEC_NULL_BUFFER_STRIKES = 4
 
     suspend fun generate(
         context: Context,
@@ -238,7 +266,8 @@ object SpectrogramGenerator {
         onProgress: (Float) -> Unit = {},
     ): AcousticAuditResult? =
         withContext(Dispatchers.IO) {
-            val decoded = decodeMonoSamples(context, source, onProgress)
+            val progress = QuantizedProgress(onProgress)
+            val decoded = decodeMonoSamples(context, source, progress)
             if (decoded == null || decoded.samples.size < FFT_SIZE * 2) return@withContext null
 
             val samples = decoded.samples
@@ -269,7 +298,7 @@ object SpectrogramGenerator {
                     magnitudeMatrix[frame][bin] = mag
                     sumMagnitudes[bin] += mag
                 }
-                onProgress(0.35f + 0.6f * frame / numFrames)
+                progress.publish(0.55f + 0.37f * frame / numFrames)
             }
 
             var highestActiveBin = -1
@@ -295,9 +324,14 @@ object SpectrogramGenerator {
                     else -> AcousticVerdict.SUSPECTED_FAKE
                 }
 
+            progress.publish(0.93f)
             val bitmap = Bitmap.createBitmap(numFrames, numBins, Bitmap.Config.ARGB_8888)
             val pixels = IntArray(numFrames * numBins)
             for (y in 0 until numBins) {
+                if (y % 64 == 0) {
+                    ensureActive()
+                    progress.publish(0.93f + 0.06f * y / numBins)
+                }
                 val binIdx = numBins - 1 - y
                 for (x in 0 until numFrames) {
                     val mag = magnitudeMatrix[x][binIdx]
@@ -307,7 +341,7 @@ object SpectrogramGenerator {
                 }
             }
             bitmap.setPixels(pixels, 0, numFrames, 0, 0, numFrames, numBins)
-            onProgress(1f)
+            progress.publish(1f)
 
             AcousticAuditResult(
                 spectrogram = bitmap,
@@ -323,10 +357,10 @@ object SpectrogramGenerator {
         val sampleRate: Int,
     )
 
-    private fun decodeMonoSamples(
+    private suspend fun decodeMonoSamples(
         context: Context,
         source: AcousticAuditSource,
-        onProgress: (Float) -> Unit,
+        progress: QuantizedProgress,
     ): DecodedPcm? {
         val extractor = MediaExtractor()
         val opened =
@@ -382,33 +416,79 @@ object SpectrogramGenerator {
 
         val targetSamples = sampleRate * TARGET_SECONDS
         val sampleData = FloatArray(targetSamples)
-        var totalSamplesDecoded = 0
 
+        val seekTargets =
+            if (durationUs > 0L) {
+                longArrayOf(durationUs / 3L, 0L)
+            } else {
+                longArrayOf(0L)
+            }
+
+        var totalSamplesDecoded = 0
+        for (seekUs in seekTargets) {
+            if (totalSamplesDecoded >= FFT_SIZE * 2) break
+            runCatching { extractor.seekTo(seekUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC) }
+            val attempt =
+                decodeAttempt(
+                    extractor = extractor,
+                    format = format,
+                    mime = mime,
+                    channelCount = channelCount,
+                    targetSamples = targetSamples,
+                    startOffset = totalSamplesDecoded,
+                    sampleData = sampleData,
+                    progress = progress,
+                )
+            totalSamplesDecoded += attempt
+        }
+
+        runCatching { extractor.release() }
+
+        if (totalSamplesDecoded < FFT_SIZE * 2) return null
+        return DecodedPcm(sampleData.copyOf(totalSamplesDecoded), sampleRate)
+    }
+
+    private suspend fun decodeAttempt(
+        extractor: MediaExtractor,
+        format: MediaFormat,
+        mime: String,
+        channelCount: Int,
+        targetSamples: Int,
+        startOffset: Int,
+        sampleData: FloatArray,
+        progress: QuantizedProgress,
+    ): Int {
         val codec =
             try {
                 MediaCodec.createDecoderByType(mime)
             } catch (_: Exception) {
-                runCatching { extractor.release() }
-                return null
+                return 0
             }
 
         val bufferInfo = MediaCodec.BufferInfo()
         var isInputEOS = false
         var isOutputEOS = false
+        var nullBufferStrikes = 0
+        var stallIterations = 0
+        var decodedSamples = 0
+        val deadlineMs = android.os.SystemClock.elapsedRealtime() + DECODE_DEADLINE_MS
+        val baseProgressOffset = 0.30f + 0.25f * (startOffset.toFloat() / targetSamples.toFloat()).coerceIn(0f, 1f)
+
         try {
             codec.configure(format, null, null, 0)
             codec.start()
-            if (durationUs > 0) {
-                runCatching {
-                    extractor.seekTo(durationUs / 3, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-                }
-            }
-            while (!isOutputEOS && totalSamplesDecoded < targetSamples) {
+            while (!isOutputEOS && startOffset + decodedSamples < targetSamples) {
+                currentCoroutineContext().ensureActive()
+                if (android.os.SystemClock.elapsedRealtime() > deadlineMs) break
+
                 if (!isInputEOS) {
                     val inputBufferIndex = codec.dequeueInputBuffer(10_000)
                     if (inputBufferIndex >= 0) {
                         val inputBuffer = codec.getInputBuffer(inputBufferIndex)
-                        if (inputBuffer != null) {
+                        if (inputBuffer == null) {
+                            nullBufferStrikes++
+                            if (nullBufferStrikes > CODEC_NULL_BUFFER_STRIKES) break
+                        } else {
                             val sampleSize = extractor.readSampleData(inputBuffer, 0)
                             if (sampleSize < 0) {
                                 codec.queueInputBuffer(
@@ -436,13 +516,18 @@ object SpectrogramGenerator {
                 val outputBufferIndex = codec.dequeueOutputBuffer(bufferInfo, 10_000)
                 if (outputBufferIndex >= 0) {
                     val outputBuffer = codec.getOutputBuffer(outputBufferIndex)
-                    if (outputBuffer != null) {
+                    if (outputBuffer == null) {
+                        nullBufferStrikes++
+                        runCatching { codec.releaseOutputBuffer(outputBufferIndex, false) }
+                        if (nullBufferStrikes > CODEC_NULL_BUFFER_STRIKES) break
+                    } else {
                         outputBuffer.position(bufferInfo.offset)
                         outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
                         val shortBuffer = outputBuffer.asShortBuffer()
                         val chunkSamples = shortBuffer.remaining()
                         var i = 0
-                        while (i < chunkSamples && totalSamplesDecoded < targetSamples) {
+                        var chunkDecoded = 0
+                        while (i < chunkSamples && startOffset + decodedSamples < targetSamples) {
                             var sum = 0f
                             var count = 0
                             for (c in 0 until channelCount) {
@@ -452,31 +537,37 @@ object SpectrogramGenerator {
                                 }
                             }
                             if (count > 0) {
-                                sampleData[totalSamplesDecoded] = sum / count
-                                totalSamplesDecoded++
+                                sampleData[startOffset + decodedSamples] = sum / count
+                                decodedSamples++
+                                chunkDecoded++
                             }
                             i += channelCount
                         }
+                        if (chunkDecoded > 0) {
+                            stallIterations = 0
+                        }
+                        progress.publish(
+                            baseProgressOffset +
+                                0.25f * ((startOffset + decodedSamples).toFloat() / targetSamples.toFloat()).coerceIn(0f, 1f),
+                        )
+                        codec.releaseOutputBuffer(outputBufferIndex, false)
                     }
-                    codec.releaseOutputBuffer(outputBufferIndex, false)
                     if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                         isOutputEOS = true
                     }
-                    onProgress(ACOUSTIC_DOWNLOAD_PROGRESS_SPAN + 0.05f * totalSamplesDecoded / targetSamples)
+                } else if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                    stallIterations++
+                    if (stallIterations > DECODE_STALL_ITERATIONS) break
                 }
             }
         } catch (_: Exception) {
-            if (totalSamplesDecoded < FFT_SIZE * 2) {
-                return null
-            }
+            decodedSamples = decodedSamples.coerceAtLeast(0)
         } finally {
             runCatching { codec.stop() }
             runCatching { codec.release() }
-            runCatching { extractor.release() }
         }
 
-        if (totalSamplesDecoded < FFT_SIZE * 2) return null
-        return DecodedPcm(sampleData.copyOf(totalSamplesDecoded), sampleRate)
+        return decodedSamples
     }
 
     private fun fft(
@@ -533,22 +624,23 @@ object SpectrogramGenerator {
         }
     }
 
+    private val SpekPalette =
+        arrayOf(
+            intArrayOf(10, 10, 30),
+            intArrayOf(40, 0, 120),
+            intArrayOf(0, 100, 200),
+            intArrayOf(0, 200, 100),
+            intArrayOf(240, 220, 0),
+            intArrayOf(255, 30, 30),
+        )
+
     private fun colorForRatio(ratio: Float): Int {
         val r = ratio.coerceIn(0.0f, 1.0f)
-        val colors =
-            arrayOf(
-                intArrayOf(10, 10, 30),
-                intArrayOf(40, 0, 120),
-                intArrayOf(0, 100, 200),
-                intArrayOf(0, 200, 100),
-                intArrayOf(240, 220, 0),
-                intArrayOf(255, 30, 30),
-            )
-        val segment = r * (colors.size - 1)
-        val index = segment.toInt().coerceIn(0, colors.size - 2)
+        val segment = r * (SpekPalette.size - 1)
+        val index = segment.toInt().coerceIn(0, SpekPalette.size - 2)
         val localRatio = segment - index
-        val c1 = colors[index]
-        val c2 = colors[index + 1]
+        val c1 = SpekPalette[index]
+        val c2 = SpekPalette[index + 1]
         val red = (c1[0] + (c2[0] - c1[0]) * localRatio).toInt()
         val green = (c1[1] + (c2[1] - c1[1]) * localRatio).toInt()
         val blue = (c1[2] + (c2[2] - c1[2]) * localRatio).toInt()

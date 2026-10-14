@@ -161,8 +161,8 @@ import moe.rukamori.archivetune.innertube.models.PodcastItem
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.innertube.pages.ArtistPage
-import moe.rukamori.archivetune.innertube.pages.ArtistSection
 import moe.rukamori.archivetune.innertube.pages.ArtistSectionLayout
+import moe.rukamori.archivetune.innertube.pages.isInlineCarousel
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
 import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
@@ -1281,7 +1281,7 @@ fun ArtistScreen(
                                     accentColor = MaterialTheme.colorScheme.onSurface,
                                     onClick =
                                         section.moreEndpoint
-                                            ?.takeIf { !section.isSinglesOrEpsSection }
+                                            ?.takeIf { !section.isInlineCarousel }
                                             ?.let {
                                                 {
                                                     navController.navigate(
@@ -2589,10 +2589,6 @@ private val ArtistHeroMinHeight = 560.dp
 private val ArtistHorizontalPadding = 24.dp
 private val ArtistContentMaxWidth = 720.dp
 
-private val SinglesOrEpsSectionTitleRegex = Regex("""\b(singles?|eps?)\b""")
-
-private val ArtistSection.isSinglesOrEpsSection: Boolean
-    get() = SinglesOrEpsSectionTitleRegex.containsMatchIn(title.trim().lowercase())
 private val ArtistReleaseArtworkSize = 112.dp
 private val ArtistCircleArtworkSize = 124.dp
 private val ArtistCircleItemWidth = 136.dp

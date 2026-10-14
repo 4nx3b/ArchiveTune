@@ -139,25 +139,6 @@ internal fun blurBackdropFootprint(
 }
 
 private const val BlurBackdropCoverSafety = 1.02f
-
-internal fun blurBackdropFootprintLandscape(
-    width: Dp,
-    height: Dp,
-    restScale: Float,
-    maxDriftDp: Float,
-    driftFactor: Float,
-    blurEdgeMarginDp: Dp,
-): DpSize {
-    val w = width.value
-    val h = height.value
-    if (w <= 0f || h <= 0f || restScale <= 0f) return DpSize(width, height)
-    val drift = maxDriftDp * driftFactor
-    val margin = drift + blurEdgeMarginDp.value
-    val requiredW = (w + 2f * margin) / restScale * BlurBackdropCoverSafety
-    val requiredH = (h + 2f * margin) / restScale * BlurBackdropCoverSafety
-    return DpSize(requiredW.dp, requiredH.dp)
-}
-
 @Composable
 internal fun rememberBlurWanderDrift(
     active: Boolean,

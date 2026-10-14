@@ -476,35 +476,6 @@ fun ArtistListItem(
 )
 
 @Composable
-fun ArtistGridItem(
-    artist: Artist,
-    modifier: Modifier = Modifier,
-    badges: @Composable RowScope.() -> Unit = {
-        if (artist.artist.bookmarkedAt != null) {
-            Icon.Favorite()
-        }
-    },
-    fillMaxWidth: Boolean = false,
-) = GridItem(
-    title = artist.artist.name,
-    subtitle = pluralStringResource(R.plurals.n_song, artist.songCount, artist.songCount),
-    badges = badges,
-    thumbnailContent = {
-        ItemThumbnail(
-            thumbnailUrl = artist.artist.thumbnailUrl,
-            isActive = false,
-            isPlaying = false,
-            shape = RoundedCornerShape(GridThumbnailCornerRadius),
-            contentScale = ContentScale.Crop,
-            maxSizePx = 544,
-            modifier = Modifier.fillMaxSize(),
-        )
-    },
-    fillMaxWidth = fillMaxWidth,
-    modifier = modifier,
-)
-
-@Composable
 fun AlbumListItem(
     album: Album,
     modifier: Modifier = Modifier,
@@ -1580,19 +1551,17 @@ fun SwipeToSongBox(
                 ),
     ) {
         if (offset.value != 0f) {
-            val (iconRes, bg, tint, align) =
+            val (iconRes, tint, align) =
                 if (offset.value > 0) {
-                    Quadruple(
+                    Triple(
                         R.drawable.playlist_play,
                         MaterialTheme.colorScheme.secondary,
-                        MaterialTheme.colorScheme.onSecondary,
                         Alignment.CenterStart,
                     )
                 } else {
-                    Quadruple(
+                    Triple(
                         R.drawable.queue_music,
                         MaterialTheme.colorScheme.primary,
-                        MaterialTheme.colorScheme.onPrimary,
                         Alignment.CenterEnd,
                     )
                 }
@@ -1602,8 +1571,7 @@ fun SwipeToSongBox(
                     Modifier
                         .fillMaxWidth()
                         .height(60.dp)
-                        .align(Alignment.Center)
-                        .background(bg),
+                        .align(Alignment.Center),
                 contentAlignment = align,
             ) {
                 Icon(
@@ -1651,13 +1619,6 @@ private fun reset(
         ) { value, _ -> offset.value = value }
     }
 }
-
-data class Quadruple<A, B, C, D>(
-    val first: A,
-    val second: B,
-    val third: C,
-    val fourth: D,
-)
 
 private object Icon {
     @Composable

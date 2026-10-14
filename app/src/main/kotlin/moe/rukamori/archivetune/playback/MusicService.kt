@@ -4030,6 +4030,8 @@ class MusicService :
 
                     var elapsedMs = 0L
                     var lastTickMs = android.os.SystemClock.elapsedRealtime()
+                    var lastIncomingPositionMs = incomingPlayer.currentPosition
+                    var lastIncomingAdvanceMs = lastTickMs
 
                     val blendStartOutgoingPositionMs =
                         if (smart) {
@@ -4072,6 +4074,26 @@ class MusicService :
 
                         val nowMs = android.os.SystemClock.elapsedRealtime()
                         if (crossfadePlaybackRequested) {
+                            if (incomingPlayer.playerError != null) {
+                                Timber.tag(TAG).w("crossfade[%d] incoming player errored mid-blend; aborting", generation)
+                                cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
+                                scheduleCrossfade()
+                                return@launch
+                            }
+                            val incomingPositionMs = incomingPlayer.currentPosition
+                            if (incomingPositionMs > lastIncomingPositionMs) {
+                                lastIncomingPositionMs = incomingPositionMs
+                                lastIncomingAdvanceMs = nowMs
+                            } else if (nowMs - lastIncomingAdvanceMs > CROSSFADE_INCOMING_STALL_MS) {
+                                Timber.tag(TAG).w(
+                                    "crossfade[%d] incoming player stalled mid-blend (no position advance for %dms); aborting fade to keep outgoing audible",
+                                    generation,
+                                    nowMs - lastIncomingAdvanceMs,
+                                )
+                                cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
+                                scheduleCrossfade()
+                                return@launch
+                            }
                             incomingPlayer.playWhenReady = true
                             if (smart) {
                                 elapsedMs =
@@ -4094,6 +4116,7 @@ class MusicService :
                             }
                         } else {
                             incomingPlayer.pause()
+                            lastIncomingAdvanceMs = nowMs
                         }
                         lastTickMs = nowMs
                         delay(CROSSFADE_FRAME_MS)
@@ -4229,6 +4252,15 @@ class MusicService :
         if (!incomingUsable) {
             Timber.tag(TAG).w("crossfade[%d] incoming player unusable at promotion; keeping outgoing", generation)
             cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
+            return
+        }
+        val incomingAdvancing =
+            incomingPlayer.isPlaying ||
+                (!crossfadePlaybackRequested && incomingPlayer.playbackState == Player.STATE_READY)
+        if (!incomingAdvancing) {
+            Timber.tag(TAG).w("crossfade[%d] incoming player is not advancing audio at promotion; keeping outgoing", generation)
+            cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
+            scheduleCrossfade()
             return
         }
 
@@ -8465,7 +8497,25 @@ class MusicService :
         mediaId: String,
         source: AudioSourceType?,
     ) {
-        setSongSourceOverrideInternal(mediaId, source, qobuzTrackId = null, qobuzBackupVideoId = null)
+        runCatching {
+            runBlocking {
+                dataStore.edit { prefs ->
+                    if (source == null) {
+                        prefs[SongSourceQobuzTrackIdKey] =
+                            SongSourceQobuzTrackId.withOverride(prefs[SongSourceQobuzTrackIdKey], mediaId, null)
+                        prefs[SongSourceQobuzBackupVideoIdKey] =
+                            SongSourceQobuzBackupVideoId.withOverride(prefs[SongSourceQobuzBackupVideoIdKey], mediaId, null)
+                        prefs[SongSourceTidalTrackIdKey] =
+                            SongSourceTidalTrackId.withOverride(prefs[SongSourceTidalTrackIdKey], mediaId, null)
+                        prefs[SongSourceDeezerTrackIdKey] =
+                            SongSourceDeezerTrackId.withOverride(prefs[SongSourceDeezerTrackIdKey], mediaId, null)
+                    }
+                    prefs[SongSourceOverrideKey] =
+                        SongSourceOverride.withOverride(prefs[SongSourceOverrideKey], mediaId, source)
+                }
+            }
+        }
+        applySongSourceOverridePlayback(mediaId)
     }
 
     fun setSongSourceOverrideWithQobuzTrackId(
@@ -8473,7 +8523,23 @@ class MusicService :
         source: AudioSourceType?,
         qobuzTrackId: String?,
     ) {
-        setSongSourceOverrideInternal(mediaId, source, qobuzTrackId, qobuzBackupVideoId = null)
+        if (source == AudioSourceType.QOBUZ && !qobuzTrackId.isNullOrBlank()) {
+            QobuzAudioProvider.clearTransientCaches()
+        }
+        runCatching {
+            runBlocking {
+                dataStore.edit { prefs ->
+                    prefs[SongSourceQobuzTrackIdKey] = SongSourceQobuzTrackId.withOverride(
+                        prefs[SongSourceQobuzTrackIdKey],
+                        mediaId,
+                        qobuzTrackId,
+                    )
+                    prefs[SongSourceOverrideKey] =
+                        SongSourceOverride.withOverride(prefs[SongSourceOverrideKey], mediaId, source)
+                }
+            }
+        }
+        applySongSourceOverridePlayback(mediaId)
     }
 
     fun setSongSourceOverrideWithQobuzBackupVideoId(
@@ -8481,7 +8547,20 @@ class MusicService :
         source: AudioSourceType?,
         qobuzBackupVideoId: String?,
     ) {
-        setSongSourceOverrideInternal(mediaId, source, qobuzTrackId = null, qobuzBackupVideoId = qobuzBackupVideoId)
+        runCatching {
+            runBlocking {
+                dataStore.edit { prefs ->
+                    prefs[SongSourceQobuzBackupVideoIdKey] = SongSourceQobuzBackupVideoId.withOverride(
+                        prefs[SongSourceQobuzBackupVideoIdKey],
+                        mediaId,
+                        qobuzBackupVideoId,
+                    )
+                    prefs[SongSourceOverrideKey] =
+                        SongSourceOverride.withOverride(prefs[SongSourceOverrideKey], mediaId, source)
+                }
+            }
+        }
+        applySongSourceOverridePlayback(mediaId)
     }
 
     fun setSongSourceOverrideWithDeezerTrackId(
@@ -8497,10 +8576,12 @@ class MusicService :
                         mediaId,
                         deezerTrackId,
                     )
+                    prefs[SongSourceOverrideKey] =
+                        SongSourceOverride.withOverride(prefs[SongSourceOverrideKey], mediaId, source)
                 }
             }
         }
-        setSongSourceOverrideInternal(mediaId, source, qobuzTrackId = null, qobuzBackupVideoId = null)
+        applySongSourceOverridePlayback(mediaId)
     }
 
     fun setSongSourceOverrideWithTidalTrackId(
@@ -8516,46 +8597,15 @@ class MusicService :
                         mediaId,
                         tidalTrackId,
                     )
-                }
-            }
-        }
-        setSongSourceOverrideInternal(mediaId, source, qobuzTrackId = null, qobuzBackupVideoId = null)
-    }
-
-    private fun setSongSourceOverrideInternal(
-        mediaId: String,
-        source: AudioSourceType?,
-        qobuzTrackId: String?,
-        qobuzBackupVideoId: String?,
-    ) {
-        if (source == AudioSourceType.QOBUZ && !qobuzTrackId.isNullOrBlank()) {
-            QobuzAudioProvider.clearTransientCaches()
-        }
-
-        runCatching {
-            runBlocking {
-                dataStore.edit { prefs ->
-                    prefs[SongSourceQobuzTrackIdKey] = SongSourceQobuzTrackId.withOverride(
-                        prefs[SongSourceQobuzTrackIdKey],
-                        mediaId,
-                        qobuzTrackId,
-                    )
-                    prefs[SongSourceQobuzBackupVideoIdKey] = SongSourceQobuzBackupVideoId.withOverride(
-                        prefs[SongSourceQobuzBackupVideoIdKey],
-                        mediaId,
-                        qobuzBackupVideoId,
-                    )
-                }
-            }
-        }
-        runCatching {
-            runBlocking {
-                dataStore.edit { prefs ->
                     prefs[SongSourceOverrideKey] =
                         SongSourceOverride.withOverride(prefs[SongSourceOverrideKey], mediaId, source)
                 }
             }
         }
+        applySongSourceOverridePlayback(mediaId)
+    }
+
+    private fun applySongSourceOverridePlayback(mediaId: String) {
         if (player.currentMediaItem?.mediaId == mediaId) {
             val item = player.currentMediaItem ?: return
 
@@ -8626,9 +8676,8 @@ class MusicService :
                     }
                 }
             Timber.tag(TAG).d(
-                "setSongSourceOverride: mediaId=%s source=%s capturedVolume=%s wasPlaying=%s state=%s",
+                "setSongSourceOverride: mediaId=%s capturedVolume=%s wasPlaying=%s state=%s",
                 mediaId,
-                source,
                 expectedVolume,
                 wasPlaying,
                 player.playbackState,
@@ -8667,25 +8716,31 @@ class MusicService :
             runBlocking { dataStore.data.first()[SongSourceQobuzTrackIdKey] }
         }.getOrNull()
         val directQobuzTrackId = SongSourceQobuzTrackId.get(qobuzTrackIdRaw, mediaId)
-        val isDirectQobuzTrack = directQobuzTrackId != null
 
         val qobuzBackupVideoIdRaw = runCatching {
             runBlocking { dataStore.data.first()[SongSourceQobuzBackupVideoIdKey] }
         }.getOrNull()
         val directQobuzBackupVideoId = SongSourceQobuzBackupVideoId.get(qobuzBackupVideoIdRaw, mediaId)
-        val isDirectQobuzBackupTrack = directQobuzBackupVideoId != null
-
-        val isDirectPick = isDirectQobuzTrack || isDirectQobuzBackupTrack
 
         val sourceOverrideRaw = runCatching {
             runBlocking { dataStore.data.first()[SongSourceOverrideKey] }
         }.getOrNull()
+        val categoryOverride = SongSourceOverride.get(sourceOverrideRaw, mediaId)
+
+        val isDirectQobuzTrack =
+            directQobuzTrackId != null &&
+                (categoryOverride == null || categoryOverride == AudioSourceType.QOBUZ)
+        val isDirectQobuzBackupTrack =
+            directQobuzBackupVideoId != null &&
+                (categoryOverride == null || categoryOverride == AudioSourceType.QOBUZ_BACKUP)
+
+        val isDirectPick = isDirectQobuzTrack || isDirectQobuzBackupTrack
 
         val now = System.currentTimeMillis()
         if (isDirectPick) {
             evictDirectStreamCache(mediaId)
         } else {
-            val override = SongSourceOverride.get(sourceOverrideRaw, mediaId)
+            val override = categoryOverride
             val probeOrder =
                 when (override) {
                     null -> sourceResolutionChain()
@@ -8744,7 +8799,7 @@ class MusicService :
             when {
                 isDirectQobuzTrack -> AudioSourceType.QOBUZ
                 isDirectQobuzBackupTrack -> AudioSourceType.QOBUZ_BACKUP
-                else -> SongSourceOverride.get(sourceOverrideRaw, mediaId)
+                else -> categoryOverride
             }
         val overrideStillEnabled =
             override == null ||
@@ -12511,6 +12566,7 @@ class MusicService :
         const val CROSSFADE_HANDOFF_BUFFER_MS = 5_000L
         const val CROSSFADE_AUDIO_ADVANCE_TIMEOUT_MS = 2_000L
         const val CROSSFADE_AUDIO_ADVANCE_POLL_MS = 80L
+        const val CROSSFADE_INCOMING_STALL_MS = 1_500L
         const val CROSSFADE_MIN_BUFFER_BEFORE_START_MS = 5_000L
         const val CROSSFADE_MAX_BUFFER_BEFORE_START_MS = 12_500L
         const val PRIMARY_MIN_BUFFER_MS = 20_000

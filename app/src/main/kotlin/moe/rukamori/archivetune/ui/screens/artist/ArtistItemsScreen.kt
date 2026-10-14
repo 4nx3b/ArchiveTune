@@ -97,6 +97,7 @@ import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.viewmodels.ArtistItemsViewModel
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Color
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -213,6 +214,7 @@ fun ArtistItemsScreen(
                             },
                         isPlaying = isPlaying,
                         activeContainerBackdrop = true,
+                        swipeContentBackgroundColor = Color.Transparent,
                         trailingContent = {
                             IconButton(
                                 onClick = {

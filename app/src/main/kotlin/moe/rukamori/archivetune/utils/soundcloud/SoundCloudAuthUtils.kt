@@ -62,14 +62,3 @@ fun mergeSoundCloudAuthInputs(inputs: Iterable<String>): String? =
 
 fun isSoundCloudAuthConfigured(value: String): Boolean =
     normalizeSoundCloudAuthInput(value) != null
-
-fun hasSoundCloudAuthToken(value: String): Boolean =
-    isSoundCloudAuthConfigured(value)
-
-private fun String.isPlausibleRawToken(): Boolean {
-    if (length < 16) return false
-    if (any(Char::isWhitespace)) return false
-    if (contains(';')) return false
-    if (contains('{') || contains('}')) return false
-    return count { it == '=' } <= 2
-}

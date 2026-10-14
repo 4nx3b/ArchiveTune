@@ -408,63 +408,6 @@ fun BitChordCompactTrackRow(
 }
 
 private const val BitChordShimmerPeriodMs = 1400
-
-@Composable
-private fun BitChordShimmerBox(
-    modifier: Modifier = Modifier,
-    shape: RoundedCornerShape = RoundedCornerShape(6.dp),
-) {
-    val base = MaterialTheme.colorScheme.surfaceVariant
-    val highlight =
-        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.16f).compositeOver(base)
-    val transition = rememberInfiniteTransition(label = "BitChordShimmer")
-    val sweep by
-        transition.animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(BitChordShimmerPeriodMs, easing = LinearEasing)),
-            label = "sweep",
-        )
-    Box(
-        modifier
-            .clip(shape)
-            .drawWithCache {
-                val band = size.width * 0.5f
-                val startX = -band + sweep * (size.width + band * 2f)
-                val brush =
-                    Brush.horizontalGradient(
-                        listOf(base, highlight, base),
-                        startX,
-                        startX + band,
-                    )
-                onDrawBehind { drawRect(brush) }
-            },
-    )
-}
-
-@Composable
-fun BitChordShelfSkeleton(modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier.padding(horizontal = BitChordPageGutter),
-        horizontalArrangement = Arrangement.spacedBy(BitChordShelfCardSpacing),
-    ) {
-        repeat(3) {
-            Column(Modifier.width(BitChordShelfCardWidth)) {
-                BitChordShimmerBox(
-                    Modifier
-                        .size(BitChordShelfCardWidth)
-                        .clip(RoundedCornerShape(BitChordShelfCardCorner)),
-                    RoundedCornerShape(BitChordShelfCardCorner),
-                )
-                Spacer(Modifier.height(10.dp))
-                BitChordShimmerBox(Modifier.fillMaxWidth().height(14.dp))
-                Spacer(Modifier.height(6.dp))
-                BitChordShimmerBox(Modifier.size(width = 90.dp, height = 11.dp))
-            }
-        }
-    }
-}
-
 private enum class BitChordRecentsView { LIST, GRID }
 
 @Composable
@@ -577,23 +520,6 @@ fun BitChordRecentsShelf(
         }
     }
     Spacer(Modifier.height(BitChordShelfBottomSpacing))
-}
-
-@Composable
-fun <T> BitChordShelf(
-    items: List<T>,
-    itemId: (T) -> String,
-    itemContent: @Composable (T) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    if (items.isEmpty()) return
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = BitChordPageGutter),
-        horizontalArrangement = Arrangement.spacedBy(BitChordShelfCardSpacing),
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        items(items, key = itemId) { item -> itemContent(item) }
-    }
 }
 
 fun Song.artistLine(): String = artists.joinToString { it.name }

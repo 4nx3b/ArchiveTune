@@ -49,10 +49,13 @@ import moe.rukamori.archivetune.extensions.filterExplicit
 import moe.rukamori.archivetune.extensions.filterExplicitAlbums
 import moe.rukamori.archivetune.extensions.filterVideo
 import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.innertube.models.BrowseEndpoint
 import moe.rukamori.archivetune.innertube.models.SongItem
+import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.innertube.models.filterExplicit
 import moe.rukamori.archivetune.innertube.models.filterVideo
 import moe.rukamori.archivetune.innertube.pages.ArtistPage
+import moe.rukamori.archivetune.innertube.pages.isInlineCarousel
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.isLowDataModeActive
@@ -123,6 +126,7 @@ class ArtistViewModel
         private val eventChannel = Channel<ArtistEvent>(capacity = Channel.BUFFERED)
         val events = eventChannel.receiveAsFlow()
         private var blockJob: Job? = null
+        private var inlineExpandJob: Job? = null
 
         val libraryArtist =
             database
@@ -184,6 +188,8 @@ class ArtistViewModel
         }
 
         fun fetchArtistsFromYTM(manual: Boolean = false) {
+            inlineExpandJob?.cancel()
+            inlineExpandJob = null
             viewModelScope.launch {
                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                 val hideVideo = context.dataStore.get(HideVideoKey, false)
@@ -205,6 +211,8 @@ class ArtistViewModel
 
                         artistPage = page.copy(sections = filteredSections)
 
+                        expandInlineCarouselSections(filteredSections, hideExplicit, hideVideo, blockedArtistIds)
+
                         viewModelScope.launch(Dispatchers.IO) {
                             fetchArtistCanvas(page)
                         }
@@ -221,6 +229,88 @@ class ArtistViewModel
                     isManuallyRefreshing = false
                 }
             }
+        }
+
+        private fun mergeFilteredSectionItems(
+            existing: List<YTItem>,
+            incoming: List<YTItem>,
+            hideExplicit: Boolean,
+            hideVideo: Boolean,
+            blockedArtistIds: Set<String>,
+        ): List<YTItem> =
+            (existing + incoming
+                .filterExplicit(hideExplicit)
+                .filterVideo(hideVideo)
+                .filterBlockedArtists(blockedArtistIds))
+                .distinctBy { it.id }
+
+        private fun publishInlineSectionItems(
+            sectionIndex: Int,
+            endpoint: BrowseEndpoint,
+            mergedItems: List<YTItem>,
+        ) {
+            val current = artistPage ?: return
+            if (sectionIndex !in current.sections.indices) return
+            if (current.sections[sectionIndex].moreEndpoint != endpoint) return
+            val updatedSections = current.sections.toMutableList()
+            updatedSections[sectionIndex] = updatedSections[sectionIndex].copy(items = mergedItems)
+            artistPage = current.copy(sections = updatedSections)
+        }
+
+        private fun expandInlineCarouselSections(
+            sections: List<ArtistSection>,
+            hideExplicit: Boolean,
+            hideVideo: Boolean,
+            blockedArtistIds: Set<String>,
+        ) {
+            val expandable =
+                sections
+                    .mapIndexedNotNull { index, section ->
+                        if (section.isInlineCarousel) {
+                            index to section
+                        } else {
+                            null
+                        }
+                    }
+            if (expandable.isEmpty()) return
+            inlineExpandJob =
+                viewModelScope.launch {
+                    expandable.forEach { (index, section) ->
+                        val endpoint = section.moreEndpoint ?: return@forEach
+                        launch {
+                            var merged = section.items
+                            var continuation: String? = null
+                            YouTube
+                                .artistItems(endpoint)
+                                .onSuccess { firstPage ->
+                                    merged =
+                                        mergeFilteredSectionItems(merged, firstPage.items, hideExplicit, hideVideo, blockedArtistIds)
+                                    if (merged.size > section.items.size) {
+                                        publishInlineSectionItems(index, endpoint, merged)
+                                    }
+                                    continuation = firstPage.continuation
+                                }.onFailure {
+                                    reportException(it)
+                                }
+                            var pages = 0
+                            while (isActive && continuation != null && pages < MAX_INLINE_CAROUSEL_PAGES) {
+                                val nextContinuation = continuation ?: break
+                                val nextPage =
+                                    YouTube
+                                        .artistItemsContinuation(nextContinuation)
+                                        .getOrNull() ?: break
+                                if (nextPage.items.isEmpty()) break
+                                merged =
+                                    mergeFilteredSectionItems(merged, nextPage.items, hideExplicit, hideVideo, blockedArtistIds)
+                                if (merged.isNotEmpty()) {
+                                    publishInlineSectionItems(index, endpoint, merged)
+                                }
+                                continuation = nextPage.continuation
+                                pages++
+                            }
+                        }
+                    }
+                }
         }
 
         fun onAction(action: ArtistAction) {
@@ -303,4 +393,8 @@ class ArtistViewModel
         }
 
         private fun artistShareLink(): String = artistPage?.artist?.shareLink ?: "https://music.youtube.com/channel/$artistId"
+
+        private companion object {
+            const val MAX_INLINE_CAROUSEL_PAGES = 40
+        }
     }

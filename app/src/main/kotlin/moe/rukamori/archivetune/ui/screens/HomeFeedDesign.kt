@@ -115,16 +115,6 @@ val HomeShelfCardSpacing = 14.dp
 
 val HomeShelfBottomSpacing = 26.dp
 
-private const val HomeHeroCardFraction = 0.70f
-
-private val HomeHeroCardMaxWidth = 320.dp
-
-const val HomeHeroCardRatio = 0.92f
-
-val HomeHeroCardCorner = 18.dp
-
-fun homeHeroCardWidth(available: Dp): Dp = minOf(available * HomeHeroCardFraction, HomeHeroCardMaxWidth)
-
 fun Modifier.homeFeedThumbnailBorder(shape: Shape): Modifier =
     composed {
         val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -394,87 +384,6 @@ fun HomeFeedShelfCard(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun HomeFeedHeroCard(
-    thumbnailUrl: String?,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    onLongClick: (() -> Unit)? = null,
-    isActive: Boolean = false,
-    isPlaying: Boolean = false,
-) {
-    Box(
-        modifier =
-            modifier
-                .aspectRatio(HomeHeroCardRatio)
-                .clip(RoundedCornerShape(HomeHeroCardCorner))
-                .homeFeedThumbnailBorder(RoundedCornerShape(HomeHeroCardCorner))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .let { m ->
-                    if (onLongClick != null) {
-                        m.combinedClickable(onClick = onClick, onLongClick = onLongClick)
-                    } else {
-                        m.combinedClickable(onClick = onClick)
-                    }
-                },
-    ) {
-        AsyncImage(
-            model = thumbnailUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomStart)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f)),
-                        ),
-                    )
-                    .padding(start = 16.dp, end = 16.dp, top = 34.dp, bottom = 14.dp),
-        ) {
-            Text(
-                text = title,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.W700,
-                letterSpacing = (-0.3).sp,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (subtitle.isNotBlank()) {
-                Text(
-                    text = subtitle,
-                    fontSize = 14.sp,
-                    color = Color.White.copy(alpha = 0.72f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-
-        if (isActive) {
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(10.dp)
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                        ),
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
 fun HomeFeedSongCard(
     song: Song,
     mediaMetadata: MediaMetadata?,
@@ -513,17 +422,6 @@ fun HomeFeedSongCard(
         modifier = modifier,
     )
 }
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun HomeFeedYTItemCard(
-    item: YTItem,
-    mediaMetadata: MediaMetadata?,
-    navController: NavController,
-    menuState: MenuState,
-    haptic: HapticFeedback,
-    scope: CoroutineScope,
-    onPlaySongFromSection: (String) -> Unit = {},
     onPlayEpisode: (EpisodeItem) -> Unit = {},
     modifier: Modifier = Modifier,
     isPlaying: Boolean = false,
@@ -602,19 +500,6 @@ fun HomeFeedYTItemCard(
         modifier = modifier,
     )
 }
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun HomeFeedLocalItemCard(
-    item: LocalItem,
-    mediaMetadata: MediaMetadata?,
-    isPlaying: Boolean,
-    navController: NavController,
-    playerConnection: PlayerConnection?,
-    menuState: MenuState,
-    haptic: HapticFeedback,
-    scope: CoroutineScope,
-    onPlaySongFromSection: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     when (item) {
