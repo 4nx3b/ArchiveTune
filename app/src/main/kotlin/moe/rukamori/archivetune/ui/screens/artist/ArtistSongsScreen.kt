@@ -77,6 +77,7 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.ArtistSongsViewModel
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Color
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -188,6 +189,7 @@ fun ArtistSongsScreen(
                         isActive = song.id == mediaMetadata?.id,
                         isPlaying = isPlaying,
                         activeContainerBackdrop = true,
+                        swipeContentBackgroundColor = Color.Transparent,
                         trailingContent = {
                             IconButton(
                                 onClick = {

@@ -393,32 +393,6 @@ private fun paletteStyleFor(seedColor: Color): PaletteStyle {
 }
 
 private fun Int.toComposeColor(): Color = Color(this.toLong() and 0xFFFFFFFFL)
-
-fun extractWallpaperThemeColor(context: Context): Color? {
-    return try {
-        val wallpaperManager = WallpaperManager.getInstance(context)
-        val drawable = wallpaperManager.drawable ?: return null
-        val bitmap =
-            if (drawable is BitmapDrawable) {
-                drawable.bitmap
-            } else {
-                val bmp =
-                    Bitmap.createBitmap(
-                        drawable.intrinsicWidth.coerceAtLeast(1),
-                        drawable.intrinsicHeight.coerceAtLeast(1),
-                        Bitmap.Config.ARGB_8888,
-                    )
-                val canvas = android.graphics.Canvas(bmp)
-                drawable.setBounds(0, 0, canvas.width, canvas.height)
-                drawable.draw(canvas)
-                bmp
-            }
-        bitmap.extractThemeColor()
-    } catch (e: Exception) {
-        null
-    }
-}
-
 fun Bitmap.extractThemeColor(): Color {
     val palette =
         Palette

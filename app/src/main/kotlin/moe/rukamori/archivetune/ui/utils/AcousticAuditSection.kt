@@ -124,7 +124,7 @@ fun AcousticAuditSection(
         if (state is AcousticAuditUiState.Running) {
             return@runAudit
         }
-        state = AcousticAuditUiState.Running(0f)
+        state = AcousticAuditUiState.Running(0.02f)
         scope.launch {
             val throttledProgress: (Float) -> Unit = { progress ->
                 val last = (state as? AcousticAuditUiState.Running)?.progress ?: 0f
@@ -319,17 +319,17 @@ private fun AcousticAuditProgressCard(progress: Float) {
                         .clip(RoundedCornerShape(16.dp))
                         .background(AcousticSpectrogramBackdrop)
                         .drawWithCache {
-                            val sweepX = size.width * sweep
-                            val brush =
-                                Brush.horizontalGradient(
-                                    0f to Color.Transparent,
-                                    sweepX - 240f to Color.Transparent,
-                                    sweepX to sweepColor,
-                                    sweepX + 80f to Color.Transparent,
-                                    1f to Color.Transparent,
-                                )
                             onDrawWithContent {
                                 drawContent()
+                                val sweepX = size.width * sweep
+                                val brush =
+                                    Brush.horizontalGradient(
+                                        0f to Color.Transparent,
+                                        (sweepX - 240f).coerceAtLeast(0f) to Color.Transparent,
+                                        sweepX to sweepColor,
+                                        (sweepX + 80f).coerceAtMost(size.width) to Color.Transparent,
+                                        1f to Color.Transparent,
+                                    )
                                 drawRect(brush)
                             }
                         },
@@ -548,8 +548,8 @@ private fun AcousticSpectrogramCanvas(
                     Modifier
                         .fillMaxSize()
                         .drawWithCache {
-                            val y = size.height * (1f - cutoffFraction)
                             onDrawWithContent {
+                                val y = size.height * (1f - cutoffFraction)
                                 drawLine(
                                     color = verdictColor.copy(alpha = 0.9f * cutoffLineAlpha),
                                     start = Offset(0f, y),

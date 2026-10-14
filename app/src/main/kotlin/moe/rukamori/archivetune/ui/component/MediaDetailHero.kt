@@ -683,32 +683,6 @@ public fun MediaDetailAction(
     }
 }
 
-@Composable
-public fun MediaDetailIconAction(
-    @DrawableRes icon: Int,
-    @StringRes contentDescription: Int,
-    contentColor: Color,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    isDestructive: Boolean = false,
-) {
-    MediaDetailAction(
-        contentDescription = contentDescription,
-        contentColor = contentColor,
-        onClick = onClick,
-        modifier = modifier,
-        enabled = enabled,
-        isDestructive = isDestructive,
-    ) {
-        Icon(
-            painter = painterResource(icon),
-            contentDescription = null,
-            modifier = Modifier.size(22.dp),
-        )
-    }
-}
-
 private const val MediaDetailHeroArtworkSizePx = 1200
 private val MediaDetailHeroArtworkSizeBuckets = listOf(MediaDetailHeroArtworkSizePx)
 private val MediaDetailHeroMinHeight = 560.dp

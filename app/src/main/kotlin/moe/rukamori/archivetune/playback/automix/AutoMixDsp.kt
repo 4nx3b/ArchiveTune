@@ -92,12 +92,3 @@ internal fun robustMean(values: List<Float>): Float {
     for (i in from until to) sum += sorted[i]
     return sum / (to - from)
 }
-
-internal fun glideExp(
-    from: Double,
-    to: Double,
-    amount: Double,
-): Double {
-    if (from <= 0.0 || to <= 0.0 || amount <= 0.0) return from
-    return from * (to / from).pow(amount.coerceIn(0.0, 1.0))
-}
