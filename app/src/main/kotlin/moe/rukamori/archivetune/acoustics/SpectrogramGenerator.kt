@@ -102,7 +102,8 @@ suspend fun resolveAcousticAuditSource(
                 runCatching { downloadUtil.getDownload(songId).first() }
                     .getOrNull()
                     ?.let { it.state == Download.STATE_COMPLETED } == true
-            if (!completed && spans.last().end < 512L * 1024L) continue
+            val spanEnd = spans.last().position + spans.last().length
+            if (!completed && spanEnd < 512L * 1024L) continue
             val tempDir = File(context.cacheDir, "acoustic_audit_tmp").apply { mkdirs() }
             val tempFile = File(tempDir, "${songId.hashCode()}_${key.hashCode()}.audit")
             val materialized =
