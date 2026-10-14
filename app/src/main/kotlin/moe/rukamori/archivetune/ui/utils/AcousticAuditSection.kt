@@ -118,7 +118,7 @@ fun AcousticAuditSection(
         }
     }
 
-    val runAudit: () -> Unit = {
+    val runAudit: () -> Unit = runAudit@{
         if (state is AcousticAuditUiState.Running) {
             return@runAudit
         }
