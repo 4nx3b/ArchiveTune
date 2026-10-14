@@ -116,6 +116,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
@@ -142,6 +143,7 @@ import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.extensions.metadata
+import moe.rukamori.archivetune.extensions.move
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.utils.resize
@@ -433,14 +435,16 @@ fun BitChordPlayerContent(
     val queueIndex by playerConnection.currentWindowIndex.collectAsStateWithLifecycle()
     val queue = remember(queueWindows) {
         queueWindows.map { window ->
-            val meta = window.mediaItem.metadata
             BitChordQueueSong(
                 id = window.mediaItem.mediaId,
-                title = meta?.title.orEmpty(),
-                artist = meta?.artists?.joinToString(", ") { it.name }.orEmpty(),
-                thumbnailUrl = meta?.thumbnailUrl,
+                title = window.mediaItem.metadata?.title.orEmpty(),
+                artist = window.mediaItem.metadata?.artists?.joinToString(", ") { it.name }.orEmpty(),
+                thumbnailUrl = window.mediaItem.metadata?.thumbnailUrl,
             )
         }
+    }
+    val queueTimelineIndices = remember(queueWindows) {
+        queueWindows.map { it.firstPeriodIndex }
     }
 
     val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
@@ -1164,17 +1168,34 @@ fun BitChordPlayerContent(
                         InlineQueue(
                             queue = queue,
                             currentIndex = queueIndex,
-                            onJumpTo = { index -> player.seekTo(index, 0) },
-                            onRemove = { index -> player.removeMediaItem(index) },
-                            onMove = { from, to -> player.moveMediaItem(from, to) },
+                            onJumpTo = { index ->
+                                queueTimelineIndices.getOrNull(index)?.let { player.seekTo(it, 0) }
+                            },
+                            onRemove = { index ->
+                                queueTimelineIndices.getOrNull(index)?.let { player.removeMediaItem(it) }
+                            },
+                            onMove = { from, to ->
+                                if (from in queueTimelineIndices.indices && to in queueTimelineIndices.indices) {
+                                    if (player.shuffleModeEnabled) {
+                                        playerConnection.localPlayer.setShuffleOrder(
+                                            DefaultShuffleOrder(
+                                                queueTimelineIndices
+                                                    .toMutableList()
+                                                    .move(from, to)
+                                                    .toIntArray(),
+                                                System.currentTimeMillis(),
+                                            ),
+                                        )
+                                    } else {
+                                        player.moveMediaItem(queueTimelineIndices[from], queueTimelineIndices[to])
+                                    }
+                                }
+                            },
                             onClear = {
-                                val size = player.mediaItemCount
-                                for (i in (size - 1) downTo (queueIndex + 1)) {
-                                    player.removeMediaItem(i)
-                                }
-                                for (i in (queueIndex - 1) downTo 0) {
-                                    player.removeMediaItem(i)
-                                }
+                                queueTimelineIndices
+                                    .filterIndexed { position, _ -> position != queueIndex }
+                                    .sortedDescending()
+                                    .forEach { player.removeMediaItem(it) }
                             },
                             modifier = Modifier.weight(1f),
                         )

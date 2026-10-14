@@ -183,17 +183,19 @@ fun ArtistPageAmbientBackdrop(
     artworkUrl: String?,
     modifier: Modifier = Modifier,
     listScrolling: Boolean = false,
+    useCanvasAmbient: Boolean = true,
 ) {
     val context = LocalContext.current
     val surfaceColor = androidx.compose.material3.MaterialTheme.colorScheme.surface
 
     val artistCanvasEnabled by rememberPreference(key = AlbumCanvasEnabledKey, defaultValue = true)
     val lowDataMode = context.isLowDataModeActive()
+    val canvasSamplingAllowed = useCanvasAmbient && artistCanvasEnabled && !lowDataMode
     val canvasArtwork = ArtistCanvasArtworkCache.get(artistId)
     val heroCanvasPrimaryUrl =
-        (canvasArtwork?.animated ?: canvasArtwork?.videoUrl)?.takeIf { artistCanvasEnabled && !lowDataMode }
+        (canvasArtwork?.animated ?: canvasArtwork?.videoUrl)?.takeIf { canvasSamplingAllowed }
     val heroCanvasFallbackUrl =
-        canvasArtwork?.videoUrl?.takeIf { artistCanvasEnabled && !lowDataMode }
+        canvasArtwork?.videoUrl?.takeIf { canvasSamplingAllowed }
     val heroCanvasPresent =
         !heroCanvasPrimaryUrl.isNullOrBlank() || !heroCanvasFallbackUrl.isNullOrBlank()
 

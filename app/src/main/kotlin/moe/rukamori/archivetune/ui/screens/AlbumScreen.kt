@@ -308,7 +308,8 @@ fun AlbumScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .let { m -> if (liquidGlassHeaderActive) m.glassSource(artworkBackdrop) else m },
+                    .let { m -> if (liquidGlassHeaderActive) m.glassSource(artworkBackdrop) else m }
+                    .hazeSource(headerHaze),
         ) {
             Box(
                 modifier =
@@ -324,7 +325,6 @@ fun AlbumScreen(
             )
 
             LazyColumn(
-                modifier = Modifier.hazeSource(headerHaze),
                 state = lazyListState,
                 contentPadding =
                     PaddingValues(
