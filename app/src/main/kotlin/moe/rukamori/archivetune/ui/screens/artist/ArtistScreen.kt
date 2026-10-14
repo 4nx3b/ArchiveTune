@@ -522,9 +522,7 @@ fun ArtistScreen(
         }
     }
 
-    var artistArtworkColors by remember {
-        mutableStateOf<List<Color>?>(ArtistAmbientSnapshotCache.get("artist:${viewModel.artistId}", isDarkTheme))
-    }
+    var artistArtworkColors by remember { mutableStateOf<List<Color>?>(null) }
     LaunchedEffect(thumbnail, isDarkTheme) {
         val extracted =
             extractAmbientArtworkColors(
@@ -536,7 +534,7 @@ fun ArtistScreen(
         if (extracted != null) {
             ArtistAmbientSnapshotCache.put("artist:${viewModel.artistId}", isDarkTheme, extracted)
         }
-        artistArtworkColors = extracted ?: artistArtworkColors
+        artistArtworkColors = extracted
     }
 
     val ambientSource = canvasAmbientColors ?: artistArtworkColors
@@ -1288,6 +1286,9 @@ fun ArtistScreen(
                                                         viewModel.artistId,
                                                         it,
                                                         section.title,
+                                                        songsSection =
+                                                            section.layout == ArtistSectionLayout.LIST &&
+                                                                section.items.all { item -> item is SongItem },
                                                     ),
                                                 )
                                             }
@@ -2721,6 +2722,7 @@ private fun buildArtistItemsRoute(
     artistId: String,
     endpoint: BrowseEndpoint,
     sectionTitle: String? = null,
+    songsSection: Boolean = false,
 ): String {
     val encodedArtistId = Uri.encode(artistId)
     val encodedBrowseId = Uri.encode(endpoint.browseId)
@@ -2746,6 +2748,10 @@ private fun buildArtistItemsRoute(
         if (encodedTitle != null) {
             append("&title=")
             append(encodedTitle)
+        }
+
+        if (songsSection) {
+            append("&songs=true")
         }
     }
 }

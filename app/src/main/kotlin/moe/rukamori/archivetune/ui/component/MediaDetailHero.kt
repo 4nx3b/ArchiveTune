@@ -95,6 +95,7 @@ public fun MediaDetailHero(
 
     canvasVisible: Boolean = true,
     useBlurredPlayButton: Boolean = false,
+    ambientScrimColor: Color? = null,
 ) {
     if (rememberAppleMusicExperience()) {
         AppleMusicPlaylistHero(
@@ -111,6 +112,7 @@ public fun MediaDetailHero(
                     { Row(verticalAlignment = Alignment.CenterVertically) { actions(heroActionAccent()) } }
                 },
             modifier = modifier.padding(top = systemBarsTopPadding),
+            scrimColor = ambientScrimColor,
         )
         return
     }
@@ -124,12 +126,13 @@ public fun MediaDetailHero(
             Color.White
         }
 
+    val scrimBottomColor = ambientScrimColor ?: surfaceColor
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
                 .heightIn(min = MediaDetailHeroMinHeight)
-                .background(surfaceColor)
+                .then(if (ambientScrimColor == null) Modifier.background(surfaceColor) else Modifier)
                 .clipToBounds(),
     ) {
         if (thumbnailUrl != null) {
@@ -182,8 +185,8 @@ public fun MediaDetailHero(
                             0f to Color.Black.copy(alpha = 0.42f),
                             0.18f to Color.Transparent,
                             0.42f to Color.Transparent,
-                            0.72f to surfaceColor.copy(alpha = 0.78f),
-                            1f to surfaceColor,
+                            0.72f to scrimBottomColor.copy(alpha = 0.78f),
+                            1f to scrimBottomColor,
                         ),
                     ),
         )

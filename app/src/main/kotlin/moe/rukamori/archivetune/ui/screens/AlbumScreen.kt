@@ -61,7 +61,10 @@ import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -136,7 +139,8 @@ import moe.rukamori.archivetune.viewmodels.AlbumUiState
 import moe.rukamori.archivetune.viewmodels.AlbumViewModel
 import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
-import moe.rukamori.archivetune.ui.screens.artist.AmbientArtworkBackdrop
+import moe.rukamori.archivetune.ui.screens.artist.rememberArtworkAmbientColors
+import moe.rukamori.archivetune.ui.screens.artist.rememberArtworkAmbientGradientColors
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -266,16 +270,51 @@ fun AlbumScreen(
 
     val artworkBackdrop = rememberThrottledBackdrop(surfaceColor)
 
+    val ambientColors =
+        rememberArtworkAmbientColors(
+            mediaId = "album:${albumWithSongs?.album?.id.orEmpty()}",
+            artworkUrl = albumWithSongs?.album?.thumbnailUrl,
+        )
+    val ambientGradient = rememberArtworkAmbientGradientColors(ambientColors)
+
+    var pageContainerHeightPx by remember { mutableStateOf(0) }
+    var heroMeasuredHeightPx by remember { mutableStateOf(0) }
+    val heroBottomFraction =
+        if (pageContainerHeightPx > 0 && heroMeasuredHeightPx > 0) {
+            (heroMeasuredHeightPx.toFloat() / pageContainerHeightPx).coerceIn(0.50f, 0.98f)
+        } else {
+            0.70f
+        }
+
+    fun pageGradientColorAt(fraction: Float): Color =
+        when {
+            fraction <= 0.5f ->
+                lerp(ambientGradient.top, ambientGradient.mid, (fraction / 0.5f).coerceIn(0f, 1f))
+            else ->
+                lerp(ambientGradient.mid, ambientGradient.bottom, ((fraction - 0.5f) / 0.5f).coerceIn(0f, 1f))
+        }
+
+    val ambientAtHeroBottom = pageGradientColorAt(heroBottomFraction)
+
     val headerHaze = rememberScreenHeaderHaze()
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
+                .onSizeChanged { pageContainerHeightPx = it.height }
                 .background(surfaceColor),
     ) {
-        AmbientArtworkBackdrop(
-            mediaId = "album:${albumWithSongs?.album?.id.orEmpty()}",
-            artworkUrl = albumWithSongs?.album?.thumbnailUrl,
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to ambientGradient.top,
+                            0.5f to ambientGradient.mid,
+                            1f to ambientGradient.bottom,
+                        ),
+                    ),
         )
 
         LazyColumn(
@@ -463,6 +502,8 @@ fun AlbumScreen(
                             }
                         },
                         useBlurredPlayButton = liquidGlassHeaderActive,
+                        ambientScrimColor = ambientAtHeroBottom,
+                        modifier = Modifier.onSizeChanged { heroMeasuredHeightPx = it.height },
                     )
                 }
 
