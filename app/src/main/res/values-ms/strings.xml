@@ -4,4 +4,7 @@
     <string name="album_backdrop_desc">Tunjukkan karya seni sebagai latar belakang kabur pada pemain</string>
     <string name="backdrop_blur_amount">Jumlah kabus latar belakang</string>
     <string name="backdrop_blur_amount_value">%1$d%%</string>
+    <string name="music_haptics_strength_value">%1$d%%</string>
+    <string name="ui_scale_value">%1$d%%</string>
+    <string name="liquid_glass_percent_value">%1$d%%</string>
 </resources>

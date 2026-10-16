@@ -1,13 +1,11 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="home">Omah</string>
+    <string name="library">Pustaka</string>
     <string name="songs">Lagu</string>
     <string name="artists">Artis</string>
     <string name="albums">Album</string>
     <string name="playlists">Playlist</string>
-    <plurals name="n_selected">
-        <item quantity="other">%d dipilih</item>
-    </plurals>
     <string name="history">Riwayat</string>
     <string name="stats">Statistik</string>
     <string name="mood_and_genres">Mood &amp; Genre</string>
@@ -20,6 +18,7 @@
     <string name="similar_to">Mirip dengan</string>
     <string name="new_release_albums">Album rilis baru</string>
     <string name="integration">Integrasi</string>
+    <string name="account_connected">Terhubung</string>
     <string name="today">Dina iki</string>
     <string name="yesterday">Wingi</string>
     <string name="this_week">Minggu iki</string>
@@ -41,8 +40,11 @@
     <string name="filter_featured_playlists">Playlist unggulan</string>
     <string name="no_results_found">Ora ana hasil yang ditemukan</string>
     <string name="top_results">Hasil Teratas</string>
+    <string name="most_played_badge">PALING SERING DIPUTAR</string>
+    <string name="play_all">Puter semua</string>
     <string name="other_versions">Versi lainnya</string>
     <string name="liked_songs">Lagu yang disukai</string>
+    <string name="spotify">Spotify</string>
     <string name="downloaded_songs">Lagu yang diunduh</string>
     <string name="playlist_is_empty">Playlist-nya kosong</string>
     <string name="remove_download_playlist_confirm">Apakah Kowe yakin ingin menghapus semua lagu playlist \"%s\" dari penyimpanan Lagu Unduhan?</string>
@@ -54,6 +56,7 @@
     <string name="reset">Setel ulang</string>
     <string name="details">Detail</string>
     <string name="edit">Sunting</string>
+    <string name="export_lyrics_preview">Pratinjau</string>
     <string name="start_radio">Mulai Radio</string>
     <string name="play">Puter</string>
     <string name="widget_pause">Jeda</string>
@@ -61,6 +64,8 @@
     <string name="widget_tap_to_open">Ketuk untuk membuka ArchiveTune</string>
     <string name="play_next">Puter sabanjure</string>
     <string name="add_to_queue">Tambahke ke antrean</string>
+    <string name="liked_label">Disukai</string>
+    <string name="downloaded_label">Diunduh</string>
     <string name="add_to_library">Tambahke ke pustaka</string>
     <string name="remove_from_library">Busak dari pustaka</string>
     <string name="action_download">Unduh</string>
@@ -69,6 +74,7 @@
     <string name="import_playlist">Impor playlist</string>
     <string name="import_failed">Impor gagal</string>
     <string name="update_button">Pembaruan</string>
+    <string name="cross_service_import_action">Impor</string>
     <string name="add_to_playlist">Tambahke ke playlist</string>
     <string name="pin_to_speed_dial">Sematkan ke panggilan cepat</string>
     <string name="remove_from_speed_dial">Busak dari panggilan cepat</string>
@@ -120,27 +126,6 @@
     <string name="add_anyway">Tambahke saja</string>
     <string name="duplicates_description_single">Lagu sudah ada di playlist Kowe</string>
     <string name="duplicates_description_multiple">%d lagu sudah ada di playlist Kowe</string>
-    <plurals name="n_song">
-        <item quantity="other">%d lagu</item>
-    </plurals>
-    <plurals name="n_artist">
-        <item quantity="other">%d artis</item>
-    </plurals>
-    <plurals name="n_album">
-        <item quantity="other">%d album</item>
-    </plurals>
-    <plurals name="n_playlist">
-        <item quantity="other">%d playlist</item>
-    </plurals>
-    <plurals name="n_week">
-        <item quantity="other">%d minggu</item>
-    </plurals>
-    <plurals name="n_month">
-        <item quantity="other">%d bulan</item>
-    </plurals>
-    <plurals name="n_year">
-        <item quantity="other">%d tahun</item>
-    </plurals>
     <string name="added_to_playlist">Ditambahkan ke %s</string>
     <string name="added_n_songs_to_playlist">Nambahke %1$d lagu ke %2$s</string>
     <string name="added_to_n_playlists">Ditambahkan ke %d playlist</string>
@@ -151,9 +136,6 @@
     <string name="lyrics_word_sync">Sinkronisasi Kata</string>
     <string name="sleep_timer">Pengatur waktu tidur</string>
     <string name="end_of_song">Akhir lagu</string>
-    <plurals name="minute">
-        <item quantity="other">%d menit</item>
-    </plurals>
     <string name="error_no_stream">Ora ana aliran yang tersedia</string>
     <string name="error_no_internet">Ora ana koneksi jaringan</string>
     <string name="error_timeout">Timeout</string>
@@ -173,10 +155,12 @@
     <string name="music_player">Pemutar Musik</string>
     <string name="settings">Setelan</string>
     <string name="appearance">Penampilan</string>
+    <string name="appearance_player">Pemutar</string>
     <string name="theme">Tema</string>
     <string name="enable_dynamic_theme">Aktifkan tema dinamis</string>
     <string name="random_theme_on_startup">Tema acak saat startup</string>
     <string name="random_theme_on_startup_desc">Terapkan palet warna acak setiap kali aplikasi dimulai</string>
+    <string name="sf_pro_retry">Jajal maneh</string>
     <string name="color_palette">Palet Warna</string>
     <string name="customize_theme_colors">Pilih warna tema aplikasi Kowe</string>
     <string name="palette_default">Bawaan</string>
@@ -277,6 +261,10 @@
     <string name="disable_animations_desc">Nonaktifkan sebagian besar animasi aplikasi. Direkomendasikan untuk perangkat kelas bawah</string>
     <string name="blur_intensity">Intensitas blur</string>
     <string name="blur_intensity_value">%1$d dp</string>
+    <string name="album_backdrop">Buram latar belakang</string>
+    <string name="album_backdrop_desc">Tampilake karya seni sebagai latar belakang buram di pemutar</string>
+    <string name="backdrop_blur_amount">Jumlah buram latar belakang</string>
+    <string name="backdrop_blur_amount_value">%1$d%%</string>
     <string name="player">Pemutar</string>
     <string name="player_slider_style">Gaya slider pemutar</string>
     <string name="slider_style_standard">Standar</string>
@@ -287,12 +275,8 @@
     <string name="misc">Liyane</string>
     <string name="haptics">Getaran</string>
     <string name="haptics_desc">Aktifkan umpan balik haptik pada elemen interaktif</string>
+    <string name="music_haptics_strength_value">%1$d%%</string>
     <string name="default_open_tab">Tab terbuka bawaan</string>
-    <string name="lyrics_animation_style">Gaya animasi lirik</string>
-    <string name="lyrics_mode">Mode lirik</string>
-    <string name="lyrics_mode_v2">V2 Legacy</string>
-    <string name="lyrics_mode_enhanced">Ditingkatkan</string>
-    <string name="lyrics_animation_style_v2_only">Hanya tersedia dalam mode lirik V2</string>
     <string name="lyrics_line_spacing">Jarak baris lirik</string>
     <string name="content">Konten</string>
     <string name="action_logout">Metu</string>
@@ -350,6 +334,7 @@
     <string name="permanent_shuffle_desc">Tetap aktifkan pengacakan saat Kowe memulai lagu baru</string>
     <string name="skip_silence">Lewati keheningan</string>
     <string name="audio_normalization">Normalisasi audio</string>
+    <string name="replay_gain_off">Mati</string>
     <string name="audio_offload">Aktifkan audio offload</string>
     <string name="audio_offload_desc">Izinkan perangkat yang didukung memutar audio menggunakan decoding perangkat keras berdaya rendah. Beberapa fitur pemrosesan audio dinonaktifkan.</string>
     <string name="pause_on_device_mute">Jeda saat volume perangkat 0</string>
@@ -389,6 +374,9 @@
     <string name="eq_output_gain">Penguatan keluaran</string>
     <string name="eq_bass_boost">Peningkatan bass</string>
     <string name="eq_virtualizer">Virtualizer</string>
+    <string name="eq_tab_equalizer">Ekualiser</string>
+    <string name="eq_speed">Kecepatan Pemutaran</string>
+    <string name="eq_pitch">Pitch</string>
     <string name="storage">Penyimpanan</string>
     <string name="smart_trimmer">Pemangkas Cerdas</string>
     <string name="smart_trimmer_description">Pemangkas cerdas secara dinamis mengelola cache gambar dan cache lagu, memangkas entri lama untuk menghemat ruang disk.</string>
@@ -438,6 +426,12 @@
     <string name="backup_create_failed">Ora bisa membuat cadangan</string>
     <string name="restore_success">Cadangan berhasil dipulihkan</string>
     <string name="restore_failed">Gagal memulihkan cadangan</string>
+    <string name="metadata_source_spotify">Spotify</string>
+    <string name="search_source_spotify">Spotify</string>
+    <string name="source_youtube">YouTube</string>
+    <string name="tidal_audio_quality">Kualitas audio</string>
+    <string name="qobuz_audio_quality">Kualitas audio</string>
+    <string name="qobuz_token_status_ok">Online</string>
     <string name="discord_integration">Integrasi Discord</string>
     <string name="discord_login_description">Hubungkan akun Discord Kowe dengan OAuth agar ArchiveTune dapat mempublikasikan Rich Presence melalui Social SDK resmi Discord.</string>
     <string name="discord_open_authorization">Sambungkan ke Discord</string>
@@ -454,6 +448,8 @@
     <string name="enable_discord_rpc">Aktifkan Rich Presence</string>
     <string name="scrobbling">Scrobbling</string>
     <string name="lastfm_integration">Integrasi Last.fm</string>
+    <string name="lastfm_retry">Jajal maneh</string>
+    <string name="lastfm_stat_playlists">Playlist</string>
     <string name="enable_scrobbling">Aktifkan Scrobbling</string>
     <string name="lastfm_now_playing">Perbarui Lagi Diputar</string>
     <string name="scrobbling_configuration">Konfigurasi Scrobbling</string>
@@ -611,6 +607,7 @@
     <string name="update_notification_channel_desc">Pemberitahuan untuk pembaruan aplikasi baru</string>
     <string name="update_notification_title">Pembaruan Tersedia</string>
     <string name="update_notification_text">ArchiveTune %s kini tersedia</string>
+    <string name="update">Pembaruan</string>
     <string name="download">Unduh</string>
     <string name="permissions_title">Izinkan ArchiveTune bekerja dengan optimal</string>
     <string name="permissions_subtitle">Kami menggunakan beberapa izin untuk memutar dan mengelola musik Kowe dengan andal. Kowe dapat mengubahnya kapan saja di pengaturan sistem.</string>
@@ -657,10 +654,60 @@
     <string name="save_current_account">Simpen akun saat ini</string>
     <string name="no_saved_accounts">Durung ana akun yang disimpan</string>
     <string name="remove_account">Busak akun</string>
-    <string name="album_backdrop">Buram latar belakang</string>
-    <string name="album_backdrop_desc">Tampilake karya seni sebagai latar belakang buram di pemutar</string>
-    <string name="backdrop_blur_amount">Jumlah buram latar belakang</string>
-    <string name="backdrop_blur_amount_value">%1$d%%</string>
-    <string name="most_played_badge">PALING SERING DIPUTAR</string>
-    <string name="play_all">Puter semua</string>
+    <string name="telegram_account">Akun</string>
+    <string name="telegram_country_code">Kode</string>
+    <string name="ui_scale_value">%1$d%%</string>
+    <string name="sleep_timer_end_of_song">Akhir lagu</string>
+    <string name="sleep_timer_custom">Kustom</string>
+    <string name="back_animation_style_default">Bawaan</string>
+    <string name="telegram_bot_download">Unduh</string>
+    <string name="telegram_bot_add_to_playlist">Tambahke ke playlist</string>
+    <string name="telegram_bot_play_all">Puter semua</string>
+    <string name="home_source_youtube">YouTube</string>
+    <string name="home_source_spotify">Spotify</string>
+    <string name="spotify_history">Spotify</string>
+    <string name="lyrics_mode">Mode lirik</string>
+    <string name="lyrics_mode_v2">V2 Legacy</string>
+    <string name="lyrics_mode_enhanced">Ditingkatkan</string>
+    <string name="listen_together_username">Nama pengguna</string>
+    <string name="listen_together_connected">Terhubung</string>
+    <string name="listen_together_chat_pick_song_no_results">Ora ana hasil yang ditemukan</string>
+    <string name="host_label">Tuan Rumah</string>
+    <string name="join">Bergabunglah</string>
+    <string name="join_room">Bergabunglah</string>
+    <string name="kick_user">Keluarkan</string>
+    <string name="ti_section_codec">Kodek</string>
+    <string name="ti_codec">Kodek</string>
+    <string name="liquid_glass_intensity_standard">Standar</string>
+    <string name="liquid_glass_reset_group">Setel ulang</string>
+    <string name="liquid_glass_percent_value">%1$d%%</string>
+    <string name="flamingo_queue_header_title">Playlist</string>
+    <string name="flamingo_queue_up_next">Lanjutkan Muter</string>
+    <plurals name="n_selected">
+        <item quantity="other">%d dipilih</item>
+    </plurals>
+    <plurals name="n_song">
+        <item quantity="other">%d lagu</item>
+    </plurals>
+    <plurals name="n_artist">
+        <item quantity="other">%d artis</item>
+    </plurals>
+    <plurals name="n_album">
+        <item quantity="other">%d album</item>
+    </plurals>
+    <plurals name="n_playlist">
+        <item quantity="other">%d playlist</item>
+    </plurals>
+    <plurals name="n_week">
+        <item quantity="other">%d minggu</item>
+    </plurals>
+    <plurals name="n_month">
+        <item quantity="other">%d bulan</item>
+    </plurals>
+    <plurals name="n_year">
+        <item quantity="other">%d tahun</item>
+    </plurals>
+    <plurals name="minute">
+        <item quantity="other">%d menit</item>
+    </plurals>
 </resources>

@@ -1,14 +1,11 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="home">Avaleht</string>
+    <string name="library">Muusikakogu</string>
     <string name="songs">Lood</string>
     <string name="artists">Esitajad</string>
     <string name="albums">Albumid</string>
     <string name="playlists">Esitusloendid</string>
-    <plurals name="n_selected">
-        <item quantity="one">%d on valitud</item>
-        <item quantity="other">%d on valitud</item>
-    </plurals>
     <string name="history">Ajalugu</string>
     <string name="stats">Statistika</string>
     <string name="mood_and_genres">Meeleolu ja žanrid</string>
@@ -40,21 +37,47 @@
     <string name="filter_community_playlists">Kogukonna esitusloendid</string>
     <string name="filter_featured_playlists">Esiletõstetud esitusloendid</string>
     <string name="no_results_found">Tulemusi ei leidu</string>
+    <string name="most_played_badge">ENIM MÄNGITUD</string>
+    <string name="play_all">Mängi kõik</string>
+    <string name="offline_shortcut">Ilma internetita</string>
+    <string name="local_files">Lokaalsed failid</string>
+    <string name="downloaded_desc">Alla laaditud</string>
+    <string name="on_device">Seadmel</string>
+    <string name="recently_played">Hiljuti Mängitud</string>
+    <string name="see_all">Näita kõike</string>
+    <string name="your_artists">Sinu Artistid</string>
+    <string name="all_songs">Kõik Laulud</string>
+    <string name="newest_first">Uuemad enne</string>
+    <string name="oldest_first">Vanemad enne</string>
+    <string name="sort_a_to_z">A → Z</string>
+    <string name="sort_z_to_a">Z → A</string>
+    <string name="sort_artist">Artist</string>
+    <string name="most_played_sort">Enim mängitud</string>
+    <string name="recently_added">Hiljuti lisatud</string>
+    <string name="sort_descending">Järjesta kahanevalt</string>
+    <string name="sort_ascending">Järjesta kasvavalt</string>
+    <string name="more_label">Rohkem</string>
+    <string name="recently_updated">Viimati uuendatud</string>
     <string name="other_versions">Muud versioonid</string>
     <string name="liked_songs">Meeldivaks märgitud lood</string>
+    <string name="spotify">Spotifyroheline</string>
     <string name="downloaded_songs">Allalaaditud lood</string>
     <string name="playlist_is_empty">Esitusloend on tühi</string>
     <string name="remove_download_playlist_confirm">Kas sa kindlasti soovid kõik „%s“ esitusloendi lood eemaldada allalaaditud lugude andmekogust?</string>
     <string name="delete_playlist_confirm">Kas sa kindlasti soovid kustutada „%s“ esitusloendi?</string>
     <string name="retry">Proovi uuesti</string>
+    <string name="cast_available_device_count">Leitud seadmed: %1$d</string>
     <string name="shuffle">Sega lood</string>
     <string name="reset">Lähtesta</string>
     <string name="details">Üksikasjad</string>
     <string name="edit">Muuda</string>
+    <string name="export_lyrics_preview">Eelvaade</string>
     <string name="start_radio">Pane raadio tööle</string>
     <string name="play">Esita</string>
     <string name="play_next">Esita järgmisena</string>
     <string name="add_to_queue">Lisa esitusjärjekorda</string>
+    <string name="liked_label">Meeldivaks märgitud</string>
+    <string name="downloaded_label">Allalaaditud</string>
     <string name="add_to_library">Lisa muusikakogusse</string>
     <string name="remove_from_library">Eemalda muusikakogust</string>
     <string name="action_download">Laadi alla</string>
@@ -104,43 +127,15 @@
     <string name="add_anyway">Lisa ikkagi</string>
     <string name="duplicates_description_single">See lugu on sinu esitusloendis juba olemas</string>
     <string name="duplicates_description_multiple">%d lugu on sinu esitusloendis juba olemas</string>
-    <plurals name="n_song">
-        <item quantity="one">%d lugu</item>
-        <item quantity="other">%d lugu</item>
-    </plurals>
-    <plurals name="n_artist">
-        <item quantity="one">%d esitaja</item>
-        <item quantity="other">%d esitajat</item>
-    </plurals>
-    <plurals name="n_album">
-        <item quantity="one">%d album</item>
-        <item quantity="other">%d albumit</item>
-    </plurals>
-    <plurals name="n_playlist">
-        <item quantity="one">%d esitusloend</item>
-        <item quantity="other">%d esitusloendit</item>
-    </plurals>
-    <plurals name="n_week">
-        <item quantity="one">%d nädal</item>
-        <item quantity="other">%d nädalat</item>
-    </plurals>
-    <plurals name="n_month">
-        <item quantity="one">%d kuu</item>
-        <item quantity="other">%d kuud</item>
-    </plurals>
-    <plurals name="n_year">
-        <item quantity="one">%d aasta</item>
-        <item quantity="other">%d aastat</item>
-    </plurals>
+    <string name="added_to_playlist">Lisatud „%s“ esitusloendisse</string>
+    <string name="added_n_songs_to_playlist">%1$d lugu on isatud „%2$s“ esitusloendisse</string>
+    <string name="added_to_n_playlists">Lisatud %d-te esitusloendisse</string>
+    <string name="added_n_songs_to_n_playlists">%1$d lugu on isatud %2$d-te esitusloendisse</string>
     <string name="playlist_synced">Esitusloend on sünkroonitud</string>
     <string name="undo">Pööra tegevus tagasi</string>
     <string name="lyrics_not_found">Laulusõnu ei leidu</string>
     <string name="sleep_timer">Unetaimer</string>
     <string name="end_of_song">Loo lõpp</string>
-    <plurals name="minute">
-        <item quantity="one">1 minut</item>
-        <item quantity="other">%d minutit</item>
-    </plurals>
     <string name="error_no_stream">Meediavoogu pole saadaval</string>
     <string name="error_no_internet">Võrguühendus puudub</string>
     <string name="error_timeout">Aegumine</string>
@@ -159,11 +154,38 @@
     <string name="music_player">Muusikamängija</string>
     <string name="settings">Seadistused</string>
     <string name="appearance">Välimus</string>
+    <string name="appearance_player">Meediaesitaja</string>
     <string name="theme">Kujundus</string>
     <string name="enable_dynamic_theme">Kasuta dünaamilist kujundust</string>
+    <string name="sf_pro_retry">Proovi uuesti</string>
     <string name="color_palette">Värvipalett</string>
     <string name="customize_theme_colors">Vali sulle sobivad rakenduse kujunduse värvid</string>
     <string name="palette_default">Vaikimisi</string>
+    <string name="palette_ocean_blue">Ookeanisinine</string>
+    <string name="palette_arctic_blue">Arktiline sinine</string>
+    <string name="palette_midnight_navy">Kesköine meri</string>
+    <string name="palette_sky_blue">Taevasinine</string>
+    <string name="palette_cobalt_blue">Koobaltsinine</string>
+    <string name="palette_electric_blue">Elektrisinine</string>
+    <string name="palette_emerald_green">Smaragdroheline</string>
+    <string name="palette_teal_wave">Sinakasroheline laine</string>
+    <string name="palette_forest_green">Metsaroheline</string>
+    <string name="palette_spotify_green">Spotifyroheline</string>
+    <string name="palette_mint_fresh">Mündiroheline</string>
+    <string name="palette_olive_garden">Oliiviaed</string>
+    <string name="palette_sage_green">Salveiroheline</string>
+    <string name="palette_sunset_orange">Päikeseloojang</string>
+    <string name="palette_golden_hour">Kuldne</string>
+    <string name="palette_warm_amber">Merevaik</string>
+    <string name="palette_tangerine_blast">Mandariin</string>
+    <string name="palette_peach">Virsik</string>
+    <string name="palette_mango">Mango</string>
+    <string name="palette_royal_purple">Kuninglik purpur</string>
+    <string name="palette_lavender_dream">Lavendel</string>
+    <string name="palette_grape_purple">Viinamari</string>
+    <string name="dark_theme">Tume kujundus</string>
+    <string name="dark_theme_on">Kasutusel</string>
+    <string name="dark_theme_off">Pole kasutusel</string>
     <string name="show_button">Näita nuppu</string>
     <string name="corner_radius">Nurga raadius: %1$d</string>
     <string name="adjust_radius">Kohenda nurga raadiust</string>
@@ -177,14 +199,15 @@
     <string name="blur">Hägusta</string>
     <string name="contrast">Kontrastus</string>
     <string name="brightness">Eredus</string>
-    <string name="dark_theme">Tume kujundus</string>
-    <string name="dark_theme_on">Kasutusel</string>
-    <string name="dark_theme_off">Pole kasutusel</string>
+    <string name="album_backdrop">Tausta hägustamine</string>
+    <string name="album_backdrop_desc">Kuva kunstiteos hägusa taustana mängijal</string>
+    <string name="backdrop_blur_amount">Tausta hägustamise määr</string>
+    <string name="backdrop_blur_amount_value">%1$d%%</string>
     <string name="player">Meediaesitaja</string>
     <string name="player_slider_style">Meediaesitaja liugurnupu stiil</string>
     <string name="misc">Varia</string>
+    <string name="music_haptics_strength_value">%1$d%%</string>
     <string name="default_open_tab">Vaikimisi avatav vahekaart</string>
-    <string name="lyrics_animation_style">Laulusõnade animatsiooni stiil</string>
     <string name="lyrics_line_spacing">Laulusõnade reavahe</string>
     <string name="content">Sisu</string>
     <string name="action_logout">Logi välja</string>
@@ -196,9 +219,11 @@
     <string name="system_default">Süsteemi vaikeväärtus</string>
     <string name="enable_proxy">Kasuta proksiserverit</string>
     <string name="proxy_type">Proksiserveri tüüp</string>
+    <string name="replay_gain_off">Pole kasutusel</string>
     <string name="add_symbol">Lisa sümbol</string>
     <string name="enter_symbol">Sisesta sümbol</string>
     <string name="equalizer">Ekvalaiser</string>
+    <string name="eq_tab_equalizer">Ekvalaiser</string>
     <string name="storage">Failid ja meedia</string>
     <string name="cache">Vahemälu</string>
     <string name="image_cache">Piltide vahemälu</string>
@@ -233,44 +258,72 @@
     <string name="backup_create_success">Varukoopia tegemine õnnestus</string>
     <string name="backup_create_failed">Varukoopia tegemine ei õnnestunud</string>
     <string name="restore_failed">Varukoopiast taastamine ei õnnestunud</string>
+    <string name="metadata_source_spotify">Spotifyroheline</string>
+    <string name="search_source_spotify">Spotifyroheline</string>
     <string name="discord_integration">Lõiming Discordiga</string>
-    <string name="dismiss">Loobu</string>
     <string name="options">Valikud</string>
     <string name="preview">Eelvaade</string>
     <string name="enable_discord_rpc">Näita oma tegevust ArchiveTune\'i rakenduses Discordi olekuteatena</string>
     <string name="scrobbling">Kraasimine</string>
     <string name="lastfm_integration">Last.fm-i lõiming</string>
+    <string name="lastfm_retry">Proovi uuesti</string>
+    <string name="lastfm_stat_playlists">Esitusloendid</string>
     <string name="enable_scrobbling">Lülita kraasimine sisse</string>
     <string name="lastfm_now_playing">Uuenda hetkel esitamisel loo andmeid</string>
     <string name="scrobbling_configuration">Kraasimise seadistused</string>
-    <string name="added_to_playlist">Lisatud „%s“ esitusloendisse</string>
-    <string name="added_n_songs_to_playlist">%1$d lugu on isatud „%2$s“ esitusloendisse</string>
-    <string name="added_to_n_playlists">Lisatud %d-te esitusloendisse</string>
-    <string name="added_n_songs_to_n_playlists">%1$d lugu on isatud %2$d-te esitusloendisse</string>
-    <string name="palette_ocean_blue">Ookeanisinine</string>
-    <string name="palette_arctic_blue">Arktiline sinine</string>
-    <string name="palette_midnight_navy">Kesköine meri</string>
-    <string name="palette_sky_blue">Taevasinine</string>
-    <string name="palette_cobalt_blue">Koobaltsinine</string>
-    <string name="palette_electric_blue">Elektrisinine</string>
-    <string name="palette_emerald_green">Smaragdroheline</string>
-    <string name="palette_teal_wave">Sinakasroheline laine</string>
-    <string name="palette_forest_green">Metsaroheline</string>
-    <string name="palette_spotify_green">Spotifyroheline</string>
-    <string name="palette_mint_fresh">Mündiroheline</string>
-    <string name="palette_olive_garden">Oliiviaed</string>
-    <string name="palette_sage_green">Salveiroheline</string>
-    <string name="palette_sunset_orange">Päikeseloojang</string>
-    <string name="palette_golden_hour">Kuldne</string>
-    <string name="palette_warm_amber">Merevaik</string>
-    <string name="palette_tangerine_blast">Mandariin</string>
-    <string name="palette_peach">Virsik</string>
-    <string name="palette_mango">Mango</string>
-    <string name="palette_royal_purple">Kuninglik purpur</string>
-    <string name="palette_lavender_dream">Lavendel</string>
-    <string name="palette_grape_purple">Viinamari</string>
-    <string name="album_backdrop">Tausta hägustamine</string>
-    <string name="album_backdrop_desc">Kuva kunstiteos hägusa taustana mängijal</string>
-    <string name="backdrop_blur_amount">Tausta hägustamise määr</string>
-    <string name="backdrop_blur_amount_value">%1$d%%</string>
+    <string name="update">Värskenda</string>
+    <string name="dismiss">Loobu</string>
+    <string name="telegram_account">Kasutajakonto</string>
+    <string name="ui_scale_value">%1$d%%</string>
+    <string name="sleep_timer_end_of_song">Loo lõpp</string>
+    <string name="sleep_timer_custom">Kohandatud</string>
+    <string name="home_recently_played">Hiljuti Mängitud</string>
+    <string name="back_animation_style_default">Vaikimisi</string>
+    <string name="telegram_bot_download">Laadi alla</string>
+    <string name="telegram_bot_add_to_playlist">Lisa esitusloendisse</string>
+    <string name="telegram_bot_play_all">Mängi kõik</string>
+    <string name="home_source_spotify">Spotifyroheline</string>
+    <string name="spotify_history">Spotifyroheline</string>
+    <string name="listen_together_disconnected">Ilma internetita</string>
+    <string name="listen_together_chat_pick_song_no_results">Tulemusi ei leidu</string>
+    <string name="liquid_glass_reset_group">Lähtesta</string>
+    <string name="liquid_glass_percent_value">%1$d%%</string>
+    <string name="flamingo_queue_header_title">Esitusloendid</string>
+    <string name="flamingo_queue_up_next">Jätka esitamist</string>
+    <plurals name="n_selected">
+        <item quantity="one">%d on valitud</item>
+        <item quantity="other">%d on valitud</item>
+    </plurals>
+    <plurals name="n_song">
+        <item quantity="one">%d lugu</item>
+        <item quantity="other">%d lugu</item>
+    </plurals>
+    <plurals name="n_artist">
+        <item quantity="one">%d esitaja</item>
+        <item quantity="other">%d esitajat</item>
+    </plurals>
+    <plurals name="n_album">
+        <item quantity="one">%d album</item>
+        <item quantity="other">%d albumit</item>
+    </plurals>
+    <plurals name="n_playlist">
+        <item quantity="one">%d esitusloend</item>
+        <item quantity="other">%d esitusloendit</item>
+    </plurals>
+    <plurals name="n_week">
+        <item quantity="one">%d nädal</item>
+        <item quantity="other">%d nädalat</item>
+    </plurals>
+    <plurals name="n_month">
+        <item quantity="one">%d kuu</item>
+        <item quantity="other">%d kuud</item>
+    </plurals>
+    <plurals name="n_year">
+        <item quantity="one">%d aasta</item>
+        <item quantity="other">%d aastat</item>
+    </plurals>
+    <plurals name="minute">
+        <item quantity="one">1 minut</item>
+        <item quantity="other">%d minutit</item>
+    </plurals>
 </resources>

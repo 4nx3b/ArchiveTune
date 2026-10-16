@@ -4,4 +4,7 @@
     <string name="album_backdrop_desc">प्लेयरे कलाकृतिं धुंधलीपृष्ठभूमिरूपेण दर्शयतु</string>
     <string name="backdrop_blur_amount">पृष्ठभूमिधुंधलापनमात्रा</string>
     <string name="backdrop_blur_amount_value">%1$d%%</string>
+    <string name="music_haptics_strength_value">%1$d%%</string>
+    <string name="ui_scale_value">%1$d%%</string>
+    <string name="liquid_glass_percent_value">%1$d%%</string>
 </resources>
