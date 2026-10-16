@@ -5741,3 +5741,21 @@ Work Log:
 
 Stage Summary:
 - Task 126 complete on dev: all six reports fixed at the root. CI ALL GREEN (8/8) at 061ebaaf7; canary N202610141420 (17.0.6778-061ebaaf7). On-device verification pending user testing.
+
+---
+Task ID: 127
+Agent: Super Z (main agent, session web-60bd54af)
+
+Task: The 18.0 round — (a) complete the app's translations in every language not yet done and push to the translate branch, (b) delete the canary port pool branch, (c) research all commits since ArchiveTune 17.0 stable, update changelogs.md + README credits and ship the stable update named exactly "ArchiveTune 18.0".
+
+Work Log:
+- Translation pipeline (scripts/trans/, local): parses dev's 2038-string default, unions the 2026-09-12 Weblate sync (exported from the old translate tip) with dev locale files, ports 65 fork keys by English-text match, validates placeholders/XML/escaping/plural categories, serializes final files. Two late bugs fixed: plurals were never serialized (write_xml iterated string keys) and the deploy path double-prefixed values-values-*.
+- translate branch (5d2259b95, based on ce64b2550): 12 locales at 100% (2038/2038 strings + 12/12 plurals with full CLDR categories — Arabic carries zero/one/two/few/many/other): ar, ar-rEG, arz, de-rDE, es, fr, in-rID, ja, pt, pt-rBR, zh-rCN, zh-rTW. 11 new languages from Weblate: az, cs, fa, hu, kmr, pl, pt, si, sl, uz, ar-rEG. Every other locale at its maximal Weblate union + ports; the broken Hebrew percent_format (%1$d% missing %%) skips to English; acoustic_local_only_warning included.
+- Deleted origin/canary-port-pool-applemusic-perf.
+- changelogs.md: full 18.0 entry (199 lines) covering the 105 non-worklog commits since v17.0 — SoundCloud/Spotify-direct/Deezer sources, the Flamingo player replacing the Apple Music style, the BitChord family, the AURALIS acoustic audit, Listen Together self-hosting + chat, Telegram, cloud sync, recommendations, localization, the ~2500-line cleanup.
+- README: credits AURALIS, Flamingo, MetroFusePlus, Stopify, dmt, SukiSU-Ultra, accompanist lyrics; SimpMusic link typo fixed.
+- release.yml: 18.0 notes heredoc + v17.0 compare link; baseVersionName -> 18.0.
+- dev ce64b2550 (rebased over the user's four-report round), CI ALL GREEN 8/8, PR #228 retitled "ArchiveTune 18.0" and merged to main at 37824e206; release.yml dispatched on main (tag v18.0, release title "ArchiveTune 18.0").
+
+Stage Summary:
+- Translations complete on the translate branch, canary port pool branch deleted, ArchiveTune 18.0 shipped: main at the merge commit, release workflow building the signed APKs and creating the v18.0 tag + "ArchiveTune 18.0" GitHub release with the 18.0 notes and full changelog.
