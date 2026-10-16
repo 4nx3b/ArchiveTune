@@ -1,3 +1,202 @@
+# ArchiveTune 18.0 — Changelog
+
+The everywhere update: three new streaming sources arrive (SoundCloud,
+experimental Spotify direct, Deezer anonymous), the Apple Music player
+style is replaced by the full Flamingo port, the BitChord design family
+takes over the navigation bar, home feed and search, the Acoustic
+Quality Audit (Spek spectrogram) verifies that your lossless files
+really are lossless, Listen Together grows a self-hostable server and a
+complete chat suite, Telegram channels and bots become a first-class
+source, backups sync to any cloud provider, on-device smart
+recommendations learn what you play, and the app is fully localized —
+twelve languages at one hundred percent and eleven brand-new ones.
+
+## New sources & playback routing
+
+- SoundCloud streaming lands as a full source (ported from
+  MetroFusePlus): tracks resolve through the SoundCloud API with raw
+  OAuth tokens, the web sign-in flow captures an identity cookie, HLS
+  transcodings play through a progressive data source instead of
+  falling back to YouTube, and SoundCloud search results pin their
+  exact track with the category pill row, glass search bar and proper
+  insets like the other providers
+- Experimental Spotify direct streaming (Stopify port): the device
+  registers both manifest formats and always prefers the standard MP4
+  (the dual-mono file decoded to silence before), the broken
+  "AAC 128 (dual)" quality is gone, Widevine drops its forced-L3
+  security level and learns real provisioning, and Spotify plays
+  report back to your account so the mute at resolve time is fixed
+- Echo Music resolvers go live: the desktop app version is refreshed
+  from the version index (the stale one earned PlayPlay key 403s), the
+  client token falls back to the web persona when the desktop persona
+  is rejected, and a Resolve method picker lets you choose how each
+  service resolves its streams
+- Deezer joins the resolver pool with anonymous access alongside the
+  Premium login, and Deezer lyrics become a provider
+- Web sign-in pages for SoundCloud and Spotify, a reorganized Sources
+  settings section, the preferred-source priority list with drag to
+  reorder, and per-source track pins that survive category switches
+  (a Qobuz pick stays pinned across YouTube and back, with a
+  crossfade watchdog that kills the fade-to-silence after source
+  changes)
+- Tidal metadata goes real end-to-end: sampleRate, bitDepth and
+  contentLength resolve from the API and manifests, the format tag
+  survives cached plays, the play-from popup derives nominal specs
+  from your quality setting, and PCM bitrate math shows Hi-Res FLAC
+  as 4608 kbps
+- Qobuz grows direct account tokens (paste or web sign-in) that
+  stream at full fidelity before the proxy instances, instance health
+  testing with online/deprecated/failed states, and its own
+  streamCache key so the picked variant actually plays
+- Cross-service playlist import: paste a YouTube Music, Spotify,
+  Apple Music, Tidal, Qobuz or Deezer URL and every track is matched
+  on YouTube Music into a new local playlist
+
+## Flamingo player & lyrics
+
+- The Apple Music player style is replaced by a complete Flamingo
+  port — the NowPlaying layout, karaoke lyric view, floating-light
+  background, queue page, icons and its own settings section — then
+  polished through a dozen follow-up rounds: the canvas morph rides
+  the shared-bounds system with a single continuous animation, queue
+  controls track the lyrics page, translation popups anchor in-player,
+  and landscape gets isolated lyrics controls
+- Karaoke accompaniment lyrics v2 (the accompanist library) with a
+  blossom renderer: background-vocal lines render above the active
+  line, and the follow logic gets ONE owner — the library anchors the
+  full aggregate at its stable offset while the app-side first-focus
+  waiter only gates the fade-in, so nothing is ever clipped at the
+  top edge
+- Eight new lyrics providers join the roster, Musixmatch arrives as
+  an experimental word-synced TTML source with token refresh, a
+  lyrics test page probes every enabled provider with a known track,
+  and the lyrics mode picker learns SimpMusic and Spotify word-sync
+- PaxSenix Apple Music lyrics no longer render as raw JSON: the
+  TTML envelope check requires an XML prefix, and stale database rows
+  self-heal on display
+- Lyrics export gains pretty print (timestamps stripped, singer
+  details kept), file export, share targets and a translation discard
+  guard when the underlying lyrics change mid-translation
+
+## Design system
+
+- The BitChord family ports in: the frosted-pill navigation bar with
+  its travelling stretch-squash selection pill, icon bounce and
+  drag-to-switch; the home feed redesign; the entire search tab with
+  live suggestions and thumbnails; and the player-dock artwork flight
+  from the maximized player down to the mini player
+- The SukiSU liquid-glass navigation bar arrives — refraction lens,
+  specular highlight that follows device tilt, press spotlight and
+  accent-tinted tabs — alongside a glass About page and predictive
+  back gestures that reach the player sheet
+- The Apple Music Experience mode replaces the artwork header on
+  playlist, album and library pages with Apple Music's large title,
+  pink accent pills and no backdrop, and switches the player to the
+  Apple Music style
+- Ambient backdrops go everywhere and stay: album pages key their
+  gradient to the loaded thumbnail with a hero scrim that melts into
+  the page, artist sub-pages share the main page's palette through a
+  1200 ms crossfade, transparent song rows let the gradient show
+  through, and the gradients live inside the glass record so they
+  never flicker at open or vanish on scroll
+- UIKit-style overscroll physics app-wide, light-mode glass fixes
+  (halo, rim, readability of hero text and glass pills), navigation
+  bar dimensions (width, height, opacity, transparency, label
+  spacing, corner radius), SF Pro font browser, UI scale, tablet
+  mode, and the Songs full-player overflow popup rebuilt as an
+  edge-to-edge immersive sheet with a two-column card grid — every
+  entry and handler preserved
+
+## Audiophile & audio
+
+- The Acoustic Quality Audit (adapted from AURALIS) ports into the
+  song details popup: a 20-second decode and FFT over local files,
+  download-cache spans or resolved streams, with an animated Spek
+  spectrogram reveal, cutoff line and axis, and a verdict — true
+  lossless, suspected upscaled or fake — plus bounded decoding so it
+  never loads forever
+- The audiophile settings page grows the complete bidirectional
+  incompatibility matrix: bit-perfect clears engines, float DSP,
+  Dolby and normalization; enabling any of them turns bit-perfect
+  off; crossfade, automix and offload clear USB-exclusive
+- USB exclusive output drives DACs directly with a 32-bit float
+  stream (switching to Tryptify's or Lastwave's own bit-perfect
+  driver when an engine is active), the Oboe native output path
+  lands, bit-perfect mixer wire-encoding matches the lossy path, and
+  ReplayGain/R128 tags from local files normalize loudness
+- The Dolby / FFmpeg decoder ports from dmt as a decoder option
+
+## Listen Together
+
+- Listen Together gains a self-hostable server and a complete chat
+  suite: message edit/delete-for-everyone, pinning with a position
+  banner, direct-reply notifications with quick reply from the shade,
+  mentions with unread badges, GIF picker (Giphy or your own
+  gallery), chat wallpapers visible only to you, and in-app popups
+  while you are elsewhere in the app
+- Room management matures: named rooms, custom profile pictures,
+  join-request moderation with kick and permanent block, ownership
+  transfer, host-volume sync, auto-resync on reconnect and
+  auto-approved song suggestions
+
+## Integrations
+
+- Telegram becomes a first-class source: the TDLib engine downloads
+  as a one-time runtime extension, channels and groups browse and
+  stream lossless files (FLAC/WAV/AIFF filter included), playlists
+  sync from channels, and bots fetch songs from links you paste —
+  with stream, download, add-to-playlist and auto-forward actions
+- Cloud backup sync uploads automatic backups to Google Drive,
+  Dropbox, Nextcloud or OneDrive through the system folder picker,
+  with overwrite-or-history modes, retry on transient failure and a
+  manual share-sheet fallback when the app is not registered with
+  Google
+- The Last.fm dashboard shows your scrobble stats, recent and top
+  tracks; ListenBrainz signs in through MusicBrainz OAuth; Discord
+  Rich Presence refreshes reliably and survives reauthorization
+
+## Home, library & recommendations
+
+- Smart recommendations arrive on-device: personalized rows are built
+  from your listening history, likes and playlists — nothing is
+  uploaded — with recency weighting, per-suggestion dismiss, artist
+  exclusions and a clear-history control
+- The library title reveals on upward swipe, live search suggestions
+  carry thumbnails, voice search and settings search land, the
+  YouTube/Spotify catalogue switcher sits atop the home feed, and the
+  onboarding flow walks new installs through permissions and optional
+  sign-in
+- The artist page loads each swiped carousel's full content inline
+  (singles, EPs, videos, playlists) and keeps its backdrop stable
+  across section changes
+
+## Downloads & export
+
+- Lyrics and canvas videos ride along with every download and embed
+  on export, the download quality picker (Max/Hi-Res/Lossless) and
+  export format picker (FLAC/WAV/M4A/WebM/Ogg/MP3) land, the video
+  cache gets its own size cap and clear action, and multi-select
+  export/delete works on the downloads page
+
+## Localization
+
+- The translation catalogue is rebuilt end to end: twelve languages
+  at 100% coverage (Arabic, Egyptian Arabic, Egyptian Arabic (arz),
+  German, Spanish, French, Indonesian, Japanese, Portuguese, Brazilian
+  Portuguese, Simplified Chinese, Traditional Chinese) and eleven new
+  languages arrive from Weblate — Azerbaijani, Czech, Persian,
+  Hungarian, Kurdish Kurmanji, Polish, European Portuguese, Sinhala,
+  Slovenian and Uzbek
+
+## Performance & cleanup
+
+- A codebase-wide audit round cuts performance hotspots, removes
+  wasted resources and deletes roughly 2500 lines of dead code
+  (orphaned home sections, dead settings groups, the mesh backdrop,
+  signal-path report machinery), the app strips every non-license
+  comment, and the core and lyrics submodules drop unused dependencies
+  (re2j, brotli, dev scripts)
+
 # ArchiveTune 17.0 — Changelog
 
 The audiophile update: the Tryptify and LastWave engine pair arrives in
